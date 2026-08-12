@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS implementation write-back isolation + governed patch integration
+- Agent/session:       Codex `/root` · Role: builder/integration
+- Branch / worktree:   `codex/eos-implementation-writeback` · `D:\Taylor_Parts-eos-implementation-writeback`
+- Base commit:         `0f5bc8d0a496e5590ffbd0c6c23ebba3f418c911`
+- Owned paths:         EOS issue/runtime/integration workflows · `intakePatch*` · `intake-artifactize*` · `intake-patch-integrate*`
+- Shared paths req'd:  `docs/DECISIONS.md` · this registry · work-intake README/test wiring
+- Dependencies:        PR #814 artifact-only guard; recovered #818/#819 sessions under `D:/Taylor_Parts-diagnostics-818-819/`
+- Expected outcome:    Isolated Claude mutations become governed report/patch artifacts; only separately approved exact patches may integrate
+- Protected boundaries:No automatic patch application, force push, permission expansion, blind stash, Claude rerun, or merge before independent review
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          [CLOSED — DONE 2026-08-12] GitHub Issue → EOS runtime write-back hardening after Issue #813; PR #814 merged; fresh Issue #815 COMPLETE
 - Agent/session:       Codex `/root` · Role: builder/integration
 - Branch / worktree:   `codex/eos-issue-runtime-hardening` · cleaned after merge

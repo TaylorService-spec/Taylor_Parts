@@ -1,0 +1,32 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-819",
+  "sourceWorkSha256": "f9dc01bb756b31eb64593c6421359d2cc9c60d38c0efeea14c150fa9b014feac",
+  "baseCommit": "0f5bc8d0a496e5590ffbd0c6c23ebba3f418c911",
+  "scope": [
+    "Work within the existing `docs/orchestration/agent-manager.md` architecture and its durable Agent Request / Agent Result contracts, dispatcher, result-consumption lifecycle, resource governor, and existing harness.",
+    "Design the smallest provider-neutral verification capability that can be reused by Claude Agent Manager now and later by EOS Core/provider adapters.",
+    "The verifier should support two placements:",
+    "1. pre-execution semantic verification after deterministic contract/preflight validation but before dispatch, where appropriate;",
+    "2. post-worker evidence verification before a result is accepted/consumed/consolidated.",
+    "Deterministic rules remain code-owned. The Verifier Agent is for judgment/evidence quality, not for checking syntax that pure validators can prove."
+  ],
+  "paths": [
+    "docs/orchestration/agent-manager.md",
+    "docs/orchestration/lib/verifierAgent.mjs",
+    "docs/orchestration/lib/verifierAgent.test.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/agent-manager.md",
+    "docs/orchestration/lib/verifierAgent.mjs",
+    "docs/orchestration/lib/verifierAgent.test.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-819/0a890207e17535eeb96d4f6e5bbfd33a2ef041a371ba9e9e13f0e5767910f376.patch",
+  "patchSha256": "0a890207e17535eeb96d4f6e5bbfd33a2ef041a371ba9e9e13f0e5767910f376",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-12T22:46:11.000Z",
+  "recovery": "claude-session-16643f1b-83af-4aeb-9372-5257e86db652",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-819/79ff13f3e0ffc08b07bb03cd3ca7a65423c61cb0b125fdec1bd6bf74acb1ad9a.patch.json",
+  "sha256": "79ff13f3e0ffc08b07bb03cd3ca7a65423c61cb0b125fdec1bd6bf74acb1ad9a"
+}

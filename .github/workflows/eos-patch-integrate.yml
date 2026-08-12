@@ -1,0 +1,62 @@
+name: EOS Patch Integration — explicit approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: "EOS request ID"
+        required: true
+      manifest_location:
+        description: "Repo-relative governed patch manifest"
+        required: true
+      patch_sha256:
+        description: "Exact approved patch SHA-256"
+        required: true
+      approval:
+        description: "Type APPROVE to authorize this exact patch"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eos-patch-integration-${{ github.repository }}-main
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: ${{ inputs.approval == 'APPROVE' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact base/scope/hash, apply, and run focused checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          node docs/orchestration/context/intake-patch-integrate.mjs `
+            --request-id "${{ inputs.request_id }}" `
+            --manifest "${{ inputs.manifest_location }}" `
+            --patch-sha "${{ inputs.patch_sha256 }}" `
+            --approval "${{ inputs.approval }}"
+          if ($LASTEXITCODE -ne 0) { throw "governed patch integration failed" }
+      - name: Commit only verified integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host "already integrated"; exit 0 }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "eos: integrate ${{ inputs.request_id }} patch ${{ inputs.patch_sha256 }} [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "integration commit failed" }
+          git fetch origin main
+          if ((git rev-parse HEAD^) -ne (git rev-parse origin/main)) { throw "main moved; patch base is stale" }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw "integration push failed; never force-push" }

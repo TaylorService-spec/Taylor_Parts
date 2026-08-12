@@ -1,0 +1,512 @@
+diff --git a/docs/orchestration/agent-manager.md b/docs/orchestration/agent-manager.md
+index 0e5ef94..2dae282 100644
+--- a/docs/orchestration/agent-manager.md
++++ b/docs/orchestration/agent-manager.md
+@@ -122,6 +122,68 @@ to an *unregistered* workstream is surfaced as `unroutable` (an ORCHESTRATOR_INT
+ not silently dropped. Drivers MUST call `selectNextWorkIncludingResults(...)` (or concat
+ `interpretationWorkItems(...)`) before concluding a terminal state.
+ 
++## 10b. Verifier Agent (EOS-ISSUE-819)
++
++A bounded, evidence-driven check on agent-produced work — layered on the existing contracts, **not a
++second orchestrator, queue, scheduler, or authority layer.** Implementation:
++[`lib/verifierAgent.mjs`](./lib/verifierAgent.mjs) /
++[`lib/verifierAgent.test.mjs`](./lib/verifierAgent.test.mjs).
++
++**Contract reuse, not a parallel system.** A verification is an ordinary `AgentRequest` with the
++existing `mode: "VERIFICATION"` (§1). Two placements share the same primitives — only what's being
++inspected differs:
++
++1. **Pre-dispatch (semantic).** `createPreDispatchVerificationRequest()` — AFTER deterministic
++   contract/preflight validation has already passed but BEFORE a request is dispatched to a worker at
++   all. For judgment calls a pure validator cannot make (does this request's purpose/scope actually
++   cohere with governing docs?) — never for syntax a deterministic check already proves.
++2. **Post-worker (evidence).** `createVerificationRequest()` — built from the worker's request +
++   result, before the result is accepted/consumed/consolidated.
++
++Both copy `scope` verbatim from the thing being checked (never wider) and go through the **same**
++`decideDispatch()` (§2), the **same** resource governor (§3), the **same** network-aware gating (§4) —
++no new dispatch path exists for either placement.
++
++**Evidence-driven, not summary-trusting.** The Verifier is dispatched as a bounded worker against the
++`allowedSurfaces` above — it independently inspects those repository/context surfaces itself; it is
++never handed only the worker's prose summary to grade.
++
++**What it must detect**, as a typed `CLAIM_FAILURE_CATEGORIES` vocabulary: `UNSUPPORTED_CLAIM`,
++`INVENTED_ARTIFACT` (nonexistent file/function/commit/issue/test/capability), `CONTRADICTS_REPO_STATE`,
++`SCOPE_DRIFT`, `MISSED_CONSTRAINT`, `STALE_EVIDENCE`, `INTERNAL_CONTRADICTION`, `SHOULD_BE_UNVERIFIED`.
++Each finding (`createVerifierFinding`) carries the exact failed claim, the evidence gap, and a
++corrective instruction.
++
++**Verdict.** `deriveVerdict()` reads the Verifier's own `AgentResult` (never the worker's) and returns
++`PASS` / `RETURN_FOR_CORRECTION` / `ESCALATE`. Ambiguity (`NOT_APPLICABLE`, or an unresolved verdict)
++resolves to `ESCALATE`, never a silent `PASS` — the same "downgrade to UNVERIFIED rather than assert as
++fact" principle applies to the Verifier's own output.
++
++**Bounded correction loop.** Worker → Verifier → `PASS` or `RETURN_FOR_CORRECTION` → the **same** Worker
++corrects → Verifier rechecks. `createVerificationSession()` / `advanceVerificationSession()` track this
++as a pure state machine with a conservative default cap, `DEFAULT_MAX_CORRECTION_LOOPS = 2` (no standing
++policy justifies a smaller number). Once the cap is reached without a `PASS`, the session status becomes
++`ESCALATE` — routed to the existing orchestrator/Owner boundary (§9/§10), never an indefinite ping-pong.
++
++**Cannot broaden scope.** `guardVerifierScope()` partitions findings into `inBounds` and `outOfBounds`:
++any finding marked `proposesScopeExpansion` (the Verifier arguing for doing *more* than the original
++request, rather than reporting a defect in what was claimed) is routed to `outOfBounds` and is **never**
++surfaced as an actionable corrective instruction or allowed to affect the verdict. The Verifier reports;
++it does not become product/architecture authority. **AGENT OUTPUT ≠ PRODUCT AUTHORITY** (§1) applies
++twice over here — neither the worker's result nor the Verifier's result is itself product authority.
++
++**Spend/value tracking.** `verificationSpendSummary()` records correction count, pass/fail/escalation,
++verifier and worker token/runtime totals *only where the runtime exposed them* (§6 — never fabricated),
++and whether a correction pass actually changed/retracted material claims (`claimsChanged`) — the signal
++that verification earned its spend, not just added overhead.
++
++**Deterministic preflight is a separate, cheaper mechanism — not the Verifier Agent.**
++`checkRequiredHeadings()` is plain string matching with no agent call, no independent-inspection worker,
++and no `VERIFIER_VERDICTS` output. Example (Issue #818): an intake artifact missing its required literal
++`## Scope` / `## Required work` headings is caught by this deterministic check *before* any
++`AgentRequest` is ever created — a Verifier Agent call is never spent on a defect a string match already
++catches.
++
+ ## 11. Anti-over-engineering
+ 
+ Smallest local/repo-native mechanism consistent with #703/#710/#715/#716: pure libs + durable files + the
+diff --git a/docs/orchestration/lib/verifierAgent.mjs b/docs/orchestration/lib/verifierAgent.mjs
+new file mode 100644
+index 0000000..de90a66
+--- /dev/null
++++ b/docs/orchestration/lib/verifierAgent.mjs
+@@ -0,0 +1,235 @@
++// Verifier Agent — a bounded, evidence-driven check on agent-produced work, layered ON TOP of the
++// existing Shared Agent Manager (agentRequest.mjs / agentResult.mjs / agentManager.mjs). This is NOT a
++// second orchestrator, queue, scheduler, or authority layer:
++//
++//   - A verification is just an AgentRequest with mode: "VERIFICATION" (already a first-class mode,
++//     see AGENT_MODES in agentRequest.mjs) and an AgentResult with mode-appropriate verdict/findings —
++//     the EXISTING contracts, not a parallel one.
++//   - Dispatch, dedupe, resource governance, and network awareness are the EXISTING agentManager
++//     decideDispatch() — a verification request is just another request in that queue. Nothing here
++//     re-implements scheduling or concurrency.
++//   - This module adds only what verification specifically needs: shaping a verification request so the
++//     Verifier inspects authoritative surfaces INDEPENDENTLY (never just the worker's summary), a typed
++//     finding vocabulary for what verification failure looks like, deriving a PASS / RETURN_FOR_CORRECTION
++//     / ESCALATE verdict, a bounded correction-loop state machine, and a scope guard so the Verifier can
++//     report but never enact scope/architecture authority.
++//
++// AGENT OUTPUT != PRODUCT AUTHORITY (agent-manager.md) applies here too, twice over: neither the worker's
++// result NOR the verifier's result is product authority. A PASS verdict is evidence that claims held up
++// under independent inspection — not a product/roadmap decision.
++//
++// Pure: schema + constructors + validation + deterministic decision functions. No I/O, no clock, no
++// agent execution. The session driver runs the bounded Verifier worker (via the harness, same as any
++// other dispatched request) and calls back into this module with the result.
++
++import { createAgentRequest, validateAgentRequest } from "./agentRequest.mjs";
++
++export const VERIFIER_VERDICTS = Object.freeze(["PASS", "RETURN_FOR_CORRECTION", "ESCALATE"]);
++
++// Conservative default (Owner-facing requirement: "recommend 2 unless existing policy suggests smaller").
++// No standing policy in agent-manager.md suggests smaller, so 2 is the default; callers may lower it.
++export const DEFAULT_MAX_CORRECTION_LOOPS = 2;
++
++// What a Verifier is required, at minimum, to be able to detect and report (EOS-ISSUE-819).
++export const CLAIM_FAILURE_CATEGORIES = Object.freeze([
++  "UNSUPPORTED_CLAIM",        // material claim with no traceable evidence
++  "INVENTED_ARTIFACT",        // nonexistent file/function/commit/issue/test/capability
++  "CONTRADICTS_REPO_STATE",   // claim contradicts what the repo/context actually shows now
++  "SCOPE_DRIFT",              // worker did/claimed more (or different) than the request authorized
++  "MISSED_CONSTRAINT",        // an explicit constraint/completion criterion was not met
++  "STALE_EVIDENCE",           // evidence predates a materially relevant repo/context change
++  "INTERNAL_CONTRADICTION",   // the worker's own result contradicts itself
++  "SHOULD_BE_UNVERIFIED",     // claim stated as fact but only supportable as UNVERIFIED
++]);
++
++/**
++ * Build the AgentRequest for a verification pass over a worker's AgentResult. Reuses the existing
++ * request contract (mode: "VERIFICATION") rather than inventing a new envelope.
++ *
++ * Evidence-driven by construction: allowedSurfaces is the UNION of the original worker request's
++ * authoritative surfaces and any surfaces the worker's result itself claims to have touched — the
++ * Verifier inspects the same (or a superset of) ground truth the worker had, never just the worker's
++ * prose summary. `scope` is copied verbatim from the worker request — the Verifier checks the work
++ * done, it does not get a wider mandate than the worker had (no scope creep of its own).
++ */
++export function createVerificationRequest({
++  requestId, workerRequest, workerResult, priority = workerRequest && workerRequest.priority,
++  correctionCount = 0, retryAllowance = 0, modelTier,
++} = {}) {
++  if (!workerRequest) throw new Error("createVerificationRequest: workerRequest is required (the request being verified)");
++  if (!workerResult) throw new Error("createVerificationRequest: workerResult is required (the result being verified)");
++  const claimedSurfaces = Array.isArray(workerResult.evidence)
++    ? workerResult.evidence.map((e) => (typeof e === "string" ? e : e && e.path)).filter(Boolean)
++    : [];
++  const allowedSurfaces = [...new Set([...(workerRequest.allowedSurfaces || []), ...claimedSurfaces])];
++  return createAgentRequest({
++    requestId,
++    requestedByWorkstream: workerRequest.requestedByWorkstream,
++    purpose: `Independently verify result ${workerResult.resultId} for request ${workerRequest.requestId}: ${workerRequest.purpose}`,
++    mode: "VERIFICATION",
++    modelTier: modelTier || workerRequest.modelTier,
++    execution: workerRequest.execution,
++    allowedSurfaces,
++    scope: [...(workerRequest.scope || [])], // never wider than the worker's authorized scope
++    requiresBrowser: false, // the Verifier inspects repo/context surfaces, not a live browser
++    mutating: false,        // a Verifier never writes product state — read-only inspection only
++    priority,
++    retryAllowance,
++    outputContract: "structured verdict PASS/FAIL over CLAIM_FAILURE_CATEGORIES findings, each with the exact failed claim, the evidence gap, and a corrective instruction",
++    evidence: [],
++    correctionCount,
++  });
++}
++
++/**
++ * Second placement (work-intake scope): pre-execution SEMANTIC verification of a request/intake
++ * artifact itself — after deterministic contract/preflight validation has already passed, but
++ * before the request is dispatched to a worker at all. This is for judgment calls a pure validator
++ * cannot make (e.g. "does this purpose/scope actually cohere with governing docs?"), never for
++ * syntax a deterministic check already proves (see checkRequiredHeadings below — that boundary is
++ * load-bearing: do not spend a Verifier call on what preflight already catches). Reuses the SAME
++ * VERIFICATION mode, the SAME dispatch/verdict/session machinery as post-worker verification — the
++ * only difference is what's being inspected (the request/intake artifact, not a worker's result).
++ */
++export function createPreDispatchVerificationRequest({ requestId, targetRequest, priority, retryAllowance = 0, modelTier } = {}) {
++  if (!targetRequest) throw new Error("createPreDispatchVerificationRequest: targetRequest is required (the request/intake artifact to semantically check)");
++  return createAgentRequest({
++    requestId,
++    requestedByWorkstream: targetRequest.requestedByWorkstream,
++    purpose: `Pre-dispatch semantic verification of request ${targetRequest.requestId}: ${targetRequest.purpose}`,
++    mode: "VERIFICATION",
++    modelTier: modelTier || targetRequest.modelTier,
++    execution: targetRequest.execution,
++    allowedSurfaces: [...(targetRequest.allowedSurfaces || [])],
++    scope: [...(targetRequest.scope || [])], // never wider than the request it is checking
++    requiresBrowser: false,
++    mutating: false,
++    priority: priority == null ? targetRequest.priority : priority,
++    retryAllowance,
++    outputContract: "structured verdict PASS/FAIL over CLAIM_FAILURE_CATEGORIES findings on the REQUEST's semantic soundness (not syntax a deterministic preflight already proves)",
++    evidence: [],
++  });
++}
++
++export function validateVerifierFinding(f) {
++  const errors = [];
++  const need = (cond, msg) => { if (!cond) errors.push(msg); };
++  need(!!f, "finding is required");
++  if (!f) return errors;
++  need(CLAIM_FAILURE_CATEGORIES.includes(f.category), `category must be one of ${CLAIM_FAILURE_CATEGORIES.join("/")}`);
++  need(!!f.claim, "claim is required (the exact claim that failed verification)");
++  need(!!f.evidenceGap, "evidenceGap is required (what independent inspection found instead)");
++  need(!!f.correctiveInstruction, "correctiveInstruction is required (what the worker must do to correct it)");
++  return errors;
++}
++
++const FINDING_DEFAULTS = Object.freeze({ proposesScopeExpansion: false });
++
++export function createVerifierFinding(input = {}) {
++  const f = { ...FINDING_DEFAULTS, ...input };
++  const errors = validateVerifierFinding(f);
++  if (errors.length) throw new Error(`createVerifierFinding: ${errors.join("; ")}`);
++  return Object.freeze(f);
++}
++
++/**
++ * Scope guard: a Verifier may FLAG that work exceeded/differed from its authorized scope
++ * (SCOPE_DRIFT is one of the required categories), but it must never BECOME the authority that
++ * expands scope. Any finding a caller marks proposesScopeExpansion (the finding itself argues for
++ * doing MORE than the original request, rather than reporting a defect in what was claimed) is
++ * routed to `outOfBounds` — never surfaced as a corrective instruction the worker should act on.
++ * This is the enforcement of "Verifier must not broaden product scope or become product/
++ * architecture authority."
++ */
++export function guardVerifierScope(findings = []) {
++  const inBounds = [];
++  const outOfBounds = [];
++  for (const f of findings || []) {
++    (f.proposesScopeExpansion ? outOfBounds : inBounds).push(f);
++  }
++  return { inBounds, outOfBounds };
++}
++
++/**
++ * Derive the verifier verdict from the Verifier's OWN AgentResult (never from the worker's
++ * self-report). Ambiguity (NOT_APPLICABLE, or a PASS verdict with unresolved findings) is treated
++ * conservatively as ESCALATE, not as a silent PASS — mirrors the requirement that unsupported
++ * material should be downgraded to UNVERIFIED rather than asserted as fact.
++ */
++export function deriveVerdict(verifierResult) {
++  if (!verifierResult) throw new Error("deriveVerdict: verifierResult is required");
++  const { inBounds } = guardVerifierScope(verifierResult.findings || []);
++  if (verifierResult.verdict === "PASS" && inBounds.length === 0) return "PASS";
++  if (verifierResult.verdict === "FAIL" || inBounds.length > 0) return "RETURN_FOR_CORRECTION";
++  return "ESCALATE"; // NOT_APPLICABLE or an unresolved verdict — do not assume PASS
++}
++
++const SESSION_DEFAULTS = Object.freeze({ correctionCount: 0, maxLoops: DEFAULT_MAX_CORRECTION_LOOPS, history: [], status: "PENDING", final: false });
++
++export function createVerificationSession(input = {}) {
++  const s = { ...SESSION_DEFAULTS, ...input };
++  s.history = [...(s.history || [])];
++  return Object.freeze(s);
++}
++
++/**
++ * Bounded correction loop: Worker -> Verifier -> PASS or RETURN_FOR_CORRECTION -> same Worker
++ * corrects -> Verifier rechecks. Escalates to the existing orchestrator/Owner boundary (not an
++ * indefinite ping-pong) once `maxLoops` corrections have been dispatched and the Verifier still
++ * does not return PASS.
++ */
++export function advanceVerificationSession(session, verifierResult) {
++  const verdict = deriveVerdict(verifierResult);
++  const { inBounds, outOfBounds } = guardVerifierScope(verifierResult.findings || []);
++  const entry = Object.freeze({ verdict, findingsCount: inBounds.length, outOfBoundsCount: outOfBounds.length, resultId: verifierResult.resultId || null });
++  const history = [...session.history, entry];
++
++  if (verdict === "PASS") {
++    return Object.freeze({ ...session, history, status: "PASS", final: true });
++  }
++  if (session.correctionCount >= session.maxLoops) {
++    return Object.freeze({ ...session, history, status: "ESCALATE", final: true, escalationReason: `correction loop exhausted (${session.maxLoops} max)` });
++  }
++  if (verdict === "ESCALATE") {
++    return Object.freeze({ ...session, history, status: "ESCALATE", final: true, escalationReason: "verifier could not determine a verdict from independent evidence" });
++  }
++  return Object.freeze({ ...session, history, correctionCount: session.correctionCount + 1, status: "RETURN_FOR_CORRECTION", final: false });
++}
++
++/**
++ * Runtime/token/cost/loop tracking (agent-manager.md §6 policy: recorded only where the runtime
++ * exposes it, never fabricated) so later tests can determine whether verifier spend earns its
++ * value. `claimsChanged` is true when a correction pass altered or retracted material claims —
++ * the signal that verification actually caught something, not just added overhead.
++ */
++export function verificationSpendSummary(session, { workerResults = [], verifierResults = [] } = {}) {
++  const tokensOf = (results) => results.reduce((a, r) => a + ((r.metrics && typeof r.metrics.tokens === "number") ? r.metrics.tokens : 0), 0);
++  const runtimeOf = (results) => results.reduce((a, r) => a + ((r.metrics && typeof r.metrics.runtimeMs === "number") ? r.metrics.runtimeMs : 0), 0);
++  const claimsChanged = (workerResults || []).some((r) => r.retracted === true) || session.correctionCount > 0;
++  return {
++    correctionCount: session.correctionCount,
++    status: session.status,
++    escalated: session.status === "ESCALATE",
++    passed: session.status === "PASS",
++    verifierRuns: (verifierResults || []).length,
++    verifierTokensTotal: tokensOf(verifierResults),
++    verifierRuntimeMsTotal: runtimeOf(verifierResults),
++    workerRuns: (workerResults || []).length,
++    workerTokensTotal: tokensOf(workerResults),
++    claimsChanged,
++  };
++}
++
++// --- Deterministic preflight (NOT the Verifier Agent) ---------------------------------------------
++//
++// Some defects are cheap, mechanical, and fully deterministic to catch — e.g. an intake artifact
++// missing its required literal section headings (Issue #818: missing "## Scope" / "## Required
++// work"). Those MUST be caught by a deterministic check before a Verifier Agent (a paid, evidence-
++// gathering agent call) is ever dispatched. This function is intentionally separate from everything
++// above: it takes no agent result, makes no independent inspection, and returns no VERIFIER_VERDICT —
++// it is plain string matching, and it runs BEFORE any AgentRequest is even created.
++export function checkRequiredHeadings(text, requiredHeadings = []) {
++  const body = text || "";
++  const missing = (requiredHeadings || []).filter((h) => !body.includes(h));
++  return { ok: missing.length === 0, missingHeadings: missing };
++}
+diff --git a/docs/orchestration/lib/verifierAgent.test.mjs b/docs/orchestration/lib/verifierAgent.test.mjs
+new file mode 100644
+index 0000000..99fc1c6
+--- /dev/null
++++ b/docs/orchestration/lib/verifierAgent.test.mjs
+@@ -0,0 +1,192 @@
++// Tests for the Verifier Agent (EOS-ISSUE-819). Run:
++//   node --test docs/orchestration/lib/verifierAgent.test.mjs
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { createAgentRequest } from "./agentRequest.mjs";
++import { createAgentResult } from "./agentResult.mjs";
++import { decideDispatch } from "./agentManager.mjs";
++import {
++  VERIFIER_VERDICTS, DEFAULT_MAX_CORRECTION_LOOPS, CLAIM_FAILURE_CATEGORIES,
++  createVerificationRequest, createPreDispatchVerificationRequest, createVerifierFinding, validateVerifierFinding,
++  guardVerifierScope, deriveVerdict, createVerificationSession, advanceVerificationSession,
++  verificationSpendSummary, checkRequiredHeadings,
++} from "./verifierAgent.mjs";
++
++const workerReq = (over = {}) => createAgentRequest({
++  requestId: "w1", requestedByWorkstream: "Design", purpose: "implement widget", mode: "GENERAL",
++  allowedSurfaces: ["src/widget.js"], scope: ["widgets"], ...over,
++});
++const workerRes = (over = {}) => createAgentResult({
++  resultId: "wr1", requestId: "w1", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS",
++  findings: ["added src/widget.js"], evidence: ["src/widget.js"], ...over,
++});
++
++// --- Vocabulary lock ---
++test("exported vocabularies have their expected membership", () => {
++  assert.deepEqual([...VERIFIER_VERDICTS], ["PASS", "RETURN_FOR_CORRECTION", "ESCALATE"]);
++  assert.equal(DEFAULT_MAX_CORRECTION_LOOPS, 2);
++  assert.deepEqual([...CLAIM_FAILURE_CATEGORIES], [
++    "UNSUPPORTED_CLAIM", "INVENTED_ARTIFACT", "CONTRADICTS_REPO_STATE", "SCOPE_DRIFT",
++    "MISSED_CONSTRAINT", "STALE_EVIDENCE", "INTERNAL_CONTRADICTION", "SHOULD_BE_UNVERIFIED",
++  ]);
++});
++
++// --- Verification request reuses the existing Agent Manager contract ---
++test("createVerificationRequest builds a VALID VERIFICATION-mode AgentRequest, never wider scope than the worker", () => {
++  const wreq = workerReq();
++  const wres = workerRes();
++  const vreq = createVerificationRequest({ requestId: "v1", workerRequest: wreq, workerResult: wres });
++  assert.equal(vreq.mode, "VERIFICATION");
++  assert.equal(vreq.mutating, false);
++  assert.deepEqual(vreq.scope, wreq.scope);
++  assert.ok(vreq.allowedSurfaces.includes("src/widget.js"));
++  const errors = decideDispatch({ request: vreq }).errors;
++  assert.ok(!errors || errors.length === 0);
++});
++
++test("createVerificationRequest is a normal request in the existing dispatcher — no parallel dispatch path", () => {
++  const vreq = createVerificationRequest({ requestId: "v1", workerRequest: workerReq(), workerResult: workerRes() });
++  const decision = decideDispatch({ request: vreq, allocations: [], results: [], networkState: "NORMAL" });
++  assert.equal(decision.decision, "DISPATCH");
++});
++
++// --- Pre-dispatch placement (semantic check of the request/intake itself, before any worker runs) ---
++test("createPreDispatchVerificationRequest checks the REQUEST itself, never wider scope, and dispatches through the same path", () => {
++  const target = workerReq();
++  const vreq = createPreDispatchVerificationRequest({ requestId: "pv1", targetRequest: target });
++  assert.equal(vreq.mode, "VERIFICATION");
++  assert.deepEqual(vreq.scope, target.scope);
++  assert.equal(vreq.mutating, false);
++  const decision = decideDispatch({ request: vreq, allocations: [], results: [], networkState: "NORMAL" });
++  assert.equal(decision.decision, "DISPATCH");
++});
++
++// --- Findings ---
++test("a well-formed finding validates; missing fields are caught", () => {
++  const good = { category: "INVENTED_ARTIFACT", claim: "added tests/foo.test.js", evidenceGap: "no such file exists in the repo", correctiveInstruction: "remove the claim or add the file" };
++  assert.deepEqual(validateVerifierFinding(good), []);
++  assert.ok(validateVerifierFinding({ category: "NOT_A_CATEGORY" }).length > 0);
++});
++
++test("createVerifierFinding throws on an invalid finding", () => {
++  assert.throws(() => createVerifierFinding({ category: "BOGUS" }));
++});
++
++// --- Scope guard ---
++test("guardVerifierScope routes scope-expanding findings to outOfBounds, never as an actionable instruction", () => {
++  const flagged = createVerifierFinding({ category: "SCOPE_DRIFT", claim: "worker also touched billing", evidenceGap: "billing/ was not in allowedSurfaces", correctiveInstruction: "we should also redesign billing while we're here", proposesScopeExpansion: true });
++  const real = createVerifierFinding({ category: "INVENTED_ARTIFACT", claim: "added fn doThing()", evidenceGap: "no doThing symbol found", correctiveInstruction: "remove the claim" });
++  const { inBounds, outOfBounds } = guardVerifierScope([flagged, real]);
++  assert.deepEqual(inBounds, [real]);
++  assert.deepEqual(outOfBounds, [flagged]);
++});
++
++// --- Verdict derivation (evidence-driven, from the Verifier's OWN result) ---
++test("PASS: no findings and verifier verdict PASS", () => {
++  const vres = createAgentResult({ resultId: "vr1", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS", findings: [] });
++  assert.equal(deriveVerdict(vres), "PASS");
++});
++
++test("unsupported/fantasy claim rejection: an invented artifact finding returns RETURN_FOR_CORRECTION", () => {
++  const finding = createVerifierFinding({ category: "INVENTED_ARTIFACT", claim: "implemented functions/notARealFile.js", evidenceGap: "file does not exist in the repository tree", correctiveInstruction: "retract the claim or actually create the file and cite it" });
++  const vres = createAgentResult({ resultId: "vr1", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "FAIL", findings: [finding] });
++  assert.equal(deriveVerdict(vres), "RETURN_FOR_CORRECTION");
++});
++
++test("stale/contradictory evidence returns RETURN_FOR_CORRECTION, not a silent PASS", () => {
++  const finding = createVerifierFinding({ category: "CONTRADICTS_REPO_STATE", claim: "file X exports Y", evidenceGap: "current repo state shows X does not export Y", correctiveInstruction: "re-verify against current repo state and correct the claim" });
++  const vres = createAgentResult({ resultId: "vr2", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "FAIL", findings: [finding] });
++  assert.equal(deriveVerdict(vres), "RETURN_FOR_CORRECTION");
++});
++
++test("ambiguous verifier result (NOT_APPLICABLE) escalates rather than passing silently", () => {
++  const vres = createAgentResult({ resultId: "vr3", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "NOT_APPLICABLE", findings: [] });
++  assert.equal(deriveVerdict(vres), "ESCALATE");
++});
++
++test("scope-drift-only finding with proposesScopeExpansion does not itself force RETURN_FOR_CORRECTION (guarded out of bounds)", () => {
++  const flagged = createVerifierFinding({ category: "SCOPE_DRIFT", claim: "should redesign billing too", evidenceGap: "n/a", correctiveInstruction: "expand scope to billing", proposesScopeExpansion: true });
++  const vres = createAgentResult({ resultId: "vr4", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS", findings: [flagged] });
++  assert.equal(deriveVerdict(vres), "PASS");
++});
++
++// --- Bounded correction loop ---
++test("correction success: RETURN_FOR_CORRECTION then PASS within the loop cap", () => {
++  let session = createVerificationSession();
++  const fail = createAgentResult({ resultId: "vr1", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "FAIL", findings: [createVerifierFinding({ category: "MISSED_CONSTRAINT", claim: "tests were added", evidenceGap: "no new test file found", correctiveInstruction: "add the missing tests" })] });
++  session = advanceVerificationSession(session, fail);
++  assert.equal(session.status, "RETURN_FOR_CORRECTION");
++  assert.equal(session.correctionCount, 1);
++  assert.equal(session.final, false);
++
++  const pass = createAgentResult({ resultId: "vr2", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS", findings: [] });
++  session = advanceVerificationSession(session, pass);
++  assert.equal(session.status, "PASS");
++  assert.equal(session.final, true);
++});
++
++test("correction exhaustion escalates after the max loop count, never ping-pongs indefinitely", () => {
++  let session = createVerificationSession({ maxLoops: 2 });
++  const fail = () => createAgentResult({ resultId: "vrX", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "FAIL", findings: [createVerifierFinding({ category: "UNSUPPORTED_CLAIM", claim: "c", evidenceGap: "g", correctiveInstruction: "fix" })] });
++
++  session = advanceVerificationSession(session, fail());
++  assert.equal(session.status, "RETURN_FOR_CORRECTION");
++  assert.equal(session.correctionCount, 1);
++
++  session = advanceVerificationSession(session, fail());
++  assert.equal(session.status, "RETURN_FOR_CORRECTION");
++  assert.equal(session.correctionCount, 2);
++
++  session = advanceVerificationSession(session, fail());
++  assert.equal(session.status, "ESCALATE");
++  assert.equal(session.final, true);
++  assert.match(session.escalationReason, /correction loop exhausted/);
++});
++
++test("default max correction loops is 2 when unspecified", () => {
++  const session = createVerificationSession();
++  assert.equal(session.maxLoops, DEFAULT_MAX_CORRECTION_LOOPS);
++});
++
++// --- Verifier cannot broaden scope even across a whole session ---
++test("verifier inability to broaden scope: an out-of-bounds-only session with PASS verdict never yields a corrective instruction to expand scope", () => {
++  const session = createVerificationSession();
++  const flagged = createVerifierFinding({ category: "SCOPE_DRIFT", claim: "let's also rebuild the API", evidenceGap: "n/a", correctiveInstruction: "expand scope", proposesScopeExpansion: true });
++  const vres = createAgentResult({ resultId: "vr1", requestId: "v1", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS", findings: [flagged] });
++  const next = advanceVerificationSession(session, vres);
++  assert.equal(next.status, "PASS");
++  assert.equal(next.history[0].outOfBoundsCount, 1);
++  assert.equal(next.history[0].findingsCount, 0);
++});
++
++// --- Spend/value tracking ---
++test("verificationSpendSummary never fabricates tokens/runtime and reports correction count + outcome", () => {
++  const session = createVerificationSession({ correctionCount: 1, status: "PASS" });
++  const summary = verificationSpendSummary(session, {
++    workerResults: [createAgentResult({ resultId: "wr1", requestId: "w1", routedBackTo: "Design" })],
++    verifierResults: [createAgentResult({ resultId: "vr1", requestId: "v1", routedBackTo: "Design", metrics: { tokens: 1200 } })],
++  });
++  assert.equal(summary.correctionCount, 1);
++  assert.equal(summary.passed, true);
++  assert.equal(summary.escalated, false);
++  assert.equal(summary.verifierTokensTotal, 1200);
++  assert.equal(summary.workerTokensTotal, 0); // no metrics.tokens supplied — never fabricated
++  assert.equal(summary.claimsChanged, true); // a correction pass occurred
++});
++
++// --- Deterministic preflight vs Verifier Agent separation (Issue #818 motivating example) ---
++test("deterministic preflight catches a missing required heading WITHOUT any verifier-agent call or AgentRequest", () => {
++  const intakeMissingHeadings = "# Issue #818\n\nSome body text with no required sections.";
++  const result = checkRequiredHeadings(intakeMissingHeadings, ["## Scope", "## Required work"]);
++  assert.equal(result.ok, false);
++  assert.deepEqual(result.missingHeadings, ["## Scope", "## Required work"]);
++});
++
++test("deterministic preflight passes a well-formed intake and is independent of the VERIFIER_VERDICTS vocabulary", () => {
++  const intakeOk = "# Issue #818\n\n## Scope\nx\n\n## Required work\ny\n";
++  const result = checkRequiredHeadings(intakeOk, ["## Scope", "## Required work"]);
++  assert.equal(result.ok, true);
++  assert.deepEqual(result.missingHeadings, []);
++  // checkRequiredHeadings returns no VERIFIER_VERDICTS-shaped verdict at all — it is not the Verifier Agent.
++  assert.equal(result.verdict, undefined);
++});

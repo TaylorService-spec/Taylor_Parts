@@ -72,6 +72,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "EOS authorization failed with exit code $LASTEXITCODE" }
           node docs/orchestration/context/intake-ingest-ci.mjs
           if ($LASTEXITCODE -ne 0) { throw "Authorized intake validation failed with exit code $LASTEXITCODE" }
+      - name: Prepare isolated disposable Claude worktree
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        id: isolated
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "eos-${{ steps.authorize.outputs.request_id }}-${{ github.run_id }}"
+          if (Test-Path -LiteralPath $path) { throw "isolated worktree path already exists: $path" }
+          git worktree add --detach $path $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "failed to create isolated Claude worktree" }
+          "path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Notify and dispatch Claude through the existing runtime
         if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
         shell: pwsh
@@ -79,6 +89,7 @@ jobs:
           REQUEST_ID: ${{ steps.authorize.outputs.request_id }}
           ARTIFACT: ${{ steps.authorize.outputs.artifact_location }}
           ARTIFACT_SHA256: ${{ steps.authorize.outputs.sha256 }}
+          EOS_EXECUTION_CWD: ${{ steps.isolated.outputs.path }}
         run: |
           node docs/orchestration/context/intake-runtime.mjs execute `
             --id $env:REQUEST_ID `
@@ -96,6 +107,24 @@ jobs:
             Write-Warning "Claude runtime returned exit code $runtimeExit; its truthful status remains eligible for guarded write-back."
           }
           exit 0
+      - name: Convert isolated output into governed report/patch artifacts
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          node docs/orchestration/context/intake-artifactize.mjs `
+            --workspace "${{ steps.isolated.outputs.path }}" `
+            --work "${{ steps.authorize.outputs.artifact_location }}" `
+            --base-commit $env:GITHUB_SHA `
+            --created-at "${{ github.event.issue.updated_at }}"
+          if ($LASTEXITCODE -ne 0) { throw "isolated output artifactization failed" }
+      - name: Remove isolated worktree
+        if: ${{ always() && steps.isolated.outputs.path != '' }}
+        shell: pwsh
+        run: |
+          git worktree remove --force "${{ steps.isolated.outputs.path }}"
+          if ($LASTEXITCODE -ne 0) { throw "isolated worktree cleanup failed" }
+          git worktree prune
       - name: Commit intake + status/result to main
         id: writeback
         if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
