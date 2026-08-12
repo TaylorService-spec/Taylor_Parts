@@ -8,25 +8,29 @@ export function makeLease({ dir, fs, host = "local", pid = 0, now = () => 0, lea
   const recPath = `${dir}/owner.json`;
   const readRec = () => { try { return JSON.parse(fs.readFileSync(recPath, "utf8")); } catch { return null; } };
 
-  // A holder on THIS host is dead when its record says so (pidAlive:false) OR — because acquire()
-  // never flips pidAlive to false, so a crashed/killed holder would otherwise pin the lock forever —
-  // when an injected OS liveness check reports its pid is gone. Never judged for another host.
-  const holderDead = (rec) => {
-    if (!rec || rec.host !== host) return false; // never steal another host's lock
-    if (rec.pidAlive === false) return true;
-    if (typeof isPidAlive === "function") return isPidAlive(rec.pid) === false;
-    return false;
-  };
+  // Two independent staleness signals, both scoped to THIS host (never judge another host's lock):
+  //  • probeSaysDead — an injected OS liveness check reports the holder pid is gone. A dead holder
+  //    will NEVER call release(), so its lock is reclaimable IMMEDIATELY, independent of the lease
+  //    TTL. This is what keeps a crashed/killed holder — or a just-exited prior intake whose
+  //    release() didn't land — from pinning the single execution lease.
+  //  • flagSaysDead — the record itself is marked pidAlive:false (set by a supervisor, not by
+  //    acquire() which always writes true). Weaker signal: honored only once the lease has expired,
+  //    preserving the original TTL contract.
+  const probeSaysDead = (rec) => !!rec && rec.host === host && typeof isPidAlive === "function" && isPidAlive(rec.pid) === false;
+  const flagSaysDead = (rec) => !!rec && rec.host === host && rec.pidAlive === false;
 
   return {
     acquire() {
       try {
         fs.mkdirSync(dir); // atomic: fails if the lock dir already exists
       } catch (e) {
-        // Directory exists — reclaim ONLY if the holder is past its lease AND dead on this host.
+        // Directory exists — reclaim a verifiably-dead holder immediately, or an expired lease whose
+        // record marks the holder dead. A live holder (probe says alive) is never stolen, even if the
+        // lease lapsed — a long-running worker keeps its lock.
         const rec = readRec();
         const expired = rec && typeof rec.leaseUntil === "number" && now() >= rec.leaseUntil;
-        if (!(expired && holderDead(rec))) return { acquired: false, reason: rec ? "held" : "locked" };
+        const reclaimable = probeSaysDead(rec) || (expired && flagSaysDead(rec));
+        if (!reclaimable) return { acquired: false, reason: rec ? "held" : "locked" };
         // steal: overwrite the record with ours
       }
       fs.writeFileSync(recPath, JSON.stringify({ pid, host, startedAt: now(), leaseUntil: now() + leaseMs, pidAlive: true }));

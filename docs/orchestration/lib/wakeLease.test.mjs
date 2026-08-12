@@ -50,16 +50,17 @@ test("never steals a live/other-host lock", () => {
   assert.equal(makeLease({ dir: "/lock", fs, host: "h", now: () => 999 }).acquire().acquired, false, "different host → never steal");
 });
 
-test("reclaims a crashed holder (pidAlive never flipped) once expired, via OS liveness check", () => {
+test("reclaims a verifiably-dead holder immediately via OS liveness probe (no expiry wait)", () => {
   const fs = memFs();
-  // Real acquire() writes pidAlive:true and never flips it; a crashed holder that skipped release()
-  // would pin the lock forever without a liveness check.
+  // Real acquire() writes pidAlive:true and never flips it; a crashed/exited holder that skipped
+  // release() would pin the lock forever without a liveness probe. A dead holder never releases, so
+  // it is reclaimable IMMEDIATELY — even while the lease is still fresh (the EOS-INTAKE-001→next case).
+  makeLease({ dir: "/lock", fs, host: "local", pid: 9, now: () => 0, leaseMs: 100000 }).acquire();
+  assert.equal(makeLease({ dir: "/lock", fs, host: "local", pid: 2, now: () => 5, isPidAlive: () => false }).acquire().acquired, true, "dead holder → reclaim immediately, not-expired");
+});
+
+test("never steals from a live holder, even after the lease lapses", () => {
+  const fs = memFs();
   makeLease({ dir: "/lock", fs, host: "local", pid: 9, now: () => 0, leaseMs: 100 }).acquire();
-  // Before expiry: never steal, even if the pid is dead.
-  assert.equal(makeLease({ dir: "/lock", fs, host: "local", pid: 2, now: () => 50, isPidAlive: () => false }).acquire().acquired, false, "not expired → hold");
-  // Expired + pid dead on this host → reclaim.
-  assert.equal(makeLease({ dir: "/lock", fs, host: "local", pid: 2, now: () => 200, isPidAlive: () => false }).acquire().acquired, true, "expired + dead → reclaim");
-  // Expired but pid still alive → never steal from a live long-running worker.
-  makeLease({ dir: "/lock", fs, host: "local", pid: 9, now: () => 200, leaseMs: 100 }); // (record now owned by pid 2 from the steal above)
   assert.equal(makeLease({ dir: "/lock", fs, host: "local", pid: 5, now: () => 400, isPidAlive: () => true }).acquire().acquired, false, "expired but alive → hold");
 });
