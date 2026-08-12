@@ -12,6 +12,8 @@ import { trustedActionUnavailable } from "../../domain/equipment";
 import { updateEquipment } from "../../domain/equipmentRepository";
 import EquipmentEditModal from "./EquipmentEditModal";
 import EquipmentTimeline from "./EquipmentTimeline";
+import InventoryControlSection from "./InventoryControlSection";
+import { buildEquipmentInventoryControlView } from "../../domain/equipmentInventoryControlAdapter";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
@@ -201,6 +203,12 @@ export default function EquipmentDetail() {
             <Row label="Notes" value={equipment.notes} />
           </dl>
         </section>
+
+        {/* Ventana lifecycle — two-condition inventory-control read (install complete AND sale
+            close). The sale-close signal is a separate Sales Order authority not available on
+            this surface and D-5 is unratified, so this renders an honest UNKNOWN with the reason
+            rather than a fabricated state — see domain/equipmentInventoryControlAdapter.js. */}
+        <InventoryControlSection view={buildEquipmentInventoryControlView(equipment)} />
 
         {/* §8 lifecycle actions, each per §5 gating.
             Edit is NOT among them and is not disabled: it is an ordinary write Rules
