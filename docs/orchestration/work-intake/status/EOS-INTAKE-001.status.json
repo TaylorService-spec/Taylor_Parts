@@ -8,17 +8,17 @@
   "currentWork": "completed",
   "activeWorker": "EOS_INTAKE",
   "startedAt": null,
-  "updatedAt": "2026-08-12T05:41:17.895Z",
+  "updatedAt": "2026-08-12T05:49:08.322Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "costToDateUsd": 0.39524940000000003,
+  "costToDateUsd": 0.5512227,
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-INTAKE-001.work.json",
     "sha256": "16b160f957b63dda7978caf6d178cad6fc8fbb2876dd9f0999b7bd8197eb01aa"
   },
   "resultRef": {
-    "location": "docs/orchestration/work-intake/results/EOS-INTAKE-001/e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1.result.json",
-    "sha256": "e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1",
+    "location": "docs/orchestration/work-intake/results/EOS-INTAKE-001/ec972527477b742e561cd5de8ad57341a7468b2eb3cabb21793c158a45745f44.result.json",
+    "sha256": "ec972527477b742e561cd5de8ad57341a7468b2eb3cabb21793c158a45745f44",
     "pointer": "result://EOS-INTAKE-001"
   },
   "artifactRefs": [],
@@ -27,5 +27,5 @@
     "provenance": "Owner-authored Codex request dated 2026-08-10"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-INTAKE-001.status.json",
-  "sha256": "ddd871e32b3c01efff5f959864a6fc1c35e90020a5c2787c9c9425a6808a05c4"
+  "sha256": "86fcb15338132830530539b474656ab201affef261a9cdf77f86ca781b5d9e65"
 }

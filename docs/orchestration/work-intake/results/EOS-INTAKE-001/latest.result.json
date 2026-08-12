@@ -2,10 +2,10 @@
   "schema": "eos.intake.result-index/1",
   "requestId": "EOS-INTAKE-001",
   "pointer": "result://EOS-INTAKE-001",
-  "manifestLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-001/e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1.result.json",
-  "manifestSha256": "e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1",
-  "contentLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-001/d7a6d257e865314c49bd648e32bcb347cd3d66c5d02ed0c34bea9cc4f7982ba6.content.md",
-  "updatedAt": "2026-08-12T05:41:17.895Z",
+  "manifestLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-001/ec972527477b742e561cd5de8ad57341a7468b2eb3cabb21793c158a45745f44.result.json",
+  "manifestSha256": "ec972527477b742e561cd5de8ad57341a7468b2eb3cabb21793c158a45745f44",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-001/5209105952e13267b87fbc7ad4d9591499de392606a58f8aea07eedc026530b6.content.md",
+  "updatedAt": "2026-08-12T05:49:08.322Z",
   "artifactLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-001/latest.result.json",
-  "sha256": "ded1f4b8036161a30ee2f32c46fb9662ccbfc589de8141ecf655d69d18fb2def"
+  "sha256": "9d5d9f82d53b587342534324fe120a7b9e62effc935beabc29d67006e6fac1d4"
 }
