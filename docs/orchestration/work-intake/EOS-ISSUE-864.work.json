@@ -1,0 +1,52 @@
+{
+  "requestId": "EOS-ISSUE-864",
+  "title": "EOS acceptance run — 2-agent verification of governed execution + audit closed loop",
+  "intent": "Run a fresh **2-agent EOS acceptance mission** against current `main` to verify the complete governed execution stack and the newly landed audit closed loop as one integrated system.\n\nThis is a verification mission, not a feature-build request.\n\nRequired work:\n### Child A — governed execution / durability acceptance\nIndependently verify the EOS execution path implemented through the recent governed-runtime work, including the behavior represented by PRs #850, #851, #853, #854, #855, #857, #858, and #859.\n\nTest/inspect at minimum:\n1. concurrent request claims prevent duplicate execution and cross-request write contamination;\n2. authorized concurrent execution respects intake authority and does not widen child authority;\n3. parent→child grants are constrained subsets of parent authority;\n4. child completion cannot cause parent completion before the exact expected child set is complete;\n5. consolidation consumes only the exact expected complete child set;\n6. per-item artifact landing is isolated, branch-robust, retry-safe, and durable before later items run;\n7. a later failure/timeout cannot erase previously landed child results;\n8. reruns do not re-execute already-completed governed work;\n9. deterministic test hygiene remains intact;\n10. no code/source contamination can enter an artifact-only write-back.\n\nUse existing tests where meaningful, but also perform adversarial reasoning against current `main` and identify any gap the current regression suite does not prove.\n\n### Child B — findings closed-loop acceptance\nIndependently verify the full findings lifecycle represented by #860, #861, #862, and #863 from raw worker result through durable disposition memory.\n\nTest/inspect at minimum:\n1. worker `eos-findings` output is parsed and validated against the structured contract;\n2. valid `[]` is a trustworthy zero-finding result;\n3. missing block, malformed JSON, non-array output, or malformed individual finding cannot silently consolidate as clean;\n4. extraction failure blocks parent consolidation through `EXTRACTION_INVALID` or equivalent fail-closed semantics;\n5. canonical identity is stable across case/whitespace/path drift;\n6. different discriminators in the same file/symbol remain distinct;\n7. same discriminator dedupes despite line/category drift;\n8. the full consolidated finding is deterministic for A,B versus B,A child order;\n9. FIXED requires passing regression evidence;\n10. DEFERRED retains evidence plus a concrete `revalidateWhen` condition and is reactivated when that condition is satisfied;\n11. regressions and unproven-fixed findings re-surface rather than suppress;\n12. known/dispositioned findings dedup correctly without turning the register into a postponement mechanism.\n\nExercise the real end-to-end `worker result → extraction → child → completeness gate → consolidation → reconcile` path, not only isolated unit functions.\n\n### Required worker output\nEach child must return:\n- PASS / FAIL for its acceptance sector;\n- exact repository paths and evidence for every material assertion;\n- any real finding with severity, file, symbol where applicable, stable discriminator, evidence, and line if useful;\n- the required machine-readable `eos-findings` block conforming to the current repository contract, including a valid empty `[]` if genuinely no findings exist.\n\n### Parent completion gate\nDo **not** mark the parent COMPLETE merely because both workers exited.\n\nParent COMPLETE requires all of the following:\n1. exactly 2/2 expected governed children are COMPLETE;\n2. both outputs satisfy the structured findings contract;\n3. durable per-child results are landed;\n4. the exact 2-child set is consolidated deterministically;\n5. findings are reconciled against the durable register;\n6. agreements, conflicts, duplicates removed, and cross-sector risks are explicitly reported;\n7. any recoverable child/extraction/landing failure is retried internally under existing EOS policy rather than returned as a partial 1/2 result;\n8. final parent result is `REVIEW_READY` for ChatGPT verifier unless a genuine authority/protected/unresolvable blocker exists.\n\nCompletion:\nProve that the EOS can now execute a governed multi-agent verification mission and close the audit loop without duplicate execution, partial-parent completion, nondeterministic consolidation, silent finding loss, write-back contamination, or register-based postponement. COMPLETE only when the exact 2-child governed result is durably consolidated/reconciled and `REVIEW_READY` for ChatGPT verifier.",
+  "scope": [
+    "Profile: `READ_ONLY_ANALYSIS`",
+    "Exactly **2 governed child workers**",
+    "Repository-wide read access as needed to trace EOS behavior and evidence",
+    "No source edits, merges, deploys, credential changes, paid capabilities, or protected-boundary changes",
+    "Parent intent is approved once; children inherit only constrained subsets and may not widen authority"
+  ],
+  "execution": {
+    "taskClass": "READ_ONLY_VERIFY",
+    "expectedArtifactClass": "NONE",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": false,
+    "signal": "KEYWORD_VERIFY",
+    "ambiguous": false,
+    "reason": "verification/test-only intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/864",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T18:03:29Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-864.work.json",
+  "sha256": "d649027debef4b97736f71af032020c7fcf04265b1d6cc0ae33d106f57bd6948",
+  "createdAt": "2026-08-13T17:08:08Z",
+  "updatedAt": "2026-08-13T18:03:29Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/864"
+    ],
+    "pullRequests": []
+  }
+}
