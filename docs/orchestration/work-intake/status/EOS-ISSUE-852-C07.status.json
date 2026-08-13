@@ -1,0 +1,47 @@
+{
+  "schema": "eos.intake.status/2",
+  "requestId": "EOS-ISSUE-852-C07",
+  "pointer": "status://EOS-ISSUE-852-C07",
+  "work": "work://EOS-ISSUE-852-C07",
+  "result": "result://EOS-ISSUE-852-C07",
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
+  "startedAt": null,
+  "updatedAt": "2026-08-13T15:38:28.396Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": 2.14065285,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": {
+      "used": 0,
+      "limit": 1
+    },
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "CLAUDE_CLI_MODELED"
+  },
+  "freshness": "CURRENT",
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/EOS-ISSUE-852-C07.work.json",
+    "sha256": "86cb17a813ff4a61a7b1d88d7c0924f9b5cfdd3489d317468cb2a1c57bfbfe01"
+  },
+  "resultRef": {
+    "location": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C07/2c94b7113f12ece9626654993aa50c35666f5d77f2720191442703adf67eb0a2.result.json",
+    "sha256": "2c94b7113f12ece9626654993aa50c35666f5d77f2720191442703adf67eb0a2",
+    "pointer": "result://EOS-ISSUE-852-C07"
+  },
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-852-C07.status.json",
+  "sha256": "97d8bd37e9715a50c44522d925b8dc2bb83760729ee5fd2c5b11466a6cbac79a"
+}
