@@ -20,8 +20,14 @@ const findingKey = (f) => `${normPath(f?.file)}:${f?.line ?? ""}:${String(f?.cat
  * unless ok is true (this is what stops "workers exited ⇒ done").
  */
 export function assertChildrenComplete({ expectedChildIds = [], children = [] } = {}) {
+  // The expected set MUST be supplied explicitly. Deriving it from the children that happened to show up is
+  // circular — a child that never ran cannot be missed by an expected set defined as "whoever reported" — so an
+  // absent/empty expectedChildIds fails closed rather than silently declaring an unknown decomposition complete.
+  const expected = (Array.isArray(expectedChildIds) ? expectedChildIds : []).filter((id) => typeof id === "string" && id);
+  if (expected.length === 0) {
+    return { ok: false, missing: [], incomplete: [], expected: [], reason: "expectedChildIds is required — completeness cannot be verified against an implicit set" };
+  }
   const byId = new Map((Array.isArray(children) ? children : []).map((c) => [c?.requestId, c]));
-  const expected = Array.isArray(expectedChildIds) && expectedChildIds.length ? expectedChildIds : [...byId.keys()];
   const missing = expected.filter((id) => !byId.has(id));
   const incomplete = expected
     .filter((id) => byId.has(id))
@@ -38,7 +44,7 @@ export function assertChildrenComplete({ expectedChildIds = [], children = [] } 
  */
 export function consolidateChildResults({ parentWorkId = null, expectedChildIds = [], children = [] } = {}) {
   const gate = assertChildrenComplete({ expectedChildIds, children });
-  if (!gate.ok) return Object.freeze({ ok: false, parentWorkId, missing: gate.missing, incomplete: gate.incomplete });
+  if (!gate.ok) return Object.freeze({ ok: false, parentWorkId, missing: gate.missing, incomplete: gate.incomplete, ...(gate.reason ? { reason: gate.reason } : {}) });
 
   // Group every reported finding by identity across all children.
   const groups = new Map();
@@ -68,8 +74,14 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
     if (sectors.length > 1) crossSectorRisks.push(canonical); // one issue seen from multiple sectors
   }
 
-  // Deterministic order: worst severity first, then key ascending (stable across runs / machines).
-  findings.sort((a, b) => (sevRank(b.severity) - sevRank(a.severity)) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // Deterministic order for EVERY consolidated collection: worst severity first, then key ascending. Applying
+  // the one comparator to all of them keeps the report stable across runs / machines regardless of the order
+  // children were reported or findings were grouped.
+  const byWorstThenKey = (a, b) => (sevRank(b.severity) - sevRank(a.severity)) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  findings.sort(byWorstThenKey);
+  agreements.sort(byWorstThenKey);
+  conflicts.sort(byWorstThenKey);
+  crossSectorRisks.sort(byWorstThenKey);
 
   return Object.freeze({
     ok: true,

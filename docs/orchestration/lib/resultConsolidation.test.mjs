@@ -75,10 +75,44 @@ test("deterministic ordering: worst severity first, then key ascending", () => {
   assert.deepEqual(out.findings.map((x) => x.file), ["a.ts", "m.ts", "z.ts"], "CRITICAL(a,m by key) then LOW(z)");
 });
 
-test("assertChildrenComplete defaults expected set to the provided children when none is given", () => {
+test("NO implicit expected set: absent/empty expectedChildIds fails closed", () => {
+  // absent
   const g = assertChildrenComplete({ children: [{ requestId: "A", disposition: "COMPLETE", findings: [] }] });
-  assert.equal(g.ok, true);
-  const g2 = assertChildrenComplete({ children: [{ requestId: "A", disposition: "BLOCKED", findings: [] }] });
-  assert.equal(g2.ok, false);
-  assert.deepEqual(g2.incomplete, ["A"]);
+  assert.equal(g.ok, false, "cannot verify completeness against an implicit set");
+  assert.match(g.reason, /expectedChildIds is required/);
+  // empty
+  assert.equal(assertChildrenComplete({ expectedChildIds: [], children: [] }).ok, false);
+  // consolidate refuses too, surfacing the reason
+  const out = consolidateChildResults({ children: [{ requestId: "A", disposition: "COMPLETE", findings: [] }] });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /expectedChildIds is required/);
+  // with an explicit set that matches, it passes
+  assert.equal(assertChildrenComplete({ expectedChildIds: ["A"], children: [{ requestId: "A", disposition: "COMPLETE", findings: [] }] }).ok, true);
+});
+
+test("every consolidated collection is sorted worst-severity-first then key (not just findings)", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: [
+      // agreements + conflicts + cross-sector across mixed severities, reported out of order
+      child("A", [f("z.ts", "bug", "LOW", 1), f("a.ts", "bug", "CRITICAL", 2), f("m.ts", "perf", "HIGH", 9)], { sector: "s1" }),
+      child("B", [f("z.ts", "bug", "MEDIUM", 1), f("a.ts", "bug", "CRITICAL", 2), f("m.ts", "perf", "HIGH", 9)], { sector: "s2" }),
+    ],
+  });
+  const sorted = (arr) => arr.map((x) => `${x.severity}:${x.key}`);
+  const rank = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+  const cmp = (a, b) => (rank[b.severity] - rank[a.severity]) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  const isWorstThenKey = (arr) => {
+    for (let i = 1; i < arr.length; i++) {
+      // each element must come no-later-than the next under the worst-then-key comparator
+      assert.ok(cmp(arr[i - 1], arr[i]) <= 0, `out of order at ${i}: ${sorted(arr)}`);
+    }
+  };
+  isWorstThenKey(out.findings);
+  isWorstThenKey(out.agreements);
+  isWorstThenKey(out.conflicts);
+  isWorstThenKey(out.crossSectorRisks);
+  // sanity: all three findings are agreements (both children reported each), z.ts is the severity conflict
+  assert.equal(out.counts.agreements, 3);
+  assert.equal(out.conflicts[0].file, "z.ts");
 });
