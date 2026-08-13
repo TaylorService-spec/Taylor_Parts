@@ -72,20 +72,16 @@ export async function updateStockLocation(
   await db().runTransaction((tx) => applyStockDelta(tx, warehouseId, partId, binCode, deltaQuantity));
 }
 
-// TransferOrder's bin is fixed at "TRANSFER" -- this system tracks
-// bin-level detail for stock at rest, but a transfer in flight isn't
-// sitting in a named bin at either warehouse. Refining transfers to a
-// specific destination bin is a real gap, not silently solved here;
-// left for a future iteration since nothing in this epic's spec asked
-// for bin-level transfer routing.
-const TRANSFER_BIN_CODE = "TRANSFER";
-
 export async function createTransferOrder(input: {
   partId: string;
   quantity: number;
   fromWarehouseId: string;
   toWarehouseId: string;
+  fromBinCode: string;
+  toBinCode: string;
 }): Promise<TransferOrder> {
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) throw new Error("Transfer quantity must be positive");
+  if (!input.fromWarehouseId || !input.toWarehouseId || !input.fromBinCode || !input.toBinCode) throw new Error("Transfer warehouse and bin are required");
   const ref = db().collection(TRANSFER_ORDERS_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
   const order: TransferOrder = {
@@ -94,6 +90,8 @@ export async function createTransferOrder(input: {
     quantity: input.quantity,
     fromWarehouseId: input.fromWarehouseId,
     toWarehouseId: input.toWarehouseId,
+    fromBinCode: input.fromBinCode,
+    toBinCode: input.toBinCode,
     status: "REQUESTED",
     createdAt: now as unknown as TransferOrder["createdAt"],
     updatedAt: now as unknown as TransferOrder["updatedAt"],
@@ -115,8 +113,11 @@ export async function completeTransferOrder(transferOrderId: string): Promise<vo
     if (order.status === "COMPLETED") return;
     if (order.status === "CANCELLED") throw new Error(`TransferOrder ${transferOrderId} is CANCELLED, cannot complete`);
 
-    await applyStockDelta(tx, order.fromWarehouseId, order.partId, TRANSFER_BIN_CODE, -order.quantity);
-    await applyStockDelta(tx, order.toWarehouseId, order.partId, TRANSFER_BIN_CODE, order.quantity);
+    // Both bins are explicit and persisted on the order. Never synthesize a
+    // TRANSFER bin: completion moves physical units from the actual source
+    // location to the actual destination location in this single transaction.
+    await applyStockDelta(tx, order.fromWarehouseId, order.partId, order.fromBinCode, -order.quantity);
+    await applyStockDelta(tx, order.toWarehouseId, order.partId, order.toBinCode, order.quantity);
 
     tx.set(ref, { status: "COMPLETED", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });

@@ -65,6 +65,7 @@
     "test:receivingCallables": "npm run build && node test/receivingCallables.test.mjs && node test/receivingCallablesExport.test.mjs",
     "test:receivingCallablesEmulator": "npm run build && node test/receivingCallablesEmulator.test.mjs",
     "test:warehouseGovernance": "npm run build && node test/governedWarehouseValidation.test.mjs",
+    "test:warehouseTransfer": "npm run build && node test/warehouseServiceTransfer.test.mjs",
     "test:warehouseStatusWriter": "npm run build && node test/warehouseStatusWriter.test.mjs",
     "test:warehouseMigration": "npm run build && node test/warehouseGovernanceMigration.test.mjs && node test/warehouseGovernanceVerifier.test.mjs",
     "test:warehouseMigrationEmulator": "npm run build && node test/warehouseGovernanceMigrationEmulator.test.mjs",
