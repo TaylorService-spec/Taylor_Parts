@@ -165,7 +165,7 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
-  const { account, loading } = useAccount(accountId);
+  const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
   const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
@@ -203,6 +203,23 @@ export default function AccountDetail() {
   }, [pendingLocationFocus, locations]);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading customer…</LoadingState></div>;
+
+  // A read FAILURE and a NOT-FOUND are different facts and must stay
+  // distinguishable (site-work #4): one means we could not look, the other
+  // means we looked and it is not there. Reporting a denied/failed read as
+  // "not found" would tell the user the customer does not exist when it may
+  // simply not be theirs to see.
+  if (accountError) {
+    return (
+      <div className="fo-panel">
+        <FailureState
+          title="Customer unavailable"
+          message={accountError}
+          action={<button type="button" onClick={retryAccount}>Retry</button>}
+        />
+      </div>
+    );
+  }
 
   if (!account) {
     return (
@@ -329,9 +346,17 @@ export default function AccountDetail() {
 
           {/* 3. Contacts */}
           <section className="wo-history">
-            <h4>Contacts ({contacts.length})</h4>
+            <h4>Contacts ({contactsError ? "—" : contacts.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
-            {contacts.length === 0 ? (
+            {contactsError ? (
+              // site-work #8: a FAILED read is not "No contacts yet" -- mirrors the
+              // Locations section's fail-closed pattern below. Rendering the false
+              // empty state would hide real Contacts (duplicate-contact / mis-routed
+              // -service risk); fail closed to an actionable failure instead.
+              <div className="fo-inline-error" role="alert" data-contacts-error>
+                {contactsError}
+              </div>
+            ) : contacts.length === 0 ? (
               <EmptyState variant="database" message="No contacts yet." />
             ) : (
               contacts.map((contact) => (
