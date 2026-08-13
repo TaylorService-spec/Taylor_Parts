@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getTechnicianExecutionStats } from "../../analytics/executionAnalyticsService";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 // Epic 7 Step 4 -- "My Performance Snapshot," read-only. One-shot fetch
 // on mount (not a live subscription -- this is analytics, not the
@@ -41,7 +42,7 @@ export default function PerformanceSnapshot({ technicianId }) {
         if (!cancelled) setStats(result);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(workflowActionErrorMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
