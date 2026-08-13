@@ -18,7 +18,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, sep } from "node:path";
 import { resolveWorkIntake } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
-import { reviewReadyLocation } from "../lib/intakeStatus.mjs";
+import { reviewReadyLocation, statusLocation } from "../lib/intakeStatus.mjs";
+import { decideIntakeDispatch } from "../lib/agentManager.mjs";
 import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
 import { contextPackageFor } from "./build-package.mjs";
@@ -57,6 +58,18 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
   // (a no-op when the caller already passes the canonical form, as the tests do).
   const canonicalLocation = relative(REPO, abs).split(sep).join("/");
   const artifact = resolveWorkIntake({ requestId, location: canonicalLocation, sha256, bytes });
+
+  // Agent Manager DEDUPE_REUSE: do NOT re-dispatch a worker for work that already reached a COMPLETE status
+  // for this exact authorized artifact (same sha). This is what stops the execute loop from re-running every
+  // finished job on each pass. Non-terminal / FAILED / changed-sha items still DISPATCH (so a re-authorized or
+  // previously-failed item self-heals). Reads the committed status (injectable for tests).
+  const committedStatus = deps.readStatus
+    ? deps.readStatus(requestId)
+    : (() => { try { return JSON.parse(readFileSync(safeRepoPath(statusLocation(requestId)), "utf8")); } catch { return null; } })();
+  const dispatch = decideIntakeDispatch({ requestId, workSha256: sha256, committedStatus });
+  if (dispatch.decision === "DEDUPE_REUSE") {
+    return Object.freeze({ disposition: "SKIPPED_ALREADY_COMPLETE", requestId, written: [], resultPointer: committedStatus.result, statusPointer: committedStatus.pointer, dedupe: dispatch.reason });
+  }
 
   const now = deps.now || new Date().toISOString();
   // The MERGED #790 Secret Broker (availability only here — the actual key resolves inside withCredential at
@@ -109,7 +122,7 @@ function main() {
     // Clean, non-crash terminal/held dispositions exit 0; genuinely-failed / needs-rerun states exit non-zero.
     // BLOCKED_EXECUTION / AWAITING_ARTIFACTIZATION are held-for-action (not a crash) but NOT success, so they
     // exit non-zero — a runner must never read them as a completed cycle (the #834/#835 fail-closed contract).
-    const CLEAN_EXIT = new Set(["COMPLETE", "STAGED", "READY", "BLOCKED", "OWNER_REQUIRED", "OWNER_ACTION_REQUIRED"]);
+    const CLEAN_EXIT = new Set(["COMPLETE", "STAGED", "READY", "BLOCKED", "OWNER_REQUIRED", "OWNER_ACTION_REQUIRED", "SKIPPED_ALREADY_COMPLETE"]);
     process.exit(CLEAN_EXIT.has(out.disposition) ? 0 : 1);
   }
   process.stderr.write("usage: intake-runtime.mjs execute ...  (writeback is handled by intake-ingest-ci.mjs --write)\n");
