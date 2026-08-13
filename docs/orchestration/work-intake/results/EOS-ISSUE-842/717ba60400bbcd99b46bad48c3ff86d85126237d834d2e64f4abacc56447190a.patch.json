@@ -1,0 +1,51 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-842",
+  "sourceWorkSha256": "771f704ff330515d80d9718016c63fa31d5ebb3d38c1a1716fbbe3afe7d53781",
+  "baseCommit": "5f47b7d8d144252476f544a5873fa01c5b64f336",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts orchestration only.",
+    "Use the existing merged Cortex READ_ONLY_PILOT adapter and the durable #835 implementation artifacts as the starting point. Do not redesign EOS. Do not touch Taylor product functionality. Do not implement the Keystone Control Center in this issue.",
+    "Relevant existing evidence/artifacts:",
+    "`docs/orchestration/lib/cortexProviderAdapter.mjs` — current READ_ONLY_PILOT adapter.",
+    "`docs/orchestration/work-intake/results/EOS-ISSUE-835/9c34f3c2d107ece027772514971f20f404e7543be7c82782d9e1ade4da4466d0.patch`",
+    "`docs/orchestration/work-intake/results/EOS-ISSUE-835/3c9886594a2b0ac705631d91456c45512b90dc5c87b63f19b578a00316b91955.patch.json`",
+    "PR #828 merged Cortex read-only pilot.",
+    "PR #839 merged execution profiles/completion semantics.",
+    "PR #841 merged issue task classification + governed profile grant."
+  ],
+  "paths": [
+    "docs/orchestration/company-work-patch-producer-activation.md",
+    "docs/orchestration/lib/companyWorkPatchProducerLifecycle.test.mjs",
+    "docs/orchestration/lib/cortexPatchProducer.test.mjs",
+    "docs/orchestration/lib/cortexPatchProducerActivation.mjs",
+    "docs/orchestration/lib/cortexPatchProducerActivation.test.mjs",
+    "docs/orchestration/lib/cortexProviderAdapter.mjs",
+    "docs/orchestration/lib/credentialPathAudit.mjs",
+    "docs/orchestration/lib/credentialPathAudit.test.mjs",
+    "docs/orchestration/lib/openaiCredentialTransport.mjs",
+    "docs/orchestration/lib/reviewAuthorization.mjs",
+    "docs/orchestration/lib/secretProvider.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/company-work-patch-producer-activation.md",
+    "docs/orchestration/lib/companyWorkPatchProducerLifecycle.test.mjs",
+    "docs/orchestration/lib/cortexPatchProducer.test.mjs",
+    "docs/orchestration/lib/cortexPatchProducerActivation.mjs",
+    "docs/orchestration/lib/cortexPatchProducerActivation.test.mjs",
+    "docs/orchestration/lib/cortexProviderAdapter.mjs",
+    "docs/orchestration/lib/credentialPathAudit.mjs",
+    "docs/orchestration/lib/credentialPathAudit.test.mjs",
+    "docs/orchestration/lib/openaiCredentialTransport.mjs",
+    "docs/orchestration/lib/reviewAuthorization.mjs",
+    "docs/orchestration/lib/secretProvider.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-842/c8e3bae4149c7e80a8dd63ac263ca0ad4c5b047d3de6b30c88637fad6c970470.patch",
+  "patchSha256": "c8e3bae4149c7e80a8dd63ac263ca0ad4c5b047d3de6b30c88637fad6c970470",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T04:07:04Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-842/717ba60400bbcd99b46bad48c3ff86d85126237d834d2e64f4abacc56447190a.patch.json",
+  "sha256": "717ba60400bbcd99b46bad48c3ff86d85126237d834d2e64f4abacc56447190a"
+}

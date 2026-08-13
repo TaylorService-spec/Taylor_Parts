@@ -1,0 +1,56 @@
+{
+  "requestId": "EOS-ISSUE-842",
+  "title": "EOS — activate minimum Cortex/Codex company-work PATCH path",
+  "intent": "Activate the minimum governed Cortex/Codex company-work execution path through EOS so real company work can run via OpenAI/Cortex instead of keeping all useful execution on Claude.\n\nRequired work:\nImplement only what is required to make this real loop possible:\n\n`EOS company AgentRequest → Cortex/Codex/OpenAI provider execution → governed AgentResult → Verifier PASS → durable EOS result`\n\nRequirements:\n1. Preserve READ_ONLY_PILOT behavior and tests unchanged for read-only calls.\n2. Add a separately authorized PATCH_PRODUCER mode for company work. It must not be the default and cannot be self-selected by a worker/request.\n3. Initially scope PATCH_PRODUCER to `TaylorService-spec/project-keystone` company-work surfaces only. No Taylor product mutation authority.\n4. Cortex/Codex may produce a governed patch artifact and required execution receipts. It may NOT directly apply to source, merge, deploy, modify credentials, change authorization, or widen its own scope.\n5. Require matching independent Verifier PASS before the provider result/patch is accepted as durable/complete.\n6. Bind requestId, project, repo, provider/model eligibility, allowed surfaces, execution profile, budget/capacity envelope, patch hash, and verification identity.\n7. Reuse existing OpenAI credential transport/provider plumbing. Do not add a second credential mechanism and do not expose secret material in logs/results.\n8. Provider absence, quota/capacity exhaustion, malformed output, out-of-scope patch paths, missing receipts, missing/mismatched verifier, or stale request/head must fail closed.\n9. No auto-merge/deploy. Integration remains a separate governed step.\n10. Use/reconcile the existing #835 patch artifact where still valid rather than redoing completed implementation.\n11. Add a deterministic conformance test proving one synthetic/project-keystone PATCH_PRODUCER request can execute through the full adapter → Verifier → durable artifact lifecycle.\n12. Add a live-provider activation seam only if the existing credential/model configuration supports it safely; do not require a production company task in this issue.\n13. Keep the diff minimal. No additional EOS architecture, dashboard, scheduler, cost redesign, or provider abstraction work.\n\nCompletion:\nDraft PR on current main with focused/full relevant tests and exact evidence that the company-work PATCH_PRODUCER path is ready for the next real Keystone assignment. Do not merge automatically. Return the PR/head, tests, exact lifecycle, provider/model activation status, and any genuine blocker.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts orchestration only.",
+    "Use the existing merged Cortex READ_ONLY_PILOT adapter and the durable #835 implementation artifacts as the starting point. Do not redesign EOS. Do not touch Taylor product functionality. Do not implement the Keystone Control Center in this issue.",
+    "Relevant existing evidence/artifacts:",
+    "`docs/orchestration/lib/cortexProviderAdapter.mjs` — current READ_ONLY_PILOT adapter.",
+    "`docs/orchestration/work-intake/results/EOS-ISSUE-835/9c34f3c2d107ece027772514971f20f404e7543be7c82782d9e1ade4da4466d0.patch`",
+    "`docs/orchestration/work-intake/results/EOS-ISSUE-835/3c9886594a2b0ac705631d91456c45512b90dc5c87b63f19b578a00316b91955.patch.json`",
+    "PR #828 merged Cortex read-only pilot.",
+    "PR #839 merged execution profiles/completion semantics.",
+    "PR #841 merged issue task classification + governed profile grant."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "EXPLICIT_DECLARATION",
+    "ambiguous": false,
+    "reason": "issue declared taskClass PATCH_PRODUCER"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/842",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T04:07:04Z",
+    "authorizedExecutionProfile": "PATCH_PRODUCER",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-842.work.json",
+  "sha256": "771f704ff330515d80d9718016c63fa31d5ebb3d38c1a1716fbbe3afe7d53781",
+  "createdAt": "2026-08-13T04:07:04Z",
+  "updatedAt": "2026-08-13T04:07:04Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/842"
+    ],
+    "pullRequests": []
+  }
+}
