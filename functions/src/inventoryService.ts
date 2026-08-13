@@ -183,17 +183,30 @@ export async function consumeParts(workOrderId: string): Promise<void> {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     if (items.length === 0) return;
 
-    const shortfalls: string[] = [];
     const outstandingByPart = new Map<string, number>();
     for (const item of items) {
-      const outstanding = await getOutstandingReservation(tx, workOrderId, item.sku);
-      outstandingByPart.set(item.sku, outstanding);
-      if (outstanding < item.qtyPlanned) {
-        shortfalls.push(`${item.sku} (need ${item.qtyPlanned} reserved, only ${outstanding} outstanding)`);
+      outstandingByPart.set(item.sku, await getOutstandingReservation(tx, workOrderId, item.sku));
+    }
+    const availableByPart = new Map<string, number>();
+    for (const item of items) {
+      availableByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
+    }
+    const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
+    await Promise.all(locks.map((ref) => tx.get(ref)));
+
+    const shortfalls: string[] = [];
+    for (const item of items) {
+      const missing = item.qtyPlanned - (outstandingByPart.get(item.sku) ?? 0);
+      if (missing > (availableByPart.get(item.sku) ?? 0)) {
+        shortfalls.push(`${item.sku} (need ${missing} additional, ${availableByPart.get(item.sku) ?? 0} available)`);
       }
     }
-    if (shortfalls.length > 0) {
-      throw new Error(`Cannot consume, reservation shortfall: ${shortfalls.join("; ")}`);
+    if (shortfalls.length > 0) throw new Error(`Cannot consume, reservation shortfall: ${shortfalls.join("; ")}`);
+
+    for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    for (const item of items) {
+      const missing = item.qtyPlanned - (outstandingByPart.get(item.sku) ?? 0);
+      if (missing > 0) writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "RESERVED", quantity: missing });
     }
 
     for (const item of items) {
