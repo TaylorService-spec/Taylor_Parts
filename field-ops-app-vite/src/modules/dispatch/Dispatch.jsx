@@ -8,6 +8,7 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
 // F0 -- this IS now the canonical Work Order dispatch surface. It reads
 // fieldops_wos and assigns by invoking the governed `Dispatch` transition
@@ -63,7 +64,7 @@ function statusChipFor(job) {
 }
 
 export default function Dispatch() {
-  const { data: jobs, loading } = useWorkOrders();
+  const { data: jobs, loading, error } = useWorkOrders();
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
@@ -98,6 +99,13 @@ export default function Dispatch() {
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
+      ) : error ? (
+        // Fail VISIBLY. A denied/unavailable read used to fall through to
+        // "No work orders yet" -- a false empty board a dispatcher could read
+        // as nothing to do, missing real jobs with no indication of failure.
+        <p className="fo-muted" role="alert">
+          {loadErrorMessage(error, { entity: "work orders" })}
+        </p>
       ) : jobs.length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
       ) : (

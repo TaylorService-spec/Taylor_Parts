@@ -7,6 +7,8 @@ import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
+import FailureState from "../../shared/ui/FailureState";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
 // Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
@@ -40,7 +42,7 @@ function formatAge(createdAt) {
 }
 
 export default function WorkOrdersList() {
-  const { data: workOrders, loading } = useWorkOrders();
+  const { data: workOrders, loading, error } = useWorkOrders();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const [statusGroup, setStatusGroup] = useState("ALL");
 
@@ -77,6 +79,13 @@ export default function WorkOrdersList() {
 
       {loading ? (
         <LoadingState>Loading work orders…</LoadingState>
+      ) : error ? (
+        // Fail VISIBLY. A denied/unavailable read used to fall through to the
+        // "no work orders yet" empty state -- indistinguishable from a genuinely
+        // empty queue, so a dispatcher could miss real work with no indication
+        // anything was wrong. Terminal subscription failure -- the content
+        // branch below is not reached, so no stale data is shown either.
+        <FailureState message={loadErrorMessage(error, { entity: "work orders" })} />
       ) : filteredWorkOrders.length === 0 ? (
         // Distinguish a genuinely empty database (the "All" group) from filters
         // that merely hide existing work orders.

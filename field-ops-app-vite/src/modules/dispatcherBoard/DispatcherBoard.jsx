@@ -12,6 +12,7 @@ import { useAccountNames } from "../../hooks/useAccountNames";
 import WorkOrderPreview from "./WorkOrderPreview";
 import TechnicianBoard from "./TechnicianBoard";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -47,7 +48,7 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 // for the same Work Order.
 export default function DispatcherBoard() {
   const { role } = useAuth();
-  const { data: workOrders, loading: workOrdersLoading } = useWorkOrders();
+  const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const { data: technicians, loading: techniciansLoading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
@@ -175,6 +176,14 @@ export default function DispatcherBoard() {
 
       {loading ? (
         <p className="fo-muted">Loading dispatcher board...</p>
+      ) : workOrdersError ? (
+        // Fail VISIBLY. A denied/unavailable work-order read used to fall
+        // through to "No work orders exist yet" -- a false empty board a
+        // dispatcher could read as nothing to do, missing real jobs with no
+        // indication anything failed.
+        <p className="fo-muted" role="alert">
+          {loadErrorMessage(workOrdersError, { entity: "work orders" })}
+        </p>
       ) : workOrders.length === 0 ? (
         <p className="fo-muted">No work orders exist yet. Create one from the Work Orders tab to see it here.</p>
       ) : filteredWorkOrders.length === 0 ? (
