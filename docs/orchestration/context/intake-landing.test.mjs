@@ -12,7 +12,9 @@ function gitDouble(script = {}) {
   const defStdout = (a) => (a === "rev-parse" ? "deadbeefcafe\n" : a === "show" ? "docs/orchestration/work-intake/status/x.status.json\n" : "");
   const runGit = (args) => {
     calls.push(args);
-    const key = `${args[0]}${args[0] === "diff" ? " --cached" : ""}`;
+    // key by subcommand, disambiguating the two reset forms: `reset -q` (pre-stage index clear) vs
+    // `reset --hard` (land-loop re-sync).
+    const key = args[0] === "diff" ? "diff --cached" : args[0] === "reset" ? `reset ${args[1]}` : args[0];
     const q = queues[key];
     const outcome = q && q.length ? q.shift() : { code: 0, stdout: defStdout(args[0]) };
     return { code: outcome.code ?? 0, stdout: outcome.stdout ?? defStdout(args[0]), stderr: "" };
@@ -75,12 +77,26 @@ test("a git-add error FAILS CLOSED — never silently reported as no-changes/suc
   assert.ok(!cmds(runGit).some((c) => c.startsWith("commit")), "never commits after a failed add");
 });
 
-test("no request-scoped path exists (e.g. dedupe-skip wrote nothing) → no-artifacts, no add/commit", () => {
+test("per-item: zero request-scoped artifacts FAILS CLOSED (a just-executed item must have a status)", () => {
   const runGit = gitDouble();
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C08", runGit, pathExists: () => false });
-  assert.equal(out.landed, false);
-  assert.equal(out.reason, "no-artifacts");
-  assert.equal(runGit.calls.length, 0, "never touches git when nothing exists to stage");
+  assert.throws(
+    () => landItemArtifacts({ requestId: "EOS-ISSUE-852-C08", runGit, pathExists: () => false }),
+    /no status\/result\/review-ready exists.*fail closed/,
+    "no artifacts after execution must not be a successful no-op — it would silently lose the item",
+  );
+  assert.equal(runGit.calls.length, 0, "never touches git; refuses before staging");
+});
+
+test("per-item: a failed pre-stage index clear (git reset) fails closed before staging/commit", () => {
+  const runGit = gitDouble({ "reset -q": [{ code: 1 }] }); // pre-stage index clearing fails
+  assert.throws(
+    () => landItemArtifacts({ requestId: "EOS-ISSUE-852-C11", runGit, pathExists: allExist }),
+    /failed to clear the index/,
+    "must not proceed to stage/commit from an uncleared (possibly contaminated) index",
+  );
+  const seq = cmds(runGit);
+  assert.ok(!seq.some((c) => c.startsWith("add -- ")), "never stages after a failed reset");
+  assert.ok(!seq.some((c) => c.startsWith("commit")), "never commits after a failed reset");
 });
 
 // --- shared-index contamination: a PATCH worker's staged code/workflow change must never ride the write-back ---
@@ -114,7 +130,7 @@ test("path guard: refuses to push a commit that touches a workflow/code file (fa
 test("a failed reset --hard retries on the next attempt instead of cherry-picking blindly", () => {
   const runGit = gitDouble({
     "diff --cached": [{ code: 1 }],
-    reset: [{ code: 1 }, { code: 0 }], // first reset fails → must NOT cherry-pick that attempt
+    "reset --hard": [{ code: 1 }, { code: 0 }], // first land-loop reset fails → must NOT cherry-pick that attempt
   });
   const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C09", runGit, pathExists: allExist });
   assert.equal(out.landed, true);

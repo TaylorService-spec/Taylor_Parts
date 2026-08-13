@@ -102,12 +102,17 @@ export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, 
   // exit code were ignored — a later `diff --cached --quiet` would read as "no-changes" and FALSELY land nothing
   // while reporting success, stranding the truthful status. So: stage only the paths that actually exist, and if
   // the add still errors, FAIL CLOSED (never fall through to no-changes).
+  // A just-executed eligible intake MUST have produced at least a truthful status artifact. Zero request-scoped
+  // artifacts means execution emitted nothing (bug / path drift / write failure) — that is NOT a benign no-op, it
+  // would silently lose the item's disposition while reporting success. Fail closed. (An idempotent re-run where
+  // the status exists but is unchanged is handled downstream as no-changes, which IS a valid success.)
   const present = artifactPathsFor(requestId).filter((p) => pathExists(p));
-  if (present.length === 0) return Object.freeze({ requestId, landed: false, attempts: 0, reason: "no-artifacts" });
+  if (present.length === 0) throw new Error(`landItemArtifacts: no status/result/review-ready exists for ${requestId} — refusing to report success (fail closed)`);
   // Unstage EVERYTHING first: a PATCH_PRODUCER worker earlier in the shared job may have `git add`-ed its own
   // code/workflow changes, and a later `git commit` would include them. Clearing the index guarantees the commit
-  // carries only the paths we stage next.
-  runGit(["reset", "-q", "HEAD"]);
+  // carries only the paths we stage next — so a failure to clear it must also fail closed, not proceed from a
+  // possibly-contaminated index.
+  if (runGit(["reset", "-q", "HEAD"]).code !== 0) throw new Error(`landItemArtifacts: failed to clear the index before staging ${requestId} (fail closed)`);
   if (runGit(["add", "--", ...present]).code !== 0) throw new Error(`landItemArtifacts: git add failed for ${requestId}`);
   const out = landStaged({ runGit, label: requestId, maxAttempts, message: message || `eos: intake execution result write-back for ${requestId} [skip ci]` });
   return Object.freeze({ requestId, landed: out.landed, attempts: out.attempts, ...(out.reason ? { reason: out.reason } : {}), ...(out.commit ? { commit: out.commit } : {}) });
@@ -122,9 +127,11 @@ export function landAllArtifacts({ runGit, pathExists = existsSync, maxAttempts 
   if (typeof runGit !== "function") throw new Error("landAllArtifacts: runGit is required");
   // Same fail-closed staging: a root that doesn't exist is filtered out (not an add error masked as no-changes);
   // a genuine add error still fails closed.
+  // Sweep no-artifacts IS benign (the roots legitimately may not exist / nothing left to land) — the per-item
+  // landing already carries the mandatory-status guarantee; the sweep only mops up leftovers.
   const present = ARTIFACT_ROOTS.filter((p) => pathExists(p));
   if (present.length === 0) return Object.freeze({ label: "sweep", landed: false, attempts: 0, reason: "no-artifacts" });
-  runGit(["reset", "-q", "HEAD"]); // clear any PATCH-worker-staged contamination before scoping to artifact roots
+  if (runGit(["reset", "-q", "HEAD"]).code !== 0) throw new Error("landAllArtifacts: failed to clear the index before staging (fail closed)");
   if (runGit(["add", "--", ...present]).code !== 0) throw new Error("landAllArtifacts: git add failed");
   return landStaged({ runGit, label: "sweep", maxAttempts, message: "eos: intake status/result write-back sweep [skip ci]" });
 }
@@ -143,9 +150,11 @@ function main() {
   const i = process.argv.indexOf("--id");
   const requestId = i !== -1 ? process.argv[i + 1] : null;
   if (!requestId) { process.stderr.write("usage: intake-landing.mjs (--id <requestId> | --sweep)\n"); process.exit(2); }
+  // landItemArtifacts throws (→ nonzero exit) if the item produced no artifacts; a clean disposition is either
+  // landed or an idempotent no-changes. There is no benign no-artifacts for a single executed item.
   const out = landItemArtifacts({ requestId, runGit });
   process.stdout.write(`${JSON.stringify(out)}\n`);
-  process.exit(out.landed || out.reason === "no-changes" || out.reason === "no-artifacts" ? 0 : 1);
+  process.exit(out.landed || out.reason === "no-changes" ? 0 : 1);
 }
 
 import { fileURLToPath } from "node:url";
