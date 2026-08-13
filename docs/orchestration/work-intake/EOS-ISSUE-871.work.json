@@ -1,0 +1,55 @@
+{
+  "requestId": "EOS-ISSUE-871",
+  "title": "EOS Taylor delivery batch — 2-agent equipment reliability + inventory health correction",
+  "intent": "Run the next Taylor product-work batch through EOS using exactly 2 governed Claude child workers on current main. This is product remediation work, not EOS/runtime work.\n\nRequired work:\nEOS must decompose this parent into exactly the two children above. Each child must revalidate current main before editing, make only justified scoped changes, run focused and normal relevant checks, return exact changed paths/test receipts/evidence, emit the required structured eos-findings block, and produce a governed patch artifact for source changes. Do not merge or deploy.\n\nParent completion requires exactly 2/2 durable child outcomes, exact-set consolidation, and one parent REVIEW_READY result. A blocked, failed, or non-durable child must not be normalized into COMPLETE.\n\nCompletion:\nComplete only when exactly two governed child outcomes are durable and consolidated: Child A implements/verifies #785 or reports a genuine blocker; Child B fixes the currently reproducible Inventory Health defect or proves it no longer exists without unnecessary edits; patches stay inside declared Taylor application/test scope; no EOS/runtime, Rules, deployment, credentials, permissions, production data, or unrelated product surfaces change; and the parent emits one durable REVIEW_READY result for ChatGPT verification. Do not auto-merge produced product patches.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts. Exactly 2 governed child workers. PATCH_PRODUCER only where a confirmed defect requires source/test changes. Taylor application/test surfaces only. No deploy, production-data mutation, credential/permission change, Firestore Rules change, EOS/runtime modification, auto-merge, or protected-boundary change. Children may not widen authority.",
+    "### Child A — Issue #785 equipment customer-read reliability",
+    "Scope: EquipmentDetail.jsx, the existing useAccount hook, and directly related tests/helpers only.",
+    "Implement Issue #785: expose account/loading/error/retry; add onSnapshot failure handling that clears stale data and guards obsolete callbacks; use the existing Location-read retry precedent; render Customer unavailable + Retry for failed reads and Unknown customer only for confirmed absence; keep the detail-modal accountName behavior consistent; never expose raw IDs; add focused loading/failed/empty/resolved/retry regressions. No Rules changes.",
+    "### Child B — Inventory Health count regression verification/correction",
+    "Scope: PartsList.jsx, existing Inventory Health/inventoryAnalyticsEngine path, and directly related tests/fixtures only.",
+    "A historical merged PR #179 browser verification recorded two deterministic verify-inventory-health-catalog failures where Inventory Health tab counts rendered (0) instead of expected (1). Treat that only as a lead and revalidate on current main.",
+    "Reproduce current behavior using the existing harness where practical; trace ledger/analytics state into PartsList; if still reproducible, make the smallest root-cause correction with focused regression coverage; preserve ledger semantics and Rules. If current main is already correct, make no source change and return evidence. Do not broaden into receiving, purchasing, truck inventory, deployment, or unrelated inventory refactors."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "KEYWORD_IMPLEMENTATION",
+    "ambiguous": false,
+    "reason": "implementation/fix/build/code-change intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/871",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T21:17:24Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-871.work.json",
+  "sha256": "4ba7efb9aaf6ddd25b3e325ad221a1e34ac8986950ed649c90487ea3eae5bc04",
+  "createdAt": "2026-08-13T21:17:19Z",
+  "updatedAt": "2026-08-13T21:17:24Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/871"
+    ],
+    "pullRequests": []
+  }
+}
