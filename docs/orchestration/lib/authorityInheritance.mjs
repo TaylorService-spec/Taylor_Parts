@@ -73,14 +73,19 @@ export function deriveChildGrant({ parent, request } = {}) {
   const uncovered = childCaps.filter((c) => !parentCaps.includes(c));
   if (uncovered.length) v.push(`capabilities not held by parent: ${uncovered.join(", ")}`);
 
-  // Axis 5 — PROTECTED BOUNDARY: always inherited; a child can ADD a boundary only when the parent has none, and
-  // can NEVER clear or change a boundary the parent carries.
+  // Axis 5 — PROTECTED BOUNDARY: STRICTLY inherited. The child's boundary is ALWAYS the parent's. A child may
+  // never ADD one (parent none → child some), CLEAR one (parent some → child none), or CHANGE one (parent X →
+  // child Y) — decomposition must not manufacture a boundary the parent did not carry, or "approve once" would
+  // let new authority appear at decomposition time. A child that merely restates the parent's own boundary is
+  // fine; any request that DIFFERS from the parent's boundary is rejected, fail-closed. (Narrowing WITHIN an
+  // explicitly structured parent boundary model is a deliberate future seam — until such a model defines legal
+  // sub-scopings, no narrowing is permitted, because we cannot prove it stays inside the parent.)
   const parentBoundary = parent.protectedBoundary ?? null;
   const reqBoundary = request.protectedBoundary ?? null;
-  if (parentBoundary !== null && reqBoundary !== null && reqBoundary !== parentBoundary) {
-    v.push(`cannot change inherited protected boundary ${parentBoundary} → ${reqBoundary}`);
+  if (reqBoundary !== null && reqBoundary !== parentBoundary) {
+    v.push(`child may not add/clear/change a protected boundary the parent did not carry: parent=${parentBoundary ?? "none"} child=${reqBoundary}`);
   }
-  const protectedBoundary = parentBoundary !== null ? parentBoundary : reqBoundary;
+  const protectedBoundary = parentBoundary; // exactly the parent's — never introduced by the child
 
   if (v.length) return { ok: false, violations: v };
   return {

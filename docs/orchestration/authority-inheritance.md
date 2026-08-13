@@ -24,7 +24,7 @@ descends from the one parent approval.
 | **scope** | every child write path ⊆ parent scope, at a **segment boundary** (`src/foo` covers `src/foo/bar.js`, not `src/foobar.js`) | same containment as `planConcurrentWriteSectors` |
 | **budget** | child spend ≤ parent budget | — |
 | **capabilities** | child capabilities ⊆ parent's | — |
-| **protected boundary** | inherited; a child may *add* one only when the parent has none, and can never clear/change one the parent carries | — |
+| **protected boundary** | **strictly inherited** — always exactly the parent's; a child may never *add* (parent none → child some), *clear*, or *change* one. Decomposition must not manufacture a boundary the parent did not carry. Narrowing within an explicitly structured parent boundary model is a future seam (no narrowing until such a model exists) | — |
 
 ## Children are real emitted work items
 

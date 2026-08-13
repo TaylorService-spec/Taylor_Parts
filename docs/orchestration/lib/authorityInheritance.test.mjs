@@ -52,20 +52,27 @@ test("a capability the parent does not hold is rejected", () => {
   assert.match(r.violations.join(" "), /capabilities not held by parent/);
 });
 
-test("protected boundary is inherited: a child cannot clear or change one the parent carries", () => {
+test("protected boundary is STRICTLY inherited: never added, cleared, or changed by the child", () => {
   const bounded = { ...PARENT, protectedBoundary: "FIRESTORE_RULES" };
   // child inherits the boundary even if it declares none
   const inherit = deriveChildGrant({ parent: bounded, request: { requestId: "C8", scope: ["functions/src/access/x.ts"] } });
   assert.equal(inherit.ok, true);
-  assert.equal(inherit.grant.protectedBoundary, "FIRESTORE_RULES", "boundary flows down");
-  // child trying to change it is rejected
+  assert.equal(inherit.grant.protectedBoundary, "FIRESTORE_RULES", "boundary flows down unchanged");
+  // child restating the SAME boundary is fine
+  const restate = deriveChildGrant({ parent: bounded, request: { requestId: "C8b", protectedBoundary: "FIRESTORE_RULES", scope: ["functions/src/access/x.ts"] } });
+  assert.equal(restate.ok, true);
+  // child trying to CHANGE/CLEAR it is rejected
   const change = deriveChildGrant({ parent: bounded, request: { requestId: "C9", protectedBoundary: "NONE" } });
   assert.equal(change.ok, false);
-  assert.match(change.violations.join(" "), /cannot change inherited protected boundary/);
-  // parent with no boundary: a child MAY add a stricter one of its own
+  assert.match(change.violations.join(" "), /may not add\/clear\/change a protected boundary/);
+  // parent with NO boundary: a child may NOT manufacture one (this is new authority appearing at decomposition)
   const add = deriveChildGrant({ parent: PARENT, request: { requestId: "C10", protectedBoundary: "MIGRATION" } });
-  assert.equal(add.ok, true);
-  assert.equal(add.grant.protectedBoundary, "MIGRATION");
+  assert.equal(add.ok, false, "child cannot add a boundary the parent (none) did not carry");
+  assert.match(add.violations.join(" "), /may not add\/clear\/change a protected boundary/);
+  // and the derived boundary for a no-boundary parent is exactly none — never the child's request
+  const none = deriveChildGrant({ parent: PARENT, request: { requestId: "C10b", scope: ["docs/orchestration/x.md"] } });
+  assert.equal(none.ok, true);
+  assert.equal(none.grant.protectedBoundary, null);
 });
 
 test("buildChildWorkItems mints EXECUTION_AUTHORIZED child artifacts with inherited basis + parentRef", () => {
