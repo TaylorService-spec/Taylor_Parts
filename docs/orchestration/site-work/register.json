@@ -312,7 +312,8 @@
       ],
       "problem": "In AdminUsers.jsx the confirm modal collects a 'Reason (optional)' input and confirmSend() calls sanitizeReasonCode(reason); on failure it sets reasonError and early-returns without submitting (AdminUsers.jsx lines 108-124). But per the code's own comment (lines 118-119) the reason is 'captured client-side only; it is NOT part of the merged callable contract and is deliberately not sent'. So a purely cosmetic, discarded field can hard-block a legitimate password reset. Worse, the limits contradict: the input has maxLength={200} (AdminUsers.jsx line 207) while sanitizeReasonCode enforces REASON_MAX_LEN=120 and a narrow charset /^[A-Za-z0-9 ._:-]*$/ (adminPasswordReset.js lines 224-237). A user can type up to 200 chars (input permits it) or paste an employee name with an accent/comma/apostrophe/paragraph, then be rejected with 'Reason must be at most 120 characters' or the charset error, and cannot proceed with the reset at all.",
       "impact": "An admin performing a governed password reset is silently blocked from completing it by validation on a field labeled optional whose value is thrown away. Common inputs (names with apostrophes/accents, commas, longer notes up to the input's own 200-char cap) trigger the block. The failure is confusing because the field appears optional and has no effect on the operation.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 897,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -342,7 +343,8 @@
       ],
       "problem": "field-ops-app-vite/src/access/resolveEffectivePermission.ts is a manual mirror of functions/src/access/resolveEffectivePermission.ts; its header (lines 14-16) states 'Mirrored (not imported -- no shared/monorepo tooling exists) ... If either file changes, change the other to match.' The backend copy has a direct unit suite (functions/test/resolveEffectivePermission.test.mjs), but the frontend copy is never imported by any frontend unit test — navPermissionPreviewParity.test.mjs and permissionDecisionCopy.test.mjs deliberately use fake resolvers because Node's ESM loader can't resolve the .ts file's extensionless imports without a build step (navPermissionPreview.js lines 1-9). So nothing automatically verifies the two copies stay behaviorally identical. A change to one (e.g. the tenant-scope narrowing already recorded in scopeMatches, lines 143-150, or the accessVersion consistency rule) applied to only one file would make the client permission preview diverge from the server's authoritative decision.",
       "impact": "Silent divergence between the two resolver copies would cause the UI to show/hide actions inconsistently with what the trusted backend actually allows — either misleading admins into attempting actions that will be denied, or hiding actions they are entitled to — with no test catching the drift.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 907,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -375,7 +377,8 @@
       ],
       "problem": "subscribeAssignedWorkOrders() (field-ops-app-vite/src/services/workOrderService.ts line 115) builds `query(collection(WORK_ORDERS_COLLECTION), where('assignedTechId','==',technicianId))` with no status filter, no date bound, and no limit, then attaches an onSnapshot live listener. This single query powers TechnicianDashboard.jsx (line 63), FieldMode.jsx (line 38) and PartsScanner.jsx (line 46) via useAssignedWorkOrders. It returns every work order ever assigned to the technician — all COMPLETED, CLOSED, and CANCELLED history — even though the dashboard only surfaces today's completions and FieldMode filters to active ones for display.",
       "impact": "As a technician accumulates history, every Field Mode / dashboard open downloads and live-subscribes to their entire lifetime of work orders, growing payload, memory, and Firestore read cost unboundedly for data that is mostly never shown. Well-scoped fix: add a status/date/limit constraint (e.g. exclude terminal statuses or bound by recency).",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 904,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -432,7 +435,8 @@
       ],
       "problem": "In ReceiveAgainstPurchaseOrder.jsx, chooseCandidate() sets locations to loading and awaits fetchReceivingLocationOptions(); the only guard on the result is mountedRef.current, which flips solely on unmount (useEffect cleanup). If the technician taps Back (restart(), which resets locations to {status:'idle'} on the SELECT_CANDIDATE step) or re-selects a different candidate while a fetch is in flight, a late-resolving earlier fetch still calls setLocations() and clobbers the freshly-reset/newer state. There is no per-invocation generation token or AbortController to discard superseded responses.",
       "impact": "On slow/flaky mobile connections a stale response can overwrite a just-reset flow, showing options (or a ready state) on a step that should be idle/loading, producing a confusing UI on the governed receive path. Severity is bounded because the options list is global and identical across candidates, but the stale-write is a real correctness smell in the async lifecycle.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 899,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -447,7 +451,8 @@
       ],
       "problem": "functions/src/updateWorkOrderExecutionData.ts validates auth, role=technician, technicianId, and ownership (wo.assignedTechId === caller.technicianId), but never checks wo.status before writing. assignedTechId is set at Dispatch and never cleared, so it persists through COMPLETED/CLOSED/CANCELLED. A technician assigned to a WO can therefore keep mutating inventorySnapshot[].qtyUsed and appending to executionLog on a job that is already completed/closed/cancelled — including after consumeParts()+finalize have run.",
       "impact": "Execution records and per-part actual-usage on closed/cancelled jobs remain editable indefinitely by the last assigned tech, corrupting the audit/record integrity of finished work orders. There is no immutability boundary once a WO leaves the active execution window.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 894,
       "source": "round-1-scan-not-top10"
     },
     {
