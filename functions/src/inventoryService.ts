@@ -36,6 +36,14 @@ import type { WorkOrder, WorkOrderStatus } from "./types/workOrder";
 import type { InventoryTransaction, InventorySyncStatus } from "./types/inventoryTransaction";
 
 const db = () => getFirestore();
+const RESERVATION_LOCKS_COLLECTION = "inventory_reservation_locks";
+
+// A per-part transaction sentinel serializes reservation attempts for that
+// part. The ledger remains the stock authority: this document contains no
+// quantity and is never read for availability. It is deliberately read and
+// written in the same transaction so a competing reserve invalidates the
+// transaction's ledger query result and forces Firestore to retry it.
+const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS_COLLECTION).doc(partId);
 
 // available = warehouseQty - (grossReserved - released). CONSUMED is
 // deliberately NOT subtracted again here: consuming a part converts an
@@ -119,9 +127,18 @@ export async function reserveParts(workOrderId: string): Promise<void> {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     if (items.length === 0) return;
 
+    const availabilityByPart = new Map<string, number>();
+    for (const item of items) {
+      availabilityByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
+    }
+    // Firestore requires every transaction read before its first write.
+    const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
+    await Promise.all(locks.map((ref) => tx.get(ref)));
+    for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+
     const insufficient: string[] = [];
     for (const item of items) {
-      const available = await getAvailableQuantity(tx, item.sku);
+      const available = availabilityByPart.get(item.sku) ?? 0;
       if (item.qtyPlanned > available) {
         insufficient.push(`${item.sku} (need ${item.qtyPlanned}, ${available} available)`);
       }
