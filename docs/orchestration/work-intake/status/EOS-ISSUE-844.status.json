@@ -8,7 +8,7 @@
   "currentWork": "required execution receipts missing: tests",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-13T15:51:49.826Z",
+  "updatedAt": "2026-08-13T17:30:37.014Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-844.status.json",
-  "sha256": "cac5e534d75c7930841fdf322fe3eacc3602e571cef037fd54d8cb3643bfcecc"
+  "sha256": "7a1876d5d8934ea10b62a7ff5493d51a5e54b96ddc411c1ecb424cd616287576"
 }
