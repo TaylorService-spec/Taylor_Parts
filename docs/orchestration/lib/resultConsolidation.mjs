@@ -73,7 +73,8 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
       // fields (they fail closed at reconcile regardless).
       const id = normId(f.discriminator) ? canonicalizeIdentity(f) : null;
       const g = groups.get(key) || { key, file: id ? id.file : normPath(f.file), line: f.line ?? null, category: f.category ?? null, symbol: id ? (id.symbol || null) : (f.symbol ?? null), discriminator: id ? id.discriminator : (f.discriminator ?? null), reports: [] };
-      g.reports.push({ requestId: c.requestId, sector: c.sector ?? null, severity: f.severity ?? null, summary: f.summary ?? null, verdict: f.verdict ?? null });
+      // Per-occurrence DETAILS (including the drifting line + category) live here, not in the canonical identity.
+      g.reports.push({ requestId: c.requestId, sector: c.sector ?? null, severity: f.severity ?? null, summary: f.summary ?? null, verdict: f.verdict ?? null, line: f.line ?? null, category: f.category ?? null });
       groups.set(key, g);
     }
   }
@@ -86,7 +87,17 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
     const severities = [...new Set(g.reports.map((r) => r.severity).filter((s) => s != null))];
     const severity = g.reports.map((r) => r.severity).reduce((a, b) => (sevRank(b) > sevRank(a) ? b : a), null); // worst wins
     const sectors = [...new Set(g.reports.map((r) => r.sector).filter(Boolean))];
-    const canonical = Object.freeze({ key: g.key, file: g.file, line: g.line, category: g.category, symbol: g.symbol, discriminator: g.discriminator, severity, agreedBy, sectors });
+    // The canonical record is FULLY deterministic — every field is order-independent, so the durable artifact is
+    // byte-stable regardless of child order. Identity: canonical file/discriminator (+ symbol only when it is
+    // identity, i.e. for a discriminated finding). Aggregates: worst severity, SORTED agreedBy + sectors. Drifting
+    // per-occurrence line/category live only in `reports`, sorted by requestId.
+    const reports = Object.freeze(g.reports.slice().sort((a, b) => (a.requestId < b.requestId ? -1 : a.requestId > b.requestId ? 1 : 0)).map(Object.freeze));
+    const canonical = Object.freeze({
+      key: g.key, file: g.file, discriminator: g.discriminator,
+      symbol: g.discriminator ? g.symbol : null,
+      severity, agreedBy: Object.freeze([...agreedBy].sort()), sectors: Object.freeze([...sectors].sort()),
+      reports,
+    });
     findings.push(canonical);
     if (agreedBy.length >= 2) agreements.push(canonical);
     if (severities.length > 1) conflicts.push(Object.freeze({ ...canonical, severities })); // children disagree on severity

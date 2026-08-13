@@ -38,7 +38,7 @@ test("dedupe: the same finding from multiple children collapses to one, counted 
   assert.equal(out.counts.unique, 2, "two distinct findings after dedup");
   assert.equal(out.counts.duplicatesRemoved, 1, "one duplicate collapsed");
   const agreed = out.agreements.find((x) => x.file === "src/a.ts");
-  assert.deepEqual(agreed.agreedBy.sort(), ["A", "B"], "both children credited");
+  assert.deepEqual([...agreed.agreedBy], ["A", "B"], "both children credited (already sorted)");
 });
 
 test("conflict: children disagreeing on severity for the same finding are surfaced with both values", () => {
@@ -60,7 +60,7 @@ test("cross-sector risk: one finding surfaced by children in DIFFERENT sectors",
     ],
   });
   assert.equal(out.counts.crossSectorRisks, 1);
-  assert.deepEqual(out.crossSectorRisks[0].sectors.sort(), ["inventory", "work-orders"]);
+  assert.deepEqual([...out.crossSectorRisks[0].sectors], ["inventory", "work-orders"]);
 });
 
 test("deterministic ordering: worst severity first, then key ascending", () => {
@@ -171,7 +171,7 @@ test("identity: the SAME discriminator across children dedupes/agrees despite li
   });
   assert.equal(out.counts.unique, 1, "same discriminator → one finding despite line/category drift");
   assert.equal(out.agreements.length, 1);
-  assert.deepEqual(out.agreements[0].agreedBy.sort(), ["A", "B"]);
+  assert.deepEqual([...out.agreements[0].agreedBy], ["A", "B"]);
 });
 
 test("identity: undiscriminated findings keep legacy grouping and remain actionable (fail-closed) at reconcile", () => {
@@ -197,9 +197,9 @@ test("deterministic canonicalization: same issue with case/whitespace/order drif
   });
   const ab = mk("AB"), ba = mk("BA");
   assert.equal(ab.counts.unique, 1, "case/whitespace drift → still ONE group");
-  // canonical identity is deterministic regardless of which child arrived first:
-  assert.deepEqual(ab.findings[0].discriminator, ba.findings[0].discriminator);
-  assert.deepEqual(ab.findings[0].symbol, ba.findings[0].symbol);
-  assert.deepEqual(ab.findings[0].file, ba.findings[0].file);
+  // The ENTIRE consolidated finding is deterministic regardless of child order — deep-compare the whole record.
+  assert.deepEqual(ab.findings[0], ba.findings[0], "full canonical finding is byte-stable across A/B vs B/A order");
   assert.equal(ab.findings[0].discriminator, "no-availability-check", "stored discriminator is the canonical form");
+  assert.equal(ab.findings[0].line, undefined, "drifting line is NOT on the canonical identity record");
+  assert.deepEqual(ab.findings[0].reports.map((r) => r.line).sort(), [5, 9], "per-occurrence lines preserved in sorted reports");
 });
