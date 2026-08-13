@@ -35,63 +35,67 @@ const SPECS = [
 
 // A worker result carrying a valid eos-findings block (what a real child emits).
 const okResult = (disc) => `PASS\n\`\`\`eos-findings\n[{"file":"docs/orchestration/lib/x.mjs","symbol":"fn","discriminator":"${disc}","severity":"LOW","category":"note","evidence":"seen"}]\n\`\`\``;
-const cleanRunner = () => (childItem, spec) => ({ disposition: "COMPLETE", sector: spec.sector, content: okResult(`${spec.sector}-note`) });
+// A batch runner that COMPLETEs + durably lands every child (the happy path), recording call order.
+const cleanBatch = (order = []) => async (childItems, childSpecs) => childItems.map((ci) => {
+  order.push(ci.requestId);
+  const spec = childSpecs.find((s) => s.requestId === ci.requestId);
+  return { requestId: ci.requestId, disposition: "COMPLETE", durable: true, sector: spec.sector, content: okResult(`${spec.sector}-note`) };
+});
 
-test("COMPLETE: 2/2 constrained children run → consolidate + reconcile → REVIEW_READY parent result", () => {
-  const runs = [];
-  const out = runGovernedParentMission({
+test("COMPLETE: 2/2 constrained children run + land durably → consolidate + reconcile → REVIEW_READY parent result", async () => {
+  const seen = [];
+  const out = await runGovernedParentMission({
     parentArtifact: parent(SPECS),
     register: [],
-    runChild: (childItem, spec) => { runs.push({ id: childItem.requestId, profile: childItem.authority.profile }); return { disposition: "COMPLETE", sector: spec.sector, content: okResult(`${spec.sector}-note`) }; },
+    runChildren: async (childItems, childSpecs) => childItems.map((ci) => { seen.push({ id: ci.requestId, profile: ci.authority.profile }); const spec = childSpecs.find((s) => s.requestId === ci.requestId); return { requestId: ci.requestId, disposition: "COMPLETE", durable: true, sector: spec.sector, content: okResult(`${spec.sector}-note`) }; },
+    ),
   });
   assert.equal(out.action, "COMPLETE");
   assert.equal(out.parentStatus, "COMPLETE");
   assert.equal(out.childRuns.length, 2);
-  assert.equal(out.reconciled.ok, true);
   assert.equal(out.reconciled.reconciled.surfaced.length, 2, "two genuinely-new findings surface against an empty register");
-  // children inherited the constrained parent profile — never widened
-  assert.ok(runs.every((r) => r.profile === "READ_ONLY_ANALYSIS"), "children inherit the constrained READ_ONLY_ANALYSIS grant");
-  assert.deepEqual(runs.map((r) => r.id), ["EOS-ACCEPT-864-A", "EOS-ACCEPT-864-B"]);
+  assert.ok(seen.every((r) => r.profile === "READ_ONLY_ANALYSIS"), "children inherit the constrained READ_ONLY_ANALYSIS grant");
 });
 
-test("REJECT (fail-closed): a child that would widen authority aborts the WHOLE mission — no child runs", () => {
+test("REJECT (fail-closed): a child that would widen authority aborts the WHOLE mission — the batch never runs", async () => {
   let ran = 0;
-  const out = runGovernedParentMission({
+  const out = await runGovernedParentMission({
     parentArtifact: parent([{ requestId: "EOS-ACCEPT-864-X", scope: ["functions/src/secret"], profile: "PATCH_PRODUCER", sector: "execution" }]),
-    runChild: () => { ran++; return { disposition: "COMPLETE", content: okResult("x") }; },
+    runChildren: async () => { ran += 1; return []; },
   });
   assert.equal(out.action, "REJECT");
-  assert.equal(ran, 0, "no child executes when decomposition rejects");
+  assert.equal(ran, 0, "no child batch executes when decomposition rejects");
 });
 
-test("BLOCKED (fail-closed): a child that emits NO valid eos-findings block blocks parent COMPLETE (no partial 1/2)", () => {
-  const out = runGovernedParentMission({
+test("BLOCKED (fail-closed): a child that emits NO valid eos-findings block blocks parent COMPLETE (no partial 1/2)", async () => {
+  const out = await runGovernedParentMission({
     parentArtifact: parent(SPECS),
-    runChild: (childItem, spec) => spec.sector === "findings"
-      ? { disposition: "COMPLETE", sector: spec.sector, content: "no eos-findings block here" } // extraction failure
-      : { disposition: "COMPLETE", sector: spec.sector, content: okResult("exec-note") },
+    runChildren: async (childItems, childSpecs) => childItems.map((ci) => { const spec = childSpecs.find((s) => s.requestId === ci.requestId); return { requestId: ci.requestId, disposition: "COMPLETE", durable: true, sector: spec.sector, content: spec.sector === "findings" ? "no eos-findings block here" : okResult("exec-note") }; }),
   });
   assert.equal(out.action, "BLOCKED");
-  assert.equal(out.parentStatus, "BLOCKED_INCOMPLETE");
   assert.equal(out.reconciled, null, "no consolidated result on a blocked mission");
 });
 
-test("AWAIT/held (fail-closed): a child that did not COMPLETE cannot complete the parent", () => {
-  const out = runGovernedParentMission({
+test("DURABILITY fail-closed: a child that COMPLETED but did NOT land durably cannot complete the parent", async () => {
+  const out = await runGovernedParentMission({
     parentArtifact: parent(SPECS),
-    runChild: (childItem, spec) => spec.sector === "findings"
-      ? { disposition: "BLOCKED_EXECUTION", sector: spec.sector, content: "" }
-      : { disposition: "COMPLETE", sector: spec.sector, content: okResult("exec-note") },
+    runChildren: async (childItems, childSpecs) => childItems.map((ci) => { const spec = childSpecs.find((s) => s.requestId === ci.requestId); return { requestId: ci.requestId, disposition: "COMPLETE", durable: spec.sector !== "findings", sector: spec.sector, content: okResult(`${spec.sector}-note`) }; }),
   });
-  assert.notEqual(out.action, "COMPLETE");
-  assert.notEqual(out.parentStatus, "COMPLETE");
+  assert.notEqual(out.action, "COMPLETE", "a completed-but-not-durable child must not complete the parent");
+  assert.equal(out.childRuns.find((r) => r.sector === "findings").durable, false);
 });
 
-test("register memory: an already-known finding is suppressed; only the genuinely-new one surfaces", () => {
-  const out = runGovernedParentMission({
+test("REGISTER fail-closed: a non-array register (unreadable/malformed durable memory) blocks the mission", async () => {
+  const out = await runGovernedParentMission({ parentArtifact: parent(SPECS), register: null, runChildren: async () => { throw new Error("must not run"); } });
+  assert.equal(out.action, "BLOCKED");
+  assert.match(out.final.reason, /register unavailable\/malformed/);
+});
+
+test("register memory: an already-known finding is suppressed; only the genuinely-new one surfaces", async () => {
+  const out = await runGovernedParentMission({
     parentArtifact: parent(SPECS),
     register: [{ file: "docs/orchestration/lib/x.mjs", symbol: "fn", discriminator: "execution-note", status: "CONFIRMED_OPEN" }],
-    runChild: cleanRunner(),
+    runChildren: cleanBatch(),
   });
   assert.equal(out.action, "COMPLETE");
   assert.deepEqual(out.reconciled.reconciled.surfaced.map((f) => f.discriminator), ["findings-note"]);

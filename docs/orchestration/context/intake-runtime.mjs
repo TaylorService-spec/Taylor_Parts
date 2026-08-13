@@ -16,11 +16,13 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, sep } from "node:path";
-import { resolveWorkIntake, intakeToWorkItem, buildContentAddressedResult } from "../lib/workIntake.mjs";
+import { resolveWorkIntake, buildContentAddressedResult } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
 import { reviewReadyLocation, statusLocation, buildIntakeStatus, buildResultIndex, buildReviewReady } from "../lib/intakeStatus.mjs";
 import { childSpecsFromArtifact } from "../lib/governedOrchestration.mjs";
 import { runGovernedParentMission, toExecutableChildArtifact } from "../lib/governedRuntime.mjs";
+import { runAuthorizedWritesConcurrently } from "./intake-concurrent-runtime.mjs";
+import { landItemArtifacts, makeGitRunner } from "./intake-landing.mjs";
 import { decideIntakeDispatch, detectThrottle } from "../lib/agentManager.mjs";
 import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
@@ -92,14 +94,6 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
   const wakeCtx = deps.wakeCtx || { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", providerCapacityUsage: { concurrency: { used: 0, limit: 1 }, shortWindow: "UNKNOWN", weekly: "UNKNOWN", ownerReserve: "UNKNOWN" }, sourceFreshness: "CURRENT" };
   const write = deps.write || writeRepo;
 
-  // GOVERNED PARENT: an intake that carries a decomposition (childSpecs) runs the full multi-child mission
-  // in-process — decompose into the exact constrained child set, run each child through the SAME guarded worker
-  // path, then consolidate + reconcile into ONE REVIEW_READY parent result. Fail-closed everywhere (a widening
-  // child rejects the mission; a missing/extraction-invalid child blocks the parent — never a partial pass).
-  if (childSpecsFromArtifact(artifact).length > 0) {
-    return executeParentMission({ artifact, requestId, sourceCommit, now, capabilityBroker, processRunner, lease, contextPackageFn, wakeCtx, write, readRegister: deps.readRegister });
-  }
-
   const out = runIntakeExecution({ artifact, sourceCommit, now, requiresCapabilities, capabilityBroker, processRunner, lease, contextPackageFn, wakeCtx });
 
   // Always persist the status (deterministic path). On COMPLETE, persist the content-addressed result + index.
@@ -128,57 +122,105 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
   return Object.freeze({ disposition: out.disposition, requestId, written, content, resultPointer: out.status.result, statusPointer: out.status.pointer, throttled: throttle.throttled, retryAfterSec: throttle.retryAfterSec });
 }
 
-// Land ONE execution's durable artifacts (status always; content-addressed result on COMPLETE). Review-ready is
-// emitted only when emitReviewReady is true (parent yes, child no). Returns the repo paths written.
-function landOne(out, requestId, { write, emitReviewReady }) {
-  const written = [write(out.status.artifactLocation, `${JSON.stringify(out.status, null, 2)}\n`)];
-  if (out.disposition === "COMPLETE" && out.result) {
-    write(out.result.contentLocation, out.result.content);
-    written.push(out.result.contentLocation);
-    written.push(write(out.result.manifestLocation, `${JSON.stringify(out.result.manifest, null, 2)}\n`));
-    written.push(write(out.result.index.artifactLocation, `${JSON.stringify(out.result.index, null, 2)}\n`));
-    if (out.reviewReady && emitReviewReady) written.push(write(reviewReadyLocation(requestId), `${JSON.stringify(out.reviewReady, null, 2)}\n`));
-  }
-  return written;
-}
-
-// Load the findings register (reconcile memory). Absent/malformed ⇒ empty (a fresh register), never a throw.
-function loadRegister() {
-  try {
-    const raw = JSON.parse(readFileSync(safeRepoPath("docs/orchestration/findings/register.json"), "utf8"));
-    return Array.isArray(raw?.findings) ? raw.findings : Array.isArray(raw) ? raw : [];
-  } catch { return []; }
+// Load the findings register (reconcile memory), FAIL-CLOSED. A present + valid-JSON + correctly-shaped register
+// (the canonical `{ schema, entries: [...] }`, or a bare array, or `{ findings: [...] }`) is trusted — a valid
+// EMPTY entries array is fine. But a MISSING file, malformed JSON, or wrong shape returns { ok:false } so the
+// caller blocks parent completion rather than silently reconciling as though there were simply no prior findings
+// (durable memory loss must never read as "all clean").
+export function loadRegister({ readFile = readFileSync } = {}) {
+  let raw;
+  try { raw = readFile(safeRepoPath("docs/orchestration/findings/register.json"), "utf8"); }
+  catch (e) { return { ok: false, reason: `register unreadable (${e.code || e.message})` }; }
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { return { ok: false, reason: `register JSON malformed (${e.message})` }; }
+  const register = Array.isArray(parsed) ? parsed
+    : Array.isArray(parsed?.entries) ? parsed.entries
+      : Array.isArray(parsed?.findings) ? parsed.findings : null;
+  if (register === null) return { ok: false, reason: "register shape invalid (expected { entries: [] } or an array)" };
+  return { ok: true, register };
 }
 
 /**
- * Execute a governed PARENT mission end-to-end (single pass) and persist its durable artifacts. Each child runs
- * through the SAME guarded worker path (runIntakeExecution) with the parent's injected deps and lands its own
- * status+result (no per-child review-ready). The consolidated+reconciled parent result is written with the ONE
- * REVIEW_READY signal on a genuine 2/2 (N/N) completion; any fail-closed outcome writes a held/blocked status
- * only. Pure orchestration lives in governedRuntime.runGovernedParentMission; this supplies the real I/O.
+ * Execute a governed PARENT mission end-to-end and persist its durable artifacts. Children run as a BATCH through
+ * the EXISTING concurrent write runner (runAuthorizedWritesConcurrently) — disjoint-write children co-run,
+ * read-only/shared-scope children run alone — and EACH child is landed durably on completion (before a later
+ * child can strand it) via the injected `landChild`. The consolidated+reconciled parent result is written with
+ * the ONE REVIEW_READY signal on a genuine N/N durable completion; any fail-closed outcome writes a held/blocked
+ * status only. Pure orchestration lives in governedRuntime.runGovernedParentMission; this supplies the real I/O.
+ *
+ * @returns {Promise<object>} disposition + written paths (async because the concurrent runner is async).
  */
-export function executeParentMission({ artifact, requestId, sourceCommit = null, now, capabilityBroker, processRunner, lease, contextPackageFn, wakeCtx, write, readRegister } = {}) {
-  const register = readRegister ? readRegister() : loadRegister();
-  const written = [];
-
-  const runChild = (childItem, spec) => {
-    // Children VERIFY (test/inspect); with the #868 seam a child requesting VERIFY but inheriting only ANALYSIS
-    // runs read-only and still COMPLETEs. The grant is the inherited constrained profile — never widened here.
-    const childArtifact = toExecutableChildArtifact(childItem, { taskClass: "READ_ONLY_VERIFY" });
-    written.push(write(childArtifact.artifactLocation, `${JSON.stringify(childArtifact, null, 2)}\n`));
-    const out = runIntakeExecution({ artifact: childArtifact, sourceCommit, now, requiresCapabilities: [], capabilityBroker, processRunner, lease, contextPackageFn, wakeCtx });
-    written.push(...landOne(out, childArtifact.requestId, { write, emitReviewReady: false }));
-    // The content-addressed result's `content` is a Buffer; consolidation's findings extractor needs the raw
-    // TEXT (the worker's output, carrying the eos-findings block), so decode it before handing it upward.
-    const content = out.disposition === "COMPLETE" && out.result
-      ? (Buffer.isBuffer(out.result.content) ? out.result.content.toString("utf8") : String(out.result.content))
-      : null;
-    return { disposition: out.disposition, sector: spec?.sector ?? null, content };
-  };
-
-  const mission = runGovernedParentMission({ parentArtifact: artifact, register, runChild });
+export async function executeParentMission({ artifact, requestId, sourceCommit = null, now = new Date().toISOString(), write = writeRepo, deps = {} } = {}) {
   const provenance = { producer: artifact.source.producer, provenance: artifact.source.provenance };
   const workArtifact = { location: artifact.artifactLocation, sha256: artifact.sha256 };
+  const held = (state, currentWork) => {
+    const status = buildIntakeStatus({ requestId, state, currentWork, updatedAt: now, workArtifact, provenance });
+    const w = write(status.artifactLocation, `${JSON.stringify(status, null, 2)}\n`);
+    return Object.freeze({ disposition: state, requestId, written: [w], resultPointer: null, statusPointer: status.pointer });
+  };
+
+  // (0) REGISTER fail-closed BEFORE spending any worker: missing/malformed durable memory blocks the mission.
+  const reg = deps.readRegister ? deps.readRegister() : loadRegister();
+  if (!reg.ok) return held("BLOCKED_EXECUTION", `durable findings register unavailable — fail closed (${reg.reason})`);
+  const register = reg.register;
+
+  const written = [];
+  // The injected per-child durable landing (commit+push to main). Production: landItemArtifacts over a real git
+  // runner; tests inject a fake so ordering/durability is proven without touching git. Returns { landed:boolean }.
+  const landChild = deps.landChild || ((rid) => landItemArtifacts({ requestId: rid, runGit: makeGitRunner() }));
+
+  // Children read their work.json from an IN-MEMORY map (not disk): a child's input file must never be discarded
+  // by another child's landing checkout that resets the shared working tree (the historical shared-tree hazard).
+  const childBytes = new Map();
+
+  const runChildren = async (childItems) => {
+    const items = childItems.map((ci) => {
+      // Children VERIFY (test/inspect); with the #868 seam a child requesting VERIFY but inheriting only ANALYSIS
+      // runs read-only and still COMPLETEs. The grant is the inherited constrained profile — never widened here.
+      const childArtifact = toExecutableChildArtifact(ci, { taskClass: "READ_ONLY_VERIFY" });
+      childBytes.set(childArtifact.artifactLocation, Buffer.from(JSON.stringify(childArtifact), "utf8"));
+      // `paths` is the declared write scope used ONLY for disjoint-sector planning by the concurrent runner.
+      return { requestId: childArtifact.requestId, location: childArtifact.artifactLocation, sha256: childArtifact.sha256, paths: Array.isArray(childArtifact.scope) ? childArtifact.scope : [] };
+    });
+
+    // Wrap the real EOS per-item execution with per-child durable landing on completion. The concurrent runner
+    // gives each item a no-op lease (its per-request claim is the exclusivity owner); we forward the parent's
+    // worker deps + an in-memory readFile so children need no on-disk work.json.
+    const executeItem = (item, itemDeps) => {
+      const out = executeIntakeItem({ requestId: item.requestId, location: item.location, sha256: item.sha256, emitReviewReady: false, deps: itemDeps });
+      written.push(...(out.written || []));
+      let durable = false;
+      if (out.disposition === "COMPLETE") {
+        const res = landChild(item.requestId);
+        durable = res && res.landed === true;
+      }
+      const content = out.content && Buffer.isBuffer(out.content) ? out.content.toString("utf8") : out.content ?? null;
+      return { ...out, durable, content };
+    };
+
+    // executeIntakeItem calls deps.readFile(absolutePath); our map is keyed by the repo-relative location, so
+    // canonicalize the absolute path back to that form (a no-op for a test that already passes relative paths).
+    const readChildBytes = (abs) => {
+      const rel = relative(REPO, resolve(REPO, String(abs))).split(sep).join("/");
+      return childBytes.get(rel) ?? childBytes.get(String(abs));
+    };
+    const drain = await runAuthorizedWritesConcurrently({
+      items,
+      deps: {
+        executeItem,
+        // Forward the parent's injected worker deps to each child's executeIntakeItem. In production these are
+        // absent → each child defaults the real guarded worker/context; in tests they carry fakes. readFile is
+        // the in-memory child-bytes map so a child needs no on-disk work.json.
+        itemDeps: { readFile: readChildBytes, write, processRunner: deps.processRunner, contextPackageFn: deps.contextPackageFn, wakeCtx: deps.wakeCtx, now, capabilityBroker: deps.capabilityBroker },
+        makeClaim: deps.makeClaim, lockRoot: deps.lockRoot, fs: deps.fs,
+        maxConcurrency: deps.maxConcurrency ?? 4,
+      },
+    });
+    return drain.results.map((r) => ({ requestId: r.requestId, disposition: r.eos, durable: r.outcome?.durable === true, content: r.outcome?.content ?? null }));
+  };
+
+  const mission = await runGovernedParentMission({ parentArtifact: artifact, register, runChildren });
 
   if (mission.action === "COMPLETE") {
     const summary = `governed ${mission.childRuns.length}-child mission: consolidated + reconciled (${mission.reconciled.reconciled.surfaced.length} surfaced, ${mission.reconciled.reconciled.alreadyOpen.length} already-open)`.slice(0, 1200);
@@ -205,13 +247,20 @@ export function executeParentMission({ artifact, requestId, sourceCommit = null,
   return Object.freeze({ disposition: state, requestId, written, resultPointer: null, statusPointer: status.pointer, mission: mission.action, children: mission.childRuns.length });
 }
 
-function main() {
+async function main() {
   const mode = process.argv[2];
   if (mode === "execute") {
     const requestId = arg("id"), location = arg("location"), sha256 = arg("sha256");
     if (!requestId || !location || !sha256) { process.stderr.write("usage: intake-runtime.mjs execute --id <id> --location <path> --sha256 <hash> [--source-commit <sha>] [--requires <cap>]\n"); process.exit(2); }
     const requires = arg("requires") ? [arg("requires")] : [];
-    const out = executeIntakeItem({ requestId, location, sha256, sourceCommit: arg("source-commit"), requiresCapabilities: requires });
+    const sourceCommit = arg("source-commit");
+    // Peek the artifact to route: a decomposed PARENT (carries childSpecs) runs the governed multi-child mission
+    // (children through the concurrent runner, each landed durably); everything else is the single-item path.
+    const bytes = readFileSync(safeRepoPath(location));
+    const artifact = resolveWorkIntake({ requestId, location: relative(REPO, safeRepoPath(location)).split(sep).join("/"), sha256, bytes });
+    const out = childSpecsFromArtifact(artifact).length > 0
+      ? await executeParentMission({ artifact, requestId, sourceCommit })
+      : executeIntakeItem({ requestId, location, sha256, sourceCommit, requiresCapabilities: requires });
     process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
     // Clean, non-crash terminal/held dispositions exit 0; genuinely-failed / needs-rerun states exit non-zero.
     // BLOCKED_EXECUTION / AWAITING_ARTIFACTIZATION are held-for-action (not a crash) but NOT success, so they
@@ -223,4 +272,4 @@ function main() {
   process.exit(2);
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (fileURLToPath(import.meta.url) === process.argv[1]) main().catch((e) => { process.stderr.write(`intake-runtime: ${e.stack || e.message}\n`); process.exit(1); });

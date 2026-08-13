@@ -64,22 +64,31 @@ export function toExecutableChildArtifact(childItem, { taskClass = "READ_ONLY_AN
 }
 
 /**
- * Run one governed parent mission end-to-end in a single pass.
+ * Run one governed parent mission end-to-end. Children are executed as a BATCH through the injected `runChildren`
+ * (in production: the concurrent write runner — disjoint-write children co-run, read-only/shared-scope children
+ * run alone; each child is landed durably on completion before a later failure can strand it). Pure orchestration
+ * (decompose + consolidate + reconcile) lives here; all execution + durable landing is the injected batch's job.
  *
  * @param {object} p
  * @param {object}   p.parentArtifact  the resolved parent intake (carries authority + decomposition.childSpecs)
- * @param {Array}    [p.register]      findings register entries (for reconcile memory)
- * @param {Function} p.runChild        (childItem, spec) → { requestId, disposition, sector, content, written? }
- *                                     performs the real per-child execution + durable landing (injected).
- * @returns {{action, decompose, childRuns, reconciled, parentStatus, final}}
+ * @param {Array}    [p.register]      findings register entries (for reconcile memory). MUST be a valid array —
+ *                                     the I/O caller is responsible for failing closed on a missing/malformed
+ *                                     register BEFORE calling this; a non-array here also fails closed.
+ * @param {Function} p.runChildren     async (childItems, childSpecs) → [{ requestId, disposition, durable, sector,
+ *                                     content }] — runs ALL children + lands each durably (injected).
+ * @returns {Promise<{action, decompose, childRuns, reconciled, parentStatus, final}>}
  *   action: "COMPLETE" | "BLOCKED" | "AWAIT" | "REJECT"
  */
-export function runGovernedParentMission({ parentArtifact, register = [], runChild } = {}) {
-  if (typeof runChild !== "function") throw new Error("runGovernedParentMission: runChild(childItem, spec) is required");
+export async function runGovernedParentMission({ parentArtifact, register = [], runChildren } = {}) {
+  if (typeof runChildren !== "function") throw new Error("runGovernedParentMission: runChildren(childItems, childSpecs) is required");
+  if (!Array.isArray(register)) {
+    // Fail-closed: a non-array register means durable memory could not be read/parsed — never reconcile as clean.
+    return Object.freeze({ action: "BLOCKED", decompose: null, childRuns: [], reconciled: null, parentStatus: "BLOCKED_INCOMPLETE", final: { action: "BLOCKED", reason: "findings register unavailable/malformed — fail closed" } });
+  }
   const parent = parentGrantFromArtifact(parentArtifact);
   const childSpecs = childSpecsFromArtifact(parentArtifact);
 
-  // 1. Decompose — fail-closed on a widening child (REJECT) or a malformed decomposition.
+  // 1. Decompose — fail-closed on a widening child (REJECT) or a malformed decomposition. Nothing runs on REJECT.
   const decompose = planParentExecution({ parent, childSpecs, childStates: [] });
   if (decompose.action !== "DECOMPOSE") {
     return Object.freeze({ action: decompose.action, decompose, childRuns: [], reconciled: null, parentStatus: "REJECTED", final: decompose });
@@ -87,23 +96,28 @@ export function runGovernedParentMission({ parentArtifact, register = [], runChi
 
   const sectorByRequestId = new Map(childSpecs.map((s) => [s.requestId, s.sector]));
 
-  // 2. Run each constrained child through the injected runner (durable landing happens inside runChild).
-  const childRuns = [];
-  for (const childItem of decompose.children) {
-    const spec = childSpecs.find((s) => s.requestId === childItem.requestId) || null;
-    const run = runChild(childItem, spec) || {};
-    childRuns.push(Object.freeze({
+  // 2. Run the whole constrained child set as a batch (concurrent runner in prod; fake in tests). Each child's
+  //    durable landing happens inside the batch, on completion.
+  const runs = (await runChildren(decompose.children, childSpecs)) || [];
+  const runByRequestId = new Map(runs.map((r) => [r.requestId, r]));
+  const childRuns = decompose.children.map((childItem) => {
+    const run = runByRequestId.get(childItem.requestId) || {};
+    return Object.freeze({
       requestId: childItem.requestId,
       disposition: run.disposition ?? "FAILED",
+      durable: run.durable === true,
       sector: run.sector ?? sectorByRequestId.get(childItem.requestId) ?? null,
       content: run.content ?? "",
-      written: Object.freeze([...(Array.isArray(run.written) ? run.written : [])]),
-    }));
-  }
+    });
+  });
 
-  // 3. Consolidate + reconcile against the EXACT expected child set. planParentExecution fails closed on a
-  //    non-COMPLETE child (AWAIT), a missing/EXTRACTION_INVALID result (BLOCKED), or an unexpected child.
-  const childStates = childRuns.map((r) => ({ requestId: r.requestId, status: r.disposition === "COMPLETE" ? "COMPLETE" : r.disposition }));
+  // 3. Consolidate + reconcile against the EXACT expected child set. A child counts toward the parent gate ONLY
+  //    if it both COMPLETED and landed DURABLY (the #864 property: a completed child is on main before a later
+  //    failure can strand it). A completed-but-not-durable child is NOT_DURABLE → parent cannot complete.
+  const childStates = childRuns.map((r) => ({
+    requestId: r.requestId,
+    status: r.disposition === "COMPLETE" ? (r.durable ? "COMPLETE" : "NOT_DURABLE") : r.disposition,
+  }));
   const childResults = childRuns.map((r) => ({ requestId: r.requestId, disposition: r.disposition, sector: r.sector, content: r.content }));
   const final = planParentExecution({ parent, childSpecs, childStates, childResults, register });
 
