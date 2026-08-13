@@ -24,6 +24,7 @@ import type { StockLocation, WarehouseDiscrepancy, DiscrepancySeverity } from ".
 export interface LedgerConsumptionEntry {
   partId: string;
   quantity: number;
+  warehouseId?: string;
 }
 
 function sumQuantityByPart(entries: Array<{ partId: string; quantity: number }>): Map<string, number> {
@@ -54,7 +55,15 @@ export function detectStockDiscrepancies(params: {
   ledgerConsumption: LedgerConsumptionEntry[];
 }): WarehouseDiscrepancy[] {
   const { warehouseStock, ledgerConsumption } = params;
-  const consumedByPart = sumQuantityByPart(ledgerConsumption);
+  // A global ledger entry cannot truthfully be compared to one warehouse.
+  // Fail closed until the producer supplies warehouse attribution instead of
+  // manufacturing HIGH/CRITICAL discrepancies from incompatible scopes.
+  if (warehouseStock.some((s) => s.warehouseId) && ledgerConsumption.some((e) => !e.warehouseId)) return [];
+  const consumedByWarehouseAndPart = new Map<string, number>();
+  for (const entry of ledgerConsumption) {
+    const key = `${entry.warehouseId ?? ""}__${entry.partId}`;
+    consumedByWarehouseAndPart.set(key, (consumedByWarehouseAndPart.get(key) ?? 0) + entry.quantity);
+  }
 
   const actualByWarehouseAndPart = new Map<string, number>();
   for (const loc of warehouseStock) {
@@ -65,7 +74,7 @@ export function detectStockDiscrepancies(params: {
   const discrepancies: WarehouseDiscrepancy[] = [];
   for (const [key, actualQuantity] of actualByWarehouseAndPart) {
     const [warehouseId, partId] = key.split("__");
-    const expectedQuantity = consumedByPart.get(partId) ?? 0;
+    const expectedQuantity = consumedByWarehouseAndPart.get(`${warehouseId}__${partId}`) ?? 0;
     const variance = actualQuantity - expectedQuantity;
     if (variance === 0) continue;
 
