@@ -52,16 +52,30 @@ own and does **not** merge anything; the existing single-worker EOS flow is unto
    becomes a recorded outcome so a wave keeps draining. *(tested — `concurrentWriteRunner.test.mjs`, incl. the
    `#826/#827` shared-`auditEventWriter.ts` case landing in different waves)*
 
-Remaining to make it *live* (touches the Owner-gated execution workflow — needs live verification, not in this
-repo-only change):
+3. **Concurrent EOS driver** — `runAuthorizedWritesConcurrently(...)` in `context/intake-concurrent-runtime.mjs`.
+   The wiring that turns (1)+(2) into EOS-safe parallelism. **It never authorizes anything**: it only decides
+   *which* already-EOS-authorized items co-run (disjoint sectors) and *how many* (throttle-adaptive), and carries
+   every item through the EXISTING per-item path — `executeIntakeItem` — so the authorization gate, capability/
+   protected-boundary checks, completion-semantic gate, and `status://`/`result://`/`REVIEW_READY` write-back are
+   identical to the serial path. An EOS-BLOCKED item stays BLOCKED (the runner cannot promote it). The runner
+   owns the per-request claim; the wrapped `executeIntakeItem` gets a **no-op lease** so exclusivity is contended
+   in exactly one place. Attempt persistence is included: a failed run increments `attempts`/`lastAttemptAt`
+   (injected store → the durable status field in production) and `decideRetry` gates the NEXT wake — holding
+   during backoff and escalating to the Owner after the bounded budget, instead of re-spawning a paid worker.
+   *(tested — `context/intake-concurrent-runtime.test.mjs`: disjoint-concurrent/serialize, authorization-not-
+   bypassed, no-op-lease, backoff hold, owner-escalation, attempt persistence, claim-held skip)*
 
-3. **Attempt persistence** — record `attempts`/`lastAttemptAt` in the status so `decideRetry` is enforced across
-   wakes (stops a permanently-failing item re-spawning paid workers).
-4. **Adaptive governor** — feed `adaptConcurrency`'s output into the readiness governor instead of the constant
-   `remoteAiMax:1`, and wire `runConcurrentWrites` behind the same `EOS_RUNTIME_ENABLED` gate as the single-
-   worker path, with the real worktree-isolated spawn as `runWorker`.
+Remaining to actually flip it ON (touches the Owner-gated execution workflow — needs live verification, NOT in
+this repo-only change and gated behind a new default-off variable):
 
-Order still matters: the claim (1) is the safety primitive, and it is in place before (2) can write in parallel.
+4. **Live workflow flip** — enumerate the eligible EXECUTION_AUTHORIZED items (with their declared write scope as
+   `paths`), call `runAuthorizedWritesConcurrently` behind a new `EOS_CONCURRENT_WRITES_ENABLED` variable
+   (default OFF ⇒ single-worker path unchanged), provide the real worktree-isolated `runWorker` (each worker in
+   its own worktree, rebasing on latest `main` + revalidating before write), and feed `adaptConcurrency` into the
+   readiness governor instead of the constant `remoteAiMax:1`.
+
+Order still matters: the claim (1) is the safety primitive, in place before (2) writes in parallel, and (3)
+guarantees every parallel worker is still an owner-approved-through-EOS execution before (4) turns it live.
 
 ## Activation preconditions (narrow assumptions to satisfy before turning live)
 
