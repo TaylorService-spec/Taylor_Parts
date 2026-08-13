@@ -14,24 +14,30 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
+import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
+import { executionDataAuditId, mergeQtyUsed, type QtyUsedDelta } from "./workOrderExecutionMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import type { WorkOrder, InventorySnapshotItem } from "./types/workOrder";
-
-interface QtyUsedDelta {
-  sku: string;
-  delta: number; // positive to increment, negative to decrement -- see Step 2's "increment/decrement parts used"
-}
 
 interface UpdateWorkOrderExecutionDataInput {
   workOrderId: string;
   qtyUsedUpdates?: QtyUsedDelta[];
   executionNote?: string;
+  // Optional client-supplied idempotency key. When present, a retry / double-tap carrying the SAME key is a
+  // no-op replay (see the finance callables' proven pattern): the additive qtyUsed delta and the arrayUnion
+  // execution-log append -- both non-idempotent on their own -- are applied exactly once. OPTIONAL, not
+  // required, so this is deploy-safe for the live client: an older client that sends no key keeps today's
+  // behavior (unprotected) rather than being rejected. Closing the defect in production therefore has a
+  // paired dependency: the field client must emit a STABLE key per logical submit (reused across retries).
+  idempotencyKey?: string;
 }
 
 interface UpdateWorkOrderExecutionDataResult {
   success: true;
   workOrderId: string;
   updatedFields: string[];
+  // true only when a prior call with the same idempotencyKey already applied this exact update.
+  replayed?: true;
 }
 
 function assertValidInput(data: unknown): asserts data is UpdateWorkOrderExecutionDataInput {
@@ -57,6 +63,14 @@ function assertValidInput(data: unknown): asserts data is UpdateWorkOrderExecuti
       }
     }
   }
+
+  // idempotencyKey is optional (deploy-safe), but when present it must be a usable non-empty string --
+  // an empty/whitespace key would collapse every distinct call to the same marker.
+  if (input.idempotencyKey !== undefined) {
+    if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
+    }
+  }
 }
 
 export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, async (request) => {
@@ -65,7 +79,9 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
   }
 
   assertValidInput(request.data);
-  const { workOrderId, qtyUsedUpdates, executionNote } = request.data;
+  const { workOrderId, qtyUsedUpdates, executionNote, idempotencyKey } = request.data;
+  const actorUid = request.auth.uid;
+  const aid = idempotencyKey ? executionDataAuditId(actorUid, workOrderId, idempotencyKey) : null;
 
   // Rule 2: role must be exactly "technician" -- admin/dispatcher are
   // rejected too, not just anonymous/unauthenticated callers. Rule 3:
@@ -84,8 +100,18 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
   const db = getFirestore();
   const woRef = db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId);
 
-  const updatedFields = await db.runTransaction(async (tx) => {
+  const outcome = await db.runTransaction(async (tx) => {
+    // Firestore requires all reads before any write. Read the WO and (when an idempotency key was supplied)
+    // the deterministic Audit Event marker up front.
     const snap = await tx.get(woRef);
+    // Idempotency / replay: a prior Audit Event at this id means this exact update already applied. Return a
+    // no-op replay -- never re-apply the additive qtyUsed delta or re-append the execution-log entry.
+    if (aid) {
+      const prior = await tx.get(auditEventDocRef(aid));
+      if (prior.exists) {
+        return { replayed: true as const, fields: [] as string[] };
+      }
+    }
     if (!snap.exists) {
       throw new HttpsError("not-found", `No Work Order with id ${workOrderId}`);
     }
@@ -112,16 +138,12 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
     // is what makes it concurrency-safe (Step 6): a second concurrent
     // call re-reads the post-first-write array, never clobbers it.
     if (qtyUsedUpdates && qtyUsedUpdates.length > 0) {
-      const snapshot: InventorySnapshotItem[] = wo.inventorySnapshot ? [...wo.inventorySnapshot] : [];
-      for (const { sku, delta } of qtyUsedUpdates) {
-        const index = snapshot.findIndex((item) => item.sku === sku);
-        if (index === -1) {
-          throw new HttpsError("invalid-argument", `No planned part with sku "${sku}" on this Work Order.`);
-        }
-        const current = snapshot[index].qtyUsed ?? 0;
-        snapshot[index] = { ...snapshot[index], qtyUsed: Math.max(0, current + delta) };
+      const base: InventorySnapshotItem[] = wo.inventorySnapshot ? wo.inventorySnapshot : [];
+      const merged = mergeQtyUsed(base, qtyUsedUpdates);
+      if (!merged.ok) {
+        throw new HttpsError("invalid-argument", `No planned part with sku "${merged.unknownSku}" on this Work Order.`);
       }
-      payload.inventorySnapshot = snapshot;
+      payload.inventorySnapshot = merged.snapshot;
       fields.push("inventorySnapshot");
     }
 
@@ -143,9 +165,28 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
     }
 
     tx.update(woRef, payload);
-    return fields;
+
+    // Stage the deterministic Audit Event marker IN THE SAME transaction so the update and its idempotency
+    // record commit atomically -- the marker's existence is what makes a later retry a no-op replay. Only when
+    // a key was supplied (deploy-safe: keyless legacy calls still apply, just without replay protection).
+    if (aid) {
+      stageAuditEventWithId(tx, aid, {
+        actorUid,
+        action: "updateWorkOrderExecutionData",
+        targetType: "workOrder",
+        targetId: workOrderId,
+        outcome: "applied",
+        summary: `execution-data update applied (${fields.join(", ")})`,
+      });
+    }
+    return { replayed: false as const, fields };
   });
 
-  const result: UpdateWorkOrderExecutionDataResult = { success: true, workOrderId, updatedFields };
+  const result: UpdateWorkOrderExecutionDataResult = {
+    success: true,
+    workOrderId,
+    updatedFields: outcome.fields,
+    ...(outcome.replayed ? { replayed: true as const } : {}),
+  };
   return result;
 });

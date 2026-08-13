@@ -277,7 +277,12 @@ export type AuditAction =
   | "createSalesTerritory"
   | "createCoverageAssignment"
   // Finance (Billing/AR) -- the trusted recordRefund command's Audit Event action (money returned after payment)
-  | "recordRefund";
+  | "recordRefund"
+  // Work Order Engine (idempotency remediation) -- the trusted updateWorkOrderExecutionData callable adopts
+  // this SAME immutable Audit Event path as its idempotency substrate, a deterministic Audit Event id makes a
+  // retried call a no-op replay so an additive qtyUsed delta or execution-log append is never double-applied,
+  // no parallel enum. Comment intentionally free of the statement-terminator character (mirror checks slice here)
+  | "updateWorkOrderExecutionData";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
