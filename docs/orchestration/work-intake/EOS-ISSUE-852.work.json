@@ -1,0 +1,46 @@
+{
+  "requestId": "EOS-ISSUE-852",
+  "title": "EOS stress run — 10-agent full-system audit cycle",
+  "intent": "Run a fresh 10-agent EOS stress/audit cycle against current `main` as both a live EOS system test and a fresh full-system audit. Preserve current provider/cost/capacity/governance boundaries.\n\nRequired work:\nCoordinate exactly 10 independent analysis workers. Use Agent Manager to prevent duplicate scope/drift and partition the review into materially distinct sectors.\n\nAssign ten non-duplicative review sectors covering the current Taylor/Enterprise Operations OS system, including at minimum:\n1. inventory integrity and transfer/receiving flows\n2. work-order lifecycle and idempotency\n3. dispatch/technician workflow and assignment logic\n4. equipment/serialized assets/warranty\n5. Firestore Rules and client call-site parity\n6. Cloud Functions/callables/auth boundaries\n7. EOS runtime/intake/completion semantics\n8. Agent Manager concurrency/dedup/throttle/retry behavior\n9. UI/UX workflow correctness and error handling\n10. architecture/specification/governance drift and duplicate capability detection\n\nEach worker must return findings with repository paths/evidence and severity. Agent Manager must consolidate and deduplicate the ten outputs into one durable result, explicitly identifying agreements, conflicts, duplicates removed, and cross-sector risks.\n\nCompletion:\nDo not mark COMPLETE merely because workers exited successfully. COMPLETE requires all 10 worker results plus the consolidated Agent Manager report. If any worker is blocked/throttled/fails, record the real non-complete state and retry only under existing bounded EOS policy.",
+  "scope": [
+    "Analysis-only (`READ_ONLY_ANALYSIS`) whole-system read across the repository. No source edits, merges, deploys, credential changes, or other protected actions."
+  ],
+  "execution": {
+    "taskClass": "READ_ONLY_ANALYSIS",
+    "expectedArtifactClass": "NONE",
+    "requiredExecutionReceipts": [],
+    "verifierRequired": false,
+    "signal": "DEFAULT_LEAST_PRIVILEGE",
+    "ambiguous": true,
+    "reason": "no clear implementation/verify signal — default to least privilege"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/852",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T08:01:57Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852.work.json",
+  "sha256": "564b0d0b1192adad09fd06c5b4571bb7a11cfc69ad33095f3967084724ba2456",
+  "createdAt": "2026-08-13T07:23:04Z",
+  "updatedAt": "2026-08-13T08:01:57Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/852"
+    ],
+    "pullRequests": []
+  }
+}
