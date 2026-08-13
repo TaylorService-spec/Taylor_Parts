@@ -1,0 +1,43 @@
+{
+  "schema": "eos.findings.register/1",
+  "note": "Durable resolution state for audit findings. reconcileFindings() (lib/findingsRegister.mjs) matches new audit output by fingerprint = file+symbol+discriminator, so a distinct issue in the same symbol never collapses into a prior entry and can never be silently suppressed. A FIXED entry is only trustworthy with a regressionTest; entries were verified by reading current code at verifiedAtCommit.",
+  "entries": [
+    {
+      "file": "functions/src/inventoryService.ts",
+      "symbol": "triggerInventoryEffects",
+      "severity": "HIGH",
+      "status": "KNOWN_ACCEPTED",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Ledger write uses an auto-id doc so a crash between the effect and markStateProcessed() can double-apply on manual retry — but this is the DOCUMENTED failure model (idempotent-by-retry, never-throws, epic section 10). Real edge, consciously accepted; not an unaddressed bug.",
+      "regressionTest": null,
+      "deferralRef": null,
+      "discriminator": "ledger-effect-not-atomic-with-processed-marker"
+    },
+    {
+      "file": "functions/src/transitionWorkOrder.ts",
+      "symbol": "transitionWorkOrder",
+      "severity": "HIGH",
+      "status": "CONFIRMED_OPEN",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Confirmed: no availability/conflict/double-book check anywhere in the file; Dispatch assigns assignedTechId without checking if the technician is already booked. Genuine unaddressed gap (pending product confirmation that double-booking is undesired).",
+      "regressionTest": null,
+      "deferralRef": null,
+      "discriminator": "no-technician-availability-check"
+    },
+    {
+      "file": "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx",
+      "symbol": "receiveReorderRequest",
+      "severity": "HIGH",
+      "status": "DEFERRED",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Receiving 'Receive' action does not write inventory_transactions; ledger path is feature-flagged off pending Blaze activation. Actionability was evaluated at disposition: not a now-change because the Blaze dependency isn't met yet — deferred with a condition, not postponed to a future audit.",
+      "regressionTest": null,
+      "deferralRef": "#15",
+      "revalidateWhen": "Blaze billing active (the flag's dependency) — re-dispose then, not on every audit",
+      "discriminator": "receive-does-not-write-inventory-ledger"
+    }
+  ]
+}
