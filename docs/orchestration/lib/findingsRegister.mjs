@@ -6,18 +6,22 @@
 // register by a stable FINGERPRINT, and anything already resolved is dropped — only genuinely NEW findings, or a
 // REGRESSION of something previously fixed, ever surface.
 //
-// The guarantees the Owner asked for:
-//   • "fixed is really fixed"          → a FIXED claim is worthless without proof: only FIXED WITH a passing
-//                                         `regressionTest` is trusted (a reappearance is then a REGRESSION alarm).
-//                                         FIXED WITHOUT a test is NOT trusted — it routes to governance review,
-//                                         never silently suppressed. Don't say fixed if it isn't proven fixed.
-//   • "a reason NOT to do something must be verified too — maybe it's time to do it, and that call is ChatGPT's"
-//                                       → KNOWN_ACCEPTED and DEFERRED are NOT permanent suppression. Their
-//                                         rationale expires; when an audit re-finds one, it routes to a
-//                                         governance-review bucket for ChatGPT to re-evaluate ("is the tradeoff
-//                                         still right / is the deferral reason still true / is it time now?").
-//   • "next audit only NEW noise"       → truly-closed items (FIXED-with-test, FALSE_POSITIVE) are suppressed;
-//                                         only genuinely NEW findings surface as new work.
+// The model (EOS as company controller): agents FIND → the verifier decides truth + actionability IMMEDIATELY at
+// first disposition (including re-validating any deferral rationale THEN) → EOS fixes everything it is already
+// authorized to fix → the Owner sees only genuine decisions. This register is the durable MEMORY of those
+// dispositions; reconcile is the next-audit dedup gate. The register does NOT postpone a decision until a future
+// audit re-finds the item — the decision was already made at disposition. Re-visiting a deferral is a deliberate,
+// condition-triggered RE-DISPOSITION (e.g. "when Blaze is live"), not something every audit re-opens.
+//
+// Guarantees:
+//   • "fixed is really fixed"    → FIXED is trusted ONLY with a passing `regressionTest` (a reappearance is then
+//                                   a REGRESSION alarm). FIXED WITHOUT a test is not a fix — a reappearance
+//                                   escalates as `unprovenFixed`, and `unverifiedFixed` lists such entries.
+//   • "reasons are verified at disposition, not deferred to the next audit" → KNOWN_ACCEPTED / DEFERRED were
+//                                   already dispositioned (rationale validated at that time), so on a re-find they
+//                                   are SUPPRESSED as memory — not re-raised, not re-reviewed per audit. Their
+//                                   re-evaluation is condition-triggered (`revalidateWhen`), handled at disposition.
+//   • "next audit only NEW work" → only genuinely NEW findings `surface`; regressions/unproven-fixed escalate.
 //
 // Pure and deterministic (no I/O, no clock). The register is a plain data array the caller loads/persists.
 
@@ -52,22 +56,23 @@ function withFingerprint(f) {
  * Reconcile a fresh audit's findings against the register. Deterministic, no mutation of inputs.
  * @param {Array}  findings  raw audit findings: [{ file, symbol?, category?, severity?, title? }]
  * @param {Array}  register  known entries: [{ fingerprint?, file, symbol?, category?, status, regressionTest?, deferralRef? }]
- * @returns {{ surfaced, regressions, needsGovernanceReview, alreadyOpen, suppressed, unverifiedFixed }}
- *   - surfaced             : genuinely NEW findings (not in the register) — the only ones raised as new work
- *   - regressions          : a fingerprint marked FIXED-WITH-TEST reappeared — the guard failed; ALARM
- *   - needsGovernanceReview : matched a KNOWN_ACCEPTED / DEFERRED entry, OR a FIXED entry with NO regression test.
- *                            NOT suppressed and NOT re-raised as new — routed to ChatGPT to re-verify the
- *                            rationale and decide "still valid / time to act / actually fixed?" (each carries
- *                            reviewReason so the governor knows why).
- *   - alreadyOpen          : matched a CONFIRMED_OPEN entry — real, already tracked, not "new"
- *   - suppressed           : truly closed (FALSE_POSITIVE) — dropped
- *   - unverifiedFixed      : register entries marked FIXED but lacking a regressionTest — "fixed is not proven"
+ * @returns {{ surfaced, regressions, unprovenFixed, alreadyOpen, suppressed, unverifiedFixed }}
+ *   - surfaced        : genuinely NEW findings (not in the register) — the ONLY items that need a fresh
+ *                       disposition (verifier decides now-change vs defer, from the very beginning)
+ *   - regressions     : a fingerprint marked FIXED-WITH-TEST reappeared — the guard failed; ALARM
+ *   - unprovenFixed   : a fingerprint marked FIXED but with NO regressionTest reappeared — the "fix" was never
+ *                       proven, so a reappearance is escalated (it may still be real), never suppressed
+ *   - alreadyOpen     : matched a CONFIRMED_OPEN entry — real, already tracked, not "new"
+ *   - suppressed      : matched an already-DISPOSITIONED entry (FALSE_POSITIVE / KNOWN_ACCEPTED / DEFERRED) —
+ *                       memory of a decision already made; dropped from the audit's actionable output. NOT
+ *                       re-reviewed per audit (re-visiting a deferral is a condition-triggered re-disposition).
+ *   - unverifiedFixed : register-integrity list — entries marked FIXED but lacking a regressionTest
  */
 export function reconcileFindings(findings = [], register = []) {
   const byFp = new Map();
   for (const e of Array.isArray(register) ? register : []) byFp.set(withFingerprint(e), e);
 
-  const surfaced = [], regressions = [], needsGovernanceReview = [], alreadyOpen = [], suppressed = [];
+  const surfaced = [], regressions = [], unprovenFixed = [], alreadyOpen = [], suppressed = [];
   for (const f of Array.isArray(findings) ? findings : []) {
     const fp = withFingerprint(f);
     const known = byFp.get(fp);
@@ -79,21 +84,17 @@ export function reconcileFindings(findings = [], register = []) {
           // Proven-fixed and it reappeared → the guarding test should have caught it. Alarm, not silent re-raise.
           regressions.push({ ...base, disposition: "REGRESSION", regressionTest: known.regressionTest });
         } else {
-          // "Fixed" was never proven (no test). It is NOT trusted — re-evaluate whether it is actually fixed.
-          needsGovernanceReview.push({ ...base, disposition: "REVIEW", reviewReason: "claimed FIXED but no regression test — fix is unproven", becauseStatus: known.status });
+          // "Fixed" was never proven (no test) — a reappearance means it may never have been fixed. Escalate.
+          unprovenFixed.push({ ...base, disposition: "UNPROVEN_FIXED", reason: "marked FIXED but no regression test — fix was never proven" });
         }
-        break;
-      case FINDING_STATUS.KNOWN_ACCEPTED:
-        needsGovernanceReview.push({ ...base, disposition: "REVIEW", reviewReason: "accepted design tradeoff — re-verify it still holds / whether risk changed", becauseStatus: known.status });
-        break;
-      case FINDING_STATUS.DEFERRED:
-        needsGovernanceReview.push({ ...base, disposition: "REVIEW", reviewReason: `deferred (${known.deferralRef ?? "no ref"}) — re-verify the reason is still true / whether it is time to do it now`, becauseStatus: known.status, deferralRef: known.deferralRef ?? null });
         break;
       case FINDING_STATUS.CONFIRMED_OPEN:
         alreadyOpen.push({ ...base, disposition: "ALREADY_OPEN" });
         break;
-      default: // FALSE_POSITIVE (or unknown) — genuinely not a defect; drop.
-        suppressed.push({ ...base, disposition: "SUPPRESSED", becauseStatus: known.status });
+      case FINDING_STATUS.KNOWN_ACCEPTED:
+      case FINDING_STATUS.DEFERRED:
+      default: // + FALSE_POSITIVE — already dispositioned at find-time; memory, not re-actioned per audit.
+        suppressed.push({ ...base, disposition: "SUPPRESSED", becauseStatus: known.status, deferralRef: known.deferralRef ?? null, revalidateWhen: known.revalidateWhen ?? null });
     }
   }
 
@@ -104,7 +105,7 @@ export function reconcileFindings(findings = [], register = []) {
   return Object.freeze({
     surfaced: Object.freeze(surfaced),
     regressions: Object.freeze(regressions),
-    needsGovernanceReview: Object.freeze(needsGovernanceReview),
+    unprovenFixed: Object.freeze(unprovenFixed),
     alreadyOpen: Object.freeze(alreadyOpen),
     suppressed: Object.freeze(suppressed),
     unverifiedFixed: Object.freeze(unverifiedFixed),

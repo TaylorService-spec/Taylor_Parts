@@ -31,9 +31,10 @@
       "status": "DEFERRED",
       "source": "EOS-ISSUE-852",
       "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
-      "evidence": "Receiving 'Receive' action does not write inventory_transactions; ledger path is feature-flagged off pending Blaze activation. Deliberately deferred and tracked.",
+      "evidence": "Receiving 'Receive' action does not write inventory_transactions; ledger path is feature-flagged off pending Blaze activation. Actionability was evaluated at disposition: not a now-change because the Blaze dependency isn't met yet — deferred with a condition, not postponed to a future audit.",
       "regressionTest": null,
-      "deferralRef": "#15"
+      "deferralRef": "#15",
+      "revalidateWhen": "Blaze billing active (the flag's dependency) — re-dispose then, not on every audit"
     }
   ]
 }

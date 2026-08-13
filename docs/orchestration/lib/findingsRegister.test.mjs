@@ -10,34 +10,34 @@ test("fingerprint is stable across line-number drift and wording changes (keyed 
   assert.notEqual(a, c, "different location → different fingerprint");
 });
 
-test("NEW surfaces; KNOWN_ACCEPTED/DEFERRED route to governance review (not suppressed); FALSE_POSITIVE is dropped", () => {
+test("NEW surfaces for disposition; already-dispositioned (ACCEPTED/DEFERRED/FALSE_POSITIVE) are memory → suppressed", () => {
+  // These were already dispositioned at find-time (now-vs-defer decided then). The register is MEMORY: a re-find
+  // is suppressed, NOT re-reviewed every audit. Re-visiting a deferral is a separate condition-triggered act.
   const register = [
     { file: "functions/src/inventoryService.ts", symbol: "triggerInventoryEffects", status: FINDING_STATUS.KNOWN_ACCEPTED },
-    { file: "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx", symbol: "receiveReorderRequest", status: FINDING_STATUS.DEFERRED, deferralRef: "#15" },
+    { file: "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx", symbol: "receiveReorderRequest", status: FINDING_STATUS.DEFERRED, deferralRef: "#15", revalidateWhen: "Blaze active" },
     { file: "functions/src/old.ts", symbol: "notActuallyABug", status: FINDING_STATUS.FALSE_POSITIVE },
   ];
   const out = reconcileFindings([
-    { file: "functions/src/inventoryService.ts", symbol: "triggerInventoryEffects", category: "atomicity" },   // accepted → review
-    { file: "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx", symbol: "receiveReorderRequest" }, // deferred → review
-    { file: "functions/src/old.ts", symbol: "notActuallyABug" },                                                // false-positive → suppressed
-    { file: "functions/src/newThing.ts", symbol: "brandNewBug", category: "npe" },                              // genuinely new
+    { file: "functions/src/inventoryService.ts", symbol: "triggerInventoryEffects", category: "atomicity" },
+    { file: "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx", symbol: "receiveReorderRequest" },
+    { file: "functions/src/old.ts", symbol: "notActuallyABug" },
+    { file: "functions/src/newThing.ts", symbol: "brandNewBug", category: "npe" },
   ], register);
-  assert.deepEqual(out.surfaced.map((f) => f.symbol), ["brandNewBug"], "only the truly-new finding surfaces as new work");
-  assert.deepEqual(out.needsGovernanceReview.map((f) => f.symbol).sort(), ["receiveReorderRequest", "triggerInventoryEffects"], "accepted + deferred go to ChatGPT review, NOT buried");
-  const deferredReview = out.needsGovernanceReview.find((r) => r.becauseStatus === FINDING_STATUS.DEFERRED);
-  assert.match(deferredReview.reviewReason, /time to do it now/, "deferral carries a re-evaluate-now prompt");
-  assert.equal(deferredReview.deferralRef, "#15");
-  assert.deepEqual(out.suppressed.map((f) => f.symbol), ["notActuallyABug"], "only a genuine false-positive is dropped");
+  assert.deepEqual(out.surfaced.map((f) => f.symbol), ["brandNewBug"], "only the truly-new finding needs disposition");
+  assert.deepEqual(out.suppressed.map((f) => f.symbol).sort(), ["notActuallyABug", "receiveReorderRequest", "triggerInventoryEffects"], "already-dispositioned items are memory, not re-actioned");
+  const deferred = out.suppressed.find((s) => s.becauseStatus === FINDING_STATUS.DEFERRED);
+  assert.equal(deferred.revalidateWhen, "Blaze active", "the deferral's re-disposition CONDITION is carried (condition-triggered, not per-audit)");
 });
 
-test("'fixed' without a regression test is NOT trusted — routes to review, never suppressed", () => {
+test("'fixed' without a regression test reappearing is escalated as unprovenFixed — never suppressed", () => {
   const register = [{ file: "a.ts", symbol: "claimedFixed", status: FINDING_STATUS.FIXED }]; // no regressionTest
   const out = reconcileFindings([{ file: "a.ts", symbol: "claimedFixed", category: "still broken?" }], register);
   assert.equal(out.surfaced.length, 0);
   assert.equal(out.suppressed.length, 0, "an unproven fix must not silently suppress the finding");
   assert.equal(out.regressions.length, 0, "no test, so not a proven regression either");
-  assert.equal(out.needsGovernanceReview.length, 1);
-  assert.match(out.needsGovernanceReview[0].reviewReason, /no regression test — fix is unproven/);
+  assert.equal(out.unprovenFixed.length, 1);
+  assert.match(out.unprovenFixed[0].reason, /never proven/);
 });
 
 test("a PROVEN-fixed finding (with test) reappearing is a REGRESSION, never re-raised as new", () => {
@@ -79,11 +79,11 @@ test("THE #852 scenario: re-running the audit surfaces only the genuinely-new is
     { file: "functions/src/billing/charge.ts", symbol: "applyCharge", category: "missing retry cap", severity: "MEDIUM" },
   ];
   const out = reconcileFindings(nextAudit, register);
-  assert.deepEqual(out.surfaced.map((f) => f.symbol), ["applyCharge"], "only the NEW issue surfaces as new work");
-  assert.equal(out.needsGovernanceReview.length, 2, "known-accepted (H1) + deferred #15 (H3) route to ChatGPT re-evaluation, not silence");
+  assert.deepEqual(out.surfaced.map((f) => f.symbol), ["applyCharge"], "only the NEW issue needs disposition");
+  assert.equal(out.suppressed.length, 2, "H1 accepted + H3 deferred were already dispositioned → memory, suppressed");
   assert.equal(out.alreadyOpen.length, 1, "the confirmed-open double-booking (H2) stays tracked, not re-raised as new");
   assert.equal(out.regressions.length, 0);
-  assert.equal(out.suppressed.length, 0);
+  assert.equal(out.unprovenFixed.length, 0);
 });
 
 test("isResolved reflects the suppressing statuses", () => {
