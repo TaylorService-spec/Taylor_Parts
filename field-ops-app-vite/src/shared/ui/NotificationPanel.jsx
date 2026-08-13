@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import FailureState from "./FailureState";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
 // (Version 0.1) notification experience: Header -> Notification Panel
@@ -72,6 +74,13 @@ export default function NotificationPanel({
   partsManagerRequests = [],
   assignedToYouRequests = [],
   purchasingStartedRequests = [],
+  // site-work round-2 #4 (appheader-discards-reorder-error) -- any one of AppHeader's
+  // four reorder-request subscriptions failing (permission-denied, unavailable, ...).
+  // A failed read must NEVER be shown as a confidently-wrong empty/undercounted bell
+  // (mirrors WorkOrdersList.jsx/Dispatch.jsx/DispatcherBoard.jsx's "fail visibly"
+  // pattern, test/dispatchSurfacesErrorState.test.jsx) -- so this takes priority over
+  // `total` below both on the button and inside the dropdown.
+  error = null,
   // OD-3: governed canonical partId -> name resolver supplied by AppHeader (one shared read).
   // Defaults to the raw partId so this presentational component NEVER falls back to a static
   // name and never crashes if a caller omits it -- fail-closed by construction.
@@ -84,12 +93,18 @@ export default function NotificationPanel({
 
   return (
     <div className="fo-notification-panel">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Notifications">
-        Notifications{total > 0 ? ` (${total})` : ""}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={error ? "Notifications, couldn't load" : "Notifications"}
+      >
+        Notifications{error ? " ⚠" : total > 0 ? ` (${total})` : ""}
       </button>
       {open && (
         <div className="fo-notification-panel-dropdown">
-          {total === 0 ? (
+          {error ? (
+            <FailureState message={loadErrorMessage(error, { entity: "reorder-request notifications" })} />
+          ) : total === 0 ? (
             <p className="fo-muted">No pending reorder requests.</p>
           ) : (
             <>
