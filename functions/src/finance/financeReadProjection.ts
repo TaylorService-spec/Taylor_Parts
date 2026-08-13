@@ -90,7 +90,10 @@ export function summarizeAccountAr(reads: InvoiceArRead[]): { count: number; ope
   for (const r of list) {
     if (r.outstandingMinor > 0) openCount += 1;
     if (r.arPosition === "OVERDUE") overdueCount += 1;
-    if (r.outstandingMinor > 0 && r.currency) outstandingByCurrency[r.currency] = (outstandingByCurrency[r.currency] ?? 0) + r.outstandingMinor;
+    if (r.outstandingMinor > 0) {
+      const currency = r.currency ?? "UNSPECIFIED";
+      outstandingByCurrency[currency] = (outstandingByCurrency[currency] ?? 0) + r.outstandingMinor;
+    }
   }
   return { count: list.length, openCount, overdueCount, outstandingByCurrency };
 }
