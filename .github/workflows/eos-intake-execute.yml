@@ -40,7 +40,12 @@ jobs:
     # On a workflow_run wake, only proceed if the upstream intake actually succeeded; other events are unaffected.
     if: ${{ vars.EOS_RUNTIME_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: [self-hosted, windows, eos-runtime]
-    timeout-minutes: 30
+    # The execute step drains ALL eligible EXECUTION_AUTHORIZED items sequentially, and the write-back is
+    # committed once AFTER the loop — so a timeout mid-loop cancels the job and strands every result computed
+    # in that pass (observed: a 10-child governed decomposition ran C01–C05 then hit the 30-min cap and lost
+    # them all). A governed parent can fan out into many children, so the budget must cover a full multi-child
+    # pass. (Robustness follow-up: commit the write-back per item so partial progress survives an interruption.)
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Execute eligible intakes + commit status/result
