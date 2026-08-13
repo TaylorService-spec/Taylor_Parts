@@ -9,6 +9,8 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import { allocateWorkOrderNumber } from "./woNumbering";
+import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
+import { createWorkOrderAuditId } from "./workOrderCreateMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import type { Priority, Severity, WorkOrderType } from "./types/workOrder";
 
@@ -19,6 +21,13 @@ interface CreateWorkOrderInput {
   severity?: Severity;
   type: WorkOrderType;
   complaint?: string;
+  // Optional client-supplied idempotency key. When present, a retry / double-submit carrying the SAME key
+  // returns the already-created Work Order instead of minting a second one and burning a WO number (finance
+  // callable pattern). OPTIONAL, so deploy-safe: a keyless legacy client keeps today's behavior. Closing the
+  // defect in production has a paired dependency -- the client (WorkOrderWizard) must send a STABLE key per
+  // submit. The key guards ONLY this callable, not the shared createWorkOrderRecord core (the Sales -> Service
+  // seam creates through the core and is intentionally unaffected).
+  idempotencyKey?: string;
 }
 
 // The governed Work Order creation CORE, factored out so the callable AND other trusted server commands (e.g.
@@ -73,6 +82,11 @@ function assertValidInput(data: unknown): asserts data is CreateWorkOrderInput {
       "Either complaint or type (service classification) is required."
     );
   }
+  if (input.idempotencyKey !== undefined) {
+    if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
+    }
+  }
 }
 
 export const createWorkOrder = onCall({ region: "us-central1" }, async (request) => {
@@ -86,10 +100,36 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
   }
 
   assertValidInput(request.data);
-  const { customerId, locationId, priority, severity, type, complaint } = request.data;
+  const { customerId, locationId, priority, severity, type, complaint, idempotencyKey } = request.data;
+  const actorUid = request.auth.uid;
+  const aid = idempotencyKey ? createWorkOrderAuditId(actorUid, `${customerId}|${locationId}`, idempotencyKey) : null;
 
   const db = getFirestore();
   const year = new Date().getFullYear();
 
-  return db.runTransaction(async (tx) => createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint }, year));
+  return db.runTransaction(async (tx) => {
+    // Idempotency / replay: read the deterministic marker up front (before any write). If a prior create with
+    // this key already applied, return the SAME Work Order -- never mint a second one or burn a WO number.
+    if (aid) {
+      const prior = await tx.get(auditEventDocRef(aid));
+      if (prior.exists) {
+        const targetId = (prior.data()?.targetId as string) ?? "";
+        const woSnap = targetId ? await tx.get(db.collection(WORK_ORDERS_COLLECTION).doc(targetId)) : null;
+        return { id: targetId, woNumber: (woSnap?.data()?.woNumber as string) ?? null, replayed: true as const };
+      }
+    }
+    const created = await createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint }, year);
+    // Stage the marker in the SAME transaction so the WO and its idempotency record commit atomically.
+    if (aid) {
+      stageAuditEventWithId(tx, aid, {
+        actorUid,
+        action: "createWorkOrder",
+        targetType: "workOrder",
+        targetId: created.id,
+        outcome: "applied",
+        summary: `created work order ${created.woNumber}`,
+      });
+    }
+    return { ...created, replayed: false as const };
+  });
 });
