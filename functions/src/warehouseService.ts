@@ -56,6 +56,15 @@ async function applyStockDelta(
   tx.set(ref, next);
 }
 
+function stockRef(warehouseId: string, partId: string, binCode: string) {
+  return db().collection(STOCK_LOCATIONS_COLLECTION).doc(stockLocationDocId(warehouseId, partId, binCode));
+}
+
+function applyLoadedStockDelta(tx: Transaction, ref: FirebaseFirestore.DocumentReference, warehouseId: string, partId: string, binCode: string, current: number, delta: number) {
+  if (current + delta < 0) throw new Error(`Insufficient stock in ${warehouseId}/${partId}/${binCode}: requested ${Math.abs(delta)}, available ${current}`);
+  tx.set(ref, { id: ref.id, warehouseId, partId, binCode, quantity: current + delta, updatedAt: FieldValue.serverTimestamp() });
+}
+
 // Applies a delta to one bin's quantity, creating the StockLocation
 // doc on first write. NOTE on idempotency: this primitive takes a
 // relative delta with no idempotency key, so calling it twice with the
@@ -116,8 +125,11 @@ export async function completeTransferOrder(transferOrderId: string): Promise<vo
     // Both bins are explicit and persisted on the order. Never synthesize a
     // TRANSFER bin: completion moves physical units from the actual source
     // location to the actual destination location in this single transaction.
-    await applyStockDelta(tx, order.fromWarehouseId, order.partId, order.fromBinCode, -order.quantity);
-    await applyStockDelta(tx, order.toWarehouseId, order.partId, order.toBinCode, order.quantity);
+    const sourceRef = stockRef(order.fromWarehouseId, order.partId, order.fromBinCode);
+    const destinationRef = stockRef(order.toWarehouseId, order.partId, order.toBinCode);
+    const [sourceSnap, destinationSnap] = await Promise.all([tx.get(sourceRef), tx.get(destinationRef)]);
+    applyLoadedStockDelta(tx, sourceRef, order.fromWarehouseId, order.partId, order.fromBinCode, sourceSnap.exists ? (sourceSnap.data() as StockLocation).quantity : 0, -order.quantity);
+    applyLoadedStockDelta(tx, destinationRef, order.toWarehouseId, order.partId, order.toBinCode, destinationSnap.exists ? (destinationSnap.data() as StockLocation).quantity : 0, order.quantity);
 
     tx.set(ref, { status: "COMPLETED", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
