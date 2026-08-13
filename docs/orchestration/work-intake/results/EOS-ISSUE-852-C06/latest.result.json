@@ -1,0 +1,11 @@
+{
+  "schema": "eos.intake.result-index/1",
+  "requestId": "EOS-ISSUE-852-C06",
+  "pointer": "result://EOS-ISSUE-852-C06",
+  "manifestLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C06/2317dee81d8b9adb298795fde9e13d6cefa524791012909e744cf871429061c8.result.json",
+  "manifestSha256": "2317dee81d8b9adb298795fde9e13d6cefa524791012909e744cf871429061c8",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C06/10454d56d4b1df6e1ee587014360cb3361f2a16fc8a001e9e62a87fc8e233046.content.md",
+  "updatedAt": "2026-08-13T15:36:58.850Z",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C06/latest.result.json",
+  "sha256": "cb81d045322f1727e114b7c3fe7362865f856b91afa12f70ea0a66fd982404fa"
+}
