@@ -17,7 +17,7 @@ import { getCallerContext } from "./callerContext";
 import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
 import { executionDataAuditId, mergeQtyUsed, type QtyUsedDelta } from "./workOrderExecutionMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
-import type { WorkOrder } from "./types/workOrder";
+import type { WorkOrder, InventorySnapshotItem } from "./types/workOrder";
 
 interface UpdateWorkOrderExecutionDataInput {
   workOrderId: string;
