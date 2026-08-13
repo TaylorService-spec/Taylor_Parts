@@ -169,7 +169,8 @@
       ],
       "problem": "functions/src/coverage/coverageReadCallables.ts fetches coverage with `.where('companyId','==',...).limit(1000)` for assignments and `.limit(1000)` (unscoped, no ordering) for sales_territories, then resolves and returns status 'ready'. There is no count check or ordering: if a company exceeds 1000 assignments, the excess are silently dropped from the split-coverage result; and because a TERRITORY-scoped assignment matches only when its territoryId is present in the (also 1000-capped, unordered) territoriesById map, a territory beyond the cap makes its assignment silently fail to match. Either way the caller receives status 'ready' (the 'complete' state) with a quietly incomplete coverageAssignments[]. The distinct 'unavailable' state exists but is only used for thrown errors, not for truncation.",
       "impact": "For a large company, real coverage assignments (who covers an account/territory) can be silently omitted and presented as authoritative/complete, defeating the whole point of the trusted 'ALL effective + matching, nothing dropped' resolver — a silent data-integrity gap in commercial coverage lookups.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 905,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -198,7 +199,8 @@
       ],
       "problem": "In field-ops-app-vite/src/modules/sales/SalesWorkspace.jsx the date read/format path uses local time (`shortDate` via toLocaleDateString, line 33) but the edit binding uses UTC: `isoDate` = new Date(ms).toISOString().slice(0,10) (line 35) and the date input onChange parses new Date('yyyy-mm-dd').getTime() (line 81), which is UTC midnight. For US (negative-UTC) users, a timestamp shows e.g. 'Aug 12' in the ContextBand/pipeline column (local) while the section edit form's date input shows 'Aug 13' (UTC) for the same value. The module is explicitly built 'editing-ready' for when the governed write activates, so this binding defect will produce off-by-one expectedCloseAt values the moment writes go live.",
       "impact": "UX/data-integrity: expected-close dates displayed in read vs edit disagree by a day and, once writes activate, an operator saving an unchanged date can shift it by one day, corrupting pipeline close dates.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 900,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -241,7 +243,8 @@
       ],
       "problem": "field-ops-app-vite/src/analytics/executionAnalyticsService.ts and operationsIntelligenceService.ts have no test file anywhere in the repo (searched *.test.* / *.mjs; only the .ts sources and JSX consumers reference them). executionAnalyticsService.ts's own header declares it the 'single source of truth for all execution analytics ... a frozen contract' that all downstream Epic 8+ systems MUST depend on, and it is consumed live by Operations.jsx, ExecutionInsightsPanel.jsx, and PerformanceSnapshot.jsx. The logic is pure and highly testable: normalizeQtyUsed() (sku->partId, qtyUsed>0 filtering), getInventoryConsumptionSnapshot() aggregation/sort, getTechnicianExecutionStats() completion-duration averaging, and getCrossDomainBottlenecks() correlation across three domains — none of which is currently pinned by a single assertion.",
       "impact": "The contractually-frozen aggregation math (totals, averages, most-consumed part, cross-domain bottleneck correlation) that drives dispatcher and technician dashboards can silently regress on any refactor with nothing catching it. A subtle change (e.g. the qtyUsed>0 filter, or completedAt-based completion counting) would ship undetected and misreport operational KPIs.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 911,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -255,7 +258,8 @@
       ],
       "problem": "In functions/src/finance/financeReadProjection.ts, summarizeAccountAr() increments openCount for every invoice with outstandingMinor > 0, but only adds to outstandingByCurrency when `r.currency` is truthy: `if (r.outstandingMinor > 0 && r.currency) outstandingByCurrency[...] += r.outstandingMinor;`. projectInvoiceAr() sets currency to null whenever the stored invoice has no string currency field. So an open invoice with a null/missing currency is counted in openCount (and possibly overdueCount) but its outstanding amount is silently dropped from every currency bucket — the only place the actual open-balance total is exposed.",
       "impact": "An account view can show, e.g., openCount=5 while the summed outstandingByCurrency reflects only 4 invoices, understating the real amount owed. In a billing/AR context this is a data-integrity defect: collections or dashboards report a smaller open balance than is actually outstanding, with no signal that an invoice was excluded.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 901,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -269,7 +273,8 @@
       ],
       "problem": "DispatcherBoard.jsx handleDispatchDrop (lines 98-117) begins with `if (isDispatching) return;` where isDispatching is a single board-level boolean (line 60) set true for the duration of one transitionWorkOrder call. The header comment (lines 46-47) frames it as guarding a 'rapid double-drop... for the same Work Order', but the flag is global, so dropping a DIFFERENT work order onto a technician while any dispatch is still in flight returns immediately and does nothing: no error, no dispatchError set, no queued action, no visual indication the drop was rejected. On a busy board the dispatcher sees their drag land on a valid target and simply nothing happens.",
       "impact": "Legitimate concurrent dispatch actions are dropped invisibly during the round-trip to the Cloud Function, so a dispatcher can believe a technician was assigned when no request was ever sent — a silent lost action with no path to notice it except re-checking each card.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 902,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -283,7 +288,8 @@
       ],
       "problem": "Dispatch.jsx assign() (lines 83-93) handles a failed governed Dispatch transition with `alert(err.message)`. Everywhere else in this domain the same transitionWorkOrder failures are run through categorized, user-safe copy: ScheduleWorkOrderForm.jsx uses workflowActionErrorMessage(err) into an inline FormError (lines 55-59), and DispatcherBoard sets dispatchError into a role=alert banner. err.message off a Firebase HttpsError is the raw server string (e.g. the double-booking 'Technician <id> is already assigned to active Work Order <id>...' from transitionWorkOrder.ts line 131-133, exposing internal ids), shown in a blocking native alert() dialog inconsistent with the rest of the UI.",
       "impact": "Dispatchers on the canonical dispatch surface get inconsistent, jarring error UX that leaks internal identifiers and raw server phrasing, unlike every other work-order action surface. Low-severity but a clear, isolated fix reusing existing domain/workflowActionError helpers.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 903,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -297,7 +303,8 @@
       ],
       "problem": "In readService.ts runRelationshipRead (lines 266-302), each returned compatibility doc is enriched by awaiting readModelForDisplay (a point read of the equipment model) and then awaiting readEvidenceSummary (a separate query) one item at a time inside a serial for-loop. With MAX_PAGE=50, a single page can incur up to ~50 sequential model reads plus up to 100 evidence reads (MAX_EVIDENCE_READS_PER_REQUEST), all round-tripped serially rather than batched/parallelized. The correctness guards (budget, fail-closed) are sound; the concern is purely the serialized fan-out.",
       "impact": "When this read model is activated (D10), a full page will accumulate request latency proportional to items x round-trips, making the compatibility view slow under realistic data. It's a pre-deployment/latent issue (the callable is deliberately unexported and active:false today), so impact is deferred, but it is baked into the read path now. Parallelizing model reads (e.g. Promise.all over the page) and issuing evidence reads concurrently within the existing read-work budget would remove it.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 910,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -328,7 +335,8 @@
       ],
       "problem": "In AuthContext's onAuthStateChanged callback, if resolveEmployeeSession(u.uid) throws (a denied OR transient Firestore getDoc failure), the catch block keeps the user signed in (user stays set) but clears role/employeeId/displayName/operationalRoles/employmentStatus to their empty defaults and sets loading=false (AuthContext.jsx lines 97-116). There is no error flag in the context value (line 140 exposes only user, role, ids, login/logout/resetPassword, loading) and no retry. The resolution is a one-shot read (employeeSession.js resolveEmployeeSession, lines 49-77), so a momentary network blip during sign-in produces the same terminal state as an unprovisioned account, and Issue #100's employmentStatus signal — intended to let the UI say 'your account is not currently active' — is also nulled here, making a transient failure indistinguishable from a legitimately inactive/unmigrated account.",
       "impact": "A user who hits a transient read failure at sign-in lands in an authenticated-but-access-less app with no explanation and no way to recover except manually signing out and back in. Because the error is only console.error'd and never surfaced, this presents as 'the app suddenly shows me nothing' with no distinction from a real permissions problem.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 909,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -361,7 +369,8 @@
       ],
       "problem": "The codebase has a dedicated, unit-tested safe-copy helper `workflowActionErrorMessage(err)` (field-ops-app-vite/src/domain/workflowActionError.js) that explicitly 'NEVER surfaces a raw err.message, a Firebase/Functions code, a stack, a UID, or a document id', and TechnicianWorkOrderActions.jsx uses it. But the two sibling field-execution surfaces bypass it: ExecutionCapture.jsx calls `setError(err.message)` in both adjustQty (line 41) and submitNote (line 57), and PartsScanner.jsx uses `err?.message` in invoke() (line 192). Both write through the `updateWorkOrderExecutionData` callable, which throws HttpsError, so raw messages / 'internal' codes are shown to technicians. ExecutionCapture has no fallback, so an error whose `.message` is undefined renders an empty red warning box with no text.",
       "impact": "Technicians in the field see inconsistent, unpolished, sometimes blank error feedback that can expose backend/Functions internals and violates the app's own established safe-copy convention. An empty error box gives no indication of what failed or that nothing was changed.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 876,
       "source": "round-1-scan-not-top10"
     },
     {
@@ -392,7 +401,7 @@
       ],
       "problem": "Jobs.jsx (field-ops-app-vite/src/modules/jobs/Jobs.jsx) still carries the full add-a-row focus + live-region apparatus — `announcement`/`setAnnouncement`, `focusRowId`/`setFocusRowId`, `newRowRef`, `focusedOnceRef`, the `useEffect` that focuses the new row (lines 25-36), the `<p role=\"status\" aria-live=\"polite\">{announcement}</p>` region (line 46), and the per-row `ref`/`tabIndex` wiring (lines 75-76). But the header comment documents that the legacy 'New Job' create form was deliberately removed and replaced with a link to the Work Order wizard, so nothing ever calls setFocusRowId or setAnnouncement. The effect never runs, the aria-live region is permanently empty, and the row ref/tabIndex branches are always false.",
       "impact": "Misleading dead code: extensive comments describe focus/announcement behavior that can never occur, the advertised screen-reader success announcement never fires, and future maintainers must reason about state that has no effect. Straightforward deletion.",
-      "status": "BACKLOG",
+      "status": "DROPPED",
       "source": "round-1-scan-not-top10"
     },
     {
@@ -407,7 +416,8 @@
       ],
       "problem": "ReceiveAgainstPurchaseOrder.jsx owns a 4-step state machine (SELECT_CANDIDATE -> SELECT_LOCATION -> CONFIRM -> RESULT) with two async handlers (chooseCandidate calling fetchReceivingLocationOptions, submit calling submitReceiveInventoryStock), a mountedRef cancellation guard, a restart()/Back path, and Loading/Empty/Failure branches. Every pure helper around it is tested (test/receiveAgainstPurchaseOrder.test.mjs for the view-model, receivingTransport.test.jsx, receivingLocationOptionAdapter.test.jsx), but the only test that touches the component, test/receivingWorkspace.test.mjs, is a plain-text source SCAN (asserts 'exactly one file', import invariants) and never renders or drives the component. So the actual step wiring, submit path, back/restart resets, mountedRef guard, and error/empty rendering have zero behavioral coverage.",
       "impact": "This is the single source of truth for governed receiving, consumed by two launch points (Inventory > Receiving workspace and the FieldMode PartsScanner Receive action). A regression in step transitions, the submit call, or the fail-closed Failure/Empty branches would ship silently and break the only path technicians use to receive stock.",
-      "status": "BACKLOG",
+      "status": "FIXED",
+      "pr": 898,
       "source": "round-1-scan-not-top10"
     },
     {
