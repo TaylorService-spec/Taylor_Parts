@@ -29,6 +29,8 @@ export function AuthProvider({ children }) {
   const [operationalRoles, setOperationalRoles] = useState([]);
   const [employmentStatus, setEmploymentStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [identityError, setIdentityError] = useState(null);
+  const [retryGeneration, setRetryGeneration] = useState(0);
 
   useEffect(() => {
     // Race-condition guard: onAuthStateChanged's callback is async
@@ -74,6 +76,7 @@ export function AuthProvider({ children }) {
       // at mount, so any consumer gating on `loading` correctly waits
       // out this resolution too.
       setLoading(true);
+      setIdentityError(null);
       setRole(null);
       setEmployeeId(null);
       setDisplayName(null);
@@ -97,6 +100,7 @@ export function AuthProvider({ children }) {
       } catch (err) {
         if (!isMounted || thisGeneration !== generation) return;
 
+        setIdentityError("Your account details could not be loaded. Please retry.");
         // A denied or failed read is never treated as successful
         // identity resolution, and never falls back to any default
         // role -- the authenticated Firebase user stays in `user`
@@ -120,7 +124,7 @@ export function AuthProvider({ children }) {
       isMounted = false;
       unsub();
     };
-  }, []);
+  }, [retryGeneration]);
 
   const login = (email, password) =>
     signInWithEmailAndPassword(auth, email, password);
@@ -137,7 +141,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, resetPassword, loading }}
+      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, resetPassword, loading, identityError, retryIdentityResolution: () => setRetryGeneration((n) => n + 1) }}
     >
       {children}
     </AuthContext.Provider>
