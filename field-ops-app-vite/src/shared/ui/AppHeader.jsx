@@ -57,20 +57,36 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
     accessVersion,
     enabled: canSeeReorderRequests,
   });
-  const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
-  const { data: partsManagerRequests } = useReorderRequestsByStatus(
+  const { data: pendingReorderRequests, error: pendingReorderRequestsError } = useReorderRequests(
+    canSeeReorderRequests
+  );
+  const { data: partsManagerRequests, error: partsManagerRequestsError } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
     canSeeReorderRequests
   );
-  const { data: assignedToYouRequests } = useReorderRequestsAssignedTo(
+  const { data: assignedToYouRequests, error: assignedToYouRequestsError } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
     canSeeReorderRequests
   );
-  const { data: purchasingStartedRequests } = useReorderRequestsByStatus(
+  const { data: purchasingStartedRequests, error: purchasingStartedRequestsError } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
     canSeeReorderRequests
   );
+  // site-work round-2 #4 (appheader-discards-reorder-error) -- each of the four
+  // reorder-request subscriptions above already exposes its own onSnapshot `error`
+  // (see hooks/useReorderRequests.js's W2 notes); this used to be discarded by
+  // destructuring only `data`, so a failed subscription rendered the exact same
+  // "no pending reorder requests" / undercounted bell as a genuinely empty queue,
+  // with zero indication to the admin/dispatcher that a read actually failed.
+  // Any one of the four failing is surfaced -- NotificationPanel can no longer
+  // render a confidently-wrong empty/undercounted state when a read failed.
+  const reorderRequestsError =
+    pendingReorderRequestsError ||
+    partsManagerRequestsError ||
+    assignedToYouRequestsError ||
+    purchasingStartedRequestsError ||
+    null;
 
   return (
     <div className="fo-appheader">
@@ -109,6 +125,7 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
             partsManagerRequests={partsManagerRequests}
             assignedToYouRequests={assignedToYouRequests}
             purchasingStartedRequests={purchasingStartedRequests}
+            error={reorderRequestsError}
             resolveName={resolveName}
           />
         )}
