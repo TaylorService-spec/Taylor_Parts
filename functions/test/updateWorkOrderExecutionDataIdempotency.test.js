@@ -109,3 +109,15 @@ test("empty idempotencyKey is rejected (would collapse distinct calls to one mar
     (err) => err.code === "invalid-argument",
   );
 });
+
+for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
+  test(`terminal ${status} Work Order rejects execution-data writes`, async () => {
+    const uid = id("uid"), tech = id("tech"), woId = id("WO");
+    await seedTechUser(uid, tech);
+    await db.collection(WOS).doc(woId).set({ woNumber: woId, status, assignedTechId: tech, inventorySnapshot: [{ sku: "A", qtyUsed: 0 }] });
+    await assert.rejects(
+      updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, executionNote: "late edit" }, uid)),
+      (err) => err.code === "failed-precondition",
+    );
+  });
+}

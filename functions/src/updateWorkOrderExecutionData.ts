@@ -16,6 +16,7 @@ import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
 import { executionDataAuditId, mergeQtyUsed, type QtyUsedDelta } from "./workOrderExecutionMath";
+import { TERMINAL_STATUSES } from "./transitionEngine";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import type { WorkOrder, InventorySnapshotItem } from "./types/workOrder";
 
@@ -122,6 +123,11 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
     // never written by this function.
     if (wo.assignedTechId !== caller.technicianId) {
       throw new HttpsError("permission-denied", "This Work Order is not assigned to you.");
+    }
+    // Completed, closed, and cancelled records are final. The assignment remains on the document after a
+    // transition, so ownership alone must not keep this mutable execution-write path open indefinitely.
+    if (TERMINAL_STATUSES.has(wo.status)) {
+      throw new HttpsError("failed-precondition", "Execution data cannot be changed on a terminal Work Order.");
     }
 
     const fields: string[] = [];
