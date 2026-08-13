@@ -32,7 +32,17 @@ export default function ExecutionCapture({ workOrder }) {
   const plannedParts = (workOrder.inventorySnapshot ?? []).filter((item) => item.qtyPlanned);
   const executionLog = workOrder.executionLog ?? [];
 
-  async function adjustQty(sku, delta) {
+  async function adjustQty(sku, delta, item) {
+    // Recording more than the plan is legitimate but must be deliberate:
+    // field testing booked 13 against a 1-part plan with a stray thumb and no
+    // warning at all. Mirrors PartsScanner's over-plan guard exactly (same
+    // copy, same window.confirm gate) so the two write paths behave alike.
+    const planned = item?.qtyPlanned;
+    const nextQty = (item?.qtyUsed ?? 0) + delta;
+    if (delta > 0 && typeof planned === "number" && nextQty > planned) {
+      const ok = window.confirm(`The plan says ${planned}. Record ${nextQty}?`);
+      if (!ok) return;
+    }
     setSubmittingSku(sku);
     setError(null);
     try {
@@ -90,10 +100,10 @@ export default function ExecutionCapture({ workOrder }) {
                 <span style={{ flex: 1 }}>
                   {displayName} -- {qtyUsed} / {item.qtyPlanned} used
                 </span>
-                <button type="button" disabled={busy || qtyUsed <= 0} onClick={() => adjustQty(item.sku, -1)}>
+                <button type="button" disabled={busy || qtyUsed <= 0} onClick={() => adjustQty(item.sku, -1, item)}>
                   -
                 </button>
-                <button type="button" disabled={busy} onClick={() => adjustQty(item.sku, 1)}>
+                <button type="button" disabled={busy} onClick={() => adjustQty(item.sku, 1, item)}>
                   +
                 </button>
               </div>
