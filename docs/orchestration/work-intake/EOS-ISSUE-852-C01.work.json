@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C01",
+  "title": "#852 sector 01: Inventory integrity + transfer/receiving flows",
+  "intent": "Read-only analysis of sector 01 (Inventory integrity + transfer/receiving flows); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "functions/src/inventoryService.ts",
+    "functions/src/receiving"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C01.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "a8e4a58535a433f109a873c94af6cb029f054a888a9dcba9ba3fc8f221ebf54a"
+}
