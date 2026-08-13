@@ -440,6 +440,141 @@ async function main() {
     assert.equal(outcome.aggregates[0].countRows, 2);
   });
 
+  // --- site-work #5: date-field eq/ne against a real Firestore Timestamp ---
+  // customer.createdAt is stored here as a JS Date (admin SDK stores it as
+  // a Timestamp on read-back), matching how a genuine date field arrives
+  // from Firestore -- NOT the plain epoch-ms number every other check()
+  // above uses for its own `createdAt`, which never exercised this path.
+  // Before the fix, `eq`/`ne` compared that Timestamp with `===` against
+  // the filter's epoch-ms/ISO value, so `eq` always returned false (zero
+  // rows) and `ne` always returned true (every row) -- a silently wrong
+  // "success" result. `before`/`after` already normalized both sides via
+  // `toComparableDate`; this fix reuses that exact helper for `eq`/`ne`.
+  await check("date eq matches a row whose Timestamp equals the filter's epoch-ms value (was: always zero rows)", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    const targetMillis = new Date("2026-03-01T00:00:00.000Z").getTime();
+    await seedCustomers([
+      { name: `${marker}-OnDate`, status: "Active", createdAt: new Date(targetMillis) },
+      { name: `${marker}-OffDate`, status: "Active", createdAt: new Date(targetMillis + 86400000) },
+    ]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.createdAt", op: "eq", value: targetMillis },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.kind, "results");
+    assert.equal(outcome.rowCount, 1, "eq on a matching Timestamp date must return exactly the matching row");
+    assert.equal(outcome.rows[0]["customer.name"], `${marker}-OnDate`);
+  });
+
+  await check("date eq returns no rows for a non-matching date (proves it isn't accidentally matching everything either)", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    const seededMillis = new Date("2026-03-02T00:00:00.000Z").getTime();
+    const nonMatchingMillis = seededMillis + 86400000;
+    await seedCustomers([{ name: `${marker}-Only`, status: "Active", createdAt: new Date(seededMillis) }]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.createdAt", op: "eq", value: nonMatchingMillis },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.kind, "empty");
+    assert.equal(outcome.rowCount, 0);
+  });
+
+  await check("date ne is the exact complement of date eq (was: always matched every row)", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    const targetMillis = new Date("2026-03-03T00:00:00.000Z").getTime();
+    await seedCustomers([
+      { name: `${marker}-OnDate`, status: "Active", createdAt: new Date(targetMillis) },
+      { name: `${marker}-OffDate`, status: "Active", createdAt: new Date(targetMillis + 86400000) },
+    ]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.createdAt", op: "ne", value: targetMillis },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.kind, "results");
+    assert.equal(outcome.rowCount, 1, "ne must exclude exactly the matching-date row, not zero and not both");
+    assert.equal(outcome.rows[0]["customer.name"], `${marker}-OffDate`);
+  });
+
+  await check("date before/after against a real Timestamp are unchanged by this fix (already normalized both sides)", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    const midMillis = new Date("2026-03-04T12:00:00.000Z").getTime();
+    await seedCustomers([
+      { name: `${marker}-Earlier`, status: "Active", createdAt: new Date(midMillis - 86400000) },
+      { name: `${marker}-Later`, status: "Active", createdAt: new Date(midMillis + 86400000) },
+    ]);
+    const before = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.createdAt", op: "before", value: midMillis },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(before.rowCount, 1);
+    assert.equal(before.rows[0]["customer.name"], `${marker}-Earlier`);
+
+    const after = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.createdAt", op: "after", value: midMillis },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(after.rowCount, 1);
+    assert.equal(after.rows[0]["customer.name"], `${marker}-Later`);
+  });
+
   // --- Relationship traversal: BOTH gates required ---
   await check("a related-object field requires BOTH the traversal capability AND the related field's own capability", async () => {
     const runnerUid1 = await seedRunner();

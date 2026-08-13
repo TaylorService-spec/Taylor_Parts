@@ -570,8 +570,24 @@ function matchesFilter(doc: Record<string, unknown>, objectId: string, flt: { fi
   if (!field) return true; // unresolvable somehow; validator already guarantees this never happens for an active filter
   const raw = getFieldValue(doc, objectId, field);
   switch (flt.op) {
-    case "eq": return raw === flt.value;
-    case "ne": return raw !== flt.value;
+    case "eq":
+      if (field.dataType === "date") {
+        const r = toComparableDate(raw);
+        const v = toComparableDate(flt.value);
+        return r !== null && v !== null && r === v;
+      }
+      return raw === flt.value;
+    case "ne":
+      if (field.dataType === "date") {
+        const r = toComparableDate(raw);
+        const v = toComparableDate(flt.value);
+        // Mirror `eq`'s complement exactly: unresolvable dates never match
+        // either "equal" or "not equal" (fail closed, consistent with
+        // `before`/`after`/`between` below, which also require both
+        // sides to normalize before comparing).
+        return r !== null && v !== null && r !== v;
+      }
+      return raw !== flt.value;
     case "gt": return typeof raw === "number" && typeof flt.value === "number" && raw > flt.value;
     case "gte": return typeof raw === "number" && typeof flt.value === "number" && raw >= flt.value;
     case "lt": return typeof raw === "number" && typeof flt.value === "number" && raw < flt.value;
