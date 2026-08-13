@@ -10,7 +10,12 @@ import { buildReviewAuthorization, resolveReviewAuthorization } from "./reviewAu
 
 const SECRET = "sk-transport-canary-2481";
 const BOUND = { workId: "WORK-1", reviewId: "REVIEW-1", sourceCommit: "b".repeat(40), workArtifactSha256: "c".repeat(64) };
-const artifact = buildReviewAuthorization({ ...BOUND, maxSpendUsd: 0.25, expiresAt: "2026-08-12T06:00:00.000Z", provenance: "test" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+// expiresAt is FAR-FUTURE (matches the 2099 convention in intakeReview/secretProvider/intakeBrokeredAcceptance
+// tests). The broker's use-time expiry re-check (validateCapabilityGrant → isVerifiedReviewAuthorization) has no
+// injected clock and consults the REAL wall clock, so a near-dated fixture becomes a time-bomb that starts
+// failing once real time passes it. A far-future expiry keeps "a valid, non-expired authorization" deterministic
+// on any date; expired-authorization rejection is covered separately in reviewAuthorization.test.mjs.
+const artifact = buildReviewAuthorization({ ...BOUND, maxSpendUsd: 0.25, expiresAt: "2099-01-01T00:00:00.000Z", provenance: "test" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
 const GRANT = resolveReviewAuthorization({ ...BOUND, location: artifact.artifactLocation, sha256: artifact.sha256, bytes: JSON.stringify(artifact), now: "2026-08-11T06:30:00.000Z" });
 const invocation = (id = "INV-1", changes = {}) => ({ ...BOUND, invocationId: id, model: "test-model", ...changes });
 
@@ -27,7 +32,7 @@ test("OpenAI transport resolves the credential only inside authorized EOS execut
 test("unauthorized transport never invokes provider", async () => {
   let calls = 0;
   const broker = createSecretBroker({ platform: "win32", secretRoot: ".", resolveSecret: () => SECRET });
-  const deniedArtifact = buildReviewAuthorization({ ...BOUND, reviewId: "REVIEW-DENIED", maxSpendUsd: 0.25, expiresAt: "2026-08-12T06:00:00.000Z", provenance: "test", budgetAuthorizationState: "UNAUTHORIZED" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+  const deniedArtifact = buildReviewAuthorization({ ...BOUND, reviewId: "REVIEW-DENIED", maxSpendUsd: 0.25, expiresAt: "2099-01-01T00:00:00.000Z", provenance: "test", budgetAuthorizationState: "UNAUTHORIZED" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
   const denied = resolveReviewAuthorization({ workId: deniedArtifact.workId, reviewId: deniedArtifact.reviewId, location: deniedArtifact.artifactLocation, sha256: deniedArtifact.sha256, bytes: JSON.stringify(deniedArtifact), now: "2026-08-11T06:30:00.000Z" });
   const transport = createOpenAICredentialTransport({ broker, authorizedInvocation: denied, spendLedger: createInMemorySpendLedger(), estimateSpendUsd: () => 0.1, invokeOpenAI: async () => { calls++; } });
   await assert.rejects(() => transport(invocation("INV-DENIED", { reviewId: "REVIEW-DENIED" })), { code: "BUDGET_NOT_AUTHORIZED" });
