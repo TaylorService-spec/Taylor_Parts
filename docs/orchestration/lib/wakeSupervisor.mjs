@@ -12,6 +12,7 @@
 // MANUAL_RUNTIME_TRIGGER vs AUTOMATIC_TRIGGER · explicit backoff. Supervised, bounded, no overnight.
 
 import { resolveDispatchModel } from "./modelPolicy.mjs";
+import { evaluateBudgetStop, evaluateProviderCapacityStop, invocationEconomicCap } from "./costCapacity.mjs";
 
 export const TRIGGER_MECHANISMS = Object.freeze(["MANUAL", "AUTOMATIC", "NO_WAKE_MECHANISM", "FAILED"]);
 export const WAKE_DECISIONS = Object.freeze(["TRIGGER", "HOLD", "CHECKPOINT"]);
@@ -30,7 +31,7 @@ export const DEFAULT_GUARDRAILS = Object.freeze({
   disallowedTools: Object.freeze(["WebFetch", "WebSearch"]),
   model: resolveDispatchModel({ delegated: true }).selectedModel,
   maxTurns: 40,
-  maxBudgetUsd: 2,
+  maxBudgetUsd: null, // Claude modeled dollars are not billed spend; set only via an explicit economic cap
   wallClockSec: 900,       // the supervisor imposes this (no CLI flag) and SIGTERMs on breach
   outputFormat: "json",    // machine-parse result + total_cost_usd
 });
@@ -51,7 +52,7 @@ export const DEFAULT_GUARDRAILS = Object.freeze({
 export function assessReadiness(item, ctx = {}) {
   const { governor = {}, network = "UNKNOWN", budgetRemainingUsd = null, triggerKind = "AUTOMATIC_TRIGGER",
     lastRun = null, overnight = false } = ctx;
-  const hold = (reason, mechanism = "NO_WAKE_MECHANISM") => ({ decision: "HOLD", reason, item, guardrails: null, triggerMechanism: mechanism, triggerKind });
+  const hold = (reason, mechanism = "NO_WAKE_MECHANISM", extra = {}) => ({ decision: "HOLD", reason, item, guardrails: null, triggerMechanism: mechanism, triggerKind, ...extra });
 
   if (overnight) return hold("no-run window (supervised pilot: no overnight)");
   if (!item) return { decision: "CHECKPOINT", reason: "no work item — nothing to trigger", item: null, guardrails: null, triggerMechanism: "NO_WAKE_MECHANISM", triggerKind };
@@ -66,7 +67,13 @@ export function assessReadiness(item, ctx = {}) {
     ? governor.remoteAiUsed < governor.remoteAiMax : false;
   if (!slotFree) return hold(`no free REMOTE_AI slot (${governor.remoteAiUsed}/${governor.remoteAiMax}) — respect the 2/1/1 governor`);
   if (network !== "NORMAL") return hold(`network ${network} — hold until NORMAL`);
-  if (budgetRemainingUsd != null && budgetRemainingUsd <= 0) return hold("budget exhausted");
+  const capacityStopReason = evaluateProviderCapacityStop(ctx.providerCapacityUsage || {});
+  if (capacityStopReason) return hold(`provider capacity exhausted: ${capacityStopReason}`, "NO_WAKE_MECHANISM", { budgetStopReason: capacityStopReason });
+  const budgetStopReason = evaluateBudgetStop(ctx.costCapacity || {});
+  if (budgetStopReason) return hold(`budget exhausted: ${budgetStopReason}`, "NO_WAKE_MECHANISM", { budgetStopReason });
+  // Backward compatibility: an explicitly supplied legacy zero remains fail-closed. Runtime defaults no
+  // longer inject this synthetic field for subscription-backed Claude work.
+  if (budgetRemainingUsd != null && budgetRemainingUsd <= 0) return hold("budget exhausted: LEGACY_EXPLICIT_LIMIT");
 
   // Dedup: the same item at the same repo SHA must not re-fire.
   if (lastRun && lastRun.itemId === item.id && lastRun.sha === item.sha) {
@@ -98,8 +105,9 @@ export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUA
     "--permission-mode", guardrails.permissionMode,
     "--model", guardrails.model,
     "--max-turns", String(guardrails.maxTurns),
-    "--max-budget-usd", String(guardrails.maxBudgetUsd),
   ];
+  const economicCap = invocationEconomicCap({ explicitEconomicCostCapUsd: guardrails.maxBudgetUsd });
+  if (economicCap != null) argv.push("--max-budget-usd", String(economicCap));
   for (const t of guardrails.allowedTools) { argv.push("--allowedTools", t); }
   for (const t of guardrails.disallowedTools || []) { argv.push("--disallowedTools", t); }
   return {

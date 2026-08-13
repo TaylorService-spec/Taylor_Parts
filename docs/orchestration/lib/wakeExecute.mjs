@@ -15,6 +15,7 @@
 
 import { assessReadiness, buildClaudeInvocation, DEFAULT_GUARDRAILS } from "./wakeSupervisor.mjs";
 import { resolveDispatchModel } from "./modelPolicy.mjs";
+import { createCostCapacityTelemetry, UNKNOWN_COST } from "./costCapacity.mjs";
 
 export const WAKE_EXECUTION_OUTCOMES = Object.freeze(["SPAWNED_COMPLETED", "SPAWNED_FAILED", "HELD", "CHECKPOINT"]);
 export const WAKE_FAILURE_KINDS = Object.freeze([
@@ -48,7 +49,7 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
   // 1. Readiness gate — the ONLY thing that permits a spawn. HOLD/CHECKPOINT spawn zero.
   const decision = assessReadiness(item, ctx);
   if (decision.decision !== "TRIGGER") {
-    return refuse(decision.decision === "HOLD" ? "HELD" : "CHECKPOINT", decision.reason, { wakeState: "WAITING_FOR_TRIGGER", triggerMechanism: decision.triggerMechanism });
+    return refuse(decision.decision === "HOLD" ? "HELD" : "CHECKPOINT", decision.reason, { wakeState: "WAITING_FOR_TRIGGER", triggerMechanism: decision.triggerMechanism, budgetStopReason: decision.budgetStopReason || null });
   }
 
   // 2. Source provenance must be acceptable (CURRENT) for a live run against source.
@@ -75,7 +76,7 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
   }
 
   const triggerMechanism = decision.triggerKind === "MANUAL_RUNTIME_TRIGGER" ? "MANUAL_RUNTIME_TRIGGER" : "AUTOMATIC_TRIGGER";
-  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel }) });
+  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }) });
   let leaseReleased = false;
   const releaseLease = () => { if (leaseReleased) return true; try { lease.release(); leaseReleased = true; return true; } catch { return false; } };
 
@@ -106,13 +107,14 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
     // Only NOW is COMPLETED provable (clean exit + parseable result).
     base.wakeState = "COMPLETED";
     if (persistResult) {
-      try { persistResult({ item, wake: base, result: parsed, cost: parsed.total_cost_usd ?? null, model: model.selectedModel }); }
+      try { persistResult({ item, wake: base, result: parsed, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, model: model.selectedModel }); }
       catch (e) { return fail("RESULT_PERSIST_FAILURE", e.message, base, releaseLease); }
     }
     const releasedOk = releaseLease();
     return Object.freeze({
       outcome: "SPAWNED_COMPLETED", spawned: true, wakeState: "COMPLETED", triggerMechanism,
-      selectedModel: model.selectedModel, contextPackage, cost: parsed.total_cost_usd ?? null,
+      selectedModel: model.selectedModel, contextPackage, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null,
+      costCapacity: createCostCapacityTelemetry({ actualProviderCostUsd: UNKNOWN_COST, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, providerCapacityUsage: ctx.providerCapacityUsage || {}, budgetStopReason: null, costProvenance: { actual: "UNAVAILABLE", estimated: parsed.total_cost_usd == null ? "UNAVAILABLE" : "CLAUDE_CLI_MODELED" }, freshness: parsed.total_cost_usd == null ? "UNKNOWN" : "CURRENT" }),
       result: parsed.result, leaseReleased: releasedOk,
       failureKind: releasedOk ? null : "LEASE_RELEASE_FAILURE",
     });

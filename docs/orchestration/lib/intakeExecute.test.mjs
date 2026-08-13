@@ -32,6 +32,9 @@ test("EXECUTION_AUTHORIZED + free slot + worker → COMPLETE; content-addressed 
   assert.equal(r.executed, true);
   assert.equal(r.wake.outcome, "SPAWNED_COMPLETED");
   assert.equal(r.status.state, "COMPLETE");
+  assert.equal(r.status.actualProviderCostUsd, "UNKNOWN");
+  assert.equal(r.status.estimatedExecutionCostUsd, 0);
+  assert.equal(r.status.costProvenance.estimated, "CLAUDE_CLI_MODELED");
   assert.equal(verifyIntakeStatus(r.status).ok, true);
   // COMPLETE status carries the exact result manifest ref
   assert.equal(r.status.resultRef.location, r.result.manifestLocation);

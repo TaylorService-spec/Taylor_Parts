@@ -57,7 +57,8 @@ test("STAGING TEST (corrected artifact, committed): resolve → STAGED → no ex
   assert.equal(resolvePointer(r.status.result).resultIndexLocation, resultIndexLocation("EOS-CHATGPT-CC-001"));
   assert.equal(r.status.result, "result://EOS-CHATGPT-CC-001");
   // no worker ran, no cost
-  assert.equal(r.status.costToDateUsd, 0);
+  assert.equal(r.status.actualProviderCostUsd, "UNKNOWN");
+  assert.equal(r.status.estimatedExecutionCostUsd, null);
   assert.equal(r.status.activeWorker, null);
 });
 

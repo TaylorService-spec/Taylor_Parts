@@ -125,7 +125,9 @@ work://<id>    →  docs/orchestration/work-intake/<id>.work.json
 `resolvePointer(pointer)` returns the repo path plus the sibling status/result locations, so a single
 deterministic read reaches the others. The compact status artifact summarizes — it does not dump telemetry:
 `state` (STAGED · READY · ACTIVE · REVIEWING · CORRECTING · BLOCKED · OWNER_REQUIRED · COMPLETE · FAILED),
-`currentWork`, `activeWorker`, `startedAt`/`updatedAt`, `ownerActionRequired`, `costToDateUsd`, the
+`currentWork`, `activeWorker`, `startedAt`/`updatedAt`, `ownerActionRequired`, explicit status-v2
+`actualProviderCostUsd` (or `UNKNOWN`), `estimatedExecutionCostUsd`, `providerCapacityUsage`,
+`budgetStopReason`, `costProvenance`/freshness, the
 `workArtifact` ref, the `resultRef` (present once COMPLETE), `provenance`, and its own fail-closed `sha256`.
 A ChatGPT read connector, given only a requestId, reads `status://<id>`; when COMPLETE, the `resultRef`
 carries the exact content-addressed manifest path + hash.

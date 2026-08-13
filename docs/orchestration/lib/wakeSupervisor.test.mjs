@@ -74,7 +74,9 @@ test("the constructed invocation is fully guardrailed and never uses bypass perm
   assert.equal(inv.bin, "claude");
   const s = inv.argv.join(" ");
   assert.match(s, /--permission-mode dontAsk/);
-  assert.match(s, /--max-budget-usd 2/);
+  assert.doesNotMatch(s, /--max-budget-usd/, "subscription-backed Claude has no implicit modeled-dollar stop");
+  const capped = buildClaudeInvocation({ contextPackage: { role: "worker", scope: ["orchestration"] }, guardrails: { ...DEFAULT_GUARDRAILS, maxBudgetUsd: 2 } }).argv.join(" ");
+  assert.match(capped, /--max-budget-usd 2/, "an explicit economic-cost cap remains enforceable");
   assert.match(s, /--max-turns 40/);
   assert.match(s, /--output-format json/);
   assert.ok(!/bypass|dangerously/i.test(s), "must never use bypass/dangerous permissions");

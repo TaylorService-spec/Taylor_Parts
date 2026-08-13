@@ -11,6 +11,7 @@
 // summarizes the existing selector decision + worker outcome; detailed evidence stays referenced.
 
 import { stableJson, sha256Bytes, statusPointer, resultPointer, workPointer } from "./workIntake.mjs";
+import { createCostCapacityTelemetry } from "./costCapacity.mjs";
 
 // Compact operational states a reader (Owner via ChatGPT) needs. Distinct from INTAKE_STATUS (the request's
 // governance stage) and from the worker's internal lifecycle — this is the summarized "where is it".
@@ -92,6 +93,7 @@ export function buildIntakeStatus({
   ownerActionRequired = false,
   ownerQuestion = null,
   costToDateUsd = 0,
+  costCapacity = null,
   artifactRefs = [],
   resultRef = null,
   workArtifact = null,
@@ -104,8 +106,9 @@ export function buildIntakeStatus({
   if (ownerActionRequired && !ownerQuestion) throw new Error("buildIntakeStatus: ownerActionRequired needs an ownerQuestion");
   if (state === "COMPLETE" && !resultRef) throw new Error("buildIntakeStatus: COMPLETE requires a resultRef");
 
+  const modernCost = costCapacity ? createCostCapacityTelemetry(costCapacity) : null;
   const base = {
-    schema: "eos.intake.status/1",
+    schema: modernCost ? "eos.intake.status/2" : "eos.intake.status/1",
     requestId,
     pointer: statusPointer(requestId),
     work: workPointer(requestId),
@@ -117,7 +120,7 @@ export function buildIntakeStatus({
     updatedAt,
     ownerActionRequired: ownerActionRequired === true,
     ownerQuestion: ownerActionRequired ? ownerQuestion : null,
-    costToDateUsd: Number(costToDateUsd) || 0,
+    ...(modernCost ? modernCost : { costToDateUsd: Number(costToDateUsd) || 0 }),
     // references only — never inlined substance
     workArtifact: workArtifact ? { location: workArtifact.location, sha256: workArtifact.sha256 } : null,
     resultRef: resultRef ? { location: resultRef.location, sha256: resultRef.sha256, pointer: resultPointer(requestId) } : null,

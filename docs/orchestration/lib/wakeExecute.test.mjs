@@ -29,7 +29,9 @@ test("TRIGGER + clean run → spawn EXACTLY once → SPAWNED_COMPLETED; lease re
   assert.equal(runner.calls.length, 1, "spawns exactly once");
   assert.equal(r.outcome, "SPAWNED_COMPLETED");
   assert.equal(r.wakeState, "COMPLETED");
-  assert.equal(r.cost, 0.42);
+  assert.equal(r.estimatedExecutionCostUsd, 0.42);
+  assert.equal(r.costCapacity.actualProviderCostUsd, "UNKNOWN");
+  assert.equal(r.costCapacity.costProvenance.estimated, "CLAUDE_CLI_MODELED");
   assert.equal(lease.state.acquired, 1);
   assert.ok(lease.state.released >= 1 && r.leaseReleased, "lease always released");
   // selected model is the #759 resolved model (delegated → sonnet)

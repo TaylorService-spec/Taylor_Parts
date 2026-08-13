@@ -17,6 +17,7 @@
 import { resolveWorkIntake, intakeToWorkItem } from "./workIntake.mjs";
 import { selectNextWork } from "./selectNextWork.mjs";
 import { buildIntakeStatus, deriveStatusState } from "./intakeStatus.mjs";
+import { createCostCapacityTelemetry } from "./costCapacity.mjs";
 
 // Capabilities the EOS Secret Broker would gate. Only OPENAI_REVIEW exists today (the paid GPT reviewer).
 export const CAPABILITIES = Object.freeze(["OPENAI_REVIEW"]);
@@ -118,7 +119,7 @@ export function ingestIntake({
     updatedAt: now,
     ownerActionRequired: gate.ownerRequired,
     ownerQuestion: gate.ownerRequired ? (artifact.authority.ownerQuestion || item.ownerQuestion || "Owner decision required") : null,
-    costToDateUsd: worker && worker.costToDateUsd ? worker.costToDateUsd : 0,
+    costCapacity: worker?.costCapacity || createCostCapacityTelemetry({ estimatedExecutionCostUsd: worker?.costToDateUsd ?? null, costProvenance: { estimated: worker?.costToDateUsd == null ? "UNAVAILABLE" : "LEGACY_UNCLASSIFIED_ESTIMATE" } }),
     workArtifact: { location: artifact.artifactLocation, sha256: artifact.sha256 },
     resultRef: worker && worker.resultRef ? worker.resultRef : null,
     provenance: { producer: artifact.source.producer, provenance: artifact.source.provenance, sourceCommit: sourceCommit || null },
