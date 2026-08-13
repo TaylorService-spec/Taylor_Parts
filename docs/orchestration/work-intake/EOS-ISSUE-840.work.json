@@ -1,0 +1,38 @@
+{
+  "requestId": "EOS-ISSUE-840",
+  "title": "EOS — governed reviewer correction redispatch",
+  "intent": "Close the orchestration gap exposed on PR #839: a verified reviewer correction can be durably posted to an EOS-produced PR but does not automatically become a new correction work item or redispatch the original producer.\n\nRequired work:\nIntroduce a deterministic governed correction lifecycle:\n\n`verified reviewer/verifier correction → CORRECTION_REQUESTED → bounded correction AgentRequest → original producer → new head/result → automatic re-review`\n\nRequirements:\n1. Arbitrary PR comments MUST NOT wake Claude/Cortex.\n2. Only a structured, verified correction signal tied to an EOS request/result/PR may create a correction request.\n3. Bind the correction to original requestId/workId, producer/provider, PR, reviewed head SHA, verifier/reviewer evidence, and requested correction scope.\n4. Preserve #820 maximum two correction attempts. Third correctable failure must escalate/fail closed rather than redispatch indefinitely.\n5. Deduplicate repeated identical correction signals; no duplicate dispatch for the same correction hash/head.\n6. A correction against a stale head must fail closed or be revalidated against the new head before dispatch.\n7. The correction AgentRequest inherits the original governed execution profile ceiling; it may not self-escalate. If a stronger profile is needed, require governed authorization.\n8. After producer returns a new head/result, automatically enqueue the existing independent re-review path. Producer success alone cannot close the correction.\n9. Durable status must expose correction attempt count and current phase without turning PR comments into the state store.\n10. Preserve Gateway, Verifier, completion semantics, cost/capacity telemetry, Claude/Cortex isolation, integration authority, and no-auto-merge/deploy boundaries.\n\nCompletion:\nDraft PR with focused/full EOS tests, exact lifecycle evidence, and no automatic merge. Do not start implementation until PR #839 is merged.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "Implement only the reviewer/verifier correction-signal → bounded correction-request → redispatch path. Preserve the runtime recovery in PR #839 and do not broaden arbitrary PR-comment triggers.",
+    "Depends on: PR #839 merged at exact reviewed head `9d5a7c3c3227235ae794f4fcf826c972c163ecb5` or its exact merge descendant containing the reviewed correction."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/840",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T03:28:00Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-840.work.json",
+  "sha256": "5e8f1d6aef4683f54f1bff436ef0d340977701f2384355c84e48c26dd5900883",
+  "createdAt": "2026-08-13T03:11:21Z",
+  "updatedAt": "2026-08-13T03:28:00Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/840"
+    ],
+    "pullRequests": []
+  }
+}
