@@ -77,20 +77,25 @@ test("the constructed invocation is fully guardrailed and never uses bypass perm
   assert.doesNotMatch(s, /--max-budget-usd/, "subscription-backed Claude has no implicit modeled-dollar stop");
   const capped = buildClaudeInvocation({ contextPackage: { role: "worker", scope: ["orchestration"] }, guardrails: { ...DEFAULT_GUARDRAILS, maxBudgetUsd: 2 } }).argv.join(" ");
   assert.match(capped, /--max-budget-usd 2/, "an explicit economic-cost cap remains enforceable");
-  // The default correction/implementation profile is PATCH_PRODUCER — a bounded 80-turn ceiling (the legacy
-  // hard-coded 40 is gone), recorded in telemetry alongside the profile name.
-  assert.match(s, /--max-turns 80/);
-  assert.equal(inv.turnCeiling, 80);
-  assert.equal(inv.profile, "PATCH_PRODUCER");
+  // The DEFAULT/FALLBACK profile is READ_ONLY_ANALYSIS (least privilege): a bounded 40-turn ceiling, NO
+  // Edit/Write, recorded in telemetry alongside the profile name.
+  assert.match(s, /--max-turns 40/);
+  assert.equal(inv.turnCeiling, 40);
+  assert.equal(inv.profile, "READ_ONLY_ANALYSIS");
+  assert.ok(!/--allowedTools (Edit|Write)\b/.test(s), "default analysis wake grants NO Edit/Write");
   assert.match(s, /--output-format json/);
   assert.ok(!/bypass|dangerously/i.test(s), "must never use bypass/dangerous permissions");
   assert.ok(!/--allowedTools Bash(\s|$)/.test(s) && !/--allowedTools Bash\(\s*\*/.test(s), "never unrestricted Bash");
   assert.ok(inv.argv.includes("--allowedTools") && !s.includes("WebFetch") || s.includes("--disallowedTools WebFetch"));
   assert.ok(inv.wallClockSec >= 1);
-  // a differentiated profile can be requested by name; READ_ONLY_VERIFY carries the 60-turn ceiling.
+  // A differentiated profile can be requested BY NAME only (governed selection happens upstream): READ_ONLY_VERIFY
+  // carries the 60-turn ceiling and still no Write; PATCH_PRODUCER carries 80 with Write.
   const verify = buildClaudeInvocation({ contextPackage: { role: "worker", scope: ["orchestration"] }, profile: "READ_ONLY_VERIFY" });
   assert.equal(verify.turnCeiling, 60);
   assert.ok(!verify.argv.join(" ").includes("--allowedTools Write"), "read-only verify grants no Write");
+  const patch = buildClaudeInvocation({ contextPackage: { role: "worker", scope: ["orchestration"] }, profile: "PATCH_PRODUCER" });
+  assert.equal(patch.turnCeiling, 80);
+  assert.ok(patch.argv.join(" ").includes("--allowedTools Write"), "patch producer grants Write");
   assert.throws(() => buildClaudeInvocation({ contextPackage: { role: "w", scope: [] }, profile: "NOPE" }), /unknown profile/);
   assert.throws(() => buildClaudeInvocation({}), /contextPackage is required/); // must bootstrap via the shared package
 });

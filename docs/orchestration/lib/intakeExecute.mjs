@@ -19,6 +19,7 @@ import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
 import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
 import { createCostCapacityTelemetry } from "./costCapacity.mjs";
 import { classifyCompletion, completionStateToStatus, normalizeExecutionContract } from "./completionSemantics.mjs";
+import { resolveExecutionProfile } from "./executionProfiles.mjs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
@@ -72,12 +73,22 @@ export function runIntakeExecution({
     return Object.freeze({ disposition: "BLOCKED", executed: false, gate, item, capabilities, status: statusFor({ artifact, state: "BLOCKED", currentWork: `awaiting capability activation: ${blocked}`, now }) });
   }
 
+  // Governed, least-privilege execution profile (fail-closed to READ_ONLY_ANALYSIS). The REQUEST is the intake
+  // execution contract's task class (worker/request-authored — can only ever request, never self-escalate);
+  // the GRANT is the AUTHORIZED intake's authority envelope (`authorizedExecutionProfile`, set by the governed
+  // authorization process). An unauthorized/unknown escalation never widens authority — it fails closed.
+  const profileDecision = resolveExecutionProfile({
+    requestedProfile: normalizeExecutionContract(artifact.execution).taskClass,
+    authorizedProfile: artifact.authority?.authorizationState === "AUTHORIZED" ? (artifact.authority.authorizedExecutionProfile ?? null) : null,
+  });
+
   // 3. WAKE — the EXISTING Wake Supervisor. Injected runner/lease. Spawns zero on any refusal.
   const wake = executeWake({
     item: { ...item, purpose: item.purpose, scope: item.scope, modelTier: item.modelTier, workstream: item.workstream },
     ctx: { triggerKind: "AUTOMATIC_TRIGGER", ...wakeCtx },
     contextPackageFn, processRunner, lease, resolveModel,
     sourceCommit, sourceFreshness: wakeCtx.sourceFreshness ?? "CURRENT",
+    executionProfile: profileDecision.profile,
   });
 
   const heldTelemetry = () => createCostCapacityTelemetry({ providerCapacityUsage: wakeCtx.providerCapacityUsage || {}, budgetStopReason: wake.budgetStopReason || null });
@@ -85,7 +96,7 @@ export function runIntakeExecution({
   // A pre-spawn refusal/hold NEVER ran a worker — READY/HELD, unchanged.
   if (wake.spawned !== true) {
     return Object.freeze({
-      disposition: "HELD", executed: false, gate, item, capabilities, wake,
+      disposition: "HELD", executed: false, gate, item, capabilities, wake, profileDecision,
       status: statusFor({ artifact, state: "READY", currentWork: wake.reason || wake.failureDetail || wake.failureKind || "not triggered", costCapacity: heldTelemetry(), now }),
     });
   }
@@ -119,7 +130,7 @@ export function runIntakeExecution({
     const disposition = hardFailure ? "FAILED" : completion.state;
     const state = hardFailure ? "FAILED" : completionStateToStatus(completion.state);
     return Object.freeze({
-      disposition, executed: true, gate, item, capabilities, wake, completion,
+      disposition, executed: true, gate, item, capabilities, wake, completion, profileDecision,
       status: statusFor({ artifact, state, currentWork: completion.reason || wake.failureDetail || wake.failureKind || "not completed", costCapacity: heldTelemetry(), now }),
     });
   }
@@ -136,5 +147,5 @@ export function runIntakeExecution({
   // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to
   // the default-branch HEAD; a curated/pre-committed artifact can carry an explicit commit when emitted.
   const reviewReady = buildReviewReady({ requestId: artifact.requestId, artifact: result.contentLocation, commit: null });
-  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, completion, status, result: Object.freeze({ ...result, index }), reviewReady });
+  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, completion, profileDecision, status, result: Object.freeze({ ...result, index }), reviewReady });
 }

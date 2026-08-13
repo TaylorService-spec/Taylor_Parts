@@ -43,10 +43,12 @@ export function guardrailsForProfile(profileName, { model, maxBudgetUsd = null, 
   });
 }
 
-// The DEFAULT correction/implementation profile is PATCH_PRODUCER: it carries the bounded 80-turn ceiling
-// (replacing the legacy hard-coded 40 — the #836/#837 regression) plus the test/build/lint + isolated-worktree
-// capability an implementation/correction worker needs (the #834 capability gap), and NEVER merge/deploy/PR.
-export const DEFAULT_GUARDRAILS = guardrailsForProfile("PATCH_PRODUCER");
+// The DEFAULT/FALLBACK profile is READ_ONLY_ANALYSIS (least privilege): read + git-read only, no Edit/Write,
+// 40-turn ceiling. A wake runs with MORE authority (READ_ONLY_VERIFY / PATCH_PRODUCER / GOVERNED_INTEGRATION,
+// with their 60/80/100 ceilings) ONLY when a governed authorization on the intake explicitly grants it — a
+// request/worker can never self-escalate (see resolveExecutionProfile). Ordinary/analysis wakes never inherit
+// write/patch authority.
+export const DEFAULT_GUARDRAILS = guardrailsForProfile("READ_ONLY_ANALYSIS");
 
 /**
  * Token-free readiness assessment. NO model call. Decides purely from cheap durable state.

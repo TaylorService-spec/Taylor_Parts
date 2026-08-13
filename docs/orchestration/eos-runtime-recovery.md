@@ -9,9 +9,9 @@ process exit as COMPLETE**, on top of **a single hard-coded 40-turn ceiling** an
 ### 1. Bounded turn policy (replaces the hard-coded 40)
 - `executionProfiles.mjs` defines finite, differentiated task-class ceilings: `READ_ONLY_ANALYSIS ≤ 40`,
   `READ_ONLY_VERIFY ≤ 60`, `PATCH_PRODUCER ≤ 80`, `GOVERNED_INTEGRATION ≤ 100` (explicit bounded policy).
-- The default correction/implementation worker now runs the **PATCH_PRODUCER** profile → a **bounded 80-turn**
-  ceiling (the legacy hard-coded 40 is gone). The configured ceiling + profile are recorded in the invocation
-  telemetry (`turnCeiling`, `profile`).
+- The **default/fallback** wake runs `READ_ONLY_ANALYSIS` (40). A higher ceiling applies only under a higher
+  governed profile (see §2a). The configured ceiling + profile are recorded in the invocation telemetry
+  (`turnCeiling`, `profile`).
 - Max-turn exhaustion **fails closed**: `wakeExecute` detects the `error_max_turns` subtype and returns
   `MAX_TURNS_EXHAUSTED` (never a completion); the completion gate maps it to `RETURN_FOR_CORRECTION`.
 
@@ -25,6 +25,19 @@ construction (`assertProfileInvariants`), not by convention:
 - `PATCH_PRODUCER` supports isolated-worktree patch production + tests + diff/hash, but **not** push / PR /
   merge / deploy / credential / authorization.
 - `GOVERNED_INTEGRATION` is a **separate** profile (branch push + PR create), still never merge/deploy.
+
+### 2a. Governed, least-privilege profile selection (review correction)
+The profile a wake runs under is **selected by governance, never self-declared** (`resolveExecutionProfile`):
+- **Default/fallback is always `READ_ONLY_ANALYSIS`** — ordinary/analysis wakes never inherit write/patch authority.
+- **Two keys, never one:** the *request* is the intake execution contract's `taskClass` (worker/request-authored
+  — it can only ever *request*); the *grant* is the AUTHORIZED intake's `authority.authorizedExecutionProfile`
+  (set by the governed authorization process). A profile above the default is granted **only** when the governed
+  authorization permits at least the requested rank.
+- A request/worker **cannot self-escalate**: `taskClass` alone never raises privilege.
+- An unauthorized or unknown-named escalation **fails closed** to `READ_ONLY_ANALYSIS`.
+- `READ_ONLY_VERIFY` is granted only for authorized verification; `PATCH_PRODUCER` only for authorized
+  implementation/patch work; `GOVERNED_INTEGRATION` is **never auto-selected** — it must be *both* requested and
+  explicitly authorized.
 
 ### 3. Completion-semantic gate (provider success ≠ COMPLETE)
 `completionSemantics.mjs` derives the terminal status from **structured evidence**, not the worker's word:

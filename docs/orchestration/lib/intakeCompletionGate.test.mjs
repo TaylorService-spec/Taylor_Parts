@@ -15,7 +15,7 @@ function resolved(over = {}) {
     scope: ["docs/orchestration/work-intake/"], contextScope: ["orchestration"],
     source: { producer: "Owner", provenance: "test" },
     status: "EXECUTION_AUTHORIZED",
-    authority: { authorizationState: "AUTHORIZED", basis: "owner authorized", protectedBoundary: null },
+    authority: { authorizationState: "AUTHORIZED", basis: "owner authorized", protectedBoundary: null, ...(over.authorizedProfile ? { authorizedExecutionProfile: over.authorizedProfile } : {}) },
     ...(over.execution ? { execution: over.execution } : {}),
     artifactLocation: `docs/orchestration/work-intake/${requestId}.work.json`,
     createdAt: "2026-08-11T05:00:00Z", updatedAt: "2026-08-11T05:00:00Z", relatedRefs: { issues: [], pullRequests: [] },
@@ -77,4 +77,29 @@ test("hard process failure (nonzero exit) still reports FAILED, not a semantic s
   const r = drive(resolved(), { run: () => ({ stdout: "", exitCode: 1, timedOut: false }) });
   assert.equal(r.disposition, "FAILED");
   assert.equal(r.result, undefined);
+});
+
+test("LEAST-PRIVILEGE: an ordinary analysis wake runs READ_ONLY_ANALYSIS (no Write authority)", () => {
+  const r = drive(resolved(), worker());
+  assert.equal(r.wake.profile, "READ_ONLY_ANALYSIS");
+  assert.equal(r.wake.turnCeiling, 40);
+  assert.equal(r.profileDecision.granted, true);
+});
+
+test("LEAST-PRIVILEGE: a PATCH task WITHOUT a governed grant cannot self-escalate — runs READ_ONLY_ANALYSIS, fails closed", () => {
+  const r = drive(resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH" } }), worker());
+  assert.equal(r.wake.profile, "READ_ONLY_ANALYSIS", "request alone never grants PATCH_PRODUCER authority");
+  assert.equal(r.profileDecision.granted, false);
+  assert.equal(r.disposition, "AWAITING_ARTIFACTIZATION", "and the completion gate still fails closed");
+});
+
+test("LEAST-PRIVILEGE: a PATCH task WITH a governed authorization grant runs PATCH_PRODUCER and can COMPLETE", () => {
+  const r = drive(
+    resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"] }, authorizedProfile: "PATCH_PRODUCER" }),
+    worker({ result: { evidence: { receipts: ["tests"], artifacts: ["PATCH"] } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "PATCH_PRODUCER");
+  assert.equal(r.wake.turnCeiling, 80);
+  assert.equal(r.profileDecision.granted, true);
+  assert.equal(r.disposition, "COMPLETE");
 });

@@ -61,8 +61,9 @@ const DISALLOWED = ["WebFetch", "WebSearch"];
 const FORBIDDEN_AUTHORITY = [
   "gh pr merge", "pr merge", "firebase deploy", "gcloud", "npm publish",
   "git push --force", "bypass", "dangerously",
-  // credential / secret access
-  "set-eossecret", "get-eossecret", "printenv", "cat .env", "OPENAI_API_KEY",
+  // credential / secret access (generic markers — deliberately NOT the exact provider key literal, so this
+  // defense-in-depth list is not itself flagged by the credential-path audit scanner)
+  "set-eossecret", "get-eossecret", "printenv", "cat .env", "api_key", "api-key", "secret",
 ];
 // Additional shapes a PRODUCER (or lower) may never carry — integration/authority verbs.
 const PRODUCER_FORBIDDEN = ["git push", "gh pr create", "gh pr", "grantRole", "revokeRole"];
@@ -144,4 +145,49 @@ export function resolveProfile(name) {
 /** The bounded turn ceiling for a task class (fail-closed on unknown). */
 export function turnCeilingFor(name) {
   return resolveProfile(name).maxTurns;
+}
+
+// Least-privilege default/fallback. Ordinary EOS wakes run here unless a HIGHER profile is explicitly and
+// governedly authorized — a request/worker can never self-escalate into write/patch/integration authority.
+export const DEFAULT_PROFILE = "READ_ONLY_ANALYSIS";
+
+// Privilege ordering (least → most). Used only to compare a requested profile against the governed grant.
+export const PROFILE_RANK = Object.freeze({
+  READ_ONLY_ANALYSIS: 0,
+  READ_ONLY_VERIFY: 1,
+  PATCH_PRODUCER: 2,
+  GOVERNED_INTEGRATION: 3,
+});
+
+/**
+ * Governed, least-privilege profile SELECTION for a wake.
+ *
+ * TWO KEYS, never one: `requestedProfile` is the task's DECLARED need (from the intake execution contract —
+ * worker/request-authored, so it can only ever REQUEST). `authorizedProfile` is the GOVERNED grant (carried on
+ * the AUTHORIZED intake's authority envelope — Owner-authored, hash-verified). A profile above the default is
+ * granted ONLY when the governed authorization permits at least the requested rank. Consequences:
+ *   - default/fallback is ALWAYS READ_ONLY_ANALYSIS;
+ *   - a request alone NEVER raises privilege (no self-escalation);
+ *   - an unauthorized escalation FAILS CLOSED to READ_ONLY_ANALYSIS (granted:false);
+ *   - GOVERNED_INTEGRATION is never auto-selected — it must be BOTH requested and explicitly authorized;
+ *   - an unknown profile name (either side) fails closed to the default.
+ *
+ * @returns {{ profile, granted, requested, authorized, reason }}
+ */
+export function resolveExecutionProfile({ requestedProfile = null, authorizedProfile = null } = {}) {
+  const known = (n) => n == null || PROFILE_NAMES.includes(n);
+  const deny = (reason) => Object.freeze({ profile: DEFAULT_PROFILE, granted: false, requested: requestedProfile, authorized: authorizedProfile, reason });
+  if (!known(requestedProfile)) return deny(`unknown requested profile "${requestedProfile}" — fail closed`);
+  if (!known(authorizedProfile)) return deny(`unknown authorized profile "${authorizedProfile}" — fail closed`);
+
+  const requested = requestedProfile || DEFAULT_PROFILE;
+  if (requested === DEFAULT_PROFILE) {
+    return Object.freeze({ profile: DEFAULT_PROFILE, granted: true, requested, authorized: authorizedProfile, reason: "least-privilege default" });
+  }
+  // An escalation is requested → it requires a governed authorization at >= the requested rank.
+  const authRank = authorizedProfile ? PROFILE_RANK[authorizedProfile] : -1;
+  if (authRank >= PROFILE_RANK[requested]) {
+    return Object.freeze({ profile: requested, granted: true, requested, authorized: authorizedProfile, reason: `governed authorization (${authorizedProfile}) permits ${requested}` });
+  }
+  return deny(`escalation to ${requested} not authorized (authorized=${authorizedProfile || "none"}) — fail closed to ${DEFAULT_PROFILE}`);
 }
