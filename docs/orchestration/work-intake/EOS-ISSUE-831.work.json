@@ -1,0 +1,39 @@
+{
+  "requestId": "EOS-ISSUE-831",
+  "title": "EOS — 10-worker Agent Master stress run",
+  "intent": "Run an intentional 10-worker Claude Agent Master read-only stress test through EOS to measure useful parallel capacity, quality, coordination overhead, deduplication, and Claude short-window capacity behavior while producing evidence-based Taylor findings.\n\nRequired work:\nLaunch exactly 10 parallel read-only workers with these scopes:\n1. Inventory / transfer integrity\n2. Truck inventory / allocation / reservation\n3. Receiving readiness and remaining activation risks\n4. Work-order idempotency / replay / race conditions\n5. Dispatcher / assignment / parts-readiness\n6. Firestore Rules / authorization tail sweep\n7. Functions privileged-callable / deployment-boundary review\n8. Sales / fulfillment latent integrity risks\n9. Equipment / technician / field-mode correctness\n10. Cross-system P0/P1 sweep for anything prior audits missed\n\nUse one Agent Master consolidator only. Workers must cite authoritative repository evidence and classify findings as NEW, DUP, ELEVATED, CLEAN, or UNRESOLVED. No recursive worker spawning. No more than 10 workers total. Do not retry a worker unless execution itself fails; maximum one retry for execution failure. Maximum one correction pass per worker result. If a worker still fails, record the failure and continue; do not create an endless verifier/correction loop.\n\nCapture, where exposed: per-worker tokens, tool calls, duration, total wall-clock, failures/retries, duplicate rate, new findings, findings per worker, overlap/coordination cost, consolidation burden, and any Claude 5-hour/short-window capacity effects.\n\nFinal consolidation must include: top 10 actionable findings; NEW/DUP/ELEVATED breakdown; recommended execution order; dependency graph; genuine Owner decisions only; security/integrity risks; 10-worker telemetry table; assessment of quality/coverage versus the prior 5-worker run; whether coordination/dedup overhead became excessive; recommended practical Agent Master worker ceiling; and task categories that should be routed to Cortex in a future mixed-provider run.\n\nCompletion:\nComplete only when all 10 worker outcomes (or bounded failures) have been consolidated, the existing Verifier has reviewed the result, and a durable EOS result is published. The result must explicitly state that no repository/product mutation occurred. Do not implement findings or automatically start another run.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts",
+    "Execution: EOS → Claude Agent Master → exactly 10 parallel read-only workers → one consolidator → existing Verifier → durable EOS result.",
+    "Read-only only. No product/source mutation, patch application, merge, deployment, permission/grant change, backlog mutation, or production action.",
+    "Dedup against durable findings from #802, #818, #819, and EOS-STRESS-RUN-001. Re-report known findings only when new evidence materially changes priority, scope, or confidence."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/831",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T00:34:18Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-831.work.json",
+  "sha256": "57e0f92cb4d76c68e4cc667e20013a3d65c3e45858f79342951108e69a5fb24b",
+  "createdAt": "2026-08-13T00:34:18Z",
+  "updatedAt": "2026-08-13T00:34:18Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/831"
+    ],
+    "pullRequests": []
+  }
+}
