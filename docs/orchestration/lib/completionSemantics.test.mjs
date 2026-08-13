@@ -111,3 +111,70 @@ test("normalizeExecutionContract gives implementation work fail-closed teeth (PA
   assert.equal(explicit.expectedArtifactClass, "PULL_REQUEST");
   assert.equal(explicit.verifierRequired, false);
 });
+
+// ── #868: pre-execution authorization ↔ post-execution proof-receipt seam ────────────────────────────────
+import { deriveEffectiveContract, PROFILE_PROVABLE } from "./completionSemantics.mjs";
+import { PROFILE_RANK } from "./executionProfiles.mjs";
+
+const verifyRequest = normalizeExecutionContract({ taskClass: "READ_ONLY_VERIFY", requiredExecutionReceipts: ["tests"] });
+const patchRequest = normalizeExecutionContract({ taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"], verifierRequired: true });
+
+test("#868: a READ_ONLY_VERIFY request GRANTED only READ_ONLY_ANALYSIS is NOT required to prove a tests receipt it cannot run", () => {
+  // The #864 shape: request wants VERIFY (tests receipt), but the governed grant is READ_ONLY_ANALYSIS, which
+  // has no test-run capability. The receipt requirement must follow the GRANT, not the request → no tests
+  // receipt required, so the authorized read-only work can COMPLETE instead of dead-locking on BLOCKED_EXECUTION.
+  const eff = deriveEffectiveContract({ requested: verifyRequest, resolvedProfile: "READ_ONLY_ANALYSIS" });
+  assert.deepEqual(eff.requiredExecutionReceipts, [], "no tests receipt required of a read-only-analysis grant");
+  assert.equal(eff.expectedArtifactClass, "NONE");
+  assert.equal(eff.verifierRequired, false);
+  assert.equal(eff.downgradeBlocked, false, "a read-only request under a read-only grant is not a fail-closed downgrade");
+});
+
+test("#868: a READ_ONLY_VERIFY request GRANTED READ_ONLY_VERIFY STILL requires the tests receipt (post-execution proof kept)", () => {
+  const eff = deriveEffectiveContract({ requested: verifyRequest, resolvedProfile: "READ_ONLY_VERIFY" });
+  assert.deepEqual(eff.requiredExecutionReceipts, ["tests"], "when the grant CAN run tests, the receipt is required to COMPLETE");
+  // And missing it after execution fails closed (BLOCKED_EXECUTION), never success.
+  const missing = classifyCompletion({ processSucceeded: true, runtimeTermination: "NORMAL", executionCapable: true, requiredExecutionReceipts: eff.requiredExecutionReceipts, executionReceipts: [] });
+  assert.equal(missing.state, "BLOCKED_EXECUTION");
+  assert.equal(missing.complete, false);
+});
+
+test("#868 preserves #840: a PATCH_PRODUCER request resolved BELOW its class keeps its FULL contract and fails closed", () => {
+  const eff = deriveEffectiveContract({ requested: patchRequest, resolvedProfile: "READ_ONLY_ANALYSIS" });
+  assert.equal(eff.downgradeBlocked, true, "a downgraded MUTATING task must not collapse into a completable analysis");
+  assert.equal(eff.expectedArtifactClass, "PATCH", "still demands the PATCH it can no longer produce");
+  assert.deepEqual(eff.requiredExecutionReceipts, ["tests"]);
+  assert.equal(eff.verifierRequired, true);
+  // classifyCompletion on a read-only run (no PATCH, no receipts) → never COMPLETE.
+  const c = classifyCompletion({ processSucceeded: true, runtimeTermination: "NORMAL", executionCapable: true, requiredExecutionReceipts: eff.requiredExecutionReceipts, executionReceipts: [], expectedArtifactClass: eff.expectedArtifactClass, producedArtifacts: ["ANALYSIS_REPORT"], verifierRequired: eff.verifierRequired });
+  assert.equal(c.complete, false);
+  assert.notEqual(c.state, "COMPLETE");
+});
+
+test("#868 does not widen PATCH_PRODUCER gates: a fully-granted PATCH task keeps PATCH + tests + verifier", () => {
+  const eff = deriveEffectiveContract({ requested: patchRequest, resolvedProfile: "PATCH_PRODUCER" });
+  assert.equal(eff.expectedArtifactClass, "PATCH");
+  assert.deepEqual(eff.requiredExecutionReceipts, ["tests"]);
+  assert.equal(eff.verifierRequired, true);
+  assert.equal(eff.downgradeBlocked, false);
+});
+
+test("#868 never widens: the effective contract's requirements are always a subset of what the grant can prove", () => {
+  for (const resolvedProfile of Object.keys(PROFILE_PROVABLE)) {
+    const eff = deriveEffectiveContract({ requested: patchRequest, resolvedProfile });
+    if (eff.downgradeBlocked) continue; // a fail-closed downgrade intentionally keeps the (unsatisfiable) full contract
+    for (const r of eff.requiredExecutionReceipts) {
+      assert.ok(PROFILE_PROVABLE[resolvedProfile].receipts.includes(r), `${resolvedProfile} cannot be required to prove receipt "${r}" it cannot run`);
+    }
+  }
+});
+
+test("#868 CONTRACT_PROFILE_RANK stays in lock-step with executionProfiles PROFILE_RANK", () => {
+  // deriveEffectiveContract keeps a local rank copy to stay dependency-free; it must equal the canonical one.
+  for (const [name, rank] of Object.entries(PROFILE_RANK)) {
+    // A downgrade is detected iff resolved rank < requested rank; probe the boundary using PATCH (rank 2).
+    const eff = deriveEffectiveContract({ requested: patchRequest, resolvedProfile: name });
+    const shouldBlock = rank < PROFILE_RANK.PATCH_PRODUCER;
+    assert.equal(eff.downgradeBlocked, shouldBlock, `downgrade detection for ${name} must match canonical rank ${rank}`);
+  }
+});
