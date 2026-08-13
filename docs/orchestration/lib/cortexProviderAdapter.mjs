@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { createAgentResult, validateAgentResult } from "./agentResult.mjs";
 import { validateAgentRequest } from "./agentRequest.mjs";
 import { buildContentAddressedResult, stableJson } from "./workIntake.mjs";
+import { createVerificationRequest, deriveVerdict } from "./verifierAgent.mjs";
 
 export const CORTEX_PILOT_MODE = "READ_ONLY_PILOT";
 const digest = (value) => createHash("sha256").update(Buffer.from(stableJson(value), "utf8")).digest("hex");
@@ -46,7 +47,17 @@ export async function runReadOnlyProviderPilot({ request, binding, envelope, pro
 
 // Reuses the governed work-intake result locations. The injected store receives only the two
 // content-addressed artifacts; this adapter cannot write source, backlog, approval, or integration state.
-export function persistPilotResult({ durable, store }) {
+export function persistPilotResult({ request, result, durable, verificationRequest, verifierResult, store }) {
+  const requestErrors = validateAgentRequest(request || {});
+  const resultErrors = validateAgentResult(result || {});
+  const verificationErrors = validateAgentRequest(verificationRequest || {});
+  const verifierErrors = validateAgentResult(verifierResult || {});
+  if (requestErrors.length || resultErrors.length || verificationErrors.length || verifierErrors.length) throw new Error("matching valid Verifier PASS is required before persistence");
+  if (result.requestId !== request.requestId || verifierResult.requestId !== verificationRequest.requestId) throw new Error("verification identity mismatch");
+  const expectedVerification = createVerificationRequest({ requestId: verificationRequest.requestId, workerRequest: request, workerResult: result, priority: verificationRequest.priority, correctionCount: verificationRequest.correctionCount || 0, retryAllowance: verificationRequest.retryAllowance, modelTier: verificationRequest.modelTier });
+  if (verificationRequest.purpose !== expectedVerification.purpose || stableJson(verificationRequest.allowedSurfaces) !== stableJson(expectedVerification.allowedSurfaces) || stableJson(verificationRequest.scope) !== stableJson(expectedVerification.scope)) throw new Error("verification is not bound to this request/result identity");
+  if (deriveVerdict(verifierResult) !== "PASS") throw new Error("Verifier PASS is required before persistence");
+  if (durable?.manifest?.requestId !== result.requestId || durable?.content?.toString("utf8") !== stableJson(result)) throw new Error("durable result identity mismatch");
   if (!durable?.contentLocation?.startsWith("docs/orchestration/work-intake/results/") || !durable?.manifestLocation?.startsWith("docs/orchestration/work-intake/results/")) throw new Error("invalid durable EOS result paths");
   if (typeof store?.write !== "function") throw new Error("durable result store is unavailable");
   store.write(durable.contentLocation, durable.content);
