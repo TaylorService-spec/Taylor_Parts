@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 // Epic 6 Phase 6.3 -- Field Execution Capture UI. This is NOT lifecycle
 // logic: nothing here calls transitionWorkOrder() or changes status/
@@ -37,8 +38,9 @@ export default function ExecutionCapture({ workOrder }) {
     try {
       await updateWorkOrderExecutionData(workOrder.id, { qtyUsedUpdates: [{ sku, delta }] });
     } catch (err) {
+      // Safe, categorized copy -- never the raw message / Functions code.
       console.error(err);
-      setError(err.message);
+      setError(workflowActionErrorMessage(err));
     } finally {
       setSubmittingSku(null);
     }
@@ -53,8 +55,9 @@ export default function ExecutionCapture({ workOrder }) {
       await updateWorkOrderExecutionData(workOrder.id, { executionNote: trimmed });
       setNoteText("");
     } catch (err) {
+      // Safe, categorized copy -- never the raw message / Functions code.
       console.error(err);
-      setError(err.message);
+      setError(workflowActionErrorMessage(err));
     } finally {
       setSubmittingNote(false);
     }

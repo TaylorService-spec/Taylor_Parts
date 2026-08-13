@@ -7,6 +7,7 @@ import { resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIde
 import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates";
 import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
 import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 /**
  * F2 — the field scanner, rebuilt on the entity resolution boundary.
@@ -188,8 +189,9 @@ export default function PartsScanner({ technicianId }) {
       setQty(1);
     } catch (err) {
       // The server is the authority and may still refuse. Say so plainly --
-      // never silently, and never as "not found".
-      setNotice({ tone: "warn", text: err?.message || "That couldn’t be recorded. Nothing was changed." });
+      // never silently, and never as "not found" -- and never with a raw
+      // Firebase/Functions message (safe, categorized copy only).
+      setNotice({ tone: "warn", text: workflowActionErrorMessage(err) });
     } finally {
       setPendingAction(null);
     }
