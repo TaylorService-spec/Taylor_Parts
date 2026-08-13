@@ -20,6 +20,25 @@ import type { Availability } from "./allocationProjection";
 
 const num0 = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
+// Sum eligible ON_HAND for a part from its stock_locations rows, restricted to eligible (status==ACTIVE)
+// warehouses. `rows` are the stock_locations docs already filtered by partId (the callable supplies the read).
+// Returns null (UNKNOWN) when there is no stock_locations evidence for the part at all — never treated as 0.
+// Returns a known 0 when rows exist but none sit at an eligible warehouse (a real backorder, not missing
+// evidence). Extracted as a pure function so eligible-warehouse filtering is directly regression-tested
+// without the Firestore emulator (site-work #9).
+export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?: number }>, eligibleWarehouseIds: Set<string>): number | null {
+  if (rows.length === 0) return null;
+  let onHand = 0;
+  let sawEligible = false;
+  for (const r of rows) {
+    if (typeof r.warehouseId === "string" && eligibleWarehouseIds.has(r.warehouseId)) {
+      sawEligible = true;
+      if (typeof r.quantity === "number" && Number.isFinite(r.quantity)) onHand += Math.max(0, r.quantity);
+    }
+  }
+  return sawEligible ? onHand : 0;
+}
+
 // Net open Work-Order reservations for a part from the append-only ledger rows: RESERVED − RELEASED −
 // CONSUMED, floored at 0. `rows` are the inventory_transactions for the part (already filtered by partId).
 //
@@ -43,14 +62,28 @@ export function openWorkOrderReserved(
 }
 
 // Part AVAILABLE_TO_PROMISE. `onHandEligible === null` means the on-hand evidence was missing/untrusted ⇒
-// UNKNOWN (never 0). Otherwise KNOWN with ATP = onHand − openWoReserved − otherSoAllocated, floored at 0.
+// UNKNOWN (never 0). Otherwise KNOWN with ATP = onHand − openWoReserved − otherSoAllocated − selfAllocated,
+// floored at 0.
+//
+// IDEMPOTENCY (fix for site-work #1, so-alloc-overallocation-rerun): stock_locations.quantity is never
+// decremented by an SO allocation (non-forking — allocation lives ONLY on the Sales Order). `otherSoAllocated`
+// already nets every OTHER active Sales Order's claim on this same pool, but THIS Sales Order's own prior
+// allocatedQty for this ref is equally a claim on that same physical pool and MUST also be netted here —
+// otherwise a re-run (retry, or a second legitimate call before the SO leaves CONFIRMED/IN_FULFILLMENT) sees
+// the exact same undiminished on-hand figure and additively grants more than physically exists. Netting
+// `selfAllocated` here makes the remaining-ATP shrink by exactly what this SO already holds, so
+// already-allocated + newly-allocatable converges to (and never exceeds) the true available pool.
 export function computePartAvailability(input: {
   onHandEligible: number | null;
   openWoReserved: number;
   otherSoAllocated: number;
+  selfAllocated?: number;
 }): Availability {
   if (input.onHandEligible === null || input.onHandEligible === undefined) return { kind: "UNKNOWN" };
-  const atp = Math.max(0, num0(input.onHandEligible) - num0(input.openWoReserved) - num0(input.otherSoAllocated));
+  const atp = Math.max(
+    0,
+    num0(input.onHandEligible) - num0(input.openWoReserved) - num0(input.otherSoAllocated) - num0(input.selfAllocated)
+  );
   return { kind: "KNOWN", quantity: atp };
 }
 
