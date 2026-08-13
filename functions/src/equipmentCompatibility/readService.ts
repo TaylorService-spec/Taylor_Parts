@@ -276,9 +276,12 @@ async function runRelationshipRead(deps: ReadServiceDeps, args: RelationshipRead
       // REJECTED is excluded from results but COUNTED — never represented as "no records".
       if (c.verificationStatus === "REJECTED") { excludedRejected += 1; continue; }
 
-      const model = await readModelForDisplay(deps, c.equipmentModelId);
-      if (model === null) degraded = true;
+      // Model and evidence are independent. Start the model lookup before the budgeted evidence read so the
+      // two network round trips overlap; evidence remains sequential because it consumes the shared budget.
+      const modelPromise = readModelForDisplay(deps, c.equipmentModelId);
       const evidence = await readEvidenceSummary(deps, c.compatibilityId, budget);
+      const model = await modelPromise;
+      if (model === null) degraded = true;
       if (evidence.status !== "OK") { evidenceIncomplete += 1; degraded = true; }
       const applicabilityResolved = c.applicability.kind !== "UNRESOLVED";
       const operational = c.verificationStatus === "VERIFIED" && applicabilityResolved && model !== null && evidence.status === "OK";
