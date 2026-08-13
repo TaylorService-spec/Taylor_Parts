@@ -26,6 +26,11 @@ on:
     paths:
       - "docs/orchestration/work-intake/**/*.work.json"
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Optional: run ONLY this requestId (fast targeted run / landing smoke test). Blank = drain all eligible."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -49,12 +54,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Execute eligible intakes and land each result per item (durable, isolated)
         shell: pwsh
+        env:
+          ONLY: ${{ inputs.only }}
         run: |
           $ErrorActionPreference = "Stop"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           node docs/orchestration/context/intake-ingest-ci.mjs --write
           if ($LASTEXITCODE -ne 0) { throw "intake status refresh failed with exit code $LASTEXITCODE" }
+          if ($env:ONLY) { Write-Host "Targeted run: only $($env:ONLY)" }
 
           # Per EXECUTION_AUTHORIZED artifact: run the guarded execution runtime, then IMMEDIATELY land that one
           # item's result via the unit-tested intake-landing module (docs/orchestration/context/intake-landing.mjs,
@@ -66,6 +74,9 @@ jobs:
           $failed = @()
           Get-ChildItem "docs/orchestration/work-intake/*.work.json" | ForEach-Object {
             $artifact = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            # Targeted-run filter: when `only` is set, skip every item except that requestId — so a landing smoke
+            # test (or a single re-run) completes in minutes instead of draining the whole eligible backlog.
+            if ($env:ONLY -and $artifact.requestId -ne $env:ONLY) { return }
             if ($artifact.status -eq "EXECUTION_AUTHORIZED") {
               node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName --sha256 $artifact.sha256
               if ($LASTEXITCODE -ne 0) {
