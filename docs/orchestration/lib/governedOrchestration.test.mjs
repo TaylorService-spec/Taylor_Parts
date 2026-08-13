@@ -86,3 +86,72 @@ test("register memory applies: an already-known finding is suppressed, only the 
   assert.deepEqual(out.reconciled.reconciled.surfaced.map((f) => f.discriminator), ["brand-new"]);
   assert.equal(out.reconciled.reconciled.alreadyOpen.length, 1);
 });
+
+import { orchestrateParent, parentGrantFromArtifact, childSpecsFromArtifact } from "./governedOrchestration.mjs";
+
+test("parentGrantFromArtifact + childSpecsFromArtifact read the structured parent work item", () => {
+  const artifact = {
+    requestId: "EOS-ACCEPT-864",
+    authority: { authorizedExecutionProfile: "READ_ONLY_ANALYSIS", protectedBoundary: null },
+    scope: ["docs/orchestration"], contextScope: ["orchestration"],
+    decomposition: { childSpecs: [{ requestId: "EOS-ACCEPT-864-A", scope: ["docs/orchestration"] }] },
+  };
+  const grant = parentGrantFromArtifact(artifact);
+  assert.equal(grant.workId, "EOS-ACCEPT-864");
+  assert.equal(grant.profile, "READ_ONLY_ANALYSIS");
+  assert.equal(childSpecsFromArtifact(artifact).length, 1);
+});
+
+test("orchestrateParent lifecycle: DECOMPOSE → AWAIT → COMPLETE, via injected I/O", () => {
+  const emitted = [];
+  const writeParentResult = (x) => { writeParentResult.called = x; return "docs/orchestration/work-intake/results/EOS-ACCEPT-864/..."; };
+  const okResult = (disc) => `PASS\n\`\`\`eos-findings\n[{"file":"docs/orchestration/x.mjs","symbol":"fn","discriminator":"${disc}","severity":"LOW","category":"n","evidence":"e"}]\n\`\`\``;
+
+  // Step 1: nothing emitted → DECOMPOSE (emitChild called per child)
+  let out = orchestrateParent({ parent: PARENT, childSpecs: SPECS, deps: { readChildStates: () => [], emitChild: (c) => (emitted.push(c.requestId), c.artifactLocation) } });
+  assert.equal(out.action, "DECOMPOSE");
+  assert.equal(out.parentStatus, "AWAITING_CHILDREN");
+  assert.deepEqual(emitted, ["EOS-ACCEPT-864-A", "EOS-ACCEPT-864-B"]);
+
+  // Step 2: children exist, one still running → AWAIT
+  out = orchestrateParent({ parent: PARENT, childSpecs: SPECS, deps: { readChildStates: () => [{ requestId: "EOS-ACCEPT-864-A", status: "COMPLETE" }, { requestId: "EOS-ACCEPT-864-B", status: "RUNNING" }] } });
+  assert.equal(out.action, "AWAIT");
+  assert.deepEqual(out.pending, ["EOS-ACCEPT-864-B"]);
+
+  // Step 3: both COMPLETE → COMPLETE, parent result written, REVIEW_READY
+  out = orchestrateParent({
+    parent: PARENT, childSpecs: SPECS,
+    deps: {
+      readChildStates: () => SPECS.map((s) => ({ requestId: s.requestId, status: "COMPLETE" })),
+      readChildResults: () => [
+        { requestId: "EOS-ACCEPT-864-A", disposition: "COMPLETE", sector: "execution", content: okResult("a-note") },
+        { requestId: "EOS-ACCEPT-864-B", disposition: "COMPLETE", sector: "findings", content: okResult("b-note") },
+      ],
+      readRegister: () => [],
+      writeParentResult,
+    },
+  });
+  assert.equal(out.action, "COMPLETE");
+  assert.equal(out.parentStatus, "COMPLETE");
+  assert.equal(out.reviewReady, true);
+  assert.ok(writeParentResult.called, "the consolidated parent result was written");
+});
+
+test("orchestrateParent BLOCKED: a child with no valid eos-findings never lets the parent complete (no partial)", () => {
+  let wrote = false;
+  const out = orchestrateParent({
+    parent: PARENT, childSpecs: SPECS,
+    deps: {
+      readChildStates: () => SPECS.map((s) => ({ requestId: s.requestId, status: "COMPLETE" })),
+      readChildResults: () => [
+        { requestId: "EOS-ACCEPT-864-A", disposition: "COMPLETE", sector: "execution", content: "```eos-findings\n[]\n```" },
+        { requestId: "EOS-ACCEPT-864-B", disposition: "COMPLETE", sector: "findings", content: "no block" },
+      ],
+      readRegister: () => [],
+      writeParentResult: () => (wrote = true),
+    },
+  });
+  assert.equal(out.action, "BLOCKED");
+  assert.equal(out.parentStatus, "BLOCKED_INCOMPLETE");
+  assert.equal(wrote, false, "parent result is NOT written on a blocked gate");
+});

@@ -57,3 +57,63 @@ export function planParentExecution({ parent, childSpecs = [], childStates = [],
   if (!reconciled.ok) return Object.freeze({ action: "BLOCKED", reason: "consolidation/reconcile gate not satisfied", detail: reconciled.consolidated ?? reconciled });
   return Object.freeze({ action: "COMPLETE", reconciled, reviewReady: true });
 }
+
+/**
+ * Construct the parent GRANT (what children inherit from) from a parent work.json artifact. One Owner approval:
+ * the profile comes from the authorized execution profile, scope/contextScope/boundary from the artifact, and
+ * budget/capabilities default to none for a read-only mission unless the artifact declares them.
+ */
+export function parentGrantFromArtifact(a = {}) {
+  const auth = a.authority || {};
+  return Object.freeze({
+    workId: a.requestId,
+    profile: auth.authorizedExecutionProfile || a.executionProfile || "READ_ONLY_ANALYSIS",
+    scope: Array.isArray(a.scope) ? a.scope : [],
+    contextScope: Array.isArray(a.contextScope) ? a.contextScope : [],
+    budgetUsd: typeof a.budgetUsd === "number" ? a.budgetUsd : 0,
+    capabilities: Array.isArray(a.capabilities) ? a.capabilities : [],
+    protectedBoundary: auth.protectedBoundary ?? null,
+  });
+}
+
+/** The declared children a parent work.json carries (structured, not prose-parsed). */
+export function childSpecsFromArtifact(a = {}) {
+  const d = a.decomposition || {};
+  return Array.isArray(d.childSpecs) ? d.childSpecs : [];
+}
+
+/**
+ * Run one orchestration step for a parent, performing the I/O through injected deps (fakes in tests; real
+ * git/fs readers+writers in the execute workflow). Pure decision (planParentExecution) + effectful I/O here.
+ *
+ * deps:
+ *   readChildStates(ids) → [{requestId,status}]      readChildResults(ids) → [{requestId,disposition,sector,content}]
+ *   readRegister() → [entries]                        emitChild(childArtifact) → written location (commit child work.json)
+ *   writeParentResult({parentWorkId, reconciled}) → written    (write consolidated result + REVIEW_READY)
+ *
+ * @returns {{action, parentStatus, ...}} — the parent's next durable status + what was written.
+ */
+export function orchestrateParent({ parent, childSpecs = [], deps = {} } = {}) {
+  const ids = childSpecs.map((s) => s.requestId);
+  const childStates = deps.readChildStates ? deps.readChildStates(ids) : [];
+  const childResults = deps.readChildResults ? deps.readChildResults(ids) : [];
+  const register = deps.readRegister ? deps.readRegister() : [];
+  const plan = planParentExecution({ parent, childSpecs, childStates, childResults, register });
+
+  switch (plan.action) {
+    case "DECOMPOSE": {
+      const emitted = plan.children.map((c) => (deps.emitChild ? deps.emitChild(c) : c.artifactLocation));
+      return Object.freeze({ action: "DECOMPOSE", parentStatus: "AWAITING_CHILDREN", emitted: Object.freeze(emitted) });
+    }
+    case "AWAIT":
+      return Object.freeze({ action: "AWAIT", parentStatus: "AWAITING_CHILDREN", pending: plan.pending });
+    case "COMPLETE": {
+      const written = deps.writeParentResult ? deps.writeParentResult({ parentWorkId: parent.workId, reconciled: plan.reconciled }) : null;
+      return Object.freeze({ action: "COMPLETE", parentStatus: "COMPLETE", reviewReady: true, reconciled: plan.reconciled, written });
+    }
+    case "BLOCKED":
+      return Object.freeze({ action: "BLOCKED", parentStatus: "BLOCKED_INCOMPLETE", reason: plan.reason, detail: plan.detail });
+    default: // REJECT
+      return Object.freeze({ action: "REJECT", parentStatus: "REJECTED", reason: plan.reason ?? null, rejected: plan.rejected ?? null });
+  }
+}
