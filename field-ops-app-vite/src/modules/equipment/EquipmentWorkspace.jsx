@@ -1,17 +1,33 @@
-// INV-EQ-P1b -- the visible Equipment workspace: two tabs over the /equipment route.
+// INV-EQ-P1b -- the visible Equipment workspace: three tabs over the /equipment route.
 // Customer Equipment (default) shows the cross-customer paginated installed list;
-// Available Equipment is a visible second tab that honestly reports "not yet
-// connected" until the Serialized Asset registry ships. WAI-ARIA Tabs pattern with
-// roving tabindex + arrow/Home/End keyboard navigation. Both panels stay mounted
-// (inactive one hidden) so the Customer tab's paginated state survives a tab switch.
+// Available Equipment reports "not yet connected" until the Serialized Asset registry
+// ships. WAI-ARIA Tabs pattern with roving tabindex + arrow/Home/End keyboard
+// navigation. All panels stay mounted (inactive ones hidden) so the Customer tab's
+// paginated state survives a tab switch.
+//
+// site-work #10 -- Add Equipment. EquipmentRegister (Issue #232 unit E5) is the
+// existing, tested Account-scoped register + create flow (EquipmentCreateModal +
+// domain/equipmentRepository's createEquipment write): built, wired to its own tests,
+// but never reachable from the routed UI, so no permitted user could actually create
+// Equipment through the shipped app. It is wired in here as a third tab rather than
+// rebuilt or merged into CustomerEquipment -- CustomerEquipment is a deliberately
+// read-only, cross-customer, LOADED-only-filtered list (see its own header comment);
+// EquipmentRegister's account-first bounding is what the create flow requires
+// (EquipmentCreateModal's Location options -- and the write itself -- are scoped to
+// one fixed Account, never a picker of its own). No new role gating is added: the
+// whole /equipment domain is already admin/dispatcher-only (navConfig.js -- no
+// legacyKey defaults to PLACEHOLDER_DEFAULT_ROLES), so this tab inherits that gate
+// exactly like the other two.
 import { useRef, useState } from "react";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import CustomerEquipment from "./CustomerEquipment";
 import AvailableEquipment from "./AvailableEquipment";
+import EquipmentRegister from "./EquipmentRegister";
 
 const TABS = [
   { id: "customer", label: "Customer Equipment" },
   { id: "available", label: "Available Equipment" },
+  { id: "add", label: "Add Equipment" },
 ];
 
 export default function EquipmentWorkspace({ accessVersion }) {
@@ -62,6 +78,9 @@ export default function EquipmentWorkspace({ accessVersion }) {
       </div>
       <div role="tabpanel" id="eq-panel-available" aria-labelledby="eq-tab-available" hidden={active !== "available"}>
         <AvailableEquipment />
+      </div>
+      <div role="tabpanel" id="eq-panel-add" aria-labelledby="eq-tab-add" hidden={active !== "add"}>
+        <EquipmentRegister />
       </div>
     </div>
   );
