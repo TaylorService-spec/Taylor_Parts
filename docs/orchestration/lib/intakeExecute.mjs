@@ -18,6 +18,7 @@ import { executeWake } from "./wakeExecute.mjs";
 import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
 import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
 import { createCostCapacityTelemetry } from "./costCapacity.mjs";
+import { classifyCompletion, completionStateToStatus, normalizeExecutionContract } from "./completionSemantics.mjs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
@@ -79,16 +80,51 @@ export function runIntakeExecution({
     sourceCommit, sourceFreshness: wakeCtx.sourceFreshness ?? "CURRENT",
   });
 
-  if (wake.outcome !== "SPAWNED_COMPLETED") {
-    // A refusal/hold/failure is NEVER completed work.
-    const failed = wake.outcome === "SPAWNED_FAILED";
+  const heldTelemetry = () => createCostCapacityTelemetry({ providerCapacityUsage: wakeCtx.providerCapacityUsage || {}, budgetStopReason: wake.budgetStopReason || null });
+
+  // A pre-spawn refusal/hold NEVER ran a worker — READY/HELD, unchanged.
+  if (wake.spawned !== true) {
     return Object.freeze({
-      disposition: failed ? "FAILED" : "HELD", executed: wake.spawned === true, gate, item, capabilities, wake,
-      status: statusFor({ artifact, state: failed ? "FAILED" : "READY", currentWork: wake.reason || wake.failureDetail || wake.failureKind || "not triggered", costCapacity: createCostCapacityTelemetry({ providerCapacityUsage: wakeCtx.providerCapacityUsage || {}, budgetStopReason: wake.budgetStopReason || null }), now }),
+      disposition: "HELD", executed: false, gate, item, capabilities, wake,
+      status: statusFor({ artifact, state: "READY", currentWork: wake.reason || wake.failureDetail || wake.failureKind || "not triggered", costCapacity: heldTelemetry(), now }),
     });
   }
 
-  // 4. COMPLETE — persist the worker output as the existing content-addressed result + a COMPLETE status.
+  // A worker actually RAN → the COMPLETION-SEMANTIC GATE decides. Provider/process success is necessary but
+  // NOT sufficient (the #834/#835/#836/#837 root cause). Evidence is STRUCTURED; worker free-text never
+  // classifies. The task's completion contract comes from the intake artifact's optional `execution` block
+  // (safe READ_ONLY_ANALYSIS defaults), and durable artifacts are what the runtime actually produced.
+  const execContract = normalizeExecutionContract(artifact.execution);
+  const workerEvidence = (wake.result && typeof wake.result === "object" && wake.result.evidence && typeof wake.result.evidence === "object") ? wake.result.evidence : {};
+  const completion = classifyCompletion({
+    processSucceeded: wake.outcome === "SPAWNED_COMPLETED",
+    runtimeTermination: wake.runtimeTermination || (wake.outcome === "SPAWNED_COMPLETED" ? "NORMAL" : "PROCESS_ERROR"),
+    executionCapable: typeof workerEvidence.executionCapable === "boolean" ? workerEvidence.executionCapable : null,
+    requiredExecutionReceipts: execContract.requiredExecutionReceipts,
+    executionReceipts: Array.isArray(workerEvidence.receipts) ? workerEvidence.receipts : [],
+    expectedArtifactClass: execContract.expectedArtifactClass,
+    // The current runtime only produces a content-addressed ANALYSIS_REPORT; a worker may declare additional
+    // durable artifacts it produced (PATCH / PULL_REQUEST) — until PATCH_PRODUCER is activated, it won't, so
+    // an implementation task correctly resolves to AWAITING_ARTIFACTIZATION.
+    producedArtifacts: ["ANALYSIS_REPORT", ...(Array.isArray(workerEvidence.artifacts) ? workerEvidence.artifacts : [])],
+    verifierResult: typeof workerEvidence.verifier === "string" ? workerEvidence.verifier : null,
+    verifierRequired: execContract.verifierRequired,
+  });
+
+  if (!completion.complete) {
+    // NEVER COMPLETE, NEVER a fabricated result. A hard process failure keeps its FAILED disposition for
+    // continuity; every other insufficient outcome maps to its durable completion status (BLOCKED_EXECUTION /
+    // AWAITING_ARTIFACTIZATION / CORRECTING / OWNER_REQUIRED).
+    const hardFailure = wake.outcome === "SPAWNED_FAILED" && wake.failureKind !== "MAX_TURNS_EXHAUSTED";
+    const disposition = hardFailure ? "FAILED" : completion.state;
+    const state = hardFailure ? "FAILED" : completionStateToStatus(completion.state);
+    return Object.freeze({
+      disposition, executed: true, gate, item, capabilities, wake, completion,
+      status: statusFor({ artifact, state, currentWork: completion.reason || wake.failureDetail || wake.failureKind || "not completed", costCapacity: heldTelemetry(), now }),
+    });
+  }
+
+  // 4. COMPLETE — only now, with the completion-semantic gate satisfied: persist the content-addressed result.
   const outputBytes = Buffer.from(typeof wake.result === "string" ? wake.result : JSON.stringify(wake.result), "utf8");
   const result = buildContentAddressedResult({ request: artifact, outputBytes, status: "COMPLETE", summary, createdAt: now });
   const index = buildResultIndex({ requestId: artifact.requestId, manifestLocation: result.manifestLocation, manifestSha256: result.manifest.sha256, contentLocation: result.contentLocation, updatedAt: now });
@@ -100,5 +136,5 @@ export function runIntakeExecution({
   // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to
   // the default-branch HEAD; a curated/pre-committed artifact can carry an explicit commit when emitted.
   const reviewReady = buildReviewReady({ requestId: artifact.requestId, artifact: result.contentLocation, commit: null });
-  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, status, result: Object.freeze({ ...result, index }), reviewReady });
+  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, completion, status, result: Object.freeze({ ...result, index }), reviewReady });
 }

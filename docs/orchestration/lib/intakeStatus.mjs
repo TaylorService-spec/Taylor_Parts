@@ -22,6 +22,8 @@ export const STATUS_STATE = Object.freeze([
   "REVIEWING",     // independent review in progress
   "CORRECTING",    // addressing review corrections
   "BLOCKED",       // a required capability/dependency is unavailable (e.g. paid capability not activated)
+  "BLOCKED_EXECUTION",        // required execution capability/receipts were unavailable at run time (#834)
+  "AWAITING_ARTIFACTIZATION", // implementation ran but the required governed patch/PR/artifact is absent (#835)
   "OWNER_REQUIRED", // an Owner decision gates progress
   "COMPLETE",      // finished; resultRef resolves
   "FAILED",        // terminated without a usable result

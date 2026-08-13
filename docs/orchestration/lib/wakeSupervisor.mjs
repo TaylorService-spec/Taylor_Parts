@@ -13,28 +13,40 @@
 
 import { resolveDispatchModel } from "./modelPolicy.mjs";
 import { evaluateBudgetStop, evaluateProviderCapacityStop, invocationEconomicCap } from "./costCapacity.mjs";
+import { resolveProfile } from "./executionProfiles.mjs";
 
 export const TRIGGER_MECHANISMS = Object.freeze(["MANUAL", "AUTOMATIC", "NO_WAKE_MECHANISM", "FAILED"]);
 export const WAKE_DECISIONS = Object.freeze(["TRIGGER", "HOLD", "CHECKPOINT"]);
 export const TRIGGER_KINDS = Object.freeze(["MANUAL_RUNTIME_TRIGGER", "AUTOMATIC_TRIGGER"]);
 
-// Guardrails baked into EVERY constructed invocation. Repo-safe allowlist only; NO network/deploy
-// tool; dontAsk (auto-deny, never bypassPermissions); hard turn + budget caps; wall-clock ceiling.
-// The model comes from the SHARED resolver (delegated → SONNET) — never independently hard-coded, so
-// the wake path cannot diverge from standard dispatch's model selection.
-export const DEFAULT_GUARDRAILS = Object.freeze({
-  permissionMode: "dontAsk",
-  allowedTools: Object.freeze([
-    "Read", "Grep", "Glob", "Edit", "Write",
-    "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(node --test *)",
-  ]),
-  disallowedTools: Object.freeze(["WebFetch", "WebSearch"]),
-  model: resolveDispatchModel({ delegated: true }).selectedModel,
-  maxTurns: 40,
-  maxBudgetUsd: null, // Claude modeled dollars are not billed spend; set only via an explicit economic cap
-  wallClockSec: 900,       // the supervisor imposes this (no CLI flag) and SIGTERMs on breach
-  outputFormat: "json",    // machine-parse result + total_cost_usd
-});
+// Guardrails baked into EVERY constructed invocation, DERIVED from a scoped execution capability profile
+// (executionProfiles.mjs) — the permission mode, the explicit tool/command allowlist, and the bounded turn
+// ceiling all come from the profile, never hard-coded here. dontAsk (auto-deny, never bypassPermissions);
+// NO unrestricted Bash; NO merge/deploy/credential authority. The model comes from the SHARED resolver
+// (delegated → SONNET), never independently hard-coded, so the wake path cannot diverge from dispatch.
+//
+// Build a guardrail set from a named profile + the runtime knobs the profile does not own (model / economic
+// cap / wall-clock / output format). Records the configured turn ceiling + profile name for telemetry.
+export function guardrailsForProfile(profileName, { model, maxBudgetUsd = null, wallClockSec = 900, outputFormat = "json" } = {}) {
+  const profile = resolveProfile(profileName); // fail-closed on unknown
+  return Object.freeze({
+    profile: profile.name,
+    permissionMode: profile.permissionMode,        // always "dontAsk" (profile-enforced)
+    allowedTools: profile.allowedTools,
+    disallowedTools: profile.disallowedTools,
+    model: model ?? resolveDispatchModel({ delegated: true }).selectedModel,
+    maxTurns: profile.maxTurns,                    // the bounded, task-class turn ceiling
+    turnCeiling: profile.maxTurns,                 // explicit telemetry field
+    maxBudgetUsd,                                  // Claude modeled dollars are not billed spend
+    wallClockSec,                                  // the supervisor imposes this (no CLI flag) and SIGTERMs on breach
+    outputFormat,                                  // machine-parse result + total_cost_usd
+  });
+}
+
+// The DEFAULT correction/implementation profile is PATCH_PRODUCER: it carries the bounded 80-turn ceiling
+// (replacing the legacy hard-coded 40 — the #836/#837 regression) plus the test/build/lint + isolated-worktree
+// capability an implementation/correction worker needs (the #834 capability gap), and NEVER merge/deploy/PR.
+export const DEFAULT_GUARDRAILS = guardrailsForProfile("PATCH_PRODUCER");
 
 /**
  * Token-free readiness assessment. NO model call. Decides purely from cheap durable state.
@@ -96,8 +108,10 @@ export function nextBackoffMs(attempts, { baseMs = 60_000, capMs = 900_000 } = {
  * context package (consume the SAME package mechanism — never a bespoke bootstrap). Returns argv for
  * dry-run logging or supervised live exec; this function spawns nothing.
  */
-export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUARDRAILS } = {}) {
+export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUARDRAILS, profile = null } = {}) {
   if (!contextPackage) throw new Error("buildClaudeInvocation: a C-7 contextPackage is required (bootstrap via the shared package mechanism)");
+  // A named profile, when supplied, is the source of truth for the authority envelope + turn ceiling.
+  if (profile) guardrails = guardrailsForProfile(profile, { model: guardrails.model, maxBudgetUsd: guardrails.maxBudgetUsd, wallClockSec: guardrails.wallClockSec, outputFormat: guardrails.outputFormat });
   const prompt = typeof contextPackage === "string" ? contextPackage : JSON.stringify(contextPackage);
   const argv = [
     "-p", prompt,
@@ -113,6 +127,8 @@ export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUA
   return {
     bin: "claude", argv,
     wallClockSec: guardrails.wallClockSec, // supervisor enforces externally; SIGTERM on breach
+    profile: guardrails.profile ?? null,   // configured capability profile (telemetry)
+    turnCeiling: guardrails.maxTurns,      // configured bounded turn ceiling (telemetry)
     note: "DRY-RUN unless supervised+authorized; spawns nothing here. bypassPermissions is NEVER used.",
   };
 }

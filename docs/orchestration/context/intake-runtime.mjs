@@ -106,7 +106,11 @@ function main() {
     const requires = arg("requires") ? [arg("requires")] : [];
     const out = executeIntakeItem({ requestId, location, sha256, sourceCommit: arg("source-commit"), requiresCapabilities: requires });
     process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
-    process.exit(out.disposition === "COMPLETE" || out.disposition === "STAGED" || out.disposition === "READY" || out.disposition === "BLOCKED" || out.disposition === "OWNER_REQUIRED" ? 0 : 1);
+    // Clean, non-crash terminal/held dispositions exit 0; genuinely-failed / needs-rerun states exit non-zero.
+    // BLOCKED_EXECUTION / AWAITING_ARTIFACTIZATION are held-for-action (not a crash) but NOT success, so they
+    // exit non-zero — a runner must never read them as a completed cycle (the #834/#835 fail-closed contract).
+    const CLEAN_EXIT = new Set(["COMPLETE", "STAGED", "READY", "BLOCKED", "OWNER_REQUIRED", "OWNER_ACTION_REQUIRED"]);
+    process.exit(CLEAN_EXIT.has(out.disposition) ? 0 : 1);
   }
   process.stderr.write("usage: intake-runtime.mjs execute ...  (writeback is handled by intake-ingest-ci.mjs --write)\n");
   process.exit(2);

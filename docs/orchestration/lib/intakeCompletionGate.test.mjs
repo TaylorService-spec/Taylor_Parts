@@ -1,0 +1,80 @@
+// End-to-end regression tests for the completion-semantic gate wired through runIntakeExecution — proves the
+// #834/#835/#836/#837 root cause is closed at the RUNTIME level (not just in the pure classifier): a worker
+// process that "succeeds" no longer coerces EOS to COMPLETE.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { runIntakeExecution } from "./intakeExecute.mjs";
+import { intakeDigest, resolveWorkIntake } from "./workIntake.mjs";
+
+const NOW = "2026-08-12T07:00:00Z";
+
+function resolved(over = {}) {
+  const requestId = over.requestId || "EOS-RT-001";
+  const payload = {
+    requestId, title: "t", intent: "do the repo-safe thing",
+    scope: ["docs/orchestration/work-intake/"], contextScope: ["orchestration"],
+    source: { producer: "Owner", provenance: "test" },
+    status: "EXECUTION_AUTHORIZED",
+    authority: { authorizationState: "AUTHORIZED", basis: "owner authorized", protectedBoundary: null },
+    ...(over.execution ? { execution: over.execution } : {}),
+    artifactLocation: `docs/orchestration/work-intake/${requestId}.work.json`,
+    createdAt: "2026-08-11T05:00:00Z", updatedAt: "2026-08-11T05:00:00Z", relatedRefs: { issues: [], pullRequests: [] },
+  };
+  const a = { ...payload, sha256: intakeDigest(payload) };
+  return resolveWorkIntake({ requestId, location: a.artifactLocation, sha256: a.sha256, bytes: Buffer.from(JSON.stringify(a), "utf8") });
+}
+
+const ctxPkgFn = () => ({ sufficiency: "SUFFICIENT", governingAuthority: "auth", required: [{ id: "auth", retrievalPath: "x.md" }], onDemand: [], provenance: { mapVersion: "1.0.0", sourceCommit: "abc" } });
+const FREE_SLOT = { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", providerCapacityUsage: { concurrency: { used: 0, limit: 1 } }, sourceFreshness: "CURRENT" };
+const mockLease = () => { let held = false; return { acquire: () => (!held ? (held = true, { acquired: true }) : { acquired: false }), release: () => { held = false; } }; };
+// A worker whose stdout is `run`; defaults to a clean, normally-terminating completion.
+const worker = (stdoutObj = { result: "did the thing", total_cost_usd: 0 }) => ({ run: () => ({ stdout: JSON.stringify(stdoutObj), exitCode: 0, timedOut: false }) });
+const drive = (artifact, w) => runIntakeExecution({ artifact, now: NOW, processRunner: w, lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+
+test("POSITIVE: analysis task + clean completion => COMPLETE with a durable result + REVIEW_READY", () => {
+  const r = drive(resolved(), worker());
+  assert.equal(r.disposition, "COMPLETE");
+  assert.equal(r.completion.state, "COMPLETE");
+  assert.equal(r.status.state, "COMPLETE");
+  assert.ok(r.result && r.reviewReady);
+});
+
+test("#835 REGRESSION: implementation task, worker 'succeeds', but no governed PATCH produced => AWAITING_ARTIFACTIZATION, NOT COMPLETE, NO result", () => {
+  const r = drive(resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH" } }), worker());
+  assert.equal(r.disposition, "AWAITING_ARTIFACTIZATION");
+  assert.equal(r.status.state, "AWAITING_ARTIFACTIZATION");
+  assert.notEqual(r.disposition, "COMPLETE");
+  assert.equal(r.result, undefined, "no fabricated result on a non-complete outcome");
+  assert.equal(r.reviewReady, undefined);
+});
+
+test("#834 REGRESSION: task requires test receipts, worker ran without them => BLOCKED_EXECUTION, NEVER COMPLETE", () => {
+  const r = drive(resolved({ execution: { expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"] } }), worker({ result: { evidence: { receipts: [] } }, total_cost_usd: 0 }));
+  assert.equal(r.disposition, "BLOCKED_EXECUTION");
+  assert.equal(r.status.state, "BLOCKED_EXECUTION");
+  assert.equal(r.result, undefined);
+});
+
+test("#836/#837 REGRESSION: worker hits the turn ceiling (subtype error_max_turns) => RETURN_FOR_CORRECTION, fail closed, NOT COMPLETE", () => {
+  const r = drive(resolved(), worker({ result: "partial work", subtype: "error_max_turns", is_error: true }));
+  assert.equal(r.wake.failureKind, "MAX_TURNS_EXHAUSTED");
+  assert.equal(r.wake.runtimeTermination, "MAX_TURNS_EXHAUSTED");
+  assert.equal(r.disposition, "RETURN_FOR_CORRECTION");
+  assert.equal(r.status.state, "CORRECTING");
+  assert.equal(r.result, undefined);
+});
+
+test("#834-adjacent: a satisfied implementation task (receipts + declared PATCH artifact) DOES COMPLETE", () => {
+  const r = drive(
+    resolved({ execution: { expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"] } }),
+    worker({ result: { evidence: { receipts: ["tests"], artifacts: ["PATCH"] } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.disposition, "COMPLETE");
+  assert.ok(r.result);
+});
+
+test("hard process failure (nonzero exit) still reports FAILED, not a semantic state", () => {
+  const r = drive(resolved(), { run: () => ({ stdout: "", exitCode: 1, timedOut: false }) });
+  assert.equal(r.disposition, "FAILED");
+  assert.equal(r.result, undefined);
+});
