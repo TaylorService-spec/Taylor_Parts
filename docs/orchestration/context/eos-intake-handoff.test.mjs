@@ -59,3 +59,15 @@ test("issue intake itself does NOT invoke Claude (execution is handed off, no du
   // but it MUST still authorize (write the EXECUTION_AUTHORIZED artifact) before committing
   assert.match(issueIntakeWf, /--authorize/);
 });
+
+test("execute workflow wakes via workflow_run on intake completion (GITHUB_TOKEN pushes don't trigger on:push)", () => {
+  // github-actions[bot] pushes the work.json with GITHUB_TOKEN, which GitHub excludes from on:push triggers.
+  // workflow_run is exempt from that rule, so it is the reliable wake trigger.
+  const intakeName = /^name:\s*(.+)$/m.exec(issueIntakeWf)[1].trim();
+  assert.match(executeWf, /workflow_run:/);
+  assert.ok(executeWf.includes(intakeName), `execute must workflow_run on the intake workflow "${intakeName}"`);
+  assert.match(executeWf, /workflow_run\.conclusion == 'success'/, "workflow_run wake must require upstream success");
+  // gates preserved
+  assert.match(executeWf, /EOS_RUNTIME_ENABLED == 'true'/);
+  assert.match(executeWf, /self-hosted[\s\S]*eos-runtime/);
+});
