@@ -134,8 +134,9 @@ test("consolidateAndReconcile: known items suppressed by the register, only NEW 
   });
   assert.equal(out.ok, true);
   assert.equal(out.consolidated.ok, true, "consolidation ran");
-  // the tracked one is alreadyOpen (not new); only the new one is actionable
-  assert.deepEqual(out.reconciled.surfaced.map((f) => f.symbol), ["newFn"]);
+  // the tracked one is alreadyOpen (not new); only the new one is actionable. NOTE identity is canonicalized
+  // (folded to lowercase) — the stored symbol is the canonical form, deterministic across runs.
+  assert.deepEqual(out.reconciled.surfaced.map((f) => f.symbol), ["newfn"]);
   assert.equal(out.reconciled.alreadyOpen.length, 1);
   assert.equal(out.actionableCount, 1, "only the genuinely-new finding is actionable after applying memory");
 });
@@ -182,4 +183,23 @@ test("identity: undiscriminated findings keep legacy grouping and remain actiona
   assert.equal(out.consolidated.counts.unique, 1);
   assert.equal(out.reconciled.surfaced.length, 1, "no discriminator → surfaced, never silently suppressed");
   assert.equal(out.reconciled.surfaced[0].disposition, "NEEDS_DISCRIMINATOR");
+});
+
+test("deterministic canonicalization: same issue with case/whitespace/order drift → identical canonical id, one group", () => {
+  // Two children report the SAME issue with discriminator/symbol casing + whitespace drift, in either order.
+  const mk = (order) => consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: order === "AB"
+      ? [child("A", [{ file: "functions/src/X.ts", symbol: "TransitionWorkOrder", discriminator: "No-Availability-Check", category: "bug", severity: "HIGH", line: 5 }]),
+         child("B", [{ file: "functions/src/X.ts", symbol: "transitionworkorder", discriminator: "no-availability-check ", category: "bug", severity: "HIGH", line: 9 }])]
+      : [child("B", [{ file: "functions/src/X.ts", symbol: "transitionworkorder", discriminator: "no-availability-check ", category: "bug", severity: "HIGH", line: 9 }]),
+         child("A", [{ file: "functions/src/X.ts", symbol: "TransitionWorkOrder", discriminator: "No-Availability-Check", category: "bug", severity: "HIGH", line: 5 }])],
+  });
+  const ab = mk("AB"), ba = mk("BA");
+  assert.equal(ab.counts.unique, 1, "case/whitespace drift → still ONE group");
+  // canonical identity is deterministic regardless of which child arrived first:
+  assert.deepEqual(ab.findings[0].discriminator, ba.findings[0].discriminator);
+  assert.deepEqual(ab.findings[0].symbol, ba.findings[0].symbol);
+  assert.deepEqual(ab.findings[0].file, ba.findings[0].file);
+  assert.equal(ab.findings[0].discriminator, "no-availability-check", "stored discriminator is the canonical form");
 });

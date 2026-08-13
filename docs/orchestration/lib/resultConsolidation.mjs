@@ -7,7 +7,7 @@
 // surface, deterministically, exactly what the model asks the manager to identify: agreements, conflicts,
 // duplicates removed, and cross-sector risks. This is the governed input to the parent's completion gate.
 
-import { reconcileFindings } from "./findingsRegister.mjs";
+import { reconcileFindings, canonicalizeIdentity } from "./findingsRegister.mjs";
 
 const SEVERITY_RANK = Object.freeze({ INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 });
 const sevRank = (s) => (s in SEVERITY_RANK ? SEVERITY_RANK[s] : -1);
@@ -20,10 +20,11 @@ const normId = (s) => String(s ?? "").trim().toLowerCase();
 // file + line + category identity; such findings then fail closed at reconcile (no discriminator ⇒ surfaced),
 // so they are never silently deduped away against a real, discriminated issue.
 const findingKey = (f) => {
-  const disc = normId(f?.discriminator);
-  return disc
-    ? `disc::${normPath(f?.file)}::${normId(f?.symbol)}::${disc}`
-    : `nodisc::${normPath(f?.file)}:${f?.line ?? ""}:${normId(f?.category)}`;
+  if (normId(f?.discriminator)) {
+    const id = canonicalizeIdentity(f); // SAME canonicalization the register fingerprints on — stages agree exactly
+    return `disc::${id.file}::${id.symbol}::${id.discriminator}`;
+  }
+  return `nodisc::${normPath(f?.file)}:${f?.line ?? ""}:${normId(f?.category)}`;
 };
 
 /**
@@ -65,9 +66,13 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
     for (const f of Array.isArray(c.findings) ? c.findings : []) {
       totalReported++;
       const key = findingKey(f);
-      // Carry symbol + the stable issue discriminator through consolidation so the reconcile step downstream can
-      // fingerprint against the findings register (without them a finding fails closed → surfaces for disposition).
-      const g = groups.get(key) || { key, file: normPath(f.file), line: f.line ?? null, category: f.category ?? null, symbol: f.symbol ?? null, discriminator: f.discriminator ?? null, reports: [] };
+      // Carry symbol + the stable issue discriminator through consolidation so reconcile can fingerprint against
+      // the register. For a discriminated finding the stored identity is the CANONICAL form (same canonicalizer as
+      // the register), so the durable artifact is deterministic — independent of which child/casing arrived first —
+      // and byte-for-byte consistent with how the register matches. Undiscriminated findings keep raw display
+      // fields (they fail closed at reconcile regardless).
+      const id = normId(f.discriminator) ? canonicalizeIdentity(f) : null;
+      const g = groups.get(key) || { key, file: id ? id.file : normPath(f.file), line: f.line ?? null, category: f.category ?? null, symbol: id ? (id.symbol || null) : (f.symbol ?? null), discriminator: id ? id.discriminator : (f.discriminator ?? null), reports: [] };
       g.reports.push({ requestId: c.requestId, sector: c.sector ?? null, severity: f.severity ?? null, summary: f.summary ?? null, verdict: f.verdict ?? null });
       groups.set(key, g);
     }
