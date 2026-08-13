@@ -1,0 +1,51 @@
+{
+  "requestId": "EOS-ISSUE-868",
+  "title": "EOS runtime fix — READ_ONLY_VERIFY receipt gate blocks worker before tests can run",
+  "intent": "Fix the narrow EOS execution-contract bug exposed by acceptance Issue #864: a `READ_ONLY_VERIFY` intake with `requiredExecutionReceipts: [\"tests\"]` is being blocked before worker execution because the runtime demands the test receipt before the worker has any opportunity to run the tests and produce that receipt.\n\nThis is an EOS core-loop correctness fix only. Do not widen authority or redesign task classification.\n\nRequired work:\n1. Reproduce the #864 failure from current `main`: the work artifact is `taskClass: READ_ONLY_VERIFY`, `authorizedExecutionProfile: READ_ONLY_ANALYSIS`, `requiredExecutionReceipts: [\"tests\"]`, yet execution stops as `BLOCKED_EXECUTION` with `required execution receipts missing: tests` before a worker runs.\n2. Identify the exact preflight/runtime gate that treats a post-execution receipt as a pre-execution prerequisite.\n3. Correct the contract so receipts that are meant to prove completed execution (for example `tests`) are validated after the worker has had the opportunity to perform the authorized read-only verification, not required before dispatch. Keep genuinely pre-execution authorization/capability requirements fail-closed.\n4. Add focused regression coverage proving:\n   - a READ_ONLY_VERIFY request requiring a tests receipt may dispatch under an authorized read-only profile;\n   - it cannot become COMPLETE unless the required tests receipt is actually present after execution;\n   - a missing required post-execution receipt fails closed after execution rather than being treated as success;\n   - no mutation/profile widening is introduced;\n   - existing PATCH_PRODUCER artifact/receipt gates remain unchanged.\n5. Run the focused EOS tests plus the normal orchestration suite required by repository governance.\n6. Produce a durable patch/PR and verifier evidence. Do not mark this issue COMPLETE from an analysis report alone.\n7. After the fix is merged through the normal governed path, #864 must be redispatched under its original authority with no widening.\n\nCompletion:\nComplete only when the pre-vs-post execution receipt seam is fixed with regression proof, the governed patch is landed through the normal review path, and the repository is ready to rerun #864 without changing #864's original mission or authority. Return the exact PR/head, focused/full test receipts, and any remaining blocker.",
+  "scope": [
+    "PATCH_PRODUCER for the smallest repository change needed in EOS intake/runtime validation and focused regression tests.",
+    "Preserve the two-key model: request `taskClass` remains distinct from `authority.authorizedExecutionProfile`.",
+    "Preserve `READ_ONLY_VERIFY` as non-mutating with respect to product/source work under verification; the EOS implementation patch itself is authorized only for this narrow runtime fix.",
+    "No deploys, credential changes, protected-branch bypass, unrestricted Bash, provider-boundary widening, or unrelated EOS cleanup."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "KEYWORD_IMPLEMENTATION",
+    "ambiguous": false,
+    "reason": "implementation/fix/build/code-change intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/868",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T19:09:21Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-868.work.json",
+  "sha256": "002737418428c152bd3580885f2c7d953aee379e7d03f8ee8ac10864070e9289",
+  "createdAt": "2026-08-13T19:09:16Z",
+  "updatedAt": "2026-08-13T19:09:21Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/868"
+    ],
+    "pullRequests": []
+  }
+}
