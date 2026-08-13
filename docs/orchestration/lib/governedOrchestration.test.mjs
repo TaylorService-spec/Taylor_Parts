@@ -155,3 +155,37 @@ test("orchestrateParent BLOCKED: a child with no valid eos-findings never lets t
   assert.equal(out.parentStatus, "BLOCKED_INCOMPLETE");
   assert.equal(wrote, false, "parent result is NOT written on a blocked gate");
 });
+
+test("SET EQUALITY: expected [A,B] but results include an UNEXPECTED X → BLOCKED, never COMPLETE, X cannot influence", () => {
+  const okResult = (disc, sev) => `PASS\n\`\`\`eos-findings\n[{"file":"docs/orchestration/x.mjs","symbol":"fn","discriminator":"${disc}","severity":"${sev}","category":"n","evidence":"e"}]\n\`\`\``;
+  const plan = planParentExecution({
+    parent: PARENT, childSpecs: SPECS,
+    childStates: [{ requestId: "EOS-ACCEPT-864-A", status: "COMPLETE" }, { requestId: "EOS-ACCEPT-864-B", status: "COMPLETE" }, { requestId: "EOS-ACCEPT-864-X", status: "COMPLETE" }],
+    childResults: [
+      { requestId: "EOS-ACCEPT-864-A", disposition: "COMPLETE", sector: "execution", content: okResult("a-note", "LOW") },
+      { requestId: "EOS-ACCEPT-864-B", disposition: "COMPLETE", sector: "findings", content: okResult("b-note", "LOW") },
+      { requestId: "EOS-ACCEPT-864-X", disposition: "COMPLETE", sector: "rogue", content: okResult("rogue-critical", "CRITICAL") },
+    ],
+    register: [],
+  });
+  assert.equal(plan.action, "BLOCKED", "an unexpected child blocks the parent gate");
+  assert.deepEqual(plan.detail.unexpected, ["EOS-ACCEPT-864-X"]);
+  assert.equal(plan.reconciled, undefined, "no consolidated/reconciled report — the rogue finding cannot influence it");
+
+  // orchestrateParent: parent NOT written, status blocked
+  let wrote = false;
+  const out = orchestrateParent({
+    parent: PARENT, childSpecs: SPECS,
+    deps: {
+      readChildStates: () => [{ requestId: "EOS-ACCEPT-864-A", status: "COMPLETE" }, { requestId: "EOS-ACCEPT-864-B", status: "COMPLETE" }, { requestId: "EOS-ACCEPT-864-X", status: "COMPLETE" }],
+      readChildResults: () => [
+        { requestId: "EOS-ACCEPT-864-A", disposition: "COMPLETE", sector: "execution", content: okResult("a", "LOW") },
+        { requestId: "EOS-ACCEPT-864-B", disposition: "COMPLETE", sector: "findings", content: okResult("b", "LOW") },
+        { requestId: "EOS-ACCEPT-864-X", disposition: "COMPLETE", sector: "rogue", content: okResult("x", "CRITICAL") },
+      ],
+      readRegister: () => [], writeParentResult: () => (wrote = true),
+    },
+  });
+  assert.equal(out.action, "BLOCKED");
+  assert.equal(wrote, false, "no parent result written while an unexpected child is present");
+});
