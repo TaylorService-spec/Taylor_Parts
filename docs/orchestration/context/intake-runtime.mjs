@@ -19,7 +19,7 @@ import { dirname, join, resolve, relative, sep } from "node:path";
 import { resolveWorkIntake } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
 import { reviewReadyLocation, statusLocation } from "../lib/intakeStatus.mjs";
-import { decideIntakeDispatch } from "../lib/agentManager.mjs";
+import { decideIntakeDispatch, detectThrottle } from "../lib/agentManager.mjs";
 import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
 import { contextPackageFor } from "./build-package.mjs";
@@ -108,7 +108,10 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
       written.push(write(reviewReadyLocation(requestId), `${JSON.stringify(out.reviewReady, null, 2)}\n`));
     }
   }
-  return Object.freeze({ disposition: out.disposition, requestId, written, resultPointer: out.status.result, statusPointer: out.status.pointer });
+  // Manager reads for system throttling on the wake outcome (additive — surfaces a signal a concurrency
+  // controller / adaptConcurrency can back off on; does NOT change the single-worker control flow here).
+  const throttle = detectThrottle(out.wake || {});
+  return Object.freeze({ disposition: out.disposition, requestId, written, resultPointer: out.status.result, statusPointer: out.status.pointer, throttled: throttle.throttled, retryAfterSec: throttle.retryAfterSec });
 }
 
 function main() {
