@@ -24,7 +24,7 @@ import {
 } from "./transitionEngine";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
-import { findDoubleBookingConflict } from "./workOrderAvailability";
+import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
 import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
 
 interface TransitionWorkOrderInput {
@@ -60,6 +60,9 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
         "invalid-argument",
         "Schedule requires scheduledStart, scheduledEnd, and scheduledTechId."
       );
+    }
+    if (input.scheduledEnd <= input.scheduledStart) {
+      throw new HttpsError("invalid-argument", "scheduledEnd must be after scheduledStart.");
     }
   }
   if (input.action === "Dispatch" && !input.assignedTechId) {
@@ -111,6 +114,15 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     };
 
     if (action === "Schedule") {
+      const otherSnap = await tx.get(
+        db.collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", scheduledTechId)
+      );
+      const others = otherSnap.docs.map((d) => {
+        const data = d.data() as WorkOrder;
+        return { id: d.id, scheduledTechId: data.scheduledTechId, scheduledStart: data.scheduledStart, scheduledEnd: data.scheduledEnd, status: data.status };
+      });
+      const conflict = findScheduleConflict(scheduledTechId as string, workOrderId, scheduledStart as number, scheduledEnd as number, others);
+      if (conflict) throw new HttpsError("failed-precondition", `Technician ${scheduledTechId} is already scheduled for overlapping Work Order ${conflict}.`);
       payload.scheduledStart = Timestamp.fromMillis(scheduledStart as number);
       payload.scheduledEnd = Timestamp.fromMillis(scheduledEnd as number);
       payload.scheduledTechId = scheduledTechId;
