@@ -58,3 +58,39 @@ test("producer rejects untrusted authors, wrong labels, PRs, and incomplete temp
 test("same Issue event produces byte-identical artifacts", () => {
   assert.deepEqual(buildIssueIntake(event), buildIssueIntake(structuredClone(event)));
 });
+
+// ── #840 fix: issue task classification + governed profile grant ───────────────────────────────────────
+const implEvent = (labels = []) => ({
+  ...event,
+  issue: {
+    ...event.issue, number: 840, labels,
+    body: "## Purpose\nRepair the runtime.\n\n## Scope\n- docs/orchestration/**\n\n## Required work\n- Implement the fix and add a function.\n\n## Completion\nDraft PR.",
+    html_url: "https://github.com/TaylorService-spec/Taylor_Parts/issues/840",
+  },
+});
+
+test("#840: buildIssueIntake classifies the requested execution contract (implementation => PATCH_PRODUCER request)", () => {
+  const a = buildIssueIntake(implEvent());
+  assert.equal(a.execution.taskClass, "PATCH_PRODUCER");
+  assert.equal(a.execution.expectedArtifactClass, "PATCH");
+  assert.deepEqual(a.execution.requiredExecutionReceipts, ["tests"]);
+  assert.equal(a.execution.verifierRequired, true);
+  // an analysis-shaped issue defaults to least privilege
+  assert.equal(buildIssueIntake(event).execution.taskClass, "READ_ONLY_ANALYSIS");
+});
+
+test("#840: issue TEXT alone never grants authority — authorize defaults to READ_ONLY_ANALYSIS without an eos-authorize-* label", () => {
+  const staged = buildIssueIntake(implEvent());
+  const authorized = authorizeIssueIntake(staged, implEvent());
+  assert.equal(authorized.execution.taskClass, "PATCH_PRODUCER", "the REQUEST is PATCH_PRODUCER");
+  assert.equal(authorized.authority.authorizedExecutionProfile, "READ_ONLY_ANALYSIS", "but the GRANT is least-privilege without a governed label");
+});
+
+test("#840: an Owner-applied eos-authorize-patch label is the SEPARATE governed grant", () => {
+  const ev = implEvent([{ name: "eos-intake" }, { name: "eos-authorize-patch" }]);
+  const authorized = authorizeIssueIntake(buildIssueIntake(ev), ev);
+  assert.equal(authorized.authority.authorizedExecutionProfile, "PATCH_PRODUCER");
+  // the intake label by itself is not an authorization grant
+  const evNoGrant = implEvent([{ name: "eos-intake" }]);
+  assert.equal(authorizeIssueIntake(buildIssueIntake(evNoGrant), evNoGrant).authority.authorizedExecutionProfile, "READ_ONLY_ANALYSIS");
+});

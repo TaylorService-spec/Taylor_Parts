@@ -39,8 +39,8 @@ test("POSITIVE: analysis task + clean completion => COMPLETE with a durable resu
   assert.ok(r.result && r.reviewReady);
 });
 
-test("#835 REGRESSION: implementation task, worker 'succeeds', but no governed PATCH produced => AWAITING_ARTIFACTIZATION, NOT COMPLETE, NO result", () => {
-  const r = drive(resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH" } }), worker());
+test("#835 REGRESSION: implementation task, worker 'succeeds' (receipts+verifier) but no governed PATCH produced => AWAITING_ARTIFACTIZATION, NOT COMPLETE, NO result", () => {
+  const r = drive(resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH" } }), worker({ result: { evidence: { receipts: ["tests"], verifier: "PASS" } }, total_cost_usd: 0 }));
   assert.equal(r.disposition, "AWAITING_ARTIFACTIZATION");
   assert.equal(r.status.state, "AWAITING_ARTIFACTIZATION");
   assert.notEqual(r.disposition, "COMPLETE");
@@ -90,16 +90,41 @@ test("LEAST-PRIVILEGE: a PATCH task WITHOUT a governed grant cannot self-escalat
   const r = drive(resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH" } }), worker());
   assert.equal(r.wake.profile, "READ_ONLY_ANALYSIS", "request alone never grants PATCH_PRODUCER authority");
   assert.equal(r.profileDecision.granted, false);
-  assert.equal(r.disposition, "AWAITING_ARTIFACTIZATION", "and the completion gate still fails closed");
+  // read-only can't run the required tests → missing receipts → fails closed (never COMPLETE)
+  assert.equal(r.disposition, "BLOCKED_EXECUTION");
+  assert.notEqual(r.disposition, "COMPLETE");
 });
 
 test("LEAST-PRIVILEGE: a PATCH task WITH a governed authorization grant runs PATCH_PRODUCER and can COMPLETE", () => {
   const r = drive(
     resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"] }, authorizedProfile: "PATCH_PRODUCER" }),
-    worker({ result: { evidence: { receipts: ["tests"], artifacts: ["PATCH"] } }, total_cost_usd: 0 }),
+    worker({ result: { evidence: { receipts: ["tests"], artifacts: ["PATCH"], verifier: "PASS" } }, total_cost_usd: 0 }),
   );
   assert.equal(r.wake.profile, "PATCH_PRODUCER");
   assert.equal(r.wake.turnCeiling, 80);
   assert.equal(r.profileDecision.granted, true);
+  assert.equal(r.disposition, "COMPLETE");
+});
+
+test("EXACT #840: implementation issue, NO governed grant, worker read-only reports tool-permission-blocked => never COMPLETE", () => {
+  // The real #840 shape: implementation request, launched under READ_ONLY_ANALYSIS (no governed grant),
+  // sourcePaths:[] / no patch artifact, worker explicitly reports its tools were permission-blocked.
+  const r = drive(
+    resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"], verifierRequired: true } }),
+    worker({ result: { evidence: { toolPermissionBlocked: true, receipts: [], artifacts: [] } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "READ_ONLY_ANALYSIS", "no grant → runs least-privilege, cannot implement");
+  assert.equal(r.profileDecision.granted, false);
+  assert.equal(r.disposition, "BLOCKED_EXECUTION", "tool-permission-blocked => BLOCKED_EXECUTION");
+  assert.notEqual(r.disposition, "COMPLETE");
+  assert.equal(r.result, undefined);
+});
+
+test("EXACT #840 converse: same implementation request WITH a governed PATCH grant + patch + receipts + verifier PASS => COMPLETE", () => {
+  const r = drive(
+    resolved({ execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"], verifierRequired: true }, authorizedProfile: "PATCH_PRODUCER" }),
+    worker({ result: { evidence: { receipts: ["tests"], artifacts: ["PATCH"], verifier: "PASS" } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "PATCH_PRODUCER");
   assert.equal(r.disposition, "COMPLETE");
 });

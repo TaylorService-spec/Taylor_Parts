@@ -92,3 +92,22 @@ test("completionStateToStatus maps to durable statuses; only COMPLETE reports CO
     if (s !== "COMPLETE") assert.notEqual(completionStateToStatus(s), "COMPLETE", `${s} must never map to COMPLETE`);
   }
 });
+
+import { normalizeExecutionContract } from "./completionSemantics.mjs";
+
+test("normalizeExecutionContract gives implementation work fail-closed teeth (PATCH + receipts + verifier)", () => {
+  const impl = normalizeExecutionContract({ taskClass: "PATCH_PRODUCER" });
+  assert.equal(impl.expectedArtifactClass, "PATCH", "implementation must produce a PATCH even if unspecified");
+  assert.deepEqual(impl.requiredExecutionReceipts, ["tests"]);
+  assert.equal(impl.verifierRequired, true);
+  // analysis default carries no such requirements
+  const analysis = normalizeExecutionContract({});
+  assert.equal(analysis.taskClass, "READ_ONLY_ANALYSIS");
+  assert.equal(analysis.expectedArtifactClass, "NONE");
+  assert.deepEqual(analysis.requiredExecutionReceipts, []);
+  assert.equal(analysis.verifierRequired, false);
+  // explicit fields still win (can require a PULL_REQUEST, can waive the verifier)
+  const explicit = normalizeExecutionContract({ taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PULL_REQUEST", verifierRequired: false });
+  assert.equal(explicit.expectedArtifactClass, "PULL_REQUEST");
+  assert.equal(explicit.verifierRequired, false);
+});

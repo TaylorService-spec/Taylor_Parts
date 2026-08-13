@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { intakeDigest, resolveWorkIntake } from "../lib/workIntake.mjs";
+import { classifyIssueTaskClass, authorizedProfileFromLabels } from "../lib/issueTaskClassifier.mjs";
 
 export const INTAKE_LABEL = "eos-intake";
 const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
@@ -66,11 +67,20 @@ export function buildIssueIntake(event) {
   const scope = issueScope(issue.body);
   const requiredWork = section(issue.body, "Required work");
   const completion = section(issue.body, "Completion");
+  // Deterministically classify the REQUESTED execution contract from the issue text/labels (a request, never a
+  // grant — the governed profile grant is set separately in authorizeIssueIntake). Fail-closed to
+  // READ_ONLY_ANALYSIS; GOVERNED_INTEGRATION is never inferred. Closes the #840 gap where NO contract was set.
+  const execution = classifyIssueTaskClass({
+    title: issue.title,
+    body: `${issue.title}\n${issue.body}`,
+    labels: issue.labels || [],
+  });
   const artifact = {
     requestId,
     title: issue.title.trim(),
     intent: `${purpose}\n\nRequired work:\n${requiredWork}\n\nCompletion:\n${completion}`,
     scope,
+    execution,
     contextScope: ["orchestration", "github-issue-intake"],
     source: {
       producer: "GitHub Issue intake workflow",
@@ -101,6 +111,11 @@ export function authorizeIssueIntake(staged, event) {
   if (staged.status !== "EOS_READY" || staged.authority?.authorizationState !== "REPO_SAFE") {
     throw new Error("EOS authorization requires a validated EOS_READY/REPO_SAFE adapter artifact");
   }
+  // GOVERNED profile grant — the SEPARATE authority key (PR #839 two-key model). It is derived ONLY from an
+  // explicit Owner-applied `eos-authorize-*` label, NEVER from the issue text or the requested task class.
+  // Default is the least-privilege READ_ONLY_ANALYSIS: without an explicit grant, an implementation request
+  // runs read-only and the completion gate fails closed (never COMPLETE) — the #840 fix.
+  const authorizedExecutionProfile = authorizedProfileFromLabels(event.issue.labels || []);
   const promoted = {
     ...staged,
     status: "EXECUTION_AUTHORIZED",
@@ -109,6 +124,7 @@ export function authorizeIssueIntake(staged, event) {
       basis: "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
       authorizedBy: event.sender.login,
       authorizedAt: event.issue.updated_at,
+      authorizedExecutionProfile,
       protectedBoundary: null,
     },
     sha256: "",

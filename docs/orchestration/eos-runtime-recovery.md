@@ -59,6 +59,27 @@ classifies. Wired into `runIntakeExecution`; two new durable statuses added (`BL
 Covered by pure unit tests (`completionSemantics.test.mjs`, `executionProfiles.test.mjs`) and an end-to-end
 runtime test through `runIntakeExecution` (`intakeCompletionGate.test.mjs`).
 
+## 5. Issue task classification (#840 follow-up)
+#840 exposed a gap ABOVE the runtime: the Issue→EOS intake adapter populated **no execution contract**, so an
+implementation task defaulted to `READ_ONLY_ANALYSIS` *and* the completion gate had no PATCH/receipt requirement
+to enforce — a run producing only an `ANALYSIS_REPORT` became COMPLETE. Fixed in three coordinated places, all
+preserving PR #839's two-key model:
+- **`issueTaskClassifier.mjs`** deterministically derives the **requested** execution contract from the issue
+  (explicit `## Execution` `taskClass:` / `eos-task:*` label → keyword heuristic → fail-closed
+  `READ_ONLY_ANALYSIS`). Implementation/fix/build/code-change ⇒ `PATCH_PRODUCER` request; verification ⇒
+  `READ_ONLY_VERIFY`; ambiguous ⇒ `READ_ONLY_ANALYSIS`. `GOVERNED_INTEGRATION` is **never inferred**.
+- **Governed grant stays separate**: `issue-intake-producer.authorizeIssueIntake` sets
+  `authority.authorizedExecutionProfile` **only** from an Owner-applied `eos-authorize-*` label — issue text
+  never grants authority. Default is least-privilege `READ_ONLY_ANALYSIS`.
+- **`normalizeExecutionContract`** gives implementation work automatic fail-closed teeth: a `PATCH_PRODUCER`
+  task auto-requires `expectedArtifactClass=PATCH`, test receipts, and a verifier PASS — so it can never
+  false-COMPLETE on an `ANALYSIS_REPORT` even if the intake under-specified the contract.
+
+Result for the exact #840 case: an implementation issue with no governed grant runs read-only, the worker's
+`toolPermissionBlocked` report maps to `executionCapable:false`, and the completion gate returns
+`BLOCKED_EXECUTION` — **never COMPLETE**. With a governed `eos-authorize-patch` grant + a produced patch +
+receipts + verifier PASS, it reaches COMPLETE.
+
 ## Preserved governance (unchanged)
 Gateway, Verifier (`verifierAgent.mjs`), the #820 max-two-correction behavior, Agent Manager, Claude routing
 boundaries, Cortex `READ_ONLY_PILOT` (`cortexProviderAdapter.mjs`), integration authority, cost/capacity
