@@ -1,0 +1,39 @@
+{
+  "requestId": "EOS-ISSUE-834",
+  "title": "EOS — 3-cycle Claude remediation burn-down",
+  "intent": "Run a bounded multi-cycle remediation experiment through EOS using Claude Agent Master: fix the current repo-safe findings from #833, rerun the same 10-worker read-only sweep on the corrected state, take the new prioritized list, fix again, and repeat so we can observe finding turnover across multiple complete cycles.\n\nRequired work:\nRun exactly 3 full remediation cycles. Each cycle is:\n1. Start from the current prioritized findings list (Cycle 1 starts from #833).\n2. Implement the highest-priority repo-safe/non-protected findings that are sufficiently specified and testable.\n3. Add or update focused regression tests for every implemented fix.\n4. Run relevant test/build/lint checks. If a fix fails verification, allow at most one correction attempt; then mark it UNRESOLVED and continue without looping.\n5. After the implementation batch is green, launch exactly 10 parallel read-only Agent Master workers using the same #833 scopes:\n   - inventory/transfer integrity\n   - truck inventory/allocation/reservation\n   - receiving readiness\n   - work-order idempotency/replay/races\n   - dispatcher/assignment/parts-readiness\n   - Firestore Rules/authorization tail\n   - privileged-callable/deployment-boundary review\n   - sales/fulfillment\n   - equipment/technician/field-mode\n   - cross-system P0/P1 sweep\n6. Use one consolidator only. Dedup against #802, #818, #819, EOS-STRESS-RUN-001, #831, #833, and all earlier cycles in this run.\n7. Produce the next prioritized finding list and classify each item as FIXED_THIS_CYCLE, NEW, DUP_STILL_OPEN, ELEVATED, CLEAN, UNRESOLVED, OWNER_BLOCKED, or PROTECTED_DEFERRED.\n8. Continue into the next cycle using that new list.\n\nCycle 1 should prioritize the repo-safe #833 items where evidence supports implementation, including:\n- updateWorkOrderExecutionData replay/idempotency protection;\n- warehouseService stock floor/sufficiency protection;\n- createTransferOrder idempotency;\n- dispatcher ScoreBreakdown scope crash;\n- createWorkOrder idempotency only if not already fixed by the current branch/main state.\nDo not autonomously implement Sales fulfilledQty semantics, privileged-callable deployment policy, technician equipment-access policy, deployments, Rules changes, or other genuine Owner/protected decisions; classify and carry them forward instead.\n\nCost/capacity:\n- No implicit economic-cost cap.\n- Modeled Claude cost is telemetry only.\n- Stop only for a real governed capacity/concurrency/Owner-reserve limit or another fail-closed runtime condition.\n- Record actualProviderCostUsd as authoritative billed cost or UNKNOWN.\n- Record estimatedExecutionCostUsd separately.\n\nCompletion:\nComplete only after exactly 3 bounded remediation cycles have finished (or a real governed capacity limit stops further work), with each cycle containing implementation → tests → 10-worker rerun → consolidation.\nPublish a durable governed report containing:\n- files changed and tests by cycle;\n- findings fixed per cycle;\n- new findings discovered per cycle;\n- finding-count/severity turnover from #833 → Cycle 1 → Cycle 2 → Cycle 3;\n- items that survived all cycles and why;\n- genuine Owner/protected decisions only;\n- 10-worker telemetry for each rerun;\n- total Claude Agent Master calls/tokens/duration where exposed;\n- whether quality, duplicate rate, or coordination degraded across repeated cycles;\n- final prioritized residual list;\n- whether another cycle would have meaningful marginal value.\n\nArtifactize all source changes as a governed scoped patch/result under the existing EOS write-back model. Do not apply the patch to main automatically. Explicitly confirm main/product/production were not mutated by this experiment.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts",
+    "Execution: EOS → Claude Agent Master in one isolated disposable worktree → bounded implementation + verification cycles → existing Verifier → governed patch/report artifacts only.",
+    "Do not merge, deploy, alter production, grant permissions, modify Firestore Rules, activate providers, change credentials, or cross any protected Owner boundary.",
+    "Use #833 as the starting finding baseline. Preserve all work in the isolated worktree across cycles so later workers inspect the corrected state from prior cycles."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/834",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T01:42:49Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-834.work.json",
+  "sha256": "91db9db1a1ccb326ae5bd7d42837ea60f56824030b7becd8f197e3018cba29bf",
+  "createdAt": "2026-08-13T01:42:49Z",
+  "updatedAt": "2026-08-13T01:42:49Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/834"
+    ],
+    "pullRequests": []
+  }
+}
