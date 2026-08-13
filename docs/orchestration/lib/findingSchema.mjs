@@ -66,3 +66,39 @@ export function validateFindings(findings = []) {
   }
   return { valid: Object.freeze(valid), invalid: Object.freeze(invalid) };
 }
+
+// The machine-readable block an audit worker emits alongside its human report. A single fenced code block tagged
+// `eos-findings` containing a JSON array of findings (see the contract in docs/orchestration/findings/output-
+// contract.md). This is the bridge from worker OUTPUT to the dedup-able consolidation INPUT.
+const FINDINGS_BLOCK = /```eos-findings\s*\n([\s\S]*?)\n```/;
+
+/**
+ * Extract structured findings from a worker's result content. Finds the single `eos-findings` JSON block, parses
+ * it, and validates each finding against the contract. Fail-closed and total (never throws):
+ *   - no block            → { found:false, findings:[], invalid:[], reason:"no eos-findings block" }
+ *   - block but bad JSON  → { found:false, ..., reason:"invalid JSON in eos-findings block" }
+ *   - block parses        → { found:true, findings:[valid, normalized], invalid:[{finding,errors}] }
+ * A worker that emits no/invalid block yields no structured findings, so downstream the child's findings are
+ * empty and reconcile fail-closes (surfaces for disposition) — never a silent, unverifiable pass.
+ */
+export function extractFindings(content = "") {
+  const text = typeof content === "string" ? content : "";
+  const m = FINDINGS_BLOCK.exec(text);
+  if (!m) return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "no eos-findings block" });
+  let parsed;
+  try { parsed = JSON.parse(m[1]); }
+  catch { return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "invalid JSON in eos-findings block" }); }
+  if (!Array.isArray(parsed)) return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "eos-findings block must be a JSON array" });
+  const { valid, invalid } = validateFindings(parsed);
+  return Object.freeze({ found: true, findings: valid, invalid });
+}
+
+/**
+ * Build the consolidation-input shape for one executed child from its raw result content — the wiring point that
+ * turns worker output into a dedup-able consolidation child. `findings` are the extracted+validated structured
+ * findings (empty if the worker emitted none/invalid — which fail-closes downstream, by design).
+ */
+export function childFromResult({ requestId, disposition = "COMPLETE", sector = null, content = "" } = {}) {
+  const ex = extractFindings(content);
+  return Object.freeze({ requestId, disposition, sector, findings: ex.findings, findingsExtraction: Object.freeze({ found: ex.found, invalidCount: ex.invalid.length, reason: ex.reason ?? null }) });
+}

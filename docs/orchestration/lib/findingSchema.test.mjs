@@ -66,3 +66,46 @@ test("validateFindings separates valid (normalized) from invalid (with errors) �
   assert.match(out.invalid[0].errors.join(" "), /discriminator/);
   assert.ok(Object.isFrozen(out.valid[0]), "valid findings are normalized + frozen");
 });
+
+import { extractFindings, childFromResult } from "./findingSchema.mjs";
+
+const WORKER_OUTPUT = `# Sector audit: work-order lifecycle
+
+Some human-readable analysis here...
+
+\`\`\`eos-findings
+[
+  { "file": "functions/src/transitionWorkOrder.ts", "symbol": "transitionWorkOrder", "discriminator": "no-technician-availability-check", "severity": "HIGH", "category": "concurrency", "evidence": "No availability check anywhere in the file.", "line": 64 },
+  { "file": "functions/src/x.ts", "discriminator": "vague", "severity": "NOPE", "category": "", "evidence": "" }
+]
+\`\`\`
+
+More prose after.`;
+
+test("extractFindings pulls the eos-findings block, validates, and separates invalid", () => {
+  const ex = extractFindings(WORKER_OUTPUT);
+  assert.equal(ex.found, true);
+  assert.equal(ex.findings.length, 1, "only the valid finding passes the contract");
+  assert.equal(ex.findings[0].discriminator, "no-technician-availability-check");
+  assert.equal(ex.invalid.length, 1, "the malformed one is separated, not accepted");
+});
+
+test("extractFindings fail-closed: no block / bad JSON → found:false, no findings", () => {
+  assert.equal(extractFindings("just markdown, no block").found, false);
+  assert.equal(extractFindings("```eos-findings\n{not json\n```").found, false);
+  assert.equal(extractFindings("```eos-findings\n{\"a\":1}\n```").found, false, "must be a JSON array");
+  assert.deepEqual(extractFindings("nope").findings, []);
+});
+
+test("childFromResult wires worker output → dedup-able consolidation child", () => {
+  const c = childFromResult({ requestId: "EOS-ISSUE-852-C02", sector: "work-orders", content: WORKER_OUTPUT });
+  assert.equal(c.requestId, "EOS-ISSUE-852-C02");
+  assert.equal(c.disposition, "COMPLETE");
+  assert.equal(c.findings.length, 1);
+  assert.equal(c.findingsExtraction.found, true);
+  assert.equal(c.findingsExtraction.invalidCount, 1);
+  // a worker that emitted nothing structured → empty findings (fail-closed downstream)
+  const empty = childFromResult({ requestId: "X", content: "no findings block" });
+  assert.deepEqual(empty.findings, []);
+  assert.equal(empty.findingsExtraction.found, false);
+});
