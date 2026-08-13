@@ -146,3 +146,40 @@ test("consolidateAndReconcile: fail-closed — a partial child set never consoli
   assert.equal(out.consolidated.ok, false);
   assert.deepEqual(out.consolidated.missing, ["B"]);
 });
+
+test("identity: two DIFFERENT discriminators in the same file/symbol/line/category do NOT collapse", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A"],
+    children: [child("A", [
+      { file: "functions/src/x.ts", symbol: "fn", discriminator: "issue-one", category: "bug", severity: "HIGH", line: 10 },
+      { file: "functions/src/x.ts", symbol: "fn", discriminator: "issue-two", category: "bug", severity: "HIGH", line: 10 },
+    ])],
+  });
+  assert.equal(out.counts.unique, 2, "distinct discriminators stay distinct — no silent merge before reconcile");
+  assert.equal(out.counts.duplicatesRemoved, 0);
+  assert.deepEqual(out.findings.map((x) => x.discriminator).sort(), ["issue-one", "issue-two"]);
+});
+
+test("identity: the SAME discriminator across children dedupes/agrees despite line & category drift", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: [
+      child("A", [{ file: "functions/src/x.ts", symbol: "fn", discriminator: "same-issue", category: "bug", severity: "HIGH", line: 10 }]),
+      child("B", [{ file: "functions/src/x.ts", symbol: "fn", discriminator: "same-issue", category: "Concurrency", severity: "HIGH", line: 42 }]), // drifted line + category
+    ],
+  });
+  assert.equal(out.counts.unique, 1, "same discriminator → one finding despite line/category drift");
+  assert.equal(out.agreements.length, 1);
+  assert.deepEqual(out.agreements[0].agreedBy.sort(), ["A", "B"]);
+});
+
+test("identity: undiscriminated findings keep legacy grouping and remain actionable (fail-closed) at reconcile", () => {
+  const out = consolidateAndReconcile({
+    expectedChildIds: ["A"],
+    register: [],
+    children: [child("A", [{ file: "functions/src/y.ts", category: "bug", severity: "MEDIUM", line: 3 }])], // no discriminator
+  });
+  assert.equal(out.consolidated.counts.unique, 1);
+  assert.equal(out.reconciled.surfaced.length, 1, "no discriminator → surfaced, never silently suppressed");
+  assert.equal(out.reconciled.surfaced[0].disposition, "NEEDS_DISCRIMINATOR");
+});

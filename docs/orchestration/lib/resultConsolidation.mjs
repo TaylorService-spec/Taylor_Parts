@@ -12,9 +12,19 @@ import { reconcileFindings } from "./findingsRegister.mjs";
 const SEVERITY_RANK = Object.freeze({ INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 });
 const sevRank = (s) => (s in SEVERITY_RANK ? SEVERITY_RANK[s] : -1);
 const normPath = (p) => String(p ?? "").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/{2,}/g, "/").replace(/\/+$/, "");
-// A finding's identity across children: same file + line + category is the SAME finding (two children reporting
-// it is agreement, not two findings). Category is case-normalized so "Bug"/"bug" collapse.
-const findingKey = (f) => `${normPath(f?.file)}:${f?.line ?? ""}:${String(f?.category ?? "").toLowerCase()}`;
+const normId = (s) => String(s ?? "").trim().toLowerCase();
+// A finding's identity across children. When a stable DISCRIMINATOR is present, identity is
+// file + symbol + discriminator (matching the findings register) — drift-immune (line/category ignored), so the
+// same issue from multiple children dedupes/agrees while two DIFFERENT discriminators in the same file/symbol
+// stay distinct and can never collapse into one group. Without a discriminator we fall back to the legacy
+// file + line + category identity; such findings then fail closed at reconcile (no discriminator ⇒ surfaced),
+// so they are never silently deduped away against a real, discriminated issue.
+const findingKey = (f) => {
+  const disc = normId(f?.discriminator);
+  return disc
+    ? `disc::${normPath(f?.file)}::${normId(f?.symbol)}::${disc}`
+    : `nodisc::${normPath(f?.file)}:${f?.line ?? ""}:${normId(f?.category)}`;
+};
 
 /**
  * Fail-closed completeness gate for a decomposed parent: every expected child must be present with a COMPLETE
