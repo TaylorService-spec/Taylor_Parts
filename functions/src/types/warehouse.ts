@@ -36,6 +36,8 @@ export interface TransferOrder {
   quantity: number;
   fromWarehouseId: string;
   toWarehouseId: string;
+  fromBinCode: string;
+  toBinCode: string;
   status: TransferOrderStatus;
   createdAt: Timestamp;
   updatedAt: Timestamp;

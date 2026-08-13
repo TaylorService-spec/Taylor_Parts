@@ -56,6 +56,15 @@ async function applyStockDelta(
   tx.set(ref, next);
 }
 
+function stockRef(warehouseId: string, partId: string, binCode: string) {
+  return db().collection(STOCK_LOCATIONS_COLLECTION).doc(stockLocationDocId(warehouseId, partId, binCode));
+}
+
+function applyLoadedStockDelta(tx: Transaction, ref: FirebaseFirestore.DocumentReference, warehouseId: string, partId: string, binCode: string, current: number, delta: number) {
+  if (current + delta < 0) throw new Error(`Insufficient stock in ${warehouseId}/${partId}/${binCode}: requested ${Math.abs(delta)}, available ${current}`);
+  tx.set(ref, { id: ref.id, warehouseId, partId, binCode, quantity: current + delta, updatedAt: FieldValue.serverTimestamp() });
+}
+
 // Applies a delta to one bin's quantity, creating the StockLocation
 // doc on first write. NOTE on idempotency: this primitive takes a
 // relative delta with no idempotency key, so calling it twice with the
@@ -72,20 +81,16 @@ export async function updateStockLocation(
   await db().runTransaction((tx) => applyStockDelta(tx, warehouseId, partId, binCode, deltaQuantity));
 }
 
-// TransferOrder's bin is fixed at "TRANSFER" -- this system tracks
-// bin-level detail for stock at rest, but a transfer in flight isn't
-// sitting in a named bin at either warehouse. Refining transfers to a
-// specific destination bin is a real gap, not silently solved here;
-// left for a future iteration since nothing in this epic's spec asked
-// for bin-level transfer routing.
-const TRANSFER_BIN_CODE = "TRANSFER";
-
 export async function createTransferOrder(input: {
   partId: string;
   quantity: number;
   fromWarehouseId: string;
   toWarehouseId: string;
+  fromBinCode: string;
+  toBinCode: string;
 }): Promise<TransferOrder> {
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) throw new Error("Transfer quantity must be positive");
+  if (!input.fromWarehouseId || !input.toWarehouseId || !input.fromBinCode || !input.toBinCode) throw new Error("Transfer warehouse and bin are required");
   const ref = db().collection(TRANSFER_ORDERS_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
   const order: TransferOrder = {
@@ -94,6 +99,8 @@ export async function createTransferOrder(input: {
     quantity: input.quantity,
     fromWarehouseId: input.fromWarehouseId,
     toWarehouseId: input.toWarehouseId,
+    fromBinCode: input.fromBinCode,
+    toBinCode: input.toBinCode,
     status: "REQUESTED",
     createdAt: now as unknown as TransferOrder["createdAt"],
     updatedAt: now as unknown as TransferOrder["updatedAt"],
@@ -115,8 +122,14 @@ export async function completeTransferOrder(transferOrderId: string): Promise<vo
     if (order.status === "COMPLETED") return;
     if (order.status === "CANCELLED") throw new Error(`TransferOrder ${transferOrderId} is CANCELLED, cannot complete`);
 
-    await applyStockDelta(tx, order.fromWarehouseId, order.partId, TRANSFER_BIN_CODE, -order.quantity);
-    await applyStockDelta(tx, order.toWarehouseId, order.partId, TRANSFER_BIN_CODE, order.quantity);
+    // Both bins are explicit and persisted on the order. Never synthesize a
+    // TRANSFER bin: completion moves physical units from the actual source
+    // location to the actual destination location in this single transaction.
+    const sourceRef = stockRef(order.fromWarehouseId, order.partId, order.fromBinCode);
+    const destinationRef = stockRef(order.toWarehouseId, order.partId, order.toBinCode);
+    const [sourceSnap, destinationSnap] = await Promise.all([tx.get(sourceRef), tx.get(destinationRef)]);
+    applyLoadedStockDelta(tx, sourceRef, order.fromWarehouseId, order.partId, order.fromBinCode, sourceSnap.exists ? (sourceSnap.data() as StockLocation).quantity : 0, -order.quantity);
+    applyLoadedStockDelta(tx, destinationRef, order.toWarehouseId, order.partId, order.toBinCode, destinationSnap.exists ? (destinationSnap.data() as StockLocation).quantity : 0, order.quantity);
 
     tx.set(ref, { status: "COMPLETED", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
