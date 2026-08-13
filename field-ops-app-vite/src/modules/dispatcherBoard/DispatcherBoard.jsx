@@ -58,7 +58,7 @@ export default function DispatcherBoard() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [dispatchError, setDispatchError] = useState(null);
-  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchingWorkOrderId, setDispatchingWorkOrderId] = useState(null);
   const queueRef = useRef(null);
 
   // Debounced search -- no shared debounce hook exists on main (only
@@ -97,7 +97,7 @@ export default function DispatcherBoard() {
   );
 
   async function handleDispatchDrop(workOrder, technicianId) {
-    if (isDispatching) return; // rapid repeated drops -- ignore while one is already in flight
+    if (dispatchingWorkOrderId === workOrder.id) return;
     setDispatchError(null);
     const allowed = getAllowedActions(workOrder.status, role, false);
     if (!allowed.includes("Dispatch")) {
@@ -106,14 +106,14 @@ export default function DispatcherBoard() {
       );
       return;
     }
-    setIsDispatching(true);
+    setDispatchingWorkOrderId(workOrder.id);
     try {
       await transitionWorkOrder(workOrder.id, "Dispatch", { assignedTechId: technicianId });
     } catch (err) {
       console.error(err);
       setDispatchError(err.message);
     } finally {
-      setIsDispatching(false);
+      setDispatchingWorkOrderId((id) => (id === workOrder.id ? null : id));
     }
   }
 
@@ -209,7 +209,7 @@ export default function DispatcherBoard() {
             technicians={technicians}
             recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
             onDispatchToTechnician={handleDispatchDrop}
-            isDispatching={isDispatching}
+            isDispatching={dispatchingWorkOrderId === selectedWorkOrder?.id}
           />
           <TechnicianBoard
             technicians={technicians}
@@ -217,7 +217,7 @@ export default function DispatcherBoard() {
             recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
             allWorkOrders={workOrders}
             onDropTechnician={handleDispatchDrop}
-            isDispatching={isDispatching}
+            isDispatching={dispatchingWorkOrderId === selectedWorkOrder?.id}
           />
         </div>
       )}
