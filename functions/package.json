@@ -37,6 +37,7 @@
     "test:transitionEngine": "npm run build && node test/transitionEngine.test.mjs",
     "test:fixturePipeline": "node --test test/fixturePipeline.test.mjs",
     "test:workOrderPartsPlan": "npm run build && node --test test/setWorkOrderPartsPlan.test.mjs",
+    "test:inventoryService": "npm run build && node --test test/inventoryService.test.mjs",
     "test:opportunity": "npm run build && node --test test/opportunityCommands.test.mjs test/opportunityReadService.test.mjs",
     "test:salesOrder": "npm run build && node --test test/salesOrderCommands.test.mjs",
     "test:fulfillment": "npm run build && node --test test/allocationProjection.test.mjs test/fulfillmentAvailability.test.mjs test/allocateSalesOrderAllocation.test.mjs test/equipmentAvailabilityContract.test.mjs test/equipmentModelResolution.test.mjs test/demandLineage.test.mjs test/coordinatedVisit.test.mjs test/coordinatedFieldMission.test.mjs test/billingEligibility.test.mjs test/inventoryControlLifecycle.test.mjs",
