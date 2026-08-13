@@ -1,0 +1,34 @@
+{
+  "resultId": "EOS-ISSUE-852-C08:a08523e7fef11528",
+  "requestId": "EOS-ISSUE-852-C08",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "55fdf012722c96362a1aea0f16a715e29b534279c0ef6f74a272189836933b9e",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "EOS intake worker completed",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C08/a08523e7fef115280cb31464cf0fce48bfb744ae84309c4b583286dffd538975.content.md",
+  "contentSha256": "a08523e7fef115280cb31464cf0fce48bfb744ae84309c4b583286dffd538975",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C08/a08523e7fef115280cb31464cf0fce48bfb744ae84309c4b583286dffd538975.content.md",
+      "sha256": "a08523e7fef115280cb31464cf0fce48bfb744ae84309c4b583286dffd538975"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-13T15:52:13.603Z",
+  "pointer": "result://EOS-ISSUE-852-C08",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-852-C08/a6b0dc4688d68268f3e1a3704eabd83fe83983b42566e7ac81667fec46fd0f70.result.json",
+  "sha256": "a6b0dc4688d68268f3e1a3704eabd83fe83983b42566e7ac81667fec46fd0f70"
+}
