@@ -1,0 +1,41 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-837",
+  "sourceWorkSha256": "5dd1f18763d57f19c88be82ae9854eed590d52364fd1874c626e14ed2fd5cb1c",
+  "baseCommit": "8c39ac687efb9cf945b3506b3512406de2e4854b",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "Primary files to inspect first and keep scope narrow unless direct call-site evidence requires one adjacent file:",
+    "docs/orchestration/lib/intakeStatus.mjs",
+    "docs/orchestration/lib/intakeStatus.test.mjs",
+    "docs/orchestration/lib/intakeIngress.mjs",
+    "docs/orchestration/lib/intakeIngress.test.mjs",
+    "the exact runtime/artifactization caller that passes worker outcome into deriveStatusState/buildIntakeStatus, if needed.",
+    "Do not search unrelated workflows, providers, Agent Manager, Taylor product code, or project-keystone."
+  ],
+  "paths": [
+    "docs/orchestration/context/intake-runtime.mjs",
+    "docs/orchestration/lib/intakeExecute.mjs",
+    "docs/orchestration/lib/intakeExecute.test.mjs",
+    "docs/orchestration/lib/intakeStatus.mjs",
+    "docs/orchestration/lib/outcomeGate.mjs",
+    "docs/orchestration/lib/outcomeGate.test.mjs",
+    "docs/orchestration/lib/workIntake.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/context/intake-runtime.mjs",
+    "docs/orchestration/lib/intakeExecute.mjs",
+    "docs/orchestration/lib/intakeExecute.test.mjs",
+    "docs/orchestration/lib/outcomeGate.mjs",
+    "docs/orchestration/lib/outcomeGate.test.mjs",
+    "docs/orchestration/lib/workIntake.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-837/465771de601db31b35238e1a92dc721d6aeff4cec4e213fcb24dcf80f5c9afbe.patch",
+  "patchSha256": "465771de601db31b35238e1a92dc721d6aeff4cec4e213fcb24dcf80f5c9afbe",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T02:16:45Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-837/c1831060cae45a789193199351915a2e4f2d398c593b799ef23bb114a82ac0c7.patch.json",
+  "sha256": "c1831060cae45a789193199351915a2e4f2d398c593b799ef23bb114a82ac0c7"
+}

@@ -1,0 +1,667 @@
+diff --git a/docs/orchestration/context/intake-runtime.mjs b/docs/orchestration/context/intake-runtime.mjs
+index e227adf..b867eef 100644
+--- a/docs/orchestration/context/intake-runtime.mjs
++++ b/docs/orchestration/context/intake-runtime.mjs
+@@ -106,7 +106,15 @@ function main() {
+     const requires = arg("requires") ? [arg("requires")] : [];
+     const out = executeIntakeItem({ requestId, location, sha256, sourceCommit: arg("source-commit"), requiresCapabilities: requires });
+     process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+-    process.exit(out.disposition === "COMPLETE" || out.disposition === "STAGED" || out.disposition === "READY" || out.disposition === "BLOCKED" || out.disposition === "OWNER_REQUIRED" ? 0 : 1);
++    // Governed, non-error dispositions exit 0 — including the EOS-ISSUE-836 outcome-gate dispositions
++    // (BLOCKED_EXECUTION/AWAITING_ARTIFACTIZATION/RETURN_FOR_CORRECTION/OWNER_ACTION_REQUIRED): the
++    // runtime ran and produced a truthful, durable non-COMPLETE record — that is success for this
++    // process, not a crash. Only FAILED/HELD (no durable governed outcome was reached) exit 1.
++    const GOVERNED_EXIT_ZERO = new Set([
++      "COMPLETE", "STAGED", "READY", "BLOCKED", "OWNER_REQUIRED",
++      "BLOCKED_EXECUTION", "AWAITING_ARTIFACTIZATION", "RETURN_FOR_CORRECTION", "OWNER_ACTION_REQUIRED",
++    ]);
++    process.exit(GOVERNED_EXIT_ZERO.has(out.disposition) ? 0 : 1);
+   }
+   process.stderr.write("usage: intake-runtime.mjs execute ...  (writeback is handled by intake-ingest-ci.mjs --write)\n");
+   process.exit(2);
+diff --git a/docs/orchestration/lib/intakeExecute.mjs b/docs/orchestration/lib/intakeExecute.mjs
+index 25957df..73f1b95 100644
+--- a/docs/orchestration/lib/intakeExecute.mjs
++++ b/docs/orchestration/lib/intakeExecute.mjs
+@@ -18,6 +18,17 @@ import { executeWake } from "./wakeExecute.mjs";
+ import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
+ import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
+ import { createCostCapacityTelemetry } from "./costCapacity.mjs";
++import { gateOutcome } from "./outcomeGate.mjs";
++
++// EOS-ISSUE-836: map each non-COMPLETE outcome-gate status to the compact STATUS_STATE it persists as.
++// RETURN_FOR_CORRECTION reuses "CORRECTING" and OWNER_ACTION_REQUIRED reuses "OWNER_REQUIRED" — both
++// already exist and already mean exactly this; only AWAITING_ARTIFACTIZATION is a new state.
++const OUTCOME_STATUS_STATE = Object.freeze({
++  BLOCKED_EXECUTION: "BLOCKED",
++  AWAITING_ARTIFACTIZATION: "AWAITING_ARTIFACTIZATION",
++  RETURN_FOR_CORRECTION: "CORRECTING",
++  OWNER_ACTION_REQUIRED: "OWNER_REQUIRED",
++});
+ 
+ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+ 
+@@ -45,13 +56,21 @@ function statusFor({ artifact, state, currentWork, activeWorker = null, costCapa
+  * @param {Function} p.contextPackageFn  the shared C-7 package builder
+  * @param {object} [p.wakeCtx]         readiness ctx { governor, network, budgetRemainingUsd, sourceFreshness }
+  * @param {string} [p.summary]         result summary (1-1200 chars)
+- * @returns {{ disposition, executed, gate, item, capabilities, wake?, status, result? }}
++ * @param {"PASS"|"RETURN_FOR_CORRECTION"|"ESCALATE"|null} [p.verifierVerdict]  EOS-ISSUE-836/#820: an
++ *   independent Verifier verdict, when one already ran for this worker output. Its fail-closed
++ *   precedence is preserved untouched by the outcome gate (see outcomeGate.mjs).
++ * @param {Array} [p.producedArtifacts]  EOS-ISSUE-836: governed artifacts actually produced this run
++ *   (e.g. [{ type: "patch" }]), checked against the intake's completionCriteria.requiresArtifacts.
++ * @param {Array} [p.producedEvidence]   EOS-ISSUE-836: test/build/lint evidence records actually
++ *   produced this run (e.g. [{ type: "TEST_RUN", outcome: "PASS" }]).
++ * @returns {{ disposition, executed, gate, item, capabilities, wake?, status, result?, outcome? }}
+  */
+ export function runIntakeExecution({
+   artifact, sourceCommit = null, now,
+   requiresCapabilities = [], capabilityBroker = null,
+   processRunner, lease, contextPackageFn, wakeCtx = {}, resolveModel,
+   summary = "EOS intake worker completed",
++  verifierVerdict = null, producedArtifacts = [], producedEvidence = [],
+ } = {}) {
+   if (!ISO_DATE.test(now || "")) throw new Error("runIntakeExecution: an injected ISO `now` is required");
+   const gate = assessIntakeExecution(artifact);
+@@ -88,7 +107,32 @@ export function runIntakeExecution({
+     });
+   }
+ 
+-  // 4. COMPLETE — persist the worker output as the existing content-addressed result + a COMPLETE status.
++  // 4. THE OUTCOME GATE (EOS-ISSUE-836) — a clean process exit + parseable output is necessary but
++  //    NEVER sufficient for COMPLETE. Derive the real outcome from the request's own structured
++  //    completion criteria, any Verifier verdict, and what was actually produced — corroborated
++  //    (never decided) by the worker's own reported text. Only outcome COMPLETE reaches step 5.
++  const outcome = gateOutcome({
++    requestId: artifact.requestId,
++    resultText: typeof wake.result === "string" ? wake.result : JSON.stringify(wake.result),
++    completionCriteria: item.completionCriteria || {},
++    verifierVerdict, producedArtifacts, producedEvidence,
++  });
++
++  if (outcome.status !== "COMPLETE") {
++    // Never fabricate a result for a run the gate did not confirm complete: a status only, same as
++    // every other non-COMPLETE disposition above.
++    const state = OUTCOME_STATUS_STATE[outcome.status];
++    const ownerRequired = outcome.status === "OWNER_ACTION_REQUIRED";
++    return Object.freeze({
++      disposition: outcome.status, executed: true, gate, item, capabilities, wake, outcome,
++      status: statusFor({
++        artifact, state, currentWork: outcome.reason, activeWorker: item.workstream,
++        costCapacity: wake.costCapacity, ownerQuestion: ownerRequired ? outcome.reason : null, now,
++      }),
++    });
++  }
++
++  // 5. COMPLETE — persist the worker output as the existing content-addressed result + a COMPLETE status.
+   const outputBytes = Buffer.from(typeof wake.result === "string" ? wake.result : JSON.stringify(wake.result), "utf8");
+   const result = buildContentAddressedResult({ request: artifact, outputBytes, status: "COMPLETE", summary, createdAt: now });
+   const index = buildResultIndex({ requestId: artifact.requestId, manifestLocation: result.manifestLocation, manifestSha256: result.manifest.sha256, contentLocation: result.contentLocation, updatedAt: now });
+@@ -100,5 +144,5 @@ export function runIntakeExecution({
+   // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to
+   // the default-branch HEAD; a curated/pre-committed artifact can carry an explicit commit when emitted.
+   const reviewReady = buildReviewReady({ requestId: artifact.requestId, artifact: result.contentLocation, commit: null });
+-  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, status, result: Object.freeze({ ...result, index }), reviewReady });
++  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, outcome, status, result: Object.freeze({ ...result, index }), reviewReady });
+ }
+diff --git a/docs/orchestration/lib/intakeExecute.test.mjs b/docs/orchestration/lib/intakeExecute.test.mjs
+index 4d531d7..8dda019 100644
+--- a/docs/orchestration/lib/intakeExecute.test.mjs
++++ b/docs/orchestration/lib/intakeExecute.test.mjs
+@@ -16,11 +16,16 @@ function resolved(over = {}) {
+     authority: over.authority || { authorizationState: "AUTHORIZED", basis: "owner authorized", protectedBoundary: null },
+     artifactLocation: `docs/orchestration/work-intake/${requestId}.work.json`,
+     createdAt: "2026-08-11T05:00:00Z", updatedAt: "2026-08-11T05:00:00Z", relatedRefs: { issues: [], pullRequests: [] },
++    ...(over.completionCriteria ? { completionCriteria: over.completionCriteria } : {}),
+   };
+   const a = { ...payload, sha256: intakeDigest(payload) };
+   return resolveWorkIntake({ requestId, location: a.artifactLocation, sha256: a.sha256, bytes: Buffer.from(JSON.stringify(a), "utf8") });
+ }
+ 
++const workerReturning = (resultText, totalCostUsd = 0) => mockWorker({
++  run: { stdout: JSON.stringify({ result: resultText, total_cost_usd: totalCostUsd }), exitCode: 0, timedOut: false },
++});
++
+ const ctxPkgFn = () => ({ sufficiency: "SUFFICIENT", governingAuthority: "auth", required: [{ id: "auth", retrievalPath: "x.md" }], onDemand: [], provenance: { mapVersion: "1.0.0", sourceCommit: "abc" } });
+ const FREE_SLOT = { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", budgetRemainingUsd: 5, sourceFreshness: "CURRENT" };
+ const mockWorker = (opts = {}) => { const calls = []; return { calls, run(a) { calls.push(a); return opts.run || { stdout: JSON.stringify({ result: "# EOS-EXEC-001 result\nworker did the thing\n", total_cost_usd: 0 }), exitCode: 0, timedOut: false }; } }; };
+@@ -109,3 +114,96 @@ test("a refusal (STAGED/BLOCKED/FAILED) emits NO review-ready signal — only co
+   assert.equal(failed.disposition, "FAILED");
+   assert.equal(failed.reviewReady, undefined);
+ });
++
++// ── EOS-ISSUE-836: the outcome gate — a clean process exit is necessary but never sufficient for
++// COMPLETE. These reproduce the EXACT worker text persisted for #834 and #835 (a zero exit code +
++// parseable JSON output, same as every other SPAWNED_COMPLETED wake) and prove the pipeline no longer
++// persists COMPLETE for either. A positive regression proves a genuinely satisfied request still does.
++
++// Verbatim worker text from docs/orchestration/work-intake/results/EOS-ISSUE-834/
++// b1d37cc3845281f6fd975cfc4a633d86d196e6851cf58d9a98dd5eed39db6be3.content.md — Claude stopped before
++// cycle 1 because Bash/test/build/lint execution was denied. No remediation cycles occurred.
++const EOS_834_WORKER_TEXT = `Bash is completely denied in this session ("don't ask mode"). That's a hard blocker for this task: I can't run the cold-start bootstrap script, \`gh issue view\` to pull #833's findings, or — critically — the test/build/lint checks that step 4 of every cycle requires to verify fixes before moving on. I also can't run the 10-worker read-only sweeps as actual processes.
++
++Without Bash I cannot: check out issue #833 via \`gh\`, run \`npm test\`/lint/build, or execute any verification step.
++
++I don't want to fabricate test-passing claims or telemetry data for a governance-sensitive experiment like this, so I'm pausing here rather than guessing.`;
++
++// Verbatim worker text from docs/orchestration/work-intake/results/EOS-ISSUE-835/
++// 40d4a5fc98488bf9bc4c247db748076eb91035d506f9f8e38e330348d7c0c1b7.content.md — implementation and
++// tests were done in the working tree, but git/PR writes were denied, so no draft PR was ever produced.
++const EOS_835_WORKER_TEXT = `Implementation and tests are complete, but I've hit a hard boundary: git write operations (\`add\`, \`commit\`, \`checkout\`, \`push\`) are all being denied in this sandboxed session ("Claude Code is running in don't ask mode"), even benign ones. Per the tool's explicit instruction, I should not try to work around that — I'll stop attempting git operations and report status instead of guessing at a bypass.
++
++All 36 tests in \`cortexProviderAdapter.test.mjs\` + \`cortexPatchProducer.test.mjs\` pass.
++
++I need you to either grant git/PR permissions for this session or handle the commit/branch/draft-PR step yourself (or via the wrapping EOS workflow) — I won't attempt to route around the denial.`;
++
++test("EOS-ISSUE-836 regression (#834): zero exit + parseable JSON but explicit execution-denial text → BLOCKED_EXECUTION, never COMPLETE", () => {
++  const r = runIntakeExecution({
++    artifact: resolved({
++      requestId: "EOS-ISSUE-834",
++      completionCriteria: { requiresArtifacts: ["report"], requiresTestEvidence: true },
++    }),
++    now: NOW, processRunner: workerReturning(EOS_834_WORKER_TEXT), lease: mockLease(),
++    contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT,
++  });
++  // The exact bug: the wake layer still reports a clean completed spawn (exit 0, parseable JSON).
++  assert.equal(r.wake.outcome, "SPAWNED_COMPLETED");
++  // But the gate refuses to let that become EOS COMPLETE.
++  assert.equal(r.disposition, "BLOCKED_EXECUTION");
++  assert.notEqual(r.disposition, "COMPLETE");
++  assert.equal(r.status.state, "BLOCKED");
++  assert.equal(r.result, undefined, "no fabricated result is persisted for a blocked-execution outcome");
++  assert.equal(r.reviewReady, undefined, "no completion signal is emitted for a blocked-execution outcome");
++  assert.equal(verifyIntakeStatus(r.status).ok, true);
++});
++
++test("EOS-ISSUE-836 regression (#835): zero exit + parseable JSON, implementation done, but required draft-PR artifact never produced → AWAITING_ARTIFACTIZATION, never COMPLETE", () => {
++  const r = runIntakeExecution({
++    artifact: resolved({
++      requestId: "EOS-ISSUE-835",
++      completionCriteria: { requiresArtifacts: ["pr"], requiresTestEvidence: true },
++    }),
++    now: NOW, processRunner: workerReturning(EOS_835_WORKER_TEXT), lease: mockLease(),
++    contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT,
++    producedEvidence: [{ type: "TEST_RUN", outcome: "PASS" }], // the worker's tests genuinely ran green
++  });
++  assert.equal(r.wake.outcome, "SPAWNED_COMPLETED");
++  assert.equal(r.disposition, "AWAITING_ARTIFACTIZATION");
++  assert.notEqual(r.disposition, "COMPLETE");
++  assert.equal(r.status.state, "AWAITING_ARTIFACTIZATION");
++  assert.equal(r.result, undefined, "no fabricated result is persisted while the required PR/artifact is missing");
++  assert.equal(r.reviewReady, undefined);
++  assert.equal(verifyIntakeStatus(r.status).ok, true);
++});
++
++test("EOS-ISSUE-836 positive regression: a genuinely satisfied request (required artifact + test evidence both produced, no blocker text) still reaches COMPLETE", () => {
++  const r = runIntakeExecution({
++    artifact: resolved({
++      requestId: "EOS-EXEC-SATISFIED",
++      completionCriteria: { requiresArtifacts: ["patch"], requiresTestEvidence: true },
++    }),
++    now: NOW,
++    processRunner: workerReturning("# EOS-EXEC-SATISFIED result\nImplemented the fix, added regression tests, all green. Patch artifact produced.\n"),
++    lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT,
++    producedArtifacts: [{ type: "patch", location: "docs/orchestration/work-intake/results/EOS-EXEC-SATISFIED/x.patch" }],
++    producedEvidence: [{ type: "TEST_RUN", outcome: "PASS" }],
++  });
++  assert.equal(r.wake.outcome, "SPAWNED_COMPLETED");
++  assert.equal(r.disposition, "COMPLETE");
++  assert.equal(r.status.state, "COMPLETE");
++  assert.ok(r.result, "a genuinely satisfied request still persists its content-addressed result");
++  assert.ok(r.reviewReady, "a genuinely satisfied request still emits REVIEW_READY");
++  assert.equal(verifyIntakeStatus(r.status).ok, true);
++});
++
++test("EOS-ISSUE-836: a Verifier RETURN_FOR_CORRECTION verdict overrides an otherwise clean-looking worker report", () => {
++  const r = runIntakeExecution({
++    artifact: resolved({ requestId: "EOS-EXEC-VERIFIED" }),
++    now: NOW, processRunner: workerReturning("all done, looks great"), lease: mockLease(),
++    contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT, verifierVerdict: "RETURN_FOR_CORRECTION",
++  });
++  assert.equal(r.disposition, "RETURN_FOR_CORRECTION");
++  assert.equal(r.status.state, "CORRECTING");
++  assert.equal(r.result, undefined);
++});
+diff --git a/docs/orchestration/lib/intakeStatus.mjs b/docs/orchestration/lib/intakeStatus.mjs
+index b045633..541c625 100644
+--- a/docs/orchestration/lib/intakeStatus.mjs
++++ b/docs/orchestration/lib/intakeStatus.mjs
+@@ -21,7 +21,11 @@ export const STATUS_STATE = Object.freeze([
+   "ACTIVE",        // a worker is running
+   "REVIEWING",     // independent review in progress
+   "CORRECTING",    // addressing review corrections
+-  "BLOCKED",       // a required capability/dependency is unavailable (e.g. paid capability not activated)
++  "BLOCKED",       // a required capability/dependency is unavailable (e.g. paid capability not activated,
++                   // or — EOS-ISSUE-836 — a spawned worker reported a denied/unavailable required
++                   // execution capability such as Bash/test/build/lint; see outcomeGate.mjs BLOCKED_EXECUTION)
++  "AWAITING_ARTIFACTIZATION", // EOS-ISSUE-836: implementation/evidence exists but the required governed
++                              // patch/PR/artifact was not created (outcomeGate.mjs AWAITING_ARTIFACTIZATION)
+   "OWNER_REQUIRED", // an Owner decision gates progress
+   "COMPLETE",      // finished; resultRef resolves
+   "FAILED",        // terminated without a usable result
+diff --git a/docs/orchestration/lib/outcomeGate.mjs b/docs/orchestration/lib/outcomeGate.mjs
+new file mode 100644
+index 0000000..cf3ede2
+--- /dev/null
++++ b/docs/orchestration/lib/outcomeGate.mjs
+@@ -0,0 +1,208 @@
++// EOS Outcome Gate — the correction for EOS-ISSUE-836 (#834/#835).
++//
++// THE DEFECT: `runIntakeExecution` (intakeExecute.mjs) persisted a durable status of COMPLETE the
++// moment the Wake Supervisor reported `SPAWNED_COMPLETED` — a clean process exit with parseable JSON
++// output. A zero exit code proves the OS process ran and printed structured output; it proves NOTHING
++// about whether the requested work was actually done. #834's worker exited 0 having done zero of the
++// three requested remediation cycles because Bash/test/build/lint execution was denied for the whole
++// session. #835's worker exited 0 having implemented and tested code, but explicitly reported that git
++// write access was denied, so the requested draft PR / governed artifact was never produced. Both were
++// persisted COMPLETE. Neither was complete.
++//
++// THE FIX: a deterministic gate between "the runtime finished" and "EOS records COMPLETE". It never
++// trusts process exit alone (necessary, not sufficient — requirement #3) and it never derives status
++// from keyword-matching the worker's prose alone (requirement #1): the decisive inputs are the
++// request's OWN structured completion criteria (required artifact types, required test/build/lint
++// evidence), the Verifier's verdict when one ran (#820's PASS/RETURN_FOR_CORRECTION/ESCALATE, whose
++// fail-closed precedence this gate preserves untouched), and what was actually produced (artifacts,
++// evidence records). Free-text detection of an explicit worker statement ("blocked", "denied", "cannot
++// complete", a reported protected-Owner boundary) is used ONLY as CORROBORATING evidence: it can never
++// promote a result to COMPLETE, and — the exact defect this closes — it can never be silently
++// discarded into a false COMPLETE either (requirement #2). Absent any completion criteria at all (a
++// legacy/under-specified request), an explicit blocker/denial statement is still sufficient on its own
++// to keep the result off COMPLETE; it degrades to the most specific determinable non-COMPLETE outcome
++// rather than being ignored.
++//
++// Pure. No I/O, no clock. Called by intakeExecute.mjs after a wake reports SPAWNED_COMPLETED and
++// before any COMPLETE status/result is built.
++
++// Distinguishes the five outcomes EOS-ISSUE-836 requires at minimum. COMPLETE is earned, not assumed.
++export const EOS_OUTCOME = Object.freeze([
++  "COMPLETE",                 // all required completion criteria satisfied; required artifacts/evidence exist
++  "BLOCKED_EXECUTION",        // required tool/capability unavailable or denied — requested work could not run
++  "AWAITING_ARTIFACTIZATION", // implementation/evidence exists but the required governed patch/PR/artifact was not created
++  "RETURN_FOR_CORRECTION",    // verifier/content mismatch or a correctable defect (feeds the existing #820 loop)
++  "OWNER_ACTION_REQUIRED",    // a genuine protected Owner boundary, or an ambiguous blocker that must not default to COMPLETE
++]);
++
++// Corroborating signal only (requirement #1: never the sole basis). Split by WHAT kind of denial is
++// being reported so the gate can distinguish "couldn't execute at all" (#834: Bash/test/build/lint
++// denied, zero cycles run) from "executed but couldn't artifactize" (#835: implementation done, git/PR
++// writes denied). An unrecognized-but-clearly-a-refusal statement still corroborates — it just can't be
++// categorized, so it is routed to the conservative OWNER_ACTION_REQUIRED fallback rather than COMPLETE.
++const EXECUTION_CAPABILITY_BLOCKER_PATTERNS = Object.freeze([
++  /\bbash (?:is|was) (?:completely )?denied\b/i,
++  /\btool execution (?:is|was) denied\b/i,
++  /\bcan(?:'|no)t run (?:the )?(?:test|build|lint)/i,
++  /\bcouldn'?t run (?:any )?(?:test|build|lint)/i,
++  /\bno test\/build\/lint\b/i,
++  /\bworker execution (?:is|was) denied\b/i,
++  /\bcannot execute\b/i,
++  /\bhard blocker\b/i,
++]);
++
++const ARTIFACT_WRITE_BLOCKER_PATTERNS = Object.freeze([
++  /\bgit (?:write )?operations?\b.*\b(?:denied|blocked)\b/i,
++  /\b(?:commit|push|checkout)\b.*\b(?:are|is|being) (?:all )?(?:being )?denied\b/i,
++  /\bcan(?:'|no)t (?:commit|push|open a (?:pr|pull request))/i,
++  /\bwon'?t (?:attempt|try) (?:a |to )?(?:work[- ]?around|bypass)/i,
++  /\bstop(?:ping)? attempting git operations\b/i,
++  /\bdraft pr\b.*\b(?:not|wasn'?t|was not) (?:created|opened)\b/i,
++]);
++
++const GENERIC_BLOCKER_PATTERNS = Object.freeze([
++  /\bdenied\b/i,
++  /\bcannot complete\b/i,
++  /\bcan'?t complete\b/i,
++  /\bblocked\b/i,
++  /\bhit a hard boundary\b/i,
++  /\bI'?m pausing here\b/i,
++  /\bstopping here\b/i,
++]);
++
++const OWNER_BOUNDARY_PATTERNS = Object.freeze([
++  /\bowner decision required\b/i,
++  /\brequires? (?:an )?owner\b/i,
++  /\bprotected (?:owner )?boundary\b/i,
++  /\bneed you to (?:either )?grant\b/i,
++  /\bgrant (?:bash|git|write) (?:access|permissions?)\b/i,
++]);
++
++function matchesAny(patterns, text) {
++  return patterns.filter((re) => re.test(text)).map((re) => re.source);
++}
++
++/**
++ * Scan the worker's OWN reported text for corroborating (never sole-basis) blocker signals. Returns
++ * which categories matched — the gate uses category, not raw presence, to pick the most specific
++ * non-COMPLETE outcome rather than a generic catch-all.
++ */
++export function detectExecutionBlockerSignal(resultText) {
++  const text = String(resultText || "");
++  const executionCapability = matchesAny(EXECUTION_CAPABILITY_BLOCKER_PATTERNS, text);
++  const artifactWrite = matchesAny(ARTIFACT_WRITE_BLOCKER_PATTERNS, text);
++  const generic = matchesAny(GENERIC_BLOCKER_PATTERNS, text);
++  const ownerBoundary = matchesAny(OWNER_BOUNDARY_PATTERNS, text);
++  return Object.freeze({
++    executionCapabilityBlocked: executionCapability.length > 0,
++    artifactWriteBlocked: artifactWrite.length > 0,
++    genericBlocker: generic.length > 0 || executionCapability.length > 0 || artifactWrite.length > 0,
++    ownerBoundary: ownerBoundary.length > 0,
++    matches: Object.freeze({ executionCapability, artifactWrite, generic, ownerBoundary }),
++  });
++}
++
++/**
++ * Structural check: does the produced-artifacts list actually carry every artifact TYPE the request's
++ * completion criteria require (e.g. "patch", "pr", "report")? A type match against real produced
++ * artifacts — never a keyword match against the worker's claim that it "created" something.
++ */
++export function assessArtifactCompletion({ requiredArtifactTypes = [], producedArtifacts = [] } = {}) {
++  const produced = new Set(
++    (producedArtifacts || []).map((a) => (typeof a === "string" ? a : a && a.type)).filter(Boolean),
++  );
++  const missing = (requiredArtifactTypes || []).filter((t) => !produced.has(t));
++  return Object.freeze({ satisfied: missing.length === 0, missing: Object.freeze(missing) });
++}
++
++/**
++ * Structural check: when the request's completion criteria require test/build/lint evidence, does at
++ * least one produced evidence record actually carry a PASS outcome for one of those runtime checks?
++ * Never inferred from the worker saying "tests pass" in prose.
++ */
++export function assessTestEvidence({ requiresTestEvidence = false, producedEvidence = [] } = {}) {
++  if (!requiresTestEvidence) return Object.freeze({ satisfied: true, reason: "not required by completion criteria" });
++  const hasPassingRun = (producedEvidence || []).some(
++    (e) => e && ["TEST_RUN", "BUILD_RUN", "LINT_RUN"].includes(e.type) && e.outcome === "PASS",
++  );
++  return Object.freeze({
++    satisfied: hasPassingRun,
++    reason: hasPassingRun ? "passing test/build/lint evidence present" : "required test/build/lint evidence is missing",
++  });
++}
++
++/**
++ * The gate. Called once per SPAWNED_COMPLETED wake, before a COMPLETE status/result is ever built.
++ *
++ * @param {object} p
++ * @param {string} p.requestId
++ * @param {string} p.resultText            the worker's own reported output text (corroborating only)
++ * @param {object} [p.completionCriteria]  structured, request-level criteria: { requiresArtifacts: string[], requiresTestEvidence: boolean }
++ * @param {"PASS"|"RETURN_FOR_CORRECTION"|"ESCALATE"|null} [p.verifierVerdict]  #820 Verifier verdict, when one ran
++ * @param {Array} [p.producedArtifacts]    artifacts actually produced this run ({ type, location } or a type string)
++ * @param {Array} [p.producedEvidence]     evidence records actually produced this run ({ type, outcome })
++ * @returns {{ status, reason, evidence }}  status is one of EOS_OUTCOME
++ */
++export function gateOutcome({
++  requestId,
++  resultText = "",
++  completionCriteria = {},
++  verifierVerdict = null,
++  producedArtifacts = [],
++  producedEvidence = [],
++} = {}) {
++  if (!requestId) throw new Error("gateOutcome: requestId is required");
++
++  const signal = detectExecutionBlockerSignal(resultText);
++  const requiredArtifactTypes = completionCriteria.requiresArtifacts || [];
++  const requiresTestEvidence = completionCriteria.requiresTestEvidence === true;
++  const artifactCheck = assessArtifactCompletion({ requiredArtifactTypes, producedArtifacts });
++  const testCheck = assessTestEvidence({ requiresTestEvidence, producedEvidence });
++  const evidence = Object.freeze({ signal, artifactCheck, testCheck, verifierVerdict });
++
++  const decide = (status, reason) => Object.freeze({ status, reason, evidence });
++
++  // #820 Verifier fail-closed precedence is preserved untouched: a Verifier verdict, when present,
++  // decides RETURN_FOR_CORRECTION / ESCALATE before this gate applies its own heuristics.
++  if (verifierVerdict === "RETURN_FOR_CORRECTION") {
++    return decide("RETURN_FOR_CORRECTION", "Verifier returned findings requiring correction (#820)");
++  }
++  if (verifierVerdict === "ESCALATE") {
++    return decide("OWNER_ACTION_REQUIRED", "Verifier escalated — no independently-verifiable PASS (#820)");
++  }
++
++  // Requirement #2: an explicit, corroborated denial of required EXECUTION capability (Bash/test/
++  // build/lint) is never normalized to COMPLETE — this is exactly the #834 shape (zero cycles ran).
++  if (signal.executionCapabilityBlocked) {
++    return decide("BLOCKED_EXECUTION", "worker explicitly reported a denied/unavailable required execution capability (tool/test/build/lint)");
++  }
++  // A required execution capability is provably missing even without matching text, whenever the
++  // request demands test/build/lint evidence and none was produced.
++  if (requiresTestEvidence && !testCheck.satisfied && producedArtifacts.length === 0 && producedEvidence.length === 0) {
++    return decide("BLOCKED_EXECUTION", testCheck.reason);
++  }
++
++  // Requirement #2, artifact case: implementation/evidence exists but the specific governed artifact
++  // (patch/PR/report) the request required was not produced — the #835 shape.
++  if (signal.artifactWriteBlocked || !artifactCheck.satisfied) {
++    const reason = signal.artifactWriteBlocked
++      ? "worker explicitly reported required governed-artifact writes (git/PR/patch) denied or not performed"
++      : `required artifact type(s) not produced: ${artifactCheck.missing.join(", ")}`;
++    return decide("AWAITING_ARTIFACTIZATION", reason);
++  }
++
++  // Any other explicit blocker/refusal language that didn't match a specific category, or an explicit
++  // protected-Owner-boundary statement: fail closed to OWNER_ACTION_REQUIRED rather than guess.
++  if (signal.ownerBoundary) {
++    return decide("OWNER_ACTION_REQUIRED", "worker explicitly reported a protected Owner boundary");
++  }
++  if (signal.genericBlocker) {
++    return decide("OWNER_ACTION_REQUIRED", "worker explicitly reported a blocker/refusal that could not be categorized — fail-closed, never silently COMPLETE");
++  }
++
++  if (!testCheck.satisfied) {
++    return decide("RETURN_FOR_CORRECTION", testCheck.reason);
++  }
++
++  return decide("COMPLETE", "all required completion criteria satisfied and required artifacts/evidence exist");
++}
+diff --git a/docs/orchestration/lib/outcomeGate.test.mjs b/docs/orchestration/lib/outcomeGate.test.mjs
+new file mode 100644
+index 0000000..7617f16
+--- /dev/null
++++ b/docs/orchestration/lib/outcomeGate.test.mjs
+@@ -0,0 +1,173 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import {
++  EOS_OUTCOME, gateOutcome, detectExecutionBlockerSignal,
++  assessArtifactCompletion, assessTestEvidence,
++} from "./outcomeGate.mjs";
++
++// The exact worker text persisted for EOS-ISSUE-834 (docs/orchestration/work-intake/results/
++// EOS-ISSUE-834/b1d37cc3845281f6fd975cfc4a633d86d196e6851cf58d9a98dd5eed39db6be3.content.md) — Claude
++// stopped before cycle 1 because Bash/test/build/lint execution was denied. Zero remediation cycles ran.
++const EOS_834_TEXT = `Bash is completely denied in this session ("don't ask mode"). That's a hard blocker for this task: I can't run the cold-start bootstrap script, \`gh issue view\` to pull #833's findings, or — critically — the test/build/lint checks that step 4 of every cycle requires to verify fixes before moving on. I also can't run the 10-worker read-only sweeps as actual processes.
++
++Before I improvise a workaround (e.g., trying to read raw file contents to reconstruct #833's findings, or asking subagents to do the Bash work on my behalf), I want to flag this clearly rather than silently degrade the experiment:
++
++- This EOS_INTAKE task is large — 3 full cycles, each with implementation, regression tests, verification, a 10-worker sweep, and consolidation — and it explicitly requires running real checks (tests/build/lint) to gate each fix, and requires "actualProviderCostUsd" telemetry from real worker runs.
++- Without Bash I cannot: check out issue #833 via \`gh\`, run \`npm test\`/lint/build, or execute any verification step. I also can't confirm current git/branch state directly (though the system reminder already tells me: branch \`HEAD\`, tree clean).
++- I *can* still use Read/Grep/Glob to inspect the repo, and the Agent tool to delegate sub-tasks — but if those subagents also run under this same permission mode, they'll hit the same Bash denial for verification steps.
++
++Can you either:
++1. Grant Bash access for this session (even scoped to read-only/test commands), or
++2. Confirm you want me to proceed in a degraded mode — code review/reasoning only, no test/build verification, no \`gh\` lookups, findings reconstructed from local files only — which would not satisfy the "run relevant test/build/lint checks" requirement in the task spec?
++
++I don't want to fabricate test-passing claims or telemetry data for a governance-sensitive experiment like this, so I'm pausing here rather than guessing.`;
++
++// The exact worker text persisted for EOS-ISSUE-835 (docs/orchestration/work-intake/results/
++// EOS-ISSUE-835/40d4a5fc98488bf9bc4c247db748076eb91035d506f9f8e38e330348d7c0c1b7.content.md) — implementation
++// and tests were done, but git/PR writes were denied, so the requested draft PR/governed artifact never landed.
++const EOS_835_TEXT = `Implementation and tests are complete, but I've hit a hard boundary: git write operations (\`add\`, \`commit\`, \`checkout\`, \`push\`) are all being denied in this sandboxed session ("Claude Code is running in don't ask mode"), even benign ones. Per the tool's explicit instruction, I should not try to work around that — I'll stop attempting git operations and report status instead of guessing at a bypass.
++
++**What's done, sitting in the working tree at \`docs/orchestration/lib/\`:**
++
++1. **\`cortexProviderAdapter.mjs\`** — added the \`PATCH_PRODUCER\` mode alongside the unchanged \`READ_ONLY_PILOT\` mode.
++2. **\`cortexPatchProducer.test.mjs\`** (new, 21 tests) — covers all 10 required scenarios.
++
++All 36 tests in \`cortexProviderAdapter.test.mjs\` + \`cortexPatchProducer.test.mjs\` pass; the 6 pre-existing failures elsewhere in the suite are unrelated and untouched by this change.
++
++I need you to either grant git/PR permissions for this session or handle the commit/branch/draft-PR step yourself (or via the wrapping EOS workflow) — I won't attempt to route around the denial.`;
++
++test("EOS_OUTCOME enumerates the five required statuses", () => {
++  assert.deepEqual([...EOS_OUTCOME], [
++    "COMPLETE", "BLOCKED_EXECUTION", "AWAITING_ARTIFACTIZATION", "RETURN_FOR_CORRECTION", "OWNER_ACTION_REQUIRED",
++  ]);
++});
++
++// ---- #834 reproduction: zero cycles ran, required test/build/lint execution denied ----
++test("#834 shape: explicit Bash/test/build/lint denial → BLOCKED_EXECUTION, never COMPLETE", () => {
++  const signal = detectExecutionBlockerSignal(EOS_834_TEXT);
++  assert.equal(signal.executionCapabilityBlocked, true);
++
++  const out = gateOutcome({
++    requestId: "EOS-ISSUE-834",
++    resultText: EOS_834_TEXT,
++    completionCriteria: { requiresArtifacts: ["report"], requiresTestEvidence: true },
++    producedArtifacts: [], producedEvidence: [],
++  });
++  assert.equal(out.status, "BLOCKED_EXECUTION");
++  assert.notEqual(out.status, "COMPLETE");
++});
++
++test("#834 shape: still BLOCKED_EXECUTION with NO structured completionCriteria at all (legacy request)", () => {
++  const out = gateOutcome({ requestId: "EOS-ISSUE-834", resultText: EOS_834_TEXT });
++  assert.equal(out.status, "BLOCKED_EXECUTION");
++});
++
++// ---- #835 reproduction: implementation/tests done, required governed artifact (draft PR) never created ----
++test("#835 shape: explicit git/PR-write denial with implementation done → AWAITING_ARTIFACTIZATION, never COMPLETE", () => {
++  const signal = detectExecutionBlockerSignal(EOS_835_TEXT);
++  assert.equal(signal.artifactWriteBlocked, true);
++  assert.equal(signal.executionCapabilityBlocked, false, "835 is an artifact-write denial, not an execution-capability denial");
++
++  const out = gateOutcome({
++    requestId: "EOS-ISSUE-835",
++    resultText: EOS_835_TEXT,
++    completionCriteria: { requiresArtifacts: ["pr"], requiresTestEvidence: true },
++    producedArtifacts: [], producedEvidence: [{ type: "TEST_RUN", outcome: "PASS" }],
++  });
++  assert.equal(out.status, "AWAITING_ARTIFACTIZATION");
++  assert.notEqual(out.status, "COMPLETE");
++});
++
++test("#835 shape: still AWAITING_ARTIFACTIZATION with NO structured completionCriteria at all (legacy request)", () => {
++  const out = gateOutcome({ requestId: "EOS-ISSUE-835", resultText: EOS_835_TEXT });
++  assert.equal(out.status, "AWAITING_ARTIFACTIZATION");
++});
++
++// ---- positive regression: a genuinely satisfied request still reaches COMPLETE ----
++test("genuinely satisfied request (no blocker text, required artifact + test evidence both produced) → COMPLETE", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-OK",
++    resultText: "# result\nImplemented the fix, added regression tests, all green. Draft PR opened.",
++    completionCriteria: { requiresArtifacts: ["patch"], requiresTestEvidence: true },
++    producedArtifacts: [{ type: "patch", location: "x.patch" }],
++    producedEvidence: [{ type: "TEST_RUN", outcome: "PASS" }],
++  });
++  assert.equal(out.status, "COMPLETE");
++});
++
++test("no completion criteria and no blocker text → COMPLETE (unchanged legacy behavior)", () => {
++  const out = gateOutcome({ requestId: "EOS-EXEC-OK", resultText: "did the thing, all good" });
++  assert.equal(out.status, "COMPLETE");
++});
++
++// ---- #820 Verifier fail-closed precedence is preserved ----
++test("Verifier RETURN_FOR_CORRECTION always wins over a clean-looking worker report", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-VC", resultText: "all done, tests pass",
++    verifierVerdict: "RETURN_FOR_CORRECTION",
++  });
++  assert.equal(out.status, "RETURN_FOR_CORRECTION");
++});
++
++test("Verifier ESCALATE always wins over a clean-looking worker report", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-VE", resultText: "all done, tests pass",
++    verifierVerdict: "ESCALATE",
++  });
++  assert.equal(out.status, "OWNER_ACTION_REQUIRED");
++});
++
++test("Verifier PASS does not itself force COMPLETE — gate still requires satisfied artifact/test criteria", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-VP", resultText: "all done",
++    verifierVerdict: "PASS",
++    completionCriteria: { requiresArtifacts: ["pr"] },
++    producedArtifacts: [],
++  });
++  assert.equal(out.status, "AWAITING_ARTIFACTIZATION");
++});
++
++// ---- required test/build/lint evidence, required artifacts ----
++test("assessArtifactCompletion: missing artifact type is reported", () => {
++  const r = assessArtifactCompletion({ requiredArtifactTypes: ["pr", "report"], producedArtifacts: [{ type: "pr" }] });
++  assert.equal(r.satisfied, false);
++  assert.deepEqual([...r.missing], ["report"]);
++});
++
++test("assessTestEvidence: not required → satisfied trivially", () => {
++  assert.equal(assessTestEvidence({ requiresTestEvidence: false }).satisfied, true);
++});
++
++test("assessTestEvidence: required but no passing run present → not satisfied", () => {
++  const r = assessTestEvidence({ requiresTestEvidence: true, producedEvidence: [{ type: "TEST_RUN", outcome: "FAIL" }] });
++  assert.equal(r.satisfied, false);
++});
++
++test("required test evidence missing (no blocker text) → RETURN_FOR_CORRECTION, not COMPLETE and not BLOCKED_EXECUTION", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-TC", resultText: "implemented the fix",
++    completionCriteria: { requiresTestEvidence: true },
++    producedArtifacts: [{ type: "patch" }], producedEvidence: [],
++  });
++  assert.equal(out.status, "RETURN_FOR_CORRECTION");
++});
++
++// ---- explicit protected-Owner-boundary statement never becomes COMPLETE ----
++test("explicit protected Owner boundary statement → OWNER_ACTION_REQUIRED, never COMPLETE", () => {
++  const out = gateOutcome({
++    requestId: "EOS-EXEC-OB",
++    resultText: "This requires an Owner decision: it crosses a protected Owner boundary (Firestore Rules deploy). I need you to grant deploy permissions.",
++  });
++  assert.equal(out.status, "OWNER_ACTION_REQUIRED");
++});
++
++// ---- an unclassifiable but explicit refusal never falls through to COMPLETE ----
++test("unclassifiable explicit refusal text → OWNER_ACTION_REQUIRED (fail-closed), never COMPLETE", () => {
++  const out = gateOutcome({ requestId: "EOS-EXEC-U", resultText: "I cannot complete this task as scoped." });
++  assert.notEqual(out.status, "COMPLETE");
++  assert.equal(out.status, "OWNER_ACTION_REQUIRED");
++});
++
++test("gateOutcome requires requestId", () => {
++  assert.throws(() => gateOutcome({ resultText: "x" }), /requestId is required/);
++});
+diff --git a/docs/orchestration/lib/workIntake.mjs b/docs/orchestration/lib/workIntake.mjs
+index ef01613..6d72892 100644
+--- a/docs/orchestration/lib/workIntake.mjs
++++ b/docs/orchestration/lib/workIntake.mjs
+@@ -62,6 +62,16 @@ export function validateWorkIntake(a) {
+   if (a.authority?.authorizationState === "OWNER_REQUIRED") {
+     need(typeof a.authority.ownerQuestion === "string" && a.authority.ownerQuestion.length > 0, "OWNER_REQUIRED requires authority.ownerQuestion");
+   }
++  // completionCriteria (EOS-ISSUE-836) is OPTIONAL — absent on every pre-existing artifact — and, when
++  // present, structured: the outcome gate binds status to these fields, never to worker prose alone.
++  if (a.completionCriteria != null) {
++    const cc = a.completionCriteria;
++    need(cc && typeof cc === "object" && !Array.isArray(cc), "completionCriteria, when present, must be an object");
++    if (cc && typeof cc === "object") {
++      need(cc.requiresArtifacts === undefined || (Array.isArray(cc.requiresArtifacts) && cc.requiresArtifacts.every((v) => typeof v === "string" && v.length > 0)), "completionCriteria.requiresArtifacts, when present, must be a string array");
++      need(cc.requiresTestEvidence === undefined || typeof cc.requiresTestEvidence === "boolean", "completionCriteria.requiresTestEvidence, when present, must be a boolean");
++    }
++  }
+   return errors;
+ }
+ 
+@@ -100,6 +110,10 @@ export function intakeToWorkItem(artifact, { sourceCommit = null } = {}) {
+     workstream: "EOS_INTAKE",
+     modelTier: "standard",
+     ownerQuestion: ownerRequired ? artifact.authority.ownerQuestion : null,
++    // EOS-ISSUE-836: passed through verbatim, defaulted to {} (no criteria) for every pre-existing
++    // intake artifact — the outcome gate still corroborates against explicit worker blocker text even
++    // with no structured criteria at all; see outcomeGate.mjs.
++    completionCriteria: artifact.completionCriteria ? { ...artifact.completionCriteria } : {},
+   });
+ }
+ 

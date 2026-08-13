@@ -1,0 +1,43 @@
+{
+  "requestId": "EOS-ISSUE-837",
+  "title": "EOS — focused completion outcome gate correction",
+  "intent": "Implement the smallest focused correction for the completion-status defect from #834/#835 after #836 exceeded the 40-turn runtime ceiling. Do not rediscover the repository broadly.\n\nRequired work:\nAdd a deterministic outcome-completion gate so worker/process completion is not sufficient for EOS COMPLETE.\n\nRequired behavior:\n- #834-like outcome: required Bash/test/worker capability denied before requested cycles execute => BLOCKED, never COMPLETE.\n- #835-like outcome: implementation exists but required governed patch/PR/artifact was not produced => BLOCKED or AWAITING_ARTIFACTIZATION-equivalent, never COMPLETE.\n- Genuine satisfied execution with required result/evidence => COMPLETE.\n- COMPLETE must require the request's expected completion evidence/artifact class, not merely worker.phase === COMPLETE or exit code 0.\n- Structured execution/tool/artifact evidence is authoritative; worker text may corroborate but free-text keyword matching alone is insufficient.\n- Preserve current Gateway/Verifier correction limits, Claude routing, Cortex READ_ONLY_PILOT, integration authority, and cost/capacity semantics.\n\nImplementation guidance to reduce runtime turns:\n1. Start by reading the listed files directly. Do not run repo-wide find/grep discovery unless one exact import/call-site is unresolved.\n2. Add the smallest status/outcome contract extension needed; avoid architecture redesign.\n3. Add focused regression fixtures for #834, #835, and positive COMPLETE.\n4. Run only the directly affected node test files first; run broader EOS contract tests only after focused tests pass.\n5. If the required caller is outside the listed files, identify the exact path from imports/usages and add only that path to scope.\n\nCompletion:\nProduce a governed patch/result or draft PR with the focused correction and tests. Report changed files, focused and broader tests, exact mapping of #834/#835 to corrected status, and whether it is safe to merge. Do not merge automatically. Do not rerun #834/#835 in this issue.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "Primary files to inspect first and keep scope narrow unless direct call-site evidence requires one adjacent file:",
+    "docs/orchestration/lib/intakeStatus.mjs",
+    "docs/orchestration/lib/intakeStatus.test.mjs",
+    "docs/orchestration/lib/intakeIngress.mjs",
+    "docs/orchestration/lib/intakeIngress.test.mjs",
+    "the exact runtime/artifactization caller that passes worker outcome into deriveStatusState/buildIntakeStatus, if needed.",
+    "Do not search unrelated workflows, providers, Agent Manager, Taylor product code, or project-keystone."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/837",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T02:16:45Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-837.work.json",
+  "sha256": "5dd1f18763d57f19c88be82ae9854eed590d52364fd1874c626e14ed2fd5cb1c",
+  "createdAt": "2026-08-13T02:16:45Z",
+  "updatedAt": "2026-08-13T02:16:45Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/837"
+    ],
+    "pullRequests": []
+  }
+}
