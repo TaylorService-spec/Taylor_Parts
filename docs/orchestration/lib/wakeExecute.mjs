@@ -22,7 +22,16 @@ export const WAKE_FAILURE_KINDS = Object.freeze([
   "SPAWN_FAILURE", "TIMEOUT", "NONZERO_EXIT", "MALFORMED_OUTPUT", "MISSING_RESULT",
   "RESULT_PERSIST_FAILURE", "LEASE_RELEASE_FAILURE", "INSUFFICIENT_CONTEXT",
   "PROVENANCE_UNACCEPTABLE", "MODEL_RESOLUTION_FAILURE", "LEASE_UNAVAILABLE",
+  "MAX_TURNS_EXHAUSTED",
 ]);
+
+// Map a wake failure kind to the runtimeTermination signal the completion-semantic gate consumes.
+function terminationForFailure(failureKind) {
+  if (failureKind === "MAX_TURNS_EXHAUSTED") return "MAX_TURNS_EXHAUSTED";
+  if (failureKind === "TIMEOUT") return "TIMEOUT";
+  if (failureKind === "SPAWN_FAILURE") return "SPAWN_FAILURE";
+  return "PROCESS_ERROR";
+}
 
 const refuse = (outcome, reason, extra = {}) => Object.freeze({ outcome, spawned: false, reason, ...extra });
 
@@ -41,7 +50,7 @@ const refuse = (outcome, reason, extra = {}) => Object.freeze({ outcome, spawned
  * @param {string|null} [o.sourceCommit]
  * @param {string|null} [o.sourceFreshness]  reviewProvenance state; must be "CURRENT" to run live
  */
-export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null } = {}) {
+export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null, executionProfile = "READ_ONLY_ANALYSIS" } = {}) {
   if (typeof contextPackageFn !== "function") throw new Error("executeWake: contextPackageFn (shared C-7 builder) is required");
   if (!processRunner || typeof processRunner.run !== "function") throw new Error("executeWake: processRunner must be injected");
   if (!lease || typeof lease.acquire !== "function") throw new Error("executeWake: lease must be injected");
@@ -76,7 +85,10 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
   }
 
   const triggerMechanism = decision.triggerKind === "MANUAL_RUNTIME_TRIGGER" ? "MANUAL_RUNTIME_TRIGGER" : "AUTOMATIC_TRIGGER";
-  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }) });
+  // The capability profile is GOVERNED and resolved by the caller (runIntakeExecution) — least-privilege
+  // READ_ONLY_ANALYSIS unless a governed authorization granted more. It is never taken from worker/request
+  // self-declaration here, so a worker cannot widen its own authority.
+  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }), profile: executionProfile || "READ_ONLY_ANALYSIS" });
   let leaseReleased = false;
   const releaseLease = () => { if (leaseReleased) return true; try { lease.release(); leaseReleased = true; return true; } catch { return false; } };
 
@@ -104,7 +116,15 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
     catch { return fail("MALFORMED_OUTPUT", `stdout is not valid JSON${stdoutTail ? ` — stdout: ${stdoutTail}` : ""}${stderrTail ? ` — stderr: ${stderrTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stdoutTail || stderrTail }); }
     if (!parsed || parsed.result == null) return fail("MISSING_RESULT", `no \`result\` in worker output${stdoutTail ? ` — stdout: ${stdoutTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stdoutTail });
 
-    // Only NOW is COMPLETED provable (clean exit + parseable result).
+    // Max-turn exhaustion is NOT completed work (the #834/#835-adjacent #836/#837 regression): the `claude -p`
+    // JSON marks a truncated run with subtype "error_max_turns"/is_error even though a partial `result` is
+    // present. Fail closed with a distinct termination signal — never reinterpret truncation as completion.
+    const subtype = String(parsed.subtype || "");
+    if (subtype === "error_max_turns" || (parsed.is_error === true && /max.?turn/i.test(subtype))) {
+      return fail("MAX_TURNS_EXHAUSTED", `worker hit the configured ${invocation.turnCeiling ?? "bounded"}-turn ceiling`, base, releaseLease, { exitCode });
+    }
+
+    // Only NOW is COMPLETED provable (clean exit + parseable result + not truncated at the turn ceiling).
     base.wakeState = "COMPLETED";
     if (persistResult) {
       try { persistResult({ item, wake: base, result: parsed, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, model: model.selectedModel }); }
@@ -112,7 +132,8 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
     }
     const releasedOk = releaseLease();
     return Object.freeze({
-      outcome: "SPAWNED_COMPLETED", spawned: true, wakeState: "COMPLETED", triggerMechanism,
+      outcome: "SPAWNED_COMPLETED", spawned: true, wakeState: "COMPLETED", triggerMechanism, runtimeTermination: "NORMAL",
+      turnCeiling: invocation.turnCeiling ?? null, profile: invocation.profile ?? null,
       selectedModel: model.selectedModel, contextPackage, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null,
       costCapacity: createCostCapacityTelemetry({ actualProviderCostUsd: UNKNOWN_COST, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, providerCapacityUsage: ctx.providerCapacityUsage || {}, budgetStopReason: null, costProvenance: { actual: "UNAVAILABLE", estimated: parsed.total_cost_usd == null ? "UNAVAILABLE" : "CLAUDE_CLI_MODELED" }, freshness: parsed.total_cost_usd == null ? "UNKNOWN" : "CURRENT" }),
       result: parsed.result, leaseReleased: releasedOk,
@@ -129,6 +150,7 @@ function fail(failureKind, detail, base, releaseLease, meta = {}) {
   return Object.freeze({
     outcome: "SPAWNED_FAILED", spawned: true, wakeState: base.wakeState, triggerMechanism: base.triggerMechanism,
     selectedModel: base.selectedModel, failureKind, failureDetail: detail,
+    runtimeTermination: meta.runtimeTermination ?? terminationForFailure(failureKind),
     exitCode: meta.exitCode ?? null, diagnostic: meta.diagnostic ?? null,
     leaseReleased: releasedOk,
   });
