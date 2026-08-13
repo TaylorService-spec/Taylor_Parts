@@ -1,0 +1,39 @@
+{
+  "schema": "eos.findings.register/1",
+  "note": "Durable resolution state for audit findings. reconcileFindings() (lib/findingsRegister.mjs) matches new audit output against this by fingerprint so already-resolved items are never re-raised. A FIXED entry is only trustworthy with a regressionTest; entries here were verified by reading current code at verifiedAtCommit.",
+  "entries": [
+    {
+      "file": "functions/src/inventoryService.ts",
+      "symbol": "triggerInventoryEffects",
+      "severity": "HIGH",
+      "status": "KNOWN_ACCEPTED",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Ledger write uses an auto-id doc so a crash between the effect and markStateProcessed() can double-apply on manual retry — but this is the DOCUMENTED failure model (idempotent-by-retry, never-throws, epic section 10). Real edge, consciously accepted; not an unaddressed bug.",
+      "regressionTest": null,
+      "deferralRef": null
+    },
+    {
+      "file": "functions/src/transitionWorkOrder.ts",
+      "symbol": "transitionWorkOrder",
+      "severity": "HIGH",
+      "status": "CONFIRMED_OPEN",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Confirmed: no availability/conflict/double-book check anywhere in the file; Dispatch assigns assignedTechId without checking if the technician is already booked. Genuine unaddressed gap (pending product confirmation that double-booking is undesired).",
+      "regressionTest": null,
+      "deferralRef": null
+    },
+    {
+      "file": "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx",
+      "symbol": "receiveReorderRequest",
+      "severity": "HIGH",
+      "status": "DEFERRED",
+      "source": "EOS-ISSUE-852",
+      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
+      "evidence": "Receiving 'Receive' action does not write inventory_transactions; ledger path is feature-flagged off pending Blaze activation. Deliberately deferred and tracked.",
+      "regressionTest": null,
+      "deferralRef": "#15"
+    }
+  ]
+}
