@@ -1,7 +1,10 @@
+import { doc, runTransaction } from "firebase/firestore";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
-import { auth } from "../firebase/firebase";
+import { auth, db } from "../firebase/firebase";
+import { isWriteBlocked } from "../config/env";
 import { buildReorderRequestFields } from "./reorderRequestPayload";
+import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -274,16 +277,56 @@ export function receiveReorderRequest(requestId) {
 // per-user restriction, matching every other hand-off-type action on
 // this object (review, assign) -- enforced in firestore.rules, not
 // here; this function does not itself check the caller's role.
+//
+// site-work round-2 #7 -- status guard. This was previously the one
+// writer on this object with no client-side check of the request's
+// CURRENT status before writing CANCELLED, unlike its transactional
+// siblings in domain/reorderPurchaseOrders.js (recordPurchaseOrder()'s
+// PURCHASING_IN_PROGRESS check, voidPurchaseOrder()'s ORDERED check) --
+// a stray call or a Rules regression could otherwise cancel an
+// already-terminal/received request. Now reads the request inside a
+// transaction (same "all reads before any writes" Firestore
+// transaction shape those two functions use) and only proceeds when
+// the current status is one of the three pre-ORDERED active statuses
+// firestore.rules itself allows a Cancel from (see the rule's
+// resource.data.status disjunction). Rules remain the actual
+// enforcement -- this is defense-in-depth, not a replacement.
+//
+// The allow/reject decision itself is isCancellableReorderRequestStatus()
+// (domain/reorderRequestCancelGuard.js) -- a PURE, separately unit-tested
+// predicate, split out the same way buildReorderRequestFields() (used by
+// createReorderRequest() above) already lives in reorderRequestPayload.js:
+// this file imports Firebase (auth/db), so nothing in it is directly
+// importable under this project's plain-Node test runner.
 export function cancelReorderRequest(requestId, { reason }) {
+  if (isWriteBlocked()) {
+    console.warn("WRITE BLOCKED (cancelReorderRequest)", requestId);
+    return Promise.resolve({ blocked: true });
+  }
+
   const trimmedReason = reason?.trim() || "";
   if (!trimmedReason) {
     throw new Error("A reason is required to cancel this Reorder Request.");
   }
 
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.CANCELLED,
-    cancelledBy: auth.currentUser?.uid ?? null,
-    cancelledAt: Date.now(),
-    cancellationReason: trimmedReason,
+  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
+
+  return runTransaction(db, async (transaction) => {
+    // Firestore transactions require all reads before any writes.
+    const reorderRequestSnap = await transaction.get(reorderRequestRef);
+
+    if (!reorderRequestSnap.exists()) {
+      throw new Error("Reorder Request not found.");
+    }
+    if (!isCancellableReorderRequestStatus(reorderRequestSnap.data().status)) {
+      throw new Error("This Reorder Request can no longer be cancelled from its current status.");
+    }
+
+    transaction.update(reorderRequestRef, {
+      status: REORDER_REQUEST_STATUS.CANCELLED,
+      cancelledBy: auth.currentUser?.uid ?? null,
+      cancelledAt: Date.now(),
+      cancellationReason: trimmedReason,
+    });
   });
 }
