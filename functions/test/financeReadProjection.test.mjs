@@ -46,3 +46,8 @@ test("summarizeAccountAr: honest counts + open balance by currency (mixed curren
   assert.equal(s.overdueCount, 1);
   assert.deepEqual(s.outstandingByCurrency, { USD: 5000, EUR: 2000 });
 });
+
+test("summarizeAccountAr: open invoices without a currency remain visible in an explicit bucket", () => {
+  const reads = [projectInvoiceAr("inv-1", { totalMinor: 1250 }, 0)];
+  assert.deepEqual(summarizeAccountAr(reads).outstandingByCurrency, { UNSPECIFIED: 1250 });
+});
