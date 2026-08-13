@@ -1,0 +1,30 @@
+{
+  "requestId": "EOS-DEMO-001",
+  "title": "EOS end-to-end demo — read-only self-check with structured findings",
+  "intent": "Read-only: confirm docs/orchestration/findings/register.json parses and its seed entries have valid statuses and discriminators. Report PASS/FAIL with repository-path evidence, and emit the required eos-findings JSON block per docs/orchestration/findings/output-contract.md (a valid empty [] if genuinely no findings).",
+  "scope": [
+    "docs/orchestration/findings"
+  ],
+  "contextScope": [
+    "orchestration"
+  ],
+  "source": {
+    "producer": "Owner/Claude",
+    "provenance": "Owner-authorized end-to-end demo run"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "Owner authorized a single read-only end-to-end demo run",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-DEMO-001.work.json",
+  "createdAt": "2026-08-13T18:00:00Z",
+  "updatedAt": "2026-08-13T18:00:00Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "a22f16e4cf4aeac9d33a8bc13d04c84b54acd7acb66bf5bee59ccdb0960f80b3"
+}
