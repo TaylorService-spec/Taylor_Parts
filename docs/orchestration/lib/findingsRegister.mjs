@@ -39,6 +39,15 @@ const RESOLVED = new Set([FINDING_STATUS.FIXED, FINDING_STATUS.KNOWN_ACCEPTED, F
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\\/g, "/").replace(/\s+/g, " ");
 
 /**
+ * THE single canonicalization for a finding's identity, shared by the fingerprint here AND by consolidation, so
+ * both stages agree byte-for-byte on what "the same issue" is (deterministic across runs/machines and consistent
+ * across stages). Returns the canonical {file, symbol, discriminator} — case/whitespace/separator-folded.
+ */
+export function canonicalizeIdentity({ file, symbol, discriminator } = {}) {
+  return Object.freeze({ file: norm(file), symbol: norm(symbol ?? ""), discriminator: norm(discriminator) });
+}
+
+/**
  * Stable fingerprint for a finding — a stable LOCATION (file, optionally symbol) PLUS a stable issue
  * DISCRIMINATOR. Location alone is not enough: two DIFFERENT bugs in the same `file+symbol` must not collapse
  * into one id, or a new real defect could be suppressed by an unrelated prior finding in the same function that
@@ -53,8 +62,8 @@ const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\\/g, "/").rep
  */
 export function fingerprintFinding({ file, symbol, discriminator } = {}) {
   if (!file || !discriminator) return null;
-  const key = `${norm(file)}::${norm(symbol ?? "")}::${norm(discriminator)}`;
-  return createHash("sha256").update(key).digest("hex").slice(0, 16);
+  const id = canonicalizeIdentity({ file, symbol, discriminator });
+  return createHash("sha256").update(`${id.file}::${id.symbol}::${id.discriminator}`).digest("hex").slice(0, 16);
 }
 
 function withFingerprint(f) {

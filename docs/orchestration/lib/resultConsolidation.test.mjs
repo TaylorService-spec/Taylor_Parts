@@ -38,7 +38,7 @@ test("dedupe: the same finding from multiple children collapses to one, counted 
   assert.equal(out.counts.unique, 2, "two distinct findings after dedup");
   assert.equal(out.counts.duplicatesRemoved, 1, "one duplicate collapsed");
   const agreed = out.agreements.find((x) => x.file === "src/a.ts");
-  assert.deepEqual(agreed.agreedBy.sort(), ["A", "B"], "both children credited");
+  assert.deepEqual([...agreed.agreedBy], ["A", "B"], "both children credited (already sorted)");
 });
 
 test("conflict: children disagreeing on severity for the same finding are surfaced with both values", () => {
@@ -60,7 +60,7 @@ test("cross-sector risk: one finding surfaced by children in DIFFERENT sectors",
     ],
   });
   assert.equal(out.counts.crossSectorRisks, 1);
-  assert.deepEqual(out.crossSectorRisks[0].sectors.sort(), ["inventory", "work-orders"]);
+  assert.deepEqual([...out.crossSectorRisks[0].sectors], ["inventory", "work-orders"]);
 });
 
 test("deterministic ordering: worst severity first, then key ascending", () => {
@@ -115,4 +115,91 @@ test("every consolidated collection is sorted worst-severity-first then key (not
   // sanity: all three findings are agreements (both children reported each), z.ts is the severity conflict
   assert.equal(out.counts.agreements, 3);
   assert.equal(out.conflicts[0].file, "z.ts");
+});
+
+import { consolidateAndReconcile } from "./resultConsolidation.mjs";
+import { FINDING_STATUS } from "./findingsRegister.mjs";
+
+const cf = (file, symbol, discriminator, severity, category = "bug") => ({ file, symbol, discriminator, severity, category, line: 1 });
+
+test("consolidateAndReconcile: known items suppressed by the register, only NEW findings stay actionable", () => {
+  const register = [{ file: "functions/src/transitionWorkOrder.ts", symbol: "transitionWorkOrder", discriminator: "no-availability-check", status: FINDING_STATUS.CONFIRMED_OPEN }];
+  const out = consolidateAndReconcile({
+    expectedChildIds: ["A", "B"],
+    register,
+    children: [
+      child("A", [cf("functions/src/transitionWorkOrder.ts", "transitionWorkOrder", "no-availability-check", "HIGH")]), // already tracked
+      child("B", [cf("functions/src/newFile.ts", "newFn", "brand-new-issue", "MEDIUM")]),                                 // genuinely new
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.consolidated.ok, true, "consolidation ran");
+  // the tracked one is alreadyOpen (not new); only the new one is actionable. NOTE identity is canonicalized
+  // (folded to lowercase) — the stored symbol is the canonical form, deterministic across runs.
+  assert.deepEqual(out.reconciled.surfaced.map((f) => f.symbol), ["newfn"]);
+  assert.equal(out.reconciled.alreadyOpen.length, 1);
+  assert.equal(out.actionableCount, 1, "only the genuinely-new finding is actionable after applying memory");
+});
+
+test("consolidateAndReconcile: fail-closed — a partial child set never consolidates or reconciles", () => {
+  const out = consolidateAndReconcile({ expectedChildIds: ["A", "B"], children: [child("A", [])], register: [] });
+  assert.equal(out.ok, false);
+  assert.equal(out.consolidated.ok, false);
+  assert.deepEqual(out.consolidated.missing, ["B"]);
+});
+
+test("identity: two DIFFERENT discriminators in the same file/symbol/line/category do NOT collapse", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A"],
+    children: [child("A", [
+      { file: "functions/src/x.ts", symbol: "fn", discriminator: "issue-one", category: "bug", severity: "HIGH", line: 10 },
+      { file: "functions/src/x.ts", symbol: "fn", discriminator: "issue-two", category: "bug", severity: "HIGH", line: 10 },
+    ])],
+  });
+  assert.equal(out.counts.unique, 2, "distinct discriminators stay distinct — no silent merge before reconcile");
+  assert.equal(out.counts.duplicatesRemoved, 0);
+  assert.deepEqual(out.findings.map((x) => x.discriminator).sort(), ["issue-one", "issue-two"]);
+});
+
+test("identity: the SAME discriminator across children dedupes/agrees despite line & category drift", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: [
+      child("A", [{ file: "functions/src/x.ts", symbol: "fn", discriminator: "same-issue", category: "bug", severity: "HIGH", line: 10 }]),
+      child("B", [{ file: "functions/src/x.ts", symbol: "fn", discriminator: "same-issue", category: "Concurrency", severity: "HIGH", line: 42 }]), // drifted line + category
+    ],
+  });
+  assert.equal(out.counts.unique, 1, "same discriminator → one finding despite line/category drift");
+  assert.equal(out.agreements.length, 1);
+  assert.deepEqual([...out.agreements[0].agreedBy], ["A", "B"]);
+});
+
+test("identity: undiscriminated findings keep legacy grouping and remain actionable (fail-closed) at reconcile", () => {
+  const out = consolidateAndReconcile({
+    expectedChildIds: ["A"],
+    register: [],
+    children: [child("A", [{ file: "functions/src/y.ts", category: "bug", severity: "MEDIUM", line: 3 }])], // no discriminator
+  });
+  assert.equal(out.consolidated.counts.unique, 1);
+  assert.equal(out.reconciled.surfaced.length, 1, "no discriminator → surfaced, never silently suppressed");
+  assert.equal(out.reconciled.surfaced[0].disposition, "NEEDS_DISCRIMINATOR");
+});
+
+test("deterministic canonicalization: same issue with case/whitespace/order drift → identical canonical id, one group", () => {
+  // Two children report the SAME issue with discriminator/symbol casing + whitespace drift, in either order.
+  const mk = (order) => consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: order === "AB"
+      ? [child("A", [{ file: "functions/src/X.ts", symbol: "TransitionWorkOrder", discriminator: "No-Availability-Check", category: "bug", severity: "HIGH", line: 5 }]),
+         child("B", [{ file: "functions/src/X.ts", symbol: "transitionworkorder", discriminator: "no-availability-check ", category: "bug", severity: "HIGH", line: 9 }])]
+      : [child("B", [{ file: "functions/src/X.ts", symbol: "transitionworkorder", discriminator: "no-availability-check ", category: "bug", severity: "HIGH", line: 9 }]),
+         child("A", [{ file: "functions/src/X.ts", symbol: "TransitionWorkOrder", discriminator: "No-Availability-Check", category: "bug", severity: "HIGH", line: 5 }])],
+  });
+  const ab = mk("AB"), ba = mk("BA");
+  assert.equal(ab.counts.unique, 1, "case/whitespace drift → still ONE group");
+  // The ENTIRE consolidated finding is deterministic regardless of child order — deep-compare the whole record.
+  assert.deepEqual(ab.findings[0], ba.findings[0], "full canonical finding is byte-stable across A/B vs B/A order");
+  assert.equal(ab.findings[0].discriminator, "no-availability-check", "stored discriminator is the canonical form");
+  assert.equal(ab.findings[0].line, undefined, "drifting line is NOT on the canonical identity record");
+  assert.deepEqual(ab.findings[0].reports.map((r) => r.line).sort(), [5, 9], "per-occurrence lines preserved in sorted reports");
 });
