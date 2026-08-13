@@ -42,6 +42,9 @@ async function applyStockDelta(
   const ref = db().collection(STOCK_LOCATIONS_COLLECTION).doc(stockLocationDocId(warehouseId, partId, binCode));
   const snap = await tx.get(ref);
   const current = snap.exists ? (snap.data() as StockLocation).quantity : 0;
+  if (current + deltaQuantity < 0) {
+    throw new Error(`Insufficient stock in ${warehouseId}/${partId}/${binCode}: requested ${Math.abs(deltaQuantity)}, available ${current}`);
+  }
   const next: StockLocation = {
     id: ref.id,
     warehouseId,
