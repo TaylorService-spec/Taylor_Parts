@@ -1,0 +1,43 @@
+{
+  "schema": "eos.intake.status/2",
+  "requestId": "EOS-ISSUE-872",
+  "pointer": "status://EOS-ISSUE-872",
+  "work": "work://EOS-ISSUE-872",
+  "result": "result://EOS-ISSUE-872",
+  "state": "BLOCKED_EXECUTION",
+  "currentWork": "required execution receipts missing: tests",
+  "activeWorker": null,
+  "startedAt": null,
+  "updatedAt": "2026-08-13T21:59:58.534Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": null,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": {
+      "used": 0,
+      "limit": 1
+    },
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "UNAVAILABLE"
+  },
+  "freshness": "UNKNOWN",
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/EOS-ISSUE-872.work.json",
+    "sha256": "579f403bf6c0554f7a67f7ccaf2820582e7c87a5f9e08a858b7e9ece4f11875d"
+  },
+  "resultRef": null,
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-872.status.json",
+  "sha256": "c7d03590dc6d30fa6461b07af35b13a2b32a56e1432f2477a1386b552a5e9d31"
+}
