@@ -28,7 +28,6 @@ import {
   cancelConfirm,
   markSubmitting,
   settle,
-  sanitizeReasonCode,
   canInitiateAdminCredentialReset,
   DEFAULT_MODE,
 } from "../../domain/adminPasswordReset";
@@ -59,8 +58,6 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
 
   const [loadState, setLoadState] = useState({ loading: true, ok: false, rows: [], result: null });
   const [selected, setSelected] = useState(null); // the row being reset
-  const [reason, setReason] = useState("");
-  const [reasonError, setReasonError] = useState(null);
   const [action, setAction] = useState(initialActionState());
   const [inFlight, setInFlight] = useState(false);
 
@@ -94,8 +91,6 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
 
   const openConfirm = useCallback((row) => {
     setSelected(row);
-    setReason("");
-    setReasonError(null);
     controllerRef.current.beginIntent(); // fresh idempotency key for this intent
     setAction(beginConfirm(initialActionState(), { eligible: row.eligible, mode: DEFAULT_MODE }));
   }, []);
@@ -107,12 +102,6 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
 
   const confirmSend = useCallback(async () => {
     if (!selected) return;
-    const clean = sanitizeReasonCode(reason);
-    if (!clean.ok) {
-      setReasonError(clean.error);
-      return;
-    }
-    setReasonError(null);
     setAction((s) => markSubmitting(s));
     setInFlight(true);
     // NOTE: reason is captured client-side only; it is NOT part of the merged
@@ -121,7 +110,7 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
     setInFlight(false);
     if (outcome.skipped) return; // an overlapping submit was ignored by the lock
     setAction((s) => settle(s, outcome.result));
-  }, [selected, reason]);
+  }, [selected]);
 
   const status = useMemo(() => resetStatusView(action), [action]);
 
@@ -199,17 +188,6 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
                 Send a password reset for <strong>{selected.displayName || selected.uid}</strong>
                 {selected.role ? <span className="fo-muted"> ({selected.role})</span> : null}?
               </p>
-              <label>
-                Reason (optional)
-                <input
-                  type="text"
-                  value={reason}
-                  maxLength={200}
-                  onChange={(e) => setReason(e.target.value)}
-                  aria-invalid={reasonError ? "true" : "false"}
-                />
-              </label>
-              {reasonError && <p className="fo-error">{reasonError}</p>}
               <div>
                 <button type="button" onClick={confirmSend} disabled={inFlight}>
                   {inFlight ? "Sending…" : "Confirm"}
