@@ -3,7 +3,7 @@
 // unconditionally — a technician could be dispatched to two active Work Orders at once. These prove the guard.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findDoubleBookingConflict, isOccupyingStatus } from "../src/workOrderAvailability.ts";
+import { findDoubleBookingConflict, findScheduleConflict, isOccupyingStatus } from "../src/workOrderAvailability.ts";
 
 test("DEFECT GUARD: a technician already on an active Work Order cannot be dispatched to another (double-booking)", () => {
   const others = [{ id: "wo-existing", assignedTechId: "tech-1", status: "WORK_IN_PROGRESS" }];
@@ -32,4 +32,18 @@ test("re-dispatching the SAME Work Order to the same technician is not a conflic
 test("another technician's active Work Order does not block this technician", () => {
   const others = [{ id: "wo-other", assignedTechId: "tech-2", status: "WORK_IN_PROGRESS" }];
   assert.equal(findDoubleBookingConflict("tech-1", "wo-new", others), null);
+});
+
+test("overlapping windows for the same scheduled technician conflict", () => {
+  const conflict = findScheduleConflict("tech-1", "wo-new", 200, 400, [{ id: "wo-1", scheduledTechId: "tech-1", scheduledStart: 100, scheduledEnd: 300, status: "SCHEDULED" }]);
+  assert.equal(conflict, "wo-1");
+});
+
+test("adjacent windows, other technicians, and terminal records do not conflict", () => {
+  const conflict = findScheduleConflict("tech-1", "wo-new", 300, 400, [
+    { id: "adjacent", scheduledTechId: "tech-1", scheduledStart: 100, scheduledEnd: 300, status: "SCHEDULED" },
+    { id: "other-tech", scheduledTechId: "tech-2", scheduledStart: 200, scheduledEnd: 350, status: "SCHEDULED" },
+    { id: "closed", scheduledTechId: "tech-1", scheduledStart: 200, scheduledEnd: 350, status: "CLOSED" },
+  ]);
+  assert.equal(conflict, null);
 });

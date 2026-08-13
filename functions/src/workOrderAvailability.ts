@@ -40,3 +40,32 @@ export function findDoubleBookingConflict(
   }
   return null;
 }
+
+type ScheduledWorkOrder = Pick<WorkOrder, "id"> & {
+  scheduledTechId?: string;
+  scheduledStart?: { toMillis?: () => number } | number;
+  scheduledEnd?: { toMillis?: () => number } | number;
+  status: WorkOrderStatus;
+};
+
+const scheduleMillis = (value: ScheduledWorkOrder["scheduledStart"]): number | null => {
+  if (typeof value === "number") return value;
+  const millis = value?.toMillis?.();
+  return typeof millis === "number" ? millis : null;
+};
+
+const blocksSchedule = (status: WorkOrderStatus): boolean => status !== "CREATED" && status !== "READY_TO_DISPATCH" && status !== "COMPLETED" && status !== "CLOSED" && status !== "CANCELLED";
+
+export function findScheduleConflict(
+  scheduledTechId: string, workOrderId: string, scheduledStart: number, scheduledEnd: number,
+  others: readonly ScheduledWorkOrder[],
+): string | null {
+  for (const wo of others) {
+    if (!wo || wo.id === workOrderId || wo.scheduledTechId !== scheduledTechId || !blocksSchedule(wo.status)) continue;
+    const otherStart = scheduleMillis(wo.scheduledStart);
+    const otherEnd = scheduleMillis(wo.scheduledEnd);
+    if (otherStart === null || otherEnd === null) continue;
+    if (scheduledStart < otherEnd && otherStart < scheduledEnd) return wo.id;
+  }
+  return null;
+}
