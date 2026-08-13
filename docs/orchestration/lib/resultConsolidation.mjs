@@ -46,7 +46,12 @@ export function assertChildrenComplete({ expectedChildIds = [], children = [] } 
   const incomplete = expected
     .filter((id) => byId.has(id))
     .filter((id) => { const c = byId.get(id); return c?.disposition !== "COMPLETE" || !Array.isArray(c?.findings); });
-  return { ok: missing.length === 0 && incomplete.length === 0, missing, incomplete, expected };
+  // SET EQUALITY, not just superset: a child NOT in the declared expected set must never participate in the
+  // parent's consolidation (it could contribute findings/agreements/conflicts/counts to a mission it was never
+  // authorized for). An unexpected child fails the gate closed — the parent cannot consolidate/COMPLETE.
+  const expectedSet = new Set(expected);
+  const unexpected = [...byId.keys()].filter((id) => id != null && !expectedSet.has(id));
+  return { ok: missing.length === 0 && incomplete.length === 0 && unexpected.length === 0, missing, incomplete, unexpected, expected };
 }
 
 /**
@@ -58,7 +63,7 @@ export function assertChildrenComplete({ expectedChildIds = [], children = [] } 
  */
 export function consolidateChildResults({ parentWorkId = null, expectedChildIds = [], children = [] } = {}) {
   const gate = assertChildrenComplete({ expectedChildIds, children });
-  if (!gate.ok) return Object.freeze({ ok: false, parentWorkId, missing: gate.missing, incomplete: gate.incomplete, ...(gate.reason ? { reason: gate.reason } : {}) });
+  if (!gate.ok) return Object.freeze({ ok: false, parentWorkId, missing: gate.missing, incomplete: gate.incomplete, unexpected: gate.unexpected ?? [], ...(gate.reason ? { reason: gate.reason } : {}) });
 
   // Group every reported finding by identity across all children.
   const groups = new Map();

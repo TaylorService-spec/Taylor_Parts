@@ -235,3 +235,17 @@ test("runAuditReconcile: a child whose worker emitted NO block blocks the whole 
   assert.equal(out.ok, false, "extraction failure in any child blocks consolidation");
   assert.deepEqual(out.consolidated.incomplete, ["B"]);
 });
+
+test("SET EQUALITY: an UNEXPECTED child fails the gate closed — cannot consolidate, cannot influence the report", () => {
+  const out = consolidateChildResults({
+    expectedChildIds: ["A", "B"],
+    children: [
+      child("A", [f("a.ts", "bug", "HIGH", 1)]),
+      child("B", [f("b.ts", "bug", "LOW", 1)]),
+      child("X", [f("x.ts", "bug", "CRITICAL", 1)]), // NOT declared — must not participate
+    ],
+  });
+  assert.equal(out.ok, false, "an unexpected child blocks consolidation entirely");
+  assert.deepEqual(out.unexpected, ["X"]);
+  assert.equal(out.findings, undefined, "no consolidated report is produced");
+});
