@@ -1,0 +1,327 @@
+diff --git a/docs/orchestration/context/wake-supervisor.mjs b/docs/orchestration/context/wake-supervisor.mjs
+index cb0f5fb..23a54a2 100644
+--- a/docs/orchestration/context/wake-supervisor.mjs
++++ b/docs/orchestration/context/wake-supervisor.mjs
+@@ -65,9 +65,9 @@ export function executeSupervisor(state, { manual = false, eosDir } = {}) {
+   const os = require("node:os");
+   const lease = makeLease({ dir: `${eosDir}/wake.lock`, fs: { mkdirSync, writeFileSync, readFileSync: rf, rmSync, rmdirSync }, host: os.hostname(), pid: process.pid, now: () => Date.now() });
+   // Durable runtime evidence (outside the repo).
+-  const persistResult = ({ item, wake, result, cost, model }) => {
++  const persistResult = ({ item, wake, result, cost, model, configuredMaxTurns }) => {
+     const dir = `${eosDir}/wake-runs`; try { mkdirSync(dir, { recursive: true }); } catch {}
+-    writeFileSync(`${dir}/${item.id}.json`, JSON.stringify({ workId: item.id, wakeState: wake.wakeState, selectedModel: model, cost, result, at: Date.now() }, null, 2));
++    writeFileSync(`${dir}/${item.id}.json`, JSON.stringify({ workId: item.id, wakeState: wake.wakeState, selectedModel: model, cost, configuredMaxTurns, result, at: Date.now() }, null, 2));
+   };
+   return executeWake({
+     item: state.item, ctx, contextPackageFn: contextPackageFor, processRunner: realProcessRunner, lease,
+diff --git a/docs/orchestration/lib/wakeExecute.mjs b/docs/orchestration/lib/wakeExecute.mjs
+index 6cfb31e..5e95a56 100644
+--- a/docs/orchestration/lib/wakeExecute.mjs
++++ b/docs/orchestration/lib/wakeExecute.mjs
+@@ -13,7 +13,7 @@
+ // exercised in tests. A process spawn alone NEVER proves ACKNOWLEDGED/COMPLETED — states are set only
+ // from real evidence, and failures are captured distinctly, never reinterpreted as completed work.
+ 
+-import { assessReadiness, buildClaudeInvocation, DEFAULT_GUARDRAILS } from "./wakeSupervisor.mjs";
++import { assessReadiness, buildClaudeInvocation } from "./wakeSupervisor.mjs";
+ import { resolveDispatchModel } from "./modelPolicy.mjs";
+ import { createCostCapacityTelemetry, UNKNOWN_COST } from "./costCapacity.mjs";
+ 
+@@ -22,8 +22,16 @@ export const WAKE_FAILURE_KINDS = Object.freeze([
+   "SPAWN_FAILURE", "TIMEOUT", "NONZERO_EXIT", "MALFORMED_OUTPUT", "MISSING_RESULT",
+   "RESULT_PERSIST_FAILURE", "LEASE_RELEASE_FAILURE", "INSUFFICIENT_CONTEXT",
+   "PROVENANCE_UNACCEPTABLE", "MODEL_RESOLUTION_FAILURE", "LEASE_UNAVAILABLE",
++  "MAX_TURNS_EXCEEDED",
+ ]);
+ 
++// Detects the Claude CLI's own max-turns termination signal in raw (unsanitized) stdout, so a
++// turn-ceiling exhaustion is classified distinctly from a generic NONZERO_EXIT — it is still
++// captured under SPAWNED_FAILED (never SPAWNED_COMPLETED); this only sharpens the diagnostic.
++function isMaxTurnsTermination(stdout) {
++  return typeof stdout === "string" && /error_max_turns|reached maximum number of turns/i.test(stdout);
++}
++
+ const refuse = (outcome, reason, extra = {}) => Object.freeze({ outcome, spawned: false, reason, ...extra });
+ 
+ /**
+@@ -76,7 +84,12 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
+   }
+ 
+   const triggerMechanism = decision.triggerKind === "MANUAL_RUNTIME_TRIGGER" ? "MANUAL_RUNTIME_TRIGGER" : "AUTOMATIC_TRIGGER";
+-  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }) });
++  // Base guardrails come from the readiness decision (task-class-aware: ANALYSIS stays at the
++  // original 40-turn ceiling; CORRECTION/IMPLEMENTATION items get the raised-but-still-finite
++  // 80-turn ceiling) — never re-derived from the flat DEFAULT_GUARDRAILS here.
++  const guardrails = Object.freeze({ ...decision.guardrails, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null });
++  const invocation = buildClaudeInvocation({ contextPackage, guardrails });
++  const configuredMaxTurns = guardrails.maxTurns;
+   let leaseReleased = false;
+   const releaseLease = () => { if (leaseReleased) return true; try { lease.release(); leaseReleased = true; return true; } catch { return false; } };
+ 
+@@ -86,7 +99,9 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
+     try { run = processRunner.run({ bin: invocation.bin, argv: invocation.argv, wallClockSec: invocation.wallClockSec }); }
+     catch (e) { run = { spawnError: e.message }; }
+ 
+-    const base = { spawned: true, wakeState: "TRIGGERED", triggerMechanism, selectedModel: model.selectedModel, contextPackage, invocation };
++    // configuredMaxTurns is recorded on EVERY outcome (success or failure) so a future max-turns
++    // termination is diagnosable from runtime telemetry/status without re-running.
++    const base = { spawned: true, wakeState: "TRIGGERED", triggerMechanism, selectedModel: model.selectedModel, contextPackage, invocation, configuredMaxTurns };
+ 
+     if (run && run.spawnError) return fail("SPAWN_FAILURE", run.spawnError, base, releaseLease);
+     // Spawn succeeded → the OS process ran → ACTIVE (still not COMPLETED).
+@@ -97,7 +112,14 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
+     const stdoutTail = sanitizeDiagnostic(run && run.stdout);
+     const exitCode = run && Number.isFinite(run.exitCode) ? run.exitCode : null;
+     if (run && run.timedOut) return fail("TIMEOUT", `wall-clock ${invocation.wallClockSec}s exceeded${stderrTail ? ` — ${stderrTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stderrTail });
+-    if (!run || run.exitCode !== 0) return fail("NONZERO_EXIT", `exit ${exitCode ?? "unknown"}${stderrTail ? ` — stderr: ${stderrTail}` : (stdoutTail ? ` — stdout: ${stdoutTail}` : "")}`, base, releaseLease, { exitCode, diagnostic: stderrTail || stdoutTail });
++    if (!run || run.exitCode !== 0) {
++      // A max-turns termination is ALWAYS a failure (SPAWNED_FAILED), never reinterpreted as
++      // COMPLETE — this only sharpens the failureKind for diagnosability.
++      const maxTurnsHit = isMaxTurnsTermination(run && run.stdout) || isMaxTurnsTermination(run && run.stderr);
++      const failureKind = maxTurnsHit ? "MAX_TURNS_EXCEEDED" : "NONZERO_EXIT";
++      const detail = `exit ${exitCode ?? "unknown"}${maxTurnsHit ? ` — max-turns ceiling (${configuredMaxTurns}) reached` : ""}${stderrTail ? ` — stderr: ${stderrTail}` : (stdoutTail ? ` — stdout: ${stdoutTail}` : "")}`;
++      return fail(failureKind, detail, base, releaseLease, { exitCode, diagnostic: stderrTail || stdoutTail });
++    }
+ 
+     let parsed;
+     try { parsed = JSON.parse(run.stdout || ""); }
+@@ -107,13 +129,14 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
+     // Only NOW is COMPLETED provable (clean exit + parseable result).
+     base.wakeState = "COMPLETED";
+     if (persistResult) {
+-      try { persistResult({ item, wake: base, result: parsed, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, model: model.selectedModel }); }
++      try { persistResult({ item, wake: base, result: parsed, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, model: model.selectedModel, configuredMaxTurns }); }
+       catch (e) { return fail("RESULT_PERSIST_FAILURE", e.message, base, releaseLease); }
+     }
+     const releasedOk = releaseLease();
+     return Object.freeze({
+       outcome: "SPAWNED_COMPLETED", spawned: true, wakeState: "COMPLETED", triggerMechanism,
+       selectedModel: model.selectedModel, contextPackage, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null,
++      configuredMaxTurns,
+       costCapacity: createCostCapacityTelemetry({ actualProviderCostUsd: UNKNOWN_COST, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, providerCapacityUsage: ctx.providerCapacityUsage || {}, budgetStopReason: null, costProvenance: { actual: "UNAVAILABLE", estimated: parsed.total_cost_usd == null ? "UNAVAILABLE" : "CLAUDE_CLI_MODELED" }, freshness: parsed.total_cost_usd == null ? "UNKNOWN" : "CURRENT" }),
+       result: parsed.result, leaseReleased: releasedOk,
+       failureKind: releasedOk ? null : "LEASE_RELEASE_FAILURE",
+@@ -130,6 +153,7 @@ function fail(failureKind, detail, base, releaseLease, meta = {}) {
+     outcome: "SPAWNED_FAILED", spawned: true, wakeState: base.wakeState, triggerMechanism: base.triggerMechanism,
+     selectedModel: base.selectedModel, failureKind, failureDetail: detail,
+     exitCode: meta.exitCode ?? null, diagnostic: meta.diagnostic ?? null,
++    configuredMaxTurns: base.configuredMaxTurns ?? null,
+     leaseReleased: releasedOk,
+   });
+ }
+diff --git a/docs/orchestration/lib/wakeExecute.test.mjs b/docs/orchestration/lib/wakeExecute.test.mjs
+index 4a831c2..ff6ce25 100644
+--- a/docs/orchestration/lib/wakeExecute.test.mjs
++++ b/docs/orchestration/lib/wakeExecute.test.mjs
+@@ -155,6 +155,63 @@ test("MALFORMED_OUTPUT surfaces the offending stdout tail", () => {
+   assert.match(r.failureDetail, /not json at all/);
+ });
+ 
++// ── EOS-ISSUE-838: task-class turn policy ──
++// #836/#837 both hit exactly the old fixed 40-turn ceiling mid-correction and terminated FAILED
++// before finishing otherwise-bounded work. These regressions prove: (1) a CORRECTION/IMPLEMENTATION
++// item is actually invoked with the raised, still-finite 80-turn ceiling (so a task that legitimately
++// needs, say, 55 turns is not cut off by the old 40-turn limit), (2) exceeding whatever ceiling WAS
++// configured still fails closed (never COMPLETE), and (3) the configured ceiling is always recorded
++// in the returned telemetry so a future max-turns failure is diagnosable without re-running.
++
++test("a CORRECTION item is invoked with --max-turns 80 (not the old 40) — the fixed ceiling that caused #836/#837 no longer applies", () => {
++  const runner = mockRunner({ exitCode: 0, stdout: cleanOutput });
++  const r = executeWake(base({ item: okItem({ taskClass: "CORRECTION" }), processRunner: runner, lease: mockLease() }));
++  assert.equal(r.outcome, "SPAWNED_COMPLETED");
++  assert.equal(r.configuredMaxTurns, 80);
++  const invokedArgv = runner.calls[0].argv.join(" ");
++  assert.match(invokedArgv, /--max-turns 80/);
++});
++
++test("ordinary analysis (no taskClass) is still invoked with --max-turns 40", () => {
++  const runner = mockRunner({ exitCode: 0, stdout: cleanOutput });
++  const r = executeWake(base({ processRunner: runner, lease: mockLease() }));
++  assert.equal(r.configuredMaxTurns, 40);
++  assert.match(runner.calls[0].argv.join(" "), /--max-turns 40/);
++});
++
++test("hitting the configured max-turns ceiling is classified MAX_TURNS_EXCEEDED and stays FAILED, never COMPLETE", () => {
++  const maxTurnsStdout = JSON.stringify({ subtype: "error_max_turns", errors: ["Reached maximum number of turns (80)"] });
++  const r = executeWake(base({
++    item: okItem({ taskClass: "IMPLEMENTATION" }),
++    processRunner: mockRunner({ exitCode: 1, stdout: maxTurnsStdout }),
++    lease: mockLease(),
++  }));
++  assert.equal(r.outcome, "SPAWNED_FAILED");
++  assert.notEqual(r.wakeState, "COMPLETED");
++  assert.equal(r.failureKind, "MAX_TURNS_EXCEEDED");
++  assert.equal(r.configuredMaxTurns, 80, "the ceiling that was actually configured is recorded for diagnosis");
++  assert.match(r.failureDetail, /max-turns ceiling \(80\) reached/);
++});
++
++test("exceeding whatever ceiling was configured still fails closed — a bounded 80-turn run that also hits max-turns is FAILED, not COMPLETE", () => {
++  const maxTurnsStdout = JSON.stringify({ subtype: "error_max_turns", errors: ["Reached maximum number of turns (80)"] });
++  const r = executeWake(base({
++    item: okItem({ taskClass: "CORRECTION" }),
++    processRunner: mockRunner({ exitCode: 1, stdout: maxTurnsStdout }),
++    lease: mockLease(),
++  }));
++  assert.equal(r.outcome, "SPAWNED_FAILED");
++  assert.notEqual(r.wakeState, "COMPLETED");
++  assert.notEqual(r.wakeState, "ACKNOWLEDGED");
++  assert.equal(r.failureKind, "MAX_TURNS_EXCEEDED");
++});
++
++test("a plain non-zero exit unrelated to max-turns is still classified NONZERO_EXIT, and both keep configuredMaxTurns on the record", () => {
++  const r = executeWake(base({ processRunner: mockRunner({ exitCode: 2, stdout: "", stderr: "some other crash" }), lease: mockLease() }));
++  assert.equal(r.failureKind, "NONZERO_EXIT");
++  assert.equal(r.configuredMaxTurns, 40);
++});
++
+ test("sanitizeDiagnostic redacts secrets, tokens, hex, and absolute paths", () => {
+   // POSIX path + no backslash literals (kept simple; the Windows-path rule is exercised at runtime).
+   // Deliberately-fake, secret-scanner-inert fixtures (too short to match provider rules) that still
+diff --git a/docs/orchestration/lib/wakeSupervisor.mjs b/docs/orchestration/lib/wakeSupervisor.mjs
+index c526b57..9beb616 100644
+--- a/docs/orchestration/lib/wakeSupervisor.mjs
++++ b/docs/orchestration/lib/wakeSupervisor.mjs
+@@ -18,6 +18,16 @@ export const TRIGGER_MECHANISMS = Object.freeze(["MANUAL", "AUTOMATIC", "NO_WAKE
+ export const WAKE_DECISIONS = Object.freeze(["TRIGGER", "HOLD", "CHECKPOINT"]);
+ export const TRIGGER_KINDS = Object.freeze(["MANUAL_RUNTIME_TRIGGER", "AUTOMATIC_TRIGGER"]);
+ 
++// Task-class turn policy (EOS-ISSUE-838): a fixed 40-turn ceiling was too small for bounded
++// correction/implementation work (#836, #837 both hit exactly 40 and terminated before finishing
++// otherwise-bounded work). Ordinary analysis stays at the original 40-turn ceiling; an item that
++// explicitly declares itself bounded correction/implementation work gets a safer-but-still-finite
++// 80-turn ceiling. The ceiling is NEVER unbounded — it is one of two fixed, explicit values.
++export const TASK_CLASSES = Object.freeze(["ANALYSIS", "CORRECTION", "IMPLEMENTATION"]);
++const BOUNDED_CORRECTION_TASK_CLASSES = Object.freeze(["CORRECTION", "IMPLEMENTATION"]);
++export const MAX_TURNS_ANALYSIS = 40;
++export const MAX_TURNS_BOUNDED_CORRECTION = 80;
++
+ // Guardrails baked into EVERY constructed invocation. Repo-safe allowlist only; NO network/deploy
+ // tool; dontAsk (auto-deny, never bypassPermissions); hard turn + budget caps; wall-clock ceiling.
+ // The model comes from the SHARED resolver (delegated → SONNET) — never independently hard-coded, so
+@@ -30,12 +40,25 @@ export const DEFAULT_GUARDRAILS = Object.freeze({
+   ]),
+   disallowedTools: Object.freeze(["WebFetch", "WebSearch"]),
+   model: resolveDispatchModel({ delegated: true }).selectedModel,
+-  maxTurns: 40,
++  maxTurns: MAX_TURNS_ANALYSIS,
+   maxBudgetUsd: null, // Claude modeled dollars are not billed spend; set only via an explicit economic cap
+   wallClockSec: 900,       // the supervisor imposes this (no CLI flag) and SIGTERMs on breach
+   outputFormat: "json",    // machine-parse result + total_cost_usd
+ });
+ 
++// Same guardrails, raised turn ceiling — used ONLY for items that declare
++// taskClass CORRECTION|IMPLEMENTATION. Still a hard, finite cap (never unlimited).
++export const BOUNDED_CORRECTION_GUARDRAILS = Object.freeze({ ...DEFAULT_GUARDRAILS, maxTurns: MAX_TURNS_BOUNDED_CORRECTION });
++
++/**
++ * Select the guardrail set for an item's declared task class. Unknown/missing taskClass is
++ * treated as ordinary ANALYSIS (the original, more conservative 40-turn ceiling) — the raised
++ * ceiling is opt-in, never a silent default.
++ */
++export function guardrailsForTaskClass(taskClass) {
++  return BOUNDED_CORRECTION_TASK_CLASSES.includes(taskClass) ? BOUNDED_CORRECTION_GUARDRAILS : DEFAULT_GUARDRAILS;
++}
++
+ /**
+  * Token-free readiness assessment. NO model call. Decides purely from cheap durable state.
+  *
+@@ -81,7 +104,7 @@ export function assessReadiness(item, ctx = {}) {
+   }
+ 
+   const mechanism = triggerKind === "MANUAL_RUNTIME_TRIGGER" ? "MANUAL" : "AUTOMATIC";
+-  return { decision: "TRIGGER", reason: `${item.id} is READY + authorized + repo-safe + slot free`, item, guardrails: DEFAULT_GUARDRAILS, triggerMechanism: mechanism, triggerKind };
++  return { decision: "TRIGGER", reason: `${item.id} is READY + authorized + repo-safe + slot free`, item, guardrails: guardrailsForTaskClass(item.taskClass), triggerMechanism: mechanism, triggerKind };
+ }
+ 
+ // Exponential backoff (ms), capped — used after a non-zero exit / budget-hit / max-turns, and to
+diff --git a/docs/orchestration/lib/wakeSupervisor.test.mjs b/docs/orchestration/lib/wakeSupervisor.test.mjs
+index 6211540..4ff8c3a 100644
+--- a/docs/orchestration/lib/wakeSupervisor.test.mjs
++++ b/docs/orchestration/lib/wakeSupervisor.test.mjs
+@@ -2,6 +2,8 @@ import { test } from "node:test";
+ import assert from "node:assert/strict";
+ import {
+   assessReadiness, nextBackoffMs, buildClaudeInvocation, DEFAULT_GUARDRAILS,
++  BOUNDED_CORRECTION_GUARDRAILS, guardrailsForTaskClass, TASK_CLASSES,
++  MAX_TURNS_ANALYSIS, MAX_TURNS_BOUNDED_CORRECTION,
+   TRIGGER_MECHANISMS, TRIGGER_KINDS,
+ } from "./wakeSupervisor.mjs";
+ 
+@@ -63,6 +65,57 @@ test("a MANUAL runtime trigger is recorded distinctly from AUTOMATIC", () => {
+   assert.ok(TRIGGER_KINDS.includes(r.triggerKind) && TRIGGER_MECHANISMS.includes(r.triggerMechanism));
+ });
+ 
++// ── EOS-ISSUE-838: task-class turn policy — a fixed 40-turn ceiling was too small for bounded
++// correction/implementation work (#836, #837 both hit exactly 40 and terminated mid-task). ──
++
++test("ordinary analysis (no taskClass) keeps the original 40-turn ceiling", () => {
++  const r = assessReadiness(okItem(), okCtx());
++  assert.equal(r.decision, "TRIGGER");
++  assert.equal(r.guardrails, DEFAULT_GUARDRAILS);
++  assert.equal(r.guardrails.maxTurns, MAX_TURNS_ANALYSIS);
++  assert.equal(r.guardrails.maxTurns, 40);
++});
++
++test("declared CORRECTION/IMPLEMENTATION work gets the raised 80-turn ceiling, not unlimited", () => {
++  for (const taskClass of ["CORRECTION", "IMPLEMENTATION"]) {
++    const r = assessReadiness(okItem({ taskClass }), okCtx());
++    assert.equal(r.decision, "TRIGGER");
++    assert.equal(r.guardrails, BOUNDED_CORRECTION_GUARDRAILS);
++    assert.equal(r.guardrails.maxTurns, MAX_TURNS_BOUNDED_CORRECTION);
++    assert.equal(r.guardrails.maxTurns, 80);
++    assert.ok(Number.isFinite(r.guardrails.maxTurns), "the ceiling stays finite — never unlimited");
++  }
++});
++
++test("an unrecognized taskClass falls back to the conservative analysis ceiling (raise is opt-in only)", () => {
++  const r = assessReadiness(okItem({ taskClass: "SOMETHING_ELSE" }), okCtx());
++  assert.equal(r.guardrails, DEFAULT_GUARDRAILS);
++  assert.equal(r.guardrails.maxTurns, 40);
++});
++
++test("guardrailsForTaskClass: every declared task class resolves to a guardrail set with a finite maxTurns", () => {
++  for (const tc of TASK_CLASSES) {
++    const g = guardrailsForTaskClass(tc);
++    assert.ok(Number.isFinite(g.maxTurns) && g.maxTurns > 0);
++  }
++  assert.equal(guardrailsForTaskClass(undefined).maxTurns, 40);
++});
++
++test("raised ceiling preserves every other guardrail (dontAsk, allowlist, no bypass)", () => {
++  assert.equal(BOUNDED_CORRECTION_GUARDRAILS.permissionMode, "dontAsk");
++  assert.deepEqual(BOUNDED_CORRECTION_GUARDRAILS.allowedTools, DEFAULT_GUARDRAILS.allowedTools);
++  assert.deepEqual(BOUNDED_CORRECTION_GUARDRAILS.disallowedTools, DEFAULT_GUARDRAILS.disallowedTools);
++  assert.equal(BOUNDED_CORRECTION_GUARDRAILS.wallClockSec, DEFAULT_GUARDRAILS.wallClockSec);
++});
++
++test("the constructed invocation for correction work carries --max-turns 80, still finite and dontAsk", () => {
++  const inv = buildClaudeInvocation({ contextPackage: { role: "worker", scope: ["orchestration"] }, guardrails: BOUNDED_CORRECTION_GUARDRAILS });
++  const s = inv.argv.join(" ");
++  assert.match(s, /--max-turns 80/);
++  assert.match(s, /--permission-mode dontAsk/);
++  assert.ok(!/bypass|dangerously/i.test(s));
++});
++
+ test("backoff is exponential and capped", () => {
+   assert.equal(nextBackoffMs(0), 60_000);
+   assert.equal(nextBackoffMs(3), 480_000);
+diff --git a/docs/orchestration/wake-supervisor-design.md b/docs/orchestration/wake-supervisor-design.md
+index 3571f53..dbf95b8 100644
+--- a/docs/orchestration/wake-supervisor-design.md
++++ b/docs/orchestration/wake-supervisor-design.md
+@@ -94,8 +94,13 @@ The spawn gap is now closed in code (not activated):
+   `authorized:true`, `sourceFreshness:"CURRENT"`, a free 2/1/1 slot, and budget/network ok — otherwise
+   it refuses and spawns nothing.
+ - **Guardrails on the run:** `--permission-mode dontAsk` (auto-deny; never bypass), a repo-safe
+-  `--allowedTools` allowlist (no network/deploy), `--max-turns 40`, `--max-budget-usd 2`, an external
+-  wall-clock kill (900s → SIGTERM), model = SONNET (delegated). One bounded run per invocation.
++  `--allowedTools` allowlist (no network/deploy), `--max-turns` (task-class policy, EOS-ISSUE-838:
++  `40` for ordinary analysis, `80` for an item that declares `taskClass: CORRECTION|IMPLEMENTATION` —
++  always a fixed, finite ceiling, never unlimited), `--max-budget-usd 2`, an external
++  wall-clock kill (900s → SIGTERM), model = SONNET (delegated). One bounded run per invocation. The
++  configured ceiling is recorded on every outcome (`configuredMaxTurns`) so a max-turns termination is
++  diagnosable from evidence without re-running; hitting it is classified `MAX_TURNS_EXCEEDED` and
++  always surfaces as a failure, never COMPLETED.
+ - **Expected Control Center state:** the wake board shows the item move AUTHORIZED → TRIGGERED
+   (AUTOMATIC_TRIGGER) → ACTIVE → COMPLETED; the run's evidence (selectedModel, cost, result) lands under
+   `%LOCALAPPDATA%/EOS/wake-runs/<id>.json`. On refusal it stays WAITING_FOR_TRIGGER with the reason; on

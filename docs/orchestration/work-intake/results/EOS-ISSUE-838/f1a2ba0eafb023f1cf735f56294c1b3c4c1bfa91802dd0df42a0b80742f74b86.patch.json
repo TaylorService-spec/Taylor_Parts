@@ -1,0 +1,34 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-838",
+  "sourceWorkSha256": "3aaadcd9ca979101ec949f1ea1d947f3a876dd24ae7bd4628948b407c36ee308",
+  "baseCommit": "d88339a23d26c8a57e23cf76d3c06200438ef34b",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "Inspect only the Claude wake/runtime configuration path that constructs the `claude -p` invocation, starting with the existing wake supervisor/runtime module and its focused tests. Do not inspect Taylor product code, Agent Manager, Cortex provider logic, project-keystone, or unrelated workflows."
+  ],
+  "paths": [
+    "docs/orchestration/context/wake-supervisor.mjs",
+    "docs/orchestration/lib/wakeExecute.mjs",
+    "docs/orchestration/lib/wakeExecute.test.mjs",
+    "docs/orchestration/lib/wakeSupervisor.mjs",
+    "docs/orchestration/lib/wakeSupervisor.test.mjs",
+    "docs/orchestration/wake-supervisor-design.md"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/context/wake-supervisor.mjs",
+    "docs/orchestration/lib/wakeExecute.mjs",
+    "docs/orchestration/lib/wakeExecute.test.mjs",
+    "docs/orchestration/lib/wakeSupervisor.mjs",
+    "docs/orchestration/lib/wakeSupervisor.test.mjs",
+    "docs/orchestration/wake-supervisor-design.md"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-838/c868deab3ce7138e6e50c00ecfee0bc911c6321db1c724b30b9673d71c3f488c.patch",
+  "patchSha256": "c868deab3ce7138e6e50c00ecfee0bc911c6321db1c724b30b9673d71c3f488c",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T02:24:18Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-838/f1a2ba0eafb023f1cf735f56294c1b3c4c1bfa91802dd0df42a0b80742f74b86.patch.json",
+  "sha256": "f1a2ba0eafb023f1cf735f56294c1b3c4c1bfa91802dd0df42a0b80742f74b86"
+}

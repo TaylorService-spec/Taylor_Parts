@@ -1,0 +1,43 @@
+{
+  "schema": "eos.intake.status/2",
+  "requestId": "EOS-ISSUE-838",
+  "pointer": "status://EOS-ISSUE-838",
+  "work": "work://EOS-ISSUE-838",
+  "result": "result://EOS-ISSUE-838",
+  "state": "FAILED",
+  "currentWork": "exit 1 — stdout: …:{\"command\":\"cd C:<path> && git checkout -b eos/<token> && git add docs<path> docs<path> docs<path> docs<path> docs<path> docs/orchestration/<token>.md && git status --porcelain\"}}],\"terminal_reason\":\"max_turns\",\"fast_mode_state\":\"off\",\"<token>\":\"sdk_opt_in_required\",\"subtype\":\"error_max_turns\",\"errors\":[\"Reached maximum number of turns (40)\"],\"type\":\"result\",\"duration_ms\":249503,\"uuid\":\"<token>\"}",
+  "activeWorker": null,
+  "startedAt": null,
+  "updatedAt": "2026-08-13T02:24:35.473Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": null,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": {
+      "used": 0,
+      "limit": 1
+    },
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "UNAVAILABLE"
+  },
+  "freshness": "UNKNOWN",
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/EOS-ISSUE-838.work.json",
+    "sha256": "3aaadcd9ca979101ec949f1ea1d947f3a876dd24ae7bd4628948b407c36ee308"
+  },
+  "resultRef": null,
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-838.status.json",
+  "sha256": "9a6e56632542e518fdab9690e068f831a756ce479291a2f3523dbfcbbe2aac00"
+}

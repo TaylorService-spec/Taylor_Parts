@@ -1,0 +1,37 @@
+{
+  "requestId": "EOS-ISSUE-838",
+  "title": "EOS — raise bounded Claude turn ceiling for correction jobs",
+  "intent": "Correct the hard EOS Claude runtime ceiling that caused both #836 and #837 to terminate at exactly 40 turns before completing otherwise bounded correction work.\n\nRequired work:\nMake the Claude max-turn limit an explicit bounded runtime policy instead of a fixed 40-turn ceiling that is too small for governed correction jobs.\n\nRequirements:\n- Preserve `dontAsk`; do not enable `bypassPermissions` or unrestricted Bash.\n- Preserve all existing tool allowlists, cost/capacity semantics, routing, verifier, integration, and provider boundaries.\n- Keep a finite ceiling; do not make turns unlimited.\n- Set a safer bounded default for EOS correction/implementation work of 80 turns, or implement a task-class policy where ordinary analysis remains <=40 and bounded correction/implementation may use <=80.\n- Record the configured turn ceiling in runtime telemetry/status so future failures are diagnosable.\n- A max-turn termination must remain FAILED/BLOCKED rather than COMPLETE.\n- Add focused regressions proving a task that requires >40 but <=80 turns is not terminated by the old ceiling, while >configured-limit execution still fails closed.\n- Do not attempt to solve #834/#835 completion semantics in this issue.\n\nCompletion:\nProduce a governed patch/result or draft PR containing only the bounded turn-policy correction and tests. Report exact changed files, old/new ceiling behavior, tests, and whether safe to merge. Do not merge automatically.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "Inspect only the Claude wake/runtime configuration path that constructs the `claude -p` invocation, starting with the existing wake supervisor/runtime module and its focused tests. Do not inspect Taylor product code, Agent Manager, Cortex provider logic, project-keystone, or unrelated workflows."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/838",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T02:24:18Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-838.work.json",
+  "sha256": "3aaadcd9ca979101ec949f1ea1d947f3a876dd24ae7bd4628948b407c36ee308",
+  "createdAt": "2026-08-13T02:24:18Z",
+  "updatedAt": "2026-08-13T02:24:18Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/838"
+    ],
+    "pullRequests": []
+  }
+}
