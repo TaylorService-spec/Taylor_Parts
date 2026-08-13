@@ -39,3 +39,21 @@ You are the integration hub in Claude's absence: review each PR, confirm CI is g
 - PR #786 (`fix/issue-785...`) may already address the round-1 #4 area (customer-read) — reconcile, don't duplicate.
 - Owner is the sole conduit between Claude and Codex; route status through the Owner.
 - Claude resumes next 5-hr window and will re-sync from the register + open PRs.
+
+---
+
+## UPDATE — base correction + BACKLOG BLITZ (Claude window transition)
+
+**Base:** always `git fetch origin && git checkout origin/main` and work from the LATEST `origin/main` (it moves as PRs merge). Do NOT trust a pinned commit — a checkout missing this file means you're on a stale main; re-fetch. Read this handoff + `codex-packets-round2.md` from current `origin/main`.
+
+**Round-2 frontend (#3–#7) is DONE/MERGED** (#886–#890) — skip it (see `register.json` → `round2`).
+
+**Your mission while Claude is out — two workstreams (no Claude fleet is running, so file-collision isn't a concern):**
+1. **C1–C4 backend packets** — see `codex-packets-round2.md`.
+2. **Crush the 23-item backlog** in `register.json` → `backlog[]`. Each entry carries `files`, `problem`, `impact`, `confidence`.
+   - **DEDUP FIRST — do NOT redo anything already covered** by `register.json` → `entries` (round-1 FIXED) or `round2`. In particular these backlog items are ALREADY handled: `updateWorkOrderExecutionData` terminal-write (= packet **C2**), `warehouseService` negative-stock (= packet **C4**), any `useAccount` infinite-spinner (= round-1 #4 FIXED). If a backlog item near-duplicates a done/in-progress item, mark it resolved in the register and move on.
+   - **Order:** HIGH-confidence first, then MED. One PR per item. Minimal scoped fix + a focused test that fails pre-fix / passes after.
+   - **Integrate:** you own merge in Claude's absence — CI green, then squash-merge; update `register.json` (add each crushed item to `entries` with `status:"FIXED"`, `pr`, `worker:"codex"`). Keep PRs file-disjoint so several can land in parallel.
+   - Hard limits unchanged: no deploy, no `firestore.rules`, no production, no unrelated refactors.
+
+When Claude resumes it re-syncs from `register.json` + merged/open PRs, picks up anything left, then runs the round-3 rescan (excluding everything in the register).
