@@ -113,12 +113,18 @@ export function classifyCompletion(e = {}) {
 // declare its expectedArtifactClass / requiredExecutionReceipts, and until it does it can never false-COMPLETE.
 export function normalizeExecutionContract(raw = {}) {
   const r = raw && typeof raw === "object" ? raw : {};
-  return Object.freeze({
-    taskClass: typeof r.taskClass === "string" ? r.taskClass : "READ_ONLY_ANALYSIS",
-    expectedArtifactClass: ARTIFACT_CLASSES.includes(r.expectedArtifactClass) ? r.expectedArtifactClass : "NONE",
-    requiredExecutionReceipts: Array.isArray(r.requiredExecutionReceipts) ? r.requiredExecutionReceipts.filter((x) => typeof x === "string") : [],
-    verifierRequired: r.verifierRequired === true,
-  });
+  const taskClass = typeof r.taskClass === "string" ? r.taskClass : "READ_ONLY_ANALYSIS";
+  // Implementation/patch/integration work carries an automatic completion contract with TEETH: it must
+  // produce a durable PATCH, carry test receipts, and pass a verifier — so it can never false-COMPLETE on an
+  // ANALYSIS_REPORT even if the intake under-specified the contract (the #840 fix). Explicit fields still win
+  // (e.g. a task can require a PULL_REQUEST, or waive the verifier with verifierRequired:false).
+  const isImplementation = taskClass === "PATCH_PRODUCER" || taskClass === "GOVERNED_INTEGRATION";
+  let expectedArtifactClass = ARTIFACT_CLASSES.includes(r.expectedArtifactClass) ? r.expectedArtifactClass : "NONE";
+  if (isImplementation && expectedArtifactClass === "NONE") expectedArtifactClass = "PATCH";
+  let requiredExecutionReceipts = Array.isArray(r.requiredExecutionReceipts) ? r.requiredExecutionReceipts.filter((x) => typeof x === "string") : [];
+  if (isImplementation && requiredExecutionReceipts.length === 0) requiredExecutionReceipts = ["tests"];
+  const verifierRequired = r.verifierRequired === true || (isImplementation && r.verifierRequired !== false);
+  return Object.freeze({ taskClass, expectedArtifactClass, requiredExecutionReceipts, verifierRequired });
 }
 
 // Map a completion state to the durable intake STATUS_STATE. COMPLETE is the ONLY state that reports COMPLETE.

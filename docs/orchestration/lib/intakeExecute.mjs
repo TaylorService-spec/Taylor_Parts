@@ -110,7 +110,9 @@ export function runIntakeExecution({
   const completion = classifyCompletion({
     processSucceeded: wake.outcome === "SPAWNED_COMPLETED",
     runtimeTermination: wake.runtimeTermination || (wake.outcome === "SPAWNED_COMPLETED" ? "NORMAL" : "PROCESS_ERROR"),
-    executionCapable: typeof workerEvidence.executionCapable === "boolean" ? workerEvidence.executionCapable : null,
+    // A worker that reports its required tools were permission-blocked (the #840 signal, e.g. an implementation
+    // task launched under READ_ONLY_ANALYSIS) is NOT execution-capable → BLOCKED_EXECUTION, never COMPLETE.
+    executionCapable: workerEvidence.toolPermissionBlocked === true ? false : (typeof workerEvidence.executionCapable === "boolean" ? workerEvidence.executionCapable : null),
     requiredExecutionReceipts: execContract.requiredExecutionReceipts,
     executionReceipts: Array.isArray(workerEvidence.receipts) ? workerEvidence.receipts : [],
     expectedArtifactClass: execContract.expectedArtifactClass,
