@@ -14,6 +14,13 @@ name: EOS Intake — persistent execution runtime (Owner-gated)
 # Owner's machine. See docs/orchestration/eos-runtime-activation.md.
 
 on:
+  # PRIMARY handoff: fire when the Issue-intake workflow finishes. Its work.json write-back is pushed by
+  # github-actions[bot] using GITHUB_TOKEN, and GitHub deliberately does NOT trigger `on: push` workflows from
+  # GITHUB_TOKEN pushes (recursion prevention). workflow_run is exempt from that rule, so it is the reliable
+  # wake trigger. The push trigger below is kept for direct/human pushes of a work.json.
+  workflow_run:
+    workflows: ["EOS Issue Intake — adapt, govern, and dispatch"]
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -30,7 +37,8 @@ concurrency:
 jobs:
   execute:
     name: Execute eligible EXECUTION_AUTHORIZED intakes (self-hosted Windows, Owner-gated)
-    if: ${{ vars.EOS_RUNTIME_ENABLED == 'true' }}
+    # On a workflow_run wake, only proceed if the upstream intake actually succeeded; other events are unaffected.
+    if: ${{ vars.EOS_RUNTIME_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: [self-hosted, windows, eos-runtime]
     timeout-minutes: 30
     steps:
