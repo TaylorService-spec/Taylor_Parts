@@ -32,7 +32,15 @@ const currency = (v) =>
   typeof v === "number" ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "—";
 const shortDate = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—");
 // ISO date for <input type="date"> binding (yyyy-mm-dd); null-safe.
-const isoDate = (ms) => (typeof ms === "number" ? new Date(ms).toISOString().slice(0, 10) : "");
+export const isoDate = (ms) => {
+  if (typeof ms !== "number") return "";
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+export const parseLocalDate = (value) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).getTime();
+};
 
 function LineSummary({ lines }) {
   if (!lines?.length) return <span className="fo-muted">No solution lines yet</span>;
@@ -78,7 +86,7 @@ function FieldEdit({ field, value, onChange }) {
     case "date":
       return (
         <input id={id} className="fo-input" type="date" value={isoDate(value)}
-          onChange={(e) => onChange(e.target.value ? new Date(e.target.value).getTime() : null)} />
+          onChange={(e) => onChange(e.target.value ? parseLocalDate(e.target.value) : null)} />
       );
     case "textarea":
       return <textarea id={id} className="fo-input" rows={3} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
