@@ -1,0 +1,36 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-836",
+  "sourceWorkSha256": "e06b110c2161bbc5bdf1929940438fcc29c3bfbde4913d390ef753b45a77d4d7",
+  "baseCommit": "a6dd0e7775bc344cd11b6428dd8a6b0c500d3c76",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "This correction is limited to EOS intake/runtime outcome classification and related tests/docs. Preserve Claude routing, Cortex READ_ONLY_PILOT, Agent Manager, Gateway/Verifier, integration authority, and cost/capacity semantics except where outcome classification must consume their structured evidence. Do not rerun #834 or #835 in this issue."
+  ],
+  "paths": [
+    "docs/orchestration/context/intake-runtime.mjs",
+    "docs/orchestration/lib/intakeExecute.mjs",
+    "docs/orchestration/lib/intakeExecute.test.mjs",
+    "docs/orchestration/lib/intakeStatus.mjs",
+    "docs/orchestration/lib/outcomeGate.mjs",
+    "docs/orchestration/lib/outcomeGate.test.mjs",
+    "docs/orchestration/lib/workIntake.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/context/intake-runtime.mjs",
+    "docs/orchestration/lib/intakeExecute.mjs",
+    "docs/orchestration/lib/intakeExecute.test.mjs",
+    "docs/orchestration/lib/intakeStatus.mjs",
+    "docs/orchestration/lib/outcomeGate.mjs",
+    "docs/orchestration/lib/outcomeGate.test.mjs",
+    "docs/orchestration/lib/workIntake.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-836/465771de601db31b35238e1a92dc721d6aeff4cec4e213fcb24dcf80f5c9afbe.patch",
+  "patchSha256": "465771de601db31b35238e1a92dc721d6aeff4cec4e213fcb24dcf80f5c9afbe",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T02:05:56Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-836/c9a4c7007440a66fd93bcd821c3fb7b2d36489262ce69db9404c8f0b5ec9aece.patch.json",
+  "sha256": "c9a4c7007440a66fd93bcd821c3fb7b2d36489262ce69db9404c8f0b5ec9aece"
+}

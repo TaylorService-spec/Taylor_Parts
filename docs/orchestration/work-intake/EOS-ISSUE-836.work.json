@@ -1,0 +1,37 @@
+{
+  "requestId": "EOS-ISSUE-836",
+  "title": "EOS — fail closed on blocked or incomplete worker outcomes",
+  "intent": "Correct the EOS completion-semantic defect exposed by Issues #834 and #835. A worker process returning normally must not be persisted as COMPLETE when its content explicitly reports a blocker, unmet completion criteria, missing required execution capability, or an implementation that was not artifactized as requested.\n\nRequired work:\nIntroduce a deterministic outcome gate between provider/runtime completion and EOS final-status persistence.\n\nThe gate must derive status from structured execution evidence and completion criteria, not from process exit alone.\n\nAt minimum distinguish:\n- COMPLETE: all required completion criteria satisfied and required artifacts/evidence exist.\n- BLOCKED_EXECUTION: required tool/capability unavailable or denied, so requested work could not be executed.\n- AWAITING_ARTIFACTIZATION or equivalent: implementation/evidence exists but required governed patch/PR/artifact was not created.\n- RETURN_FOR_CORRECTION: verifier/content mismatch or correctable defect.\n- ESCALATE/OWNER_ACTION_REQUIRED: genuine protected Owner boundary.\n\nRequirements:\n1. Do not rely only on free-text keyword matching. Bind final status to request completion criteria, expected artifact types, verifier result, runtime/tool receipts, and produced artifacts where available.\n2. Explicit worker statements such as blocked/denied/cannot complete must be treated as corroborating evidence and may never be silently normalized to COMPLETE.\n3. A zero exit code or provider COMPLETE result is necessary but not sufficient for EOS COMPLETE.\n4. Required test/build/lint evidence must be present when the request requires it.\n5. Required PR/patch/durable artifact must exist when the request requires it.\n6. Preserve #820 maximum-two-correction behavior and Gateway/Verifier fail-closed semantics.\n7. Preserve Claude routing, Cortex READ_ONLY_PILOT, Agent Manager, integration authority, and cost/capacity semantics.\n8. Add regressions reproducing #834 and #835 closely enough to prove they no longer become COMPLETE.\n9. Add a positive regression proving a genuinely satisfied request still becomes COMPLETE.\n10. Do not rerun #834/#835 until this correction is independently reviewed, CI-green, and merged.\n\nEvidence to encode in regressions:\n- #834 was persisted COMPLETE even though Claude explicitly stopped before cycle 1 because Bash/test/worker execution was denied. No remediation cycles occurred.\n- #835 was persisted COMPLETE even though Claude reported git/PR writes denied and the requested draft PR/governed artifact outcome was not produced.\n\nCompletion:\nDraft PR with implementation, tests, documentation/status-schema impact, and explicit mapping of #834/#835 to corrected statuses. Do not merge automatically.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts.",
+    "This correction is limited to EOS intake/runtime outcome classification and related tests/docs. Preserve Claude routing, Cortex READ_ONLY_PILOT, Agent Manager, Gateway/Verifier, integration authority, and cost/capacity semantics except where outcome classification must consume their structured evidence. Do not rerun #834 or #835 in this issue."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/836",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T02:05:56Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-836.work.json",
+  "sha256": "e06b110c2161bbc5bdf1929940438fcc29c3bfbde4913d390ef753b45a77d4d7",
+  "createdAt": "2026-08-13T02:00:50Z",
+  "updatedAt": "2026-08-13T02:05:56Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/836"
+    ],
+    "pullRequests": []
+  }
+}
