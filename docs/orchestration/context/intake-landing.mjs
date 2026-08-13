@@ -62,6 +62,16 @@ export function landStaged({ runGit, message, label = "write-back", maxAttempts 
   if (runGit(["commit", "-m", message]).code !== 0) throw new Error(`landStaged: commit failed for ${label}`);
   const wb = runGit(["rev-parse", "HEAD"]).stdout.trim();
 
+  // Defense-in-depth: the committed diff MUST touch only work-intake paths. A PATCH_PRODUCER worker in the shared
+  // job can stage a code/workflow change into the shared index, and a plain `git commit` would sweep it into the
+  // write-back — which then either leaks to main or (for a .github/workflows/* file) is rejected outright because
+  // GITHUB_TOKEN lacks `workflows` permission. If anything outside work-intake/ slipped in, refuse to push and
+  // fail closed rather than carrying it to main. (The unstage-before-stage in the callers prevents this; this is
+  // the belt-and-suspenders that guarantees it can never happen.)
+  const touched = runGit(["show", "--name-only", "--format=", wb]).stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const outside = touched.filter((p) => !p.startsWith("docs/orchestration/work-intake/"));
+  if (outside.length) throw new Error(`landStaged: refusing to push non-artifact paths (${label}): ${outside.join(", ")}`);
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (runGit(["fetch", "origin", "main"]).code !== 0) continue;      // transient network → retry
     // Getting onto clean main must SUCCEED before we replay — a failed checkout/reset leaves the runner on
@@ -94,6 +104,10 @@ export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, 
   // the add still errors, FAIL CLOSED (never fall through to no-changes).
   const present = artifactPathsFor(requestId).filter((p) => pathExists(p));
   if (present.length === 0) return Object.freeze({ requestId, landed: false, attempts: 0, reason: "no-artifacts" });
+  // Unstage EVERYTHING first: a PATCH_PRODUCER worker earlier in the shared job may have `git add`-ed its own
+  // code/workflow changes, and a later `git commit` would include them. Clearing the index guarantees the commit
+  // carries only the paths we stage next.
+  runGit(["reset", "-q", "HEAD"]);
   if (runGit(["add", "--", ...present]).code !== 0) throw new Error(`landItemArtifacts: git add failed for ${requestId}`);
   const out = landStaged({ runGit, label: requestId, maxAttempts, message: message || `eos: intake execution result write-back for ${requestId} [skip ci]` });
   return Object.freeze({ requestId, landed: out.landed, attempts: out.attempts, ...(out.reason ? { reason: out.reason } : {}), ...(out.commit ? { commit: out.commit } : {}) });
@@ -110,6 +124,7 @@ export function landAllArtifacts({ runGit, pathExists = existsSync, maxAttempts 
   // a genuine add error still fails closed.
   const present = ARTIFACT_ROOTS.filter((p) => pathExists(p));
   if (present.length === 0) return Object.freeze({ label: "sweep", landed: false, attempts: 0, reason: "no-artifacts" });
+  runGit(["reset", "-q", "HEAD"]); // clear any PATCH-worker-staged contamination before scoping to artifact roots
   if (runGit(["add", "--", ...present]).code !== 0) throw new Error("landAllArtifacts: git add failed");
   return landStaged({ runGit, label: "sweep", maxAttempts, message: "eos: intake status/result write-back sweep [skip ci]" });
 }

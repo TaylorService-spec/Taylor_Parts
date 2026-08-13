@@ -8,12 +8,14 @@ function gitDouble(script = {}) {
   const calls = [];
   const queues = {};
   for (const [k, v] of Object.entries(script)) queues[k] = [...v];
+  // default stdout by subcommand: rev-parse → a fake sha; show (path guard) → a clean work-intake path.
+  const defStdout = (a) => (a === "rev-parse" ? "deadbeefcafe\n" : a === "show" ? "docs/orchestration/work-intake/status/x.status.json\n" : "");
   const runGit = (args) => {
     calls.push(args);
     const key = `${args[0]}${args[0] === "diff" ? " --cached" : ""}`;
     const q = queues[key];
-    const outcome = q && q.length ? q.shift() : { code: 0, stdout: args[0] === "rev-parse" ? "deadbeefcafe\n" : "" };
-    return { code: outcome.code ?? 0, stdout: outcome.stdout ?? (args[0] === "rev-parse" ? "deadbeefcafe\n" : ""), stderr: "" };
+    const outcome = q && q.length ? q.shift() : { code: 0, stdout: defStdout(args[0]) };
+    return { code: outcome.code ?? 0, stdout: outcome.stdout ?? defStdout(args[0]), stderr: "" };
   };
   runGit.calls = calls;
   return runGit;
@@ -79,6 +81,32 @@ test("no request-scoped path exists (e.g. dedupe-skip wrote nothing) → no-arti
   assert.equal(out.landed, false);
   assert.equal(out.reason, "no-artifacts");
   assert.equal(runGit.calls.length, 0, "never touches git when nothing exists to stage");
+});
+
+// --- shared-index contamination: a PATCH worker's staged code/workflow change must never ride the write-back ---
+
+test("unstages the shared index before staging (a PATCH worker's staged files can't ride along)", () => {
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
+  landItemArtifacts({ requestId: "EOS-ISSUE-852-C01", runGit, pathExists: allExist });
+  const seq = cmds(runGit);
+  const resetIdx = seq.indexOf("reset -q HEAD");
+  const addIdx = seq.findIndex((c) => c.startsWith("add -- "));
+  assert.ok(resetIdx >= 0, "index is unstaged");
+  assert.ok(resetIdx < addIdx, "unstage happens BEFORE the scoped add");
+});
+
+test("path guard: refuses to push a commit that touches a workflow/code file (fail closed), never pushes it", () => {
+  // Simulate the exact attempt-3 failure: the committed diff contains a .github/workflows file.
+  const runGit = gitDouble({
+    "diff --cached": [{ code: 1 }],
+    show: [{ code: 0, stdout: "docs/orchestration/work-intake/status/x.status.json\n.github/workflows/orchestration-agent-manager-tests.yml\n" }],
+  });
+  assert.throws(
+    () => landItemArtifacts({ requestId: "EOS-ISSUE-852-C10", runGit, pathExists: allExist }),
+    /refusing to push non-artifact paths/,
+    "a non-work-intake path in the commit is refused before any push",
+  );
+  assert.ok(!cmds(runGit).includes("push origin HEAD:main"), "never pushes a contaminated commit");
 });
 
 // --- verifier correction 2: a failed checkout/reset must retry, not cherry-pick on unknown branch state ---
