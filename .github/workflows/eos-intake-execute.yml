@@ -40,66 +40,42 @@ jobs:
     # On a workflow_run wake, only proceed if the upstream intake actually succeeded; other events are unaffected.
     if: ${{ vars.EOS_RUNTIME_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: [self-hosted, windows, eos-runtime]
-    # The execute step drains ALL eligible EXECUTION_AUTHORIZED items sequentially, and the write-back is
-    # committed once AFTER the loop — so a timeout mid-loop cancels the job and strands every result computed
-    # in that pass (observed: a 10-child governed decomposition ran C01–C05 then hit the 30-min cap and lost
-    # them all). A governed parent can fan out into many children, so the budget must cover a full multi-child
-    # pass. (Robustness follow-up: commit the write-back per item so partial progress survives an interruption.)
+    # The execute step drains ALL eligible EXECUTION_AUTHORIZED items sequentially. Each item's result is now
+    # landed PER ITEM (see the step below), so a timeout/interruption no longer strands a whole pass — everything
+    # already finished has been pushed. This budget just needs to cover a full multi-child fan-out (a governed
+    # parent can decompose into many children at ~5–8 min each); 180 leaves comfortable margin.
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-      - name: Execute eligible intakes + commit status/result
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          node docs/orchestration/context/intake-ingest-ci.mjs --write
-          if ($LASTEXITCODE -ne 0) { throw "intake status refresh failed with exit code $LASTEXITCODE" }
-
-          # Per EXECUTION_AUTHORIZED artifact, run the guarded execution runtime. It spawns zero unless the
-          # intake-state gate + capability seam + Wake readiness all pass. A refused/failed intake is allowed
-          # to return nonzero here so its truthful status can still be committed for inspection.
-          Get-ChildItem "docs/orchestration/work-intake/*.work.json" | ForEach-Object {
-            $artifact = Get-Content $_.FullName -Raw | ConvertFrom-Json
-            if ($artifact.status -eq "EXECUTION_AUTHORIZED") {
-              node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName --sha256 $artifact.sha256
-              if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Intake $($artifact.requestId) returned exit code $LASTEXITCODE; continuing so status/result can be written back."
-              }
-            }
-          }
-          exit 0
-      - name: Commit status/result back to main (isolated, branch-robust)
+      - name: Execute eligible intakes and land each result per item (durable, isolated)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Stage ONLY the work-intake artifacts. This is the whole safety guarantee: nothing outside
-          # work-intake/{status,results,review-ready} can EVER enter the write-back, so a PATCH_PRODUCER item
-          # that left the shared working tree on a stray branch (e.g. eos/issue-842-...) or with uncommitted
-          # code changes can never leak into main. Only truthful status/results/review-ready ever land.
-          git add docs/orchestration/work-intake/status docs/orchestration/work-intake/results docs/orchestration/work-intake/review-ready
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
-          # Capture the staged artifacts as a single commit. Because only those paths were staged, this commit's
-          # DIFF is exactly the artifacts — even if the current branch carries unrelated PATCH commits in history.
-          git commit -m "eos: intake execution result write-back [skip ci]"
-          if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
-          $wb = (git rev-parse HEAD).Trim()
-          # Land that artifact-only commit on CLEAN main, independent of which branch the runner was left on and
-          # resilient to main moving: reset hard to a fresh origin/main, replay ONLY the artifact diff via
-          # cherry-pick, and push HEAD:main (branch-robust; a bare 'git push' fails on a stray upstream-less branch).
-          $pushed = $false
-          for ($i = 1; $i -le 5; $i++) {
-            git fetch origin main
-            if ($LASTEXITCODE -ne 0) { Write-Warning "fetch failed (attempt $i); retrying."; Start-Sleep -Seconds 3; continue }
-            git checkout -f -B eos-writeback FETCH_HEAD
-            git reset --hard FETCH_HEAD
-            git cherry-pick $wb
-            if ($LASTEXITCODE -ne 0) { git cherry-pick --abort; Write-Warning "cherry-pick conflict (attempt $i); re-syncing with latest main."; Start-Sleep -Seconds 3; continue }
-            git push origin HEAD:main
-            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
-            Write-Warning "push rejected (attempt $i); re-syncing with main and retrying."
-            Start-Sleep -Seconds 3
+          node docs/orchestration/context/intake-ingest-ci.mjs --write
+          if ($LASTEXITCODE -ne 0) { throw "intake status refresh failed with exit code $LASTEXITCODE" }
+
+          # Per EXECUTION_AUTHORIZED artifact: run the guarded execution runtime, then IMMEDIATELY land that one
+          # item's result via the unit-tested intake-landing module (docs/orchestration/context/intake-landing.mjs,
+          # verified in intake-landing.test.mjs). Per-item landing is the durability fix: each finished item is
+          # pushed the moment it completes, so a later timeout/interruption can never strand a whole multi-child
+          # pass again. intake-landing stages ONLY that requestId's work-intake paths and lands them on a freshly
+          # reset origin/main (cherry-pick + push HEAD:main) — contamination-proof (a PATCH item's code can never
+          # enter) and branch-robust (works from whatever branch a prior PATCH item left the runner on).
+          $failed = @()
+          Get-ChildItem "docs/orchestration/work-intake/*.work.json" | ForEach-Object {
+            $artifact = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            if ($artifact.status -eq "EXECUTION_AUTHORIZED") {
+              node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName --sha256 $artifact.sha256
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Intake $($artifact.requestId) returned exit code $LASTEXITCODE; landing its truthful status anyway."
+              }
+              node docs/orchestration/context/intake-landing.mjs --id $artifact.requestId
+              if ($LASTEXITCODE -ne 0) { $failed += $artifact.requestId; Write-Warning "landing failed for $($artifact.requestId)" }
+            }
           }
-          if (-not $pushed) { throw "write-back failed to land on main after 5 attempts" }
+          # Final sweep: land any remaining work-intake changes (e.g. status refreshes for non-executed items).
+          node docs/orchestration/context/intake-landing.mjs --sweep
+          if ($LASTEXITCODE -ne 0) { $failed += "sweep"; Write-Warning "final sweep landing failed" }
+          if ($failed.Count -gt 0) { throw "write-back failed to land for: $($failed -join ', ')" }
