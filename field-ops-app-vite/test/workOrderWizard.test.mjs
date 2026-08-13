@@ -9,6 +9,8 @@ import {
   CREATE_PERMISSION_DENIED_MESSAGE,
   CREATE_FAILED_MESSAGE,
   CREATE_INTERNAL_MESSAGE,
+  makeWorkOrderIdempotencyKey,
+  createIdempotencyKeyHolder,
 } from "../src/domain/workOrderWizard.js";
 
 let passed = 0;
@@ -81,5 +83,56 @@ ok("step3 tolerates an undefined complaint", stepBlockedReason(3, { type: "PM" }
 ok("step4 has no field requirement (gates on submit)", stepBlockedReason(4, {}) === null);
 ok("canAdvance mirrors reason === null",
   canAdvance(3, { type: "PM" }) === true && canAdvance(3, { type: "", complaint: "" }) === false);
+
+// ----- site-work #2: wo-wizard-missing-idempotency-key -----
+// Regression for the defect: the wizard's Create button (and any Cloud Functions SDK
+// retry underneath it) must submit the SAME idempotencyKey on every call for one
+// submission, never a fresh one per call -- a fresh one per call is exactly what
+// let a double-submit/network-retry mint a duplicate Work Order and burn a WO number.
+ok("makeWorkOrderIdempotencyKey returns a non-empty string",
+  typeof makeWorkOrderIdempotencyKey() === "string" && makeWorkOrderIdempotencyKey().length > 0);
+ok("makeWorkOrderIdempotencyKey generates a DIFFERENT value each call (so a genuinely new key exists)",
+  makeWorkOrderIdempotencyKey() !== makeWorkOrderIdempotencyKey());
+
+{
+  // Simulates WorkOrderWizard.jsx's one-holder-per-mount usage: getKey() called on the
+  // first Create click AND again on a retry (e.g. after a transient failure, or a
+  // network-level double-submit) must return the identical key both times -- not
+  // a freshly generated one.
+  const holder = createIdempotencyKeyHolder();
+  const firstAttemptKey = holder.getKey();
+  const retryKey = holder.getKey();
+  const thirdCallKey = holder.getKey();
+  ok("stable holder: key is reused on retry, not regenerated",
+    firstAttemptKey === retryKey && retryKey === thirdCallKey,
+    `first=${firstAttemptKey} retry=${retryKey} third=${thirdCallKey}`);
+}
+
+{
+  // Two SEPARATE wizard sessions (two holders, matching two separate component mounts,
+  // i.e. two genuinely distinct Work Orders the user intends to create) must not collide.
+  const sessionA = createIdempotencyKeyHolder();
+  const sessionB = createIdempotencyKeyHolder();
+  ok("two independent holders (two wizard mounts) get DIFFERENT keys",
+    sessionA.getKey() !== sessionB.getKey());
+}
+
+{
+  // Injected factory + reset(): proves getKey() only calls the factory once until reset(),
+  // the exact "generate once, reuse on retry" contract the component depends on.
+  let calls = 0;
+  const holder = createIdempotencyKeyHolder(() => {
+    calls += 1;
+    return `fixed-key-${calls}`;
+  });
+  const k1 = holder.getKey();
+  const k2 = holder.getKey();
+  ok("factory invoked exactly once across repeated getKey() calls before reset()",
+    calls === 1 && k1 === "fixed-key-1" && k2 === "fixed-key-1");
+  holder.reset();
+  const k3 = holder.getKey();
+  ok("reset() allows a genuinely new key on the NEXT explicit reset (not on retry)",
+    calls === 2 && k3 === "fixed-key-2" && k3 !== k1);
+}
 
 console.log(`\n${passed} passed, ${process.exitCode ? "with failures" : "0 failed"}`);

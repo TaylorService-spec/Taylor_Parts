@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
@@ -9,6 +9,7 @@ import {
   WIZARD_STEP_COUNT,
   getWizardCreateErrorMessage,
   stepBlockedReason,
+  createIdempotencyKeyHolder,
 } from "../../domain/workOrderWizard";
 import CustomerPicker from "./CustomerPicker";
 import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
@@ -94,6 +95,15 @@ export default function WorkOrderWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
+  // site-work #2 -- ONE holder per wizard mount, so every createWorkOrder() call from this
+  // session (including a retry after a failed attempt, or a network-level double-submit)
+  // carries the SAME idempotencyKey. Never regenerated per click -- see
+  // domain/workOrderWizard.js's createIdempotencyKeyHolder.
+  const idempotencyKeyHolderRef = useRef(null);
+  if (!idempotencyKeyHolderRef.current) {
+    idempotencyKeyHolderRef.current = createIdempotencyKeyHolder();
+  }
+
   const { data: locations, error: locationsError, retry: retryLocations } =
     useLocationsForAccount(selectedAccount?.id ?? null);
 
@@ -123,6 +133,7 @@ export default function WorkOrderWizard() {
         severity: severity || undefined,
         type: type || undefined,
         complaint: complaint.trim() || undefined,
+        idempotencyKey: idempotencyKeyHolderRef.current.getKey(),
       });
       navigate(`/service/work-orders/${result.id}`);
     } catch (err) {

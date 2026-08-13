@@ -20,6 +20,11 @@ interface CreateWorkOrderInput {
   severity?: Severity;
   type: WorkOrderType;
   complaint?: string;
+  // site-work #2 -- optional client-supplied idempotency key (functions/src/createWorkOrder.ts's
+  // CreateWorkOrderInput). A retry / double-submit carrying the SAME key replays the already-created
+  // Work Order instead of minting a duplicate and burning a WO number. Stable-per-submission generation
+  // lives in domain/workOrderWizard.js's createIdempotencyKeyHolder; this service only forwards it.
+  idempotencyKey?: string;
 }
 
 interface CreateWorkOrderResult {

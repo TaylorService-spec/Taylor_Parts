@@ -86,3 +86,33 @@ export function stepBlockedReason(step, state = {}) {
 export function canAdvance(step, state) {
   return stepBlockedReason(step, state) === null;
 }
+
+// site-work #2 -- wo-wizard-missing-idempotency-key. createWorkOrder (functions/src/createWorkOrder.ts)
+// fully supports an optional idempotencyKey: a retry/double-submit carrying the SAME key replays the
+// already-created Work Order instead of minting a duplicate and burning a WO number. The wizard was never
+// sending one. Same key-shape convention as domain/truckManagement.js's makeIdempotencyKey (crypto.randomUUID,
+// with a browser-safe fallback), just prefixed for this domain.
+export function makeWorkOrderIdempotencyKey() {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (c && typeof c.randomUUID === "function") return `wo_${c.randomUUID()}`;
+  return `wo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+}
+
+// Stable-per-submission key holder: getKey() returns the SAME key on every call until reset() is
+// called. Pulled out as a pure, injectable-factory helper (not inlined as component state) so the
+// "generate once, reuse on retry -- never regenerate on a second click/network retry" rule is
+// unit-testable without rendering React. WorkOrderWizard.jsx keeps exactly one instance of this per
+// mount (via useRef) so every createWorkOrder() call from a given wizard session -- including a retry
+// after a failed attempt -- carries the same idempotencyKey.
+export function createIdempotencyKeyHolder(factory = makeWorkOrderIdempotencyKey) {
+  let current = null;
+  return {
+    getKey() {
+      if (!current) current = factory();
+      return current;
+    },
+    reset() {
+      current = null;
+    },
+  };
+}
