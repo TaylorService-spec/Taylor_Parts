@@ -8,6 +8,7 @@ initializeApp();
 export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
 export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
+export { detectInventoryEffects } from "./inventoryEffectCallables";
 // WO Parts Planning Phase 2 -- the governed PLANNED producer. "export is not deployment": not deployed to
 // the live project and no client calls it, and its capability (workOrder.parts.plan) is registered
 // active:false (fail-closed for everyone) until a separate Owner deploy + grant gate.
