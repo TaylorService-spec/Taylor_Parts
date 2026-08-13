@@ -116,3 +116,33 @@ test("every consolidated collection is sorted worst-severity-first then key (not
   assert.equal(out.counts.agreements, 3);
   assert.equal(out.conflicts[0].file, "z.ts");
 });
+
+import { consolidateAndReconcile } from "./resultConsolidation.mjs";
+import { FINDING_STATUS } from "./findingsRegister.mjs";
+
+const cf = (file, symbol, discriminator, severity, category = "bug") => ({ file, symbol, discriminator, severity, category, line: 1 });
+
+test("consolidateAndReconcile: known items suppressed by the register, only NEW findings stay actionable", () => {
+  const register = [{ file: "functions/src/transitionWorkOrder.ts", symbol: "transitionWorkOrder", discriminator: "no-availability-check", status: FINDING_STATUS.CONFIRMED_OPEN }];
+  const out = consolidateAndReconcile({
+    expectedChildIds: ["A", "B"],
+    register,
+    children: [
+      child("A", [cf("functions/src/transitionWorkOrder.ts", "transitionWorkOrder", "no-availability-check", "HIGH")]), // already tracked
+      child("B", [cf("functions/src/newFile.ts", "newFn", "brand-new-issue", "MEDIUM")]),                                 // genuinely new
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.consolidated.ok, true, "consolidation ran");
+  // the tracked one is alreadyOpen (not new); only the new one is actionable
+  assert.deepEqual(out.reconciled.surfaced.map((f) => f.symbol), ["newFn"]);
+  assert.equal(out.reconciled.alreadyOpen.length, 1);
+  assert.equal(out.actionableCount, 1, "only the genuinely-new finding is actionable after applying memory");
+});
+
+test("consolidateAndReconcile: fail-closed — a partial child set never consolidates or reconciles", () => {
+  const out = consolidateAndReconcile({ expectedChildIds: ["A", "B"], children: [child("A", [])], register: [] });
+  assert.equal(out.ok, false);
+  assert.equal(out.consolidated.ok, false);
+  assert.deepEqual(out.consolidated.missing, ["B"]);
+});

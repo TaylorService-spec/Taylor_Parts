@@ -7,6 +7,8 @@
 // surface, deterministically, exactly what the model asks the manager to identify: agreements, conflicts,
 // duplicates removed, and cross-sector risks. This is the governed input to the parent's completion gate.
 
+import { reconcileFindings } from "./findingsRegister.mjs";
+
 const SEVERITY_RANK = Object.freeze({ INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 });
 const sevRank = (s) => (s in SEVERITY_RANK ? SEVERITY_RANK[s] : -1);
 const normPath = (p) => String(p ?? "").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/{2,}/g, "/").replace(/\/+$/, "");
@@ -53,7 +55,9 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
     for (const f of Array.isArray(c.findings) ? c.findings : []) {
       totalReported++;
       const key = findingKey(f);
-      const g = groups.get(key) || { key, file: normPath(f.file), line: f.line ?? null, category: f.category ?? null, reports: [] };
+      // Carry symbol + the stable issue discriminator through consolidation so the reconcile step downstream can
+      // fingerprint against the findings register (without them a finding fails closed → surfaces for disposition).
+      const g = groups.get(key) || { key, file: normPath(f.file), line: f.line ?? null, category: f.category ?? null, symbol: f.symbol ?? null, discriminator: f.discriminator ?? null, reports: [] };
       g.reports.push({ requestId: c.requestId, sector: c.sector ?? null, severity: f.severity ?? null, summary: f.summary ?? null, verdict: f.verdict ?? null });
       groups.set(key, g);
     }
@@ -67,7 +71,7 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
     const severities = [...new Set(g.reports.map((r) => r.severity).filter((s) => s != null))];
     const severity = g.reports.map((r) => r.severity).reduce((a, b) => (sevRank(b) > sevRank(a) ? b : a), null); // worst wins
     const sectors = [...new Set(g.reports.map((r) => r.sector).filter(Boolean))];
-    const canonical = Object.freeze({ key: g.key, file: g.file, line: g.line, category: g.category, severity, agreedBy, sectors });
+    const canonical = Object.freeze({ key: g.key, file: g.file, line: g.line, category: g.category, symbol: g.symbol, discriminator: g.discriminator, severity, agreedBy, sectors });
     findings.push(canonical);
     if (agreedBy.length >= 2) agreements.push(canonical);
     if (severities.length > 1) conflicts.push(Object.freeze({ ...canonical, severities })); // children disagree on severity
@@ -101,4 +105,26 @@ export function consolidateChildResults({ parentWorkId = null, expectedChildIds 
       crossSectorRisks: crossSectorRisks.length,
     }),
   });
+}
+
+/**
+ * WIRE the consolidation into the findings register (the audit closed loop). Runs consolidateChildResults, then
+ * reconciles its findings against the durable register so already-dispositioned items (fixed/known/deferred)
+ * don't re-surface — only genuinely NEW findings, regressions, or unproven-fixed reappearances need attention.
+ *
+ * Fail-closed throughout: a partial child set never consolidates; a consolidated finding without a stable
+ * discriminator is surfaced for disposition (never silently suppressed by a same-symbol register entry).
+ *
+ * @param {object} p  { parentWorkId, expectedChildIds, children, register }  — register is the parsed
+ *                    register.json ({entries:[...]}) or a bare entries array.
+ * @returns {{ ok, consolidated, reconciled?, actionable?, actionableCount? }}
+ */
+export function consolidateAndReconcile({ parentWorkId = null, expectedChildIds = [], children = [], register = [] } = {}) {
+  const consolidated = consolidateChildResults({ parentWorkId, expectedChildIds, children });
+  if (!consolidated.ok) return Object.freeze({ ok: false, consolidated });
+  const entries = Array.isArray(register?.entries) ? register.entries : (Array.isArray(register) ? register : []);
+  const reconciled = reconcileFindings(consolidated.findings, entries);
+  // What a human/EOS must actually act on after applying memory: new work + integrity alarms.
+  const actionable = Object.freeze([...reconciled.surfaced, ...reconciled.regressions, ...reconciled.unprovenFixed]);
+  return Object.freeze({ ok: true, consolidated, reconciled, actionable, actionableCount: actionable.length });
 }
