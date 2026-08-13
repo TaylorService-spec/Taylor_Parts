@@ -282,7 +282,11 @@ export type AuditAction =
   // this SAME immutable Audit Event path as its idempotency substrate, a deterministic Audit Event id makes a
   // retried call a no-op replay so an additive qtyUsed delta or execution-log append is never double-applied,
   // no parallel enum. Comment intentionally free of the statement-terminator character (mirror checks slice here)
-  | "updateWorkOrderExecutionData";
+  | "updateWorkOrderExecutionData"
+  // Work Order Engine (idempotency remediation) -- the trusted createWorkOrder callable uses the same
+  // deterministic Audit Event marker so a retried create returns the already-created Work Order instead of
+  // minting a second one and burning a WO number, no parallel enum
+  | "createWorkOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
