@@ -1,17 +1,160 @@
 {
   "schema": "eos.site-work.register/1",
-  "note": "Identified site-work items across the Taylor field-ops app. Future scout rounds MUST exclude every entry here (any status) and near-duplicates — a scout may not re-surface a known item. Status: QUEUED (approved, not started) | IN_PROGRESS (being worked) | FIXED (merged) | DROPPED. Dedup key = discriminator (stable slug); also compare candidate files+problem against these before surfacing.",
+  "note": "Identified site-work items across the Taylor field-ops app. Future scout rounds MUST exclude every entry here (any status) and near-duplicates — a scout may not re-surface a known item. Status: QUEUED (approved, not started) | IN_PROGRESS (being worked) | FIXED (merged) | DROPPED. Dedup key = discriminator (stable slug); also compare candidate files+problem against these before surfacing. [round 1: all 10 FIXED + merged as of 2026-08-13]",
   "round": 1,
   "entries": [
-    { "discriminator": "so-alloc-overallocation-rerun", "rank": 1, "priority": "P1", "title": "allocateSalesOrder over-allocates on re-run (self-commitment not netted, no idempotency guard)", "area": "sales", "type": "data-integrity", "effort": "M", "files": ["functions/src/fulfillment/allocateSalesOrder.ts", "functions/src/fulfillment/fulfillmentAvailability.ts", "functions/src/fulfillment/allocationProjection.ts"], "status": "QUEUED" },
-    { "discriminator": "wo-wizard-missing-idempotency-key", "rank": 2, "priority": "P1", "title": "WorkOrderWizard never sends idempotencyKey — retries mint duplicate WOs", "area": "workOrders", "type": "data-integrity", "effort": "S", "files": ["field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx", "field-ops-app-vite/src/services/workOrderService.ts", "functions/src/createWorkOrder.ts"], "status": "QUEUED" },
-    { "discriminator": "dispatch-surfaces-drop-workorders-error", "rank": 3, "priority": "P1", "title": "Work Order surfaces drop useWorkOrders error and render false 'no work orders'", "area": "workOrders", "type": "reliability", "effort": "S", "files": ["field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx", "field-ops-app-vite/src/modules/dispatch/Dispatch.jsx", "field-ops-app-vite/src/modules/dispatcherBoard/DispatcherBoard.jsx", "field-ops-app-vite/src/hooks/useWorkOrders.js"], "status": "QUEUED" },
-    { "discriminator": "useaccount-no-snapshot-error-handler", "rank": 4, "priority": "P1", "title": "useAccount has no onSnapshot error handler — infinite spinner / false-empty on denied read", "area": "accounts", "type": "reliability", "effort": "S", "files": ["field-ops-app-vite/src/hooks/useAccount.js", "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx", "field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx"], "status": "QUEUED" },
-    { "discriminator": "report-date-eq-ne-timestamp-mismatch", "rank": 5, "priority": "P1", "title": "Report date filters with eq/ne never match — silent wrong results", "area": "reporting", "type": "bug", "effort": "S", "files": ["functions/src/reporting/reportExecutionService.ts"], "status": "QUEUED" },
-    { "discriminator": "field-ui-raw-error-leak", "rank": 6, "priority": "P1", "title": "Raw Firebase/Functions error strings leak into technician field UI", "area": "mobile", "type": "ux", "effort": "S", "files": ["field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx", "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx", "field-ops-app-vite/src/domain/workflowActionError.js"], "status": "QUEUED" },
-    { "discriminator": "inventory-ledger-missing-tests", "rank": 7, "priority": "P2", "title": "No test coverage for the core ledger reserve/release/consume/trigger logic", "area": "inventory", "type": "missing-test", "effort": "M", "files": ["functions/src/inventoryService.ts"], "status": "QUEUED" },
-    { "discriminator": "account-contacts-ignores-error", "rank": 8, "priority": "P2", "title": "AccountDetail Contacts section ignores contactsError — failed read shows 'No contacts yet'", "area": "accounts", "type": "data-integrity", "effort": "S", "files": ["field-ops-app-vite/src/modules/accounts/AccountDetail.jsx", "field-ops-app-vite/src/hooks/useContactsForAccount.js"], "status": "QUEUED" },
-    { "discriminator": "allocatesalesorder-missing-tests", "rank": 9, "priority": "P2", "title": "No test coverage for the allocateSalesOrder transactional command", "area": "sales", "type": "missing-test", "effort": "M", "files": ["functions/src/fulfillment/allocateSalesOrder.ts"], "status": "QUEUED" },
-    { "discriminator": "equipment-create-flow-orphaned", "rank": 10, "priority": "P2", "title": "Equipment creation flow is orphaned — no way to add equipment in the live app", "area": "equipment", "type": "incomplete-feature", "effort": "M", "files": ["field-ops-app-vite/src/modules/equipment/EquipmentRegister.jsx", "field-ops-app-vite/src/App.jsx"], "status": "QUEUED" }
+    {
+      "discriminator": "so-alloc-overallocation-rerun",
+      "rank": 1,
+      "priority": "P1",
+      "title": "allocateSalesOrder over-allocates on re-run (self-commitment not netted, no idempotency guard)",
+      "area": "sales",
+      "type": "data-integrity",
+      "effort": "M",
+      "files": [
+        "functions/src/fulfillment/allocateSalesOrder.ts",
+        "functions/src/fulfillment/fulfillmentAvailability.ts",
+        "functions/src/fulfillment/allocationProjection.ts"
+      ],
+      "status": "FIXED",
+      "pr": 880
+    },
+    {
+      "discriminator": "wo-wizard-missing-idempotency-key",
+      "rank": 2,
+      "priority": "P1",
+      "title": "WorkOrderWizard never sends idempotencyKey — retries mint duplicate WOs",
+      "area": "workOrders",
+      "type": "data-integrity",
+      "effort": "S",
+      "files": [
+        "field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx",
+        "field-ops-app-vite/src/services/workOrderService.ts",
+        "functions/src/createWorkOrder.ts"
+      ],
+      "status": "FIXED",
+      "pr": 874
+    },
+    {
+      "discriminator": "dispatch-surfaces-drop-workorders-error",
+      "rank": 3,
+      "priority": "P1",
+      "title": "Work Order surfaces drop useWorkOrders error and render false 'no work orders'",
+      "area": "workOrders",
+      "type": "reliability",
+      "effort": "S",
+      "files": [
+        "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx",
+        "field-ops-app-vite/src/modules/dispatch/Dispatch.jsx",
+        "field-ops-app-vite/src/modules/dispatcherBoard/DispatcherBoard.jsx",
+        "field-ops-app-vite/src/hooks/useWorkOrders.js"
+      ],
+      "status": "FIXED",
+      "pr": 875
+    },
+    {
+      "discriminator": "useaccount-no-snapshot-error-handler",
+      "rank": 4,
+      "priority": "P1",
+      "title": "useAccount has no onSnapshot error handler — infinite spinner / false-empty on denied read",
+      "area": "accounts",
+      "type": "reliability",
+      "effort": "S",
+      "files": [
+        "field-ops-app-vite/src/hooks/useAccount.js",
+        "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx",
+        "field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx"
+      ],
+      "status": "FIXED",
+      "pr": 879
+    },
+    {
+      "discriminator": "report-date-eq-ne-timestamp-mismatch",
+      "rank": 5,
+      "priority": "P1",
+      "title": "Report date filters with eq/ne never match — silent wrong results",
+      "area": "reporting",
+      "type": "bug",
+      "effort": "S",
+      "files": [
+        "functions/src/reporting/reportExecutionService.ts"
+      ],
+      "status": "FIXED",
+      "pr": 877
+    },
+    {
+      "discriminator": "field-ui-raw-error-leak",
+      "rank": 6,
+      "priority": "P1",
+      "title": "Raw Firebase/Functions error strings leak into technician field UI",
+      "area": "mobile",
+      "type": "ux",
+      "effort": "S",
+      "files": [
+        "field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx",
+        "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx",
+        "field-ops-app-vite/src/domain/workflowActionError.js"
+      ],
+      "status": "FIXED",
+      "pr": 876
+    },
+    {
+      "discriminator": "inventory-ledger-missing-tests",
+      "rank": 7,
+      "priority": "P2",
+      "title": "No test coverage for the core ledger reserve/release/consume/trigger logic",
+      "area": "inventory",
+      "type": "missing-test",
+      "effort": "M",
+      "files": [
+        "functions/src/inventoryService.ts"
+      ],
+      "status": "FIXED",
+      "pr": 881
+    },
+    {
+      "discriminator": "account-contacts-ignores-error",
+      "rank": 8,
+      "priority": "P2",
+      "title": "AccountDetail Contacts section ignores contactsError — failed read shows 'No contacts yet'",
+      "area": "accounts",
+      "type": "data-integrity",
+      "effort": "S",
+      "files": [
+        "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx",
+        "field-ops-app-vite/src/hooks/useContactsForAccount.js"
+      ],
+      "status": "FIXED",
+      "pr": 879
+    },
+    {
+      "discriminator": "allocatesalesorder-missing-tests",
+      "rank": 9,
+      "priority": "P2",
+      "title": "No test coverage for the allocateSalesOrder transactional command",
+      "area": "sales",
+      "type": "missing-test",
+      "effort": "M",
+      "files": [
+        "functions/src/fulfillment/allocateSalesOrder.ts"
+      ],
+      "status": "FIXED",
+      "pr": 880
+    },
+    {
+      "discriminator": "equipment-create-flow-orphaned",
+      "rank": 10,
+      "priority": "P2",
+      "title": "Equipment creation flow is orphaned — no way to add equipment in the live app",
+      "area": "equipment",
+      "type": "incomplete-feature",
+      "effort": "M",
+      "files": [
+        "field-ops-app-vite/src/modules/equipment/EquipmentRegister.jsx",
+        "field-ops-app-vite/src/App.jsx"
+      ],
+      "status": "FIXED",
+      "pr": 878
+    }
   ]
 }
