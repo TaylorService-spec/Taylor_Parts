@@ -1,0 +1,7 @@
+{
+  "schema": "eos.intake.review-ready/1",
+  "event": "REVIEW_READY",
+  "workId": "EOS-DEMO-001",
+  "artifact": "docs/orchestration/work-intake/results/EOS-DEMO-001/c0e44368ae15ffc759f0c7a6dc4ba4e617235731d7ad754446ea4da0d9da3485.content.md",
+  "commit": null
+}

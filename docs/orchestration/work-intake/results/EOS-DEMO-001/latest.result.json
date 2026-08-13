@@ -1,0 +1,11 @@
+{
+  "schema": "eos.intake.result-index/1",
+  "requestId": "EOS-DEMO-001",
+  "pointer": "result://EOS-DEMO-001",
+  "manifestLocation": "docs/orchestration/work-intake/results/EOS-DEMO-001/11d334298aebd780c45c2410fd5af444c8e539c9c69224101caf31ffd613d39d.result.json",
+  "manifestSha256": "11d334298aebd780c45c2410fd5af444c8e539c9c69224101caf31ffd613d39d",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-DEMO-001/c0e44368ae15ffc759f0c7a6dc4ba4e617235731d7ad754446ea4da0d9da3485.content.md",
+  "updatedAt": "2026-08-13T17:29:42.238Z",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-DEMO-001/latest.result.json",
+  "sha256": "dc1e5492d4353ff8fe6e8d54172da5673ed3c426ee8024b679b4d0e46b2fee00"
+}
