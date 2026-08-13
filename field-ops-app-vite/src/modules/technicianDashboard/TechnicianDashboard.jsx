@@ -59,7 +59,12 @@ function Section({ title, workOrders, selectedId, onSelect, emptyMessage }) {
 
 export default function TechnicianDashboard() {
   const { operationalRoles } = useAuth();
-  const { technician, loading: technicianLoading } = useCurrentTechnician();
+  const {
+    technician,
+    loading: technicianLoading,
+    error: technicianError,
+    retry: retryTechnician,
+  } = useCurrentTechnician();
   const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technician?.id ?? null);
   const [selectedId, setSelectedId] = useState(null);
 
@@ -93,6 +98,18 @@ export default function TechnicianDashboard() {
       <div className="fo-panel">
         <h2>My Work Orders</h2>
         <p className="fo-muted">Loading your Work Orders...</p>
+      </div>
+    );
+  }
+
+  if (technicianError) {
+    return (
+      <div className="fo-panel">
+        <h2>My Work Orders</h2>
+        <p className="fo-muted" role="alert">
+          Your technician profile could not be loaded. {technicianError}
+        </p>
+        <button type="button" onClick={retryTechnician}>Retry</button>
       </div>
     );
   }

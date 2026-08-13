@@ -34,10 +34,15 @@ import PartsScanner from "./PartsScanner";
 // docs/assessments/f1-technician-customer-identity.md.
 
 export default function FieldMode() {
-  const { technicianId, loading: technicianLoading } = useCurrentTechnician();
+  const {
+    technicianId,
+    loading: technicianLoading,
+    error: technicianError,
+    retry: retryTechnician,
+  } = useCurrentTechnician();
   const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technicianId);
   const loading = technicianLoading || workOrdersLoading;
-  const unmapped = !technicianLoading && !technicianId;
+  const unmapped = !technicianLoading && !technicianError && !technicianId;
 
   const [pending, setPending] = useState({ id: null, action: null });
   const [failure, setFailure] = useState(null);
@@ -90,6 +95,17 @@ export default function FieldMode() {
   }, [pending.id]);
 
   if (loading) return <div className="fo-field"><p className="fo-muted">Loading your day…</p></div>;
+
+  if (technicianError) {
+    return (
+      <div className="fo-field">
+        <p className="fo-muted" role="alert">
+          Your technician profile could not be loaded. {technicianError}
+        </p>
+        <button type="button" onClick={retryTechnician}>Retry</button>
+      </div>
+    );
+  }
 
   if (unmapped) {
     return (
