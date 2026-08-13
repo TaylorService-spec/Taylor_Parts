@@ -55,9 +55,14 @@ export const resolveCoverageForContext = onCall({ region: "us-central1" }, async
   try {
     // Scope the read to the company; resolve over the (bounded) active assignment set + the territories.
     const [assignSnap, terrSnap] = await Promise.all([
-      db.collection(COMMERCIAL_COVERAGE_ASSIGNMENTS_COLLECTION).where("companyId", "==", data.companyId).limit(1000).get(),
-      db.collection(SALES_TERRITORIES_COLLECTION).limit(1000).get(),
+      db.collection(COMMERCIAL_COVERAGE_ASSIGNMENTS_COLLECTION).where("companyId", "==", data.companyId).limit(1001).get(),
+      db.collection(SALES_TERRITORIES_COLLECTION).limit(1001).get(),
     ]);
+    // A bounded resolver must never label a truncated result as complete. Return the existing unavailable
+    // state until pagination/another authoritative retrieval strategy is introduced.
+    if (assignSnap.size > 1000 || terrSnap.size > 1000) {
+      return { status: "unavailable" as const, coverageAssignments: [] as Record<string, unknown>[] };
+    }
     const assignments: CoverageAssignmentLike[] = assignSnap.docs.map((d) => ({ assignmentId: d.id, ...(d.data() as CoverageAssignmentLike) }));
     const territoriesById: Record<string, TerritoryLike> = {};
     for (const d of terrSnap.docs) territoriesById[d.id] = d.data() as TerritoryLike;
