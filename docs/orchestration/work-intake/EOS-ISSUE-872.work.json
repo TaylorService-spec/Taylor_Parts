@@ -1,0 +1,60 @@
+{
+  "requestId": "EOS-ISSUE-872",
+  "title": "EOS Taylor 10-agent product quality audit — current fix candidates",
+  "intent": "Run a fresh read-only quality audit of current main using exactly 10 governed Claude child workers. Identify concrete Taylor product defects, regressions, reliability gaps, workflow failures, and missing regression coverage. Do not fix anything. Return one consolidated, deduplicated findings set for ChatGPT and Owner prioritization.\n\nRequired work:\nEOS must decompose this parent into exactly C01-C10 and execute all ten under inherited READ_ONLY_ANALYSIS authority.\n\nEach child must inspect current main, provide precise file/symbol/workflow evidence, classify findings by severity and confidence, explain affected workflow and reproduction/reasoning, give a small remediation direction without implementing it, and emit the required structured eos-findings block. Avoid speculative style/refactor suggestions without a concrete product/correctness/reliability impact.\n\nParent consolidation must use exactly C01-C10, deduplicate overlaps, reconcile against the durable findings register, and preserve source-child provenance. The consolidated output must include finding ID, title, severity, confidence, domain, evidence/reference, known-vs-new disposition, and recommended remediation scope.\n\nCompletion:\nComplete only when exactly 10/10 child outcomes are durable, exact-set C01-C10 consolidation/reconciliation succeeds, and one fresh parent REVIEW_READY result is durable for ChatGPT verification. Any missing, failed, blocked, non-durable, malformed, or EXTRACTION_INVALID child blocks completion. Do not implement fixes. After REVIEW_READY, ChatGPT will verify and display the fix candidates to the Owner for prioritization.",
+  "scope": [
+    "Repository: TaylorService-spec/Taylor_Parts. Current main only. Exactly 10 governed children. READ_ONLY_ANALYSIS only. No edits, patches, PRs, deploys, production changes, permission changes, Rules changes, EOS/runtime changes, or authority widening.",
+    "Exact children:",
+    "C01 Work Orders and Jobs lifecycle/correctness.",
+    "C02 Dispatch, technician assignment, scheduling, availability and skills workflows.",
+    "C03 Inventory, Parts, warehouse, ledger/count, reorder and Inventory Health behavior.",
+    "C04 Truck inventory, field inventory, receiving/transfers and serialized-asset relationships.",
+    "C05 Equipment, customers, locations and service-history relationships; loading/error/identity behavior.",
+    "C06 Purchasing, procurement, fulfillment and parts-request workflows.",
+    "C07 Admin/access-control implementation consistency and sensitive-operation enforcement; Rules are read-only evidence.",
+    "C08 Front-end UX reliability: loading/error/empty states, stale data, navigation dead ends, display-name/raw-ID regressions and accessibility-impacting correctness issues.",
+    "C09 Firebase/Firestore/Functions application correctness: listeners, transactions, retries, concurrency, idempotency and error handling. Read-only audit only.",
+    "C10 Tests/architecture/integration: untested critical paths, contradictory implementations, reachable legacy paths, cross-module contract mismatches and defects existing tests miss.",
+    "Use current-main evidence. Check durable findings/open issues where available to identify duplicates rather than presenting known work as new."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "KEYWORD_IMPLEMENTATION",
+    "ambiguous": false,
+    "reason": "implementation/fix/build/code-change intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/872",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T21:26:33Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-872.work.json",
+  "sha256": "579f403bf6c0554f7a67f7ccaf2820582e7c87a5f9e08a858b7e9ece4f11875d",
+  "createdAt": "2026-08-13T21:26:29Z",
+  "updatedAt": "2026-08-13T21:26:33Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/872"
+    ],
+    "pullRequests": []
+  }
+}
