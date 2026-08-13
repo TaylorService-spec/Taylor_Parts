@@ -36,6 +36,14 @@ import type { WorkOrder, WorkOrderStatus } from "./types/workOrder";
 import type { InventoryTransaction, InventorySyncStatus } from "./types/inventoryTransaction";
 
 const db = () => getFirestore();
+const RESERVATION_LOCKS_COLLECTION = "inventory_reservation_locks";
+
+// A per-part transaction sentinel serializes reservation attempts for that
+// part. The ledger remains the stock authority: this document contains no
+// quantity and is never read for availability. It is deliberately read and
+// written in the same transaction so a competing reserve invalidates the
+// transaction's ledger query result and forces Firestore to retry it.
+const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS_COLLECTION).doc(partId);
 
 // available = warehouseQty - (grossReserved - released). CONSUMED is
 // deliberately NOT subtracted again here: consuming a part converts an
@@ -119,9 +127,18 @@ export async function reserveParts(workOrderId: string): Promise<void> {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     if (items.length === 0) return;
 
+    const availabilityByPart = new Map<string, number>();
+    for (const item of items) {
+      availabilityByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
+    }
+    // Firestore requires every transaction read before its first write.
+    const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
+    await Promise.all(locks.map((ref) => tx.get(ref)));
+    for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+
     const insufficient: string[] = [];
     for (const item of items) {
-      const available = await getAvailableQuantity(tx, item.sku);
+      const available = availabilityByPart.get(item.sku) ?? 0;
       if (item.qtyPlanned > available) {
         insufficient.push(`${item.sku} (need ${item.qtyPlanned}, ${available} available)`);
       }
@@ -166,17 +183,30 @@ export async function consumeParts(workOrderId: string): Promise<void> {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     if (items.length === 0) return;
 
-    const shortfalls: string[] = [];
     const outstandingByPart = new Map<string, number>();
     for (const item of items) {
-      const outstanding = await getOutstandingReservation(tx, workOrderId, item.sku);
-      outstandingByPart.set(item.sku, outstanding);
-      if (outstanding < item.qtyPlanned) {
-        shortfalls.push(`${item.sku} (need ${item.qtyPlanned} reserved, only ${outstanding} outstanding)`);
+      outstandingByPart.set(item.sku, await getOutstandingReservation(tx, workOrderId, item.sku));
+    }
+    const availableByPart = new Map<string, number>();
+    for (const item of items) {
+      availableByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
+    }
+    const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
+    await Promise.all(locks.map((ref) => tx.get(ref)));
+
+    const shortfalls: string[] = [];
+    for (const item of items) {
+      const missing = item.qtyPlanned - (outstandingByPart.get(item.sku) ?? 0);
+      if (missing > (availableByPart.get(item.sku) ?? 0)) {
+        shortfalls.push(`${item.sku} (need ${missing} additional, ${availableByPart.get(item.sku) ?? 0} available)`);
       }
     }
-    if (shortfalls.length > 0) {
-      throw new Error(`Cannot consume, reservation shortfall: ${shortfalls.join("; ")}`);
+    if (shortfalls.length > 0) throw new Error(`Cannot consume, reservation shortfall: ${shortfalls.join("; ")}`);
+
+    for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    for (const item of items) {
+      const missing = item.qtyPlanned - (outstandingByPart.get(item.sku) ?? 0);
+      if (missing > 0) writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "RESERVED", quantity: missing });
     }
 
     for (const item of items) {

@@ -143,6 +143,19 @@ test("reserveParts rejects all-or-nothing when ANY planned item is short, no par
   assert.equal((await ledgerFor(woId, "TST-1031")).length, 0);
 });
 
+test("concurrent reservations for the final unit serialize and cannot oversell", async () => {
+  const sku = "TST-1020"; // warehouseQty 2
+  const first = id("wo-race");
+  const second = id("wo-race");
+  await seedWorkOrder(first, [{ sku, qtyPlanned: 2 }]);
+  await seedWorkOrder(second, [{ sku, qtyPlanned: 2 }]);
+
+  const results = await Promise.allSettled([reserveParts(first), reserveParts(second)]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(results.filter((r) => r.status === "rejected").length, 1);
+  assert.equal(sumType(await ledgerFor(first, sku), "RESERVED") + sumType(await ledgerFor(second, sku), "RESERVED"), 2);
+});
+
 // ---- release returns the correct quantity -------------------------------
 
 test("releaseParts releases exactly the outstanding reserved quantity for this Work Order", async () => {
@@ -165,26 +178,27 @@ test("releaseParts is safe to call when nothing was ever reserved (e.g. cancelle
   assert.equal(entries.length, 0, "no RELEASED entry when outstanding is already 0");
 });
 
-// ---- consumeParts: stuck-consume / oversell guard ------------------------
+// ---- consumeParts: completion repair / oversell guard --------------------
 
-test("consumeParts rejects when nothing was reserved (cannot consume unreserved stock)", async () => {
+test("consumeParts repairs a missing reservation and consumes atomically when stock is available", async () => {
   const woId = id("wo");
   await seedWorkOrder(woId, [{ sku: "TST-1007", qtyPlanned: 1 }]);
-  await assert.rejects(consumeParts(woId), /reservation shortfall/);
+  await consumeParts(woId);
   const entries = await ledgerFor(woId, "TST-1007");
-  assert.equal(sumType(entries, "CONSUMED"), 0);
+  assert.equal(sumType(entries, "RESERVED"), 1);
+  assert.equal(sumType(entries, "CONSUMED"), 1);
 });
 
 test("consumeParts all-or-nothing: one under-reserved item blocks consumption of ALL items", async () => {
   const woId = id("wo");
   await seedWorkOrder(woId, [
     { sku: "TST-1008", qtyPlanned: 2 }, // will be fully (properly) reserved
-    { sku: "TST-1010", qtyPlanned: 2 }, // deliberately under-reserved below
+    { sku: "TST-1010", qtyPlanned: 5 }, // deliberately under-reserved below
   ]);
   // Reserve TST-1008 normally.
   await seedRawLedgerEntry(woId, "TST-1008", "RESERVED", 2);
   // Hand-seed an inconsistent, under-covering reservation for TST-1010 (1
-  // instead of the 2 planned) -- simulates a plan edited upward after
+  // instead of the 5 planned) -- simulates a plan edited upward after
   // reservation, which is exactly the "stuck consume" scenario the
   // shortfall guard exists to catch.
   await seedRawLedgerEntry(woId, "TST-1010", "RESERVED", 1);
