@@ -18,13 +18,17 @@
       "file": "functions/src/transitionWorkOrder.ts",
       "symbol": "transitionWorkOrder",
       "severity": "HIGH",
-      "status": "CONFIRMED_OPEN",
+      "status": "FIXED",
       "source": "EOS-ISSUE-852",
       "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
-      "evidence": "Confirmed: no availability/conflict/double-book check anywhere in the file; Dispatch assigns assignedTechId without checking if the technician is already booked. Genuine unaddressed gap (pending product confirmation that double-booking is undesired).",
-      "regressionTest": null,
+      "evidence": "FIXED: transitionWorkOrder Dispatch now reads the technician's other Work Orders in-transaction and rejects (failed-precondition) if any is in an occupying status (DISPATCHED/ACCEPTED/EN_ROUTE/ARRIVED/WORK_IN_PROGRESS). Proven by functions/test/workOrderAvailability.test.mjs (5 tests: double-booking rejected; terminal/pre-dispatch free; self-redispatch and other-tech allowed).",
+      "regressionTest": "functions/test/workOrderAvailability.test.mjs::DEFECT GUARD: a technician already on an active Work Order cannot be dispatched to another (double-booking)",
       "deferralRef": null,
-      "discriminator": "no-technician-availability-check"
+      "discriminator": "no-technician-availability-check",
+      "fix": {
+        "code": "functions/src/workOrderAvailability.ts (findDoubleBookingConflict) + functions/src/transitionWorkOrder.ts Dispatch guard",
+        "by": "EOS closed-loop remediation"
+      }
     },
     {
       "file": "field-ops-app-vite/src/modules/inventoryRole/PartsAssociateHome.jsx",
