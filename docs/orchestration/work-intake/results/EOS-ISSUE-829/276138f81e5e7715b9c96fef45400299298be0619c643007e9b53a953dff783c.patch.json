@@ -1,0 +1,27 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-829",
+  "sourceWorkSha256": "d012374492ff2aca72af3269ae35d99c13c6e5ac0451595527653ef0b3ba4f5f",
+  "baseCommit": "49451d899e80191940f577645f63a2cfde2f42a7",
+  "scope": [
+    "Update only the EOS/Agent Manager orchestration records needed to register Track A A1/A2 in the authoritative integration backlog. Do not modify the A1/A2 implementation code."
+  ],
+  "paths": [
+    "docs/orchestration/integration-backlog.json",
+    "tmp_verify_backlog.mjs",
+    "tmp_verify_backlog.test.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/integration-backlog.json",
+    "tmp_verify_backlog.mjs",
+    "tmp_verify_backlog.test.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-829/13a654e5641b1a2173b569104bee32abb6cb64d838429972ab7432067bbb9a9d.patch",
+  "patchSha256": "13a654e5641b1a2173b569104bee32abb6cb64d838429972ab7432067bbb9a9d",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T00:16:32Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-829/276138f81e5e7715b9c96fef45400299298be0619c643007e9b53a953dff783c.patch.json",
+  "sha256": "276138f81e5e7715b9c96fef45400299298be0619c643007e9b53a953dff783c"
+}

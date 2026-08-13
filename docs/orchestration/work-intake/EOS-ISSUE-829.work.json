@@ -1,0 +1,36 @@
+{
+  "requestId": "EOS-ISSUE-829",
+  "title": "EOS — register Track A in authoritative integration backlog",
+  "intent": "Register Track A A1/A2 in the authoritative Agent Manager integration backlog so sequencing uses `docs/orchestration/integration-backlog.json` rather than treating `execution-backlog.md` as a second authority.\n\nRequired work:\n- Register PR #826 (`updateWorkOrderExecutionData` idempotency) as A1 in `docs/orchestration/integration-backlog.json`.\n- Register PR #827 (`createWorkOrder` idempotency) as A2 with an explicit dependency on A1.\n- Preserve A1 → A2 ordering and same repo+branch serialization.\n- Treat `execution-backlog.md` as human-readable/projection-only; do not make it a second integration authority.\n- Preserve existing verifier PASS, scope/hash/approval gating and governed integration semantics.\n- Do not merge #825/#826/#827 in this request.\n- Do not change product code, deploy Functions, or add client idempotency keys.\n- If current backlog schema cannot represent these records safely, fail closed and report the exact blocker rather than inventing another queue.\n\nCompletion:\nReturn only the authoritative backlog update/result, A1 → A2 ordering, any blocker, and REVIEW_READY when complete. No product-code change, merge, client-key change, or deployment is permitted in this request.",
+  "scope": [
+    "Update only the EOS/Agent Manager orchestration records needed to register Track A A1/A2 in the authoritative integration backlog. Do not modify the A1/A2 implementation code."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/829",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T00:16:32Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-829.work.json",
+  "sha256": "d012374492ff2aca72af3269ae35d99c13c6e5ac0451595527653ef0b3ba4f5f",
+  "createdAt": "2026-08-13T00:13:47Z",
+  "updatedAt": "2026-08-13T00:16:32Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/829"
+    ],
+    "pullRequests": []
+  }
+}

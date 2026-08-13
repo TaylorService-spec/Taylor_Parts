@@ -1,0 +1,101 @@
+diff --git a/docs/orchestration/integration-backlog.json b/docs/orchestration/integration-backlog.json
+index 7c55d20..165f58b 100644
+--- a/docs/orchestration/integration-backlog.json
++++ b/docs/orchestration/integration-backlog.json
+@@ -1,4 +1,59 @@
+ {
+   "schema": "agent-manager.integration-backlog/1",
+-  "items": []
++  "items": [
++    {
++      "requestId": "A1-PR826-updateWorkOrderExecutionData-idempotency",
++      "target": { "repo": "TaylorService-spec/Taylor_Parts", "branch": "main" },
++      "approvedArtifact": {
++        "kind": "PR_DIFF",
++        "location": "https://github.com/TaylorService-spec/Taylor_Parts/pull/826 @ d1a96837f9458bef67e72eb4492d5c0a6763c408",
++        "sha256": "51de04a3e7111aeae88465641618b013b0637affa88d9aaebc85851044733cbb"
++      },
++      "priority": 10,
++      "integrityPriority": "INTEGRITY",
++      "dependencies": [],
++      "paths": [
++        "functions/src/access/auditEventWriter.ts",
++        "functions/src/types/access.ts",
++        "functions/src/updateWorkOrderExecutionData.ts",
++        "functions/src/workOrderExecutionMath.ts",
++        "functions/test/updateWorkOrderExecutionDataIdempotency.test.js",
++        "functions/test/workOrderExecutionMath.test.mjs"
++      ],
++      "overlappingPaths": [],
++      "verificationState": "PASS",
++      "scopeState": "PASS",
++      "hashState": "PASS",
++      "approvalState": "PENDING",
++      "integrationReadiness": "READY",
++      "blocker": null
++    },
++    {
++      "requestId": "A2-PR827-createWorkOrder-idempotency",
++      "target": { "repo": "TaylorService-spec/Taylor_Parts", "branch": "main" },
++      "approvedArtifact": {
++        "kind": "PR_DIFF",
++        "location": "https://github.com/TaylorService-spec/Taylor_Parts/pull/827 @ 1206e0b649393f02391857f804806ef6d1965742",
++        "sha256": "01ee047a2ebe337f8206813dd7c3699ed48d4c7ee8d54a82cd808d3978a92e17"
++      },
++      "priority": 20,
++      "integrityPriority": "INTEGRITY",
++      "dependencies": ["A1-PR826-updateWorkOrderExecutionData-idempotency"],
++      "paths": [
++        "functions/src/access/auditEventWriter.ts",
++        "functions/src/createWorkOrder.ts",
++        "functions/src/types/access.ts",
++        "functions/src/workOrderCreateMath.ts",
++        "functions/test/createWorkOrderIdempotency.test.js",
++        "functions/test/workOrderCreateMath.test.mjs"
++      ],
++      "overlappingPaths": [],
++      "verificationState": "PASS",
++      "scopeState": "PASS",
++      "hashState": "PASS",
++      "approvalState": "PENDING",
++      "integrationReadiness": "READY",
++      "blocker": null
++    }
++  ]
+ }
+diff --git a/tmp_verify_backlog.mjs b/tmp_verify_backlog.mjs
+new file mode 100644
+index 0000000..318412f
+--- /dev/null
++++ b/tmp_verify_backlog.mjs
+@@ -0,0 +1,10 @@
++import { readFileSync } from "node:fs";
++import { computeAgentManagerRecommendation } from "./docs/orchestration/lib/integrationShadow.mjs";
++import { validateIntegrationBacklogItem } from "./docs/orchestration/lib/agentManager.mjs";
++
++const backlog = JSON.parse(readFileSync("./docs/orchestration/integration-backlog.json", "utf8"));
++for (const item of backlog.items) {
++  const errors = validateIntegrationBacklogItem(item);
++  console.log(item.requestId, "errors:", errors);
++}
++console.log(JSON.stringify(computeAgentManagerRecommendation(backlog), null, 2));
+diff --git a/tmp_verify_backlog.test.mjs b/tmp_verify_backlog.test.mjs
+new file mode 100644
+index 0000000..30f519b
+--- /dev/null
++++ b/tmp_verify_backlog.test.mjs
+@@ -0,0 +1,14 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { readFileSync } from "node:fs";
++import { computeAgentManagerRecommendation } from "./docs/orchestration/lib/integrationShadow.mjs";
++import { validateIntegrationBacklogItem } from "./docs/orchestration/lib/agentManager.mjs";
++
++test("A1/A2 backlog items validate and gate correctly", () => {
++  const backlog = JSON.parse(readFileSync("./docs/orchestration/integration-backlog.json", "utf8"));
++  for (const item of backlog.items) {
++    assert.deepEqual(validateIntegrationBacklogItem(item), [], `${item.requestId} should validate`);
++  }
++  const plan = computeAgentManagerRecommendation(backlog);
++  console.log(JSON.stringify(plan, null, 2));
++});
