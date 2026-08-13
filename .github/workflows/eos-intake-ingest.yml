@@ -32,6 +32,9 @@ on:
       - "docs/orchestration/context/intake-ingest-ci.test.mjs"
       - "docs/orchestration/context/issue-intake-producer.mjs"
       - "docs/orchestration/context/issue-intake-producer.test.mjs"
+      - "docs/orchestration/context/gateway-preflight-ci.mjs"
+      - "docs/orchestration/lib/gatewayVerifier.mjs"
+      - "docs/orchestration/lib/gatewayVerifier.test.mjs"
       - "docs/orchestration/context/issue-intake-writeback.mjs"
       - "docs/orchestration/context/issue-intake-writeback.test.mjs"
       - "docs/orchestration/context/intake-artifactize.mjs"
@@ -55,6 +58,9 @@ on:
       - "docs/orchestration/context/intake-ingest-ci.mjs"
       - "docs/orchestration/context/intake-ingest-ci.test.mjs"
       - "docs/orchestration/context/issue-intake-producer.mjs"
+      - "docs/orchestration/context/gateway-preflight-ci.mjs"
+      - "docs/orchestration/lib/gatewayVerifier.mjs"
+      - "docs/orchestration/lib/gatewayVerifier.test.mjs"
       - "docs/orchestration/context/issue-intake-writeback.mjs"
       - "docs/orchestration/context/intake-artifactize.mjs"
       - "docs/orchestration/context/intake-patch-integrate.mjs"
@@ -78,7 +84,7 @@ jobs:
         with:
           node-version: 22
       - name: Intake contract + status + ingress + execution + broker + acceptance tests (node:test)
-        run: node --test docs/orchestration/lib/workIntake.test.mjs docs/orchestration/lib/intakeStatus.test.mjs docs/orchestration/lib/intakeIngress.test.mjs docs/orchestration/lib/intakeIntegration.test.mjs docs/orchestration/lib/intakeExecute.test.mjs docs/orchestration/lib/intakeAcceptance.test.mjs docs/orchestration/lib/intakeReview.test.mjs docs/orchestration/lib/intakeBrokeredAcceptance.test.mjs docs/orchestration/lib/intakePatch.test.mjs docs/orchestration/context/work-intake.test.mjs docs/orchestration/context/intake-ingest-ci.test.mjs docs/orchestration/context/issue-intake-producer.test.mjs docs/orchestration/context/issue-intake-writeback.test.mjs docs/orchestration/context/intake-artifactize.test.mjs docs/orchestration/context/intake-patch-integrate.test.mjs
+        run: node --test docs/orchestration/lib/workIntake.test.mjs docs/orchestration/lib/intakeStatus.test.mjs docs/orchestration/lib/intakeIngress.test.mjs docs/orchestration/lib/intakeIntegration.test.mjs docs/orchestration/lib/intakeExecute.test.mjs docs/orchestration/lib/intakeAcceptance.test.mjs docs/orchestration/lib/intakeReview.test.mjs docs/orchestration/lib/intakeBrokeredAcceptance.test.mjs docs/orchestration/lib/intakePatch.test.mjs docs/orchestration/lib/gatewayVerifier.test.mjs docs/orchestration/context/work-intake.test.mjs docs/orchestration/context/intake-ingest-ci.test.mjs docs/orchestration/context/issue-intake-producer.test.mjs docs/orchestration/context/issue-intake-writeback.test.mjs docs/orchestration/context/intake-artifactize.test.mjs docs/orchestration/context/intake-patch-integrate.test.mjs
       - name: Validate every intake artifact + check committed status (fail-closed on any bad hash)
         run: node docs/orchestration/context/intake-ingest-ci.mjs
       - name: Emitted status summary (job log)

@@ -11,9 +11,9 @@ import { intakeDigest, resolveWorkIntake } from "../lib/workIntake.mjs";
 
 export const INTAKE_LABEL = "eos-intake";
 const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
-const REQUIRED_SECTIONS = ["Purpose", "Scope", "Required work", "Completion"];
+export const REQUIRED_SECTIONS = Object.freeze(["Purpose", "Scope", "Required work", "Completion"]);
 
-function section(body, heading) {
+export function section(body, heading) {
   const lines = String(body || "").replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
   if (start < 0) return "";

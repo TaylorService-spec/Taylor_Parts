@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Recovered ChatGPT/EOS Gateway Verifier with deterministic pre-label gate
+- Agent/session:       Codex `/root` · Role: recovery/builder
+- Branch / worktree:   `codex/chatgpt-eos-gateway-verifier` · `D:\Taylor_Parts-gateway-verifier`
+- Base commit:         `49451d899e80191940f577645f63a2cfde2f42a7`
+- Owned paths:         `docs/orchestration/lib/gatewayVerifier*` · `docs/orchestration/context/gateway-preflight-ci.mjs`
+- Shared paths req'd:  issue-intake producer/workflow/CI wiring · this registry
+- Dependencies:        Preserved #820 Claude session `da754306-bc27-46b3-8b63-9c0278722280`; existing issue-intake producer and internal Verifier
+- Expected outcome:    Malformed ChatGPT submissions fail before label/dispatch; terminal EOS returns retain bounded Gateway review
+- Protected boundaries:No runtime redesign, credential/permission/deployment change, Claude behavior change, or automatic merge
+- Lifecycle stage:     RELEASE CANDIDATE
+
 - Capability:          EOS implementation write-back isolation + governed patch integration
 - Agent/session:       Codex `/root` · Role: builder/integration
 - Branch / worktree:   `codex/eos-implementation-writeback` · `D:\Taylor_Parts-eos-implementation-writeback`

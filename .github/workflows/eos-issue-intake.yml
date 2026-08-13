@@ -45,6 +45,14 @@ jobs:
         if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
         shell: pwsh
         run: node --test docs/orchestration/context/issue-intake-producer.test.mjs
+      - name: Gateway Verifier — deterministic submission preflight
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        run: |
+          node docs/orchestration/context/gateway-preflight-ci.mjs `
+            --event $env:GITHUB_EVENT_PATH `
+            --repo "${{ github.repository }}"
+          if ($LASTEXITCODE -ne 0) { throw "Gateway Verifier rejected this submission before EOS adaptation or Claude dispatch" }
       - name: Adapt Issue into a hash-pinned EOS-ready artifact
         if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
         id: intake
