@@ -215,3 +215,24 @@ test("ordinary Agent Manager selection is unchanged with no integration backlog 
   assert.equal(selectNextQueuedRequest(requests).requestId, "normal");
   assert.deepEqual(planIntegrationBacklog([]), { ordered: [], nextByTarget: {}, blocked: [] });
 });
+
+// ── decideIntakeDispatch: don't re-run completed worker jobs (Agent Manager DEDUPE_REUSE for intake) ──────
+import { decideIntakeDispatch } from "./agentManager.mjs";
+
+const completeStatus = (sha) => ({ state: "COMPLETE", pointer: "status://EOS-ISSUE-9", result: "result://EOS-ISSUE-9", resultRef: { location: "docs/.../x.result.json", sha256: "b".repeat(64) }, workArtifact: { location: "docs/.../EOS-ISSUE-9.work.json", sha256: sha } });
+
+test("decideIntakeDispatch: a COMPLETE status for the same work sha => DEDUPE_REUSE (skip, don't re-run)", () => {
+  const d = decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: completeStatus("a".repeat(64)) });
+  assert.equal(d.decision, "DEDUPE_REUSE");
+  assert.ok(d.resultRef);
+});
+
+test("decideIntakeDispatch: no status / non-terminal / FAILED / changed sha => DISPATCH (runs, self-heals)", () => {
+  assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: null }).decision, "DISPATCH");
+  assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: { state: "FAILED" } }).decision, "DISPATCH");
+  assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: { state: "CORRECTING", workArtifact: { sha256: "a".repeat(64) } } }).decision, "DISPATCH");
+  // COMPLETE but the authorized work changed (new sha) => re-dispatch
+  assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "c".repeat(64), committedStatus: completeStatus("a".repeat(64)) }).decision, "DISPATCH");
+  // COMPLETE but missing resultRef (incomplete record) => don't trust it, re-dispatch
+  assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: { state: "COMPLETE", workArtifact: { sha256: "a".repeat(64) } } }).decision, "DISPATCH");
+});

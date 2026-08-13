@@ -37,6 +37,26 @@ export function findEquivalentResult(request, results = [], requestsById = new M
   }) || null;
 }
 
+// The Agent Manager owns the "don't re-dispatch already-completed work" decision for the work-intake
+// execution path too — the SAME DEDUPE_REUSE responsibility as decideDispatch, applied to the durable intake
+// status instead of the agent-request result ledger. Pure: the runtime reads the committed status.json and
+// asks. A COMPLETE status carrying a resultRef for the SAME authorized work-artifact sha means the result
+// already exists → DEDUPE_REUSE (skip the wake). A non-terminal or FAILED/BLOCKED status, a missing status,
+// or a changed work sha → DISPATCH (so a re-authorized item, or a previously-failed item, still runs and can
+// self-heal). This is what stops the execute loop from re-running finished workers on every pass.
+export function decideIntakeDispatch({ requestId, workSha256, committedStatus = null } = {}) {
+  const s = committedStatus;
+  const alreadyComplete = !!s
+    && s.state === "COMPLETE"
+    && !!s.resultRef
+    && !!s.workArtifact
+    && s.workArtifact.sha256 === workSha256;
+  if (alreadyComplete) {
+    return { decision: "DEDUPE_REUSE", requestId, resultRef: s.resultRef, reason: "a COMPLETE result already exists for this authorized work (same work sha) — not re-dispatching" };
+  }
+  return { decision: "DISPATCH", requestId };
+}
+
 export function decideDispatch({ request, allocations = [], results = [], requestsById = new Map(), networkState = "NORMAL" } = {}) {
   const errors = validateAgentRequest(request);
   if (errors.length) return { decision: "REJECT_INVALID", errors };
