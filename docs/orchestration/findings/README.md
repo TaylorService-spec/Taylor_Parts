@@ -30,9 +30,19 @@ re-validated at that moment. Outcomes become register statuses:
 | `suppressed` | `KNOWN_ACCEPTED` / `DEFERRED` / `FALSE_POSITIVE` | **memory** of a decision already made — not re-actioned per audit |
 | `unverifiedFixed` | integrity check | `FIXED` entries missing a `regressionTest` |
 
+## Fingerprint = location + a stable issue discriminator (no silent collapse)
+`fingerprintFinding` keys on `file` + `symbol` **plus a stable `discriminator`** (a short issue slug like
+`no-technician-availability-check`). Location alone is not enough: two *different* bugs in the same
+`file+symbol` must not collapse into one id, or a new real defect could be suppressed by an unrelated prior
+finding in the same function. The discriminator survives line/wording drift (it isn't the drifting prose), so
+the same issue keeps its id across audits while distinct issues stay distinct. **Fail closed:** a finding with
+no discriminator yields a `null` fingerprint — reconcile then surfaces it for disposition (`NEEDS_DISCRIMINATOR`)
+and it can *never* be silently matched to a same-symbol entry.
+
 ## Two invariants
 1. **"Fixed" requires proof.** A `FIXED` without a `regressionTest` is not believed — `unverifiedFixed` lists it, and a reappearance escalates as `unprovenFixed`. Don't say fixed if it isn't proven fixed.
 2. **Deferral is decided, not postponed.** The now-vs-defer call and rationale validation happen at disposition. A `DEFERRED` item is suppressed on re-find (memory), and re-visited only when its `revalidateWhen` **condition** is met — a deliberate re-disposition, never an every-audit re-review.
+3. **No real finding silently dropped.** Only `FALSE_POSITIVE`, already-dispositioned memory, and a *proven*-fixed entry suppress; everything else (new, undiscriminated, unproven-fixed, regressed) reaches disposition or escalation.
 
 ## Lifecycle
 1. Audit → raw findings.

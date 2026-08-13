@@ -39,12 +39,21 @@ const RESOLVED = new Set([FINDING_STATUS.FIXED, FINDING_STATUS.KNOWN_ACCEPTED, F
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\\/g, "/").replace(/\s+/g, " ");
 
 /**
- * Stable fingerprint for a finding — keyed on LOCATION (file + symbol), NOT line numbers or prose, so the same
- * issue produces the same id across audits even as line numbers drift and wording changes. Category is folded in
- * only when there's no symbol (so two different concerns in the same bare file don't collapse).
+ * Stable fingerprint for a finding — a stable LOCATION (file, optionally symbol) PLUS a stable issue
+ * DISCRIMINATOR. Location alone is not enough: two DIFFERENT bugs in the same `file+symbol` must not collapse
+ * into one id, or a new real defect could be suppressed by an unrelated prior finding in the same function that
+ * was KNOWN_ACCEPTED / DEFERRED / already-open. The discriminator is a short STABLE slug assigned at disposition
+ * (e.g. "no-availability-check"); it survives wording/line drift precisely because it is NOT the drifting prose
+ * or line number. Same issue → same (file, symbol, discriminator) → same fingerprint; two issues in one symbol →
+ * two discriminators → two fingerprints.
+ *
+ * FAIL CLOSED: with no discriminator we cannot tell distinct concerns in a symbol apart, so we return `null`
+ * rather than assume they are the same issue. reconcile treats a null fingerprint as un-matchable → it surfaces
+ * for disposition and can never be silently suppressed by a same-symbol entry.
  */
-export function fingerprintFinding({ file, symbol, category } = {}) {
-  const key = symbol ? `${norm(file)}::${norm(symbol)}` : `${norm(file)}::${norm(category)}`;
+export function fingerprintFinding({ file, symbol, discriminator } = {}) {
+  if (!file || !discriminator) return null;
+  const key = `${norm(file)}::${norm(symbol ?? "")}::${norm(discriminator)}`;
   return createHash("sha256").update(key).digest("hex").slice(0, 16);
 }
 
@@ -70,11 +79,17 @@ function withFingerprint(f) {
  */
 export function reconcileFindings(findings = [], register = []) {
   const byFp = new Map();
-  for (const e of Array.isArray(register) ? register : []) byFp.set(withFingerprint(e), e);
+  for (const e of Array.isArray(register) ? register : []) {
+    const fp = withFingerprint(e);
+    if (fp) byFp.set(fp, e); // a register entry with no discriminator is inert — it can never suppress anything
+  }
 
   const surfaced = [], regressions = [], unprovenFixed = [], alreadyOpen = [], suppressed = [];
   for (const f of Array.isArray(findings) ? findings : []) {
     const fp = withFingerprint(f);
+    // FAIL CLOSED: a finding without a resolvable fingerprint (no discriminator) cannot be matched to the
+    // register, so it can never be silently suppressed by a same-symbol entry — it surfaces for disposition.
+    if (!fp) { surfaced.push({ ...f, fingerprint: null, disposition: "NEEDS_DISCRIMINATOR", reason: "no stable issue discriminator — cannot be matched; fail-closed to disposition" }); continue; }
     const known = byFp.get(fp);
     if (!known) { surfaced.push({ ...f, fingerprint: fp, disposition: "NEW" }); continue; }
     const base = { ...f, fingerprint: fp };
