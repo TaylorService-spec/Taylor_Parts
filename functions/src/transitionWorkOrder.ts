@@ -24,6 +24,7 @@ import {
 } from "./transitionEngine";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
+import { findDoubleBookingConflict } from "./workOrderAvailability";
 import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
 
 interface TransitionWorkOrderInput {
@@ -114,6 +115,23 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       payload.scheduledEnd = Timestamp.fromMillis(scheduledEnd as number);
       payload.scheduledTechId = scheduledTechId;
     } else if (action === "Dispatch") {
+      // Double-booking guard: a technician actively assigned to another Work Order cannot be dispatched to this
+      // one. Read (inside the transaction, before the write) the technician's other Work Orders and reject if any
+      // is in an occupying status. This closes the availability gap the legacy dispatch path enforced.
+      const otherSnap = await tx.get(
+        db.collection(WORK_ORDERS_COLLECTION).where("assignedTechId", "==", assignedTechId)
+      );
+      const others = otherSnap.docs.map((d) => {
+        const data = d.data() as WorkOrder;
+        return { id: d.id, assignedTechId: data.assignedTechId, status: data.status };
+      });
+      const conflict = findDoubleBookingConflict(assignedTechId as string, workOrderId, others);
+      if (conflict) {
+        throw new HttpsError(
+          "failed-precondition",
+          `Technician ${assignedTechId} is already assigned to active Work Order ${conflict}; cannot double-book.`
+        );
+      }
       payload.assignedTechId = assignedTechId;
       payload.dispatchedAt = FieldValue.serverTimestamp();
     } else {
