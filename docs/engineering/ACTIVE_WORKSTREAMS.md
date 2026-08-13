@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Cortex EOS provider adapter pilot (read-only, provider-neutral)
+- Agent/session:       Codex `/root` · Role: builder
+- Branch / worktree:   `codex/cortex-provider-pilot` · `D:\Taylor_Parts-cortex-provider-pilot`
+- Base commit:         `49451d899e80191940f577645f63a2cfde2f42a7`
+- Owned paths:         `docs/orchestration/lib/cortexProviderAdapter*`
+- Shared paths req'd:  `.github/workflows/orchestration-agent-manager-tests.yml` · this registry
+- Dependencies:        Existing AgentRequest, AgentResult, Verifier, and governed work-intake result contracts
+- Expected outcome:    One bounded READ_ONLY_PILOT Cortex worker can return attributable, verified, durable EOS results without changing Claude
+- Protected boundaries:No live provider activation, credential use, mutation, approval, integration, deployment, or merge
+- Lifecycle stage:     RELEASE CANDIDATE
+
 - Capability:          EOS implementation write-back isolation + governed patch integration
 - Agent/session:       Codex `/root` · Role: builder/integration
 - Branch / worktree:   `codex/eos-implementation-writeback` · `D:\Taylor_Parts-eos-implementation-writeback`
