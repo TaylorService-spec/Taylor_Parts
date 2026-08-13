@@ -1,0 +1,48 @@
+{
+  "requestId": "EOS-ISSUE-844",
+  "title": "EOS LIVE TEST — intake→execute handoff (read-only analysis)",
+  "intent": "Live end-to-end verification of the EOS intake→execute handoff restored in PR #843. This is a read-only analysis task; it must NOT modify any files.\n\nRequired work:\n- Read `docs/orchestration/lib/executionProfiles.mjs` and summarize the four EOS execution capability profiles and their bounded turn ceilings. Produce a short governed analysis report. Do not modify any files, do not open a PR.\n\nCompletion:\nA durable analysis report naming the four profiles (READ_ONLY_ANALYSIS, READ_ONLY_VERIFY, PATCH_PRODUCER, GOVERNED_INTEGRATION) and their turn ceilings (40/60/80/100).",
+  "scope": [
+    "docs/orchestration/lib/executionProfiles.mjs"
+  ],
+  "execution": {
+    "taskClass": "READ_ONLY_VERIFY",
+    "expectedArtifactClass": "NONE",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": false,
+    "signal": "KEYWORD_VERIFY",
+    "ambiguous": false,
+    "reason": "verification/test-only intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/844",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T04:28:38Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-844.work.json",
+  "sha256": "38f662824b0c7ff364b393cd099de1f1bef6102843174b247b1ebe6edc7c4cdd",
+  "createdAt": "2026-08-13T04:28:10Z",
+  "updatedAt": "2026-08-13T04:28:38Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/844"
+    ],
+    "pullRequests": []
+  }
+}
