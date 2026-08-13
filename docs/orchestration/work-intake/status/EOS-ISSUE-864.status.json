@@ -1,30 +1,17 @@
 {
-  "schema": "eos.intake.status/2",
+  "schema": "eos.intake.status/1",
   "requestId": "EOS-ISSUE-864",
   "pointer": "status://EOS-ISSUE-864",
   "work": "work://EOS-ISSUE-864",
   "result": "result://EOS-ISSUE-864",
-  "state": "READY",
-  "currentWork": "authorized — awaiting worker",
+  "state": "BLOCKED_EXECUTION",
+  "currentWork": "governed children incomplete — parent cannot complete on a partial set",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-13T20:40:00Z",
+  "updatedAt": "2026-08-13T21:23:59.274Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "actualProviderCostUsd": "UNKNOWN",
-  "estimatedExecutionCostUsd": null,
-  "providerCapacityUsage": {
-    "shortWindow": "UNKNOWN",
-    "weekly": "UNKNOWN",
-    "concurrency": "UNKNOWN",
-    "ownerReserve": "UNKNOWN"
-  },
-  "budgetStopReason": null,
-  "costProvenance": {
-    "actual": "UNAVAILABLE",
-    "estimated": "UNAVAILABLE"
-  },
-  "freshness": "UNKNOWN",
+  "costToDateUsd": 0,
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-ISSUE-864.work.json",
     "sha256": "146a198ae1e722f2cee6bb03c726f114976d38f451ad6c82fc373be573a59bf9"
@@ -33,9 +20,8 @@
   "artifactRefs": [],
   "provenance": {
     "producer": "GitHub Issue intake workflow",
-    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
-    "sourceCommit": null
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-864.status.json",
-  "sha256": "dfdfb06c4d93e58c8cc833f41238651ecf101d4e81df4b31a4038d7863913f3d"
+  "sha256": "a0b162112b17b0d13fc5831ca44f5f81fbb2ca824be8aadb154192e3d68b7f89"
 }
