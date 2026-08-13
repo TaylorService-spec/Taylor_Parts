@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { landItemArtifacts, landAllArtifacts, artifactPathsFor } from "./intake-landing.mjs";
 
 // A scriptable git double: records every invocation, and returns a queued outcome per git subcommand so a test
-// can simulate push rejections / cherry-pick races. Default outcome is success (code 0).
+// can simulate add failures / push rejections / cherry-pick or reset races. Default outcome is success (code 0).
 function gitDouble(script = {}) {
   const calls = [];
   const queues = {};
@@ -19,24 +19,23 @@ function gitDouble(script = {}) {
   return runGit;
 }
 const cmds = (runGit) => runGit.calls.map((a) => a.join(" "));
+const allExist = () => true; // default: every request-scoped path is present on disk
 
 test("stages ONLY this requestId's work-intake paths — a PATCH item's code can never leak", () => {
-  const runGit = gitDouble({ "diff --cached": [{ code: 1 }] }); // changes staged
-  landItemArtifacts({ requestId: "EOS-ISSUE-852-C01", runGit });
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
+  landItemArtifacts({ requestId: "EOS-ISSUE-852-C01", runGit, pathExists: allExist });
   const addCall = runGit.calls.find((a) => a[0] === "add");
   assert.deepEqual(addCall, ["add", "--", ...artifactPathsFor("EOS-ISSUE-852-C01")]);
-  // the ONLY paths mentioned anywhere are this item's work-intake paths — never functions/ or src/ etc.
   const joined = cmds(runGit).join("\n");
   assert.doesNotMatch(joined, /functions\/|firestore\.rules|(^|\s)src\//, "no code path is ever staged/committed");
 });
 
 test("lands via cherry-pick onto fresh main + push HEAD:main (branch-robust; never a bare push)", () => {
   const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C02", runGit });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C02", runGit, pathExists: allExist });
   const seq = cmds(runGit);
   assert.equal(out.landed, true);
   assert.equal(out.attempts, 1);
-  // commit → rev-parse → fetch → checkout -f -B eos-writeback FETCH_HEAD → reset --hard → cherry-pick → push HEAD:main
   assert.ok(seq.some((c) => c.startsWith("commit -m")));
   assert.ok(seq.includes("fetch origin main"));
   assert.ok(seq.includes("checkout -f -B eos-writeback FETCH_HEAD"));
@@ -46,38 +45,73 @@ test("lands via cherry-pick onto fresh main + push HEAD:main (branch-robust; nev
 });
 
 test("no staged changes → does not commit or push (idempotent re-run)", () => {
-  const runGit = gitDouble({ "diff --cached": [{ code: 0 }] }); // nothing staged
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C03", runGit });
+  const runGit = gitDouble({ "diff --cached": [{ code: 0 }] }); // nothing to commit (already landed)
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C03", runGit, pathExists: allExist });
   assert.equal(out.landed, false);
   assert.equal(out.reason, "no-changes");
   assert.ok(!cmds(runGit).some((c) => c.startsWith("commit")), "no commit when nothing changed");
 });
 
-test("retries when push is rejected because main moved, then succeeds", () => {
+// --- verifier correction 1: optional-path staging must fail closed, never become a false no-changes ---
+
+test("status-only item (BLOCKED: no result/review-ready) stages ONLY the existing status path and lands it", () => {
+  const statusPath = `docs/orchestration/work-intake/status/EOS-ISSUE-842.status.json`;
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-842", runGit, pathExists: (p) => p === statusPath });
+  const addCall = runGit.calls.find((a) => a[0] === "add");
+  assert.deepEqual(addCall, ["add", "--", statusPath], "only the present status path is staged");
+  assert.equal(out.landed, true, "the truthful status still lands");
+});
+
+test("a git-add error FAILS CLOSED — never silently reported as no-changes/success", () => {
+  const runGit = gitDouble({ add: [{ code: 128 }] }); // git add errors
+  assert.throws(
+    () => landItemArtifacts({ requestId: "EOS-ISSUE-852-C07", runGit, pathExists: allExist }),
+    /git add failed/,
+    "staging failure surfaces as an error, not a no-changes success",
+  );
+  assert.ok(!cmds(runGit).some((c) => c.startsWith("commit")), "never commits after a failed add");
+});
+
+test("no request-scoped path exists (e.g. dedupe-skip wrote nothing) → no-artifacts, no add/commit", () => {
+  const runGit = gitDouble();
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C08", runGit, pathExists: () => false });
+  assert.equal(out.landed, false);
+  assert.equal(out.reason, "no-artifacts");
+  assert.equal(runGit.calls.length, 0, "never touches git when nothing exists to stage");
+});
+
+// --- verifier correction 2: a failed checkout/reset must retry, not cherry-pick on unknown branch state ---
+
+test("a failed reset --hard retries on the next attempt instead of cherry-picking blindly", () => {
   const runGit = gitDouble({
     "diff --cached": [{ code: 1 }],
-    push: [{ code: 1 }, { code: 1 }, { code: 0 }], // rejected twice, then lands
+    reset: [{ code: 1 }, { code: 0 }], // first reset fails → must NOT cherry-pick that attempt
   });
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C04", runGit });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C09", runGit, pathExists: allExist });
+  assert.equal(out.landed, true);
+  // exactly one cherry-pick (only the successful attempt), proving the failed-reset attempt bailed before it
+  assert.equal(cmds(runGit).filter((c) => c.startsWith("cherry-pick") && c !== "cherry-pick --abort").length, 1);
+});
+
+test("retries when push is rejected because main moved, then succeeds", () => {
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }], push: [{ code: 1 }, { code: 1 }, { code: 0 }] });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C04", runGit, pathExists: allExist });
   assert.equal(out.landed, true);
   assert.equal(out.attempts, 3);
-  // fetch happens once per attempt (re-sync before each replay)
   assert.equal(cmds(runGit).filter((c) => c === "fetch origin main").length, 3);
 });
 
 test("cherry-pick race aborts and re-syncs on the next attempt", () => {
-  const runGit = gitDouble({
-    "diff --cached": [{ code: 1 }],
-    "cherry-pick": [{ code: 1 }, { code: 0 }], // conflict once, then clean
-  });
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C05", runGit });
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }], "cherry-pick": [{ code: 1 }, { code: 0 }] });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C05", runGit, pathExists: allExist });
   assert.equal(out.landed, true);
   assert.ok(cmds(runGit).includes("cherry-pick --abort"), "aborts the raced cherry-pick");
 });
 
 test("gives up after maxAttempts without throwing (orchestrator keeps landing others)", () => {
   const runGit = gitDouble({ "diff --cached": [{ code: 1 }], push: [{ code: 1 }, { code: 1 }, { code: 1 }] });
-  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C06", runGit, maxAttempts: 3 });
+  const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C06", runGit, pathExists: allExist, maxAttempts: 3 });
   assert.equal(out.landed, false);
   assert.equal(out.reason, "push-failed");
   assert.equal(out.attempts, 3);
@@ -85,7 +119,7 @@ test("gives up after maxAttempts without throwing (orchestrator keeps landing ot
 
 test("final sweep stages only the work-intake roots (never code) and lands them", () => {
   const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
-  const out = landAllArtifacts({ runGit });
+  const out = landAllArtifacts({ runGit, pathExists: allExist });
   const addCall = runGit.calls.find((a) => a[0] === "add");
   assert.deepEqual(addCall, ["add", "--", "docs/orchestration/work-intake/status", "docs/orchestration/work-intake/results", "docs/orchestration/work-intake/review-ready"]);
   assert.equal(out.landed, true);
@@ -95,13 +129,13 @@ test("final sweep stages only the work-intake roots (never code) and lands them"
 
 test("sweep is a no-op when per-item landing already committed everything", () => {
   const runGit = gitDouble({ "diff --cached": [{ code: 0 }] });
-  assert.equal(landAllArtifacts({ runGit }).reason, "no-changes");
+  assert.equal(landAllArtifacts({ runGit, pathExists: allExist }).reason, "no-changes");
 });
 
 test("a bad requestId fails closed (no path injection)", () => {
   const runGit = gitDouble();
   for (const bad of ["", "..", "a/b", "has space", "x".repeat(81), null]) {
-    assert.throws(() => landItemArtifacts({ requestId: bad, runGit }), /invalid requestId/);
+    assert.throws(() => landItemArtifacts({ requestId: bad, runGit, pathExists: allExist }), /invalid requestId/);
   }
   assert.equal(runGit.calls.length, 0, "never touches git for an invalid id");
 });

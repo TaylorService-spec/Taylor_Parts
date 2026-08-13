@@ -15,6 +15,7 @@
 //     main moves. A bare `git push` (which assumes an upstream) is never used.
 
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$/;
 
@@ -63,8 +64,11 @@ export function landStaged({ runGit, message, label = "write-back", maxAttempts 
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (runGit(["fetch", "origin", "main"]).code !== 0) continue;      // transient network → retry
-    runGit(["checkout", "-f", "-B", "eos-writeback", "FETCH_HEAD"]);   // clean main, discard any stray-branch state
-    runGit(["reset", "--hard", "FETCH_HEAD"]);
+    // Getting onto clean main must SUCCEED before we replay — a failed checkout/reset leaves the runner on
+    // unknown branch state, and cherry-picking there could land the artifact on the wrong base. Fail the attempt
+    // and re-sync rather than proceeding blindly.
+    if (runGit(["checkout", "-f", "-B", "eos-writeback", "FETCH_HEAD"]).code !== 0) continue;
+    if (runGit(["reset", "--hard", "FETCH_HEAD"]).code !== 0) continue;
     if (runGit(["cherry-pick", wb]).code !== 0) { runGit(["cherry-pick", "--abort"]); continue; } // race → re-sync
     if (runGit(["push", "origin", "HEAD:main"]).code === 0) {
       return Object.freeze({ label, landed: true, attempts: attempt, commit: wb });
@@ -80,10 +84,17 @@ export function landStaged({ runGit, message, label = "write-back", maxAttempts 
  * delegates to the shared core. Called immediately after each item's execution so completed work lands the
  * moment it finishes, surviving any later timeout/interruption.
  */
-export function landItemArtifacts({ requestId, runGit, maxAttempts = 5, message } = {}) {
+export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, maxAttempts = 5, message } = {}) {
   if (!SAFE_ID.test(requestId || "")) throw new Error("landItemArtifacts: invalid requestId");
   if (typeof runGit !== "function") throw new Error("landItemArtifacts: runGit is required");
-  runGit(["add", "--", ...artifactPathsFor(requestId)]);
+  // Only SOME request-scoped paths exist for a given disposition: a non-COMPLETE item (e.g. BLOCKED) writes a
+  // status but NO result/review-ready. `git add` of an absent pathspec errors and stages nothing, which — if its
+  // exit code were ignored — a later `diff --cached --quiet` would read as "no-changes" and FALSELY land nothing
+  // while reporting success, stranding the truthful status. So: stage only the paths that actually exist, and if
+  // the add still errors, FAIL CLOSED (never fall through to no-changes).
+  const present = artifactPathsFor(requestId).filter((p) => pathExists(p));
+  if (present.length === 0) return Object.freeze({ requestId, landed: false, attempts: 0, reason: "no-artifacts" });
+  if (runGit(["add", "--", ...present]).code !== 0) throw new Error(`landItemArtifacts: git add failed for ${requestId}`);
   const out = landStaged({ runGit, label: requestId, maxAttempts, message: message || `eos: intake execution result write-back for ${requestId} [skip ci]` });
   return Object.freeze({ requestId, landed: out.landed, attempts: out.attempts, ...(out.reason ? { reason: out.reason } : {}), ...(out.commit ? { commit: out.commit } : {}) });
 }
@@ -93,9 +104,13 @@ export function landItemArtifacts({ requestId, runGit, maxAttempts = 5, message 
  * Stages the whole work-intake artifact roots — still never anything outside them — and lands them. A no-op when
  * per-item landing already committed everything.
  */
-export function landAllArtifacts({ runGit, maxAttempts = 5 } = {}) {
+export function landAllArtifacts({ runGit, pathExists = existsSync, maxAttempts = 5 } = {}) {
   if (typeof runGit !== "function") throw new Error("landAllArtifacts: runGit is required");
-  runGit(["add", "--", ...ARTIFACT_ROOTS]);
+  // Same fail-closed staging: a root that doesn't exist is filtered out (not an add error masked as no-changes);
+  // a genuine add error still fails closed.
+  const present = ARTIFACT_ROOTS.filter((p) => pathExists(p));
+  if (present.length === 0) return Object.freeze({ label: "sweep", landed: false, attempts: 0, reason: "no-artifacts" });
+  if (runGit(["add", "--", ...present]).code !== 0) throw new Error("landAllArtifacts: git add failed");
   return landStaged({ runGit, label: "sweep", maxAttempts, message: "eos: intake status/result write-back sweep [skip ci]" });
 }
 
@@ -108,14 +123,14 @@ function main() {
   if (process.argv.includes("--sweep")) {
     const out = landAllArtifacts({ runGit });
     process.stdout.write(`${JSON.stringify(out)}\n`);
-    process.exit(out.landed || out.reason === "no-changes" ? 0 : 1);
+    process.exit(out.landed || out.reason === "no-changes" || out.reason === "no-artifacts" ? 0 : 1);
   }
   const i = process.argv.indexOf("--id");
   const requestId = i !== -1 ? process.argv[i + 1] : null;
   if (!requestId) { process.stderr.write("usage: intake-landing.mjs (--id <requestId> | --sweep)\n"); process.exit(2); }
   const out = landItemArtifacts({ requestId, runGit });
   process.stdout.write(`${JSON.stringify(out)}\n`);
-  process.exit(out.landed || out.reason === "no-changes" ? 0 : 1);
+  process.exit(out.landed || out.reason === "no-changes" || out.reason === "no-artifacts" ? 0 : 1);
 }
 
 import { fileURLToPath } from "node:url";
