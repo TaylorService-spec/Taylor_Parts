@@ -1,0 +1,47 @@
+{
+  "schema": "eos.intake.status/2",
+  "requestId": "EOS-ISSUE-835",
+  "pointer": "status://EOS-ISSUE-835",
+  "work": "work://EOS-ISSUE-835",
+  "result": "result://EOS-ISSUE-835",
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
+  "startedAt": null,
+  "updatedAt": "2026-08-13T01:48:24.028Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": 2.678686199999999,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": {
+      "used": 0,
+      "limit": 1
+    },
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "CLAUDE_CLI_MODELED"
+  },
+  "freshness": "CURRENT",
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/EOS-ISSUE-835.work.json",
+    "sha256": "5a273f300853823228b612d0f043df98768fe1bea62341f306db7f5dc19ddbbe"
+  },
+  "resultRef": {
+    "location": "docs/orchestration/work-intake/results/EOS-ISSUE-835/11a62d0511176d7b65e8c786bd6b89b8053b1922dbaa2774bfeb1c9a96e318d9.result.json",
+    "sha256": "11a62d0511176d7b65e8c786bd6b89b8053b1922dbaa2774bfeb1c9a96e318d9",
+    "pointer": "result://EOS-ISSUE-835"
+  },
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-835.status.json",
+  "sha256": "4d57152cf84c465a2cfbcb846147960e72ffbaeab91001b9de59a037b3da01b2"
+}

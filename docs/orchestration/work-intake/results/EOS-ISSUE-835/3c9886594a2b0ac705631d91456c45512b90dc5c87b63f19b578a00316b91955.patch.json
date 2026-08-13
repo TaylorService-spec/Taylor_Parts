@@ -1,0 +1,29 @@
+{
+  "schema": "eos.intake.patch/1",
+  "requestId": "EOS-ISSUE-835",
+  "sourceWorkSha256": "5a273f300853823228b612d0f043df98768fe1bea62341f306db7f5dc19ddbbe",
+  "baseCommit": "b703fe457ed2c7409e07d9efa02d0b3c4fc3f3b5",
+  "scope": [
+    "Repository being modified by this work item: TaylorService-spec/Taylor_Parts",
+    "Target future Cortex project binding: TaylorService-spec/project-keystone",
+    "Allowed future workstream: EOS Control Center only.",
+    "Preserve READ_ONLY_PILOT unchanged for existing callers.",
+    "PATCH_PRODUCER must be fail-closed and must NOT grant direct repository write, merge, deploy, integration, approval, routing, backlog, credential, Taylor product, Claude, or Agent Manager authority."
+  ],
+  "paths": [
+    "docs/orchestration/lib/cortexPatchProducer.test.mjs",
+    "docs/orchestration/lib/cortexProviderAdapter.mjs"
+  ],
+  "scopeValidation": "REJECTED",
+  "rejectedPaths": [
+    "docs/orchestration/lib/cortexPatchProducer.test.mjs",
+    "docs/orchestration/lib/cortexProviderAdapter.mjs"
+  ],
+  "patchLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-835/9c34f3c2d107ece027772514971f20f404e7543be7c82782d9e1ade4da4466d0.patch",
+  "patchSha256": "9c34f3c2d107ece027772514971f20f404e7543be7c82782d9e1ade4da4466d0",
+  "integrationState": "BLOCKED_SCOPE",
+  "createdAt": "2026-08-13T01:48:06Z",
+  "recovery": null,
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-835/3c9886594a2b0ac705631d91456c45512b90dc5c87b63f19b578a00316b91955.patch.json",
+  "sha256": "3c9886594a2b0ac705631d91456c45512b90dc5c87b63f19b578a00316b91955"
+}

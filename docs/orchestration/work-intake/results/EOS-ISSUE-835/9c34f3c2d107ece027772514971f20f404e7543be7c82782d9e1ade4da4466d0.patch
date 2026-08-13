@@ -1,0 +1,409 @@
+diff --git a/docs/orchestration/lib/cortexPatchProducer.test.mjs b/docs/orchestration/lib/cortexPatchProducer.test.mjs
+new file mode 100644
+index 0000000..498424d
+--- /dev/null
++++ b/docs/orchestration/lib/cortexPatchProducer.test.mjs
+@@ -0,0 +1,253 @@
++// Focused tests for the Cortex PATCH_PRODUCER mode (EOS-ISSUE-835).
++//
++// PATCH_PRODUCER is a second, tightly bounded Cortex mode: it may propose deterministic,
++// hash-bound source patches ONLY for the project-keystone Control Center workstream, under
++// approved Control Center paths, and only a matching Verifier PASS ever unlocks persistence of
++// the proposed artifact. It never applies a patch, never touches Taylor_Parts, and never gains
++// backlog/merge/deploy/routing/authorization capability. READ_ONLY_PILOT is unchanged.
++
++import test from "node:test";
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { createAgentRequest } from "./agentRequest.mjs";
++import { createAgentResult } from "./agentResult.mjs";
++import { createVerificationRequest, deriveVerdict } from "./verifierAgent.mjs";
++import {
++  runReadOnlyProviderPilot,
++  persistPilotResult,
++  runCortexPatchProducer,
++  persistPatchProducerResult,
++  CORTEX_PILOT_MODE,
++  CORTEX_PATCH_PRODUCER_MODE,
++  KEYSTONE_PROJECT,
++  KEYSTONE_REPO,
++  CONTROL_CENTER_PATH_PREFIX,
++} from "./cortexProviderAdapter.mjs";
++
++const sha256 = (text) => createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
++const clock = () => "2026-08-12T20:00:00Z";
++
++const verificationFor = (req, run, verdict = "PASS", findings = []) => {
++  const verificationRequest = createVerificationRequest({ requestId: `${req.requestId}-VERIFY`, workerRequest: req, workerResult: run.result });
++  const verifierResult = createAgentResult({ resultId: `${req.requestId}-VR`, requestId: verificationRequest.requestId, routedBackTo: req.requestedByWorkstream, verdict, findings });
++  return { verificationRequest, verifierResult };
++};
++
++// --- 1. READ_ONLY_PILOT remains byte/behavior compatible ------------------------------------------
++
++const roRequest = () => createAgentRequest({ requestId: "CX-001", requestedByWorkstream: "EOS_INTAKE", purpose: "Read authoritative orchestration contract", allowedSurfaces: ["docs/orchestration/agent-manager.md"], outputContract: "evidence-backed findings", mutating: false });
++const roBinding = { mode: CORTEX_PILOT_MODE, project: "Taylor_Parts", repo: "TaylorService-spec/Taylor_Parts", allowedSurfaces: ["docs/orchestration/agent-manager.md"], eligibleProviders: ["OPENAI"], eligibleModels: ["gpt-pilot"], maxCostUsd: 0.25 };
++const roEnvelope = { requestId: "CX-001", project: roBinding.project, repo: roBinding.repo, provider: "OPENAI", model: "gpt-pilot", budget: { maxCostUsd: 0.10 }, capacity: { available: true, maxConcurrent: 1 } };
++const roProviderRun = async () => ({ executionId: "exec-001", summary: "Contract confirmed.", findings: ["Agent Manager remains authoritative."], evidence: [{ path: "docs/orchestration/agent-manager.md" }], verdict: "PASS", metrics: { tokens: 42 }, mutated: false });
++
++test("1. READ_ONLY_PILOT remains byte/behavior compatible after adding PATCH_PRODUCER", async () => {
++  const run = await runReadOnlyProviderPilot({ request: roRequest(), binding: roBinding, envelope: roEnvelope, providerRun: roProviderRun, clock });
++  assert.equal(run.ok, true);
++  assert.equal(run.result.requestId, "CX-001");
++  assert.equal(run.receipt.providerExecutionId, "exec-001");
++  assert.match(run.durable.manifestLocation, /^docs\/orchestration\/work-intake\/results\/CX-001\/[a-f0-9]{64}\.result\.json$/);
++  const { verificationRequest, verifierResult } = verificationFor(roRequest(), run);
++  assert.equal(deriveVerdict(verifierResult), "PASS");
++  const files = new Map();
++  const persisted = persistPilotResult({ request: roRequest(), result: run.result, durable: run.durable, verificationRequest, verifierResult, store: { write: (path, bytes) => files.set(path, bytes) } });
++  assert.equal(files.size, 2);
++  assert.equal(persisted.sha256, run.durable.manifest.sha256);
++  const replay = await runReadOnlyProviderPilot({ request: roRequest(), binding: roBinding, envelope: roEnvelope, providerRun: roProviderRun, clock });
++  assert.equal(replay.durable.manifest.sha256, run.durable.manifest.sha256);
++});
++
++// --- PATCH_PRODUCER fixtures ------------------------------------------------------------------
++
++const patchPath = `${CONTROL_CENTER_PATH_PREFIX}adapter-notes.md`;
++const patchContent = "# Control Center Adapter Notes\n\nProposed by the Cortex PATCH_PRODUCER pilot.\n";
++const patchContentSha256 = sha256(patchContent);
++
++const patchRequest = (overrides = {}) => createAgentRequest({
++  requestId: "CX-PATCH-001",
++  requestedByWorkstream: "EOS_INTAKE",
++  purpose: "Propose a governed Control Center adapter-notes patch",
++  allowedSurfaces: [patchPath],
++  outputContract: "deterministic hash-bound patch entries plus evidence/receipt metadata",
++  mutating: true,
++  ...overrides,
++});
++const patchBinding = { mode: CORTEX_PATCH_PRODUCER_MODE, project: KEYSTONE_PROJECT, repo: KEYSTONE_REPO, allowedSurfaces: [patchPath], eligibleProviders: ["OPENAI"], eligibleModels: ["gpt-patch"], maxCostUsd: 0.5 };
++const patchEnvelope = (overrides = {}) => ({ requestId: "CX-PATCH-001", project: patchBinding.project, repo: patchBinding.repo, provider: "OPENAI", model: "gpt-patch", budget: { maxCostUsd: 0.2 }, capacity: { available: true, maxConcurrent: 1 }, ...overrides });
++const patchEntry = (overrides = {}) => ({ path: patchPath, changeType: "ADD", encoding: "utf8", content: patchContent, sha256: patchContentSha256, ...overrides });
++const patchProviderRun = (entryOverrides = {}) => async () => ({
++  executionId: "exec-patch-001",
++  summary: "Proposed the adapter-notes.md scaffold.",
++  findings: ["Adapter notes drafted for Control Center scaffolding."],
++  evidence: [{ path: patchPath }],
++  verdict: "PASS",
++  metrics: { tokens: 64 },
++  mutated: false,
++  patch: { entries: [patchEntry(entryOverrides)] },
++});
++
++// --- 2. Keystone Control Center scoped patch accepted after matching Verifier PASS ----------------
++
++test("2. Keystone Control Center scoped patch is accepted as a proposed artifact after matching Verifier PASS", async () => {
++  const run = await runCortexPatchProducer({ request: patchRequest(), binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  assert.equal(run.ok, true, run.reason);
++  assert.equal(run.result.patch.entries.length, 1);
++  assert.equal(run.result.patch.entries[0].path, patchPath);
++  assert.equal(run.result.patch.applied, false);
++  assert.equal(run.receipt.applied, false);
++  assert.match(run.durable.manifestLocation, /^docs\/orchestration\/work-intake\/results\/CX-PATCH-001\/[a-f0-9]{64}\.result\.json$/);
++
++  const { verificationRequest, verifierResult } = verificationFor(patchRequest(), run);
++  assert.equal(deriveVerdict(verifierResult), "PASS");
++  const files = new Map();
++  const persisted = persistPatchProducerResult({ request: patchRequest(), result: run.result, durable: run.durable, verificationRequest, verifierResult, store: { write: (path, bytes) => files.set(path, bytes) } });
++  assert.equal(files.size, 2);
++  assert.equal(persisted.sha256, run.durable.manifest.sha256);
++  assert.equal(persisted.patchApplied, false);
++  // The store only ever receives the two governed EOS result/patch artifact locations — never the
++  // proposed source path itself.
++  for (const path of files.keys()) {
++    assert.match(path, /^docs\/orchestration\/work-intake\/results\//);
++    assert.notEqual(path, patchPath);
++  }
++});
++
++// --- 3. Taylor_Parts target is rejected in PATCH_PRODUCER mode ------------------------------------
++
++test("3. Taylor_Parts target is rejected in PATCH_PRODUCER mode", async () => {
++  const taylorPartsBinding = { ...patchBinding, project: "Taylor_Parts", repo: "TaylorService-spec/Taylor_Parts" };
++  const out = await runCortexPatchProducer({ request: patchRequest(), binding: taylorPartsBinding, envelope: patchEnvelope({ project: taylorPartsBinding.project, repo: taylorPartsBinding.repo }), providerRun: patchProviderRun(), clock });
++  assert.equal(out.ok, false);
++  assert.match(out.reason, /project-keystone/);
++});
++
++// --- 4. non-Control-Center Keystone paths are rejected --------------------------------------------
++
++test("4. non-Control-Center Keystone paths are rejected", async () => {
++  const offPathBinding = { ...patchBinding, allowedSurfaces: ["docs/keystone-notes.md"] };
++  const req = patchRequest({ allowedSurfaces: ["docs/keystone-notes.md"] });
++  const out = await runCortexPatchProducer({ request: req, binding: offPathBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  assert.equal(out.ok, false);
++  assert.match(out.reason, /approved Control Center paths/);
++});
++
++// --- 5. out-of-scope patch paths fail closed -------------------------------------------------------
++
++test("5. out-of-scope patch paths fail closed", async () => {
++  const outOfScopeEntry = { path: `${CONTROL_CENTER_PATH_PREFIX}unrequested.md`, changeType: "ADD", encoding: "utf8", content: "x", sha256: sha256("x") };
++  const out = await runCortexPatchProducer({ request: patchRequest(), binding: patchBinding, envelope: patchEnvelope(), providerRun: async () => ({ ...(await patchProviderRun()()), patch: { entries: [outOfScopeEntry] } }), clock });
++  assert.equal(out.ok, false);
++  assert.match(out.reason, /undeclared file/);
++});
++
++// --- 6. malformed/tampered patch hash fails closed --------------------------------------------------
++
++test("6. malformed/tampered patch hash fails closed", async () => {
++  const out = await runCortexPatchProducer({ request: patchRequest(), binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun({ sha256: sha256("something else entirely") }), clock });
++  assert.equal(out.ok, false);
++  assert.match(out.reason, /hash does not match/);
++});
++
++test("6b. malformed/tampered patch hash fails closed (post-run tamper before persistence)", async () => {
++  const run = await runCortexPatchProducer({ request: patchRequest(), binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  assert.equal(run.ok, true);
++  const { verificationRequest, verifierResult } = verificationFor(patchRequest(), run);
++  const tamperedResult = { ...run.result, patch: { ...run.result.patch, entries: [{ ...run.result.patch.entries[0], content: "tampered content" }] } };
++  assert.throws(
++    () => persistPatchProducerResult({ request: patchRequest(), result: tamperedResult, durable: run.durable, verificationRequest, verifierResult, store: { write() {} } }),
++    /unsafe patch entry/,
++  );
++});
++
++// --- 7. missing or mismatched Verifier PASS prevents persistence -----------------------------------
++
++test("7a. persistence refuses missing verification", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  assert.throws(() => persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, store: { write() {} } }), /Verifier PASS/);
++});
++
++test("7b. persistence refuses RETURN_FOR_CORRECTION", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  const v = verificationFor(req, run, "FAIL", [{ category: "MISSED_CONSTRAINT", claim: "c", evidenceGap: "g", correctiveInstruction: "fix" }]);
++  assert.throws(() => persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, ...v, store: { write() {} } }), /Verifier PASS/);
++});
++
++test("7c. persistence refuses ESCALATE", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  const v = verificationFor(req, run, "NOT_APPLICABLE");
++  assert.throws(() => persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, ...v, store: { write() {} } }), /Verifier PASS/);
++});
++
++test("7d. persistence refuses PASS bound to a different result", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  const other = { ...run, result: createAgentResult({ ...run.result, resultId: "CX-PATCH-001:cortex-patch:other" }) };
++  const v = verificationFor(req, other);
++  assert.throws(() => persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, ...v, store: { write() {} } }), /not bound/);
++});
++
++// --- 8. provider result cannot directly write source, backlog, merge, deploy, route Claude, or
++//        change authorization ------------------------------------------------------------------
++
++test("8. patch binding carries no mutation, integration, or authority surface", () => {
++  assert.deepEqual(Object.keys(patchBinding).sort(), ["allowedSurfaces", "eligibleModels", "eligibleProviders", "maxCostUsd", "mode", "project", "repo"]);
++});
++
++test("8b. adapter module exposes no apply/merge/deploy/route/authorize function", async () => {
++  const mod = await import("./cortexProviderAdapter.mjs");
++  const suspicious = Object.keys(mod).filter((name) => /apply|merge|deploy|route|authorize/i.test(name));
++  assert.deepEqual(suspicious, []);
++});
++
++test("8c. persistence store only ever receives governed EOS result/patch artifact writes", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  const { verificationRequest, verifierResult } = verificationFor(req, run);
++  const writes = [];
++  persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, verificationRequest, verifierResult, store: { write: (path) => writes.push(path) } });
++  assert.equal(writes.length, 2);
++  assert.ok(writes.every((path) => path.startsWith("docs/orchestration/work-intake/results/")));
++});
++
++// --- 9. no patch auto-apply path exists --------------------------------------------------------
++
++test("9. no patch auto-apply path exists", async () => {
++  const req = patchRequest();
++  const run = await runCortexPatchProducer({ request: req, binding: patchBinding, envelope: patchEnvelope(), providerRun: patchProviderRun(), clock });
++  assert.equal(run.result.patch.applied, false);
++  assert.equal(run.receipt.applied, false);
++  const { verificationRequest, verifierResult } = verificationFor(req, run);
++  const persisted = persistPatchProducerResult({ request: req, result: run.result, durable: run.durable, verificationRequest, verifierResult, store: { write() {} } });
++  assert.equal(persisted.patchApplied, false);
++  assert.equal(typeof persisted.apply, "undefined");
++});
++
++// --- 10. provider unavailable leaves existing Claude/READ_ONLY_PILOT path unchanged ----------------
++
++test("10. PATCH_PRODUCER provider unavailable is isolated and does not affect READ_ONLY_PILOT", async () => {
++  const unavailable = await runCortexPatchProducer({ request: patchRequest(), binding: patchBinding, envelope: patchEnvelope(), clock });
++  assert.deepEqual([unavailable.ok, unavailable.kind], [false, "UNAVAILABLE"]);
++  // The existing READ_ONLY_PILOT/Claude path is entirely unaffected by the PATCH_PRODUCER provider
++  // being unavailable — same adapter module, independent function, independent binding.
++  const roRun = await runReadOnlyProviderPilot({ request: roRequest(), binding: roBinding, envelope: roEnvelope, providerRun: roProviderRun, clock });
++  assert.equal(roRun.ok, true);
++});
++
++// --- additional fail-closed table for PATCH_PRODUCER eligibility (mirrors READ_ONLY_PILOT table) ---
++
++for (const [name, mutate, expected] of [
++  ["wrong requestId", (b, e, r) => ({ b, e: { ...e, requestId: "CX-OTHER" }, r }), "requestId"],
++  ["missing provider eligibility", (b, e, r) => ({ b: { ...b, eligibleProviders: [] }, e, r }), "eligible"],
++  ["budget rejection", (b, e, r) => ({ b, e: { ...e, budget: { maxCostUsd: 10 } }, r }), "budget"],
++  ["capacity rejection", (b, e, r) => ({ b, e: { ...e, capacity: { available: false, maxConcurrent: 1 } }, r }), "capacity"],
++  ["not a mutating request", (b, e, r) => ({ b, e, r: patchRequest({ mutating: false }) }), "mutating"],
++]) {
++  test(`fails closed: ${name}`, async () => {
++    const x = mutate(patchBinding, patchEnvelope(), patchRequest());
++    const out = await runCortexPatchProducer({ request: x.r, binding: x.b, envelope: x.e, providerRun: patchProviderRun(), clock });
++    assert.equal(out.ok, false);
++    assert.match(out.reason, new RegExp(expected));
++  });
++}
+diff --git a/docs/orchestration/lib/cortexProviderAdapter.mjs b/docs/orchestration/lib/cortexProviderAdapter.mjs
+index 55652fa..40df036 100644
+--- a/docs/orchestration/lib/cortexProviderAdapter.mjs
++++ b/docs/orchestration/lib/cortexProviderAdapter.mjs
+@@ -1,4 +1,17 @@
+-// Provider-neutral EOS worker adapter — Cortex READ_ONLY_PILOT binding.
++// Provider-neutral EOS worker adapter — Cortex provider bindings.
++//
++// Two modes share this one adapter:
++//   - READ_ONLY_PILOT: unchanged (see runReadOnlyProviderPilot/persistPilotResult below).
++//   - PATCH_PRODUCER: a second, tightly bounded mode that may propose deterministic, hash-bound
++//     source patches ONLY for the company-level `TaylorService-spec/project-keystone` EOS Control
++//     Center workstream, and only under approved Control Center paths (CONTROL_CENTER_PATH_PREFIX).
++//     A proposed patch is never applied by this adapter — it is persisted as a governed EOS
++//     result/patch artifact, exactly like a READ_ONLY_PILOT result, only after an existing Verifier
++//     PASS bound to the exact request/result/patch identity. Integration (applying/merging a
++//     proposed patch into project-keystone) remains a separate governed step using the existing
++//     integration authority (agentManager.planIntegrationBacklog / DelegationCharter §8.3-§8.6) —
++//     this adapter has no apply/merge/deploy/route/authorize surface.
++//
+ // This is an execution adapter only: no queue, scheduling, approval, mutation, or integration authority.
+ 
+ import { createHash } from "node:crypto";
+@@ -8,9 +21,45 @@ import { buildContentAddressedResult, stableJson } from "./workIntake.mjs";
+ import { createVerificationRequest, deriveVerdict } from "./verifierAgent.mjs";
+ 
+ export const CORTEX_PILOT_MODE = "READ_ONLY_PILOT";
++export const CORTEX_PATCH_PRODUCER_MODE = "PATCH_PRODUCER";
++
++// The exact approved path boundary for the future project-keystone Control Center pilot: only
++// binding.project === KEYSTONE_PROJECT && binding.repo === KEYSTONE_REPO, and only request
++// allowedSurfaces that live under CONTROL_CENTER_PATH_PREFIX, are ever eligible for PATCH_PRODUCER.
++export const KEYSTONE_PROJECT = "project-keystone";
++export const KEYSTONE_REPO = "TaylorService-spec/project-keystone";
++export const CONTROL_CENTER_PATH_PREFIX = "control-center/";
++
+ const digest = (value) => createHash("sha256").update(Buffer.from(stableJson(value), "utf8")).digest("hex");
+ const subset = (items, allowed) => items.every((item) => allowed.includes(item));
+ 
++const PATCH_CHANGE_TYPES = Object.freeze(["ADD", "MODIFY", "DELETE"]);
++const ABSOLUTE_PATH = /^(?:[A-Za-z]:[\\/]|\/|\\\\)/;
++const CREDENTIAL_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|(?:api|secret)[_-]?key\s*[:=]|password\s*[:=]/i;
++
++// Fail-closed validation of one proposed patch entry. Never writes anything; a caller only ever
++// learns whether an entry is admissible. Every rejection reason is a distinct, matchable string so
++// tests can assert on the exact invariant that tripped.
++function validatePatchEntry(entry, allowedSurfaces) {
++  if (!entry || typeof entry !== "object") return "malformed patch entry";
++  const { path, changeType, encoding, content, sha256 } = entry;
++  if (typeof path !== "string" || !path) return "patch entry path is required";
++  if (ABSOLUTE_PATH.test(path)) return `patch entry path must be repo-relative, not absolute: ${path}`;
++  if (path.includes("\0") || path.split(/[\\/]/).includes("..")) return `patch entry path traverses outside its scope: ${path}`;
++  if (entry.symlink === true || typeof entry.linkTarget === "string") return `patch entry declares a symlink escape, which is not permitted: ${path}`;
++  if (!path.startsWith(CONTROL_CENTER_PATH_PREFIX)) return `patch entry path is outside the approved Control Center surface (${CONTROL_CENTER_PATH_PREFIX}): ${path}`;
++  if (!allowedSurfaces.includes(path)) return `patch entry proposes an undeclared file outside the request's allowed surfaces: ${path}`;
++  if (!PATCH_CHANGE_TYPES.includes(changeType)) return `patch entry changeType must be one of ${PATCH_CHANGE_TYPES.join("/")}: ${path}`;
++  if (changeType === "DELETE") return null;
++  if (encoding !== "utf8") return `patch entry content must be deterministic utf8 text, not a binary payload: ${path}`;
++  if (typeof content !== "string") return `patch entry content must be a string: ${path}`;
++  if (CREDENTIAL_PATTERN.test(content)) return `patch entry content appears to contain credential material: ${path}`;
++  if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) return `patch entry sha256 must be 64 lowercase hex characters: ${path}`;
++  const actualSha256 = createHash("sha256").update(Buffer.from(content, "utf8")).digest("hex");
++  if (actualSha256 !== sha256) return `patch entry hash does not match its content (tampered or malformed): ${path}`;
++  return null;
++}
++
+ export async function runReadOnlyProviderPilot({ request, binding, envelope, providerRun, clock }) {
+   const reject = (reason, kind = "REJECTED") => Object.freeze({ ok: false, kind, reason });
+   const requestErrors = validateAgentRequest(request || {});
+@@ -64,3 +113,80 @@ export function persistPilotResult({ request, result, durable, verificationReque
+   store.write(durable.manifestLocation, Buffer.from(`${JSON.stringify(durable.manifest, null, 2)}\n`, "utf8"));
+   return Object.freeze({ contentLocation: durable.contentLocation, manifestLocation: durable.manifestLocation, sha256: durable.manifest.sha256 });
+ }
++
++// PATCH_PRODUCER: same shape as runReadOnlyProviderPilot, but eligible only for the exact
++// project-keystone Control Center binding, and the provider may propose file changes only as
++// deterministic/hash-bound patch entries under CONTROL_CENTER_PATH_PREFIX. Nothing here applies a
++// patch — it only ever produces a proposed, hash-bound artifact for governed persistence below.
++export async function runCortexPatchProducer({ request, binding, envelope, providerRun, clock }) {
++  const reject = (reason, kind = "REJECTED") => Object.freeze({ ok: false, kind, reason });
++  const requestErrors = validateAgentRequest(request || {});
++  if (requestErrors.length) return reject(`invalid AgentRequest: ${requestErrors.join("; ")}`);
++  if (!request.mutating) return reject("PATCH_PRODUCER requires a request explicitly scoped as mutating (proposal-only)");
++  if (binding?.mode !== CORTEX_PATCH_PRODUCER_MODE) return reject("Cortex provider is not in PATCH_PRODUCER mode");
++  if (binding.project !== KEYSTONE_PROJECT || binding.repo !== KEYSTONE_REPO) return reject("PATCH_PRODUCER is eligible only for the project-keystone Control Center binding");
++  if (envelope?.requestId !== request.requestId) return reject("requestId binding mismatch");
++  if (envelope?.project !== binding.project || envelope?.repo !== binding.repo) return reject("project/repo binding mismatch");
++  if (!request.allowedSurfaces.length || !request.allowedSurfaces.every((surface) => surface.startsWith(CONTROL_CENTER_PATH_PREFIX))) return reject("request must be explicitly scoped to approved Control Center paths");
++  if (!subset(request.allowedSurfaces, binding.allowedSurfaces || [])) return reject("request contains a disallowed surface");
++  if (!binding.eligibleProviders?.includes(envelope?.provider) || !binding.eligibleModels?.includes(envelope?.model)) return reject("provider/model is not eligible");
++  if (!Number.isFinite(envelope?.budget?.maxCostUsd) || envelope.budget.maxCostUsd <= 0 || envelope.budget.maxCostUsd > binding.maxCostUsd) return reject("budget envelope rejected");
++  if (!Number.isInteger(envelope?.capacity?.maxConcurrent) || envelope.capacity.maxConcurrent < 1 || envelope.capacity.available !== true) return reject("capacity envelope rejected");
++  if (typeof providerRun !== "function") return reject("provider unavailable", "UNAVAILABLE");
++
++  let raw;
++  try { raw = await providerRun(Object.freeze({ request, project: envelope.project, repo: envelope.repo, provider: envelope.provider, model: envelope.model, allowedScope: Object.freeze([...request.allowedSurfaces]), budget: Object.freeze({ ...envelope.budget }), capacity: Object.freeze({ ...envelope.capacity }) })); }
++  catch (error) { return reject(`provider unavailable: ${error?.message || "unknown"}`, "UNAVAILABLE"); }
++  if (!raw || typeof raw.executionId !== "string" || !raw.executionId || typeof raw.summary !== "string" || !Array.isArray(raw.findings) || !Array.isArray(raw.evidence) || raw.mutated === true) return reject("malformed or mutation-bearing provider result");
++  const evidencePaths = raw.evidence.map((item) => typeof item === "string" ? item : item?.path).filter(Boolean);
++  if (evidencePaths.length !== raw.evidence.length || !subset(evidencePaths, request.allowedSurfaces)) return reject("provider evidence contains a disallowed surface");
++  if (!raw.patch || !Array.isArray(raw.patch.entries) || raw.patch.entries.length === 0) return reject("PATCH_PRODUCER result must propose at least one deterministic, hash-bound patch entry");
++  for (const entry of raw.patch.entries) {
++    const entryError = validatePatchEntry(entry, request.allowedSurfaces);
++    if (entryError) return reject(entryError);
++  }
++
++  const completedAt = clock();
++  const patchEntries = raw.patch.entries.map((entry) => Object.freeze({ ...entry }));
++  const patchSha256 = digest(patchEntries);
++  const resultId = `${request.requestId}:cortex-patch:${digest(raw).slice(0, 16)}`;
++  const evidencePointer = `result://${request.requestId}`;
++  const receiptBase = { requestId: request.requestId, project: envelope.project, repo: envelope.repo, provider: envelope.provider, model: envelope.model, mode: CORTEX_PATCH_PRODUCER_MODE, allowedScope: [...request.allowedSurfaces], budget: { ...envelope.budget }, capacity: { ...envelope.capacity }, providerExecutionId: raw.executionId, completedAt, evidencePointer, patchSha256, applied: false };
++  const receipt = Object.freeze({ ...receiptBase, sha256: digest(receiptBase) });
++  const patchEvidence = patchEntries.map((entry) => ({ path: entry.path, changeType: entry.changeType, sha256: entry.sha256 || null }));
++  const result = createAgentResult({ resultId, requestId: request.requestId, routedBackTo: request.requestedByWorkstream, status: "COMPLETE", verdict: raw.verdict || "NOT_APPLICABLE", findings: raw.findings, evidence: [...raw.evidence, ...patchEvidence, { pointer: evidencePointer, receiptSha256: receipt.sha256 }], metrics: raw.metrics || {}, provider: envelope.provider, model: envelope.model, executionReceipt: receipt, patch: Object.freeze({ entries: patchEntries, sha256: patchSha256, applied: false }) });
++  const resultErrors = validateAgentResult(result);
++  if (resultErrors.length) return reject(`malformed AgentResult: ${resultErrors.join("; ")}`);
++  const source = { requestId: request.requestId, sha256: digest(request), relatedRefs: { issues: [], pullRequests: [] } };
++  const durable = buildContentAddressedResult({ request: source, outputBytes: stableJson(result), summary: raw.summary, createdAt: completedAt, artifactRefs: [{ executionReceiptSha256: receipt.sha256 }, { patchSha256 }] });
++  return Object.freeze({ ok: true, result, receipt, durable });
++}
++
++// Reuses the SAME governed work-intake result locations and the SAME Verifier-PASS-before-
++// persistence gate as persistPilotResult. The only additional check is a defense-in-depth re-
++// validation of every patch entry (path safety, hash binding, no credential/binary content) right
++// before persistence. The injected store never receives a patch entry's own path — only the two
++// content-addressed EOS result/patch artifacts — so no patch is ever applied, and no source,
++// backlog, merge, deploy, Claude-routing, or authorization surface is reachable from here.
++export function persistPatchProducerResult({ request, result, durable, verificationRequest, verifierResult, store }) {
++  const requestErrors = validateAgentRequest(request || {});
++  const resultErrors = validateAgentResult(result || {});
++  const verificationErrors = validateAgentRequest(verificationRequest || {});
++  const verifierErrors = validateAgentResult(verifierResult || {});
++  if (requestErrors.length || resultErrors.length || verificationErrors.length || verifierErrors.length) throw new Error("matching valid Verifier PASS is required before persistence");
++  if (!result.patch || !Array.isArray(result.patch.entries) || result.patch.entries.length === 0) throw new Error("PATCH_PRODUCER persistence requires a proposed patch with at least one entry");
++  for (const entry of result.patch.entries) {
++    const entryError = validatePatchEntry(entry, request.allowedSurfaces);
++    if (entryError) throw new Error(`refusing to persist an unsafe patch entry: ${entryError}`);
++  }
++  if (result.requestId !== request.requestId || verifierResult.requestId !== verificationRequest.requestId) throw new Error("verification identity mismatch");
++  const expectedVerification = createVerificationRequest({ requestId: verificationRequest.requestId, workerRequest: request, workerResult: result, priority: verificationRequest.priority, correctionCount: verificationRequest.correctionCount || 0, retryAllowance: verificationRequest.retryAllowance, modelTier: verificationRequest.modelTier });
++  if (verificationRequest.purpose !== expectedVerification.purpose || stableJson(verificationRequest.allowedSurfaces) !== stableJson(expectedVerification.allowedSurfaces) || stableJson(verificationRequest.scope) !== stableJson(expectedVerification.scope)) throw new Error("verification is not bound to this request/result/patch identity");
++  if (deriveVerdict(verifierResult) !== "PASS") throw new Error("Verifier PASS is required before persistence");
++  if (durable?.manifest?.requestId !== result.requestId || durable?.content?.toString("utf8") !== stableJson(result)) throw new Error("durable result identity mismatch");
++  if (!durable?.contentLocation?.startsWith("docs/orchestration/work-intake/results/") || !durable?.manifestLocation?.startsWith("docs/orchestration/work-intake/results/")) throw new Error("invalid durable EOS result paths");
++  if (typeof store?.write !== "function") throw new Error("durable result store is unavailable");
++  store.write(durable.contentLocation, durable.content);
++  store.write(durable.manifestLocation, Buffer.from(`${JSON.stringify(durable.manifest, null, 2)}\n`, "utf8"));
++  return Object.freeze({ contentLocation: durable.contentLocation, manifestLocation: durable.manifestLocation, sha256: durable.manifest.sha256, patchApplied: false });
++}

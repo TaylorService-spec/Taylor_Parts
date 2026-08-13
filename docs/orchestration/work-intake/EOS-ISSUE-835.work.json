@@ -1,0 +1,40 @@
+{
+  "requestId": "EOS-ISSUE-835",
+  "title": "EOS — enable Cortex Keystone patch-producer mode",
+  "intent": "Promote the existing Cortex provider adapter from READ_ONLY_PILOT to a second, tightly bounded PATCH_PRODUCER mode that can produce governed source patches only for the company-level `TaylorService-spec/project-keystone` EOS Control Center workstream. This is enabling infrastructure only; do not build the Control Center in this issue.\n\nRequired work:\nAdd a distinct Cortex PATCH_PRODUCER mode with the smallest possible contract extension.\n\nRequired invariants:\n- provider execution remains behind the existing Cortex adapter and existing AgentRequest/AgentResult contracts;\n- PATCH_PRODUCER is eligible only when binding.project/repo exactly match `project-keystone` and the request is explicitly scoped to approved Control Center paths;\n- provider may return proposed file changes only as deterministic/hash-bound patch content plus evidence/receipt metadata;\n- proposed paths must be a subset of the request's explicit allowed surfaces;\n- no absolute paths, path traversal, symlink escape, binary payload, credential material, or undeclared file may be admitted;\n- no patch is applied automatically;\n- existing Verifier PASS is required before durable persistence, bound to the exact request/result/patch identity;\n- durable persistence may write only governed EOS result/patch artifacts, never target source files;\n- integration remains a separate governed step using the existing integration authority;\n- READ_ONLY_PILOT behavior and Claude/EOS routing remain unchanged;\n- provider absence/failure remains isolated and cannot affect Claude.\n\nAdd focused tests proving:\n1. READ_ONLY_PILOT remains byte/behavior compatible;\n2. Keystone Control Center scoped patch is accepted as a proposed artifact after matching Verifier PASS;\n3. Taylor_Parts target is rejected in PATCH_PRODUCER mode;\n4. non-Control-Center Keystone paths are rejected;\n5. out-of-scope patch paths fail closed;\n6. malformed/tampered patch hash fails closed;\n7. missing or mismatched Verifier PASS prevents persistence;\n8. provider result cannot directly write source, backlog, merge, deploy, route Claude, or change authorization;\n9. no patch auto-apply path exists;\n10. provider unavailable leaves existing Claude path unchanged.\n\nAlso document the intended next pilot lifecycle:\n`AgentRequest → Cortex PATCH_PRODUCER → proposed hash-bound patch/result → existing Verifier PASS → durable EOS artifact → separate governed integration review`.\n\nCompletion:\nComplete when the PATCH_PRODUCER mode and tests are implemented in a draft PR, all focused EOS/Cortex tests pass, and the result states the exact approved path boundary for the future project-keystone Control Center pilot. Do not merge automatically. Do not activate a live OpenAI Cortex provider, spend API budget, build the Control Center, touch project-keystone, or broaden provider authority in this issue.",
+  "scope": [
+    "Repository being modified by this work item: TaylorService-spec/Taylor_Parts",
+    "Target future Cortex project binding: TaylorService-spec/project-keystone",
+    "Allowed future workstream: EOS Control Center only.",
+    "Preserve READ_ONLY_PILOT unchanged for existing callers.",
+    "PATCH_PRODUCER must be fail-closed and must NOT grant direct repository write, merge, deploy, integration, approval, routing, backlog, credential, Taylor product, Claude, or Agent Manager authority."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/835",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T01:48:06Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-835.work.json",
+  "sha256": "5a273f300853823228b612d0f043df98768fe1bea62341f306db7f5dc19ddbbe",
+  "createdAt": "2026-08-13T01:48:06Z",
+  "updatedAt": "2026-08-13T01:48:06Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/835"
+    ],
+    "pullRequests": []
+  }
+}
