@@ -32,18 +32,33 @@ under one lease) is untouched, and the only runtime edit surfaces a `throttled` 
 flow is unchanged. Full orchestration suite stays green (the only failures are the pre-existing
 credential-environment tests, unrelated). `Register ≠ grant · Export ≠ deploy · Merge ≠ live.`
 
-## Follow-on (the concurrent-write RUNNER that consumes these — separate, gated)
+## The concurrent-write RUNNER that consumes these (built, pure — activation still gated)
 
-The manager is now smart enough to *plan* concurrent sectors and *adapt* to throttling. Actually *running*
-multiple writers in parallel is the next step and is deliberately NOT in this change, because it touches the
-Owner-gated execution workflow and needs live verification:
+The manager can *plan* concurrent sectors and *adapt* to throttling; the runner is what *drains* them. It is
+built as pure, injected, tested orchestration — the same discipline as `runIntakeExecution`/`executeWake` — so
+the logic is verifiable in CI while the real spawn is a wiring step, not a rewrite. It does **not** run on its
+own and does **not** merge anything; the existing single-worker EOS flow is untouched.
 
-1. **Per-request atomic claim** — generalize `wakeLease` from the one dir-global lock to `lock/<requestId>` so
-   concurrent workers can't grab the same item.
-2. **Concurrent runner** — drain `planConcurrentWriteSectors(approvedItems)` wave by wave, running up to
-   `adaptConcurrency(...)` workers per wave in **isolated worktrees**, each rebasing on latest `main` and
-   re-validating its finding before it writes (the serial-model freshness guard, applied per wave).
-3. **Attempt persistence** — record `attempts`/`lastAttemptAt` in the status so `decideRetry` is enforced live.
-4. **Adaptive governor** — feed `adaptConcurrency`'s output into the readiness governor instead of the constant.
+1. **Per-request atomic claim** — `makeRequestClaim(requestId, {lockRoot, fs, ...})` in `wakeLease.mjs`. Reuses
+   the proven atomic-mkdir lease verbatim, keyed by `lock/<requestId>`: two workers targeting the same item
+   collide and exactly one wins; different requests take different dirs and run concurrently. This is the safety
+   primitive that had to land first. *(tested — `wakeLease.test.mjs`)*
+2. **Concurrent runner** — `runConcurrentWrites(...)` in `concurrentWriteRunner.mjs`. Drains
+   `planConcurrentWriteSectors(items)` **wave by wave** (waves serialized; disjoint items within a wave run in
+   batches of the current adaptive concurrency), each item going claim → **revalidate** (rebase on latest `main`
+   + re-check the finding, injected) → write → release. `adaptConcurrency` reads `detectThrottle` across each
+   batch and self-tunes the fire rate. The worker (real Claude spawn in an isolated worktree), the claim, and
+   the revalidate step are all **injected** — fakes in tests, the real spawn in production. A failed worker
+   becomes a recorded outcome so a wave keeps draining. *(tested — `concurrentWriteRunner.test.mjs`, incl. the
+   `#826/#827` shared-`auditEventWriter.ts` case landing in different waves)*
 
-Order matters: the per-request claim (1) is the safety primitive that must land before real parallel writes.
+Remaining to make it *live* (touches the Owner-gated execution workflow — needs live verification, not in this
+repo-only change):
+
+3. **Attempt persistence** — record `attempts`/`lastAttemptAt` in the status so `decideRetry` is enforced across
+   wakes (stops a permanently-failing item re-spawning paid workers).
+4. **Adaptive governor** — feed `adaptConcurrency`'s output into the readiness governor instead of the constant
+   `remoteAiMax:1`, and wire `runConcurrentWrites` behind the same `EOS_RUNTIME_ENABLED` gate as the single-
+   worker path, with the real worktree-isolated spawn as `runWorker`.
+
+Order still matters: the claim (1) is the safety primitive, and it is in place before (2) can write in parallel.

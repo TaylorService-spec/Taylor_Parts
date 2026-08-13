@@ -49,3 +49,19 @@ export function makeLease({ dir, fs, host = "local", pid = 0, now = () => 0, lea
     },
   };
 }
+
+// Per-request atomic claim — the safety primitive for concurrent writes. Where makeLease({dir}) gives ONE
+// dir-global lock (correct for the single-worker runtime), makeRequestClaim keys the SAME proven atomic-mkdir
+// lease by requestId: two workers targeting the same item collide on `lock/<requestId>` and exactly one wins,
+// while workers on DIFFERENT requests take DIFFERENT dirs and run concurrently. This is what lets the
+// concurrent-write runner drain disjoint sectors in parallel without two writers ever grabbing the same work.
+// Reuses makeLease verbatim (same reclaim/heartbeat/stale semantics) — only the lock path is per-request.
+export function makeRequestClaim(requestId, { lockRoot, fs, host = "local", pid = 0, now = () => 0, leaseMs = 900000, isPidAlive = null } = {}) {
+  // requestId becomes a path segment; constrain it to a safe slug so it can't escape lockRoot or collide by
+  // normalization. A bad id fails closed (throws) rather than silently sharing a lock with another request.
+  if (typeof requestId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$/.test(requestId)) {
+    throw new Error("makeRequestClaim: requestId must be a 3-80 char slug of [A-Za-z0-9._-]");
+  }
+  if (!lockRoot || !fs) throw new Error("makeRequestClaim: lockRoot and fs are required");
+  return makeLease({ dir: `${lockRoot}/${requestId}`, fs, host, pid, now, leaseMs, isPidAlive });
+}

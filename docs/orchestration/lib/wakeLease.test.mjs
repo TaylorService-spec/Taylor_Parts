@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeLease } from "./wakeLease.mjs";
+import { makeLease, makeRequestClaim } from "./wakeLease.mjs";
 
 // In-memory fs double.
 function memFs() {
@@ -63,4 +63,37 @@ test("never steals from a live holder, even after the lease lapses", () => {
   const fs = memFs();
   makeLease({ dir: "/lock", fs, host: "local", pid: 9, now: () => 0, leaseMs: 100 }).acquire();
   assert.equal(makeLease({ dir: "/lock", fs, host: "local", pid: 5, now: () => 400, isPidAlive: () => true }).acquire().acquired, false, "expired but alive → hold");
+});
+
+// --- makeRequestClaim: per-request atomic claim (concurrent-write safety primitive) ---
+
+test("makeRequestClaim: two workers on the SAME request collide — exactly one wins", () => {
+  const fs = memFs();
+  const opts = { lockRoot: "/claims", fs, host: "h", now: () => 0 };
+  const a = makeRequestClaim("EOS-ISSUE-826", { ...opts, pid: 1 });
+  const b = makeRequestClaim("EOS-ISSUE-826", { ...opts, pid: 2 });
+  assert.equal(a.acquire().acquired, true, "first worker claims the item");
+  assert.equal(b.acquire().acquired, false, "second worker on the same request is refused");
+});
+
+test("makeRequestClaim: workers on DIFFERENT requests run concurrently", () => {
+  const fs = memFs();
+  const opts = { lockRoot: "/claims", fs, host: "h", now: () => 0 };
+  assert.equal(makeRequestClaim("EOS-ISSUE-826", { ...opts, pid: 1 }).acquire().acquired, true);
+  assert.equal(makeRequestClaim("EOS-ISSUE-827", { ...opts, pid: 2 }).acquire().acquired, true, "disjoint requests → both claim");
+});
+
+test("makeRequestClaim: release frees the per-request claim for a retry", () => {
+  const fs = memFs();
+  const opts = { lockRoot: "/claims", fs, host: "h", now: () => 0 };
+  const a = makeRequestClaim("EOS-ISSUE-840", { ...opts, pid: 1 });
+  a.acquire(); a.release();
+  assert.equal(makeRequestClaim("EOS-ISSUE-840", { ...opts, pid: 2 }).acquire().acquired, true, "reclaimable after release");
+});
+
+test("makeRequestClaim: a bad requestId fails closed (never shares a lock by normalization)", () => {
+  const fs = memFs();
+  for (const bad of ["", "ab", "../escape", "has space", "semi;colon", null]) {
+    assert.throws(() => makeRequestClaim(bad, { lockRoot: "/claims", fs }), /requestId/, `rejected: ${JSON.stringify(bad)}`);
+  }
 });
