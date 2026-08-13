@@ -535,7 +535,8 @@
       {
         "discriminator": "C1-create-callables-no-idempotency",
         "worker": "codex",
-        "status": "IN_PROGRESS",
+        "status": "FIXED",
+        "pr": 893,
         "files": [
           "functions/src/opportunity/opportunityCallables.ts",
           "functions/src/salesOrder/salesOrderCallables.ts"
@@ -544,7 +545,8 @@
       {
         "discriminator": "C2-updateworkorderexecutiondata-no-status-guard",
         "worker": "codex",
-        "status": "IN_PROGRESS",
+        "status": "FIXED",
+        "pr": 894,
         "files": [
           "functions/src/updateWorkOrderExecutionData.ts"
         ]
@@ -552,7 +554,8 @@
       {
         "discriminator": "C3-schedule-no-double-booking-check",
         "worker": "codex",
-        "status": "IN_PROGRESS",
+        "status": "FIXED",
+        "pr": 895,
         "files": [
           "functions/src/transitionWorkOrder.ts",
           "functions/src/workOrderAvailability.ts"
@@ -561,7 +564,8 @@
       {
         "discriminator": "C4-warehouseservice-negative-stock-and-missing-tests",
         "worker": "codex",
-        "status": "IN_PROGRESS",
+        "status": "FIXED",
+        "pr": 896,
         "files": [
           "functions/src/warehouseService.ts",
           "functions/src/procurementService.ts",
