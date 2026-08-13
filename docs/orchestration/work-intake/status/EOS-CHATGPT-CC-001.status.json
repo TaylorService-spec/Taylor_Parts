@@ -1,5 +1,5 @@
 {
-  "schema": "eos.intake.status/1",
+  "schema": "eos.intake.status/2",
   "requestId": "EOS-CHATGPT-CC-001",
   "pointer": "status://EOS-CHATGPT-CC-001",
   "work": "work://EOS-CHATGPT-CC-001",
@@ -11,7 +11,20 @@
   "updatedAt": "2026-08-11T05:32:00Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "costToDateUsd": 0,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": null,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": "UNKNOWN",
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "UNAVAILABLE"
+  },
+  "freshness": "UNKNOWN",
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-CHATGPT-CC-001.work.json",
     "sha256": "a162741b6be2b273f06c3751789281dbe8271295bca52ccd07f5c43fd2a0ad2c"
@@ -24,5 +37,5 @@
     "sourceCommit": null
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-CHATGPT-CC-001.status.json",
-  "sha256": "19ce64cb024e9a2927d6fda2b55f051143754c4f340d420557db544be379d205"
+  "sha256": "630982c86d7c11d6f081180548d441942c70bec97223a8c3a938b3f80a0187be"
 }

@@ -1,0 +1,36 @@
+{
+  "resultId": "EOS-ISSUE-838:8a312ea201cfda43",
+  "requestId": "EOS-ISSUE-838",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "3aaadcd9ca979101ec949f1ea1d947f3a876dd24ae7bd4628948b407c36ee308",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "EOS intake worker completed",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-838/8a312ea201cfda4311f26ce5912d229b61a70f0db23e4bed1225076e8ff681e0.content.md",
+  "contentSha256": "8a312ea201cfda4311f26ce5912d229b61a70f0db23e4bed1225076e8ff681e0",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-838/8a312ea201cfda4311f26ce5912d229b61a70f0db23e4bed1225076e8ff681e0.content.md",
+      "sha256": "8a312ea201cfda4311f26ce5912d229b61a70f0db23e4bed1225076e8ff681e0"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/838"
+    ],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-13T08:08:25.819Z",
+  "pointer": "result://EOS-ISSUE-838",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-838/e99877b4f588d663ee9ecd311021db69eafd7b9c299e9893ec80f7feb652f2c0.result.json",
+  "sha256": "e99877b4f588d663ee9ecd311021db69eafd7b9c299e9893ec80f7feb652f2c0"
+}

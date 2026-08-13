@@ -4,15 +4,15 @@
   "pointer": "status://EOS-ISSUE-837",
   "work": "work://EOS-ISSUE-837",
   "result": "result://EOS-ISSUE-837",
-  "state": "FAILED",
-  "currentWork": "exit 1 — stdout: …| tail -20\\necho \\\"---git diff stat---\\\"\\ncd ../../.. && git diff --stat\"}},{\"tool_name\":\"Bash\",\"tool_use_id\":\"<token>\",\"tool_input\":{\"command\":\"git -C <path> status --porcelain\"}}],\"terminal_reason\":\"max_turns\",\"fast_mode_state\":\"off\",\"<token>\":\"sdk_opt_in_required\",\"subtype\":\"error_max_turns\",\"errors\":[\"Reached maximum number of turns (40)\"],\"type\":\"result\",\"duration_ms\":296663,\"uuid\":\"<token>\"}",
-  "activeWorker": null,
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
   "startedAt": null,
-  "updatedAt": "2026-08-13T02:17:01.958Z",
+  "updatedAt": "2026-08-13T08:05:23.798Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
-  "estimatedExecutionCostUsd": null,
+  "estimatedExecutionCostUsd": 0.9442074,
   "providerCapacityUsage": {
     "shortWindow": "UNKNOWN",
     "weekly": "UNKNOWN",
@@ -25,19 +25,23 @@
   "budgetStopReason": null,
   "costProvenance": {
     "actual": "UNAVAILABLE",
-    "estimated": "UNAVAILABLE"
+    "estimated": "CLAUDE_CLI_MODELED"
   },
-  "freshness": "UNKNOWN",
+  "freshness": "CURRENT",
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-ISSUE-837.work.json",
     "sha256": "5dd1f18763d57f19c88be82ae9854eed590d52364fd1874c626e14ed2fd5cb1c"
   },
-  "resultRef": null,
+  "resultRef": {
+    "location": "docs/orchestration/work-intake/results/EOS-ISSUE-837/39b6c2125545381fa7d3a049f3c030cd962e1142586b92115790877df659adc6.result.json",
+    "sha256": "39b6c2125545381fa7d3a049f3c030cd962e1142586b92115790877df659adc6",
+    "pointer": "result://EOS-ISSUE-837"
+  },
   "artifactRefs": [],
   "provenance": {
     "producer": "GitHub Issue intake workflow",
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-837.status.json",
-  "sha256": "7b376175fd4252049d427435efcfa90492db5e683a9fc104867e6d7f9f7b910a"
+  "sha256": "bdbcd13622dfc7a8ba5380fc399ba89361d06b1f0da01debbc4aa820f02d8a79"
 }

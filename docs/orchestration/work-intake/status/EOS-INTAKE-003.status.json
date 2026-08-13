@@ -1,5 +1,5 @@
 {
-  "schema": "eos.intake.status/1",
+  "schema": "eos.intake.status/2",
   "requestId": "EOS-INTAKE-003",
   "pointer": "status://EOS-INTAKE-003",
   "work": "work://EOS-INTAKE-003",
@@ -11,7 +11,20 @@
   "updatedAt": "2026-08-11T06:15:00.000Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "costToDateUsd": 0,
+  "actualProviderCostUsd": "UNKNOWN",
+  "estimatedExecutionCostUsd": null,
+  "providerCapacityUsage": {
+    "shortWindow": "UNKNOWN",
+    "weekly": "UNKNOWN",
+    "concurrency": "UNKNOWN",
+    "ownerReserve": "UNKNOWN"
+  },
+  "budgetStopReason": null,
+  "costProvenance": {
+    "actual": "UNAVAILABLE",
+    "estimated": "UNAVAILABLE"
+  },
+  "freshness": "UNKNOWN",
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-INTAKE-003.work.json",
     "sha256": "86e76a4f8a24ce4ae2bc288b95844d1d6e2d46a3cc3abf99db97ca94988d4a2e"
@@ -24,5 +37,5 @@
     "sourceCommit": null
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-INTAKE-003.status.json",
-  "sha256": "1057ba67cc1705ca6c7fbdfd0aee566fc8a297945f331e785cec32aacfffbf1a"
+  "sha256": "0724a6ba1cee12de7833ff7f727085015c23d4485deb2248f3529fb8e35dc3fe"
 }
