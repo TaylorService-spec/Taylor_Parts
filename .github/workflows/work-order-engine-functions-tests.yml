@@ -22,6 +22,7 @@ on:
       - "functions/src/constants/collections.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
+      - "functions/test/inventoryService.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -41,6 +42,7 @@ on:
       - "functions/src/constants/collections.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
+      - "functions/test/inventoryService.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -83,6 +85,10 @@ jobs:
 
       - name: Work Order Engine Functions tests (build + run)
         run: npm run build && node --test test/workOrderEngineFunctions.test.js
+        working-directory: functions
+
+      - name: Inventory ledger (inventoryService.ts) behavioral tests (build + run)
+        run: npm run build && node --test test/inventoryService.test.mjs
         working-directory: functions
 
       - name: Upload emulator debug logs
