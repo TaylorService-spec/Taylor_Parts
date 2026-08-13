@@ -236,3 +236,56 @@ test("decideIntakeDispatch: no status / non-terminal / FAILED / changed sha => D
   // COMPLETE but missing resultRef (incomplete record) => don't trust it, re-dispatch
   assert.equal(decideIntakeDispatch({ requestId: "EOS-ISSUE-9", workSha256: "a".repeat(64), committedStatus: { state: "COMPLETE", workArtifact: { sha256: "a".repeat(64) } } }).decision, "DISPATCH");
 });
+
+// ── Smarter-manager: concurrent write sectors, throttle-read, adaptive concurrency, bounded retry ─────────
+import { planConcurrentWriteSectors, detectThrottle, adaptConcurrency, decideRetry } from "./agentManager.mjs";
+
+test("planConcurrentWriteSectors: disjoint file-sets run in ONE wave; overlapping sectors serialize", () => {
+  const items = [
+    { requestId: "A", paths: ["a.js"] },
+    { requestId: "B", paths: ["b.js"] },
+    { requestId: "C", paths: ["a.js", "c.js"] }, // overlaps A on a.js → later wave
+    { requestId: "D", paths: ["d.js"] },
+  ];
+  const waves = planConcurrentWriteSectors(items);
+  // wave 0 = max concurrently-writable disjoint sectors: A, B, D  (C conflicts with A)
+  assert.deepEqual(waves[0].map((i) => i.requestId), ["A", "B", "D"]);
+  assert.deepEqual(waves[1].map((i) => i.requestId), ["C"]);
+  // the #826/#827 case: two "different" fixes sharing a registry file must NOT be in the same wave
+  const shared = planConcurrentWriteSectors([
+    { requestId: "updateWO", paths: ["createWorkOrder skip", "access.ts", "auditEventWriter.ts"] },
+    { requestId: "createWO", paths: ["createWorkOrder.ts", "access.ts", "auditEventWriter.ts"] },
+  ]);
+  assert.equal(shared.length, 2, "shared registry file forces serialization — no fratricide");
+});
+
+test("planConcurrentWriteSectors: an item with NO declared paths is fail-safe (own wave, never shares)", () => {
+  const waves = planConcurrentWriteSectors([{ requestId: "X", paths: [] }, { requestId: "Y", paths: ["y.js"] }]);
+  assert.equal(waves.length, 2, "unknown scope cannot be proven disjoint → serialized alone");
+  assert.deepEqual(waves[0].map((i) => i.requestId), ["X"]);
+});
+
+test("detectThrottle reads 429 / rate-limit / overloaded / retry-after from an outcome", () => {
+  assert.equal(detectThrottle({ diagnostic: "HTTP 429 rate_limited" }).throttled, true);
+  assert.equal(detectThrottle({ failureDetail: "overloaded, retry-after: 30" }).retryAfterSec, 30);
+  assert.equal(detectThrottle({ statusCode: 429 }).throttled, true);
+  assert.equal(detectThrottle({ throttled: true }).throttled, true);
+  assert.equal(detectThrottle({ diagnostic: "nonzero exit — file not found" }).throttled, false);
+  assert.equal(detectThrottle({}).throttled, false);
+});
+
+test("adaptConcurrency: AIMD — halve on throttle, grow after a clear streak, bounded", () => {
+  assert.equal(adaptConcurrency({ current: 4, throttle: true }).concurrency, 2, "multiplicative back-off");
+  assert.equal(adaptConcurrency({ current: 1, throttle: true, min: 1 }).concurrency, 1, "floored at min");
+  assert.equal(adaptConcurrency({ current: 2, clearStreak: 3, max: 4 }).concurrency, 3, "additive grow after streak");
+  assert.equal(adaptConcurrency({ current: 4, clearStreak: 5, max: 4 }).concurrency, 4, "capped at max");
+  assert.equal(adaptConcurrency({ current: 2, clearStreak: 1 }).concurrency, 2, "hold before the streak");
+});
+
+test("decideRetry: bounded attempts then ESCALATE_OWNER; backoff between retries; non-failed PROCEEDs", () => {
+  assert.equal(decideRetry({ state: "COMPLETE" }).decision, "PROCEED");
+  assert.equal(decideRetry({ state: "FAILED", attempts: 0, sinceLastAttemptSec: 10000 }).decision, "RETRY");
+  assert.equal(decideRetry({ state: "BLOCKED_EXECUTION", attempts: 1, sinceLastAttemptSec: 10 }).decision, "HOLD_BACKOFF");
+  assert.equal(decideRetry({ state: "FAILED", attempts: 3, maxAttempts: 3 }).decision, "ESCALATE_OWNER");
+  assert.equal(decideRetry({ state: "CORRECTING", attempts: 5, maxAttempts: 3 }).decision, "ESCALATE_OWNER");
+});

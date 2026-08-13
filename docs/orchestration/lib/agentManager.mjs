@@ -57,6 +57,87 @@ export function decideIntakeDispatch({ requestId, workSha256, committedStatus = 
   return { decision: "DISPATCH", requestId };
 }
 
+// ── Smarter-manager capabilities (additive; the EOS single-worker path is unchanged) ─────────────────────
+//
+// These give the Agent Manager the intelligence the manual manager was performing by hand: partition approved
+// WRITE work into non-overlapping sectors it can run concurrently, read provider throttling and adapt the
+// concurrency, and bound retries so failing work stops re-spawning paid workers. They are PURE — a runner
+// consumes them; nothing here spawns, and the existing sequential runtime keeps working untouched.
+
+/**
+ * Partition approved WRITE items into concurrency-safe WAVES: within a wave, every item's file-set is pairwise
+ * DISJOINT (different sectors → safe to write in parallel — no fratricide); an item that shares any path with a
+ * wave member is pushed to a later wave (serialized). This is what lets the manager run MULTIPLE non-overlapping
+ * areas of write at once. Deterministic greedy first-fit (interval-graph coloring). Fail-safe: an item with NO
+ * declared paths can't be proven disjoint, so it takes a wave alone and never shares with a known-scope item.
+ * @param {Array<{requestId?:string, paths?:string[]}>} items
+ * @returns {ReadonlyArray<ReadonlyArray<object>>} waves; waves[0] is the max set of concurrently-writable sectors
+ */
+export function planConcurrentWriteSectors(items = []) {
+  const waves = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const paths = Array.isArray(item?.paths) ? item.paths.filter((p) => typeof p === "string") : [];
+    let placed = false;
+    if (paths.length > 0) {
+      const pset = new Set(paths);
+      for (const wave of waves) {
+        const clash = wave.some((w) => {
+          const wp = Array.isArray(w?.paths) ? w.paths.filter((p) => typeof p === "string") : [];
+          return wp.length === 0 || wp.some((p) => pset.has(p)); // an unknown-scope member blocks its wave
+        });
+        if (!clash) { wave.push(item); placed = true; break; }
+      }
+    }
+    if (!placed) waves.push([item]); // unknown scope, or overlaps every wave → serialize in its own wave
+  }
+  return Object.freeze(waves.map((w) => Object.freeze([...w])));
+}
+
+const THROTTLE_RE = /\b(?:429|rate[ _-]?limit(?:ed|ing)?|overloaded|too many requests|usage limit|quota exceeded|retry[ _-]?after)\b/i;
+
+/**
+ * Read a worker/provider outcome for a system-throttling signal (so the manager can back off instead of
+ * hammering a rate-limited provider). Looks at explicit flags, status/exit codes, and the sanitized diagnostic
+ * text. Never throws. `retryAfterSec` is parsed from a `retry-after: N` hint when present.
+ * @returns {{throttled:boolean, retryAfterSec:(number|null)}}
+ */
+export function detectThrottle(outcome = {}) {
+  const o = outcome && typeof outcome === "object" ? outcome : {};
+  const text = [o.failureDetail, o.diagnostic, o.stderr, o.error, o.reason, o.message].filter((s) => typeof s === "string").join(" ");
+  const throttled = o.throttled === true || o.statusCode === 429 || o.exitCode === 429 || THROTTLE_RE.test(text);
+  const m = /retry[ _-]?after[:\s]+(\d+)/i.exec(text);
+  return Object.freeze({ throttled: !!throttled, retryAfterSec: m ? Number(m[1]) : (Number.isFinite(o.retryAfterSec) ? o.retryAfterSec : null) });
+}
+
+/**
+ * Adaptive concurrency (AIMD — additive-increase / multiplicative-decrease, the standard congestion-control
+ * shape): on a throttle signal, HALVE concurrency (fast back-off, floored at `min`); after a sustained clear
+ * streak, grow by one (up to `max`). Bounded and deterministic — this is how the manager "learns to read for
+ * throttling" and self-tunes how many sectors it fires at once.
+ * @returns {{concurrency:number, reason:string}}
+ */
+export function adaptConcurrency({ current = 1, min = 1, max = 4, throttle = false, clearStreak = 0, growAfter = 3 } = {}) {
+  const cur = Math.max(min, Math.min(max, Math.floor(Number(current) || min)));
+  if (throttle) return { concurrency: Math.max(min, Math.floor(cur / 2)), reason: "throttle detected — multiplicative back-off" };
+  if (clearStreak >= growAfter && cur < max) return { concurrency: cur + 1, reason: `${clearStreak} clear cycles — additive grow` };
+  return { concurrency: cur, reason: "hold" };
+}
+
+/**
+ * Bounded retry policy for a failing item: retry with backoff up to `maxAttempts`, then ESCALATE to the Owner —
+ * so a permanently-failing item stops re-spawning paid workers on every wake (the cost-bleed the review found).
+ * A non-failed state just PROCEEDs. Pure: the caller supplies the durable attempt count + elapsed time.
+ * @returns {{decision:("PROCEED"|"RETRY"|"HOLD_BACKOFF"|"ESCALATE_OWNER"), reason:string}}
+ */
+export function decideRetry({ state, attempts = 0, maxAttempts = 3, sinceLastAttemptSec = Infinity, backoffSec = 900 } = {}) {
+  const FAILED = new Set(["FAILED", "BLOCKED_EXECUTION", "RETURN_FOR_CORRECTION", "CORRECTING"]);
+  if (!FAILED.has(state)) return { decision: "PROCEED", reason: "not a failed state" };
+  const n = Math.max(0, Math.floor(Number(attempts) || 0));
+  if (n >= maxAttempts) return { decision: "ESCALATE_OWNER", reason: `exhausted ${n}/${maxAttempts} attempts — hand to Owner, stop re-running` };
+  if ((Number(sinceLastAttemptSec) || 0) < backoffSec) return { decision: "HOLD_BACKOFF", reason: `within ${backoffSec}s backoff` };
+  return { decision: "RETRY", reason: `attempt ${n + 1}/${maxAttempts} after backoff` };
+}
+
 export function decideDispatch({ request, allocations = [], results = [], requestsById = new Map(), networkState = "NORMAL" } = {}) {
   const errors = validateAgentRequest(request);
   if (errors.length) return { decision: "REJECT_INVALID", errors };
