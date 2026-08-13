@@ -17,14 +17,15 @@ import { intakeToWorkItem, buildContentAddressedResult } from "./workIntake.mjs"
 import { executeWake } from "./wakeExecute.mjs";
 import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
 import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
+import { createCostCapacityTelemetry } from "./costCapacity.mjs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
-function statusFor({ artifact, state, currentWork, activeWorker = null, costToDateUsd = 0, ownerQuestion = null, resultRef = null, startedAt = null, now }) {
+function statusFor({ artifact, state, currentWork, activeWorker = null, costCapacity = createCostCapacityTelemetry(), ownerQuestion = null, resultRef = null, startedAt = null, now }) {
   return buildIntakeStatus({
     requestId: artifact.requestId, state, currentWork, activeWorker, startedAt, updatedAt: now,
     ownerActionRequired: state === "OWNER_REQUIRED", ownerQuestion: state === "OWNER_REQUIRED" ? (ownerQuestion || "Owner decision required") : null,
-    costToDateUsd, workArtifact: { location: artifact.artifactLocation, sha256: artifact.sha256 }, resultRef,
+    costCapacity, workArtifact: { location: artifact.artifactLocation, sha256: artifact.sha256 }, resultRef,
     provenance: { producer: artifact.source.producer, provenance: artifact.source.provenance },
   });
 }
@@ -83,7 +84,7 @@ export function runIntakeExecution({
     const failed = wake.outcome === "SPAWNED_FAILED";
     return Object.freeze({
       disposition: failed ? "FAILED" : "HELD", executed: wake.spawned === true, gate, item, capabilities, wake,
-      status: statusFor({ artifact, state: failed ? "FAILED" : "READY", currentWork: wake.reason || wake.failureDetail || wake.failureKind || "not triggered", costToDateUsd: 0, now }),
+      status: statusFor({ artifact, state: failed ? "FAILED" : "READY", currentWork: wake.reason || wake.failureDetail || wake.failureKind || "not triggered", costCapacity: createCostCapacityTelemetry({ providerCapacityUsage: wakeCtx.providerCapacityUsage || {}, budgetStopReason: wake.budgetStopReason || null }), now }),
     });
   }
 
@@ -93,7 +94,7 @@ export function runIntakeExecution({
   const index = buildResultIndex({ requestId: artifact.requestId, manifestLocation: result.manifestLocation, manifestSha256: result.manifest.sha256, contentLocation: result.contentLocation, updatedAt: now });
   const status = statusFor({
     artifact, state: "COMPLETE", currentWork: "completed", activeWorker: item.workstream,
-    costToDateUsd: wake.cost ?? 0, resultRef: { location: result.manifestLocation, sha256: result.manifest.sha256 }, now,
+    costCapacity: wake.costCapacity, resultRef: { location: result.manifestLocation, sha256: result.manifest.sha256 }, now,
   });
   // The completion SIGNAL: point ChatGPT at the content-addressed result to retrieve from GitHub. `commit`
   // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to

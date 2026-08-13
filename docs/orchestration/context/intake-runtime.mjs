@@ -74,7 +74,7 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
     isPidAlive: (p) => { if (!Number.isInteger(p) || p <= 0) return false; try { process.kill(p, 0); return true; } catch (e) { return e.code === "EPERM"; } },
   });
   const contextPackageFn = deps.contextPackageFn || ((a) => contextPackageFor({ ...a }));
-  const wakeCtx = deps.wakeCtx || { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", budgetRemainingUsd: 5, sourceFreshness: (sourceCommit ? "CURRENT" : "CURRENT") };
+  const wakeCtx = deps.wakeCtx || { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", providerCapacityUsage: { concurrency: { used: 0, limit: 1 }, shortWindow: "UNKNOWN", weekly: "UNKNOWN", ownerReserve: "UNKNOWN" }, sourceFreshness: "CURRENT" };
 
   const out = runIntakeExecution({ artifact, sourceCommit, now, requiresCapabilities, capabilityBroker, processRunner, lease, contextPackageFn, wakeCtx });
 

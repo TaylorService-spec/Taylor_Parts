@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS cost/capacity semantic correction (#831 regression)
+- Agent/session:       Codex `/root` · Role: builder
+- Branch / worktree:   `codex/eos-cost-capacity-semantics` · `D:\Taylor_Parts-cost-capacity`
+- Base commit:         `e111b4b`
+- Owned paths:         EOS cost/capacity contract and focused wake/intake tests
+- Shared paths req'd:  wake/intake status/runtime wiring · intake CI · this registry
+- Dependencies:        Durable #831 status/result and existing provider-neutral capacity contracts
+- Expected outcome:    Billed spend, modeled cost, and provider capacity remain distinct; synthetic Claude dollars cannot stop uncapped subscription work
+- Protected boundaries:No #831 rerun, provider activation, credential, routing, integration, deployment, or automatic merge
+- Lifecycle stage:     RELEASE CANDIDATE
+
 - Capability:          Cortex EOS provider adapter pilot (read-only, provider-neutral)
 - Agent/session:       Codex `/root` · Role: builder
 - Branch / worktree:   `codex/cortex-provider-pilot` · `D:\Taylor_Parts-cortex-provider-pilot`

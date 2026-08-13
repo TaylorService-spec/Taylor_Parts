@@ -27,7 +27,11 @@ test("HAPPY PATH: eligible → GPT once → persist → consume → selector →
   assert.equal(r.evidence.ownerManualActionCountAfterActivation, 0);
   assert.equal(r.evidence.duplicateCallCount, 0);
   assert.equal(r.evidence.gpt.actualCostUsd, 0.015);
-  assert.equal(r.evidence.claude.cost, 0.06);
+  assert.equal(r.evidence.claude.actualProviderCostUsd, "UNKNOWN");
+  assert.equal(r.evidence.claude.estimatedExecutionCostUsd, 0.06);
+  assert.equal(r.evidence.claude.costProvenance.estimated, "CLAUDE_CLI_MODELED");
+  assert.equal(r.evidence.claude.budgetStopReason, null);
+  assert.equal("cost" in r.evidence.claude, false);
 });
 
 test("duplicate event / second invocation → cycle ceiling → NO second GPT or Claude", async () => {

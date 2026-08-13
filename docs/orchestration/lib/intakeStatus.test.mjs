@@ -51,6 +51,23 @@ test("buildIntakeStatus produces a compact, self-verifying artifact at the deter
   assert.equal(verifyIntakeStatus({ ...s, state: "COMPLETE" }).ok, false);
 });
 
+test("status v2 distinguishes actual, estimated, capacity, stop reason, provenance, and freshness", () => {
+  const s = buildIntakeStatus({ requestId: "EOS-COST-1", state: "READY", updatedAt: NOW, costCapacity: { actualProviderCostUsd: "UNKNOWN", estimatedExecutionCostUsd: 1.72, providerCapacityUsage: { shortWindow: "UNKNOWN", weekly: "UNKNOWN", concurrency: { used: 1, limit: 10 }, ownerReserve: "UNKNOWN" }, budgetStopReason: null, costProvenance: { actual: "UNAVAILABLE", estimated: "CLAUDE_CLI_MODELED" }, freshness: "CURRENT" } });
+  assert.equal(s.schema, "eos.intake.status/2");
+  assert.equal(s.actualProviderCostUsd, "UNKNOWN");
+  assert.equal(s.estimatedExecutionCostUsd, 1.72);
+  assert.equal("costToDateUsd" in s, false);
+  assert.equal(verifyIntakeStatus(s).ok, true);
+});
+
+test("legacy status v1 remains safely parseable and does not become actual spend", () => {
+  const legacy = buildIntakeStatus({ requestId: "EOS-COST-OLD", state: "READY", updatedAt: NOW, costToDateUsd: 1.72 });
+  assert.equal(legacy.schema, "eos.intake.status/1");
+  assert.equal(legacy.costToDateUsd, 1.72);
+  assert.equal(legacy.actualProviderCostUsd, undefined);
+  assert.equal(verifyIntakeStatus(legacy).ok, true);
+});
+
 test("buildIntakeStatus: COMPLETE requires a resultRef; ownerActionRequired requires a question", () => {
   assert.throws(() => buildIntakeStatus({ requestId: "EOS-1", state: "COMPLETE", updatedAt: NOW }), /COMPLETE requires a resultRef/);
   assert.throws(() => buildIntakeStatus({ requestId: "EOS-1", state: "OWNER_REQUIRED", updatedAt: NOW, ownerActionRequired: true }), /ownerActionRequired needs an ownerQuestion/);

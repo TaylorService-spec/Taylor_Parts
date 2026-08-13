@@ -27,7 +27,14 @@ function buildEvidence({ loop, wake, transitions, gptCalls, claudeWakes }) {
       evidenceRequired: first.evidenceRequired ?? false, ownerDecisionRequired: first.ownerDecisionRequired ?? false,
       evidenceRefs: first.evidenceRefs ?? [],
     } : null,
-    claude: wake && wake.outcome === "SPAWNED_COMPLETED" ? { cost: wake.cost ?? null, selectedModel: wake.selectedModel ?? null, result: wake.result ?? null } : null,
+    claude: wake && wake.outcome === "SPAWNED_COMPLETED" ? {
+      actualProviderCostUsd: wake.costCapacity?.actualProviderCostUsd ?? "UNKNOWN",
+      estimatedExecutionCostUsd: wake.estimatedExecutionCostUsd ?? null,
+      costProvenance: wake.costCapacity?.costProvenance ?? { actual: "UNAVAILABLE", estimated: "UNAVAILABLE" },
+      budgetStopReason: wake.costCapacity?.budgetStopReason ?? null,
+      selectedModel: wake.selectedModel ?? null,
+      result: wake.result ?? null,
+    } : null,
     // The ACTUAL wake outcome + failure reason — reported, never inferred. Includes the child exit code
     // + sanitized stderr/stdout diagnostic for a SPAWNED_FAILED, and the HELD `reason` otherwise.
     claudeOutcome: wake ? { outcome: wake.outcome ?? null, failureKind: wake.failureKind ?? null, reason: wake.reason ?? wake.failureDetail ?? null, exitCode: wake.exitCode ?? null, diagnostic: wake.diagnostic ?? null, wakeState: wake.wakeState ?? null } : null,
