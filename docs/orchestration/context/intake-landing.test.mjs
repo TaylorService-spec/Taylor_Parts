@@ -34,6 +34,23 @@ test("stages ONLY this requestId's work-intake paths — a PATCH item's code can
   assert.doesNotMatch(joined, /functions\/|firestore\.rules|(^|\s)src\//, "no code path is ever staged/committed");
 });
 
+test("extraPaths: a governed child's work.json lands in the SAME per-item commit (provenance durable on main)", () => {
+  const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
+  const workJson = "docs/orchestration/work-intake/EOS-ISSUE-864-A.work.json";
+  landItemArtifacts({ requestId: "EOS-ISSUE-864-A", runGit, pathExists: allExist, extraPaths: [workJson] });
+  const addCall = runGit.calls.find((a) => a[0] === "add");
+  assert.deepEqual(addCall, ["add", "--", ...artifactPathsFor("EOS-ISSUE-864-A"), workJson], "the child work.json is staged alongside status/results/review-ready");
+});
+
+test("extraPaths fail-closed: a path outside work-intake/ is rejected before touching git", () => {
+  const runGit = gitDouble();
+  assert.throws(
+    () => landItemArtifacts({ requestId: "EOS-ISSUE-864-A", runGit, pathExists: allExist, extraPaths: ["functions/src/leak.ts"] }),
+    /extraPaths must be within work-intake/,
+  );
+  assert.equal(runGit.calls.length, 0, "never touches git when an extra path is out of bounds");
+});
+
 test("lands via cherry-pick onto fresh main + push HEAD:main (branch-robust; never a bare push)", () => {
   const runGit = gitDouble({ "diff --cached": [{ code: 1 }] });
   const out = landItemArtifacts({ requestId: "EOS-ISSUE-852-C02", runGit, pathExists: allExist });
