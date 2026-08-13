@@ -498,5 +498,76 @@
       "status": "BACKLOG",
       "source": "round-1-scan-not-top10"
     }
-  ]
+  ],
+  "round2": {
+    "note": "Round-2 batch. Frontend (worker:claude) MERGED; backend (worker:codex) via packets C1-C4 in codex-packets-round2.md. Base = origin/main.",
+    "entries": [
+      {
+        "discriminator": "usecurrenttechnician-no-snapshot-error-handler",
+        "worker": "claude",
+        "status": "FIXED",
+        "pr": 888
+      },
+      {
+        "discriminator": "appheader-discards-reorder-error",
+        "worker": "claude",
+        "status": "FIXED",
+        "pr": 886
+      },
+      {
+        "discriminator": "performancesnapshot-raw-error-leak",
+        "worker": "claude",
+        "status": "FIXED",
+        "pr": 889
+      },
+      {
+        "discriminator": "executioncapture-unbounded-qtyused",
+        "worker": "claude",
+        "status": "FIXED",
+        "pr": 887
+      },
+      {
+        "discriminator": "cancelreorderrequest-no-status-guard",
+        "worker": "claude",
+        "status": "FIXED",
+        "pr": 890
+      },
+      {
+        "discriminator": "C1-create-callables-no-idempotency",
+        "worker": "codex",
+        "status": "IN_PROGRESS",
+        "files": [
+          "functions/src/opportunity/opportunityCallables.ts",
+          "functions/src/salesOrder/salesOrderCallables.ts"
+        ]
+      },
+      {
+        "discriminator": "C2-updateworkorderexecutiondata-no-status-guard",
+        "worker": "codex",
+        "status": "IN_PROGRESS",
+        "files": [
+          "functions/src/updateWorkOrderExecutionData.ts"
+        ]
+      },
+      {
+        "discriminator": "C3-schedule-no-double-booking-check",
+        "worker": "codex",
+        "status": "IN_PROGRESS",
+        "files": [
+          "functions/src/transitionWorkOrder.ts",
+          "functions/src/workOrderAvailability.ts"
+        ]
+      },
+      {
+        "discriminator": "C4-warehouseservice-negative-stock-and-missing-tests",
+        "worker": "codex",
+        "status": "IN_PROGRESS",
+        "files": [
+          "functions/src/warehouseService.ts",
+          "functions/src/procurementService.ts",
+          "functions/src/supplierService.ts"
+        ]
+      }
+    ]
+  }
 }
