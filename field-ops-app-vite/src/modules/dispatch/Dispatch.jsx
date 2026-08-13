@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
@@ -9,6 +9,7 @@ import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 // F0 -- this IS now the canonical Work Order dispatch surface. It reads
 // fieldops_wos and assigns by invoking the governed `Dispatch` transition
@@ -66,6 +67,7 @@ function statusChipFor(job) {
 export default function Dispatch() {
   const { data: jobs, loading, error } = useWorkOrders();
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const [dispatchError, setDispatchError] = useState(null);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
   const heroTechnician = technicians.find(
@@ -83,19 +85,21 @@ export default function Dispatch() {
   // assignment is decided client-side.
   async function assign(job, technicianId) {
     if (!technicianId) return;
+    setDispatchError(null);
     const technician = technicians.find((t) => t.id === technicianId);
     if (!technician) return;
     try {
       await transitionWorkOrder(job.id, "Dispatch", { assignedTechId: technicianId });
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      setDispatchError(workflowActionErrorMessage(err));
     }
   }
 
   return (
     <div className="fo-panel">
       <h2>Dispatch</h2>
+      {dispatchError && <p className="fo-error" role="alert">{dispatchError}</p>}
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
