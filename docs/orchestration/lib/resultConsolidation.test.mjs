@@ -203,3 +203,35 @@ test("deterministic canonicalization: same issue with case/whitespace/order drif
   assert.equal(ab.findings[0].line, undefined, "drifting line is NOT on the canonical identity record");
   assert.deepEqual(ab.findings[0].reports.map((r) => r.line).sort(), [5, 9], "per-occurrence lines preserved in sorted reports");
 });
+
+import { runAuditReconcile } from "./resultConsolidation.mjs";
+
+test("runAuditReconcile: end-to-end worker output → structured findings → dedup against register", () => {
+  const block = (disc, sev) => `report\n\`\`\`eos-findings\n[{"file":"functions/src/x.ts","symbol":"fn","discriminator":"${disc}","severity":"${sev}","category":"bug","evidence":"seen here"}]\n\`\`\``;
+  const register = [{ file: "functions/src/x.ts", symbol: "fn", discriminator: "known-issue", status: FINDING_STATUS.CONFIRMED_OPEN }];
+  const out = runAuditReconcile({
+    expectedChildIds: ["A", "B"],
+    register,
+    childResults: [
+      { requestId: "A", sector: "s1", content: block("known-issue", "HIGH") },   // already tracked
+      { requestId: "B", sector: "s2", content: block("brand-new-issue", "MEDIUM") }, // genuinely new
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.reconciled.surfaced.map((f) => f.discriminator), ["brand-new-issue"]);
+  assert.equal(out.reconciled.alreadyOpen.length, 1);
+  assert.ok(out.extractions.every((e) => e.trustworthy), "both children extracted cleanly");
+});
+
+test("runAuditReconcile: a child whose worker emitted NO block blocks the whole run (fail-closed)", () => {
+  const out = runAuditReconcile({
+    expectedChildIds: ["A", "B"],
+    register: [],
+    childResults: [
+      { requestId: "A", content: "```eos-findings\n[]\n```" },   // clean zero-findings
+      { requestId: "B", content: "no structured block at all" }, // extraction failure
+    ],
+  });
+  assert.equal(out.ok, false, "extraction failure in any child blocks consolidation");
+  assert.deepEqual(out.consolidated.incomplete, ["B"]);
+});

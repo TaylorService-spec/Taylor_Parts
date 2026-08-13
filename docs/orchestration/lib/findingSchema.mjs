@@ -66,3 +66,54 @@ export function validateFindings(findings = []) {
   }
   return { valid: Object.freeze(valid), invalid: Object.freeze(invalid) };
 }
+
+// The machine-readable block an audit worker emits alongside its human report. A single fenced code block tagged
+// `eos-findings` containing a JSON array of findings (see the contract in docs/orchestration/findings/output-
+// contract.md). This is the bridge from worker OUTPUT to the dedup-able consolidation INPUT.
+const FINDINGS_BLOCK = /```eos-findings\s*\n([\s\S]*?)\n```/;
+
+/**
+ * Extract structured findings from a worker's result content. Finds the single `eos-findings` JSON block, parses
+ * it, and validates each finding against the contract. Fail-closed and total (never throws):
+ *   - no block            → { found:false, findings:[], invalid:[], reason:"no eos-findings block" }
+ *   - block but bad JSON  → { found:false, ..., reason:"invalid JSON in eos-findings block" }
+ *   - block parses        → { found:true, findings:[valid, normalized], invalid:[{finding,errors}] }
+ * `found` distinguishes a trustworthy extraction (a valid array, possibly empty) from an extraction FAILURE
+ * (missing/malformed). It is `childFromResult` — not this parser — that turns a failure into a blocking
+ * EXTRACTION_INVALID child; a missing/malformed block must never be consolidated as a clean zero-findings result.
+ */
+export function extractFindings(content = "") {
+  const text = typeof content === "string" ? content : "";
+  const m = FINDINGS_BLOCK.exec(text);
+  if (!m) return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "no eos-findings block" });
+  let parsed;
+  try { parsed = JSON.parse(m[1]); }
+  catch { return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "invalid JSON in eos-findings block" }); }
+  if (!Array.isArray(parsed)) return Object.freeze({ found: false, findings: Object.freeze([]), invalid: Object.freeze([]), reason: "eos-findings block must be a JSON array" });
+  const { valid, invalid } = validateFindings(parsed);
+  return Object.freeze({ found: true, findings: valid, invalid });
+}
+
+/**
+ * Build the consolidation-input shape for one executed child from its raw result content — the wiring point that
+ * turns worker output into a dedup-able consolidation child.
+ *
+ * CRITICAL fail-closed distinction: a VALID `eos-findings` block — even an empty `[]` — is a trustworthy result
+ * ("the worker found zero findings" is a real answer). But a MISSING or MALFORMED block, or ANY individual
+ * finding that fails the contract, is an EXTRACTION FAILURE, not a clean child: the worker may well have found
+ * real issues it simply failed to emit machine-readably, and consolidating it as "zero findings ⇒ clean" would
+ * silently suppress them. So a COMPLETE worker whose output can't be trusted is marked `EXTRACTION_INVALID`,
+ * which fails the completeness gate and BLOCKS consolidation until it's fixed/re-run. Invalid individual findings
+ * are preserved in `invalid` (surfaced, never dropped). A non-COMPLETE incoming disposition is left as-is.
+ */
+export function childFromResult({ requestId, disposition = "COMPLETE", sector = null, content = "" } = {}) {
+  const ex = extractFindings(content);
+  const trustworthy = ex.found && ex.invalid.length === 0;
+  const effectiveDisposition = disposition === "COMPLETE" && !trustworthy ? "EXTRACTION_INVALID" : disposition;
+  return Object.freeze({
+    requestId, disposition: effectiveDisposition, sector,
+    findings: ex.findings,
+    invalid: Object.freeze(ex.invalid), // malformed findings are surfaced here, never silently dropped
+    findingsExtraction: Object.freeze({ found: ex.found, trustworthy, invalidCount: ex.invalid.length, reason: ex.reason ?? (ex.invalid.length ? "one or more findings failed the contract" : null) }),
+  });
+}
