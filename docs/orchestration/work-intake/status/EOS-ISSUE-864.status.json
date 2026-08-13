@@ -4,11 +4,11 @@
   "pointer": "status://EOS-ISSUE-864",
   "work": "work://EOS-ISSUE-864",
   "result": "result://EOS-ISSUE-864",
-  "state": "BLOCKED_EXECUTION",
-  "currentWork": "required execution receipts missing: tests",
+  "state": "READY",
+  "currentWork": "authorized — awaiting worker",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-13T19:15:13.975Z",
+  "updatedAt": "2026-08-13T20:40:00Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -16,10 +16,7 @@
   "providerCapacityUsage": {
     "shortWindow": "UNKNOWN",
     "weekly": "UNKNOWN",
-    "concurrency": {
-      "used": 0,
-      "limit": 1
-    },
+    "concurrency": "UNKNOWN",
     "ownerReserve": "UNKNOWN"
   },
   "budgetStopReason": null,
@@ -30,14 +27,15 @@
   "freshness": "UNKNOWN",
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-ISSUE-864.work.json",
-    "sha256": "d649027debef4b97736f71af032020c7fcf04265b1d6cc0ae33d106f57bd6948"
+    "sha256": "146a198ae1e722f2cee6bb03c726f114976d38f451ad6c82fc373be573a59bf9"
   },
   "resultRef": null,
   "artifactRefs": [],
   "provenance": {
     "producer": "GitHub Issue intake workflow",
-    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceCommit": null
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-864.status.json",
-  "sha256": "9dcb975523df00dc07c29ee43297b6db46d3b96208bbb5a9653c0a977642ee29"
+  "sha256": "dfdfb06c4d93e58c8cc833f41238651ecf101d4e81df4b31a4038d7863913f3d"
 }
