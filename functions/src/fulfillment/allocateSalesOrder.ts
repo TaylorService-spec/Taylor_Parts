@@ -21,7 +21,7 @@ import { getFirestore, FieldValue, type Transaction } from "firebase-admin/fires
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, STOCK_LOCATIONS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { buildAllocationPlan, type Availability } from "./allocationProjection";
-import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments } from "./fulfillmentAvailability";
+import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments, sumEligibleOnHand } from "./fulfillmentAvailability";
 import { readEquipmentAvailability } from "./equipmentAvailabilityContract";
 
 export const SALES_ORDER_FULFILL_CAPABILITY = "salesOrder.fulfill";
@@ -53,17 +53,10 @@ interface SoLine {
 async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds: Set<string>): Promise<number | null> {
   const db = getFirestore();
   const snap = await tx.get(db.collection(STOCK_LOCATIONS_COLLECTION).where("partId", "==", ref));
-  if (snap.empty) return null; // no stock-location evidence for this part ⇒ UNKNOWN, not 0
-  let onHand = 0;
-  let sawEligible = false;
-  for (const d of snap.docs) {
-    const data = d.data() as { warehouseId?: string; quantity?: number };
-    if (typeof data.warehouseId === "string" && eligibleWarehouseIds.has(data.warehouseId)) {
-      sawEligible = true;
-      if (typeof data.quantity === "number" && Number.isFinite(data.quantity)) onHand += Math.max(0, data.quantity);
-    }
-  }
-  return sawEligible ? onHand : 0; // stock exists but none at an eligible ACTIVE warehouse ⇒ known 0 (backorder)
+  return sumEligibleOnHand(
+    snap.docs.map((d) => d.data() as { warehouseId?: string; quantity?: number }),
+    eligibleWarehouseIds
+  );
 }
 
 async function readOpenWoReserved(tx: Transaction, ref: string, excludeWorkOrderIds: Set<string>): Promise<number> {
@@ -140,7 +133,16 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
         const onHandEligible = await readPartOnHand(tx, ref, eligibleWarehouseIds);
         const openWoReserved = onHandEligible === null ? 0 : await readOpenWoReserved(tx, ref, soLinkedWorkOrderIds);
         const other = sumOtherSoCommitments(otherSoLines, ref);
-        availabilityByRef[ref] = computePartAvailability({ onHandEligible, openWoReserved, otherSoAllocated: other.allocatedQty });
+        // This SO's OWN prior allocation for this ref is also a live claim on the same physical on-hand pool
+        // (stock_locations is never decremented for an SO allocation — see fulfillmentAvailability.ts). It must
+        // be netted here too, or a re-run additively over-allocates against the same undiminished on-hand read.
+        const self = sumOtherSoCommitments(lines, ref);
+        availabilityByRef[ref] = computePartAvailability({
+          onHandEligible,
+          openWoReserved,
+          otherSoAllocated: other.allocatedQty,
+          selfAllocated: self.allocatedQty,
+        });
       }
       // Equipment availability via the governed contract (equipmentAvailabilityContract). Fail-closed UNKNOWN
       // today per the canonical-read assessment (availability substrate not-yet-connected + ordered-model↔serial
