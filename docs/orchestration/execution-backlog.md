@@ -32,6 +32,21 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
 
+### Track A — EOS-STRESS-RUN-001 (integration-ready, awaiting the merge gate)
+
+Verified repo-safe idempotency fixes from the Agent-Master stress run ([report](work-intake/results/EOS-STRESS-RUN-001/)).
+Each carries a **Verifier: PASS** verdict (independent read-only review) and green CI (pure unit tests + emulator
+integration tests). **Not self-merged** — queued here for the integration/merge gate. `Merge ≠ live`; a Functions
+deploy remains a separate protected action, and full production closure has the paired client-key dependency noted below.
+
+| Order | Item | PR | Verifier | Integration dependency |
+|---|---|---|---|---|
+| **A1** | `updateWorkOrderExecutionData` idempotency (live P1, W1-F1 — retry double-counts parts + duplicates exec log) | [#826](https://github.com/TaylorService-spec/Taylor_Parts/pull/826) | PASS (no blockers) | Client must emit a STABLE `idempotencyKey` per submit (FieldMode) before the defect is closed in prod. Deploy-safe without it. |
+| **A2** | `createWorkOrder` idempotency (live P1, W1-F2 / DUP #818-P1 — retry mints a 2nd WO + burns a number) | [#827](https://github.com/TaylorService-spec/Taylor_Parts/pull/827) | PASS (no blockers) | Based on A1 (adds the WO AuditAction block). **Integrate A1 first, then A2**; retarget A2 to `main` after A1 merges. Client (`WorkOrderWizard`) must send a stable key for prod closure. |
+
+Both reuse the proven finance-callable idempotency pattern (deterministic Audit Event id + transactional replay
+guard via the shared `auditEventWriter`), no parallel mechanism. Not yet DONE — they move to DONE on integration.
+
 > **UX workstream registered 2026-08-09.** The prior terminal CHECKPOINT was reached with the UX
 > workstream **absent from this ledger** — UX items existed only in session state, so the selector could not
 > see them and correctly concluded "no authorized READY work" from the items it had. That was an
