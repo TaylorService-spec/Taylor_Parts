@@ -26,6 +26,8 @@ on:
       - "docs/orchestration/lib/resultConsumption.test.mjs"
       - "docs/orchestration/lib/workLifecycle.mjs"
       - "docs/orchestration/lib/workLifecycle.test.mjs"
+      - "docs/orchestration/lib/cortexProviderAdapter.mjs"
+      - "docs/orchestration/lib/cortexProviderAdapter.test.mjs"
       - ".github/workflows/orchestration-agent-manager-tests.yml"
   push:
     branches: [main]
@@ -47,6 +49,8 @@ on:
       - "docs/orchestration/lib/resultConsumption.test.mjs"
       - "docs/orchestration/lib/workLifecycle.mjs"
       - "docs/orchestration/lib/workLifecycle.test.mjs"
+      - "docs/orchestration/lib/cortexProviderAdapter.mjs"
+      - "docs/orchestration/lib/cortexProviderAdapter.test.mjs"
       - ".github/workflows/orchestration-agent-manager-tests.yml"
   workflow_dispatch:
 
@@ -72,3 +76,5 @@ jobs:
         run: node --test docs/orchestration/lib/resultConsumption.test.mjs
       - name: Work-pickup lifecycle (node:test)
         run: node --test docs/orchestration/lib/workLifecycle.test.mjs
+      - name: Cortex read-only provider adapter pilot (node:test)
+        run: node --test docs/orchestration/lib/cortexProviderAdapter.test.mjs
