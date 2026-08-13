@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, sep } from "node:path";
 import { resolveWorkIntake, buildContentAddressedResult } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
-import { reviewReadyLocation, statusLocation, buildIntakeStatus, buildResultIndex, buildReviewReady } from "../lib/intakeStatus.mjs";
+import { reviewReadyLocation, statusLocation, resultIndexLocation, buildIntakeStatus, buildResultIndex, buildReviewReady } from "../lib/intakeStatus.mjs";
 import { childSpecsFromArtifact } from "../lib/governedOrchestration.mjs";
 import { runGovernedParentMission, toExecutableChildArtifact } from "../lib/governedRuntime.mjs";
 import { runAuthorizedWritesConcurrently } from "./intake-concurrent-runtime.mjs";
@@ -167,11 +167,20 @@ export async function executeParentMission({ artifact, requestId, sourceCommit =
 
   const written = [];
   // The injected per-child durable landing (commit+push to main). Production: landItemArtifacts over a real git
-  // runner; tests inject a fake so ordering/durability is proven without touching git. Returns { landed:boolean }.
-  const landChild = deps.landChild || ((rid) => landItemArtifacts({ requestId: rid, runGit: makeGitRunner() }));
+  // runner, landing the child's status/result/review-ready PLUS its work.json (extraPaths) in ONE per-child
+  // commit — so provenance is durable. Tests inject a fake. Returns { landed:boolean }.
+  const landChild = deps.landChild || ((rid, extraPaths) => landItemArtifacts({ requestId: rid, runGit: makeGitRunner(), extraPaths }));
+  // RESUME reload: read an already-durable child's landed result CONTENT (the raw worker output with its
+  // eos-findings block) so a child completed on a PRIOR run counts toward the exact child set instead of being
+  // re-executed. Production reads the committed result index → content file; tests inject deps.readDurableContent.
+  const readDurableContent = deps.readDurableContent || ((rid) => {
+    const index = JSON.parse(readFileSync(safeRepoPath(resultIndexLocation(rid)), "utf8"));
+    return readFileSync(safeRepoPath(index.contentLocation), "utf8");
+  });
 
-  // Children read their work.json from an IN-MEMORY map (not disk): a child's input file must never be discarded
-  // by another child's landing checkout that resets the shared working tree (the historical shared-tree hazard).
+  // Children read their work.json from an IN-MEMORY map for EXECUTION (never a disk read that a sibling's landing
+  // checkout could have discarded); the SAME bytes are written to disk JUST BEFORE that child's own landing and
+  // landed with it (provenance), so a later child's write/land can never strand an earlier child's input.
   const childBytes = new Map();
 
   const runChildren = async (childItems) => {
@@ -179,20 +188,31 @@ export async function executeParentMission({ artifact, requestId, sourceCommit =
       // Children VERIFY (test/inspect); with the #868 seam a child requesting VERIFY but inheriting only ANALYSIS
       // runs read-only and still COMPLETEs. The grant is the inherited constrained profile — never widened here.
       const childArtifact = toExecutableChildArtifact(ci, { taskClass: "READ_ONLY_VERIFY" });
-      childBytes.set(childArtifact.artifactLocation, Buffer.from(JSON.stringify(childArtifact), "utf8"));
+      const bytes = Buffer.from(`${JSON.stringify(childArtifact, null, 2)}\n`, "utf8");
+      childBytes.set(childArtifact.artifactLocation, bytes);
       // `paths` is the declared write scope used ONLY for disjoint-sector planning by the concurrent runner.
-      return { requestId: childArtifact.requestId, location: childArtifact.artifactLocation, sha256: childArtifact.sha256, paths: Array.isArray(childArtifact.scope) ? childArtifact.scope : [] };
+      return { requestId: childArtifact.requestId, location: childArtifact.artifactLocation, sha256: childArtifact.sha256, bytes, paths: Array.isArray(childArtifact.scope) ? childArtifact.scope : [] };
     });
 
     // Wrap the real EOS per-item execution with per-child durable landing on completion. The concurrent runner
     // gives each item a no-op lease (its per-request claim is the exclusivity owner); we forward the parent's
-    // worker deps + an in-memory readFile so children need no on-disk work.json.
+    // worker deps + an in-memory readFile so children need no on-disk work.json for the READ.
     const executeItem = (item, itemDeps) => {
       const out = executeIntakeItem({ requestId: item.requestId, location: item.location, sha256: item.sha256, emitReviewReady: false, deps: itemDeps });
+      // RESUME: a child already completed + landed on a prior run dedupes as SKIPPED_ALREADY_COMPLETE. Reload its
+      // durable content so it counts toward the exact child set — never force a re-execution of finished work.
+      if (out.disposition === "SKIPPED_ALREADY_COMPLETE") {
+        const content = readDurableContent(item.requestId);
+        return { ...out, disposition: "COMPLETE", durable: true, content };
+      }
       written.push(...(out.written || []));
       let durable = false;
       if (out.disposition === "COMPLETE") {
-        const res = landChild(item.requestId);
+        // Persist the child's authority artifact (work.json) to disk NOW — just before landing — and land it in
+        // the SAME per-child commit (extraPaths). Written just-in-time (not upfront) so a prior child's landing
+        // checkout cannot discard a later child's input file.
+        written.push(write(item.location, item.bytes.toString("utf8")));
+        const res = landChild(item.requestId, [item.location]);
         durable = res && res.landed === true;
       }
       const content = out.content && Buffer.isBuffer(out.content) ? out.content.toString("utf8") : out.content ?? null;
@@ -212,7 +232,7 @@ export async function executeParentMission({ artifact, requestId, sourceCommit =
         // Forward the parent's injected worker deps to each child's executeIntakeItem. In production these are
         // absent → each child defaults the real guarded worker/context; in tests they carry fakes. readFile is
         // the in-memory child-bytes map so a child needs no on-disk work.json.
-        itemDeps: { readFile: readChildBytes, write, processRunner: deps.processRunner, contextPackageFn: deps.contextPackageFn, wakeCtx: deps.wakeCtx, now, capabilityBroker: deps.capabilityBroker },
+        itemDeps: { readFile: readChildBytes, readStatus: deps.readStatus, write, processRunner: deps.processRunner, contextPackageFn: deps.contextPackageFn, wakeCtx: deps.wakeCtx, now, capabilityBroker: deps.capabilityBroker },
         makeClaim: deps.makeClaim, lockRoot: deps.lockRoot, fs: deps.fs,
         maxConcurrency: deps.maxConcurrency ?? 4,
       },

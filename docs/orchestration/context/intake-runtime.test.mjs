@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 import { intakeDigest, resolveWorkIntake } from "../lib/workIntake.mjs";
 import { executeParentMission, loadRegister } from "./intake-runtime.mjs";
 import { statusLocation, reviewReadyLocation } from "../lib/intakeStatus.mjs";
+import { planParentExecution, parentGrantFromArtifact, childSpecsFromArtifact } from "../lib/governedOrchestration.mjs";
+import { toExecutableChildArtifact } from "../lib/governedRuntime.mjs";
 
 const NOW = "2026-08-13T08:00:00Z";
 
@@ -40,27 +42,33 @@ const ctxPkgFn = () => ({ sufficiency: "SUFFICIENT", governingAuthority: "auth",
 const FREE_SLOT = { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", providerCapacityUsage: { concurrency: { used: 0, limit: 1 } }, budgetRemainingUsd: 5, sourceFreshness: "CURRENT" };
 const noopClaim = () => ({ acquire: () => ({ acquired: true }), release: () => {} });
 
-function drive(p, { worker = findingWorker(), register = { ok: true, register: [] }, land, maxConcurrency = 4 } = {}) {
+function drive(p, { worker = findingWorker(), register = { ok: true, register: [] }, land, readStatus, readDurableContent, maxConcurrency = 4 } = {}) {
   const written = new Map();
   const landed = [];
-  const landChild = land || ((rid) => (landed.push(rid), { landed: true }));
+  const landChild = land || ((rid, extraPaths) => (landed.push({ rid, extraPaths: extraPaths || [] }), { landed: true }));
   return executeParentMission({
     artifact: p, requestId: p.requestId, now: NOW,
     write: (loc, text) => (written.set(loc, text), loc),
     deps: {
       readRegister: () => register, landChild, makeClaim: noopClaim, maxConcurrency,
+      readStatus, readDurableContent,
       processRunner: worker, contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT, capabilityBroker: null,
     },
-  }).then((out) => ({ out, written, landed }));
+  }).then((out) => ({ out, written, landed, landedIds: landed.map((l) => l.rid) }));
 }
 
 test("LIVE PARENT via concurrent runner: 2 children run + land durably → COMPLETE + ONE parent REVIEW_READY", async () => {
-  const { out, written, landed } = await drive(parent(SPECS));
+  const { out, written, landed, landedIds } = await drive(parent(SPECS));
   assert.equal(out.disposition, "COMPLETE");
   assert.equal(out.children, 2, "exactly the 2 governed children ran");
 
   // Each child was landed durably (injected landChild called per child) BEFORE the parent completed.
-  assert.deepEqual(landed.sort(), ["EOS-RT-PARENT-A", "EOS-RT-PARENT-B"], "every child landed durably on completion");
+  assert.deepEqual(landedIds.sort(), ["EOS-RT-PARENT-A", "EOS-RT-PARENT-B"], "every child landed durably on completion");
+  // PROVENANCE: each child's work.json authority artifact is landed in its own per-child commit (extraPaths).
+  for (const l of landed) {
+    assert.deepEqual(l.extraPaths, [`docs/orchestration/work-intake/${l.rid}.work.json`], `child ${l.rid} lands its own work.json`);
+    assert.ok(written.has(`docs/orchestration/work-intake/${l.rid}.work.json`), `child ${l.rid} work.json persisted for landing`);
+  }
 
   // The parent's status is COMPLETE and its REVIEW_READY signal is written (the ONE ChatGPT signal).
   assert.ok(written.has(statusLocation("EOS-RT-PARENT")), "parent status written");
@@ -91,6 +99,32 @@ test("DURABILITY ordering: each completed child LANDS before the next child's wo
   const firstLand = log.findIndex((e) => e.startsWith("land:"));
   const secondWork = log.indexOf("work2");
   assert.ok(firstLand !== -1 && secondWork !== -1 && firstLand < secondWork, `expected a land before work2; got ${log.join(",")}`);
+});
+
+test("RESUME: a child completed + landed on a PRIOR run (dedupe SKIPPED) is reloaded, NOT re-executed, and counts", async () => {
+  // Simulate the interruption: Child A already durable on main from a prior run (its committed status is COMPLETE
+  // with a matching work sha) → executeIntakeItem dedupes it as SKIPPED_ALREADY_COMPLETE. The parent must reload
+  // A's durable content and count it — completing 2/2 by running ONLY Child B.
+  const p = parent(SPECS);
+  const childA = toExecutableChildArtifact(planParentExecution({ parent: parentGrantFromArtifact(p), childSpecs: childSpecsFromArtifact(p), childStates: [] }).children[0], { taskClass: "READ_ONLY_VERIFY" });
+  const aStatus = { state: "COMPLETE", resultRef: { location: "docs/orchestration/work-intake/results/EOS-RT-PARENT-A/x.result.json", sha256: "a".repeat(64) }, workArtifact: { sha256: childA.sha256 }, result: "result://EOS-RT-PARENT-A", pointer: "status://EOS-RT-PARENT-A" };
+  const aDurableContent = `PRIOR RUN — PASS\n\`\`\`eos-findings\n[{"file":"docs/orchestration/lib/x.mjs","symbol":"fn","discriminator":"prior-a","severity":"LOW","category":"c","evidence":"e"}]\n\`\`\``;
+
+  let bWorkerRuns = 0;
+  const worker = { run: () => { bWorkerRuns += 1; const body = `PASS B\n\`\`\`eos-findings\n[{"file":"docs/orchestration/lib/y.mjs","symbol":"g","discriminator":"fresh-b","severity":"LOW","category":"c","evidence":"e"}]\n\`\`\``; return { stdout: JSON.stringify({ result: body, total_cost_usd: 0 }), exitCode: 0, timedOut: false }; } };
+
+  const { out, written, landedIds } = await drive(p, {
+    worker,
+    readStatus: (rid) => (rid === "EOS-RT-PARENT-A" ? aStatus : null),
+    readDurableContent: (rid) => { if (rid === "EOS-RT-PARENT-A") return aDurableContent; throw new Error(`unexpected reload of ${rid}`); },
+  });
+
+  assert.equal(out.disposition, "COMPLETE", "the parent completes on resume without re-running the finished child");
+  assert.equal(bWorkerRuns, 1, "only Child B's worker ran — Child A was NOT re-executed");
+  assert.deepEqual(landedIds, ["EOS-RT-PARENT-B"], "only Child B is (re)landed; Child A was already durable");
+  const contentPath = [...written.keys()].find((k) => k.startsWith("docs/orchestration/work-intake/results/EOS-RT-PARENT/") && k.endsWith(".content.md"));
+  const reconciled = JSON.parse(written.get(contentPath));
+  assert.deepEqual(reconciled.reconciled.surfaced.map((f) => f.discriminator).sort(), ["fresh-b", "prior-a"], "the reloaded child's finding + the fresh child's finding both consolidate");
 });
 
 test("DURABILITY fail-closed: a child that COMPLETED but failed to LAND does not complete the parent", async () => {

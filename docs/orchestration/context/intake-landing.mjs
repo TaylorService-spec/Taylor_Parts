@@ -94,9 +94,16 @@ export function landStaged({ runGit, message, label = "write-back", maxAttempts 
  * delegates to the shared core. Called immediately after each item's execution so completed work lands the
  * moment it finishes, surviving any later timeout/interruption.
  */
-export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, maxAttempts = 5, message } = {}) {
+export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, maxAttempts = 5, message, extraPaths = [] } = {}) {
   if (!SAFE_ID.test(requestId || "")) throw new Error("landItemArtifacts: invalid requestId");
   if (typeof runGit !== "function") throw new Error("landItemArtifacts: runGit is required");
+  // `extraPaths` lets a caller land ADDITIONAL work-intake artifacts in the SAME per-item commit — e.g. a
+  // governed child's own `*.work.json` authority artifact, so the child's status never points at a work artifact
+  // that is not durable on main. Fail-closed: every extra path MUST be within work-intake/ (the landStaged guard
+  // would reject it anyway, but rejecting here is clearer) — nothing outside the artifact tree can ever be staged.
+  const extras = (Array.isArray(extraPaths) ? extraPaths : []).map(String);
+  const outsideExtra = extras.filter((p) => !p.startsWith("docs/orchestration/work-intake/") || p.includes(".."));
+  if (outsideExtra.length) throw new Error(`landItemArtifacts: extraPaths must be within work-intake/ (${outsideExtra.join(", ")})`);
   // Only SOME request-scoped paths exist for a given disposition: a non-COMPLETE item (e.g. BLOCKED) writes a
   // status but NO result/review-ready. `git add` of an absent pathspec errors and stages nothing, which — if its
   // exit code were ignored — a later `diff --cached --quiet` would read as "no-changes" and FALSELY land nothing
@@ -106,7 +113,7 @@ export function landItemArtifacts({ requestId, runGit, pathExists = existsSync, 
   // artifacts means execution emitted nothing (bug / path drift / write failure) — that is NOT a benign no-op, it
   // would silently lose the item's disposition while reporting success. Fail closed. (An idempotent re-run where
   // the status exists but is unchanged is handled downstream as no-changes, which IS a valid success.)
-  const present = artifactPathsFor(requestId).filter((p) => pathExists(p));
+  const present = [...artifactPathsFor(requestId), ...extras].filter((p) => pathExists(p));
   if (present.length === 0) throw new Error(`landItemArtifacts: no status/result/review-ready exists for ${requestId} — refusing to report success (fail closed)`);
   // Unstage EVERYTHING first: a PATCH_PRODUCER worker earlier in the shared job may have `git add`-ed its own
   // code/workflow changes, and a later `git commit` would include them. Clearing the index guarantees the commit
