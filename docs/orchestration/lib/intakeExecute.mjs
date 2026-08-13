@@ -18,7 +18,7 @@ import { executeWake } from "./wakeExecute.mjs";
 import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
 import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
 import { createCostCapacityTelemetry } from "./costCapacity.mjs";
-import { classifyCompletion, completionStateToStatus, normalizeExecutionContract } from "./completionSemantics.mjs";
+import { classifyCompletion, completionStateToStatus, normalizeExecutionContract, deriveEffectiveContract } from "./completionSemantics.mjs";
 import { resolveExecutionProfile } from "./executionProfiles.mjs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
@@ -105,7 +105,13 @@ export function runIntakeExecution({
   // NOT sufficient (the #834/#835/#836/#837 root cause). Evidence is STRUCTURED; worker free-text never
   // classifies. The task's completion contract comes from the intake artifact's optional `execution` block
   // (safe READ_ONLY_ANALYSIS defaults), and durable artifacts are what the runtime actually produced.
-  const execContract = normalizeExecutionContract(artifact.execution);
+  // The REQUESTED completion contract (from the intake execution block) is reconciled against the RESOLVED
+  // grant the worker actually ran under (#868 fix): a task can never be required to prove a receipt/artifact its
+  // granted profile has no capability to produce, and a downgraded MUTATING task still fails closed (#840). This
+  // is the pre-execution-authorization ↔ post-execution-proof seam — classifyCompletion below still validates
+  // the receipts AFTER the worker ran; it just validates the ones the grant could actually produce.
+  const requestedContract = normalizeExecutionContract(artifact.execution);
+  const execContract = deriveEffectiveContract({ requested: requestedContract, resolvedProfile: profileDecision.profile });
   const workerEvidence = (wake.result && typeof wake.result === "object" && wake.result.evidence && typeof wake.result.evidence === "object") ? wake.result.evidence : {};
   const completion = classifyCompletion({
     processSucceeded: wake.outcome === "SPAWNED_COMPLETED",

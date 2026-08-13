@@ -128,3 +128,38 @@ test("EXACT #840 converse: same implementation request WITH a governed PATCH gra
   assert.equal(r.wake.profile, "PATCH_PRODUCER");
   assert.equal(r.disposition, "COMPLETE");
 });
+
+// ── #868: the READ_ONLY_VERIFY receipt-gate deadlock, end-to-end through runIntakeExecution ───────────────
+test("#868 REPRO→FIX: READ_ONLY_VERIFY request GRANTED only READ_ONLY_ANALYSIS may dispatch and COMPLETE (no unprovable tests receipt required)", () => {
+  // The exact #864 shape: taskClass READ_ONLY_VERIFY (wants a tests receipt) but grant READ_ONLY_ANALYSIS
+  // (no test-run capability). Before the fix this dead-locked as BLOCKED_EXECUTION "required execution receipts
+  // missing: tests" even though the worker completed the authorized read-only verification.
+  const r = drive(
+    resolved({ execution: { taskClass: "READ_ONLY_VERIFY", requiredExecutionReceipts: ["tests"], verifierRequired: false }, authorizedProfile: "READ_ONLY_ANALYSIS" }),
+    worker({ result: "read-only verification analysis complete", total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "READ_ONLY_ANALYSIS", "runs under the granted least-privilege profile — no widening");
+  assert.equal(r.profileDecision.granted, false, "the VERIFY escalation was not granted; it ran read-only");
+  assert.equal(r.disposition, "COMPLETE", "the authorized read-only work COMPLETEs instead of dead-locking");
+  assert.ok(r.result && r.reviewReady, "a durable result + REVIEW_READY are produced");
+});
+
+test("#868: READ_ONLY_VERIFY request GRANTED READ_ONLY_VERIFY still cannot COMPLETE without the tests receipt (post-execution proof kept, fail-closed)", () => {
+  const r = drive(
+    resolved({ execution: { taskClass: "READ_ONLY_VERIFY", requiredExecutionReceipts: ["tests"], verifierRequired: false }, authorizedProfile: "READ_ONLY_VERIFY" }),
+    worker({ result: { evidence: { receipts: [] } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "READ_ONLY_VERIFY", "a granted VERIFY runs under VERIFY (can run tests)");
+  assert.equal(r.disposition, "BLOCKED_EXECUTION", "a grant that CAN run tests must present the receipt to COMPLETE");
+  assert.equal(r.result, undefined, "no fabricated result when the required post-execution receipt is missing");
+});
+
+test("#868: READ_ONLY_VERIFY request GRANTED READ_ONLY_VERIFY WITH the tests receipt COMPLETEs", () => {
+  const r = drive(
+    resolved({ execution: { taskClass: "READ_ONLY_VERIFY", requiredExecutionReceipts: ["tests"], verifierRequired: false }, authorizedProfile: "READ_ONLY_VERIFY" }),
+    worker({ result: { evidence: { receipts: ["tests"] } }, total_cost_usd: 0 }),
+  );
+  assert.equal(r.wake.profile, "READ_ONLY_VERIFY");
+  assert.equal(r.disposition, "COMPLETE");
+  assert.ok(r.result);
+});

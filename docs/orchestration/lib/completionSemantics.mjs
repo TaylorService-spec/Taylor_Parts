@@ -107,6 +107,89 @@ export function classifyCompletion(e = {}) {
   return Object.freeze({ state: "COMPLETE", complete: true, reason: "all completion criteria + structured evidence satisfied" });
 }
 
+// The receipts / durable artifact a resolved execution profile is actually CAPABLE of proving. This is the
+// bridge between PRE-execution authorization (what capability the grant carries) and POST-execution proof
+// (which receipts a completed worker can present). A task can never be required to prove a receipt its GRANTED
+// profile has no capability to produce — that is the #868 deadlock: a READ_ONLY_VERIFY *request* downgraded to
+// a READ_ONLY_ANALYSIS *grant* was still required to present a `tests` receipt it was never authorized to run.
+// Kept in lock-step with executionProfiles.mjs's per-profile allowlists (READ tools only; VERIFY adds test
+// commands; PATCH adds worktree write; INTEGRATION adds branch push + PR).
+export const PROFILE_PROVABLE = Object.freeze({
+  READ_ONLY_ANALYSIS: Object.freeze({ receipts: Object.freeze([]), artifact: "NONE" }),
+  READ_ONLY_VERIFY: Object.freeze({ receipts: Object.freeze(["tests"]), artifact: "NONE" }),
+  PATCH_PRODUCER: Object.freeze({ receipts: Object.freeze(["tests"]), artifact: "PATCH" }),
+  GOVERNED_INTEGRATION: Object.freeze({ receipts: Object.freeze(["tests"]), artifact: "PULL_REQUEST" }),
+});
+
+// Privilege ordering (least → most) for the request-vs-grant comparison below. Local copy (not imported) so the
+// pure completion module has no dependency on the profile/wake layer; asserted equal to executionProfiles.mjs's
+// PROFILE_RANK by a regression test.
+const CONTRACT_PROFILE_RANK = Object.freeze({ READ_ONLY_ANALYSIS: 0, READ_ONLY_VERIFY: 1, PATCH_PRODUCER: 2, GOVERNED_INTEGRATION: 3 });
+const MUTATING_CLASSES = Object.freeze(["PATCH_PRODUCER", "GOVERNED_INTEGRATION"]);
+
+/**
+ * deriveEffectiveContract — reconcile the REQUESTED completion contract against the RESOLVED (granted) profile.
+ *
+ * The receipts/artifact/verifier a task must PROVE are a function of the authority it was actually GRANTED to
+ * run under, not merely what it requested. This separates PRE-execution authorization (the grant) from
+ * POST-execution proof (receipts validated by classifyCompletion AFTER the worker runs).
+ *
+ * Fail-closed / no-widening / #840-preserving rules:
+ *   • A MUTATING request (PATCH_PRODUCER / GOVERNED_INTEGRATION) resolved BELOW its class still fails closed —
+ *     its deliverable is a mutation it now cannot produce, so it keeps the FULL requested contract (PATCH +
+ *     tests + verifier) and a read-only run can never satisfy it (BLOCKED_EXECUTION / AWAITING_ARTIFACTIZATION,
+ *     never COMPLETE). This is exactly the #840 invariant — a downgraded implementation task must NOT collapse
+ *     into a completable analysis.
+ *   • Otherwise the contract follows the GRANT's provable envelope, intersected with the request: a task proves
+ *     only receipts/artifacts its resolved profile can actually run — never MORE (no widening), and never a
+ *     receipt it was not authorized to produce (this unblocks the read-only #868/#864 case).
+ *
+ * @param {object} requested        normalized requested contract (from normalizeExecutionContract)
+ * @param {string} resolvedProfile  the GRANTED profile the worker actually ran under (profileDecision.profile)
+ * @returns {{taskClass, expectedArtifactClass, requiredExecutionReceipts, verifierRequired, downgradeBlocked}}
+ */
+export function deriveEffectiveContract({ requested, resolvedProfile } = {}) {
+  const req = requested && typeof requested === "object" ? requested : normalizeExecutionContract({});
+  const reqClass = req.taskClass || "READ_ONLY_ANALYSIS";
+  const resolved = CONTRACT_PROFILE_RANK[resolvedProfile] != null ? resolvedProfile : "READ_ONLY_ANALYSIS";
+  const isMutating = MUTATING_CLASSES.includes(reqClass);
+  const downgraded = CONTRACT_PROFILE_RANK[resolved] < (CONTRACT_PROFILE_RANK[reqClass] ?? 0);
+  const provable = PROFILE_PROVABLE[resolved] || PROFILE_PROVABLE.READ_ONLY_ANALYSIS;
+
+  // The true capability gap: does the request demand a DURABLE MUTATION ARTIFACT (PATCH / PULL_REQUEST) the
+  // resolved profile cannot produce? That is the fail-closed line. A demanded mutation artifact the grant can't
+  // create means the deliverable is a mutation the read-only run cannot perform — it must NOT collapse into a
+  // completable analysis (#834/#835/#840). A request that demands only a RECEIPT (e.g. a READ_ONLY_VERIFY tests
+  // receipt) but no durable artifact IS a legitimate read-only subset when downgraded (#864/#868).
+  const artifactShortfall = ARTIFACT_CLASSES.indexOf(req.expectedArtifactClass) > ARTIFACT_CLASSES.indexOf(provable.artifact);
+
+  // Preserve #840: keep the FULL requested contract so the read-only run fails closed — it cannot produce the
+  // PATCH/receipts it demands. Keyed on the artifact-capability shortfall (real deliverable gap), with the
+  // mutating-class check as an explicit belt-and-suspenders for a mutating request resolved below its class.
+  if (artifactShortfall || (isMutating && downgraded)) {
+    return Object.freeze({
+      taskClass: reqClass,
+      expectedArtifactClass: req.expectedArtifactClass,
+      requiredExecutionReceipts: Object.freeze([...req.requiredExecutionReceipts]),
+      verifierRequired: req.verifierRequired,
+      downgradeBlocked: true,
+    });
+  }
+
+  // The grant's provable envelope. Requirements are the request ∩ what the resolved profile can actually run.
+  const requiredExecutionReceipts = Object.freeze(req.requiredExecutionReceipts.filter((r) => provable.receipts.includes(r)));
+  // Artifact requirement is capped at what the resolved profile can produce (min of requested and provable).
+  const expectedArtifactClass =
+    ARTIFACT_CLASSES.indexOf(req.expectedArtifactClass) <= ARTIFACT_CLASSES.indexOf(provable.artifact)
+      ? req.expectedArtifactClass
+      : provable.artifact;
+  // A verifier is only meaningfully producible by a profile that can run tests (VERIFY+). Below that, a required
+  // verifier would be unsatisfiable — so it is not required of a pure read-only-analysis grant.
+  const verifierRequired = req.verifierRequired && provable.receipts.includes("tests");
+
+  return Object.freeze({ taskClass: reqClass, expectedArtifactClass, requiredExecutionReceipts, verifierRequired, downgradeBlocked: false });
+}
+
 // Normalize an intake artifact's optional `execution` block into the completion contract, with SAFE
 // fail-closed defaults: absent ⇒ a pure READ_ONLY_ANALYSIS task (no required receipts, no required artifact,
 // no verifier) — the only class that may COMPLETE on process success alone. An implementation/patch task must
