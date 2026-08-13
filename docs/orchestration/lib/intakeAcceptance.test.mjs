@@ -88,7 +88,7 @@ test("ACCEPTANCE: ChatGPT work:// → validate → status:// → wake → comple
   // no PowerShell, no Claude GUI. The Owner's only action was ChatGPT creating the work item.
 });
 
-test("ACCEPTANCE (paid capability, no broker): authorized review item is BLOCKED, not fabricated", () => {
+test("ACCEPTANCE (paid capability, credential unavailable): authorized review item is BLOCKED, not fabricated", () => {
   const a = { ...chatgptSubmission(), requestId: "EOS-ACCEPT-PAID" };
   a.artifactLocation = "docs/orchestration/work-intake/EOS-ACCEPT-PAID.work.json";
   a.sha256 = intakeDigest({ ...a, sha256: undefined, artifactLocation: a.artifactLocation });
@@ -97,9 +97,16 @@ test("ACCEPTANCE (paid capability, no broker): authorized review item is BLOCKED
   const fixed = { ...payload, sha256: intakeDigest(payload) };
   const bytes = Buffer.from(JSON.stringify(fixed), "utf8");
   const written = new Map();
+  // Inject a broker that DETERMINISTICALLY reports the paid credential unavailable. (Passing `null` would be
+  // defeated by executeIntakeItem's `deps.capabilityBroker ?? createSecretBroker()` — `null ?? x` builds the
+  // REAL broker, which on a machine that actually has the DPAPI OPENAI_API_KEY provisioned reports it AVAILABLE
+  // and the item COMPLETEs — making this test pass only where no credential happens to exist. This stub makes
+  // the credential-absent → BLOCKED path deterministic on any machine; the credential-PRESENT → COMPLETE path
+  // is covered by intakeBrokeredAcceptance.test.mjs's availability broker.)
+  const unavailableBroker = { credentialStatus: () => ({ credentialAvailable: false }) };
   const out = executeIntakeItem({
     requestId: fixed.requestId, location: fixed.artifactLocation, sha256: fixed.sha256, requiresCapabilities: ["OPENAI_REVIEW"],
-    deps: { readFile: () => bytes, write: (loc, text) => (written.set(loc, text), loc), processRunner: fakeWorker(), lease: fakeLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT, now: NOW, capabilityBroker: null },
+    deps: { readFile: () => bytes, write: (loc, text) => (written.set(loc, text), loc), processRunner: fakeWorker(), lease: fakeLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT, now: NOW, capabilityBroker: unavailableBroker },
   });
   assert.equal(out.disposition, "BLOCKED");
   const status = JSON.parse(written.get(statusLocation("EOS-ACCEPT-PAID")));
