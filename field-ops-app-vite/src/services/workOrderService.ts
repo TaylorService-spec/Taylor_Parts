@@ -8,7 +8,7 @@
 // role-scoped), mirroring firebase/collectionStore.js's existing read
 // patterns for fieldops_jobs/fieldops_technicians.
 import { httpsCallable } from "firebase/functions";
-import { collection, doc, getDoc, onSnapshot, query, where, type Unsubscribe } from "firebase/firestore";
+import { collection, doc, getDoc, limit, onSnapshot, query, where, type Unsubscribe } from "firebase/firestore";
 import { db, functions } from "../firebase/firebase";
 import { WORK_ORDERS_COLLECTION } from "../domain/constants";
 import type { WorkOrder, Priority, Severity, WorkOrderType, ActionName } from "../types/workOrder";
@@ -117,7 +117,10 @@ export function subscribeAssignedWorkOrders(
   onChange: (workOrders: WorkOrder[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const assignedQuery = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId));
+  // Bound the live listener: without this cap every historical assignment remains subscribed forever.
+  // Ordering is deliberately not added here because it would require a new composite index; the cap is safe
+  // with the existing Rules/index posture and the dashboard still applies its active/today view filtering.
+  const assignedQuery = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId), limit(100));
   return onSnapshot(
     assignedQuery,
     (snap) => {
