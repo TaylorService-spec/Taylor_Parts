@@ -41,7 +41,11 @@ A single fenced code block tagged `eos-findings` containing a **JSON array** of 
   issue re-found in a later audit must use the *same* discriminator; two *different* issues in the same
   `file`/`symbol` must use *different* discriminators.
 - **Every finding needs evidence.** No evidence → invalid → dropped from the structured set.
-- **Fail-closed:** a worker that emits no block, invalid JSON, or a non-array yields zero structured findings —
-  downstream the child contributes no findings and reconcile surfaces nothing silently. A malformed individual
-  finding is separated (`invalid`) with its errors, never accepted as a vague finding.
+- **A valid empty `[]` is a real answer** ("the worker found zero findings") — that child consolidates clean.
+- **Fail-closed on extraction failure:** a MISSING block, invalid JSON, a non-array, OR any individual finding
+  that fails the contract is an **extraction failure**, not a clean result. `childFromResult` marks such a child
+  `EXTRACTION_INVALID`, which **fails the completeness gate and blocks consolidation** until it's fixed/re-run —
+  because the worker may have found real issues it simply failed to emit machine-readably, and treating that as
+  "zero findings ⇒ clean" would silently suppress them. A malformed individual finding is preserved in `invalid`
+  (surfaced, never dropped).
 - The human report is still whatever the worker writes; only the `eos-findings` block is machine-consumed.

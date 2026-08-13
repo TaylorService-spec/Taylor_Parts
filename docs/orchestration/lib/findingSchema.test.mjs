@@ -68,6 +68,7 @@ test("validateFindings separates valid (normalized) from invalid (with errors) �
 });
 
 import { extractFindings, childFromResult } from "./findingSchema.mjs";
+import { consolidateChildResults } from "./resultConsolidation.mjs";
 
 const WORKER_OUTPUT = `# Sector audit: work-order lifecycle
 
@@ -97,15 +98,37 @@ test("extractFindings fail-closed: no block / bad JSON → found:false, no findi
   assert.deepEqual(extractFindings("nope").findings, []);
 });
 
-test("childFromResult wires worker output → dedup-able consolidation child", () => {
-  const c = childFromResult({ requestId: "EOS-ISSUE-852-C02", sector: "work-orders", content: WORKER_OUTPUT });
-  assert.equal(c.requestId, "EOS-ISSUE-852-C02");
+const EMPTY_BLOCK = "prose\n```eos-findings\n[]\n```\ndone";
+
+test("childFromResult: a VALID empty [] block → clean COMPLETE child with zero findings (allowed)", () => {
+  const c = childFromResult({ requestId: "A", content: EMPTY_BLOCK });
   assert.equal(c.disposition, "COMPLETE");
-  assert.equal(c.findings.length, 1);
-  assert.equal(c.findingsExtraction.found, true);
-  assert.equal(c.findingsExtraction.invalidCount, 1);
-  // a worker that emitted nothing structured → empty findings (fail-closed downstream)
-  const empty = childFromResult({ requestId: "X", content: "no findings block" });
-  assert.deepEqual(empty.findings, []);
-  assert.equal(empty.findingsExtraction.found, false);
+  assert.deepEqual(c.findings, []);
+  assert.equal(c.findingsExtraction.trustworthy, true);
+  assert.equal(consolidateChildResults({ expectedChildIds: ["A"], children: [c] }).ok, true, "genuine zero-findings is allowed");
+});
+
+test("childFromResult: MISSING block → EXTRACTION_INVALID, cannot silently consolidate as clean", () => {
+  const c = childFromResult({ requestId: "A", content: "no block here" });
+  assert.equal(c.disposition, "EXTRACTION_INVALID");
+  assert.equal(c.findingsExtraction.found, false);
+  const out = consolidateChildResults({ expectedChildIds: ["A"], children: [c] });
+  assert.equal(out.ok, false, "extraction failure blocks consolidation");
+  assert.deepEqual(out.incomplete, ["A"]);
+});
+
+test("childFromResult: malformed JSON / non-array → EXTRACTION_INVALID, blocks consolidation", () => {
+  for (const bad of ["```eos-findings\n{not json\n```", "```eos-findings\n{\"a\":1}\n```"]) {
+    const c = childFromResult({ requestId: "A", content: bad });
+    assert.equal(c.disposition, "EXTRACTION_INVALID", `blocked: ${bad}`);
+    assert.equal(consolidateChildResults({ expectedChildIds: ["A"], children: [c] }).ok, false);
+  }
+});
+
+test("childFromResult: a malformed INDIVIDUAL finding is surfaced (invalid) and blocks clean consolidation", () => {
+  const c = childFromResult({ requestId: "A", content: WORKER_OUTPUT }); // 1 valid + 1 contract-violating
+  assert.equal(c.disposition, "EXTRACTION_INVALID", "not a clean COMPLETE while a finding is malformed");
+  assert.equal(c.invalid.length, 1, "the malformed finding is surfaced, never dropped");
+  assert.equal(c.findings.length, 1, "the valid finding is still extracted");
+  assert.equal(consolidateChildResults({ expectedChildIds: ["A"], children: [c] }).ok, false);
 });

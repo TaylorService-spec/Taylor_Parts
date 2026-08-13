@@ -78,8 +78,9 @@ const FINDINGS_BLOCK = /```eos-findings\s*\n([\s\S]*?)\n```/;
  *   - no block            → { found:false, findings:[], invalid:[], reason:"no eos-findings block" }
  *   - block but bad JSON  → { found:false, ..., reason:"invalid JSON in eos-findings block" }
  *   - block parses        → { found:true, findings:[valid, normalized], invalid:[{finding,errors}] }
- * A worker that emits no/invalid block yields no structured findings, so downstream the child's findings are
- * empty and reconcile fail-closes (surfaces for disposition) — never a silent, unverifiable pass.
+ * `found` distinguishes a trustworthy extraction (a valid array, possibly empty) from an extraction FAILURE
+ * (missing/malformed). It is `childFromResult` — not this parser — that turns a failure into a blocking
+ * EXTRACTION_INVALID child; a missing/malformed block must never be consolidated as a clean zero-findings result.
  */
 export function extractFindings(content = "") {
   const text = typeof content === "string" ? content : "";
@@ -95,10 +96,24 @@ export function extractFindings(content = "") {
 
 /**
  * Build the consolidation-input shape for one executed child from its raw result content — the wiring point that
- * turns worker output into a dedup-able consolidation child. `findings` are the extracted+validated structured
- * findings (empty if the worker emitted none/invalid — which fail-closes downstream, by design).
+ * turns worker output into a dedup-able consolidation child.
+ *
+ * CRITICAL fail-closed distinction: a VALID `eos-findings` block — even an empty `[]` — is a trustworthy result
+ * ("the worker found zero findings" is a real answer). But a MISSING or MALFORMED block, or ANY individual
+ * finding that fails the contract, is an EXTRACTION FAILURE, not a clean child: the worker may well have found
+ * real issues it simply failed to emit machine-readably, and consolidating it as "zero findings ⇒ clean" would
+ * silently suppress them. So a COMPLETE worker whose output can't be trusted is marked `EXTRACTION_INVALID`,
+ * which fails the completeness gate and BLOCKS consolidation until it's fixed/re-run. Invalid individual findings
+ * are preserved in `invalid` (surfaced, never dropped). A non-COMPLETE incoming disposition is left as-is.
  */
 export function childFromResult({ requestId, disposition = "COMPLETE", sector = null, content = "" } = {}) {
   const ex = extractFindings(content);
-  return Object.freeze({ requestId, disposition, sector, findings: ex.findings, findingsExtraction: Object.freeze({ found: ex.found, invalidCount: ex.invalid.length, reason: ex.reason ?? null }) });
+  const trustworthy = ex.found && ex.invalid.length === 0;
+  const effectiveDisposition = disposition === "COMPLETE" && !trustworthy ? "EXTRACTION_INVALID" : disposition;
+  return Object.freeze({
+    requestId, disposition: effectiveDisposition, sector,
+    findings: ex.findings,
+    invalid: Object.freeze(ex.invalid), // malformed findings are surfaced here, never silently dropped
+    findingsExtraction: Object.freeze({ found: ex.found, trustworthy, invalidCount: ex.invalid.length, reason: ex.reason ?? (ex.invalid.length ? "one or more findings failed the contract" : null) }),
+  });
 }

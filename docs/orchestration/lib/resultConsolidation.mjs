@@ -8,6 +8,7 @@
 // duplicates removed, and cross-sector risks. This is the governed input to the parent's completion gate.
 
 import { reconcileFindings, canonicalizeIdentity } from "./findingsRegister.mjs";
+import { childFromResult } from "./findingSchema.mjs";
 
 const SEVERITY_RANK = Object.freeze({ INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 });
 const sevRank = (s) => (s in SEVERITY_RANK ? SEVERITY_RANK[s] : -1);
@@ -153,4 +154,21 @@ export function consolidateAndReconcile({ parentWorkId = null, expectedChildIds 
   // What a human/EOS must actually act on after applying memory: new work + integrity alarms.
   const actionable = Object.freeze([...reconciled.surfaced, ...reconciled.regressions, ...reconciled.unprovenFixed]);
   return Object.freeze({ ok: true, consolidated, reconciled, actionable, actionableCount: actionable.length });
+}
+
+/**
+ * END-TO-END audit loop: raw worker RESULT CONTENT → structured findings → consolidate → reconcile against the
+ * findings register. This is the whole loop as one call: extractFindings (per child) + completeness gate +
+ * deterministic consolidation + register memory. Fail-closed throughout — a child whose worker emitted no valid
+ * eos-findings block contributes no findings (surfaces nothing silently); a partial child set never consolidates.
+ *
+ * @param {object} p  { parentWorkId, expectedChildIds, childResults, register }
+ *   childResults: [{ requestId, disposition?, sector?, content }] — one per executed child (content = its result).
+ * @returns same shape as consolidateAndReconcile, plus `extractions` (per-child block-extraction status).
+ */
+export function runAuditReconcile({ parentWorkId = null, expectedChildIds = [], childResults = [], register = [] } = {}) {
+  const children = (Array.isArray(childResults) ? childResults : []).map(childFromResult);
+  const out = consolidateAndReconcile({ parentWorkId, expectedChildIds, children, register });
+  const extractions = Object.freeze(children.map((c) => Object.freeze({ requestId: c.requestId, ...c.findingsExtraction })));
+  return Object.freeze({ ...out, extractions });
 }
