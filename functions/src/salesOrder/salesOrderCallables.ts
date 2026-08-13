@@ -8,19 +8,24 @@
 // EXPORT != DEPLOY, REGISTER != GRANT. Sales Order is the committed commercial order; it does NOT assign
 // serialized assets (fulfillment does) and does NOT write Work Orders/inventory (later governed seams do).
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
+import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { SALES_ORDERS_COLLECTION } from "../constants/collections";
 import {
   buildCreateSalesOrder,
   buildTransitionPatch,
   SalesOrderCommandError,
   type CreateSalesOrderInput,
-  type SalesOrderDocState,
+  type SalesOrderDocState, type BuiltSalesOrder,
 } from "./salesOrderCommands";
 import type { SalesOrderTransition } from "./salesOrderLifecycle";
 
 export const SALES_ORDER_WRITE_CAPABILITY = "salesOrder.write";
+
+const createAuditId = (actorUid: string, key: string): string =>
+  `createSalesOrder_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
 
 function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
@@ -35,6 +40,21 @@ function mapCommandError(err: unknown): HttpsError {
     }
   }
   return new HttpsError("internal", "Sales Order command failed.");
+}
+
+export async function persistCreatedSalesOrder(
+  db: Firestore, tx: Transaction, built: BuiltSalesOrder, actorUid: string, idempotencyKey?: string,
+) {
+  const aid = idempotencyKey ? createAuditId(actorUid, idempotencyKey) : null;
+  const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
+  if (aid) {
+    const prior = await tx.get(auditEventDocRef(aid));
+    if (prior.exists) return { success: true as const, replayed: true as const, salesOrderId: ((prior.data() ?? {}).targetId as string) ?? null, state: built.state };
+  }
+  const ref = db.collection(SALES_ORDERS_COLLECTION).doc();
+  tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createSalesOrder", targetType: "salesOrder", targetId: ref.id, outcome: "applied", summary: `created sales order for account ${built.accountId}` });
+  return { success: true as const, replayed: false as const, salesOrderId: ref.id, state: built.state };
 }
 
 async function requireSalesOrderWrite(uid: string): Promise<void> {
@@ -54,21 +74,19 @@ export const createSalesOrder = onCall({ region: "us-central1" }, async (request
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
   await requireSalesOrderWrite(request.auth.uid);
 
+  const data = (request.data ?? {}) as CreateSalesOrderInput & { idempotencyKey?: string };
+  if (data.idempotencyKey !== undefined && (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0)) {
+    throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
+  }
   let built;
   try {
-    built = buildCreateSalesOrder(request.data as CreateSalesOrderInput, { actorUid: request.auth.uid, nowMillis: Date.now() });
+    built = buildCreateSalesOrder(data, { actorUid: request.auth.uid, nowMillis: Date.now() });
   } catch (err) {
     throw mapCommandError(err);
   }
 
   const db = getFirestore();
-  const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
-  const ref = await db.collection(SALES_ORDERS_COLLECTION).add({
-    ...fields,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  return { success: true as const, salesOrderId: ref.id, state: built.state };
+  return db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, request.auth!.uid, data.idempotencyKey));
 });
 
 interface TransitionSalesOrderInput {

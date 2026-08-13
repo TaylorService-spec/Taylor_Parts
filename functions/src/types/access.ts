@@ -286,7 +286,10 @@ export type AuditAction =
   // Work Order Engine (idempotency remediation) -- the trusted createWorkOrder callable uses the same
   // deterministic Audit Event marker so a retried create returns the already-created Work Order instead of
   // minting a second one and burning a WO number, no parallel enum
-  | "createWorkOrder";
+  | "createWorkOrder"
+  // Commercial command idempotency markers for the Opportunity and Sales Order create callables.
+  | "createOpportunity"
+  | "createSalesOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

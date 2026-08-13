@@ -154,6 +154,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Work Order Engine (idempotency remediation): runtime mirror of the createWorkOrder AuditAction union
   // member -- deterministic Audit Event id makes a retried create a no-op replay (no duplicate WO / number).
   "createWorkOrder",
+  // Commercial create callables use the same deterministic Audit Event marker for retry replay.
+  "createOpportunity",
+  "createSalesOrder",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

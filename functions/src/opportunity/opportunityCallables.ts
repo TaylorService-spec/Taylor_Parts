@@ -12,19 +12,24 @@
 // until a separate deploy + capability grant, each its own Owner-authorized action. Opportunity is
 // PRE-COMMITMENT: these commands never create inventory movement, Work Orders, or invoices.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
+import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { OPPORTUNITIES_COLLECTION } from "../constants/collections";
 import {
   buildCreateOpportunity,
   buildTransitionPatch,
   OpportunityCommandError,
   type CreateOpportunityInput,
-  type OpportunityDocState,
+  type OpportunityDocState, type BuiltOpportunity,
 } from "./opportunityCommands";
 import { isOutcome, isStage, type TransitionIntent } from "./opportunityLifecycle";
 
 export const OPPORTUNITY_WRITE_CAPABILITY = "opportunity.write";
+
+const createAuditId = (actorUid: string, key: string): string =>
+  `createOpportunity_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
 
 // Map the pure command's error code onto the right HttpsError. Bad payloads are invalid-argument; governed
 // precondition failures (already closed / illegal transition / outcome gate) are failed-precondition.
@@ -41,6 +46,21 @@ function mapCommandError(err: unknown): HttpsError {
     }
   }
   return new HttpsError("internal", "Opportunity command failed.");
+}
+
+export async function persistCreatedOpportunity(
+  db: Firestore, tx: Transaction, built: BuiltOpportunity, actorUid: string, idempotencyKey?: string,
+) {
+  const aid = idempotencyKey ? createAuditId(actorUid, idempotencyKey) : null;
+  const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
+  if (aid) {
+    const prior = await tx.get(auditEventDocRef(aid));
+    if (prior.exists) return { success: true as const, replayed: true as const, opportunityId: ((prior.data() ?? {}).targetId as string) ?? null, stage: built.stage };
+  }
+  const ref = db.collection(OPPORTUNITIES_COLLECTION).doc();
+  tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createOpportunity", targetType: "opportunity", targetId: ref.id, outcome: "applied", summary: `created opportunity for account ${built.accountId}` });
+  return { success: true as const, replayed: false as const, opportunityId: ref.id, stage: built.stage };
 }
 
 async function requireOpportunityWrite(uid: string): Promise<void> {
@@ -63,9 +83,13 @@ export const createOpportunity = onCall({ region: "us-central1" }, async (reques
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
   await requireOpportunityWrite(request.auth.uid);
 
+  const data = (request.data ?? {}) as CreateOpportunityInput & { idempotencyKey?: string };
+  if (data.idempotencyKey !== undefined && (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0)) {
+    throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
+  }
   let built;
   try {
-    built = buildCreateOpportunity(request.data as CreateOpportunityInput, {
+    built = buildCreateOpportunity(data, {
       actorUid: request.auth.uid,
       nowMillis: Date.now(),
     });
@@ -74,14 +98,7 @@ export const createOpportunity = onCall({ region: "us-central1" }, async (reques
   }
 
   const db = getFirestore();
-  // Persist the built fields, but let the server stamp the authoritative timestamps (drop the pure *Millis).
-  const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
-  const ref = await db.collection(OPPORTUNITIES_COLLECTION).add({
-    ...fields,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  return { success: true as const, opportunityId: ref.id, stage: built.stage };
+  return db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, request.auth!.uid, data.idempotencyKey));
 });
 
 interface TransitionOpportunityInput {
