@@ -56,6 +56,14 @@ export function makeLease({ dir, fs, host = "local", pid = 0, now = () => 0, lea
 // while workers on DIFFERENT requests take DIFFERENT dirs and run concurrently. This is what lets the
 // concurrent-write runner drain disjoint sectors in parallel without two writers ever grabbing the same work.
 // Reuses makeLease verbatim (same reclaim/heartbeat/stale semantics) — only the lock path is per-request.
+//
+// SCOPE (do not overstate): mutual exclusion holds ONLY among workers that share the same `lockRoot`
+// filesystem — the atomic guarantee is `mkdirSync`'s on ONE volume. That covers the current single self-hosted
+// runtime (one host, one disk) and any shared/durable volume with atomic-create semantics. It is NOT
+// distributed locking: two hosts with independent local disks each create `lockRoot/<requestId>` on their own
+// disk and do NOT exclude each other. Multi-host parallelism is an ACTIVATION precondition — it requires the
+// lock storage to be shared/durable (a real distributed lock) before it can be claimed, and until then the
+// concurrent runner must run under a single lock-owning host.
 export function makeRequestClaim(requestId, { lockRoot, fs, host = "local", pid = 0, now = () => 0, leaseMs = 900000, isPidAlive = null } = {}) {
   // requestId becomes a path segment; constrain it to a safe slug so it can't escape lockRoot or collide by
   // normalization. A bad id fails closed (throws) rather than silently sharing a lock with another request.

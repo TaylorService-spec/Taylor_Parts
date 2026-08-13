@@ -62,3 +62,21 @@ repo-only change):
    worker path, with the real worktree-isolated spawn as `runWorker`.
 
 Order still matters: the claim (1) is the safety primitive, and it is in place before (2) can write in parallel.
+
+## Activation preconditions (narrow assumptions to satisfy before turning live)
+
+The runner is SAFE as an unactivated concurrency primitive; two narrow assumptions must be satisfied (or
+explicitly constrained) before live parallel execution — they are *preconditions*, not redesigns:
+
+1. **Shared/durable lock storage for multi-host.** `makeRequestClaim`'s mutual exclusion is `mkdirSync`'s
+   atomicity on ONE `lockRoot` filesystem. It excludes duplicate pickup among workers sharing that volume — the
+   current single self-hosted runtime, or a shared durable volume. It is **not** distributed locking: two hosts
+   on independent local disks do not exclude each other. **Precondition:** run the concurrent runner under a
+   single lock-owning host until the lock store is genuinely shared/durable (a real distributed lock).
+2. **Concrete, normalized paths in.** `planConcurrentWriteSectors` proves disjointness structurally over
+   concrete paths — exact equality **and** directory containment (`src/foo` ∋ `src/foo/bar.js`), with any
+   glob/wildcard scope treated as unprovable → its own wave (fail-safe). What it cannot see from a path alone —
+   **rename source/target pairs, generated or shared output files, case-insensitive-fs collisions** — must be
+   declared or normalized by the caller. **Precondition:** the item feed supplies concrete, normalized write
+   paths (globs pre-expanded; both rename ends and any shared/generated outputs declared) before waves are used
+   to drive real parallel writes. Un-normalized or glob-bearing items still run safely — just serialized alone.

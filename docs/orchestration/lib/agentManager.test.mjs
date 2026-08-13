@@ -265,6 +265,38 @@ test("planConcurrentWriteSectors: an item with NO declared paths is fail-safe (o
   assert.deepEqual(waves[0].map((i) => i.requestId), ["X"]);
 });
 
+test("planConcurrentWriteSectors: directory containment counts as overlap (not just exact equality)", () => {
+  // A owns the directory scope src/foo; B writes a file INSIDE it → same sector → must serialize.
+  const waves = planConcurrentWriteSectors([
+    { requestId: "A", paths: ["src/foo"] },
+    { requestId: "B", paths: ["src/foo/bar.js"] },
+  ]);
+  assert.equal(waves.length, 2, "src/foo ∋ src/foo/bar.js → overlap → serialized");
+  // But a mere string-prefix that is NOT a path-segment boundary is NOT an overlap.
+  const sibling = planConcurrentWriteSectors([
+    { requestId: "A", paths: ["src/foo"] },
+    { requestId: "C", paths: ["src/foobar.js"] },
+  ]);
+  assert.equal(sibling.length, 1, "src/foo vs src/foobar.js are different sectors → same wave");
+});
+
+test("planConcurrentWriteSectors: a glob/wildcard scope is unprovable → fail-safe own wave", () => {
+  const waves = planConcurrentWriteSectors([
+    { requestId: "GLOB", paths: ["src/**/*.ts"] },
+    { requestId: "CONCRETE", paths: ["docs/readme.md"] },
+  ]);
+  assert.equal(waves.length, 2, "an unexpanded glob can't be proven disjoint → runs alone");
+  assert.deepEqual(waves[0].map((i) => i.requestId), ["GLOB"]);
+});
+
+test("planConcurrentWriteSectors: path normalization makes ./ and backslash forms compare equal", () => {
+  const waves = planConcurrentWriteSectors([
+    { requestId: "A", paths: ["./src/a.ts"] },
+    { requestId: "B", paths: ["src\\a.ts"] }, // same concrete file after normalization → overlap
+  ]);
+  assert.equal(waves.length, 2, "normalized to the same path → serialized, not falsely parallel");
+});
+
 test("detectThrottle reads 429 / rate-limit / overloaded / retry-after from an outcome", () => {
   assert.equal(detectThrottle({ diagnostic: "HTTP 429 rate_limited" }).throttled, true);
   assert.equal(detectThrottle({ failureDetail: "overloaded, retry-after: 30" }).retryAfterSec, 30);

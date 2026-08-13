@@ -64,33 +64,54 @@ export function decideIntakeDispatch({ requestId, workSha256, committedStatus = 
 // concurrency, and bound retries so failing work stops re-spawning paid workers. They are PURE — a runner
 // consumes them; nothing here spawns, and the existing sequential runtime keeps working untouched.
 
+// A path carrying any glob/wildcard metacharacter can't be resolved to a concrete file-set at plan time, so its
+// true scope is UNKNOWN and it must not be treated as a single concrete path. (`*` `?` `[...]` `{...}`.)
+const GLOB_META = /[*?[\]{}]/;
+// Normalize to a canonical concrete form so equality/containment compare like-for-like: backslashes → `/`,
+// strip a leading `./`, collapse duplicate slashes, drop a trailing slash. Purely lexical — it does NOT
+// resolve `..`, symlinks, case-folding, or a glob's expansion (that's the caller's normalization precondition).
+function normalizePath(p) {
+  return String(p).trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+}
+// Two CONCRETE paths overlap if identical, OR one is a directory prefix of the other at a SEGMENT boundary:
+// `src/foo` vs `src/foo/bar.js` overlap (dir contains file); `src/foo` vs `src/foobar` do NOT. This is what
+// makes exact-equality insufficient — a directory scope and a file inside it are the same sector.
+function pathsOverlap(a, b) {
+  return a === b || b.startsWith(`${a}/`) || a.startsWith(`${b}/`);
+}
+
 /**
  * Partition approved WRITE items into concurrency-safe WAVES: within a wave, every item's file-set is pairwise
  * DISJOINT (different sectors → safe to write in parallel — no fratricide); an item that shares any path with a
  * wave member is pushed to a later wave (serialized). This is what lets the manager run MULTIPLE non-overlapping
- * areas of write at once. Deterministic greedy first-fit (interval-graph coloring). Fail-safe: an item with NO
- * declared paths can't be proven disjoint, so it takes a wave alone and never shares with a known-scope item.
+ * areas of write at once. Deterministic greedy first-fit (interval-graph coloring).
+ *
+ * Disjointness is proven STRUCTURALLY over CONCRETE, normalized paths: exact equality AND directory containment
+ * (`src/foo` ∋ `src/foo/bar.js`) both count as overlap. Fail-safe on anything it can't prove concrete: an item
+ * with NO declared paths, OR any path bearing a glob/wildcard, has UNKNOWN scope → it takes a wave ALONE and
+ * blocks its wave for others. What this canNOT see from paths alone — rename source/target pairs, generated or
+ * shared output files, case-insensitive-fs collisions — must be declared/normalized upstream by the caller;
+ * that normalization is an ACTIVATION precondition for live parallel writes (see agent-manager-scaling.md).
  * @param {Array<{requestId?:string, paths?:string[]}>} items
  * @returns {ReadonlyArray<ReadonlyArray<object>>} waves; waves[0] is the max set of concurrently-writable sectors
  */
 export function planConcurrentWriteSectors(items = []) {
-  const waves = [];
+  const waves = []; // internal wave: [{ item, paths: string[] | null }]  (null = unknown/unprovable scope)
   for (const item of Array.isArray(items) ? items : []) {
-    const paths = Array.isArray(item?.paths) ? item.paths.filter((p) => typeof p === "string") : [];
+    const normalized = (Array.isArray(item?.paths) ? item.paths.filter((p) => typeof p === "string") : [])
+      .map(normalizePath).filter(Boolean);
+    // Provable ⇔ at least one path AND none of them is a glob. Otherwise scope is UNKNOWN (fail-safe → alone).
+    const provable = normalized.length > 0 && !normalized.some((p) => GLOB_META.test(p));
     let placed = false;
-    if (paths.length > 0) {
-      const pset = new Set(paths);
+    if (provable) {
       for (const wave of waves) {
-        const clash = wave.some((w) => {
-          const wp = Array.isArray(w?.paths) ? w.paths.filter((p) => typeof p === "string") : [];
-          return wp.length === 0 || wp.some((p) => pset.has(p)); // an unknown-scope member blocks its wave
-        });
-        if (!clash) { wave.push(item); placed = true; break; }
+        const clash = wave.some((w) => w.paths === null || w.paths.some((q) => normalized.some((p) => pathsOverlap(p, q))));
+        if (!clash) { wave.push({ item, paths: normalized }); placed = true; break; }
       }
     }
-    if (!placed) waves.push([item]); // unknown scope, or overlaps every wave → serialize in its own wave
+    if (!placed) waves.push([{ item, paths: provable ? normalized : null }]);
   }
-  return Object.freeze(waves.map((w) => Object.freeze([...w])));
+  return Object.freeze(waves.map((w) => Object.freeze(w.map((x) => x.item))));
 }
 
 const THROTTLE_RE = /\b(?:429|rate[ _-]?limit(?:ed|ing)?|overloaded|too many requests|usage limit|quota exceeded|retry[ _-]?after)\b/i;

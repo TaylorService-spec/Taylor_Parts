@@ -5,8 +5,10 @@
 //   • planConcurrentWriteSectors → WAVES of pairwise-disjoint file-sets. Every item in a wave writes a
 //     different sector, so the whole wave is safe to run at once; later waves (which may overlap earlier
 //     ones) are serialized AFTER their predecessor drains. This is the structural anti-fratricide guard.
-//   • a per-request atomic CLAIM (injected claimFactory → makeRequestClaim) so two workers can never grab the
-//     same item, even across processes/hosts.
+//   • a per-request atomic CLAIM (injected claimFactory → makeRequestClaim) so two workers SHARING the same
+//     lock filesystem can never grab the same item. NOTE: this excludes duplicates among workers that share the
+//     `lockRoot` volume (the current single self-hosted runtime, or a shared/durable volume) — it is NOT
+//     distributed locking; two hosts on independent local disks do not exclude each other (see makeRequestClaim).
 //   • REVALIDATE before write (injected) — the serial model's freshness guard applied per item: rebase on
 //     latest main + re-check the finding still applies, so a wave-mate's merge can't make a stale write land.
 //   • adaptConcurrency (AIMD) reading detectThrottle across each batch's outcomes — the number of workers fired
