@@ -68,30 +68,38 @@ jobs:
             }
           }
           exit 0
-      - name: Commit status/result back to main (only if changed)
+      - name: Commit status/result back to main (isolated, branch-robust)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage ONLY the work-intake artifacts. This is the whole safety guarantee: nothing outside
+          # work-intake/{status,results,review-ready} can EVER enter the write-back, so a PATCH_PRODUCER item
+          # that left the shared working tree on a stray branch (e.g. eos/issue-842-...) or with uncommitted
+          # code changes can never leak into main. Only truthful status/results/review-ready ever land.
           git add docs/orchestration/work-intake/status docs/orchestration/work-intake/results docs/orchestration/work-intake/review-ready
           git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "no changes"
-          } else {
-            git commit -m "eos: intake execution result write-back [skip ci]"
-            if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
-            # main moves constantly (frequent intake write-backs + PR merges), so a bare push races and
-            # is rejected non-fast-forward. Re-sync with a rebase and retry before giving up, so the
-            # execution result actually lands instead of failing the job and stranding the status.
-            $pushed = $false
-            for ($i = 1; $i -le 5; $i++) {
-              git pull --rebase origin main
-              if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed with exit code $LASTEXITCODE" }
-              git push
-              if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
-              Write-Warning "push rejected (attempt $i); re-syncing with main and retrying."
-              Start-Sleep -Seconds 3
-            }
-            if (-not $pushed) { throw "git push failed after 5 rebase+retry attempts" }
+          if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
+          # Capture the staged artifacts as a single commit. Because only those paths were staged, this commit's
+          # DIFF is exactly the artifacts — even if the current branch carries unrelated PATCH commits in history.
+          git commit -m "eos: intake execution result write-back [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
+          $wb = (git rev-parse HEAD).Trim()
+          # Land that artifact-only commit on CLEAN main, independent of which branch the runner was left on and
+          # resilient to main moving: reset hard to a fresh origin/main, replay ONLY the artifact diff via
+          # cherry-pick, and push HEAD:main (branch-robust; a bare 'git push' fails on a stray upstream-less branch).
+          $pushed = $false
+          for ($i = 1; $i -le 5; $i++) {
+            git fetch origin main
+            if ($LASTEXITCODE -ne 0) { Write-Warning "fetch failed (attempt $i); retrying."; Start-Sleep -Seconds 3; continue }
+            git checkout -f -B eos-writeback FETCH_HEAD
+            git reset --hard FETCH_HEAD
+            git cherry-pick $wb
+            if ($LASTEXITCODE -ne 0) { git cherry-pick --abort; Write-Warning "cherry-pick conflict (attempt $i); re-syncing with latest main."; Start-Sleep -Seconds 3; continue }
+            git push origin HEAD:main
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Write-Warning "push rejected (attempt $i); re-syncing with main and retrying."
+            Start-Sleep -Seconds 3
           }
+          if (-not $pushed) { throw "write-back failed to land on main after 5 attempts" }
