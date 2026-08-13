@@ -1,0 +1,46 @@
+{
+  "requestId": "EOS-ISSUE-846",
+  "title": "EOS LIVE RETEST — auto handoff via workflow_run (read-only analysis)",
+  "intent": "Live retest of the EOS auto-handoff after PR #845 (workflow_run trigger). Read-only analysis; must NOT modify files.\n\nRequired work:\n- Read `docs/orchestration/lib/executionProfiles.mjs` and briefly list the four EOS execution profiles and their turn ceilings. Do not modify files, do not open a PR.\n\nCompletion:\nA short report naming the four profiles and ceilings (40/60/80/100).",
+  "scope": [
+    "docs/orchestration/lib/executionProfiles.mjs"
+  ],
+  "execution": {
+    "taskClass": "READ_ONLY_ANALYSIS",
+    "expectedArtifactClass": "NONE",
+    "requiredExecutionReceipts": [],
+    "verifierRequired": false,
+    "signal": "DEFAULT_LEAST_PRIVILEGE",
+    "ambiguous": true,
+    "reason": "no clear implementation/verify signal — default to least privilege"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/846",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-13T04:48:27Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-846.work.json",
+  "sha256": "5e8e98c995cd9c38b540af419ee3fbaeffbaa35d03864928acd008be6cafab13",
+  "createdAt": "2026-08-13T04:48:25Z",
+  "updatedAt": "2026-08-13T04:48:27Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/846"
+    ],
+    "pullRequests": []
+  }
+}
