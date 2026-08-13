@@ -45,3 +45,16 @@ resolve empty is rejected rather than minted invalid.
 intent into child requests, `buildChildWorkItems` mints the authorized-by-inheritance artifacts, and the driver
 drains them through EOS in disjoint sectors. Activation (committing child artifacts, wiring the decomposition
 into a workflow) remains gated — this file adds the pure authority seam, not a live flip.
+
+## The sixth arrow — consolidation (`lib/resultConsolidation.mjs`)
+
+After EOS executes the children and the verifier checks them, `consolidateChildResults({ parentWorkId,
+expectedChildIds, children })` reduces their findings into ONE durable report — and governs the parent's
+completion. It is **fail-closed on completeness first**: every expected child must be present AND `COMPLETE`
+(via `assertChildrenComplete`), or it refuses to consolidate (`{ ok:false, missing, incomplete }`). This is what
+enforces "a parent is not COMPLETE merely because its children exited." On success it dedupes findings by
+identity (file + line + category) and surfaces, deterministically (worst-severity first, then key), exactly the
+four things the model asks the manager to identify: **agreements** (≥2 children on the same finding),
+**conflicts** (children disagreeing on severity), **duplicates removed**, and **cross-sector risks** (one finding
+surfaced by children in different sectors). Pure and thin; wiring it as the parent's durable result + completion
+input is the gated activation.
