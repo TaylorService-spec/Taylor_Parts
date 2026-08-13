@@ -51,15 +51,19 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
   // Guard the two async handlers against setState after unmount (the technician can switch the
   // scanner action mid-flight) -- the same cancelled-flag discipline the repo's async hooks use.
   const mountedRef = useRef(true);
+  const locationRequestGenerationRef = useRef(0);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   async function chooseCandidate(c) {
+    const generation = ++locationRequestGenerationRef.current;
     setCandidate(c);
     setLocationId("");
     setStep(RECEIVE_STEP.SELECT_LOCATION);
     setLocations({ status: "loading", options: [] });
     const res = await fetchReceivingLocationOptions();
-    if (mountedRef.current) setLocations({ status: res.status, options: res.options ?? [] });
+    if (mountedRef.current && generation === locationRequestGenerationRef.current) {
+      setLocations({ status: res.status, options: res.options ?? [] });
+    }
   }
 
   async function submit() {
@@ -74,6 +78,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
   }
 
   function restart() {
+    locationRequestGenerationRef.current += 1;
     setCandidate(null);
     setLocationId("");
     setLocations({ status: "idle", options: [] });
