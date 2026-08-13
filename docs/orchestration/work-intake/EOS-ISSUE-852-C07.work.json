@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C07",
+  "title": "#852 sector 07: EOS runtime / intake / completion semantics",
+  "intent": "Read-only analysis of sector 07 (EOS runtime / intake / completion semantics); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "docs/orchestration/context",
+    "docs/orchestration/lib"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C07.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "86cb17a813ff4a61a7b1d88d7c0924f9b5cfdd3489d317468cb2a1c57bfbfe01"
+}

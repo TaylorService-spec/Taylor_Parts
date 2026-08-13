@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C06",
+  "title": "#852 sector 06: Cloud Functions / callables / auth boundaries",
+  "intent": "Read-only analysis of sector 06 (Cloud Functions / callables / auth boundaries); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "functions/src/callerContext.ts",
+    "functions/src/access"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C06.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "5703cd0bfd5208564b73a72f8ab5f15d3910562aad3ccd387ac8b87bb34b1b2a"
+}

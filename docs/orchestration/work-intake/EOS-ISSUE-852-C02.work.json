@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C02",
+  "title": "#852 sector 02: Work-order lifecycle + idempotency",
+  "intent": "Read-only analysis of sector 02 (Work-order lifecycle + idempotency); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "functions/src/createWorkOrder.ts",
+    "functions/src/transitionEngine.ts"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C02.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "296c9fde6f8e3a57a1410ede8012f40dc8ec725ea4e45910ee05e7024b685496"
+}

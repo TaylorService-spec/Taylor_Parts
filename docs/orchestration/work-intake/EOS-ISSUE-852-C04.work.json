@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C04",
+  "title": "#852 sector 04: Equipment / serialized assets / warranty",
+  "intent": "Read-only analysis of sector 04 (Equipment / serialized assets / warranty); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "functions/src/equipment",
+    "src/features/equipment"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C04.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "dfb4ba61a3e9c1c250615d850941c9430ebd647f1d2313e4c704d79ed60bc460"
+}

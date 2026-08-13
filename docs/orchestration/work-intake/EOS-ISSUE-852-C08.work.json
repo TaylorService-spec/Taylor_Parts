@@ -1,0 +1,34 @@
+{
+  "requestId": "EOS-ISSUE-852-C08",
+  "title": "#852 sector 08: Agent Manager concurrency/dedup/throttle/retry",
+  "intent": "Read-only analysis of sector 08 (Agent Manager concurrency/dedup/throttle/retry); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "docs/orchestration/lib/agentManager.mjs"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C08.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "55fdf012722c96362a1aea0f16a715e29b534279c0ef6f74a272189836933b9e"
+}
