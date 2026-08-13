@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C10",
+  "title": "#852 sector 10: Architecture / spec / governance drift + duplicate capability",
+  "intent": "Read-only analysis of sector 10 (Architecture / spec / governance drift + duplicate capability); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "docs/architecture",
+    "docs"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C10.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "9d78a9d72da1b78572f8e386e4c0e6721431d70c2c622759b5497eb4547c8d0d"
+}

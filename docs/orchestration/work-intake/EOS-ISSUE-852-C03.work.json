@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-ISSUE-852-C03",
+  "title": "#852 sector 03: Dispatch/technician workflow + assignment logic",
+  "intent": "Read-only analysis of sector 03 (Dispatch/technician workflow + assignment logic); return findings with repository paths, evidence, and severity.",
+  "scope": [
+    "functions/src/dispatch",
+    "src/features/dispatch"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "AgentManager/decomposition",
+    "provenance": "inherited from EOS-ISSUE-852"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "inherited from EOS-ISSUE-852 (constrained subset)",
+    "protectedBoundary": null,
+    "profile": "READ_ONLY_ANALYSIS",
+    "budgetUsd": 0,
+    "capabilities": [],
+    "parentRef": "EOS-ISSUE-852"
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-852-C03.work.json",
+  "createdAt": "2026-08-13T08:45:00.000Z",
+  "updatedAt": "2026-08-13T08:45:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "sha256": "da9db43e7e6298ac962f44fd46e89db737d6ff4cddd242c28e4fb03135fca812"
+}
