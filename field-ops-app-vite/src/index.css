@@ -344,6 +344,14 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      restraint, as elsewhere in this system. */
   color: var(--verenward-moon); opacity: 0.85;
 }
+/* Active group — the current route's Service group, so the heading itself
+   carries a "you are here" cue rather than only its selected child item
+   (.fo-rail__item--active). Quiet by design, same accent as the item's own
+   active border, so the two read as one state at two levels. */
+.fo-rail__group--active > .fo-rail__group-label {
+  color: var(--color-text-inverse); opacity: 1; border-left: 2px solid var(--color-brand-accent);
+  padding-left: 20px;
+}
 
 /* --- Workspace column ---------------------------------------------------- */
 .fo-workspace { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
