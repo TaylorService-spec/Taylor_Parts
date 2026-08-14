@@ -44,4 +44,5 @@ sell → convert → allocate → create service work → plan parts → dispatc
 - Larger builds (P1.1/P1.2/P1.3, P2.2, P3.x) get a short spec grounded in the settled decisions before implementation; report at each phase boundary.
 
 ## Status
-- P0: IN PROGRESS.
+- P0: DONE (P0.1 #946 consumeParts honors actuals+releases remainder; P0.2 #945 setWorkOrderPartsPlan terminal guard).
+- P1 spine: SPEC IN PROGRESS.
