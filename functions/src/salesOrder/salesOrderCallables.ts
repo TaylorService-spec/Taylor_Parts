@@ -51,19 +51,34 @@ function mapCommandError(err: unknown): HttpsError {
 // sourceOpportunityId (one WON Opportunity mints at most one SO via this path). All reads happen here, before
 // any write in persistCreatedSalesOrder, to respect Firestore's transaction read-before-write ordering.
 async function verifySourceOpportunity(
-  db: Firestore, tx: Transaction, sourceOpportunityId: string, accountId: string,
+  db: Firestore, tx: Transaction, sourceOpportunityId: string, accountId: string, salesOrderLines: BuiltSalesOrder["lines"],
 ): Promise<FirebaseFirestore.DocumentReference> {
   const oppRef = db.collection(OPPORTUNITIES_COLLECTION).doc(sourceOpportunityId);
   const oppSnap = await tx.get(oppRef);
   if (!oppSnap.exists) {
     throw new HttpsError("invalid-argument", `No Opportunity with id ${sourceOpportunityId}`);
   }
-  const opp = oppSnap.data() as { outcome?: string | null; accountId?: string };
+  const opp = oppSnap.data() as { outcome?: string | null; accountId?: string; lines?: Array<{ kind?: string; ref?: string; qty?: number }> };
   if (opp.outcome !== "WON") {
     throw new HttpsError("failed-precondition", `Opportunity ${sourceOpportunityId} is not WON`);
   }
   if (opp.accountId !== accountId) {
     throw new HttpsError("failed-precondition", `Opportunity ${sourceOpportunityId} does not belong to account ${accountId}`);
+  }
+  const countLines = (lines: Array<{ kind?: string; ref?: string; qty?: number; orderedQty?: number }>) => {
+    const counts = new Map<string, number>();
+    for (const line of lines) {
+      const qty = line.qty ?? line.orderedQty;
+      if (typeof line.kind !== "string" || typeof line.ref !== "string" || typeof qty !== "number") return null;
+      const key = `${line.kind}:${line.ref}:${qty}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const opportunityCounts = countLines(Array.isArray(opp.lines) ? opp.lines : []);
+  const salesOrderCounts = countLines(salesOrderLines);
+  if (!opportunityCounts || !salesOrderCounts || opportunityCounts.size !== salesOrderCounts.size || [...opportunityCounts].some(([key, count]) => salesOrderCounts.get(key) !== count)) {
+    throw new HttpsError("failed-precondition", `Sales Order lines must exactly match Opportunity ${sourceOpportunityId} lines`);
   }
   const dupQuery = db.collection(SALES_ORDERS_COLLECTION).where("sourceOpportunityId", "==", sourceOpportunityId).limit(1);
   const dup = await tx.get(dupQuery);
@@ -83,7 +98,7 @@ export async function persistCreatedSalesOrder(
     if (prior.exists) return { success: true as const, replayed: true as const, salesOrderId: ((prior.data() ?? {}).targetId as string) ?? null, state: built.state };
   }
   const oppRef = built.sourceOpportunityId
-    ? await verifySourceOpportunity(db, tx, built.sourceOpportunityId, built.accountId)
+    ? await verifySourceOpportunity(db, tx, built.sourceOpportunityId, built.accountId, built.lines)
     : null;
   const ref = db.collection(SALES_ORDERS_COLLECTION).doc();
   tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });

@@ -18,10 +18,11 @@ admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 let sequence = 0;
 const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;
+const opportunityLines = [{ kind: "PART", ref: "part-1", qty: 1 }];
 
 const opp = async (fields) => {
   const oppId = id("opp");
-  await db.collection("opportunities").doc(oppId).set(fields);
+  await db.collection("opportunities").doc(oppId).set({ lines: opportunityLines, ...fields });
   return oppId;
 };
 
@@ -120,4 +121,17 @@ test("a retried create against a WON Opportunity replays -- does NOT re-verify o
   assert.equal((await db.collection("sales_orders").where("sourceOpportunityId", "==", oppId).get()).size, 1);
   const oppAfter = await db.collection("opportunities").doc(oppId).get();
   assert.equal(oppAfter.data().salesOrderId, first.salesOrderId);
+});
+
+test("source Opportunity cannot lend lineage to divergent Sales Order lines", async () => {
+  const accountId = id("account");
+  const oppId = await opp({ accountId, outcome: "WON" });
+  const divergent = buildCreateSalesOrder(
+    { accountId, ownerEmployeeId: id("owner"), salesChannel: "RETAIL", sourceOpportunityId: oppId, lines: [{ kind: "PART", ref: "unrelated-part", orderedQty: 1 }] },
+    { actorUid: id("actor"), nowMillis: Date.now() },
+  );
+  await assert.rejects(
+    () => db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, divergent, id("actor"), id("key"))),
+    (err) => err.code === "failed-precondition",
+  );
 });
