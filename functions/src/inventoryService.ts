@@ -107,13 +107,13 @@ function writeLedgerEntry(
 async function getWorkOrderInventorySnapshot(
   tx: Transaction,
   workOrderId: string
-): Promise<Array<{ sku: string; qtyPlanned: number }>> {
+): Promise<Array<{ sku: string; qtyPlanned: number; qtyUsed?: number }>> {
   const snap = await tx.get(db().collection(WORK_ORDERS_COLLECTION).doc(workOrderId));
   if (!snap.exists) throw new Error(`No Work Order with id ${workOrderId}`);
   const wo = snap.data() as WorkOrder;
   return (wo.inventorySnapshot ?? [])
     .filter((item) => (item.qtyPlanned ?? 0) > 0)
-    .map((item) => ({ sku: item.sku, qtyPlanned: item.qtyPlanned as number }));
+    .map((item) => ({ sku: item.sku, qtyPlanned: item.qtyPlanned as number, qtyUsed: item.qtyUsed }));
 }
 
 // DISPATCHED trigger. All-or-nothing: if ANY planned part lacks enough
@@ -170,14 +170,22 @@ export async function releaseParts(workOrderId: string): Promise<void> {
   });
 }
 
-// COMPLETED trigger. Consumes qtyPlanned, not qtyUsed -- qtyUsed
-// (InventorySnapshotItem's "actual usage" field, see
-// types/workOrder.ts) has no populate path anywhere in this app yet
-// (Epic 1.1 explicitly deferred it, and UI inventory integration is
-// out of scope for this epic too) -- there is nothing else to consume
-// from. Validates each part's outstanding reservation actually covers
-// what's being consumed; throws (whole transaction aborts) rather than
-// silently over-consuming if not.
+// COMPLETED trigger. Consumes the governed ACTUAL usage (qtyUsed --
+// InventorySnapshotItem's field, see types/workOrder.ts), populated by
+// updateWorkOrderExecutionData() (PartsScanner/ExecutionCapture) via
+// mergeQtyUsed(), which clamps it to [0, qtyPlanned]. Falls back to
+// qtyPlanned only when qtyUsed hasn't been recorded yet (preserves the
+// pre-actuals behavior for WOs with no field usage data). The repair
+// step still tops up the reservation to qtyPlanned first (so
+// getOutstandingReservation() ends up exactly qtyPlanned per item),
+// then consumes actual usage and RELEASES the remainder
+// (qtyPlanned - actual) so no reservation is left stranded -- see
+// Sales->Cash Lifecycle Build Plan P0.1. Because mergeQtyUsed() clamps
+// qtyUsed <= qtyPlanned, actual usage can never exceed qtyPlanned here;
+// the governed overage/additional-part path (used > planned) is a
+// separate build (P1), not handled by this function. Validates each
+// part's outstanding reservation actually covers qtyPlanned; throws
+// (whole transaction aborts) rather than silently over-consuming if not.
 export async function consumeParts(workOrderId: string): Promise<void> {
   await db().runTransaction(async (tx) => {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
@@ -210,7 +218,19 @@ export async function consumeParts(workOrderId: string): Promise<void> {
     }
 
     for (const item of items) {
-      writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "CONSUMED", quantity: item.qtyPlanned });
+      // Governed actual usage: qtyUsed when recorded (mergeQtyUsed() already
+      // clamped it to [0, qtyPlanned]), else fall back to qtyPlanned so a WO
+      // with no field-usage data yet behaves exactly as before.
+      const actual = item.qtyUsed ?? item.qtyPlanned;
+      writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "CONSUMED", quantity: actual });
+
+      // Release whatever of the (now-repaired-to-qtyPlanned) reservation
+      // wasn't actually used, so the unused remainder isn't stranded and
+      // available stock reflects real consumption.
+      const remainder = item.qtyPlanned - actual;
+      if (remainder > 0) {
+        writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "RELEASED", quantity: remainder });
+      }
     }
   });
 }
