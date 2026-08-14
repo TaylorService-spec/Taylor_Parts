@@ -102,6 +102,9 @@ test("createSalesOrder with NO sourceOpportunityId is unaffected -- succeeds wit
   assert.equal(created.replayed, false);
   const soDoc = await db.collection("sales_orders").doc(created.salesOrderId).get();
   assert.equal(soDoc.data().sourceOpportunityId, null);
+  // currency round-trips onto the persisted header via the `...fields` spread (no callable change needed),
+  // so the created order is invoiceable — a written doc with currency:undefined would fail-close at issueInvoice.
+  assert.equal(soDoc.data().currency, "USD", "currency must reach the persisted Sales Order header");
 });
 
 test("a retried create against a WON Opportunity replays -- does NOT re-verify or re-link a second time", async () => {

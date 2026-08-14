@@ -34,6 +34,24 @@ test("create: one product-level line with qty (C713 x5), starts CONFIRMED, qtys 
   );
 });
 
+test("create: stamps currency USD on the header — server-set, not client-supplied (#976 invoicing seam)", () => {
+  // currency is a single-currency default on the SO HEADER; issueInvoice's verifySalesOrderMatch compares
+  // input.currency against so.currency, so a missing header currency makes an order permanently unbillable.
+  const so = buildCreateSalesOrder(
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    CTX
+  );
+  assert.equal(so.currency, "USD");
+
+  // The command invents no currency authority: a client-sent `currency` in the raw payload is NOT trusted —
+  // CreateSalesOrderInput declares no currency field, so the builder unconditionally sets it server-side.
+  const injected = buildCreateSalesOrder(
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", currency: "CAD", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    CTX
+  );
+  assert.equal(injected.currency, "USD", "a client-supplied currency must be ignored (server-set)");
+});
+
 test("create: accepts the ratified STRATEGIC_ACCOUNTS channel (#15)", () => {
   const so = buildCreateSalesOrder(
     { accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },

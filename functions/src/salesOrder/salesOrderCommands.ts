@@ -109,6 +109,12 @@ export interface BuiltSalesOrder {
   accountId: string;
   ownerEmployeeId: string;
   salesChannel: SalesChannel;
+  // Committed pricing currency (integer minor units per money.js). Persisted on
+  // the Sales Order so downstream finance (issueInvoice's verifySalesOrderMatch)
+  // can require input.currency === so.currency. Single-currency default "USD"
+  // matches the money model; a multi-currency source (account/company) is a
+  // separate future seam.
+  currency: string;
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -133,6 +139,7 @@ export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actor
     accountId: input.accountId.trim(),
     ownerEmployeeId: input.ownerEmployeeId.trim(),
     salesChannel: input.salesChannel,
+    currency: "USD",
     locationId: nonEmpty(input.locationId) ? input.locationId.trim() : null,
     sourceOpportunityId: nonEmpty(input.sourceOpportunityId) ? input.sourceOpportunityId.trim() : null,
     customerPO: nonEmpty(input.customerPO) ? input.customerPO.trim() : null,
