@@ -745,9 +745,10 @@
       {
         "discriminator": "operations-procurementpanel-reads-dormant-collection",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "A"
+        "prItem": "A",
+        "pr": 938
       },
       {
         "discriminator": "reportexecution-contains-filter-broken-for-list-fields",
