@@ -16,12 +16,14 @@ import {
   EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION,
   EQUIPMENT_PART_COMPATIBILITY_COLLECTION,
   MalformedStoredRecordError,
+  MAX_EVIDENCE_PER_RELATIONSHIP,
   metaToFirestore,
   readDoc,
   readMeta,
   requireData,
   type StoredMeta,
 } from "./repository";
+import { EvidenceCapExceededError } from "./errors";
 
 export interface StoredCompatibility extends StoredMeta {
   readonly compatibility: any; // the D2-validated relationship value
@@ -165,6 +167,13 @@ export interface CompatibilitySourceRepository {
   // index — no compound index is introduced, and D5 still owns projections and their query shapes.
   // Every returned document goes through the D2 validator, so malformed stored evidence fails closed
   // rather than silently skewing a conflict decision.
+  //
+  // BOUNDED, consistent with the D5 read path: this issues a `.limit(MAX_EVIDENCE_PER_RELATIONSHIP + 1)`
+  // probe rather than an unbounded `.where(...)` scan. A relationship within the governed cap returns its
+  // full (necessarily complete) evidence set, exactly as before. A relationship AT or OVER the cap throws
+  // EvidenceCapExceededError instead of silently reading (and re-reading, forever, on every future import)
+  // an unbounded set — evidence is create-only/immutable, so once a relationship is at the cap no further
+  // import can succeed via this bounded read until the cap itself is revisited by a future governed change.
   listByCompatibilityId(txn: Transaction | null, compatibilityId: string): Promise<StoredCompatibilitySource[]>;
   stageCreate(txn: Transaction, stored: StoredCompatibilitySource): void;
 }
@@ -209,8 +218,21 @@ export function buildFirestoreCompatibilitySourceRepository(db: Firestore): Comp
       if (!isCanonicalCompatibilityId(compatibilityId)) {
         throw new MalformedStoredRecordError(`cannot list evidence for noncanonical compatibilityId ${String(compatibilityId)}`);
       }
-      const query = db.collection(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION).where("compatibilityId", "==", compatibilityId);
+      // A `+1` probe distinguishes "the complete set is at most the cap" from "the set overflows the
+      // cap" WITHOUT ever reading more than cap+1 documents — the same technique the D5 read path
+      // (readService.ts readEvidenceSummary) uses. Overflow fails closed rather than returning a
+      // truncated (and therefore conflict-analysis-unsafe) evidence set.
+      const query = db
+        .collection(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION)
+        .where("compatibilityId", "==", compatibilityId)
+        .limit(MAX_EVIDENCE_PER_RELATIONSHIP + 1);
       const snap = txn ? await txn.get(query) : await query.get();
+      if (snap.size > MAX_EVIDENCE_PER_RELATIONSHIP) {
+        throw new EvidenceCapExceededError(
+          `evidence for ${compatibilityId} has reached the governed cap of ${MAX_EVIDENCE_PER_RELATIONSHIP} records; ` +
+          `refusing an unbounded read for conflict analysis`
+        );
+      }
       return snap.docs.map((d: any) => {
         const stored = sourceFromFirestore(d.id, requireData(d.id, d.data()));
         // Defence in depth: a document returned by the query must actually belong to this relationship.

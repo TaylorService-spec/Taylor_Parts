@@ -20,7 +20,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { prepareCommand, type PreparedCommand } from "./commandFingerprint";
 import { analyzeCompatibilityEvidence } from "./domain/compatibility";
 import {
-  AlreadyExistsError, IdempotencyConflictError, InvalidInputError, NotFoundError,
+  AlreadyExistsError, EvidenceCapExceededError, IdempotencyConflictError, InvalidInputError, NotFoundError,
   ReferentialIntegrityError, UnauthorizedActorError, VersionConflictError,
 } from "./errors";
 import { ACTION_TARGET_TYPES, type OperationAction, type OperationRecord, type OperationTargetType } from "./operations";
@@ -69,6 +69,7 @@ export const DENIAL_REASONS = Object.freeze({
   REFERENTIAL_INTEGRITY: "referential_integrity",
   NOT_FOUND: "not_found",
   ALREADY_EXISTS: "already_exists",
+  EVIDENCE_LIMIT_EXCEEDED: "evidence_limit_exceeded",
   INTERNAL_ERROR: "internal_error",
 });
 export type DenialReason = (typeof DENIAL_REASONS)[keyof typeof DENIAL_REASONS];
@@ -132,6 +133,7 @@ function denialReasonFor(error: unknown): DenialReason {
   if (error instanceof ReferentialIntegrityError) return DENIAL_REASONS.REFERENTIAL_INTEGRITY;
   if (error instanceof NotFoundError) return DENIAL_REASONS.NOT_FOUND;
   if (error instanceof AlreadyExistsError) return DENIAL_REASONS.ALREADY_EXISTS;
+  if (error instanceof EvidenceCapExceededError) return DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED;
   if (error instanceof InvalidInputError) return DENIAL_REASONS.INVALID_INPUT;
   return DENIAL_REASONS.INTERNAL_ERROR;
 }
@@ -416,7 +418,8 @@ export async function runEquipmentCompatibilityCommand(
     } catch (error) {
       if (
         error instanceof VersionConflictError || error instanceof ReferentialIntegrityError ||
-        error instanceof NotFoundError || error instanceof AlreadyExistsError
+        error instanceof NotFoundError || error instanceof AlreadyExistsError ||
+        error instanceof EvidenceCapExceededError
       ) {
         // A governed denial: a terminal `denied` outcome, recorded as a STABLE CODE. The underlying
         // message is never persisted -- it is returned to the caller only.

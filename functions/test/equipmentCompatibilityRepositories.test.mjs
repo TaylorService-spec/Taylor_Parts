@@ -19,13 +19,13 @@ import { Timestamp } from "firebase-admin/firestore";
 const {
   EQUIPMENT_COMPATIBILITY_COLLECTIONS, EQUIPMENT_MODELS_COLLECTION, EQUIPMENT_MODEL_ALIASES_COLLECTION,
   EQUIPMENT_PART_COMPATIBILITY_COLLECTION, EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION,
-  EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, MalformedStoredRecordError,
+  EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, MalformedStoredRecordError, MAX_EVIDENCE_PER_RELATIONSHIP,
 } = await import("../lib/equipmentCompatibility/repository.js");
 const M = await import("../lib/equipmentCompatibility/equipmentModelRepository.js");
 const C = await import("../lib/equipmentCompatibility/compatibilityRepository.js");
 const O = await import("../lib/equipmentCompatibility/operationRepository.js");
 const D2 = await import("../lib/equipmentCompatibility/domain/compatibility.js");
-const { IllegalOperationTransitionError, OperationNotInitiatedError } = await import("../lib/equipmentCompatibility/errors.js");
+const { IllegalOperationTransitionError, OperationNotInitiatedError, EvidenceCapExceededError } = await import("../lib/equipmentCompatibility/errors.js");
 
 let passed = 0;
 const ok = async (n, f) => { await f(); passed++; console.log(`PASS -- ${n}`); };
@@ -47,27 +47,35 @@ function fakeDb() {
     if (d.includes("/")) throw new Error(`doc id crosses a path segment: ${d}`);
     return { __c: c, __d: d, async get() { return snapOf(c, d); } };
   };
-  const runQuery = (c, field, value) => ({
-    docs: [...committed.entries()]
+  // `limit` mirrors Firestore's Query.limit(n): truncate the matched set to at most n docs. Modelled
+  // faithfully enough for the ONE thing D4's bounded evidence read relies on -- that the query itself,
+  // not client-side slicing after the fact, is what caps how many documents are ever read.
+  const runQuery = (c, field, value, limit) => {
+    const matched = [...committed.entries()]
       .filter(([k, v]) => k.startsWith(`${c}/`) && v && v[field] === value)
-      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v })),
-  });
-  const query = (c, field, value) => ({
-    __query: true, __c: c, __field: field, __value: value,
-    async get() { return runQuery(c, field, value); },
+      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v }));
+    const docs = typeof limit === "number" ? matched.slice(0, limit) : matched;
+    return { docs, size: docs.length }; // real Firestore QuerySnapshot exposes .size the same way
+  };
+  const limitCalls = [];
+  const query = (c, field, value, limit) => ({
+    __query: true, __c: c, __field: field, __value: value, __limit: limit,
+    limit(n) { limitCalls.push({ c, field, value, n }); return query(c, field, value, n); },
+    async get() { return runQuery(c, field, value, limit); },
   });
   const db = {
     collection: (c) => ({ doc: (d) => docRef(c, d), where: (f, op, v) => { if (op !== "==") throw new Error(`unsupported op ${op}`); return query(c, f, v); } }),
     __committed: committed,
     __seed: (c, d, data) => committed.set(key(c, d), data),
     __raw: (c, d) => committed.get(key(c, d)),
+    __limitCalls: () => limitCalls.slice(),
     // Mirrors Firestore.runTransaction: queue writes, apply atomically at commit.
     async runTransaction(fn) {
       const queued = [];
       const txn = {
         async get(ref) {
           if (queued.length > 0) throw new ReadAfterWriteError("Firestore transactions require all reads before any write");
-          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value) : snapOf(ref.__c, ref.__d);
+          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value, ref.__limit) : snapOf(ref.__c, ref.__d);
         },
         create(ref, data) { queued.push({ op: "create", c: ref.__c, d: ref.__d, data }); },
         set(ref, data) { queued.push({ op: "set", c: ref.__c, d: ref.__d, data }); },
@@ -340,6 +348,57 @@ await ok("listByCompatibilityId returns the bounded, validated evidence set", as
   });
   // Works outside a transaction too.
   assert.equal((await repo.listByCompatibilityId(null, compat.compatibilityId)).length, 2);
+});
+await ok("listByCompatibilityId issues a BOUNDED query -- .limit(cap+1), never an unbounded .where() scan", async () => {
+  const db = fakeDb();
+  const repo = C.buildFirestoreCompatibilitySourceRepository(db);
+  await db.runTransaction(async (txn) => { repo.stageCreate(txn, { source, ...meta }); });
+  await db.runTransaction((txn) => repo.listByCompatibilityId(txn, compat.compatibilityId));
+  await repo.listByCompatibilityId(null, compat.compatibilityId);
+  const calls = db.__limitCalls().filter((c) => c.c === EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION);
+  assert.ok(calls.length >= 2, "every evidence read goes through a limited query");
+  for (const c of calls) {
+    assert.equal(c.n, MAX_EVIDENCE_PER_RELATIONSHIP + 1, "the read-time cap is the governed constant, +1 for the overflow probe");
+  }
+});
+await ok("a relationship AT the cap returns its full evidence set (still within bounds)", async () => {
+  const db = fakeDb();
+  const repo = C.buildFirestoreCompatibilitySourceRepository(db);
+  await db.runTransaction(async (txn) => {
+    for (let i = 0; i < MAX_EVIDENCE_PER_RELATIONSHIP; i++) {
+      const s = D2.validateCompatibilitySource({
+        compatibilityId: compat.compatibilityId, authorityType: "MANUFACTURER", sourceReference: `Doc ${i}`,
+        sourceVersion: null, observedClaim: "SUPPORTS", contentFingerprint: `${i}`.padStart(64, "0"),
+        capturedAt: "2026-07-27T07:06:24Z", capturedBy: "admin-uid-1", notes: null,
+      }).value;
+      repo.stageCreate(txn, { source: s, ...meta });
+    }
+  });
+  const { result: found } = await db.runTransaction((txn) => repo.listByCompatibilityId(txn, compat.compatibilityId));
+  assert.equal(found.length, MAX_EVIDENCE_PER_RELATIONSHIP, "exactly at the cap is still a complete, readable set");
+});
+await ok("a relationship OVER the governed evidence cap fails the write-time read closed, not unboundedly", async () => {
+  const db = fakeDb();
+  const repo = C.buildFirestoreCompatibilitySourceRepository(db);
+  await db.runTransaction(async (txn) => {
+    // One MORE than the cap -- the exact condition ITEM K describes: unbounded growth past the D5
+    // read-path bound, which the write-time conflict-analysis read must now refuse rather than scan.
+    for (let i = 0; i < MAX_EVIDENCE_PER_RELATIONSHIP + 1; i++) {
+      const s = D2.validateCompatibilitySource({
+        compatibilityId: compat.compatibilityId, authorityType: "MANUFACTURER", sourceReference: `Doc ${i}`,
+        sourceVersion: null, observedClaim: "SUPPORTS", contentFingerprint: `${i}`.padStart(64, "0"),
+        capturedAt: "2026-07-27T07:06:24Z", capturedBy: "admin-uid-1", notes: null,
+      }).value;
+      repo.stageCreate(txn, { source: s, ...meta });
+    }
+  });
+  // A clear, governed error -- not a silent truncation, not an unbounded read, not a hang.
+  await assert.rejects(
+    () => db.runTransaction((txn) => repo.listByCompatibilityId(txn, compat.compatibilityId)),
+    EvidenceCapExceededError
+  );
+  // Outside a transaction too.
+  await assert.rejects(() => repo.listByCompatibilityId(null, compat.compatibilityId), EvidenceCapExceededError);
 });
 await ok("the evidence query fails closed on a malformed stored record or a noncanonical id", async () => {
   const db = fakeDb();
