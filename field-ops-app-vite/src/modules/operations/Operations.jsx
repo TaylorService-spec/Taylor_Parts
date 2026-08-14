@@ -11,7 +11,7 @@ import {
   fetchTransferOrderDocs,
   fetchSuppliers,
   fetchSupplierCatalog,
-  fetchPurchaseOrders,
+  fetchProcurementPurchaseOrders,
 } from "../../services/operationsQueries";
 import {
   normalizeLedgerTransaction,
@@ -99,7 +99,7 @@ export default function Operations({ accessVersion } = {}) {
       fetchTransferOrderDocs(),
       fetchSuppliers(),
       fetchSupplierCatalog(),
-      fetchPurchaseOrders(),
+      fetchProcurementPurchaseOrders(),
       getDocs(collection(db, TECHNICIANS_COLLECTION)),
       getInventoryConsumptionSnapshot(),
       getTechnicianVolumeBreakdown(),
