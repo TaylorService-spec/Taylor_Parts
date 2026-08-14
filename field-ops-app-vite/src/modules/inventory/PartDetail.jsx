@@ -163,6 +163,20 @@ function money(n) {
 const CANCEL_VOID_CONFIRMATION_COPY =
   "This action does not delete history. The record will remain visible for audit purposes.";
 
+// Site-work r4 C, Fix 1: mirrors PartsList.jsx's pendingRequests-style scoping --
+// a Reorder Request only blocks a NEW request while it is still active. Previously
+// this page gated "Request Reorder" on plain !reorderRequest, and
+// useReorderRequestForPart() returns the most-recent request for the part
+// REGARDLESS of status, so once that most-recent request reached a terminal status
+// (RECEIVED/CANCELLED/REJECTED/VOIDED) the button never came back -- a dead end.
+// A part whose only request(s) are terminal is requestable again.
+const TERMINAL_REORDER_REQUEST_STATUSES = new Set([
+  REORDER_REQUEST_STATUS.RECEIVED,
+  REORDER_REQUEST_STATUS.CANCELLED,
+  REORDER_REQUEST_STATUS.REJECTED,
+  REORDER_REQUEST_STATUS.VOIDED,
+]);
+
 // Cancel is available from all three pre-order active statuses, for
 // any isAdminOrDispatcher() reader -- unrestricted to a specific
 // individual (matches every other hand-off-type action on this
@@ -374,7 +388,8 @@ function ReorderRequestAssignment({ request, onAssigned }) {
       await assignReorderRequest(request.id, { assignedToUserId });
       onAssigned();
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -448,7 +463,8 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
       await startPurchasing(request.id);
       onStarted();
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -528,7 +544,8 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
       await updatePurchasingProgress(request.id, { purchasingNotes, vendorContacted, expectedAvailabilityDate });
       onUpdated();
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -674,7 +691,8 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
       });
       onRecorded();
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -828,7 +846,8 @@ function ReorderRequestMarkReceived({ request, onReceived }) {
       await receiveReorderRequest(request.id);
       onReceived();
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -1112,7 +1131,8 @@ function InventoryActionsPanel({ partId }) {
       setReason("");
       setNotes("");
     } catch (err) {
-      setError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setError(workflowActionErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -1302,7 +1322,8 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
       // READY, where resolvedPartId === the route partId). Workflow unchanged.
       await requestReorderForRecommendation({ partId: resolvedPartId, recommendation: health.recommendation, manualQty });
     } catch (err) {
-      setReorderError(err.message);
+      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
+      setReorderError(workflowActionErrorMessage(err));
     } finally {
       setReorderSubmitting(false);
     }
@@ -1356,7 +1377,14 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
           emptyText={
             reorderRequestError === "not_found"
               ? "This reorder request could not be found."
-              : "This reorder request does not belong to this part."
+              : reorderRequestError === "mismatch"
+                ? "This reorder request does not belong to this part."
+                : // Site-work r4 C, Fix 2: any other error is now a real Firestore SDK
+                  // read-error code (e.g. "permission-denied", "unavailable"), preserved
+                  // by useReorderRequestForPart() instead of collapsed into "not_found" --
+                  // an access/read failure is a distinct fact from a genuinely-missing
+                  // document, and must not be reported as one.
+                  "This reorder request could not be loaded (access denied or a read error). Try again."
           }
         />
       )}
@@ -1477,17 +1505,24 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
             </tbody>
           </table>
 
-          {!reorderRequestLoading && !reorderRequest && (
-            <>
-              {reorderError && <p className="fo-muted">{reorderError}</p>}
-              <RequestReorderControl
-                recommendation={health.recommendation}
-                onSubmit={handleRequestReorder}
-                submitting={reorderSubmitting}
-                alreadyRequested={false}
-              />
-            </>
-          )}
+          {/* Site-work r4 C, Fix 1: mirrors PartsList.jsx's pendingRequests-style
+              scoping -- requestable when there is no request at all, OR the
+              most-recent one has reached a terminal status. Withheld (fail-closed)
+              while the read is loading or has failed, same as every other gate on
+              this page. */}
+          {!reorderRequestLoading &&
+            !reorderRequestError &&
+            (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
+              <>
+                {reorderError && <p className="fo-muted">{reorderError}</p>}
+                <RequestReorderControl
+                  recommendation={health.recommendation}
+                  onSubmit={handleRequestReorder}
+                  submitting={reorderSubmitting}
+                  alreadyRequested={false}
+                />
+              </>
+            )}
         </div>
       ) : (
         <p className="fo-muted">No ledger activity yet for this part -- stock position not yet forecastable.</p>
