@@ -8,20 +8,18 @@ import { TECHNICIANS_COLLECTION } from "../domain/constants";
 // governed technician entity, read the same way Control Tower reads it). Shaping into the week view model
 // is domain/schedulingWorkspace.js's job; this hook only supplies raw governed data + loading/error.
 //
-// KNOWN LIMITATION (inherited, not introduced here): the technicians read surfaces a real error, but
-// useWorkOrders/subscribeToWorkOrders currently registers NO onSnapshot error callback -- a fieldops_wos
-// read failure leaves that half stuck loading with no error. In practice the intended personas
-// (admin/dispatcher) can read fieldops_wos, so this is unlikely; a proper fix (add an onError to
-// subscribeToWorkOrders and thread it here) is a shared-hook change tracked as a follow-on, deliberately
-// out of this repo-only increment's scope.
+// Both reads surface a real error (useWorkOrders/subscribeToWorkOrders registers an onSnapshot error
+// callback -- see src/hooks/useWorkOrders.js's "Fail VISIBLY" comment, PR #875) and either failure must
+// propagate here: a denied/failed fieldops_wos read must not be swallowed into a false-empty week that
+// SchedulingWorkspace renders identically to a genuinely empty schedule.
 export function useSchedulingData() {
-  const { data: workOrders, loading: woLoading } = useWorkOrders();
+  const { data: workOrders, loading: woLoading, error: woError } = useWorkOrders();
   const { data: technicians, loading: techLoading, error: techError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   return {
     workOrders,
     technicians,
     loading: woLoading || techLoading,
-    error: techError ?? null,
+    error: woError ?? techError ?? null,
   };
 }
