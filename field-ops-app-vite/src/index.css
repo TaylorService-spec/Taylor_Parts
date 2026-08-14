@@ -622,6 +622,63 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-account-collapsible { margin-top: 12px; }
 .fo-account-collapsible summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 
+/* Shared Modal (shared/ui/Modal.jsx) + "System-A" form primitives (shared/ui/form/*). Referenced by
+   class name across 15+ create/edit modals (Accounts, Contacts, Equipment, Truck Management, Jobs,
+   Technicians, Work Orders, ConfirmDialog) since Issue #214 PR-1, but never actually defined here --
+   every one of those forms rendered with unstyled native browser inputs/selects/textareas until this
+   rule set. Fixed as part of the 2026-08-14 retention audit (found live via the Add Truck modal).
+   Composition-only in spirit: no markup/behavior changed, only the styling that was always missing. */
+.fo-modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 26, 22, 0.5);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 6vh 16px; overflow-y: auto;
+}
+.fo-modal {
+  background: var(--color-surface-elevated); border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  width: 100%; max-width: 520px; max-height: calc(100vh - 12vh);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.fo-modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--color-border);
+}
+.fo-modal-title { margin: 0; font-size: 18px; }
+.fo-modal-close {
+  background: none; border: none; cursor: pointer; line-height: 1;
+  font-size: 22px; color: var(--color-text-muted); padding: 4px 8px; border-radius: 6px;
+}
+.fo-modal-close:hover { color: var(--color-text-primary); background: var(--color-surface-sunken); }
+.fo-modal-close:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-modal-body { padding: 20px; overflow-y: auto; }
+
+.fo-create-modal-form { display: flex; flex-direction: column; gap: 16px; }
+
+.fo-form-field { display: flex; flex-direction: column; gap: 4px; }
+.fo-wizard-field-label { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+.fo-field-required { font-weight: 400; color: var(--color-text-muted); }
+.fo-wizard-hint { margin: 0; font-size: 12px; color: var(--color-text-muted); }
+.fo-wizard-error { margin: 0; font-size: 12px; }
+
+.fo-wizard-control {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface-elevated); color: var(--color-text-primary);
+  font: inherit; font-size: 14px;
+}
+.fo-wizard-control:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; border-color: var(--color-brand-secondary); }
+.fo-wizard-control:disabled { background: var(--color-surface-sunken); color: var(--color-text-muted); cursor: not-allowed; }
+.fo-wizard-control[aria-invalid="true"] { border-color: var(--color-danger); }
+
+.fo-wizard-actions { margin-top: 4px; }
+
+/* Inline label+control pairs used in filter bars/toolbars (distinct from the stacked .fo-form-field
+   used inside modals -- same underlying .fo-wizard-control styling either way). */
+.fo-field-inline { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.fo-field-inline > span:first-child { font-weight: 600; color: var(--color-text-secondary); }
+.fo-field-inline select, .fo-field-inline input { padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; font: inherit; }
+
 /* Customer/Account Business Model -- Customer PR 3, Service Activity. */
 .fo-service-activity-counts { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .fo-activity-list { list-style: none; margin: 0; padding: 0; }
