@@ -14,6 +14,7 @@
 import assert from "node:assert/strict";
 import { resolveEffectivePermission } from "../lib/access/resolveEffectivePermission.js";
 import { COMPATIBILITY_ROLES, ADMIN_ROLE, DISPATCHER_ROLE, TECHNICIAN_ROLE } from "../lib/access/compatibilityRoles.js";
+import { OWNER_ROLE } from "../lib/access/governedBusinessRoles.js";
 import { PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
 let passed = 0;
@@ -93,31 +94,17 @@ function buildDeferredForNow(catalog) {
     // compatibility Role -- ungranted-by-design, pending a separate Owner grant. Named as an EXACT literal
     // (not a prefix), so a future workOrder.parts.* capability stays UNACCOUNTED until reviewed.
     "workOrder.parts.plan",
-    // Sales Opportunity Cycle 3: opportunity.write is registered `active: false` and granted to NO
-    // compatibility Role -- ungranted-by-design, pending a separate Owner grant. EXACT literal (not a
-    // prefix), so a future opportunity.* capability stays UNACCOUNTED until reviewed.
-    "opportunity.write",
-    // Sales Opportunity Cycle 3c: opportunity.read (trusted read projection) -- same ungranted-by-design
-    // posture, EXACT literal.
-    "opportunity.read",
-    // Sales Order Cycle 4: salesOrder.write -- ungranted-by-design, EXACT literal.
-    "salesOrder.write",
-    // Fulfillment Cycle 5: salesOrder.fulfill -- ungranted-by-design, EXACT literal.
-    "salesOrder.fulfill",
-    // Sales Order Cycle 7: salesOrder.service -- ungranted-by-design, EXACT literal.
-    "salesOrder.service",
-    // Sales Opportunity: opportunity.createSalesOrder -- ungranted-by-design, EXACT literal, active:false.
-    "opportunity.createSalesOrder",
-    // Finance (Billing/AR): finance.invoice.issue -- ungranted-by-design (Admin-SDK-only issuance), EXACT literal.
-    "finance.invoice.issue",
-    // Finance (Billing/AR): finance.payment.apply -- ungranted-by-design (Admin-SDK-only payment application), EXACT literal.
-    "finance.payment.apply",
-    // Finance (Billing/AR): finance.adjustment.record -- ungranted-by-design (Admin-SDK-only adjustment), EXACT literal.
-    "finance.adjustment.record",
-    // Finance (Billing/AR): finance.read -- ungranted-by-design (trusted backend AR read), EXACT literal.
-    "finance.read",
-    // Finance (Billing/AR): finance.refund.record -- ungranted-by-design (Admin-SDK-only refund), EXACT literal.
-    "finance.refund.record",
+    // Sales/Fulfillment/Finance spine (opportunity.*, salesOrder.*, finance.*):
+    // NO LONGER deferred as of Phase 6a (per-environment-capability-activation
+    // spec, 2026-08-14). All 11 spine ids are now GRANTED to compatibility Roles
+    // (operational 6 -> admin + dispatcher via the shared base; finance 5 ->
+    // admin; owner inherits admin), so they are accounted-for via
+    // SEEDED_GRANTED_IDS, exactly like inventory.stock.receive above -- NOT via
+    // this deferred set. They remain registered `active: false`, so they are
+    // still DENIED everywhere the per-environment activation override is off
+    // (production, role-keyed) -- grant is not activation. A FUTURE
+    // opportunity.*/salesOrder.*/finance.* capability stays UNACCOUNTED (these
+    // were EXACT literals, never prefixes), which the A3-inv gate protects.
     // Commercial Coverage & Territory (#15): coverage.write -- ungranted-by-design (Admin-SDK-only), EXACT literal.
     "coverage.write",
     // Commercial Coverage & Territory (#15): coverage.read -- ungranted-by-design (trusted backend resolve), EXACT literal.
@@ -611,6 +598,95 @@ check("override never rescues an UNKNOWN permission id", () => {
 });
 
 void INACTIVE_ID;
+
+// ---------------------------------------------------------------------------
+// Phase 6a -- Sales/Fulfillment/Finance spine ROLE GRANTS (spec 2026-08-14).
+// owner/admin = full 11; dispatcher = 6 operational only; technician = 0.
+// Every ALLOW here also passes an activationOverrides set (the sandbox posture);
+// the final test proves the production posture (grant without activation = DENY).
+// ---------------------------------------------------------------------------
+const SPINE_OPERATIONAL = [
+  "opportunity.write",
+  "opportunity.read",
+  "opportunity.createSalesOrder",
+  "salesOrder.write",
+  "salesOrder.fulfill",
+  "salesOrder.service",
+];
+const SPINE_FINANCE = [
+  "finance.invoice.issue",
+  "finance.payment.apply",
+  "finance.adjustment.record",
+  "finance.refund.record",
+  "finance.read",
+];
+const SPINE_ALL = [...SPINE_OPERATIONAL, ...SPINE_FINANCE];
+const SPINE_ACTIVATION = new Set(SPINE_ALL);
+
+function resolveWithActivation(roleId, permissionId, roles = COMPATIBILITY_ROLES) {
+  return resolveEffectivePermission({
+    permissionId,
+    assignments: [activeAssignment(roleId)],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    activationOverrides: SPINE_ACTIVATION,
+  });
+}
+
+check("Phase 6a: admin ALLOWs the FULL spine (all 11) under sandbox activation", () => {
+  for (const id of SPINE_ALL) {
+    const r = resolveWithActivation("admin", id);
+    assert.equal(r.decision, "ALLOW", `admin should ALLOW ${id}: got ${r.reason}`);
+  }
+});
+
+check("Phase 6a: owner ALLOWs the FULL spine (all 11) under activation (inherits admin)", () => {
+  const roles = { ...COMPATIBILITY_ROLES, owner: OWNER_ROLE };
+  for (const id of SPINE_ALL) {
+    assert.equal(resolveWithActivation("owner", id, roles).decision, "ALLOW", `owner should ALLOW ${id}`);
+  }
+});
+
+check("Phase 6a: dispatcher ALLOWs the 6 OPERATIONAL spine ids under activation", () => {
+  for (const id of SPINE_OPERATIONAL) {
+    assert.equal(resolveWithActivation("dispatcher", id).decision, "ALLOW", `dispatcher should ALLOW ${id}`);
+  }
+});
+
+check("Phase 6a: dispatcher DENYs all 5 FINANCE spine ids under activation (least-privilege, noQualifyingGrant)", () => {
+  for (const id of SPINE_FINANCE) {
+    const r = resolveWithActivation("dispatcher", id);
+    assert.equal(r.decision, "DENY", `dispatcher must DENY ${id}`);
+    assert.equal(r.reason, "noQualifyingGrant", `dispatcher DENY of ${id} must be noQualifyingGrant (has no such grant), not inactivePermission`);
+  }
+});
+
+check("Phase 6a: technician DENYs EVERY spine id under activation (holds no spine grant)", () => {
+  for (const id of SPINE_ALL) {
+    const r = resolveWithActivation("technician", id);
+    assert.equal(r.decision, "DENY", `technician must DENY ${id}`);
+    assert.equal(r.reason, "noQualifyingGrant", `technician DENY of ${id} must be noQualifyingGrant`);
+  }
+});
+
+check("Phase 6a PRODUCTION POSTURE: WITHOUT activation, admin STILL DENYs the spine (grant != activation) -- inactivePermission, not ALLOW", () => {
+  // The load-bearing safety property. admin now GRANTS finance.invoice.issue,
+  // but with NO activationOverrides (production: role-keyed off) the active:false
+  // gate stands ahead of the grant -> inactivePermission DENY. This is why the
+  // grant is safe to ship globally.
+  for (const id of SPINE_ALL) {
+    const r = resolveEffectivePermission({
+      permissionId: id,
+      assignments: [activeAssignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: baseTarget(),
+    });
+    assert.equal(r.decision, "DENY", `${id} must DENY without activation`);
+    assert.equal(r.reason, "inactivePermission", `${id} must DENY as inactivePermission (active:false stands ahead of the grant)`);
+  }
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

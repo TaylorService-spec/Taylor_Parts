@@ -338,6 +338,15 @@ check("Owner holds every ADMIN_ROLE permission, through the same governed resolv
     // assignee" assertion. The Condition itself is checked separately,
     // right below.
     if (id === "reorder.purchaseOrder.void") continue;
+    // Phase 6a: admin (and therefore owner, by inheritance) now holds the
+    // Sales/Fulfillment/Finance spine, which is registered `active: false`.
+    // resolve() below passes no activationOverrides, so an active:false id
+    // legitimately DENIES here (inactivePermission) for BOTH admin and owner --
+    // the "owner >= admin" property still holds at the permission-list level,
+    // and the spine's ALLOW-under-activation is proven in
+    // resolveEffectivePermission.test.mjs (Phase 6a behavioral block). Skipping
+    // them here mirrors the reorder.purchaseOrder.void Condition exemption above.
+    if (findPermission(id)?.active === false) continue;
     assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   assert.equal(
