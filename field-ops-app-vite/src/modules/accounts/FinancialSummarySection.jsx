@@ -1,4 +1,5 @@
 import { financialSummaryView, FINANCIAL_PROVIDER_STATE } from "../../domain/financialSummaryView";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Customer/Account Business Model -- Customer PR 4, Financial Summary.
 // Provider-neutral surface built to the Framework's five-state contract
@@ -29,11 +30,13 @@ function renderView(view) {
   return (
     <div className="fo-financial-metrics">
       <ul className="fo-activity-list">
-        {view.rows.map((row) => (
-          <li key={row.name} className={row.available ? "fo-badge" : "fo-muted"}>
-            {row.text}
-          </li>
-        ))}
+        {view.rows.map((row) =>
+          row.available ? (
+            <li key={row.name}><StatusPill tone="neutral" label={row.text} /></li>
+          ) : (
+            <li key={row.name} className="fo-muted">{row.text}</li>
+          )
+        )}
       </ul>
       {view.footer && <p className="fo-muted">{view.footer}</p>}
     </div>

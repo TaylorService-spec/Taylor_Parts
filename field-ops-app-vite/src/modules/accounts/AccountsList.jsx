@@ -10,9 +10,13 @@ import {
   hasActiveFilters,
   formatLastUpdate,
   clearedFiltersForAccount,
+  accountStatusTone,
+  accountRelationshipTone,
 } from "../../domain/accountPortfolio";
 import GlobalSearch from "../../shared/search/GlobalSearch";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 import Modal from "../../shared/ui/Modal";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
@@ -124,15 +128,15 @@ export default function AccountsList() {
 
   const cardCount = (card) => (card.status === null ? summary.total : summary[card.key]);
 
-  return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Customers">
-        <GlobalSearch providerKeys={["accounts"]} context={{ accounts }} placeholder="Search customers..." />
-        <button type="button" onClick={() => setShowCreate(true)}>
-          + New Customer
-        </button>
-      </WorkspaceHeader>
+  const actions = (
+    <ActionRail
+      start={<GlobalSearch providerKeys={["accounts"]} context={{ accounts }} placeholder="Search customers..." />}
+      primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>+ New Customer</button>}
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Customers" actions={actions}>
       {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
@@ -277,15 +281,13 @@ export default function AccountsList() {
                         </td>
                         <td>
                           {account.status && (
-                            <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
+                            <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
                           )}
                         </td>
                         <td>
                           {rels.length > 0 ? (
                             rels.map((t) => (
-                              <span key={t} className={`fo-badge fo-badge-relationship-${t.toLowerCase()}`}>
-                                {RELATIONSHIP_LABEL[t] ?? t}
-                              </span>
+                              <StatusPill key={t} tone={accountRelationshipTone(t)} label={RELATIONSHIP_LABEL[t] ?? t} />
                             ))
                           ) : (
                             <span className="fo-muted">—</span>
@@ -302,6 +304,6 @@ export default function AccountsList() {
           )}
         </>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }
