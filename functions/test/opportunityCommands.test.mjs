@@ -97,10 +97,14 @@ test("buildTransitionPatch: advance sets the next stage and keeps it open", () =
 });
 
 test("buildTransitionPatch: WON from DECISION closes; illegal transitions throw fail-closed", () => {
-  const won = buildTransitionPatch({ stage: "DECISION" }, { kind: "OUTCOME", outcome: "WON" }, CTX);
+  const won = buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "WON" }, CTX);
   assert.equal(won.outcome, "WON");
   assert.equal(won.stage, "DECISION");
   assert.equal(won.closedAtMillis, CTX.nowMillis);
-  assert.throws(() => buildTransitionPatch({ stage: "QUOTING" }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "OUTCOME_REQUIRES_DECISION");
+  assert.throws(() => buildTransitionPatch({ stage: "QUOTING", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "OUTCOME_REQUIRES_DECISION");
   assert.throws(() => buildTransitionPatch({ stage: "DECISION", outcome: "LOST" }, { kind: "ADVANCE", toStage: "DECISION" }, CTX), (e) => e.code === "ALREADY_CLOSED");
+});
+
+test("buildTransitionPatch: WON with zero lines is rejected", () => {
+  assert.throws(() => buildTransitionPatch({ stage: "DECISION", lines: [] }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "NO_LINES");
 });
