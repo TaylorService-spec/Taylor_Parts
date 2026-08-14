@@ -20,3 +20,9 @@ declare const __APP_FIREBASE_CONFIG__: {
 };
 declare const __APP_ENVIRONMENT__: { id: string; role: string; deployment: string };
 declare const __APP_READINESS__: Record<string, boolean>;
+
+// Per-environment capability activation (spec 2026-08-14) — build-time array of
+// spine capability ids this environment activates despite catalog active:false.
+// [] in a production build (resolveEnvironment.mjs is role-keyed). Presentation-
+// only UI preview input; never authoritative.
+declare const __APP_CAPABILITY_ACTIVATION_OVERRIDES__: string[];

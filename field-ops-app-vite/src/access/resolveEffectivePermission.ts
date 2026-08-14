@@ -42,6 +42,18 @@ export interface ResolveInput {
   roles: Readonly<Record<string, Role>>;
   currentAccessVersion: number;
   target: TargetContext;
+  // Per-environment capability activation (per-environment-capability-
+  // activation-spec, Owner-directed 2026-08-14). An OPTIONAL set of
+  // PermissionIds this environment activates DESPITE their catalog
+  // `active:false`. Omitted / undefined / empty => today's behavior
+  // exactly (the active:false deny stands). This ONLY lifts the blanket
+  // active:false gate; it NEVER substitutes for a Role grant, Scope
+  // match, or Condition -- a lifted capability with no qualifying grant
+  // still DENIES `noQualifyingGrant` below. The production hard-block is
+  // upstream and role-keyed (environmentCapabilityOverrides.ts): a
+  // production build/runtime never carries a non-empty set, so this
+  // parameter cannot widen production access even if mis-supplied.
+  activationOverrides?: ReadonlySet<PermissionId>;
 }
 
 export type DenialReason =
@@ -224,7 +236,15 @@ export function resolveEffectivePermission(input: ResolveInput): ResolveResult {
   // (today: the field-read capabilities documented as pending their
   // wave's review in permissionCatalog.ts, e.g. `customer.notes`'s
   // security-text field or `customer.accountOwner`'s wave-4 deferral).
-  if (permission.active === false) {
+  //
+  // Per-environment activation override (2026-08-14 spec): an environment
+  // MAY lift this blanket deny for a bounded set of spine capability ids.
+  // Fail-closed by construction: the override is consulted ONLY here, and
+  // only its PRESENCE for THIS id suppresses the active:false deny; every
+  // Role/Scope/Condition/accessVersion check below is unchanged, so a
+  // lifted capability with no qualifying grant still denies. Omitted set =>
+  // this is a strict no-op (identical to before the parameter existed).
+  if (permission.active === false && !input.activationOverrides?.has(input.permissionId)) {
     return { decision: "DENY", reason: "inactivePermission" };
   }
   if (!Array.isArray(input.assignments)) {

@@ -37,6 +37,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "./governedBusinessRoles";
 import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
+import { resolveRuntimeCapabilityOverrides } from "./environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "./compactClaims";
 import type { Role } from "../types/access";
 
@@ -161,6 +162,15 @@ export async function resolveEffectiveAccess(
 
   const db = options.db ?? getFirestore();
   const roles = options.roles ?? allRoles();
+  // Per-environment activation override for this deployed project. ALWAYS
+  // derived from the runtime's own trusted project identity (GCLOUD_PROJECT) --
+  // there is deliberately NO options seam for this. AUTH-CORE invariant: no
+  // caller (client OR internal) may inject an activation set, so this path
+  // cannot be widened to activate production. EMPTY in production and for any
+  // unknown project -> the active:false spine capabilities stay hard-denied
+  // exactly as today. The active branch is exercised in tests via the trusted
+  // GCLOUD_PROJECT path (a sandbox projectId), never via a caller override.
+  const activationOverrides = resolveRuntimeCapabilityOverrides();
 
   const [userSnap, assignmentsSnap] = await Promise.all([
     db.collection(USERS_COLLECTION).doc(input.principalUid).get(),
@@ -198,6 +208,7 @@ export async function resolveEffectiveAccess(
         roles,
         currentAccessVersion: accessVersion,
         target,
+        activationOverrides,
       }).decision === "ALLOW";
   }
 

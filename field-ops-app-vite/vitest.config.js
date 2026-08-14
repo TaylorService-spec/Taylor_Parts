@@ -33,6 +33,10 @@ export default defineConfig({
       MANUFACTURER_WRITE_READY: false,
       TRUSTED_COMPLETION_ENABLED: true,
     }),
+    // Per-environment capability activation (spec 2026-08-14). Test-only default:
+    // empty (spine stays preview-hidden) so no component test depends on the
+    // override being present; a test that needs the active branch injects its own.
+    __APP_CAPABILITY_ACTIVATION_OVERRIDES__: JSON.stringify([]),
   },
   test: {
     environment: "jsdom",

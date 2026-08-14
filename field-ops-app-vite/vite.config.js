@@ -111,6 +111,13 @@ export default defineConfig({
       id: APP_ENV.id, role: APP_ENV.role, deployment: APP_ENV.deployment,
     }),
     __APP_READINESS__: JSON.stringify(APP_ENV.readiness),
+    // Per-environment capability activation (spec 2026-08-14). The spine
+    // override id set is baked in AT BUILD TIME from the resolved environment,
+    // exactly like __APP_READINESS__. A production build resolves this to []
+    // (resolveEnvironment.mjs is role-keyed) -- the override literally cannot
+    // exist in a production bundle. Presentation-only: the UI preview gate; the
+    // authoritative gate is the backend callable resolver.
+    __APP_CAPABILITY_ACTIVATION_OVERRIDES__: JSON.stringify(APP_ENV.capabilityActivationOverrides),
   },
   plugins: [react(), emitVersionManifest(APP_COMMIT, APP_ENV)],
   build: {

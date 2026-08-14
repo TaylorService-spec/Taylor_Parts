@@ -66,6 +66,20 @@
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true
       },
+      "capabilityActivationOverrides": [
+        "opportunity.write",
+        "opportunity.read",
+        "opportunity.createSalesOrder",
+        "salesOrder.write",
+        "salesOrder.fulfill",
+        "salesOrder.service",
+        "finance.invoice.issue",
+        "finance.payment.apply",
+        "finance.adjustment.record",
+        "finance.read",
+        "finance.refund.record"
+      ],
+      "$capabilityActivationOverrides_comment": "Per-environment activation of the sales/fulfillment/finance spine (all catalog active:false) -- lifts the blanket active:false DENY in THIS sandbox only so the Opportunity->SO->Fulfillment->Billing flow is testable. Activation != authorization: a persona still needs a qualifying Role grant. NO role:production environment may carry this key (environmentCapabilityOverrides.ts is additionally role-keyed, and environmentArchitecture.test.mjs asserts absence). See docs/design/per-environment-capability-activation-spec.md.",
       "surfaces": [
         {
           "id": "hosting",
