@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import {
   buildLineRefsAndInventorySnapshot,
   LineRefBuildError,
+  assertServiceAllocationGate,
+  ServiceAllocationGateError,
 } from "../lib/salesOrder/createServiceForSalesOrder.js";
 
 // A Part Master resolver over a fixture map: partId -> { found, sku }. Absent id => not found (fail closed).
@@ -35,14 +37,35 @@ test("PART + SERVICE SO: WO gets 2 line-refs (qty+kind-bearing) + 1 inventorySna
   assert.equal(inventorySnapshot[0].partId, "P-1");
   assert.equal(inventorySnapshot[0].sku, "IPN-1");
   assert.notEqual(inventorySnapshot[0].sku, inventorySnapshot[0].partId); // never sku = partId
-  // allocatedQty(3) || orderedQty(4) -> allocatedQty wins when truthy
+  // pass4 A-1 (BD-14): qtyPlanned = allocatedQty ONLY -- never allocatedQty || orderedQty.
   assert.equal(inventorySnapshot[0].qtyPlanned, 3);
 });
 
-test("PART line qtyPlanned falls back to orderedQty when allocatedQty is 0 (not yet allocated)", () => {
+test("pass4 A-1 (BD-14): PART line qtyPlanned is 0 -- NOT orderedQty -- when allocatedQty is 0 (unallocated/backordered)", () => {
+  // A backordered line (allocatedQty 0, e.g. allocateSalesOrder ran but this line drew nothing from the ATP
+  // pool) must seed qtyPlanned=0, never orderedQty -- otherwise the Work Order would carry planned quantity
+  // with NO backing allocation, and #962's Complete write-back would credit fulfilledQty for never-allocated
+  // parts.
   const soLines = [{ kind: "PART", ref: "P-2", orderedQty: 5, allocatedQty: 0 }];
   const { inventorySnapshot } = buildLineRefsAndInventorySnapshot(soLines, resolver({ "P-2": { found: true, sku: "IPN-2" } }));
+  assert.equal(inventorySnapshot[0].qtyPlanned, 0);
+});
+
+test("pass4 B-2: lineId (when present on the SO line) is carried onto both the line-ref and the inventorySnapshot row", () => {
+  const soLines = [
+    { lineId: "line-1", kind: "PART", ref: "P-1", orderedQty: 5, allocatedQty: 5 },
+    { lineId: "line-2", kind: "PART", ref: "P-1", orderedQty: 5, allocatedQty: 0 }, // duplicate ref, own lineId
+  ];
+  const { lineRefs, inventorySnapshot } = buildLineRefsAndInventorySnapshot(
+    soLines,
+    resolver({ "P-1": { found: true, sku: "IPN-1" } })
+  );
+  assert.equal(lineRefs[0].lineId, "line-1");
+  assert.equal(lineRefs[1].lineId, "line-2");
+  assert.equal(inventorySnapshot[0].lineId, "line-1");
   assert.equal(inventorySnapshot[0].qtyPlanned, 5);
+  assert.equal(inventorySnapshot[1].lineId, "line-2");
+  assert.equal(inventorySnapshot[1].qtyPlanned, 0, "the backordered duplicate-ref line seeds its OWN qtyPlanned (0), not the sibling's");
 });
 
 test("unresolvable PART ref (no canonical Part record) -> FAIL CLOSED (PART_NOT_FOUND), never fabricates sku", () => {
@@ -63,6 +86,27 @@ test("PART ref resolves to a canonical Part with no valid internalPartNumber -> 
     () => buildLineRefsAndInventorySnapshot(soLines, resolver({ "P-3": { found: true, sku: "   " } })),
     (e) => e instanceof LineRefBuildError && e.code === "SKU_UNRESOLVED"
   );
+});
+
+test("pass4 A-1 (BD-14) gate: a SO with a PART line and NO allocatedAt (allocateSalesOrder never ran) is REJECTED", () => {
+  const soLines = [{ kind: "PART", ref: "P-1", orderedQty: 5, allocatedQty: 0 }];
+  assert.throws(
+    () => assertServiceAllocationGate(soLines, undefined),
+    (e) => e instanceof ServiceAllocationGateError && e.code === "NOT_ALLOCATED"
+  );
+});
+
+test("pass4 A-1 (BD-14) gate: a SO with a PART line and an allocatedAt timestamp is ALLOWED, even if partially allocated", () => {
+  const soLines = [
+    { kind: "PART", ref: "P-1", orderedQty: 5, allocatedQty: 5 },
+    { kind: "PART", ref: "P-2", orderedQty: 3, allocatedQty: 0 }, // backordered
+  ];
+  assert.doesNotThrow(() => assertServiceAllocationGate(soLines, { seconds: 1, nanoseconds: 0 }));
+});
+
+test("pass4 A-1 (BD-14) gate: a SO with NO PART lines (SERVICE/EQUIPMENT_MODEL only) is ALLOWED without allocation", () => {
+  const soLines = [{ kind: "SERVICE", ref: "SVC-1", orderedQty: 1, allocatedQty: 0 }];
+  assert.doesNotThrow(() => assertServiceAllocationGate(soLines, undefined));
 });
 
 test("EQUIPMENT_MODEL-only SO: line-refs populated, NO inventorySnapshot (never resolves against Part Master)", () => {

@@ -36,7 +36,8 @@ interface CreateWorkOrderInput {
 // so the same underlying parts demand is never double-counted (ATP counts SO-origin demand via the Sales
 // Order allocation, not again via this Work Order's reservation). `salesOrderLineRefs` (P1.2) is quantity+kind
 // -bearing (SalesOrderLineRef[], not a bare string[]) so P1.1's fulfilledQty write-back can match the right SO
-// line by (ref,kind). `inventorySnapshot` (P1.2) lets the Sales Order -> Service seam seed real planned parts
+// line -- primarily by the line's own stable `lineId` (pass4 B-2), falling back to (ref,kind) only for legacy
+// callers that predate lineId. `inventorySnapshot` (P1.2) lets the Sales Order -> Service seam seed real planned parts
 // on creation (resolved through Part Master by the caller -- this core never resolves identity itself). Must
 // be called inside a transaction. The plain createWorkOrder onCall below never supplies either field.
 export async function createWorkOrderRecord(

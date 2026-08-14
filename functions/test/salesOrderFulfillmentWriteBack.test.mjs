@@ -74,6 +74,43 @@ test("an explicit fulfillmentAccepted-style qty=0 or negative is rejected (QTY_I
   }
 });
 
+// pass4 B-2: duplicate-ref lines (same ref+kind, different lineId) -- the deadlock this fix closes. A bare
+// (ref,kind) match would find only the FIRST line and check a summed acceptance against just its remainingQty
+// -> false OVERAGE. With lineId-keyed acceptances, each line gets its OWN, correctly-scoped credit.
+test("pass4 B-2: two duplicate-ref (same ref+kind) lines each accumulate their OWN fulfilledQty by lineId, no false overage", () => {
+  const lines = [
+    { lineId: "line-1", kind: "PART", ref: "P-1", orderedQty: 5, fulfilledQty: 0 },
+    { lineId: "line-2", kind: "PART", ref: "P-1", orderedQty: 5, fulfilledQty: 0 },
+  ];
+  const { nextLines, unmatched } = applyFulfillmentAcceptance(lines, [
+    { ref: "P-1", kind: "PART", qty: 5, lineId: "line-1" },
+    { ref: "P-1", kind: "PART", qty: 5, lineId: "line-2" },
+  ]);
+  assert.equal(nextLines.find((l) => l.lineId === "line-1").fulfilledQty, 5);
+  assert.equal(nextLines.find((l) => l.lineId === "line-2").fulfilledQty, 5);
+  assert.deepEqual(unmatched, []);
+});
+
+test("pass4 B-2: a lineId-bearing acceptance matches ONLY that lineId, never falls back to (ref,kind)", () => {
+  const lines = [
+    { lineId: "line-1", kind: "PART", ref: "P-1", orderedQty: 5, fulfilledQty: 0 },
+    { lineId: "line-2", kind: "PART", ref: "P-1", orderedQty: 5, fulfilledQty: 0 },
+  ];
+  // lineId "line-9" does not exist on any line -- must go to `unmatched`, NOT silently land on the first
+  // (ref,kind) match (that fallback is exactly the bug this fix removes for lineId-bearing acceptances).
+  const { nextLines, unmatched } = applyFulfillmentAcceptance(lines, [
+    { ref: "P-1", kind: "PART", qty: 2, lineId: "line-9" },
+  ]);
+  assert.deepEqual(nextLines, lines); // untouched
+  assert.deepEqual(unmatched, [{ ref: "P-1", kind: "PART", qty: 2, lineId: "line-9" }]);
+});
+
+test("pass4 B-2: a lineId-less acceptance (legacy) still matches by (ref,kind) exactly as before", () => {
+  const lines = [line("PART", "P-1", 10)];
+  const { nextLines } = applyFulfillmentAcceptance(lines, [{ ref: "P-1", kind: "PART", qty: 4 }]);
+  assert.equal(nextLines[0].fulfilledQty, 4);
+});
+
 test("multiple acceptances in one call apply independently to their own matched lines", () => {
   const lines = [line("PART", "P-1", 10, 0), line("SERVICE", "SVC-1", 1, 0)];
   const { nextLines } = applyFulfillmentAcceptance(lines, [

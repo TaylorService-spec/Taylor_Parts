@@ -120,6 +120,11 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
           "Each fulfillmentAccepted entry requires a non-empty ref, non-empty kind, and a positive qty."
         );
       }
+      // pass4 B-2: lineId is OPTIONAL (legacy callers/tests omit it and fall back to (ref,kind) matching --
+      // see salesOrderFulfillmentWriteBack.ts) but must be a non-empty string when present.
+      if (entry.lineId !== undefined && (typeof entry.lineId !== "string" || entry.lineId.trim().length === 0)) {
+        throw new HttpsError("invalid-argument", "fulfillmentAccepted entry lineId must be a non-empty string when present.");
+      }
       if (entry.kind === "PART") {
         throw new HttpsError("invalid-argument", "fulfillmentAccepted cannot declare PART fulfillment; PART actuals are governed inventory usage.");
       }
@@ -248,6 +253,11 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         // write-back consistent with what was actually consumed from inventory -- closing the gap where a
         // WO could complete (a terminal, non-backfillable transition), consume inventory, but credit zero
         // fulfilledQty, wedging the Sales Order in IN_FULFILLMENT forever.
+        // pass4 B-2: keyed by the snapshot row's OWN lineId when present (so two rows sharing a partId --
+        // seeded from two distinct SO lines, e.g. duplicate-ref lines -- accumulate into SEPARATE acceptances
+        // instead of being merged into one and checked against only the first matching SO line's remainingQty,
+        // which is the false-OVERAGE deadlock this fix closes). Legacy snapshot rows without lineId fall back
+        // to the old partId-only key (unchanged behavior for Work Orders created before this field existed).
         const derivedByKey = new Map<string, FulfillmentAcceptance>();
         for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
           if (typeof item.partId !== "string" || item.partId.trim().length === 0) continue;
@@ -257,14 +267,23 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
               ? (item.qtyPlanned as number)
               : 0;
           if (qty <= 0) continue;
-          const key = `PART:${item.partId}`;
+          const lineId = typeof item.lineId === "string" && item.lineId.trim().length > 0 ? item.lineId : undefined;
+          const key = lineId ? `LINE:${lineId}` : `PART:${item.partId}`;
           const existing = derivedByKey.get(key);
-          derivedByKey.set(key, { ref: item.partId, kind: "PART", qty: (existing?.qty ?? 0) + qty });
+          derivedByKey.set(key, {
+            ref: item.partId,
+            kind: "PART",
+            qty: (existing?.qty ?? 0) + qty,
+            ...(lineId ? { lineId } : {}),
+          });
         }
 
         // Explicit declarations are allowed only for non-PART lines that have no governed inventory actuals.
         for (const entry of (fulfillmentAccepted as FulfillmentAcceptance[] | undefined) ?? []) {
-          derivedByKey.set(`${entry.kind}:${entry.ref}`, entry);
+          const key = typeof entry.lineId === "string" && entry.lineId.trim().length > 0
+            ? `LINE:${entry.lineId}`
+            : `${entry.kind}:${entry.ref}`;
+          derivedByKey.set(key, entry);
         }
 
         const acceptances = [...derivedByKey.values()];
