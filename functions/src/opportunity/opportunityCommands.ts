@@ -24,6 +24,7 @@ export type OpportunityCommandErrorCode =
   | "ACCOUNT_REQUIRED"
   | "OWNER_REQUIRED"
   | "CHANNEL_INVALID"
+  | "NO_LINES"
   | "LINE_INVALID"
   | "SERIALIZED_LINE_FORBIDDEN"
   | "ALREADY_CLOSED"
@@ -139,6 +140,7 @@ export function buildCreateOpportunity(
 export interface OpportunityDocState {
   stage: OpportunityStage;
   outcome?: OpportunityOutcome | null;
+  lines?: OpportunityLineInput[];
 }
 
 export interface TransitionPatch {
@@ -157,6 +159,9 @@ export function buildTransitionPatch(
   ctx: { actorUid: string; nowMillis: number }
 ): TransitionPatch {
   if (!current || !isStage(current.stage)) throw new OpportunityCommandError("INVALID", "Invalid current state");
+  if (intent.kind === "OUTCOME" && intent.outcome === "WON" && (!Array.isArray(current.lines) || current.lines.length === 0)) {
+    throw new OpportunityCommandError("NO_LINES", "Opportunity requires at least one line before it can be WON");
+  }
   const check = checkTransition({ stage: current.stage, outcome: current.outcome ?? null }, intent);
   if (!check.ok) {
     const msg =
