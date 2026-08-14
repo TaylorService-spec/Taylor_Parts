@@ -602,5 +602,125 @@
         ]
       }
     ]
+  },
+  "round3": {
+    "note": "Round-3 approved batch (Owner authorized P1+P2 2026-08-13). worker:claude fix fleet, worktree-isolated, one PR per pr_item (L = safe-copy sweep = one PR over 3 discriminators). Full finding detail in round3-candidates.json.",
+    "entries": [
+      {
+        "discriminator": "workorderpreview-undefined-customeridentity-crash",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "A"
+      },
+      {
+        "discriminator": "usescheduldingdata-drops-workorders-error",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "B"
+      },
+      {
+        "discriminator": "client-warehouse-reconciliation-engine-not-updated",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "C"
+      },
+      {
+        "discriminator": "getinventoryanalytics-callable-mixes-physical-stock",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "D"
+      },
+      {
+        "discriminator": "mergeqtyused-no-upper-bound-or-finite-check",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "E"
+      },
+      {
+        "discriminator": "installedequipmentpage-firstpage-name-failure-wipes-rows",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "F"
+      },
+      {
+        "discriminator": "transition-callables-no-idempotency-guard-double-advance",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "G"
+      },
+      {
+        "discriminator": "finance-oncall-callables-zero-test-coverage",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "H"
+      },
+      {
+        "discriminator": "listaccountinvoicear-caps-and-summarizes-without-truncation-signal",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "I"
+      },
+      {
+        "discriminator": "permission-catalog-and-compatibility-roles-mirrors-drifted",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "J"
+      },
+      {
+        "discriminator": "completetransferorder-same-source-dest-manufactures-stock",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "K"
+      },
+      {
+        "discriminator": "useassignedworkorders-raw-error-leak",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "L",
+        "batch": "safe-copy-sweep"
+      },
+      {
+        "discriminator": "fieldmode-advance-raw-transitionworkorder-error",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "L",
+        "batch": "safe-copy-sweep"
+      },
+      {
+        "discriminator": "dispatcherboard-dispatcherror-raw-message-leak",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "L",
+        "batch": "safe-copy-sweep"
+      },
+      {
+        "discriminator": "dispatch-schedule-guard-race-across-different-work-orders",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "M"
+      },
+      {
+        "discriminator": "triggerinventoryeffects-non-atomic-idempotency-check",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "N"
+      }
+    ]
   }
 }
