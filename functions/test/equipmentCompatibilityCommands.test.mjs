@@ -20,6 +20,9 @@ const {
 } = await import("../lib/equipmentCompatibility/repository.js");
 const M = await import("../lib/equipmentCompatibility/equipmentModelRepository.js");
 const CR = await import("../lib/equipmentCompatibility/compatibilityRepository.js");
+// The governed evidence cap -- imported from the READ-service module's re-export, so a test asserting
+// the write path is CONSISTENT with the read path pulls the same public surface a real caller would.
+const RS = await import("../lib/equipmentCompatibility/readService.js");
 
 let passed = 0;
 const ok = async (n, f) => { await f(); passed++; console.log(`PASS -- ${n}`); };
@@ -38,30 +41,36 @@ function fakeDb() {
     return { __c: c, __d: d, async get() { return snapOf(c, d); } };
   };
   let transactions = 0;
-  // The ONE bounded query D4 uses: single-field equality. Modelled faithfully -- it reads COMMITTED
-  // state only, exactly like a transactional get.
-  const query = (c, field, value) => ({
-    __query: true, __c: c, __field: field, __value: value,
-    async get() { return runQuery(c, field, value); },
+  const limitCalls = [];
+  // The ONE bounded query D4 uses: single-field equality, optionally capped with `.limit(n)` (mirroring
+  // Firestore's Query.limit -- the cap is enforced by the query, not by slicing the result afterward).
+  // Modelled faithfully -- it reads COMMITTED state only, exactly like a transactional get.
+  const query = (c, field, value, limit) => ({
+    __query: true, __c: c, __field: field, __value: value, __limit: limit,
+    limit(n) { limitCalls.push({ c, field, value, n }); return query(c, field, value, n); },
+    async get() { return runQuery(c, field, value, limit); },
   });
-  const runQuery = (c, field, value) => ({
-    docs: [...committed.entries()]
+  const runQuery = (c, field, value, limit) => {
+    const matched = [...committed.entries()]
       .filter(([k, v]) => k.startsWith(`${c}/`) && v && v[field] === value)
-      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v })),
-  });
+      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v }));
+    const docs = typeof limit === "number" ? matched.slice(0, limit) : matched;
+    return { docs, size: docs.length }; // real Firestore QuerySnapshot exposes .size the same way
+  };
   return {
     collection: (c) => ({ doc: (d) => docRef(c, d), where: (f, op, v) => { if (op !== "==") throw new Error(`unsupported op ${op}`); return query(c, f, v); } }),
     __committed: committed,
     __seed: (c, d, data) => committed.set(key(c, d), data),
     __raw: (c, d) => committed.get(key(c, d)),
     __transactions: () => transactions,
+    __limitCalls: () => limitCalls.slice(),
     async runTransaction(fn) {
       transactions += 1;
       const queued = [];
       const txn = {
         async get(ref) {
           if (queued.length > 0) throw new ReadAfterWriteError("all reads must precede all writes");
-          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value) : snapOf(ref.__c, ref.__d);
+          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value, ref.__limit) : snapOf(ref.__c, ref.__d);
         },
         create(ref, data) { queued.push({ op: "create", c: ref.__c, d: ref.__d, data }); },
         set(ref, data) { queued.push({ op: "set", c: ref.__c, d: ref.__d, data }); },
@@ -566,6 +575,55 @@ await ok("malformed stored evidence fails closed: no source, no mutation, no aud
   assert.equal(statusOf(db, compat), statusBefore, "no relationship mutation");
   assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION], "TX2 committed nothing");
   assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-mal-2").status, "initiated", "resumable, not terminal");
+});
+// ---- ITEM K: importCompatibilitySource's conflict-analysis read must be BOUNDED, not unbounded ----
+await ok("importCompatibilitySource's conflict-analysis read is bounded to .limit(cap+1), never an unbounded .where() scan", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-bound-seed");
+  await C.runEquipmentCompatibilityCommand({
+    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-bound-probe",
+    payload: claim(compat, "SUPPORTS", "b"),
+  }, makeDeps(db).deps);
+  const calls = db.__limitCalls().filter((c) => c.c === EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION);
+  assert.ok(calls.length >= 1, "the write-time conflict-analysis read goes through a limited query");
+  for (const c of calls) assert.equal(c.n, RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1);
+});
+await ok("importCompatibilitySource FAILS CLOSED with a governed denial once a relationship's STORED evidence already exceeds the cap, rather than reading it unboundedly", async () => {
+  // This is the exact condition ITEM K describes: the evidence set for one relationship has grown past
+  // the governed per-relationship bound (however that happened -- the bound is what matters going
+  // forward, not how the set got there), so seed it directly rather than depending on the sequencing of
+  // prior imports (whose OWN reads only ever see what existed strictly before them).
+  const { db, compat } = freshWithCompat();
+  for (let i = 0; i < RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1; i++) {
+    const s = sourceOf(compat.compatibilityId, { contentFingerprint: `${i}`.padStart(64, "0") });
+    db.__seed(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, s.sourceId, CR.sourceToFirestore({ source: s, ...META }));
+  }
+  const storedCount = [...db.__committed.keys()].filter((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).length;
+  assert.equal(storedCount, RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1, "the relationship already has one more than the governed cap");
+  // The next import's conflict-analysis read must be a CLEAR GOVERNED DENIAL -- not a hang, not a
+  // silent unbounded read, and (per the immutable/create-only evidence contract) not a mutation.
+  const mark = auditMark(db);
+  const oneMore = sourceOf(compat.compatibilityId, { contentFingerprint: `${RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1}`.padStart(64, "0") });
+  const denied = await C.runEquipmentCompatibilityCommand({
+    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-cap-overflow", payload: oneMore,
+  }, makeDeps(db).deps);
+  assert.equal(denied.status, "denied");
+  assert.equal(denied.reason, C.DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED, "a stable, governed reason code");
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, oneMore.sourceId), undefined, "no new evidence written");
+  assert.equal(
+    [...db.__committed.keys()].filter((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).length,
+    storedCount,
+    "the evidence set did not grow"
+  );
+  assert.deepEqual(auditsSince(db, mark).map((a) => [a.action, a.outcome]), [
+    [C.INITIATION_AUDIT_ACTION, "applied"],
+    [C.TERMINAL_AUDIT_ACTION, "denied"],
+  ]);
+  assert.equal(auditsSince(db, mark)[1].summary, `importCompatibilitySource denied: ${C.DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED}`);
+  // The operation itself is a governed terminal denial, resumable-idempotent like any other denial. A
+  // RETRY of this same command therefore keeps failing the same governed way (this is the "every future
+  // import fails, forever" bug ITEM K describes) rather than eventually timing out unbounded.
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-cap-overflow").status, "denied");
 });
 await ok("a rolled-back TX2 with the evidence query commits neither evidence nor conflict", async () => {
   const { db, compat } = freshWithCompat();

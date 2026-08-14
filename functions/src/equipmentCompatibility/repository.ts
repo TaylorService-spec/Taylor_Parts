@@ -32,6 +32,15 @@ export const EQUIPMENT_COMPATIBILITY_COLLECTIONS = Object.freeze([
 
 export class MalformedStoredRecordError extends Error {}
 
+// The governed cap on how much evidence ANY single relationship may accumulate, and therefore how much
+// any single conflict-analysis read (read OR write path) may ever pull for one compatibilityId. This is
+// the ONE canonical definition — the D5 read service (readService.ts) and the D4 write-time conflict
+// read (compatibilityRepository.ts / commands.ts importCompatibilitySource) both import it, so the two
+// bounds cannot drift apart. Evidence is create-only/immutable, so a relationship that has already
+// reached the cap can accept no further evidence via the governed import path (see
+// EvidenceCapExceededError in errors.ts) rather than forcing an unbounded in-transaction read.
+export const MAX_EVIDENCE_PER_RELATIONSHIP = 20;
+
 const MAX_ACTOR_UID = 128;
 
 // Audit stamps are REPOSITORY authority — never client- or caller-supplied through the domain record.

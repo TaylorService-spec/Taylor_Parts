@@ -28,6 +28,7 @@ import {
   EQUIPMENT_PART_COMPATIBILITY_COLLECTION,
   EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION,
   MalformedStoredRecordError,
+  MAX_EVIDENCE_PER_RELATIONSHIP,
   requireData,
 } from "./repository";
 import { compatibilityFromFirestore, sourceFromFirestore } from "./compatibilityRepository";
@@ -40,7 +41,9 @@ import { decodeCursor, encodeCursor, type ReadDirection } from "./readCursor";
 export const READ_CAPABILITY = "equipment.compatibility.view";
 export const DEFAULT_PAGE = 25;
 export const MAX_PAGE = 50;
-export const MAX_EVIDENCE_PER_RELATIONSHIP = 20;
+// Re-exported for callers that historically imported the cap from this module (the read-service
+// surface). The canonical definition lives in repository.ts, shared with the D4 write-time bound.
+export { MAX_EVIDENCE_PER_RELATIONSHIP };
 export const MAX_EVIDENCE_READS_PER_REQUEST = 100;
 const MAX_SERIAL_SUMMARY = 160;
 
