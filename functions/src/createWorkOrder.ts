@@ -12,7 +12,7 @@ import { allocateWorkOrderNumber } from "./woNumbering";
 import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
 import { createWorkOrderAuditId } from "./workOrderCreateMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
-import type { Priority, Severity, WorkOrderType } from "./types/workOrder";
+import type { Priority, Severity, WorkOrderType, SalesOrderLineRef, InventorySnapshotItem } from "./types/workOrder";
 
 interface CreateWorkOrderInput {
   customerId: string;
@@ -34,13 +34,23 @@ interface CreateWorkOrderInput {
 // the Sales Order → Service seam) create Work Orders through the SAME authority instead of duplicating it.
 // `salesOrderId` is an optional DEMAND-LINEAGE link: a Work Order created to fulfill a Sales Order carries it
 // so the same underlying parts demand is never double-counted (ATP counts SO-origin demand via the Sales
-// Order allocation, not again via this Work Order's reservation). Must be called inside a transaction.
+// Order allocation, not again via this Work Order's reservation). `salesOrderLineRefs` (P1.2) is quantity+kind
+// -bearing (SalesOrderLineRef[], not a bare string[]) so P1.1's fulfilledQty write-back can match the right SO
+// line by (ref,kind). `inventorySnapshot` (P1.2) lets the Sales Order -> Service seam seed real planned parts
+// on creation (resolved through Part Master by the caller -- this core never resolves identity itself). Must
+// be called inside a transaction. The plain createWorkOrder onCall below never supplies either field.
 export async function createWorkOrderRecord(
   db: Firestore,
   tx: Transaction,
   // `type` is optional here (a Work Order is valid with EITHER a type OR a complaint — see assertValidInput);
-  // callers that omit both must supply a complaint. `salesOrderId`/`salesOrderLineRefs` are the demand-lineage link.
-  input: Omit<CreateWorkOrderInput, "type"> & { type?: WorkOrderType; salesOrderId?: string; salesOrderLineRefs?: string[] },
+  // callers that omit both must supply a complaint. `salesOrderId`/`salesOrderLineRefs`/`inventorySnapshot`
+  // are the demand-lineage + parts-plan-continuity link (P1.2).
+  input: Omit<CreateWorkOrderInput, "type"> & {
+    type?: WorkOrderType;
+    salesOrderId?: string;
+    salesOrderLineRefs?: SalesOrderLineRef[];
+    inventorySnapshot?: InventorySnapshotItem[];
+  },
   nowYear: number
 ): Promise<{ id: string; woNumber: string }> {
   const { woNumber } = await allocateWorkOrderNumber(tx, nowYear);
@@ -56,6 +66,7 @@ export async function createWorkOrderRecord(
     ...(input.complaint ? { complaint: input.complaint } : {}),
     ...(input.salesOrderId ? { salesOrderId: input.salesOrderId } : {}),
     ...(Array.isArray(input.salesOrderLineRefs) && input.salesOrderLineRefs.length ? { salesOrderLineRefs: input.salesOrderLineRefs } : {}),
+    ...(Array.isArray(input.inventorySnapshot) && input.inventorySnapshot.length ? { inventorySnapshot: input.inventorySnapshot } : {}),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

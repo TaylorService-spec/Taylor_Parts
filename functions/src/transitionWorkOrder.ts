@@ -23,9 +23,15 @@ import {
   ACTION_TO_STATUS,
   ACTION_TIMESTAMP_FIELD,
 } from "./transitionEngine";
-import { WORK_ORDERS_COLLECTION } from "./constants/collections";
+import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
+import { stageAuditEvent } from "./access/auditEventWriter";
+import {
+  applyFulfillmentAcceptance,
+  type FulfillmentAcceptance,
+  type SalesOrderFulfillmentLine,
+} from "./salesOrder/salesOrderFulfillmentWriteBack";
 import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
 
 // Same-technician concurrency guard (site-work r3 item M). The Schedule/Dispatch branches below read the
@@ -56,6 +62,11 @@ interface TransitionWorkOrderInput {
   // actually being dispatched (distinct from scheduledTechId, which was
   // only a planning-stage placeholder that may have changed since).
   assignedTechId?: string;
+  // P1.1 (Sales->Cash fulfillment spine): Complete-only. Explicit technician-declared acceptance for
+  // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). An entry here
+  // OVERRIDES the PART-derived value for the same (ref,kind) too (Owner-ratified override rule). Ignored/
+  // rejected outside a Complete call.
+  fulfillmentAccepted?: FulfillmentAcceptance[];
 }
 
 function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInput {
@@ -83,6 +94,32 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
   if (input.action === "Dispatch" && !input.assignedTechId) {
     throw new HttpsError("invalid-argument", "Dispatch requires assignedTechId.");
   }
+  if (input.fulfillmentAccepted !== undefined) {
+    if (input.action !== "Complete") {
+      throw new HttpsError("invalid-argument", "fulfillmentAccepted is only valid for the Complete action.");
+    }
+    if (!Array.isArray(input.fulfillmentAccepted)) {
+      throw new HttpsError("invalid-argument", "fulfillmentAccepted must be an array when present.");
+    }
+    for (const entry of input.fulfillmentAccepted) {
+      if (
+        !entry ||
+        typeof entry !== "object" ||
+        typeof entry.ref !== "string" ||
+        entry.ref.trim().length === 0 ||
+        typeof entry.kind !== "string" ||
+        entry.kind.trim().length === 0 ||
+        typeof entry.qty !== "number" ||
+        !Number.isFinite(entry.qty) ||
+        entry.qty <= 0
+      ) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Each fulfillmentAccepted entry requires a non-empty ref, non-empty kind, and a positive qty."
+        );
+      }
+    }
+  }
 }
 
 export const transitionWorkOrder = onCall({ region: "us-central1" }, async (request) => {
@@ -91,10 +128,11 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
   }
 
   assertValidInput(request.data);
-  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId } =
+  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted } =
     request.data;
 
   const caller = await getCallerContext(request.auth.uid);
+  const actorUid = request.auth.uid;
   const db = getFirestore();
   const woRef = db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId);
 
@@ -181,10 +219,67 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       }
     }
 
+    // P1.1 (Sales->Cash fulfillment spine): Complete on a Sales-Order-linked Work Order writes back accepted
+    // fulfillment onto the SO's lines. Entirely NO-OP when salesOrderId is absent (most Work Orders). The SO
+    // read happens here, in the read phase, before any write below (Firestore transaction rule -- all reads
+    // before any write).
+    let soWriteBack: { soRef: FirebaseFirestore.DocumentReference; nextLines: SalesOrderFulfillmentLine[] } | null = null;
+    if (action === "Complete" && wo.salesOrderId) {
+      const soRef = db.collection(SALES_ORDERS_COLLECTION).doc(wo.salesOrderId);
+      const soSnap = await tx.get(soRef);
+      if (soSnap.exists) {
+        const so = soSnap.data() as { lines?: SalesOrderFulfillmentLine[] };
+        const currentLines = Array.isArray(so.lines) ? so.lines : [];
+
+        // PART lines: derive acceptance from this Work Order's governed inventorySnapshot.qtyUsed, matched
+        // sku<->ref, summed (a Work Order can carry multiple inventorySnapshot rows for the same sku only in
+        // pathological data; summing is the safe, additive read).
+        const derivedByKey = new Map<string, FulfillmentAcceptance>();
+        for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
+          if (typeof item.sku !== "string" || item.sku.trim().length === 0) continue;
+          const qtyUsed = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed) ? item.qtyUsed : 0;
+          if (qtyUsed <= 0) continue;
+          const key = `PART:${item.sku}`;
+          const existing = derivedByKey.get(key);
+          derivedByKey.set(key, { ref: item.sku, kind: "PART", qty: (existing?.qty ?? 0) + qtyUsed });
+        }
+
+        // Explicit fulfillmentAccepted[] (EQUIPMENT_MODEL/SERVICE, technician-declared) OVERRIDES the derived
+        // PART value for the same (ref,kind) too -- Owner-ratified override rule.
+        for (const entry of (fulfillmentAccepted as FulfillmentAcceptance[] | undefined) ?? []) {
+          derivedByKey.set(`${entry.kind}:${entry.ref}`, entry);
+        }
+
+        const acceptances = [...derivedByKey.values()];
+        if (acceptances.length > 0) {
+          try {
+            const { nextLines } = applyFulfillmentAcceptance(currentLines, acceptances);
+            soWriteBack = { soRef, nextLines };
+          } catch (err) {
+            // Fail-closed (decision #2): never silently cap/clamp/fabricate an overage. Abort the WHOLE
+            // Complete transaction -- the Work Order does not complete with an un-recorded fulfillment.
+            const message = err instanceof Error ? err.message : "Sales Order fulfillment write-back failed.";
+            throw new HttpsError("failed-precondition", message);
+          }
+        }
+      }
+    }
+
     if (lockRef) {
       tx.set(lockRef, { technicianId: lockRef.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     tx.update(woRef, payload);
+    if (soWriteBack) {
+      tx.update(soWriteBack.soRef, { lines: soWriteBack.nextLines, updatedAt: FieldValue.serverTimestamp() });
+      stageAuditEvent(tx, {
+        actorUid,
+        action: "salesOrderFulfillmentWriteBack",
+        targetType: "salesOrder",
+        targetId: wo.salesOrderId as string,
+        outcome: "applied",
+        summary: `Work Order ${workOrderId} Complete wrote back fulfillment to Sales Order ${wo.salesOrderId}`,
+      });
+    }
     return { id: workOrderId, status: nextStatus };
   });
 
