@@ -32,6 +32,7 @@ import {
   type FulfillmentAcceptance,
   type SalesOrderFulfillmentLine,
 } from "./salesOrder/salesOrderFulfillmentWriteBack";
+import { allLinesFulfilled, checkTransition } from "./salesOrder/salesOrderLifecycle";
 import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
 
 // Same-technician concurrency guard (site-work r3 item M). The Schedule/Dispatch branches below read the
@@ -223,25 +224,31 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     // fulfillment onto the SO's lines. Entirely NO-OP when salesOrderId is absent (most Work Orders). The SO
     // read happens here, in the read phase, before any write below (Firestore transaction rule -- all reads
     // before any write).
-    let soWriteBack: { soRef: FirebaseFirestore.DocumentReference; nextLines: SalesOrderFulfillmentLine[] } | null = null;
+    let soWriteBack: {
+      soRef: FirebaseFirestore.DocumentReference;
+      nextLines: SalesOrderFulfillmentLine[];
+      nextState?: string;
+    } | null = null;
     if (action === "Complete" && wo.salesOrderId) {
       const soRef = db.collection(SALES_ORDERS_COLLECTION).doc(wo.salesOrderId);
       const soSnap = await tx.get(soRef);
       if (soSnap.exists) {
-        const so = soSnap.data() as { lines?: SalesOrderFulfillmentLine[] };
+        const so = soSnap.data() as { state?: string; lines?: SalesOrderFulfillmentLine[] };
         const currentLines = Array.isArray(so.lines) ? so.lines : [];
 
-        // PART lines: derive acceptance from this Work Order's governed inventorySnapshot.qtyUsed, matched
-        // sku<->ref, summed (a Work Order can carry multiple inventorySnapshot rows for the same sku only in
-        // pathological data; summing is the safe, additive read).
+        // PART lines: derive acceptance from this Work Order's governed inventorySnapshot, matched by canonical
+        // partId<->SO ref (never sku<->ref). When actual usage has not been recorded, completed planned work
+        // counts as fulfillment, consistent with consumeParts' qtyUsed ?? qtyPlanned behavior.
         const derivedByKey = new Map<string, FulfillmentAcceptance>();
         for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
-          if (typeof item.sku !== "string" || item.sku.trim().length === 0) continue;
-          const qtyUsed = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed) ? item.qtyUsed : 0;
-          if (qtyUsed <= 0) continue;
-          const key = `PART:${item.sku}`;
+          if (typeof item.partId !== "string" || item.partId.trim().length === 0) continue;
+          const qty = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed)
+            ? item.qtyUsed
+            : (typeof item.qtyPlanned === "number" && Number.isFinite(item.qtyPlanned) ? item.qtyPlanned : 0);
+          if (qty <= 0) continue;
+          const key = `PART:${item.partId}`;
           const existing = derivedByKey.get(key);
-          derivedByKey.set(key, { ref: item.sku, kind: "PART", qty: (existing?.qty ?? 0) + qtyUsed });
+          derivedByKey.set(key, { ref: item.partId, kind: "PART", qty: (existing?.qty ?? 0) + qty });
         }
 
         // Explicit fulfillmentAccepted[] (EQUIPMENT_MODEL/SERVICE, technician-declared) OVERRIDES the derived
@@ -254,7 +261,14 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         if (acceptances.length > 0) {
           try {
             const { nextLines } = applyFulfillmentAcceptance(currentLines, acceptances);
-            soWriteBack = { soRef, nextLines };
+            const autoAdvance = so.state === "IN_FULFILLMENT"
+              ? checkTransition(so.state, "ADVANCE", { allLinesFulfilled: allLinesFulfilled(nextLines) })
+              : null;
+            soWriteBack = {
+              soRef,
+              nextLines,
+              ...(autoAdvance?.ok ? { nextState: autoAdvance.to } : {}),
+            };
           } catch (err) {
             // Fail-closed (decision #2): never silently cap/clamp/fabricate an overage. Abort the WHOLE
             // Complete transaction -- the Work Order does not complete with an un-recorded fulfillment.
@@ -270,7 +284,11 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     }
     tx.update(woRef, payload);
     if (soWriteBack) {
-      tx.update(soWriteBack.soRef, { lines: soWriteBack.nextLines, updatedAt: FieldValue.serverTimestamp() });
+      tx.update(soWriteBack.soRef, {
+        lines: soWriteBack.nextLines,
+        ...(soWriteBack.nextState ? { state: soWriteBack.nextState } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
       stageAuditEvent(tx, {
         actorUid,
         action: "salesOrderFulfillmentWriteBack",

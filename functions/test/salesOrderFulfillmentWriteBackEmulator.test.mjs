@@ -49,7 +49,7 @@ async function seedSalesOrder(soId, fields) {
   await db.collection(SOS).doc(soId).set({ id: soId, ...fields });
 }
 
-test("Complete on an SO-linked WO with qtyUsed: matching PART line fulfilledQty += summed qtyUsed", async () => {
+test("Complete on an SO-linked WO keys PART fulfillment by partId rather than sku and auto-advances when fully fulfilled", async () => {
   const techUid = id("u-tech");
   const techId = id("tech");
   await seedTechnician(techUid, techId);
@@ -58,8 +58,7 @@ test("Complete on an SO-linked WO with qtyUsed: matching PART line fulfilledQty 
   await seedSalesOrder(soId, {
     state: "IN_FULFILLMENT",
     lines: [
-      { kind: "PART", ref: "IPN-1", orderedQty: 10, allocatedQty: 6, fulfilledQty: 0 },
-      { kind: "SERVICE", ref: "SVC-INSTALL", orderedQty: 1, allocatedQty: 0, fulfilledQty: 0 },
+      { kind: "PART", ref: "P-1", orderedQty: 4, allocatedQty: 4, fulfilledQty: 0 },
     ],
   });
 
@@ -77,21 +76,45 @@ test("Complete on an SO-linked WO with qtyUsed: matching PART line fulfilledQty 
   assert.equal(result.status, "COMPLETED");
 
   const soSnap = await db.collection(SOS).doc(soId).get();
-  const partLine = soSnap.data().lines.find((l) => l.kind === "PART" && l.ref === "IPN-1");
-  const serviceLine = soSnap.data().lines.find((l) => l.kind === "SERVICE");
-  assert.equal(partLine.fulfilledQty, 4, "PART line fulfilledQty accumulates the summed qtyUsed");
-  assert.equal(serviceLine.fulfilledQty, 0, "SERVICE line untouched -- no fulfillmentAccepted entry for it");
+  const partLine = soSnap.data().lines.find((l) => l.kind === "PART" && l.ref === "P-1");
+  assert.equal(partLine.fulfilledQty, 4, "PART line fulfilledQty accumulates against partId, not sku");
+  assert.equal(soSnap.data().state, "FULFILLED", "a fully fulfilled IN_FULFILLMENT Sales Order auto-advances");
 
   // Traceability: a salesOrderFulfillmentWriteBack Audit Event was staged (not the idempotency gate).
   const auditSnap = await db.collection(AUDIT).where("action", "==", "salesOrderFulfillmentWriteBack").where("targetId", "==", soId).get();
   assert.equal(auditSnap.empty, false, "an Audit Event must be staged for the write-back");
 });
 
+test("Complete falls back to qtyPlanned when the PART has no recorded qtyUsed", async () => {
+  const techUid = id("u-tech");
+  const techId = id("tech");
+  await seedTechnician(techUid, techId);
+
+  const soId = id("so-planned");
+  await seedSalesOrder(soId, {
+    state: "IN_FULFILLMENT",
+    lines: [{ kind: "PART", ref: "P-PLANNED", orderedQty: 3, allocatedQty: 3, fulfilledQty: 0 }],
+  });
+
+  const woId = id("wo-planned");
+  await seedWorkOrder(woId, {
+    status: "WORK_IN_PROGRESS",
+    assignedTechId: techId,
+    salesOrderId: soId,
+    inventorySnapshot: [{ sku: "IPN-PLANNED", partId: "P-PLANNED", qtyPlanned: 3 }],
+  });
+
+  await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
+  const soSnap = await db.collection(SOS).doc(soId).get();
+  assert.equal(soSnap.data().lines[0].fulfilledQty, 3, "qtyPlanned is accepted when qtyUsed is absent");
+  assert.equal(soSnap.data().state, "FULFILLED");
+});
+
 test("Complete accumulates additively across two separate Work Orders on the SAME Sales Order line", async () => {
   const soId = id("so-multi");
   await seedSalesOrder(soId, {
     state: "IN_FULFILLMENT",
-    lines: [{ kind: "PART", ref: "IPN-2", orderedQty: 10, allocatedQty: 10, fulfilledQty: 0 }],
+    lines: [{ kind: "PART", ref: "P-2", orderedQty: 10, allocatedQty: 10, fulfilledQty: 0 }],
   });
 
   const tech1Uid = id("u-tech");
@@ -102,7 +125,7 @@ test("Complete accumulates additively across two separate Work Orders on the SAM
     status: "WORK_IN_PROGRESS",
     assignedTechId: tech1Id,
     salesOrderId: soId,
-    inventorySnapshot: [{ sku: "IPN-2", qtyUsed: 3 }],
+    inventorySnapshot: [{ sku: "IPN-2", partId: "P-2", qtyUsed: 3 }],
   });
   await transitionWorkOrder.run(callRequest({ workOrderId: wo1Id, action: "Complete" }, tech1Uid));
 
@@ -114,12 +137,12 @@ test("Complete accumulates additively across two separate Work Orders on the SAM
     status: "WORK_IN_PROGRESS",
     assignedTechId: tech2Id,
     salesOrderId: soId,
-    inventorySnapshot: [{ sku: "IPN-2", qtyUsed: 2 }],
+    inventorySnapshot: [{ sku: "IPN-2", partId: "P-2", qtyUsed: 2 }],
   });
   await transitionWorkOrder.run(callRequest({ workOrderId: wo2Id, action: "Complete" }, tech2Uid));
 
   const soSnap = await db.collection(SOS).doc(soId).get();
-  const line = soSnap.data().lines.find((l) => l.ref === "IPN-2");
+  const line = soSnap.data().lines.find((l) => l.ref === "P-2");
   assert.equal(line.fulfilledQty, 5, "3 + 2 additive across two Work Orders, never overwritten");
 });
 
@@ -127,7 +150,7 @@ test("explicit fulfillmentAccepted OVERRIDES the derived PART value for the same
   const soId = id("so-override");
   await seedSalesOrder(soId, {
     state: "IN_FULFILLMENT",
-    lines: [{ kind: "PART", ref: "IPN-3", orderedQty: 10, allocatedQty: 5, fulfilledQty: 0 }],
+    lines: [{ kind: "PART", ref: "P-3", orderedQty: 10, allocatedQty: 5, fulfilledQty: 0 }],
   });
 
   const techUid = id("u-tech");
@@ -138,18 +161,18 @@ test("explicit fulfillmentAccepted OVERRIDES the derived PART value for the same
     status: "WORK_IN_PROGRESS",
     assignedTechId: techId,
     salesOrderId: soId,
-    inventorySnapshot: [{ sku: "IPN-3", qtyUsed: 4 }], // derived value would be 4
+    inventorySnapshot: [{ sku: "IPN-3", partId: "P-3", qtyUsed: 4 }], // derived value would be 4
   });
 
   await transitionWorkOrder.run(
     callRequest(
-      { workOrderId: woId, action: "Complete", fulfillmentAccepted: [{ ref: "IPN-3", kind: "PART", qty: 5 }] },
+      { workOrderId: woId, action: "Complete", fulfillmentAccepted: [{ ref: "P-3", kind: "PART", qty: 5 }] },
       techUid
     )
   );
 
   const soSnap = await db.collection(SOS).doc(soId).get();
-  const line = soSnap.data().lines.find((l) => l.ref === "IPN-3");
+  const line = soSnap.data().lines.find((l) => l.ref === "P-3");
   assert.equal(line.fulfilledQty, 5, "explicit fulfillmentAccepted (5) overrides the derived qtyUsed value (4)");
 });
 
@@ -178,7 +201,7 @@ test("retry Complete on an already-COMPLETED WO -> failed-precondition, fulfille
   const soId = id("so-retry");
   await seedSalesOrder(soId, {
     state: "IN_FULFILLMENT",
-    lines: [{ kind: "PART", ref: "IPN-4", orderedQty: 10, allocatedQty: 5, fulfilledQty: 0 }],
+    lines: [{ kind: "PART", ref: "P-4", orderedQty: 10, allocatedQty: 5, fulfilledQty: 0 }],
   });
 
   const techUid = id("u-tech");
@@ -189,12 +212,12 @@ test("retry Complete on an already-COMPLETED WO -> failed-precondition, fulfille
     status: "WORK_IN_PROGRESS",
     assignedTechId: techId,
     salesOrderId: soId,
-    inventorySnapshot: [{ sku: "IPN-4", qtyUsed: 4 }],
+    inventorySnapshot: [{ sku: "IPN-4", partId: "P-4", qtyUsed: 4 }],
   });
 
   await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
   const soAfterFirst = await db.collection(SOS).doc(soId).get();
-  assert.equal(soAfterFirst.data().lines.find((l) => l.ref === "IPN-4").fulfilledQty, 4);
+  assert.equal(soAfterFirst.data().lines.find((l) => l.ref === "P-4").fulfilledQty, 4);
 
   await assert.rejects(
     transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid)),
@@ -206,7 +229,7 @@ test("retry Complete on an already-COMPLETED WO -> failed-precondition, fulfille
 
   const soAfterRetry = await db.collection(SOS).doc(soId).get();
   assert.equal(
-    soAfterRetry.data().lines.find((l) => l.ref === "IPN-4").fulfilledQty,
+    soAfterRetry.data().lines.find((l) => l.ref === "P-4").fulfilledQty,
     4,
     "fulfilledQty must NOT change on a rejected retry"
   );
