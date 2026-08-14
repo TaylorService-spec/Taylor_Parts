@@ -1,28 +1,41 @@
-# Truck Lifecycle Readiness — B1 / B2 (Owner-decided 2026-08-13)
+# Truck Lifecycle Readiness — Activation Criteria (Owner-decided 2026-08-13)
 
-Roadmap items split out from round-4 site-work findings `truck-deactivate-permanently-fails-unknown-inventory` and `truck-delete-created-in-error-permanently-fails-unknown-references` (see `docs/orchestration/site-work/round4-candidates.json` and `round4-special-track-proposals.md`).
+Split out from round-4 site-work findings `truck-deactivate-permanently-fails-unknown-inventory` and `truck-delete-created-in-error-permanently-fails-unknown-references` (see `docs/orchestration/site-work/round4-candidates.json`, `round4-special-track-proposals.md`).
 
-## Context / decision
-Two truck destructive lifecycle operations are wired to governed fail-closed predicates that **cannot resolve under any current production condition** (no inventory-at-location persistence; all 11 operational-reference authorities are `unverifiable()`), yet were shipped enabled in production. The Owner's decision:
+> **Framing correction (Owner):** This is NOT a greenfield "build the truck delete/deactivate framework" project. **That framework already exists** in the Truck Registry and is paid for. What remains is authoritative *persistence-source availability* plus wiring the already-built probes — tracked as **completion criteria on the existing inventory / mobile-location / serialized-asset custody persistence evolution**, not a new truck workstream. Checking the repo is exactly what surfaced this: otherwise we'd have scheduled rebuilding architecture we already own.
 
-- **Option A (done as a production-correctness fix, repo-only):** narrowly gate the two destructive controls behind their **own** readiness flags (`TRUCK_DEACTIVATE_READY`, `TRUCK_DELETE_READY`), **disabled — not hidden** — with an explicit unavailable explanation naming the dependency. `TRUCK_MANAGEMENT_WRITE_READY` is NOT broadened/repurposed. Backend fail-closed predicates are NOT weakened. All other truck-management actions stay enabled. (PR: site-work r4 truck-gate.) NOTE: repo-merged ≠ live — taking effect in production requires a Hosting deploy (Owner-gated).
-- **Option B is split into B1 and B2** below (deactivation becomes usable much earlier than deletion, so they must not be one project).
+## What already exists (do NOT rebuild)
+The Truck Registry (`functions/src/truckRegistry/`) already ships, built and tested:
+- The **deactivate** command architecture is already built to accept a **real governed inventory-at-location probe** (`GovernedInventoryProbe` injection seam, `truckRegistryCommands.ts`). Deactivation is intentionally fail-closed only because the production default is still `UNKNOWN_INVENTORY`; the code explicitly states the governed serialized-asset/ledger-at-location source does not yet exist.
+- The **entire 11-authority delete framework already exists**: a production `operationalReferenceProbe.ts` with the canonical 11-authority registry, aggregation logic (`aggregateReferenceStates`, fail-closed unless all CLEAR), a bounded transactional query helper, completeness protection, `buildReferenceCrosswalk()` per-authority tracking, crosswalk documentation, and dedicated tests. All 11 production authorities intentionally return `UNKNOWN` today.
+- Fail-closed predicates throughout — correct and must NOT be weakened.
 
-Principle affirmed: **never fake capability, never weaken safety to make a button work, progressively enable controls as authoritative data becomes available.**
+## What is actually missing (the ONLY remaining gap)
+Not code in the truck registry — the **underlying truck/location-indexed DATA those probes need to query.** The source itself reconciles the schema and documents the gaps:
+- `stock_locations` is **warehouse-keyed** (no MOBILE/truck-location index).
+- Transfers are **warehouse→warehouse** (no truck-indexed transfer lines).
+- `inventory_transactions` is **location-blind**.
+- No persisted truck-indexed custody / reconciliation / receiving / cycle-count / RMA / scrap records.
 
-## B1 — Truck deactivation readiness
-Implement the authoritative **inventory-at-location / custody predicate** so EOS can conclusively prove `ABSENT` for a truck's MOBILE location, and inject it as the real `GovernedInventoryProbe` into `deactivateTruckCallable` (replacing the `UNKNOWN_INVENTORY` default in `functions/src/truckRegistry/truckRegistryCommands.ts`). When it can prove ABSENT/PRESENT, flip `TRUCK_DEACTIVATE_READY=true` (per environment) so the control activates.
-- **Dependency / home:** tie to the existing **Equipment Custody / Serialized Asset P0** and mobile-inventory work — that's where the truck-held inventory persistence (serialized-asset-on-truck / stock-at-MOBILE-location) most naturally lands. B1 rides on that persistence rather than being built in isolation.
-- **Done when:** a genuinely-empty truck can be deactivated and a truck with inventory is correctly blocked with a real (not UNKNOWN) reason.
+Because that data isn't authoritative, all 11 authorities (and the inventory probe) intentionally return `UNKNOWN`. The machinery is ready and *waiting for authoritative data* — it is not waiting to be built.
 
-## B2 — Created-in-error deletion readiness
-Implement/expose authoritative truck-reference checks across the **11 operational authorities** (`functions/src/truckRegistry/operationalReferenceProbe.ts`: serializedAssets, partsStock, transferOrders, transferLines, ledgerEvents, custodyAssignmentHistory, receiving, reconciliation, cycleCount, rma, scrap) so the aggregate can prove `CLEAR`. Activate each authority's real check only as its own governed persistence ships (the file's own design intent via `buildReferenceCrosswalk()`); the aggregator fails closed unless ALL 11 are CLEAR, so `TRUCK_DELETE_READY` stays `false` until the full aggregate can plausibly reach CLEAR for a pristine truck.
-- **Larger and later than B1** (11 authorities, several currently unscoped).
+## Option A — production-correctness gate (approved, in flight)
+Narrowly gate the two destructive controls behind **their own** readiness flags (`TRUCK_DEACTIVATE_READY`, `TRUCK_DELETE_READY`), **disabled — not hidden** — with an explicit unavailable explanation naming the dependency. Do NOT broaden `TRUCK_MANAGEMENT_WRITE_READY`; do NOT weaken backend predicates; leave all other truck actions enabled. (PR: site-work r4 truck-gate.) Repo-merged ≠ live — production effect needs a Hosting deploy (Owner-gated).
 
-### B2 design stance — reconsider physical deletion (Owner)
-Before building B2 as "physical delete," evaluate whether **true deletion should exist at all** for a truck that has ever been referenced. Enterprise-correct model: **immutable historical identity + an `ENTERED_IN_ERROR` / retired state**, with physical deletion reserved ONLY for a provably-pristine truck (no inventory, no assignments, no work history, no audit dependencies, no references). The current 11-authority `CLEAR` gate already points toward this philosophy. B2's scoping should decide: (a) `ENTERED_IN_ERROR` retirement as the primary path for referenced trucks, and (b) hard-delete only for the pristine-never-used case.
+## Remaining work = activation criteria on EXISTING persistence work (not new truck projects)
+
+### B1 — Deactivation activation criterion
+**Attach to the existing truck-as-location / mobile-inventory / serialized-asset custody persistence work** (Equipment Custody / Serialized Asset P0). When that work makes **inventory-at-a-truck's-MOBILE-location authoritative**, its completion criteria include: inject the real `GovernedInventoryProbe` into `deactivateTruckCallable` (replacing the `UNKNOWN_INVENTORY` default — a *wiring* step against the existing seam, not new truck code) and flip `TRUCK_DEACTIVATE_READY` per environment. Deactivation then becomes real — likely much earlier than deletion.
+
+### B2 — Created-in-error deletion activation criteria
+**Attach to each operational-reference source's existing persistence evolution.** As each of the 11 authorities' underlying data becomes authoritative (many arrive as side effects of the same custody/serialized-asset/ledger-at-location and receiving/reconciliation/cycle-count/RMA/scrap work), wire its **already-built** probe (replace that authority's `unverifiable()` with its real check per `buildReferenceCrosswalk()`). The aggregator stays fail-closed until all 11 are CLEAR-capable, so `TRUCK_DELETE_READY` flips only when a pristine truck can be proven CLEAR. No new framework — incremental wiring of existing seams as sources land.
+
+#### B2 design stance — physical delete vs ENTERED_IN_ERROR (Owner)
+Before treating B2's endpoint as physical deletion, adopt the enterprise-correct model: **immutable historical identity + an `ENTERED_IN_ERROR` / retired state** for any truck that has ever been referenced; reserve true physical deletion for the provably-pristine, never-used case (which is exactly what the 11-authority CLEAR gate already proves). The existing machinery already points at this philosophy.
 
 ## Status
 - Option A: repo fix in flight (site-work r4 truck-gate); merged ≠ deployed.
-- B1: roadmap, tied to Equipment Custody / Serialized Asset P0 + mobile-inventory.
-- B2: roadmap, long-horizon; resolve the `ENTERED_IN_ERROR`-vs-physical-delete design question first.
+- B1: NOT a standalone item — completion criterion on Equipment Custody / Serialized Asset P0 + mobile-inventory persistence (wire existing probe + flip flag when inventory-at-location is authoritative).
+- B2: NOT a standalone item — completion criteria distributed across the 11 authorities' existing persistence evolution (wire each existing probe as its source lands); resolve `ENTERED_IN_ERROR`-vs-physical-delete as the endpoint stance.
+
+_(Supersedes any "build the … source/framework" phrasing in `round4-special-track-proposals.md` Items 1–2: the framework exists; the work is persistence-source authority + probe wiring.)_
