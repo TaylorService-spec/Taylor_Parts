@@ -74,8 +74,25 @@ export interface AllocationPlan {
   counts: Record<AllocationState, number>;
 }
 
+// Two or more Sales Order lines can share the same `ref` (site-work
+// allocatesalesorder-duplicate-ref-lines-double-allocate): `availabilityByRef` carries ONE pool per ref, but
+// each sibling line must draw down that SAME pool rather than each seeing the full undiminished figure. For a
+// KNOWN pool we track a running remaining-quantity per ref and decrement it by exactly what each line in turn
+// allocates, so total allocatableQty across sibling lines never exceeds that ref's available-to-promise.
+// UNAVAILABLE/UNKNOWN determinations have no quantity to share and are applied to every sibling line as-is.
 export function buildAllocationPlan(lines: SalesOrderLineLike[], availabilityByRef: Record<string, Availability>): AllocationPlan {
-  const allocations = (Array.isArray(lines) ? lines : []).map((l) => allocateLine(l, availabilityByRef[l.ref] ?? { kind: "UNKNOWN" }));
+  const remainingByRef: Record<string, number> = {};
+  const allocations = (Array.isArray(lines) ? lines : []).map((l) => {
+    const avail = availabilityByRef[l.ref] ?? { kind: "UNKNOWN" };
+    let effectiveAvail: Availability = avail;
+    if (avail.kind === "KNOWN") {
+      if (!(l.ref in remainingByRef)) remainingByRef[l.ref] = avail.quantity;
+      effectiveAvail = { kind: "KNOWN", quantity: remainingByRef[l.ref] };
+    }
+    const a = allocateLine(l, effectiveAvail);
+    if (avail.kind === "KNOWN") remainingByRef[l.ref] = Math.max(0, remainingByRef[l.ref] - a.allocatableQty);
+    return a;
+  });
   const counts: Record<AllocationState, number> = { ALLOCATED: 0, PARTIAL: 0, BACKORDERED: 0, UNAVAILABLE: 0, UNKNOWN: 0 };
   for (const a of allocations) counts[a.state] += 1;
   let readiness: FulfillmentReadiness;
