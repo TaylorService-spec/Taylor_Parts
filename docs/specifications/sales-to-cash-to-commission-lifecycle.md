@@ -58,11 +58,11 @@ Invoice Issued is a **mid-lifecycle** state, not the end. The lifecycle is finis
 |---|---|---|---|---|---|
 | 1 | Opportunity author/advance | Salesperson (own-scope) | `opportunity.write` / `opportunity.read` (attribution-bound, §2.1/C3) | opportunities | exists (active:false) |
 | 2 | WON → Create Sales Order | Salesperson (from owned Opp) / Admin | `opportunity.createSalesOrder` (Salesperson, own-scope); `salesOrder.write` (Dispatcher/Admin, NOT Salesperson) | sales_orders | exists (active:false) |
-| 3 | Allocation | **Dispatcher** (commercial record); Warehouse/Parts (physical) | `salesOrder.fulfill` = Dispatcher-owned allocation record; `inventory.allocation.reserve` [N] = Warehouse/Parts (§6). Warehouse/Parts do NOT hold `salesOrder.fulfill`. | sales_orders (allocation) + inventory | partial |
+| 3 | Allocation | **Dispatcher** (commercial record); Warehouse/Parts (physical) | `salesOrder.fulfill` = Dispatcher-owned allocation record; existing inventory consumption (`inventory.action.create/read`, `inventory.transaction.read`, `inventoryService` reserve/release/consume, `detectInventoryEffects`) = Warehouse/Parts (§6). Warehouse/Parts do NOT hold `salesOrder.fulfill`. | sales_orders (allocation) + inventory | exists (active:false) |
 | 4 | Service demand | Dispatcher | `salesOrder.service` | work_orders (demand lineage) | exists (active:false) |
 | 5 | Work Order execution | Technician / Shop-Service Mgr | `workOrder.transition`, NET-NEW tech caps (§7) | work_orders | partial |
 | 6 | Inventory consumption + reconciliation | Parts Mgr/Assoc, Warehouse Mgr, Technician | NET-NEW pick/issue/return/reconcile caps (§6) | inventory ledger | NET-NEW |
-| 7 | Operational fulfillment confirmation | Dispatcher | NET-NEW `salesOrder.fulfillment.confirm` (§6) | sales_orders (fulfilled) | NET-NEW |
+| 7 | Operational fulfillment (SO → FULFILLED) | Dispatcher | `transitionSalesOrder` (`salesOrder.write`) advances IN_FULFILLMENT→FULFILLED, fail-closed via the existing `allLinesFulfilled` gate — **no separate confirm capability** | sales_orders (fulfilled) | exists (active:false) |
 | 8 | Invoice | Accounting | `finance.invoice.issue` | invoices | exists (active:false) |
 | 9 | Customer payment recorded | Accounting | `finance.payment.apply` | payments | exists (active:false) |
 | 10 | Payment reconciliation | Controller | NET-NEW `finance.payment.reconcile` (§8) | payment_reconciliations | NET-NEW |
@@ -153,12 +153,12 @@ This matrix shows **authorization intent** (who may do what). For **build status
 | Inventory reserve/consume (EXISTING `inventory.action.*` / `detectInventoryEffects`; §5) | · | · | · | A | A | · | · | · | · | · | A |
 | Service demand (`salesOrder.service`) | · | A | A | · | · | · | · | · | · | A | A |
 | Work Order execution (`workOrder.*`) | · | A | A | · | · | · | A(assigned) | · | · | A | A |
-| Pick/stage/issue [N] | · | · | · | A | A | A | · | · | · | · | A |
-| Whse↔truck transfer [N] | · | · | · | A | A | A | verify | · | · | · | A |
+| Inventory pick/consume (EXISTING `inventory.action.*`, `inventoryService`, `detectInventoryEffects`) | · | · | · | A | A | A | · | · | · | · | A |
+| Whse↔truck transfer (Enterprise Inventory Arch — not F1) | · | · | · | A | A | A | verify | · | · | · | A |
 | Receiving/returns [N] | · | · | · | A | A | A | return(unused) | · | · | · | A |
 | Inventory reconciliation [N] | · | r | · | A | A | · | · | · | r | · | A |
-| Fulfillment confirm [N] (`salesOrder.fulfillment.confirm`) | · | A | r | · | · | · | · | · | · | · | A |
-| Tech field actuals [N] (§7) | · | · | r | · | · | · | A(own) | · | · | · | A |
+| SO → FULFILLED (EXISTING `transitionSalesOrder` / `salesOrder.write`; `allLinesFulfilled` gate) | · | A | r | · | · | · | · | · | · | A | A |
+| WO parts actuals (EXISTING `updateWorkOrderExecutionData`; labor/equipment → Service Ops) | · | · | r | · | · | · | A(own) | · | · | · | A |
 | Invoice issue (`finance.invoice.issue`) | · | · | · | · | · | · | · | A | r | A | A |
 | Payment apply (`finance.payment.apply`) | · | · | · | · | · | · | · | A | r | A | A |
 | Payment reconcile [N] (`finance.payment.reconcile`) | · | · | · | · | · | · | · | r | A | · | A[BG] |
@@ -175,7 +175,7 @@ This matrix shows **authorization intent** (who may do what). For **build status
 
 Key SoD invariants encoded above:
 - **Salesperson** is `own`-scope on the `opportunity.*` rows (attribution-bound, C3), holds **no** raw `salesOrder.write`, and is `own`-read-only across every commission column — never approve/pay.
-- **Dispatcher** owns `salesOrder.fulfill` (the commercial allocation record) and `salesOrder.fulfillment.confirm`; **Warehouse/Parts hold `inventory.allocation.reserve` and the physical caps, NOT `salesOrder.fulfill`** (C2).
+- **Dispatcher** owns `salesOrder.fulfill` (the commercial allocation record) and advances SO→FULFILLED via the existing `transitionSalesOrder` (`salesOrder.write`, `allLinesFulfilled` gate); **Warehouse/Parts use the existing inventory capabilities (`inventory.action.*`, `inventoryService`, `detectInventoryEffects`), NOT `salesOrder.fulfill`** (C2).
 - **Controller** approves (`*.approve`, reconcile) but never creates/pays a commission (payable/reversal-record/payment columns are `·`).
 - **Accounting** issues/applies/records and creates/pays **only post-approval**, but never approves (`*.approve` columns are `·`).
 - **Admin/Owner** are `·`/`[BG]` on net-new caps — the matrix never claims an ungranted authority. Owner's commission/finance approval and pay actions are **break-glass only** (`[BG]`).
@@ -327,13 +327,13 @@ F-stage builds must prove (fail-closed):
 | Handoff | From → To | Governed action |
 |---|---|---|
 | Sold work → executable service | Sales/Admin → Dispatcher | `salesOrder.service` creates governed Work Order demand |
-| Allocate + reserve inventory | Dispatcher → Warehouse/Parts | `inventory.allocation.reserve` (+ `salesOrder.fulfill` allocation record) |
-| Pick / stage / issue / transfer | Warehouse/Parts staff | `inventory.pick.stage`, `inventory.issue`, `inventory.transfer.truck` |
-| Assigned work + truck verify | Dispatcher → Technician | `workOrder.inventory.verify` |
-| Labor/parts actuals + acceptance | Technician | `workOrder.actuals.record`, `workOrder.acceptance.capture`, `workOrder.return.unused` |
+| Allocate (commercial record) + reserve inventory | Dispatcher → Warehouse/Parts | `salesOrder.fulfill` (`allocateSalesOrder`) + EXISTING `inventory.action.*` / `inventoryService` reserve/consume / `detectInventoryEffects` |
+| Pick / consume inventory | Warehouse/Parts staff | EXISTING `inventory.action.*`, `inventory.transaction.read`, `inventoryService` reserve/release/consume. (Location-aware pick/stage + whse↔truck transfer = **Enterprise Inventory Arch**, not F1.) |
+| Assigned work + context | Dispatcher → Technician | EXISTING `getWorkOrderFieldContext` (own-assignment gated). (Truck-inventory verify = **Enterprise Inventory Arch**, not F1.) |
+| Parts actuals + completion | Technician | EXISTING `updateWorkOrderExecutionData` (parts qty) → `transitionWorkOrder` Complete / `completeAssignedJob`. (Labor + equipment actuals, unused-part returns = **Service Operations / Technician Labor #13**, not F1.) |
 | Completion exception resolution | Technician → Shop/Service Mgr | `workOrder.transition` (oversight) |
 | Complete Work Order | Technician / Shop-Service Mgr | `workOrder.complete` |
-| Confirm operational fulfillment | Shop/Dispatcher → Dispatcher | `salesOrder.fulfillment.confirm` (clears blockers) |
+| Advance SO to FULFILLED | Shop/Dispatcher → Dispatcher | EXISTING `transitionSalesOrder` (`salesOrder.write`), fail-closed via `allLinesFulfilled` — no separate confirm capability |
 | Invoice | Dispatcher(fulfilled) → Accounting | `finance.invoice.issue` |
 | Apply customer payment | Accounting | `finance.payment.apply` |
 | Reconcile cash | Accounting → Controller | `finance.payment.reconcile` |
