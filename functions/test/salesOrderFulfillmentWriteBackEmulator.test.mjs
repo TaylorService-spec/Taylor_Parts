@@ -85,7 +85,7 @@ test("Complete on an SO-linked WO keys PART fulfillment by partId rather than sk
   assert.equal(auditSnap.empty, false, "an Audit Event must be staged for the write-back");
 });
 
-test("Complete falls back to qtyPlanned when the PART has no recorded qtyUsed", async () => {
+test("Complete does not treat qtyPlanned as PART fulfillment without governed qtyUsed", async () => {
   const techUid = id("u-tech");
   const techId = id("tech");
   await seedTechnician(techUid, techId);
@@ -106,8 +106,8 @@ test("Complete falls back to qtyPlanned when the PART has no recorded qtyUsed", 
 
   await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
   const soSnap = await db.collection(SOS).doc(soId).get();
-  assert.equal(soSnap.data().lines[0].fulfilledQty, 3, "qtyPlanned is accepted when qtyUsed is absent");
-  assert.equal(soSnap.data().state, "FULFILLED");
+  assert.equal(soSnap.data().lines[0].fulfilledQty, 0, "a plan alone is not actual PART fulfillment");
+  assert.equal(soSnap.data().state, "IN_FULFILLMENT");
 });
 
 test("Complete accumulates additively across two separate Work Orders on the SAME Sales Order line", async () => {
@@ -146,7 +146,7 @@ test("Complete accumulates additively across two separate Work Orders on the SAM
   assert.equal(line.fulfilledQty, 5, "3 + 2 additive across two Work Orders, never overwritten");
 });
 
-test("explicit fulfillmentAccepted OVERRIDES the derived PART value for the same (ref,kind)", async () => {
+test("explicit fulfillmentAccepted cannot override governed PART usage", async () => {
   const soId = id("so-override");
   await seedSalesOrder(soId, {
     state: "IN_FULFILLMENT",
@@ -164,16 +164,33 @@ test("explicit fulfillmentAccepted OVERRIDES the derived PART value for the same
     inventorySnapshot: [{ sku: "IPN-3", partId: "P-3", qtyUsed: 4 }], // derived value would be 4
   });
 
-  await transitionWorkOrder.run(
+  await assert.rejects(
+    transitionWorkOrder.run(
     callRequest(
       { workOrderId: woId, action: "Complete", fulfillmentAccepted: [{ ref: "P-3", kind: "PART", qty: 5 }] },
       techUid
     )
+    ),
+    (err) => err.code === "invalid-argument",
   );
 
   const soSnap = await db.collection(SOS).doc(soId).get();
   const line = soSnap.data().lines.find((l) => l.ref === "P-3");
-  assert.equal(line.fulfilledQty, 5, "explicit fulfillmentAccepted (5) overrides the derived qtyUsed value (4)");
+  assert.equal(line.fulfilledQty, 0, "rejected client PART acceptance cannot write fulfillment");
+});
+
+test("explicit SERVICE acceptance remains functional", async () => {
+  const soId = id("so-service");
+  await seedSalesOrder(soId, { state: "IN_FULFILLMENT", lines: [{ kind: "SERVICE", ref: "SVC-1", orderedQty: 1, fulfilledQty: 0 }] });
+  const techUid = id("u-tech");
+  const techId = id("tech");
+  await seedTechnician(techUid, techId);
+  const woId = id("wo-service");
+  await seedWorkOrder(woId, { status: "WORK_IN_PROGRESS", assignedTechId: techId, salesOrderId: soId });
+  await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete", fulfillmentAccepted: [{ kind: "SERVICE", ref: "SVC-1", qty: 1 }] }, techUid));
+  const soSnap = await db.collection(SOS).doc(soId).get();
+  assert.equal(soSnap.data().lines[0].fulfilledQty, 1);
+  assert.equal(soSnap.data().state, "FULFILLED");
 });
 
 test("Complete on a NON-SO-linked WO writes no sales_orders doc (fully no-op)", async () => {

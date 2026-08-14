@@ -64,9 +64,8 @@ interface TransitionWorkOrderInput {
   // only a planning-stage placeholder that may have changed since).
   assignedTechId?: string;
   // P1.1 (Sales->Cash fulfillment spine): Complete-only. Explicit technician-declared acceptance for
-  // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). An entry here
-  // OVERRIDES the PART-derived value for the same (ref,kind) too (Owner-ratified override rule). Ignored/
-  // rejected outside a Complete call.
+  // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). PART actuals
+  // are derived solely from governed inventorySnapshot.qtyUsed, never supplied by the caller.
   fulfillmentAccepted?: FulfillmentAcceptance[];
 }
 
@@ -118,6 +117,9 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
           "invalid-argument",
           "Each fulfillmentAccepted entry requires a non-empty ref, non-empty kind, and a positive qty."
         );
+      }
+      if (entry.kind === "PART") {
+        throw new HttpsError("invalid-argument", "fulfillmentAccepted cannot declare PART fulfillment; PART actuals are governed inventory usage.");
       }
     }
   }
@@ -236,23 +238,19 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         const so = soSnap.data() as { state?: string; lines?: SalesOrderFulfillmentLine[] };
         const currentLines = Array.isArray(so.lines) ? so.lines : [];
 
-        // PART lines: derive acceptance from this Work Order's governed inventorySnapshot, matched by canonical
-        // partId<->SO ref (never sku<->ref). When actual usage has not been recorded, completed planned work
-        // counts as fulfillment, consistent with consumeParts' qtyUsed ?? qtyPlanned behavior.
+        // PART lines: derive acceptance exclusively from governed inventorySnapshot.qtyUsed, matched by
+        // canonical partId<->SO ref (never sku<->ref). A plan is not proof of actual fulfillment.
         const derivedByKey = new Map<string, FulfillmentAcceptance>();
         for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
           if (typeof item.partId !== "string" || item.partId.trim().length === 0) continue;
-          const qty = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed)
-            ? item.qtyUsed
-            : (typeof item.qtyPlanned === "number" && Number.isFinite(item.qtyPlanned) ? item.qtyPlanned : 0);
+          const qty = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed) ? item.qtyUsed : 0;
           if (qty <= 0) continue;
           const key = `PART:${item.partId}`;
           const existing = derivedByKey.get(key);
           derivedByKey.set(key, { ref: item.partId, kind: "PART", qty: (existing?.qty ?? 0) + qty });
         }
 
-        // Explicit fulfillmentAccepted[] (EQUIPMENT_MODEL/SERVICE, technician-declared) OVERRIDES the derived
-        // PART value for the same (ref,kind) too -- Owner-ratified override rule.
+        // Explicit declarations are allowed only for non-PART lines that have no governed inventory actuals.
         for (const entry of (fulfillmentAccepted as FulfillmentAcceptance[] | undefined) ?? []) {
           derivedByKey.set(`${entry.kind}:${entry.ref}`, entry);
         }
