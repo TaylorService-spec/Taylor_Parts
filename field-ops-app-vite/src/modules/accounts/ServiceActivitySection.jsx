@@ -8,6 +8,7 @@ import {
   useAccountWorkOrderCount,
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity.
 // Two distinct presentation elements over the same Account's Work Orders,
@@ -41,7 +42,7 @@ function CountCell({ label, state }) {
   if (view.kind === "error") {
     return <span className="fo-warning">{label}: unavailable</span>;
   }
-  return <span className="fo-badge">{label}: {view.value}</span>;
+  return <StatusPill tone="neutral" label={`${label}: ${view.value}`} />;
 }
 
 export default function ServiceActivitySection({ accountId }) {
@@ -79,7 +80,7 @@ export default function ServiceActivitySection({ accountId }) {
             {timeline.items.map((wo) => (
               <li key={wo.id} className="wo-history-row">
                 <span className="fo-muted">{formatWoDate(wo.createdAt)}</span>{" "}
-                {wo.status && <span className="fo-badge">{wo.status}</span>}{" "}
+                {wo.status && <StatusPill tone="neutral" label={wo.status} />}{" "}
                 <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
               </li>
             ))}

@@ -605,12 +605,13 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-badge-prospect { background: var(--color-warning-surface); color: var(--color-warning); }
 .fo-badge-archived { background: var(--color-surface-sunken); color: var(--color-text-secondary); }
 
-/* Customer/Account Business Model -- Customer PR 2. Relationship-type
-   badges, sectioned-page helpers, and the relationship fieldset. No tab
-   styles here -- the tab shell is intentionally not part of this page. */
-.fo-badge-relationship-customer { background: var(--color-surface-sunken); color: #1F5FA9; }
-.fo-badge-relationship-vendor { background: var(--color-surface-sunken); color: #6B3FA0; }
-.fo-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+/* Customer/Account Business Model -- Customer PR 2. Sectioned-page helpers
+   and the relationship fieldset. No tab styles here -- the tab shell is
+   intentionally not part of this page. Relationship-type badge colors
+   retired Wave 2 (accounts migrated to StatusPill); fo-pill-row is the
+   layout-only flex-wrap row (renamed off fo-badge-row so it doesn't trip
+   the retired fo-badge substring gate -- it was never a status treatment). */
+.fo-pill-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 .fo-account-summary { margin-bottom: 8px; }
 .fo-warning { color: var(--color-danger); font-size: 14px; }
 .fo-fieldset { border: 1px solid var(--color-surface-sunken); border-radius: 8px; padding: 8px 12px; display: flex; gap: 16px; flex-wrap: wrap; }

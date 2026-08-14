@@ -4,6 +4,7 @@ import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../../hooks/useContactsForAccount";
 import { updateAccount } from "../../domain/accounts";
+import { accountStatusTone, accountRelationshipTone, accountLineOfBusinessTone } from "../../domain/accountPortfolio";
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
@@ -21,6 +22,10 @@ import IdentityLine from "./IdentityLine";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -54,9 +59,7 @@ function RelationshipBadges({ relationshipTypes }) {
   return (
     <>
       {ordered.map((t) => (
-        <span key={t} className={`fo-badge fo-badge-relationship-${t.toLowerCase()}`}>
-          {RELATIONSHIP_LABEL[t] ?? t}
-        </span>
+        <StatusPill key={t} tone={accountRelationshipTone(t)} label={RELATIONSHIP_LABEL[t] ?? t} />
       ))}
     </>
   );
@@ -71,9 +74,7 @@ function LineOfBusinessBadges({ lineOfBusiness }) {
   return (
     <>
       {ordered.map((c) => (
-        <span key={c} className={`fo-badge fo-badge-lob-${c.toLowerCase()}`}>
-          {LINE_OF_BUSINESS_LABEL[c] ?? c}
-        </span>
+        <StatusPill key={c} tone={accountLineOfBusinessTone(c)} label={LINE_OF_BUSINESS_LABEL[c] ?? c} />
       ))}
     </>
   );
@@ -283,12 +284,15 @@ export default function AccountDetail() {
   const hasIdentifiers =
     account.customerNumber || account.erpId || account.accountingId || account.legacyId;
 
-  return (
-    <div className="fo-panel">
-      <button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">
-        &larr; Back to Customers
-      </button>
+  const actions = (
+    <ActionRail
+      start={<button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">&larr; Back to Customers</button>}
+      primary={!isEditing ? <button type="button" className="fo-btn-primary" onClick={() => setIsEditing(true)}>Edit</button> : null}
+    />
+  );
 
+  return (
+    <WorkspaceShell title={account.name} actions={actions}>
       {isEditing ? (
         <AccountForm
           initialValues={account}
@@ -303,14 +307,9 @@ export default function AccountDetail() {
         <>
           {/* 1. Account Summary -- always visible, never collapsed */}
           <section className="fo-account-summary">
-            <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-              <h2 style={{ margin: 0 }}>{account.name}</h2>
-              <button type="button" onClick={() => setIsEditing(true)}>Edit</button>
-            </div>
-
-            <div className="fo-badge-row">
+            <div className="fo-pill-row">
               {account.status && (
-                <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
+                <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
               )}
               <RelationshipBadges relationshipTypes={account.relationshipTypes} />
               <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
@@ -367,7 +366,7 @@ export default function AccountDetail() {
                   tabIndex={contact.id === pendingContactFocus ? -1 : undefined}
                 >
                   <strong>{contact.name}</strong>
-                  {contact.isPrimary && <span className="fo-badge fo-badge-active"> Primary</span>}
+                  {contact.isPrimary && <StatusPill tone="positive" label="Primary" />}
                   {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
                   {contact.email && <span className="fo-muted"> -- {contact.email}</span>}
                 </div>
@@ -466,6 +465,6 @@ export default function AccountDetail() {
           </details>
         </>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

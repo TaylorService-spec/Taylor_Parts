@@ -118,6 +118,25 @@ export function clearedFiltersForAccount(account = {}, { status = null, relation
   };
 }
 
+// --- Semantic status tone (Wave-2 StatusPill vocabulary) ------------------------------------------
+// Maps ACCOUNT_STATUS to the shared tone vocabulary (shared/ui/tone.js), so an Account's status
+// renders identically to the same tone anywhere else in the app. Absent/unrecognized -> "unknown"
+// (never a silent default to a colored tone). Same layering as domain/truckInventoryView.js.
+export function accountStatusTone(status) {
+  switch (status) {
+    case ACCOUNT_STATUS.ACTIVE: return "positive";
+    case ACCOUNT_STATUS.PROSPECT: return "attention";
+    case ACCOUNT_STATUS.INACTIVE: return "muted";
+    case ACCOUNT_STATUS.ARCHIVED: return "neutral";
+    default: return "unknown";
+  }
+}
+// Relationship type and line-of-business are categorical labels, not an urgency state -- both render
+// with the same quiet "info" tone (no domain semantic distinguishes CUSTOMER from VENDOR, or Taylor
+// from Ventana, that the shared tone vocabulary can express).
+export const accountRelationshipTone = () => "info";
+export const accountLineOfBusinessTone = () => "info";
+
 // User-facing message for a FAILED Account save (create or edit). A demo/panic
 // blocked write, a Rules permission-denied (e.g. a non-admin changing a governed
 // field, or a dispatcher creating above the governed baseline), and any other
