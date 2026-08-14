@@ -348,6 +348,48 @@ test("replaying COMPLETED after it already succeeded does not double-consume or 
   assert.equal(sumType(entries, "CONSUMED"), 1, "still exactly one CONSUMED unit, not two");
 });
 
+// ---- consumeParts: honors governed ACTUAL usage (qtyUsed), P0.1 ----------
+
+test("consumeParts with qtyUsed < qtyPlanned consumes only the actual and releases the remainder", async () => {
+  const woId = id("wo");
+  // TST-1017 must have ample warehouseQty in the static catalog.
+  await seedWorkOrder(woId, [{ sku: "TST-1017", qtyPlanned: 4, qtyUsed: 1 }]);
+  await reserveParts(woId);
+  await consumeParts(woId);
+
+  const entries = await ledgerFor(woId, "TST-1017");
+  assert.equal(sumType(entries, "RESERVED"), 4, "reservation stays at qtyPlanned");
+  assert.equal(sumType(entries, "CONSUMED"), 1, "ledger consumes the actual qtyUsed, not qtyPlanned");
+  assert.equal(sumType(entries, "RELEASED"), 3, "unused remainder (qtyPlanned - qtyUsed) is released, not stranded");
+  // Nothing left outstanding for this WO/part once actual + remainder are accounted for.
+  assert.equal(
+    sumType(entries, "RESERVED") - sumType(entries, "RELEASED") - sumType(entries, "CONSUMED"),
+    0
+  );
+});
+
+test("consumeParts with qtyUsed === qtyPlanned consumes all, releases nothing", async () => {
+  const woId = id("wo");
+  await seedWorkOrder(woId, [{ sku: "TST-1018", qtyPlanned: 2, qtyUsed: 2 }]);
+  await reserveParts(woId);
+  await consumeParts(woId);
+
+  const entries = await ledgerFor(woId, "TST-1018");
+  assert.equal(sumType(entries, "CONSUMED"), 2);
+  assert.equal(sumType(entries, "RELEASED"), 0, "no remainder to release when fully used");
+});
+
+test("consumeParts with no qtyUsed recorded falls back to qtyPlanned (no regression)", async () => {
+  const woId = id("wo");
+  await seedWorkOrder(woId, [{ sku: "TST-1019", qtyPlanned: 3 }]); // qtyUsed never populated
+  await reserveParts(woId);
+  await consumeParts(woId);
+
+  const entries = await ledgerFor(woId, "TST-1019");
+  assert.equal(sumType(entries, "CONSUMED"), 3, "falls back to qtyPlanned when no actual was recorded");
+  assert.equal(sumType(entries, "RELEASED"), 0, "no remainder released in the fallback case");
+});
+
 // ---- CANCELLED trigger releases outstanding reservation ------------------
 
 test("CANCELLED trigger releases whatever was reserved", async () => {
