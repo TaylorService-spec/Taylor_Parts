@@ -59,6 +59,10 @@ export interface CreateOpportunityInput {
 
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+// Mirrors salesOrderCommands.ts's posInt: both Sales Order creation paths require an INTEGER orderedQty. A
+// fractional Opportunity line qty (e.g. 2.5) would pass here but can never seed a Sales Order (QTY_INVALID on
+// both paths) — a permanent dead-end once WON, since WON is terminal. Require integer qty at the same points.
+const posInt = (v: unknown): v is number => finiteNum(v) && v > 0 && Number.isInteger(v);
 
 // A guard that catches the ONE identity mistake that would corrupt the pre-commitment boundary: a line that
 // carries a serialized-asset reference. We reject any line that declares a serial explicitly, or whose kind
@@ -84,8 +88,8 @@ function validateLine(line: unknown, index: number): OpportunityLineInput {
   // This is the enforcement point that closes the qty-less WON dead-end at its source — a line that can never
   // be created without a valid qty can never reach WON without one either. (See also the WON-outcome guard in
   // buildTransitionPatch below, which defends any opportunity persisted before this rule existed.)
-  if (!finiteNum(l.qty) || (l.qty as number) <= 0) {
-    throw new OpportunityCommandError("LINE_INVALID", `Line ${index} is missing a valid qty`);
+  if (!posInt(l.qty)) {
+    throw new OpportunityCommandError("LINE_INVALID", `Line ${index} is missing a valid qty (positive integer)`);
   }
   const out: OpportunityLineInput = { kind: l.kind as OpportunityLineKind, ref: (l.ref as string).trim(), qty: l.qty as number };
   return out;
@@ -171,11 +175,11 @@ export function buildTransitionPatch(
     // (validateLine): WON is terminal/irreversible with no line-edit/reopen path, and downstream
     // createSalesOrderFromOpportunity fails closed forever on a qty-less line, so a qty-less line must never
     // be allowed to reach WON in the first place.
-    const badIndex = current.lines.findIndex((l) => !finiteNum(l?.qty) || (l.qty as number) <= 0);
+    const badIndex = current.lines.findIndex((l) => !posInt(l?.qty));
     if (badIndex !== -1) {
       throw new OpportunityCommandError(
         "LINE_QTY_REQUIRED_FOR_WON",
-        `Opportunity line ${badIndex} is missing a valid qty; WON requires every line to carry a qty`
+        `Opportunity line ${badIndex} is missing a valid qty (positive integer); WON requires every line to carry one`
       );
     }
   }
