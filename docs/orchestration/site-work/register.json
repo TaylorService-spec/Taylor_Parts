@@ -738,5 +738,151 @@
         "pr": 932
       }
     ]
+  },
+  "round4": {
+    "note": "Round-4 approved batch (Owner authorized 2026-08-13). 17 auto-fixable QUEUED (worker:claude, 10 PRs A-K; B/C/D/E/F group multiple findings per PR by shared files). 4 special-track DEFERRED for Owner-reviewed proposals (no build). Detail in round4-candidates.json.",
+    "entries": [
+      {
+        "discriminator": "operations-procurementpanel-reads-dormant-collection",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "A"
+      },
+      {
+        "discriminator": "reportexecution-contains-filter-broken-for-list-fields",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "B"
+      },
+      {
+        "discriminator": "reportresultstate-truncation-masked-by-partially-authorized-kind",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "B"
+      },
+      {
+        "discriminator": "partdetail-request-reorder-permanently-blocked-after-terminal",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "C"
+      },
+      {
+        "discriminator": "usereorderrequestforpart-swallows-error-as-not-found",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "C"
+      },
+      {
+        "discriminator": "partdetail-reorder-actions-bypass-safe-copy-error-convention",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "C"
+      },
+      {
+        "discriminator": "appshell-drawer-not-closed-on-non-navlink-navigation",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P1",
+        "prItem": "D"
+      },
+      {
+        "discriminator": "apprail-active-item-scrollintoview-misses-in-domain-navigation",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "D"
+      },
+      {
+        "discriminator": "findactiveservicegroupkey-built-tested-never-wired",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "D"
+      },
+      {
+        "discriminator": "reportbuilder-array-comparators-have-no-usable-value-input",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P3",
+        "prItem": "E"
+      },
+      {
+        "discriminator": "savedreports-disconnected-from-report-builder",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P3",
+        "prItem": "E"
+      },
+      {
+        "discriminator": "changestatus-bypasses-deactivate-inventory-guard",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "F"
+      },
+      {
+        "discriminator": "truck-driver-no-cross-truck-uniqueness-check",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "F"
+      },
+      {
+        "discriminator": "partmasterrepository-drops-wholeunit-equipmentmodelid-on-persist",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "H"
+      },
+      {
+        "discriminator": "createpurchaseorder-no-lineitem-validation",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "I"
+      },
+      {
+        "discriminator": "allocatemoney-negative-amount-remainder-never-distributed",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "J"
+      },
+      {
+        "discriminator": "importcompatibilitysource-unbounded-evidence-read-in-write-transaction",
+        "worker": "claude",
+        "status": "QUEUED",
+        "priority": "P2",
+        "prItem": "K"
+      }
+    ],
+    "deferred": [
+      {
+        "discriminator": "truck-deactivate-permanently-fails-unknown-inventory",
+        "status": "DEFERRED",
+        "track": "owner-decision"
+      },
+      {
+        "discriminator": "truck-delete-created-in-error-permanently-fails-unknown-references",
+        "status": "DEFERRED",
+        "track": "owner-decision"
+      },
+      {
+        "discriminator": "locations-write-rule-has-no-shape-or-accountid-immutability-validation",
+        "status": "DEFERRED",
+        "track": "tier2-rules"
+      },
+      {
+        "discriminator": "inventory-actions-create-rule-has-no-field-validation-despite-claiming-parity",
+        "status": "DEFERRED",
+        "track": "tier2-rules"
+      }
+    ]
   }
 }
