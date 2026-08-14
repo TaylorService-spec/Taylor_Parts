@@ -156,6 +156,56 @@ test("concurrent reservations for the final unit serialize and cannot oversell",
   assert.equal(sumType(await ledgerFor(first, sku), "RESERVED") + sumType(await ledgerFor(second, sku), "RESERVED"), 2);
 });
 
+// ---- B-1: duplicate-sku rows in one WO's inventorySnapshot --------------
+// A supported scenario (two duplicate-ref PART SO lines can land as two rows
+// sharing a sku) must have its qtyPlanned SUMMED per sku before the
+// availability check, not evaluated per-row against the same
+// un-decremented available figure -- otherwise each row passes
+// independently and the WO reserves qtyPlanned+qtyPlanned against a pool
+// that only ever had enough for one, driving on-hand negative.
+
+test("reserveParts aggregates qtyPlanned across duplicate-sku rows -- reserves the total once, not per-row", async () => {
+  const sku = "TST-1058"; // warehouseQty 12
+  const woId = id("wo");
+  await seedWorkOrder(woId, [
+    { sku, qtyPlanned: 5 },
+    { sku, qtyPlanned: 5 },
+  ]);
+  await reserveParts(woId);
+
+  const entries = await ledgerFor(woId, sku);
+  assert.equal(sumType(entries, "RESERVED"), 10, "total reserved must be the sum (10), not double-reserved (20)");
+  assert.equal(entries.filter((e) => e.type === "RESERVED").length, 1, "one aggregated ledger entry per sku, not one per row");
+});
+
+test("reserveParts fails closed (all-or-nothing) when duplicate-sku rows' SUMMED demand exceeds the pool, even though each row alone would fit", async () => {
+  const sku = "TST-1059"; // warehouseQty 10
+  const woId = id("wo");
+  await seedWorkOrder(woId, [
+    { sku, qtyPlanned: 6 }, // fits alone (6 <= 10)
+    { sku, qtyPlanned: 6 }, // fits alone (6 <= 10), but summed demand is 12 > 10
+  ]);
+  await assert.rejects(reserveParts(woId), /Insufficient stock/);
+
+  const entries = await ledgerFor(woId, sku);
+  assert.equal(entries.length, 0, "no partial/duplicate reservation may land -- on-hand must never go negative");
+});
+
+test("reserveParts with duplicate-sku rows alongside a distinct sku still evaluates and reserves each independently", async () => {
+  const dupSku = "TST-1060"; // warehouseQty 12
+  const otherSku = "TST-1061"; // warehouseQty 4
+  const woId = id("wo");
+  await seedWorkOrder(woId, [
+    { sku: dupSku, qtyPlanned: 3 },
+    { sku: dupSku, qtyPlanned: 3 },
+    { sku: otherSku, qtyPlanned: 2 },
+  ]);
+  await reserveParts(woId);
+
+  assert.equal(sumType(await ledgerFor(woId, dupSku), "RESERVED"), 6);
+  assert.equal(sumType(await ledgerFor(woId, otherSku), "RESERVED"), 2);
+});
+
 // ---- release returns the correct quantity -------------------------------
 
 test("releaseParts releases exactly the outstanding reserved quantity for this Work Order", async () => {

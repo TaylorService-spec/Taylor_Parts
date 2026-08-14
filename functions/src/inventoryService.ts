@@ -127,28 +127,40 @@ export async function reserveParts(workOrderId: string): Promise<void> {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     if (items.length === 0) return;
 
-    const availabilityByPart = new Map<string, number>();
+    // A WO's inventorySnapshot can carry more than one row for the same sku
+    // (e.g. two duplicate-ref PART SO lines) -- a supported scenario. Sum
+    // qtyPlanned per sku FIRST so the availability/insufficiency check and
+    // the resulting ledger write are sized against the sku's TOTAL demand,
+    // not evaluated per-row against the same un-decremented availability
+    // figure (which would let each row separately pass and together
+    // over-reserve past what's actually on hand).
+    const plannedBySku = new Map<string, number>();
     for (const item of items) {
-      availabilityByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
+      plannedBySku.set(item.sku, (plannedBySku.get(item.sku) ?? 0) + item.qtyPlanned);
+    }
+
+    const availabilityByPart = new Map<string, number>();
+    for (const sku of plannedBySku.keys()) {
+      availabilityByPart.set(sku, await getAvailableQuantity(tx, sku));
     }
     // Firestore requires every transaction read before its first write.
-    const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
+    const locks = [...plannedBySku.keys()].map(reservationLockRef);
     await Promise.all(locks.map((ref) => tx.get(ref)));
     for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
 
     const insufficient: string[] = [];
-    for (const item of items) {
-      const available = availabilityByPart.get(item.sku) ?? 0;
-      if (item.qtyPlanned > available) {
-        insufficient.push(`${item.sku} (need ${item.qtyPlanned}, ${available} available)`);
+    for (const [sku, totalPlanned] of plannedBySku) {
+      const available = availabilityByPart.get(sku) ?? 0;
+      if (totalPlanned > available) {
+        insufficient.push(`${sku} (need ${totalPlanned}, ${available} available)`);
       }
     }
     if (insufficient.length > 0) {
       throw new Error(`Insufficient stock: ${insufficient.join("; ")}`);
     }
 
-    for (const item of items) {
-      writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "RESERVED", quantity: item.qtyPlanned });
+    for (const [sku, totalPlanned] of plannedBySku) {
+      writeLedgerEntry(tx, { workOrderId, partId: sku, type: "RESERVED", quantity: totalPlanned });
     }
   });
 }
