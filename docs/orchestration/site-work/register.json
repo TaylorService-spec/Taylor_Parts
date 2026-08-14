@@ -866,22 +866,30 @@
       {
         "discriminator": "truck-deactivate-permanently-fails-unknown-inventory",
         "status": "DEFERRED",
-        "track": "owner-decision"
+        "track": "owner-decision",
+        "decision": "OptionA-gate-approved; B1 roadmapped",
+        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md"
       },
       {
         "discriminator": "truck-delete-created-in-error-permanently-fails-unknown-references",
         "status": "DEFERRED",
-        "track": "owner-decision"
+        "track": "owner-decision",
+        "decision": "OptionA-gate-approved; B2 roadmapped (reconsider physical-delete vs ENTERED_IN_ERROR)",
+        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md"
       },
       {
         "discriminator": "locations-write-rule-has-no-shape-or-accountid-immutability-validation",
         "status": "DEFERRED",
-        "track": "tier2-rules"
+        "track": "tier2-rules",
+        "decision": "proposal drafted; awaiting Tier-2 rules workstream",
+        "proposal": "docs/orchestration/site-work/round4-special-track-proposals.md"
       },
       {
         "discriminator": "inventory-actions-create-rule-has-no-field-validation-despite-claiming-parity",
         "status": "DEFERRED",
-        "track": "tier2-rules"
+        "track": "tier2-rules",
+        "decision": "proposal drafted; awaiting Tier-2 rules workstream",
+        "proposal": "docs/orchestration/site-work/round4-special-track-proposals.md"
       }
     ]
   }
