@@ -197,3 +197,34 @@ export function buildTruckDetailView(readResult, truckId) {
     },
   };
 }
+
+// --- Semantic status tone (Wave-1 StatusPill vocabulary) -----------------------------------------
+//
+// The Truck Inventory workspace's DOMAIN STATE VOCABULARY mapped to the shared SEMANTIC TONE layer
+// (shared/ui/tone.js), so every truck status renders identically to the same state elsewhere. These
+// preserve the EXACT colour intent of the retired fo-badge treatments — nothing here changes which
+// state reads as good/bad, only which layer owns that decision. Pure: no side effects, unknown → "unknown".
+
+// Asset/manifest/reconciliation row statuses (formerly the local StatusBadge map):
+//   RECEIVED/COMPLETED/AVAILABLE/ACTIVE = settled/good → positive; MISSING = problem → critical;
+//   IN_TRANSIT = in-flight progress → info; PLANNED = not-yet-started → neutral.
+const TRUCK_ASSET_STATUS_TONE = {
+  RECEIVED: "positive",
+  COMPLETED: "positive",
+  AVAILABLE: "positive",
+  ACTIVE: "positive",
+  MISSING: "critical",
+  IN_TRANSIT: "info",
+  PLANNED: "neutral",
+};
+export const truckAssetStatusTone = (status) => TRUCK_ASSET_STATUS_TONE[status] ?? "unknown";
+
+// Fleet-row status: an ACTIVE truck is positive; any other governed status is neutral; absent → unknown
+// (rendered as "Unavailable" text by the caller, never a coloured pill).
+export const truckFleetStatusTone = (status) => (status == null ? "unknown" : status === "ACTIVE" ? "positive" : "neutral");
+
+// Discrepancy count: any open discrepancy is a problem (critical); a clean count is positive; unknown → unknown.
+export const truckDiscrepancyTone = (count) => (count == null ? "unknown" : count > 0 ? "critical" : "positive");
+
+// Parts reorder signal: REORDER needs attention; anything else settled is positive.
+export const truckReorderTone = (status) => (status === "REORDER" ? "attention" : status ? "positive" : "unknown");

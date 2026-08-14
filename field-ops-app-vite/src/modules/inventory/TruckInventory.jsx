@@ -16,9 +16,14 @@
 //   * The scan panel is IDENTIFICATION + REVIEW ONLY: no scanner library, movement disabled.
 import { useState } from "react";
 import { inertTruckInventorySource, readTruckInventorySource } from "../../access/truckInventorySource";
-import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions } from "../../domain/truckInventoryView";
+import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions, truckAssetStatusTone, truckReorderTone, truckFleetStatusTone } from "../../domain/truckInventoryView";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import TruckFleetCard from "./TruckFleetCard.jsx";
 import CreateTruckModal from "./truckManagement/CreateTruckModal";
 import ManageTruckDrawer from "./truckManagement/ManageTruckDrawer";
 import { indexManagementRecords } from "../../domain/truckManagement.js";
@@ -89,23 +94,21 @@ export default function TruckInventory({
   }
   if (fleet.state === TRUCK_FLEET_STATE.LOADING) {
     return (
-      <div className="fo-panel" role="status" aria-live="polite">
-        <h3>Truck Inventory</h3>
-        <p className="fo-muted">Loading truck inventory…</p>
-      </div>
+      <WorkspaceShell title="Truck Inventory">
+        <p className="fo-muted" role="status" aria-live="polite">Loading truck inventory…</p>
+      </WorkspaceShell>
     );
   }
   if (fleet.state === TRUCK_FLEET_STATE.UNAVAILABLE) {
     return (
-      <div className="fo-panel" role="status">
-        <h3>Truck Inventory</h3>
-        <p className="fo-muted">
+      <WorkspaceShell title="Truck Inventory">
+        <p className="fo-muted" role="status">
           Truck Inventory shows the serialized equipment and parts carried on each service truck, with load
           manifests and warehouse&nbsp;→&nbsp;truck&nbsp;→&nbsp;customer reconciliation. This workspace is
           connected to the governed Truck Inventory view, which is not available yet — no trucks or inventory
           are shown until that backend ships and is verified. Nothing here is simulated.
         </p>
-      </div>
+      </WorkspaceShell>
     );
   }
 
@@ -114,9 +117,9 @@ export default function TruckInventory({
       <div className="fo-panel" role="dialog" aria-modal="true" aria-label="Scan review" style={{ maxWidth: 480, margin: "10vh auto" }} onClick={(e) => e.stopPropagation()}>
         <h3>Scan review</h3>
         <p className="fo-muted">A scan <b>identifies</b> an item and opens this review — it never moves inventory on its own. Movement isn’t wired in this workspace.</p>
-        <div className="fo-badge-row" role="group" aria-label="Scan outcomes">
+        <div className="fo-chip-row" role="group" aria-label="Scan outcomes">
           {SCAN_OUTCOMES.map((o) => (
-            <button key={o.id} type="button" className="fo-badge" aria-pressed={scan === o.id} onClick={() => setScan(o.id)}>{o.label}</button>
+            <button key={o.id} type="button" className="fo-chip" aria-pressed={scan === o.id} onClick={() => setScan(o.id)}>{o.label}</button>
           ))}
         </div>
         <p role="status" aria-live="polite">{SCAN_OUTCOMES.find((o) => o.id === scan)?.message}</p>
@@ -132,10 +135,12 @@ export default function TruckInventory({
     const detail = buildTruckDetailView(read, selectedId);
     if (!detail.truck) {
       return (
-        <div className="fo-panel">
-          <button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All trucks</button>
+        <WorkspaceShell
+          title="Truck Inventory"
+          actions={<ActionRail start={<button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All trucks</button>} />}
+        >
           <EmptyState title="Truck not available" message="This truck is no longer in the connected view." />
-        </div>
+        </WorkspaceShell>
       );
     }
     // Management (admin/dispatcher) can open the Manage drawer for this truck, provided a
@@ -177,25 +182,36 @@ export default function TruckInventory({
   });
   const setField = (key) => (e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }));
 
+  const discrepancyTrucks = fleet.trucks.filter((t) => t.metrics.discrepancies > 0).length;
+  const actions = (
+    <ActionRail
+      primary={canManage ? (
+        <button
+          type="button"
+          className="fo-btn-primary"
+          onClick={() => setShowCreate(true)}
+          disabled={!management.writeReady}
+          title={management.writeReady ? "Add a truck" : "Truck management is not yet enabled"}
+          data-testid="add-truck"
+        >
+          + Add truck{management.writeReady ? "" : " (not yet enabled)"}
+        </button>
+      ) : null}
+      secondary={<button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>}
+    />
+  );
+  const context = (
+    <ContextBand
+      items={[
+        { key: "trucks", label: "Trucks", value: fleet.trucks.length },
+        { key: "discrepancies", label: "With discrepancies", value: discrepancyTrucks },
+        { key: "showing", label: "Showing", value: rows.length },
+      ]}
+    />
+  );
+
   return (
-    <div className="fo-panel">
-      <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
-        <h3>Truck Inventory</h3>
-        <div className="fo-btn-row">
-          {canManage && (
-            <button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              disabled={!management.writeReady}
-              title={management.writeReady ? "Add a truck" : "Truck management is not yet enabled"}
-              data-testid="add-truck"
-            >
-              + Add truck{management.writeReady ? "" : " (not yet enabled)"}
-            </button>
-          )}
-          <button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>
-        </div>
-      </div>
+    <WorkspaceShell title="Truck Inventory" actions={actions} context={context}>
       <p className="fo-muted">Serialized equipment and parts carried on each service truck. Read-only. Values shown are provided by the governed view — nothing is calculated here.</p>
 
       <div className="fo-filters" role="group" aria-label="Truck filters">
@@ -211,23 +227,10 @@ export default function TruckInventory({
       ) : rows.length === 0 ? (
         <EmptyState variant="filtered" title="No trucks match" message="No trucks match these filters." />
       ) : (
-        <ul className="fo-list" aria-label="Truck fleet" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12, listStyle: "none", padding: 0 }}>
+        <ul className="fo-card-grid" aria-label="Truck fleet">
           {rows.map((t) => (
             <li key={t.id}>
-              <button type="button" className="fo-card" style={{ width: "100%", textAlign: "left", cursor: "pointer" }} onClick={() => { setSelectedId(t.id); setTab("inventory"); }}>
-                <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
-                  <b>{t.id}</b>
-                  <span className={`fo-badge ${t.status === "ACTIVE" ? "fo-badge-active" : ""}`}>{gov(t.status)}</span>
-                </div>
-                <div className="fo-muted">{t.technician || "Unassigned"}{t.location ? ` · ${t.location}` : ""}</div>
-                <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, margin: "10px 0 0" }}>
-                  <div><dt className="fo-muted">Value</dt><dd style={{ margin: 0 }}>{dash(t.metrics.inventoryValue)}</dd></div>
-                  <div><dt className="fo-muted">Serialized</dt><dd style={{ margin: 0 }}>{dash(t.metrics.serializedCount)}</dd></div>
-                  <div><dt className="fo-muted">Parts</dt><dd style={{ margin: 0 }}>{dash(t.metrics.partsCount)}</dd></div>
-                  <div><dt className="fo-muted">Discrepancies</dt><dd style={{ margin: 0 }}>{t.metrics.discrepancies == null ? "—" : <span className={`fo-badge ${t.metrics.discrepancies > 0 ? "fo-badge-critical" : "fo-badge-completed"}`}>{t.metrics.discrepancies}</span>}</dd></div>
-                </dl>
-                <div className="fo-muted" style={{ marginTop: 8 }}>Reconciled {dash(t.metrics.lastReconciliation)}</div>
-              </button>
+              <TruckFleetCard truck={t} onOpen={() => { setSelectedId(t.id); setTab("inventory"); }} />
             </li>
           ))}
         </ul>
@@ -243,32 +246,38 @@ export default function TruckInventory({
           onCreated={() => setShowCreate(false)}
         />
       )}
-    </div>
+    </WorkspaceShell>
   );
 }
 
+// The ONE status treatment for asset/manifest/reconciliation rows — a StatusPill fed by the truck domain's
+// tone map. An absent value reads as "Unavailable" text (unknown tone), never a coloured pill.
 function StatusBadge({ value }) {
-  if (!value) return <span className="fo-badge">Unavailable</span>;
-  const map = { RECEIVED: "fo-badge-completed", MISSING: "fo-badge-critical", IN_TRANSIT: "fo-badge-pending", COMPLETED: "fo-badge-completed", PLANNED: "", AVAILABLE: "fo-badge-available", ACTIVE: "fo-badge-active" };
-  return <span className={`fo-badge ${map[value] || ""}`}>{value.replace(/_/g, " ")}</span>;
+  if (!value) return <StatusPill tone="unknown" asText label="Unavailable" />;
+  return <StatusPill tone={truckAssetStatusTone(value)} label={value.replace(/_/g, " ")} />;
 }
 
 function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, onManage }) {
+  const actions = (
+    <ActionRail
+      start={<button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>}
+      primary={onManage ? <button type="button" className="fo-btn-primary" onClick={onManage} data-testid="manage-truck">Manage truck</button> : null}
+      secondary={<button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>}
+    />
+  );
+  const context = (
+    <ContextBand
+      items={[
+        { key: "status", label: "Status", value: truck.status == null ? <StatusPill tone="unknown" asText label="Unavailable" /> : <StatusPill tone={truckFleetStatusTone(truck.status)} label={truck.status} /> },
+        { key: "tech", label: "Technician", value: truck.technician || "Unassigned" },
+        { key: "loc", label: "Location", value: truck.location || "—" },
+        { key: "home", label: "Home warehouse", value: truck.homeWarehouse || "—" },
+      ]}
+    />
+  );
   return (
-    <div className="fo-panel">
-      <button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>
-      <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
-        <h3>{truck.id} <StatusBadge value={truck.status} /></h3>
-        <div className="fo-btn-row">
-          {onManage && (
-            <button type="button" onClick={onManage} data-testid="manage-truck">Manage truck</button>
-          )}
-          <button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>
-        </div>
-      </div>
-      <p className="fo-muted">{truck.technician || "Unassigned"}{truck.location ? ` · ${truck.location}` : ""}{truck.homeWarehouse ? ` · Home: ${truck.homeWarehouse}` : ""}</p>
-
-      <div role="tablist" aria-label="Truck views" className="fo-badge-row">
+    <WorkspaceShell title={truck.id} actions={actions} context={context}>
+      <div role="tablist" aria-label="Truck views" className="fo-tablist">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} className="fo-btn-secondary" style={tab === t.id ? { fontWeight: 700 } : undefined} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
@@ -281,7 +290,7 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
         {tab === "reconciliation" && <ReconciliationTab reconciliation={truck.reconciliation} />}
       </div>
       {scanModal}
-    </div>
+    </WorkspaceShell>
   );
 }
 
@@ -327,7 +336,7 @@ function InventoryTab({ truck, options }) {
                 <tr key={p.internalSku || i}>
                   <td>{p.internalSku}</td><td>{dash(p.description)}</td><td>{dash(p.bin)}</td>
                   <td>{dash(p.onHand)}</td><td>{dash(p.reserved)}</td><td>{dash(p.available)}</td>
-                  <td>{p.reorderStatus ? <span className={`fo-badge ${p.reorderStatus === "REORDER" ? "fo-badge-low-stock" : "fo-badge-completed"}`}>{p.reorderStatus}</span> : "—"}</td>
+                  <td>{p.reorderStatus ? <StatusPill tone={truckReorderTone(p.reorderStatus)} label={p.reorderStatus} /> : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -385,11 +394,11 @@ function ReconciliationTab({ reconciliation }) {
       </dl>
       <h4>Missing</h4>
       {r.missing.length === 0 ? <p className="fo-muted">None reported.</p> : (
-        <ul className="fo-list">{r.missing.map((m, i) => <li key={m.assetId || m.serial || i}><span className="fo-badge fo-badge-critical">Missing</span> {dash(m.label)} · {dash(m.serial)} <span className="fo-muted">— last seen {dash(m.lastSeen)}; expected {dash(m.expected)}; actual {dash(m.actual)}</span></li>)}</ul>
+        <ul className="fo-list">{r.missing.map((m, i) => <li key={m.assetId || m.serial || i}><StatusPill tone="critical" label="Missing" /> {dash(m.label)} · {dash(m.serial)} <span className="fo-muted">— last seen {dash(m.lastSeen)}; expected {dash(m.expected)}; actual {dash(m.actual)}</span></li>)}</ul>
       )}
       <h4>Unexpected</h4>
       {r.unexpected.length === 0 ? <p className="fo-muted">None reported.</p> : (
-        <ul className="fo-list">{r.unexpected.map((u, i) => <li key={u.assetId || u.serial || i}><span className="fo-badge fo-badge-pending">Unexpected</span> {dash(u.label)} · {dash(u.serial)}{u.note ? <span className="fo-muted"> — {u.note}</span> : null}</li>)}</ul>
+        <ul className="fo-list">{r.unexpected.map((u, i) => <li key={u.assetId || u.serial || i}><StatusPill tone="info" label="Unexpected" /> {dash(u.label)} · {dash(u.serial)}{u.note ? <span className="fo-muted"> — {u.note}</span> : null}</li>)}</ul>
       )}
     </div>
   );

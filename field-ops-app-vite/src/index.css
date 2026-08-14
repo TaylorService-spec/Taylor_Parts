@@ -1691,6 +1691,29 @@ button:hover {
 .fo-tone-text--unknown, .fo-tone-text--neutral { color: var(--color-text-secondary); }
 .fo-tone-text--muted { color: var(--color-text-muted); }
 
+/* Wave-1 composition — a browseable collection of PEER OBJECT cards (the legitimate card use), plus the
+   detail tablist and utility chip-row that replace the ad-hoc badge-row toolbar. Card chrome is defined once
+   here (was previously scattered inline per surface) so every peer card reads identically site-wide. */
+.fo-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
+.fo-card--peer { display: block; width: 100%; text-align: left; cursor: pointer; margin: 0;
+  background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: border-color .12s, box-shadow .12s; }
+.fo-card--peer:hover { border-color: var(--color-brand-secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
+.fo-card--peer:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
+.fo-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fo-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 0; }
+.fo-card__metrics dt { font-size: 12px; }
+.fo-card__metrics dd { margin: 0; font-size: 14px; }
+.fo-card__foot { margin-top: 8px; }
+
+.fo-tablist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 12px; }
+
+.fo-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.fo-chip { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--color-surface-sunken); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+.fo-chip:hover { border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }
+.fo-chip[aria-pressed="true"] { background: var(--color-brand-secondary); color: var(--color-text-inverse); border-color: var(--color-brand-secondary); }
+
 /* Fix the previously-undefined detail layout classes (EquipmentDetail et al. silently degraded to a card
    stack). A responsive detail grid + a two-column dt/dd list + a header row. */
 .fo-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
