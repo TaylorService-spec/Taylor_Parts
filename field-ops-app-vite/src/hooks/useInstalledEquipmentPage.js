@@ -116,7 +116,20 @@ export function useInstalledEquipmentPage(accessVersion, deps = {}) {
       cursorRef.current = lastId ?? null;
       setDocs(pageDocs);
       setHasMore(more === true);
-      await resolveNames(pageDocs, runId);
+      // Name resolution is a SEPARATE, non-destructive step: the equipment read already
+      // succeeded, so a name-lookup failure here must not discard the freshly-read rows
+      // or flip the page to denied/error -- mirrors loadMore's handling below. Row
+      // composition already falls back to raw ids for unresolved names.
+      try {
+        await resolveNames(pageDocs, runId);
+      } catch (nameErr) {
+        if (runId !== runIdRef.current) return;
+        // The equipment page itself already loaded successfully -- a name-lookup
+        // failure (including permission-denied on the accounts/locations side) is
+        // non-destructive: rows stay, a partialError surfaces, row composition
+        // falls back to raw ids.
+        setPartialError(loadErrorMessage(nameErr, { entity: "equipment" }));
+      }
     } catch (err) {
       if (runId !== runIdRef.current) return;
       setDocs([]);

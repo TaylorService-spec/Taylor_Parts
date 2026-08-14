@@ -100,6 +100,18 @@ describe("useInstalledEquipmentPage", () => {
     expect(result.current.error).toBe(null);
   });
 
+  it("keeps loaded rows and surfaces partialError when the first-page name lookup fails", async () => {
+    const readEquipmentPage = vi.fn(async () => ({ docs: [{ id: "e1", accountId: "a1" }], lastId: "e1", hasMore: false }));
+    const readNames = vi.fn(async () => { throw new Error("name lookup boom"); });
+    const { result } = renderHook(() => useInstalledEquipmentPage(1, { readEquipmentPage, readNames, pageSize: 1 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    // equipment read succeeded -- rows must be retained, not wiped by the name failure
+    expect(result.current.docs.map((d) => d.id)).toEqual(["e1"]);
+    expect(result.current.denied).toBe(false);
+    expect(result.current.error).toBe(null);
+    expect(result.current.partialError).toBeTruthy();
+  });
+
   it("keeps loaded rows and surfaces partialError when a later page fails", async () => {
     const readEquipmentPage = vi.fn(async ({ cursor }) => {
       if (cursor == null) return { docs: [{ id: "e1", accountId: "a1" }], lastId: "e1", hasMore: true };
