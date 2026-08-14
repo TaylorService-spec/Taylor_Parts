@@ -17,7 +17,7 @@ const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;
 
 test("opportunity create replays one idempotency key and creates again for a new key", async () => {
   const actorUid = id("actor");
-  const built = buildCreateOpportunity({ accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "DIRECT" }, { actorUid, nowMillis: Date.now() });
+  const built = buildCreateOpportunity({ accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "RETAIL" }, { actorUid, nowMillis: Date.now() });
   const first = await db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, actorUid, "first"));
   const retry = await db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, actorUid, "first"));
   const next = await db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, actorUid, "second"));
@@ -29,7 +29,7 @@ test("opportunity create replays one idempotency key and creates again for a new
 
 test("sales order create replays one idempotency key and creates again for a new key", async () => {
   const actorUid = id("actor");
-  const built = buildCreateSalesOrder({ accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "DIRECT", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1 }] }, { actorUid, nowMillis: Date.now() });
+  const built = buildCreateSalesOrder({ accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1 }] }, { actorUid, nowMillis: Date.now() });
   const first = await db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, actorUid, "first"));
   const retry = await db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, actorUid, "first"));
   const next = await db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, actorUid, "second"));
