@@ -41,8 +41,12 @@ function runAllocationRound({ so, otherSoLines, stockRows, eligibleWarehouseIds,
     });
   }
   const plan = buildAllocationPlan(so.lines, availabilityByRef);
-  so.lines = so.lines.map((l) => {
-    const alloc = plan.lines.find((p) => p.ref === l.ref && p.kind === l.kind);
+  // Positional mapping (site-work allocatesalesorder-duplicate-ref-lines-double-allocate): plan.lines is a 1:1,
+  // order-preserving map over so.lines, so each line's own result lives at the same index -- mirrors the fixed
+  // write step in allocateSalesOrder.ts exactly (a bare find(ref+kind) would mis-write every sibling line that
+  // shares a ref+kind with the FIRST matching plan-line).
+  so.lines = so.lines.map((l, i) => {
+    const alloc = plan.lines[i];
     const already = typeof l.allocatedQty === "number" ? l.allocatedQty : 0;
     return alloc ? { ...l, allocatedQty: already + alloc.allocatableQty } : l;
   });
@@ -157,6 +161,31 @@ test("work-order-lineage exclusion: SO-linked WO reservations are excluded; stan
   });
   assert.equal(plan.lines[0].allocatableQty, 8, "10 on-hand minus the 2-unit standalone WO reservation");
   assert.equal(so.lines[0].allocatedQty, 8);
+});
+
+// (f) site-work allocatesalesorder-duplicate-ref-lines-double-allocate: two SO lines sharing the same ref
+// (e.g. the same part ordered on two lines) must draw down the SAME available-to-promise pool -- not each see
+// the full undiminished 5-unit ATP -- AND the write step must give each line its OWN result (not silently copy
+// the first matching line's outcome onto every line that shares its ref+kind).
+test("duplicate-ref lines: two lines sharing a ref never jointly exceed the pool, and each gets its own result", () => {
+  const so = { lines: [partLine("PART-1", 5), partLine("PART-1", 5)] };
+  const eligibleWarehouseIds = new Set(["WH-A"]);
+  const stockRows = [stockRow("PART-1", "WH-A", 5)]; // ATP = 5, two lines each ordering 5
+  const plan = runAllocationRound({ so, otherSoLines: [], stockRows, eligibleWarehouseIds, woRows: [], excludeWorkOrderIds: new Set() });
+
+  const totalAllocated = so.lines.reduce((sum, l) => sum + l.allocatedQty, 0);
+  assert.equal(totalAllocated, 5, "total allocatedQty across both lines must not exceed the 5-unit pool (not 10)");
+
+  // Each line carries ITS OWN result -- not a copy of the first line's outcome.
+  assert.deepEqual({ alloc: so.lines[0].allocatedQty, state: plan.lines[0].state }, { alloc: 5, state: "ALLOCATED" });
+  assert.deepEqual({ alloc: so.lines[1].allocatedQty, state: plan.lines[1].state }, { alloc: 0, state: "BACKORDERED" });
+  assert.equal(plan.lines[1].shortfallQty, 5);
+
+  // A follow-up call (rerun / #880 self-netting) stays converged: no further growth past the true 5-unit pool.
+  const rerun = runAllocationRound({ so, otherSoLines: [], stockRows, eligibleWarehouseIds, woRows: [], excludeWorkOrderIds: new Set() });
+  assert.equal(so.lines.reduce((sum, l) => sum + l.allocatedQty, 0), 5, "rerun does not grow allocation past the physical pool");
+  assert.equal(rerun.lines[0].allocatableQty, 0);
+  assert.equal(rerun.lines[1].allocatableQty, 0);
 });
 
 // (e) Insufficient-stock rejection: a line can never be granted more than the true remaining physical pool,

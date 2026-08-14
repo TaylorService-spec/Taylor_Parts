@@ -159,8 +159,13 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       );
 
       // ---- WRITE (only the Sales Order; allocation is a commitment on the SO, netted by future ATP) ----
-      const nextLines = lines.map((l) => {
-        const alloc = plan.lines.find((p) => p.ref === l.ref && p.kind === l.kind);
+      // plan.lines is built by buildAllocationPlan as a 1:1, order-preserving map over `planLines` (itself a
+      // 1:1 map over `lines`), so each SO line's own result lives at the SAME index. A bare find(ref+kind)
+      // would return the FIRST matching plan-line for every line that shares a ref+kind — mis-writing every
+      // sibling line with the first line's result (site-work allocatesalesorder-duplicate-ref-lines-double-
+      // allocate). Map by position so each line gets ITS OWN plan-line result.
+      const nextLines = lines.map((l, i) => {
+        const alloc = plan.lines[i];
         const already = typeof l.allocatedQty === "number" ? l.allocatedQty : 0;
         return alloc ? { ...l, allocatedQty: already + alloc.allocatableQty } : l;
       });
