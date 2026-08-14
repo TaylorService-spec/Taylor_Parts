@@ -7,6 +7,7 @@ import {
   equipmentDisplayName,
   equipmentSummary,
   isRetired,
+  equipmentStatusTone,
 } from "../../domain/equipment";
 import { trustedActionUnavailable } from "../../domain/equipment";
 import { updateEquipment } from "../../domain/equipmentRepository";
@@ -16,6 +17,10 @@ import InventoryControlSection from "./InventoryControlSection";
 import { buildEquipmentInventoryControlView } from "../../domain/equipmentInventoryControlAdapter";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
 
 // Issue #232 unit E7 -- the Equipment detail page (Spec §8), route /equipment/:equipmentId.
@@ -120,32 +125,41 @@ export default function EquipmentDetail() {
   // a user reads cannot drift from what the action would actually do.
   const unavailableReason = trustedActionUnavailable("equipment.move").message;
 
+  // §8 identity + status. The display name is the human reference; the id is never
+  // rendered as one (§8), though it is legitimately in the URL.
+  const actions = (
+    <ActionRail
+      start={<Link to="/equipment" className="fo-back-link">&larr; Back to Equipment</Link>}
+      primary={
+        // Available, so it is a live control -- kept alongside the asset's identity
+        // rather than among the #15-gated lifecycle actions below.
+        <button type="button" className="fo-btn-primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+      }
+    />
+  );
+  const context = (
+    <ContextBand
+      items={[
+        {
+          key: "status",
+          label: "Status",
+          value: (
+            <StatusPill
+              tone={equipmentStatusTone(equipment.status)}
+              label={STATUS_LABEL[equipment.status] ?? "Unknown"}
+              data-equipment-status={equipment.status ?? ""}
+            />
+          ),
+        },
+        { key: "summary", label: "Details", value: equipmentSummary(equipment) },
+      ]}
+    />
+  );
+
   return (
-    <section className="fo-workspace fo-equipment-detail">
-      {/* Safe Back: a real route, never history.back() -- a direct link or a refresh
-          must land somewhere sensible rather than leaving the app. */}
-      <Link to="/equipment" className="fo-back-link">&larr; Back to Equipment</Link>
-
-      {/* §8 identity + status. The display name is the human reference; the id is never
-          rendered as one (§8), though it is legitimately in the URL. */}
-      <header className="fo-detail-header">
-        <h1 className="fo-equipment-title">{equipmentDisplayName(equipment)}</h1>
-        <span
-          className={`fo-badge fo-badge-equipment-${String(equipment.status ?? "").toLowerCase()}`}
-          data-equipment-status={equipment.status ?? ""}
-        >
-          {STATUS_LABEL[equipment.status] ?? "Unknown"}
-        </span>
-        <p className="fo-muted fo-equipment-subtitle">{equipmentSummary(equipment)}</p>
-        {/* Available, so it is a live control -- placed with the asset's identity rather
-            than among the #15-gated lifecycle actions below. */}
-        <div className="fo-btn-row fo-equipment-detail-actions">
-          <button type="button" data-equipment-action="edit" onClick={() => setEditing(true)}>
-            Edit
-          </button>
-        </div>
-      </header>
-
+    <WorkspaceShell title={equipmentDisplayName(equipment)} actions={actions} context={context} className="fo-equipment-detail">
       <div className="fo-detail-grid">
         {/* §8 Account + installed Location. Both render their NAME; an unresolved
             reference says so rather than exposing the raw id.
@@ -264,7 +278,7 @@ export default function EquipmentDetail() {
           onClose={() => setEditing(false)}
         />
       ) : null}
-    </section>
+    </WorkspaceShell>
   );
 }
 

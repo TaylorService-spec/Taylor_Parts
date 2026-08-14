@@ -6,13 +6,13 @@ import { toneClass } from "./tone.js";
 //
 // Use a pill ONLY where a state must scan at a glance. Where the status is not a scan target, prefer plain
 // text (`asText`) — avoid interfaces covered in coloured pills.
-export default function StatusPill({ tone = "neutral", label, children, asText = false, className = "" }) {
+export default function StatusPill({ tone = "neutral", label, children, asText = false, className = "", ...rest }) {
   const content = label ?? children;
   if (asText) {
-    return <span className={`fo-status-text ${toneClass(tone, "fo-tone-text")} ${className}`.trim()}>{content}</span>;
+    return <span className={`fo-status-text ${toneClass(tone, "fo-tone-text")} ${className}`.trim()} {...rest}>{content}</span>;
   }
   return (
-    <span className={`fo-status-pill ${toneClass(tone, "fo-status-pill")} ${className}`.trim()}>
+    <span className={`fo-status-pill ${toneClass(tone, "fo-status-pill")} ${className}`.trim()} {...rest}>
       {content}
     </span>
   );

@@ -72,6 +72,34 @@ export function isRetired(equipment) {
   return normalizeEquipmentStatus(equipment?.status) === EQUIPMENT_STATUS.RETIRED;
 }
 
+// --- Semantic status tone (Wave-3 StatusPill vocabulary) ------------------------------------------
+// Maps EQUIPMENT_STATUS to the shared tone vocabulary (shared/ui/tone.js), the same layering as
+// domain/accountPortfolio.js / domain/truckInventoryView.js. Nothing here was colour-differentiated
+// before (index.css never defined fo-badge-equipment-* rules -- every status rendered the same
+// generic grey), so this is a genuine upgrade, not a preserved mapping. An unrecognized/absent
+// status is "unknown", never a silent default to a colored tone.
+export function equipmentStatusTone(status) {
+  switch (status) {
+    case EQUIPMENT_STATUS.ACTIVE: return "positive";
+    case EQUIPMENT_STATUS.INACTIVE: return "muted";
+    case EQUIPMENT_STATUS.RETIRED: return "neutral";
+    default: return "unknown";
+  }
+}
+
+// Inventory-control state tone (Ventana two-condition lifecycle read; see
+// domain/equipmentInventoryControlAdapter.js). CONTROLLED is the "in force" state (positive);
+// EXITED is a completed, quiet end-state (neutral); NOT_STARTED is a plain not-yet fact (muted);
+// UNKNOWN stays unknown -- never fabricated into any of the above.
+export function equipmentInventoryControlTone(state) {
+  switch (state) {
+    case "CONTROLLED": return "positive";
+    case "EXITED": return "neutral";
+    case "NOT_STARTED": return "muted";
+    default: return "unknown";
+  }
+}
+
 // ------------------------------------------------------ input normalization --
 
 // Exported for the edit form (E8): it must seed its controls through the SAME normalizer

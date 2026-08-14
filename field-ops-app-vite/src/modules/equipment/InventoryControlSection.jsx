@@ -4,6 +4,8 @@
 // inventory control, ownership/title, and availability are distinct rows, never collapsed. When
 // the sale-close signal is not available (D-5 pending) the control state renders an honest UNKNOWN
 // with the reason — matching the detail page's ethos of never presenting a not-yet-known as a fact.
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { equipmentInventoryControlTone } from "../../domain/equipment";
 
 const CONTROL_LABEL = {
   EXITED: "Inventory control ended",
@@ -26,9 +28,7 @@ export default function InventoryControlSection({ view }) {
       <dl className="fo-detail-list">
         <dt>Status</dt>
         <dd>
-          <span className={`fo-badge fo-badge-inventory-control-${String(state).toLowerCase()}`}>
-            {CONTROL_LABEL[state] ?? "Unknown"}
-          </span>
+          <StatusPill tone={equipmentInventoryControlTone(state)} label={CONTROL_LABEL[state] ?? "Unknown"} />
           {view.inventoryControlLabel ? <span className="fo-muted"> — {view.inventoryControlLabel}</span> : null}
         </dd>
 
