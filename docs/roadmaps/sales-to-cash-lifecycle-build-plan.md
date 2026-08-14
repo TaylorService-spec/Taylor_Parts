@@ -44,5 +44,7 @@ sell → convert → allocate → create service work → plan parts → dispatc
 - Larger builds (P1.1/P1.2/P1.3, P2.2, P3.x) get a short spec grounded in the settled decisions before implementation; report at each phase boundary.
 
 ## Status
-- P0: DONE (#945,#946). P1: DONE — spine #952 (P1.2+P1.1) + #947 (P1.3) + #950 (P1.4-6) + #949 (P1.7) + #951 (P1.8). Fulfillment->billing spine built, seams hardened, all active:false.
-- NEXT: re-audit the built chain (10 lifecycle-seam agents) to verify P1 closed its seams + find residual/new gaps, THEN P2 (rescheduling / billing-eligibility producer / tech-status dispatch consistency).
+- P0: DONE (#945,#946). P1: DONE-BUT-DEFECTIVE — merged #947-952, but the post-P1 re-audit found the spine is a silent no-op for PART lines (BD-1 partId/sku mismatch) + 14 more build defects. See docs/orchestration/site-work/lifecycle-reaudit-post-p1.md.
+- BD-2 Owner decision: AUTO-ADVANCE SO IN_FULFILLMENT->FULFILLED in the WO-completion transaction.
+- P1 FIXES: handed to CODEX (Claude at session capacity). Contract: docs/orchestration/site-work/CODEX-HANDOFF-p1-fixes.md (CX-1..CX-7; CX-1 critical). Repo-only, active:false, no rules/deploy/prod.
+- NEXT (after fixes verified): P2 (rescheduling / billing-eligibility producer / tech-status). Claude re-syncs from main next window.
