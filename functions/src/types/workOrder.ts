@@ -57,6 +57,19 @@ export type ActionName =
   | "Close"
   | "Cancel";
 
+// P1.2 (Sales->Cash fulfillment spine) -- a governed, quantity+kind-bearing reference from a Work Order back
+// to the Sales Order line that demanded it. Replaces the earlier bare `string[]` of refs (which lost qty/kind
+// at the WO<->SO seam, blocking P1.1's per-line fulfilledQty write-back from ever matching the right line).
+// `orderedQty`/`allocatedQty` are a snapshot taken at WO-creation time (not live-synced) -- purely so the WO's
+// parts plan has real planned quantities to seed from; the Sales Order document remains the sole live source
+// of truth for those fields going forward.
+export interface SalesOrderLineRef {
+  ref: string;
+  kind: string;
+  orderedQty: number;
+  allocatedQty: number;
+}
+
 export interface WorkOrder {
   id: string;
   woNumber: string; // WO-2026-000001
@@ -70,6 +83,11 @@ export interface WorkOrder {
 
   customerId: string;
   locationId: string;
+
+  // Cycle 7 demand-lineage link (see fulfillment/coordinatedVisit.ts's header comment). Optional: only Work
+  // Orders created through the Sales Order -> Service seam (createServiceForSalesOrder) carry these.
+  salesOrderId?: string;
+  salesOrderLineRefs?: SalesOrderLineRef[];
 
   assignedTechId?: string;
 
