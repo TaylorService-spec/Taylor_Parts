@@ -244,6 +244,48 @@ test("Complete on a NON-SO-linked WO writes no sales_orders doc (fully no-op)", 
   assert.equal(auditAfter.size, auditBefore.size, "no write-back Audit Event for a non-SO-linked Work Order");
 });
 
+test("pass4 B-2: TWO duplicate-ref PART lines on one SO -- completing the WO credits EACH line's own fulfilledQty by lineId (no false overage, no deadlock), SO reaches FULFILLED", async () => {
+  // Reproduces the site-work pass4 B-2 deadlock: a SO with two lines that share the same ref+kind (a SUPPORTED,
+  // tested scenario -- see allocateSalesOrderAllocation.test.mjs's duplicate-ref-lines coverage). Before this
+  // fix, transitionWorkOrder summed BOTH inventorySnapshot rows into one PART:P-DUP acceptance and
+  // applyFulfillmentAcceptance's (ref,kind) findIndex matched only the FIRST SO line -- the summed qty (8)
+  // checked against only that line's remainingQty (5) threw a false OVERAGE, permanently blocking Complete.
+  const soId = id("so-dup");
+  await seedSalesOrder(soId, {
+    state: "IN_FULFILLMENT",
+    lines: [
+      { lineId: "line-1", kind: "PART", ref: "P-DUP", orderedQty: 5, allocatedQty: 5, fulfilledQty: 0 },
+      { lineId: "line-2", kind: "PART", ref: "P-DUP", orderedQty: 3, allocatedQty: 3, fulfilledQty: 0 },
+    ],
+  });
+
+  const techUid = id("u-tech");
+  const techId = id("tech");
+  await seedTechnician(techUid, techId);
+  const woId = id("wo-dup");
+  await seedWorkOrder(woId, {
+    status: "WORK_IN_PROGRESS",
+    assignedTechId: techId,
+    salesOrderId: soId,
+    // Each snapshot row carries the SO line's OWN lineId (as createServiceForSalesOrder now seeds it) -- this
+    // is what lets the write-back credit each line separately instead of summing into one collision.
+    inventorySnapshot: [
+      { sku: "IPN-DUP", partId: "P-DUP", lineId: "line-1", qtyPlanned: 5, qtyUsed: 5 },
+      { sku: "IPN-DUP", partId: "P-DUP", lineId: "line-2", qtyPlanned: 3, qtyUsed: 3 },
+    ],
+  });
+
+  const result = await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
+  assert.equal(result.status, "COMPLETED", "Complete must succeed -- no false OVERAGE deadlock");
+
+  const soSnap = await db.collection(SOS).doc(soId).get();
+  const line1 = soSnap.data().lines.find((l) => l.lineId === "line-1");
+  const line2 = soSnap.data().lines.find((l) => l.lineId === "line-2");
+  assert.equal(line1.fulfilledQty, 5, "line-1 credited its OWN qty");
+  assert.equal(line2.fulfilledQty, 3, "line-2 credited its OWN qty, not merged with line-1");
+  assert.equal(soSnap.data().state, "FULFILLED", "both duplicate-ref lines fully fulfilled -> SO auto-advances");
+});
+
 test("retry Complete on an already-COMPLETED WO -> failed-precondition, fulfilledQty unchanged", async () => {
   const soId = id("so-retry");
   await seedSalesOrder(soId, {

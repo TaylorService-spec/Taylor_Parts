@@ -20,13 +20,17 @@ import type { SalesOrderLineRef, InventorySnapshotItem } from "../types/workOrde
 
 export const SALES_ORDER_SERVICE_CAPABILITY = "salesOrder.service";
 
-interface SoLine { kind: string; ref: string; orderedQty: number; allocatedQty?: number }
+interface SoLine { lineId?: string; kind: string; ref: string; orderedQty: number; allocatedQty?: number }
 interface SalesOrderDoc {
   state?: string;
   accountId?: string;
   locationId?: string;
   lines?: SoLine[];
   serviceWorkOrderIds?: string[];
+  // Written by allocateSalesOrder.ts on every run (Cycle 5 live) -- presence is this seam's gate for "has
+  // allocation run at least once" (pass4 A-1). Absence means every PART line's allocatedQty is still whatever
+  // it was seeded as (0), so creating Service now would seed qtyPlanned from unbacked demand.
+  allocatedAt?: unknown;
 }
 
 // Mirrors setWorkOrderPartsPlan.ts's ResolvedPart/resolvePart contract (fail-closed identity resolution
@@ -48,11 +52,42 @@ export class LineRefBuildError extends Error {
   }
 }
 
+export class ServiceAllocationGateError extends Error {
+  code: "NOT_ALLOCATED";
+  constructor(message: string) {
+    super(message);
+    this.code = "NOT_ALLOCATED";
+    this.name = "ServiceAllocationGateError";
+  }
+}
+
+// PURE, independently unit-testable (no Firestore/transaction) -- pass4 A-1 (BD-14, Owner-ratified "gate
+// Service/WO on allocation"). A Work Order created before allocateSalesOrder.ts has EVER run would seed every
+// PART line's qtyPlanned from unbacked demand (see buildLineRefsAndInventorySnapshot's header comment). Gate
+// on `allocatedAt` (a Sales-Order-level field written by every allocateSalesOrder run) rather than requiring
+// EVERY PART line to individually carry a nonzero allocatedQty, so a genuinely partially-allocated SO (some
+// lines backordered at allocatedQty 0) can still create Service -- a backordered line simply seeds
+// qtyPlanned=0, never orderedQty. SOs with zero PART lines skip this gate entirely (nothing to back).
+export function assertServiceAllocationGate(soLines: SoLine[], allocatedAt: unknown): void {
+  const hasPartLine = soLines.some((l) => l.kind === "PART");
+  if (hasPartLine && !allocatedAt) {
+    throw new ServiceAllocationGateError(
+      "Sales Order has PART line(s) that have not been allocated; run allocateSalesOrder before creating Service."
+    );
+  }
+}
+
 // PURE (Part Master resolution injected, exactly like setWorkOrderPartsPlan.ts's applyPartsPlan) --
 // independently unit-testable without Firestore/a transaction. Builds P1.2's two derived artifacts from an
 // SO's lines: the quantity+kind-bearing `salesOrderLineRefs` (every line) and the seeded `inventorySnapshot`
 // (PART lines only, sku resolved from Part Master). Fail-closed: throws LineRefBuildError on any PART line
 // whose ref does not resolve to a canonical Part / valid internalPartNumber -- never fabricates sku = partId.
+//
+// pass4 A-1 (BD-14): a PART line's seeded qtyPlanned is its `allocatedQty` ONLY -- never `allocatedQty ||
+// orderedQty`. A backordered/unallocated line (allocatedQty 0) seeds qtyPlanned=0, so it can never be
+// consumed/completed/credited against unbacked demand; only the Sales Order's OWN allocation authority
+// (allocateSalesOrder) can turn that into a nonzero planned quantity. The caller (below) additionally gates
+// Service creation on allocation having run at all when any PART line is present.
 export function buildLineRefsAndInventorySnapshot(
   soLines: SoLine[],
   resolvePart: PartResolver
@@ -62,7 +97,8 @@ export function buildLineRefsAndInventorySnapshot(
   for (const l of soLines) {
     const orderedQty = typeof l.orderedQty === "number" ? l.orderedQty : 0;
     const allocatedQty = typeof l.allocatedQty === "number" ? l.allocatedQty : 0;
-    lineRefs.push({ ref: l.ref, kind: l.kind, orderedQty, allocatedQty });
+    const lineId = typeof l.lineId === "string" && l.lineId.trim().length > 0 ? l.lineId : undefined;
+    lineRefs.push({ ref: l.ref, kind: l.kind, orderedQty, allocatedQty, ...(lineId ? { lineId } : {}) });
     if (l.kind !== "PART") continue;
     const resolved = resolvePart(l.ref);
     if (!resolved.found) {
@@ -74,7 +110,8 @@ export function buildLineRefsAndInventorySnapshot(
     inventorySnapshot.push({
       partId: l.ref,
       sku: resolved.sku,
-      qtyPlanned: allocatedQty || orderedQty,
+      qtyPlanned: allocatedQty,
+      ...(lineId ? { lineId } : {}),
     });
   }
   return { lineRefs, inventorySnapshot };
@@ -118,6 +155,15 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
         throw new HttpsError("failed-precondition", "Sales Order already has Service Work Order(s).");
       }
       const soLines = Array.isArray(so.lines) ? so.lines : [];
+
+      try {
+        assertServiceAllocationGate(soLines, so.allocatedAt);
+      } catch (err) {
+        if (err instanceof ServiceAllocationGateError) {
+          throw new HttpsError("failed-precondition", err.message);
+        }
+        throw err;
+      }
 
       // P1.2: resolve PART lines against Part Master (all reads before any write, per Firestore transaction
       // rule) so the seeded inventorySnapshot carries a REAL canonical sku -- never sku = partId (mirrors

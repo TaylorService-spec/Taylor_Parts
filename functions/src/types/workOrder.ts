@@ -63,11 +63,18 @@ export type ActionName =
 // `orderedQty`/`allocatedQty` are a snapshot taken at WO-creation time (not live-synced) -- purely so the WO's
 // parts plan has real planned quantities to seed from; the Sales Order document remains the sole live source
 // of truth for those fields going forward.
+// `lineId` (pass4 B-2) is the SO line's OWN stable identifier (same value as sales_orders.lines[].lineId --
+// see salesOrderCommands.ts's `line-${index+1}`). Optional for backward compatibility with Work Orders created
+// before this field existed; when present it is the PRIMARY match key for fulfillment write-back (see
+// salesOrderFulfillmentWriteBack.ts) because two SO lines can legitimately share the same (ref,kind) --
+// e.g. the same part ordered on two separate lines (a SUPPORTED, tested scenario) -- and (ref,kind) alone
+// cannot tell them apart.
 export interface SalesOrderLineRef {
   ref: string;
   kind: string;
   orderedQty: number;
   allocatedQty: number;
+  lineId?: string;
 }
 
 export interface WorkOrder {
@@ -147,6 +154,9 @@ export interface InventorySnapshotItem {
   qtyUsed?: number;
   category?: string;
   notes?: string;
+  // pass4 B-2: the SO line this snapshot row was seeded from (see SalesOrderLineRef.lineId above). Only set
+  // for rows seeded by createServiceForSalesOrder; legacy/other-origin rows omit it.
+  lineId?: string;
 }
 
 // Epic 6 Phase 6.3 -- one entry in WorkOrder.executionLog. `at` is a
