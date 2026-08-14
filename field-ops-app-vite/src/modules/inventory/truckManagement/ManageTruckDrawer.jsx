@@ -20,6 +20,7 @@ import {
   DEACTIVATED_STATUS,
   truckStatusLabel,
 } from "../../../domain/truckManagement.js";
+import { TRUCK_DEACTIVATE_READY, TRUCK_DELETE_READY } from "../../../config/truckManagementReadiness.js";
 
 const dash = (v) => (v == null || v === "" ? "—" : v);
 
@@ -135,8 +136,13 @@ export default function ManageTruckDrawer({
           {confirm?.action === "deactivate" ? (
             <div className="fo-warning" role="group" aria-label="Confirm deactivate">
               <p>Deactivate this truck? Deactivation is blocked while governed inventory remains at its location.</p>
+              {!TRUCK_DEACTIVATE_READY && (
+                <p className="fo-warning" role="status" data-testid="tm-deactivate-unavailable">
+                  Deactivate truck — unavailable until inventory-at-location verification is enabled.
+                </p>
+              )}
               <div className="fo-btn-row">
-                <button type="button" className="fo-btn-destructive" disabled={Boolean(busy)}
+                <button type="button" className="fo-btn-destructive" disabled={Boolean(busy) || !TRUCK_DEACTIVATE_READY}
                   onClick={() => runAction("deactivate", () => commands.deactivateTruck({ truckId: record.truckId, expectedVersion }))}>
                   {busyLabel("deactivate", "Confirm deactivate")}
                 </button>
@@ -191,9 +197,14 @@ export default function ManageTruckDrawer({
               location, and the location link. Only trucks with NO operational history can be deleted —
               operational trucks cannot be deleted.
             </p>
+            {!TRUCK_DELETE_READY && (
+              <p className="fo-warning" role="status" data-testid="tm-delete-unavailable">
+                Delete truck — unavailable until operational-reference verification is enabled.
+              </p>
+            )}
             <div className="fo-btn-row">
               <button type="button" className="fo-btn-destructive" data-testid="tm-delete-cie"
-                disabled={!writeReady || Boolean(busy)} onClick={() => setDeleteOpen(true)}>
+                disabled={!writeReady || Boolean(busy) || !TRUCK_DELETE_READY} onClick={() => setDeleteOpen(true)}>
                 Delete truck (created in error)
               </button>
             </div>
