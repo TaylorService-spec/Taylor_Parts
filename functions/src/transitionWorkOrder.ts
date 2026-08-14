@@ -15,6 +15,7 @@
 // this runs; nothing about the state machine changes here.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import {
   canTransition,
@@ -26,6 +27,20 @@ import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
 import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
+
+// Same-technician concurrency guard (site-work r3 item M). The Schedule/Dispatch branches below read the
+// technician's OTHER Work Orders inside this transaction, then write only THIS Work Order doc -- Firestore only
+// conflict-detects on documents actually in a transaction's read/write set, so two concurrent transitions that
+// target two DIFFERENT Work Order docs for the SAME technician each see a pre-commit snapshot with no conflict
+// and both can commit, bypassing the double-booking/overlap guard entirely. A per-technician sentinel document,
+// deliberately read AND written inside the same transaction (mirrors inventoryService.ts's
+// reservationLockRef/RESERVATION_LOCKS_COLLECTION pattern), forces write-write contention: a second concurrent
+// transition for the same technician now collides on this doc and Firestore retries it, so it re-reads the
+// first transition's already-committed result instead of a stale snapshot. The doc carries no scheduling data
+// and is never read for availability -- it exists purely to serialize same-technician transitions.
+const TECH_LOCKS_COLLECTION = "work_order_tech_locks";
+const techLockRef = (db: Firestore, technicianId: string) =>
+  db.collection(TECH_LOCKS_COLLECTION).doc(technicianId);
 
 interface TransitionWorkOrderInput {
   workOrderId: string;
@@ -113,6 +128,19 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       updatedAt: FieldValue.serverTimestamp(),
     };
 
+    // See this file's header comment on TECH_LOCKS_COLLECTION: read the same-technician sentinel doc up front
+    // (Firestore requires all reads before any write in a transaction) for Schedule/Dispatch so the write below
+    // puts it in this transaction's write set too, forcing contention with any other concurrent transition for
+    // this same technician.
+    let lockRef: ReturnType<typeof techLockRef> | null = null;
+    if (action === "Schedule") {
+      lockRef = techLockRef(db, scheduledTechId as string);
+      await tx.get(lockRef);
+    } else if (action === "Dispatch") {
+      lockRef = techLockRef(db, assignedTechId as string);
+      await tx.get(lockRef);
+    }
+
     if (action === "Schedule") {
       const otherSnap = await tx.get(
         db.collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", scheduledTechId)
@@ -153,6 +181,9 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       }
     }
 
+    if (lockRef) {
+      tx.set(lockRef, { technicianId: lockRef.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
     tx.update(woRef, payload);
     return { id: workOrderId, status: nextStatus };
   });
