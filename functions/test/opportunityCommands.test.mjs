@@ -100,6 +100,13 @@ test("buildCreateOpportunity: qty is REQUIRED on every line (closes the qty-less
   );
 });
 
+test("buildCreateOpportunity: fractional line qty fails closed (mirrors salesOrderCommands posInt — a non-integer qty can never seed a Sales Order)", () => {
+  assert.throws(
+    () => buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "PRT-1", qty: 2.5 }] }, CTX),
+    (e) => e instanceof OpportunityCommandError && e.code === "LINE_INVALID"
+  );
+});
+
 test("buildTransitionPatch: advance sets the next stage and keeps it open", () => {
   const patch = buildTransitionPatch({ stage: "IDENTIFIED" }, { kind: "ADVANCE", toStage: "QUALIFYING" }, CTX);
   assert.equal(patch.stage, "QUALIFYING");
@@ -128,6 +135,13 @@ test("buildTransitionPatch: WON with a qty-less line is rejected (closes the per
   assert.throws(
     () => buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1", qty: 3 }, { kind: "PART", ref: "P-2", qty: 0 }] }, { kind: "OUTCOME", outcome: "WON" }, CTX),
     (e) => e.code === "LINE_QTY_REQUIRED_FOR_WON"
+  );
+});
+
+test("buildTransitionPatch: WON with a fractional-qty line is rejected (defends legacy opps persisted before integer qty was enforced at create)", () => {
+  assert.throws(
+    () => buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1", qty: 2.5 }] }, { kind: "OUTCOME", outcome: "WON" }, CTX),
+    (e) => e instanceof OpportunityCommandError && e.code === "LINE_QTY_REQUIRED_FOR_WON"
   );
 });
 
