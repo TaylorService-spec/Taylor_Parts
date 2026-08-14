@@ -18,6 +18,7 @@ const {
   LocationClaimedError, EmployeeInvalidError, WarehouseInvalidError, InvalidStatusTransitionError,
   InventoryPresentError, InventoryStateUnknownError, VersionConflictError, IdempotencyConflictError,
   ClaimIntegrityError, TruckReferencedError, ReferenceStateUnknownError,
+  StatusTransitionForbiddenError, DriverAlreadyAssignedError,
 } = await import("../lib/truckRegistry/types.js");
 // The AUTHORITATIVE governed read contract (pure ESM, no firebase) -- the parity test proves
 // records produced by createTruck() round-trip through it.
@@ -207,6 +208,51 @@ await check("assign inactive driver -> EMPLOYEE_INVALID", async () => {
 await check("assign on unknown truck -> TRUCK_NOT_FOUND", async () => {
   await assert.rejects(assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId: uid("TRK"), employeeId: await seedEmployee(), expectedVersion: 1 }, DEPS), TruckNotFoundError);
 });
+// site-work r4 F fix 2: an employee already assignedDriverEmployeeId on a DIFFERENT truck must be
+// rejected -- cross-truck driver uniqueness.
+await check("assign a driver already assigned to a DIFFERENT truck -> DRIVER_ALREADY_ASSIGNED; second truck untouched", async () => {
+  const { truckId: truckA } = await makeTruck();
+  const { truckId: truckB } = await makeTruck();
+  const emp = await seedEmployee(true);
+  await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId: truckA, employeeId: emp, expectedVersion: 1 }, DEPS);
+  await assert.rejects(
+    assignDriver({ actorUid: admin1, idempotencyKey: key("a2"), truckId: truckB, employeeId: emp, expectedVersion: 1 }, DEPS),
+    DriverAlreadyAssignedError,
+  );
+  assert.equal((await db.collection("trucks").doc(truckB).get()).data().assignedDriverEmployeeId, null);
+  assert.equal((await db.collection("trucks").doc(truckA).get()).data().assignedDriverEmployeeId, emp);
+});
+await check("reassign a driver already assigned to a DIFFERENT truck -> DRIVER_ALREADY_ASSIGNED (via reassignDriver)", async () => {
+  const { truckId: truckA } = await makeTruck();
+  const { truckId: truckB } = await makeTruck();
+  const empOnA = await seedEmployee(true);
+  const empOnB = await seedEmployee(true);
+  await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId: truckA, employeeId: empOnA, expectedVersion: 1 }, DEPS);
+  await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId: truckB, employeeId: empOnB, expectedVersion: 1 }, DEPS);
+  await assert.rejects(
+    reassignDriver({ actorUid: admin1, idempotencyKey: key("r"), truckId: truckB, employeeId: empOnA, expectedVersion: 2 }, DEPS),
+    DriverAlreadyAssignedError,
+  );
+  assert.equal((await db.collection("trucks").doc(truckB).get()).data().assignedDriverEmployeeId, empOnB);
+});
+await check("re-assigning the SAME driver already on THIS truck is allowed (no false cross-truck conflict)", async () => {
+  const { truckId } = await makeTruck();
+  const emp = await seedEmployee(true);
+  await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId, employeeId: emp, expectedVersion: 1 }, DEPS);
+  const r = await reassignDriver({ actorUid: admin1, idempotencyKey: key("r"), truckId, employeeId: emp, expectedVersion: 2 }, DEPS);
+  assert.equal(r.outcome, "applied");
+  assert.equal((await db.collection("trucks").doc(truckId).get()).data().assignedDriverEmployeeId, emp);
+});
+await check("after unassign, the driver is free to be assigned to a different truck", async () => {
+  const { truckId: truckA } = await makeTruck();
+  const { truckId: truckB } = await makeTruck();
+  const emp = await seedEmployee(true);
+  await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId: truckA, employeeId: emp, expectedVersion: 1 }, DEPS);
+  await unassignDriver({ actorUid: admin1, idempotencyKey: key("u"), truckId: truckA, expectedVersion: 2 }, DEPS);
+  const r = await assignDriver({ actorUid: admin1, idempotencyKey: key("a2"), truckId: truckB, employeeId: emp, expectedVersion: 1 }, DEPS);
+  assert.equal(r.outcome, "applied");
+  assert.equal((await db.collection("trucks").doc(truckB).get()).data().assignedDriverEmployeeId, emp);
+});
 
 // ---- concurrency (version CAS) ----
 await check("wrong expectedVersion -> VERSION_CONFLICT", async () => {
@@ -225,6 +271,23 @@ await check("change status to a distinct value succeeds; does not touch active",
 await check("change status to the SAME value -> INVALID_STATUS_TRANSITION", async () => {
   const { truckId } = await makeTruck();
   await assert.rejects(changeStatus({ actorUid: admin1, idempotencyKey: key("s"), truckId, status: "ACTIVE", expectedVersion: 1 }, DEPS), InvalidStatusTransitionError);
+});
+// site-work r4 F fix 1: OUT_OF_SERVICE (the terminal DEACTIVATED_STATUS) must be reachable ONLY
+// via the governed, inventory-guarded deactivateTruck path -- never via changeStatus, which does
+// not check inventory and never flips `active`.
+await check("changeStatus(OUT_OF_SERVICE) REJECTED (STATUS_TRANSITION_FORBIDDEN); truck untouched, must use deactivateTruck", async () => {
+  const { truckId } = await makeTruck();
+  await assert.rejects(
+    changeStatus({ actorUid: admin1, idempotencyKey: key("s"), truckId, status: "OUT_OF_SERVICE", expectedVersion: 1 }, DEPS),
+    StatusTransitionForbiddenError,
+  );
+  const t = (await db.collection("trucks").doc(truckId).get()).data();
+  assert.equal(t.status, "ACTIVE"); assert.equal(t.active, true); assert.equal(t.version, 1);
+  // The governed deactivateTruck path (inventory ABSENT) still reaches OUT_OF_SERVICE and flips active.
+  const r = await deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, ABSENT);
+  assert.equal(r.version, 2);
+  const t2 = (await db.collection("trucks").doc(truckId).get()).data();
+  assert.equal(t2.status, "OUT_OF_SERVICE"); assert.equal(t2.active, false);
 });
 
 // ---- change home warehouse ----

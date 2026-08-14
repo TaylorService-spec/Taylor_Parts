@@ -77,7 +77,13 @@ export type TruckRegistryFailureCode =
   // The operational-reference/inventory state could NOT be conclusively determined ->
   // fail closed (never delete on an unknown footprint). Mirrors INVENTORY_STATE_UNKNOWN.
   | "REFERENCE_STATE_UNKNOWN"
-  | "MALFORMED_STORED_RECORD";
+  | "MALFORMED_STORED_RECORD"
+  // changeStatus refuses the terminal OUT_OF_SERVICE value -- that state is reachable ONLY via
+  // the governed, inventory-guarded deactivateTruck path (site-work r4 F fix 1).
+  | "STATUS_TRANSITION_FORBIDDEN"
+  // setDriver (assign/reassign) refuses an employee already assignedDriverEmployeeId on a
+  // DIFFERENT truck -- cross-truck driver uniqueness (site-work r4 F fix 2).
+  | "DRIVER_ALREADY_ASSIGNED";
 
 export class TruckRegistryError extends Error {
   readonly code: TruckRegistryFailureCode;
@@ -104,3 +110,5 @@ export class ClaimIntegrityError extends TruckRegistryError { constructor(m: str
 export class TruckReferencedError extends TruckRegistryError { constructor(m: string) { super("TRUCK_REFERENCED", m); } }
 export class ReferenceStateUnknownError extends TruckRegistryError { constructor(m: string) { super("REFERENCE_STATE_UNKNOWN", m); } }
 export class MalformedStoredRecordError extends TruckRegistryError { constructor(m: string) { super("MALFORMED_STORED_RECORD", m); } }
+export class StatusTransitionForbiddenError extends TruckRegistryError { constructor(m: string) { super("STATUS_TRANSITION_FORBIDDEN", m); } }
+export class DriverAlreadyAssignedError extends TruckRegistryError { constructor(m: string) { super("DRIVER_ALREADY_ASSIGNED", m); } }

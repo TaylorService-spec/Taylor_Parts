@@ -3,7 +3,7 @@
 // link), kept as an independent functions-side authority (same split as partMaster's
 // validation.ts vs the app's domain). No firebase, no reads, never throws; returns
 // { valid, value } | { valid:false, errors }.
-import { TRUCK_STATUSES, REACTIVATION_STATUSES, type TruckStatus, type ReactivationStatus } from "./types";
+import { TRUCK_STATUSES, REACTIVATION_STATUSES, DEACTIVATED_STATUS, type TruckStatus, type ReactivationStatus } from "./types";
 
 export interface ValidationError { path: string; code: string; }
 export type ValidationResult<T> = { valid: true; value: T } | { valid: false; errors: ValidationError[] };
@@ -53,6 +53,13 @@ export function isTruckStatus(v: unknown): v is TruckStatus {
 }
 export function isReactivationStatus(v: unknown): v is ReactivationStatus {
   return typeof v === "string" && (REACTIVATION_STATUSES as readonly string[]).includes(v);
+}
+// changeStatus (descriptive status changes) must NEVER reach the terminal DEACTIVATED_STATUS
+// (OUT_OF_SERVICE): that state is only reachable via the governed, inventory-guarded
+// deactivateTruck path, which also flips active=false. A valid-but-terminal status is rejected
+// here (site-work r4 F fix 1) rather than silently accepted by changeStatus.
+export function isChangeableStatus(v: unknown): v is TruckStatus {
+  return isTruckStatus(v) && v !== DEACTIVATED_STATUS;
 }
 
 // Validate the create input for BOTH the MOBILE Location and the Truck business record that
