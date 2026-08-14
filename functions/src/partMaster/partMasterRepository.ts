@@ -91,6 +91,8 @@ export function partToFirestore(stored: StoredPart): Record<string, unknown> {
     ...(p.manufacturerId !== undefined ? { primaryManufacturerId: p.manufacturerId } : {}),
     ...(p.manufacturerPartNumber !== undefined ? { primaryManufacturerPartNumber: p.manufacturerPartNumber } : {}),
     ...(p.oemStatus !== undefined ? { oemStatus: p.oemStatus } : {}),
+    ...(p.wholeUnit ? { wholeUnit: true } : {}),
+    ...(p.equipmentModelId !== undefined ? { equipmentModelId: p.equipmentModelId } : {}),
     ...metaToFirestore(stored),
   };
 }
@@ -114,6 +116,8 @@ export function partFromFirestore(docId: string, data: Record<string, unknown> |
     manufacturerId: data.primaryManufacturerId,
     manufacturerPartNumber: data.primaryManufacturerPartNumber,
     oemStatus: data.oemStatus,
+    wholeUnit: data.wholeUnit,
+    equipmentModelId: data.equipmentModelId,
   });
   if (!validated.valid) {
     throw new MalformedStoredRecordError(
