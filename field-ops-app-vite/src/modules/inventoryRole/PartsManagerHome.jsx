@@ -8,10 +8,14 @@ import { assignReorderRequest, getDisplayQty } from "../../domain/inventoryReord
 import { REORDER_REQUEST_STATUS, OPERATIONAL_ROLE } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatAssignmentAge } from "../inventory/PartsList";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import OperationalCard, { OperationalCardGrid } from "../../shared/ui/OperationalCard.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Issue #100 PR 1b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -153,10 +157,17 @@ export default function PartsManagerHome({ accessVersion } = {}) {
     lastTriggerRef.current?.focus();
   }
 
-  return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Parts Manager" />
+  const context = (
+    <ContextBand
+      items={[
+        { key: "queue", label: "Queue", value: queue.length },
+        { key: "oversight", label: "Assigned", value: oversight.length },
+      ]}
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Parts Manager" context={context}>
       {namesUnavailable && (
         <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
       )}
@@ -182,30 +193,25 @@ export default function PartsManagerHome({ accessVersion } = {}) {
         loadingText="Loading Parts Manager Queue..."
         emptyText={queueError ? "Unable to load the Parts Manager Queue right now. Try again shortly." : "No requests awaiting assignment."}
       >
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Qty</th>
-              <th>Urgency</th>
-              <th>Approved</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {queue.map((request) => (
-              <tr key={request.id}>
-                <td>{resolveName(request.partId)}</td>
-                <td>{getDisplayQty(request)}</td>
-                <td>
-                  {request.urgency ? (
-                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
-                  ) : (
-                    <span className="fo-badge">Needs planning</span>
-                  )}
-                </td>
-                <td className="fo-muted">{formatTimestamp(request.reviewedAt, { unknown: "—" })}</td>
-                <td>
+        {/* A short, browseable "awaiting assignment" queue of bounded peer objects (one
+            Reorder Request each) -- an OperationalCard grid, not a dense scan-to-compare
+            table. `actions` mode keeps the existing "Assign {name}" button (its exact
+            aria-label is a test hook) as its own element outside the card wrapper. */}
+        <OperationalCardGrid aria-label="Parts Manager Queue">
+          {queue.map((request) => (
+            <li key={request.id}>
+              <OperationalCard
+                title={resolveName(request.partId)}
+                status={
+                  request.urgency
+                    ? { tone: inventoryUrgencyTone(request.urgency), label: request.urgency }
+                    : { tone: "unknown", label: "Needs planning" }
+                }
+                metadata={[
+                  { key: "qty", label: "Qty", value: getDisplayQty(request) },
+                  { key: "approved", label: "Approved", value: formatTimestamp(request.reviewedAt, { unknown: "—" }) },
+                ]}
+                actions={
                   <button
                     type="button"
                     aria-label={`Assign ${resolveName(request.partId)}`}
@@ -216,11 +222,11 @@ export default function PartsManagerHome({ accessVersion } = {}) {
                   >
                     Assign
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                }
+              />
+            </li>
+          ))}
+        </OperationalCardGrid>
       </LoadingEmptyState>
 
       {assigningRequest && (
@@ -268,9 +274,9 @@ export default function PartsManagerHome({ accessVersion } = {}) {
                     <td>{getDisplayQty(request)}</td>
                     <td>
                       {request.urgency ? (
-                        <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                        <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
                       ) : (
-                        <span className="fo-badge">Needs planning</span>
+                        <StatusPill tone="unknown" label="Needs planning" />
                       )}
                     </td>
                     <td className="fo-muted">
@@ -319,6 +325,6 @@ export default function PartsManagerHome({ accessVersion } = {}) {
           </table>
         </LoadingEmptyState>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

@@ -12,8 +12,12 @@ import {
 } from "../../domain/inventoryReorderRequests";
 import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import OperationalCard, { OperationalCardGrid } from "../../shared/ui/OperationalCard.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Issue #100 PR 3b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -75,9 +79,9 @@ function RequestSummary({ request, resolveName }) {
           <td>Urgency</td>
           <td>
             {request.urgency ? (
-              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
             ) : (
-              <span className="fo-badge">Needs planning</span>
+              <StatusPill tone="unknown" label="Needs planning" />
             )}
           </td>
         </tr>
@@ -476,30 +480,25 @@ function AssignedRequestDetail({ requestId, resolveName, onClose }) {
   );
 }
 
-function RequestTable({ requests, resolveName, onSelect }) {
+// Each Reorder Request assigned to this account is a bounded peer object (a short,
+// browseable "my assigned work" list, not a dense scan-to-compare table) -- rendered as an
+// OperationalCard in `actions` mode so the existing "View {name}" button (its exact
+// aria-label is a test hook) keeps its own accessible name, outside any interactive
+// card wrapper.
+function RequestCards({ requests, resolveName, onSelect }) {
   return (
-    <table className="fo-table">
-      <thead>
-        <tr>
-          <th>Part</th>
-          <th>Qty</th>
-          <th>Urgency</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {requests.map((request) => (
-          <tr key={request.id}>
-            <td>{resolveName(request.partId)}</td>
-            <td>{getDisplayQty(request)}</td>
-            <td>
-              {request.urgency ? (
-                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
-              ) : (
-                <span className="fo-badge">Needs planning</span>
-              )}
-            </td>
-            <td>
+    <OperationalCardGrid aria-label="Reorder requests">
+      {requests.map((request) => (
+        <li key={request.id}>
+          <OperationalCard
+            title={resolveName(request.partId)}
+            status={
+              request.urgency
+                ? { tone: inventoryUrgencyTone(request.urgency), label: request.urgency }
+                : { tone: "unknown", label: "Needs planning" }
+            }
+            metadata={[{ key: "qty", label: "Qty", value: getDisplayQty(request) }]}
+            actions={
               <button
                 type="button"
                 aria-label={`View ${resolveName(request.partId)}`}
@@ -507,11 +506,11 @@ function RequestTable({ requests, resolveName, onSelect }) {
               >
                 View
               </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            }
+          />
+        </li>
+      ))}
+    </OperationalCardGrid>
   );
 }
 
@@ -547,9 +546,17 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
     lastTriggerRef.current?.focus();
   }
 
+  const context = (
+    <ContextBand
+      items={[
+        { key: "waiting", label: "Waiting", value: waiting.length },
+        { key: "inProgress", label: "In Progress", value: inProgress.length },
+      ]}
+    />
+  );
+
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="My Purchasing" />
+    <WorkspaceShell title="My Purchasing" context={context}>
       <p className="fo-muted">Reorder Requests currently assigned to you.</p>
 
       {namesUnavailable && (
@@ -563,7 +570,7 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
         loadingText="Loading your assigned requests..."
         emptyText={waitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
       >
-        <RequestTable requests={waiting} resolveName={resolveName} onSelect={handleSelect} />
+        <RequestCards requests={waiting} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       <h3>In Progress</h3>
@@ -573,12 +580,12 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
         loadingText="Loading your in-progress purchasing..."
         emptyText={inProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
       >
-        <RequestTable requests={inProgress} resolveName={resolveName} onSelect={handleSelect} />
+        <RequestCards requests={inProgress} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       {selectedRequestId && (
         <AssignedRequestDetail requestId={selectedRequestId} resolveName={resolveName} onClose={handleCloseDetail} />
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

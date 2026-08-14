@@ -25,17 +25,10 @@ const SRC = join(HERE, "..", "src");
 
 // Files still carrying the retired fo-badge treatment. This list may only ever SHRINK — each wave removes
 // the files it migrates. It must never grow. (Snapshot taken at Wave 1; Truck Inventory already migrated
-// out. Wave 2 removed the accounts cluster. Wave 3 removed the equipment cluster.)
+// out. Wave 2 removed the accounts cluster. Wave 3 removed the equipment cluster. Wave 4 removed the
+// inventory + inventoryRole clusters.)
 const LEGACY_BADGE_ALLOWLIST = new Set([
   "modules/dispatcherBoard/TechnicianBoard.jsx",
-  "modules/inventory/Inventory.jsx",
-  "modules/inventory/PartDetail.jsx",
-  "modules/inventory/PartsList.jsx",
-  "modules/inventory/UsedInEquipmentSection.jsx",
-  "modules/inventory/truckManagement/OutcomeBanner.jsx",
-  "modules/inventoryRole/PartsAssociateHome.jsx",
-  "modules/inventoryRole/PartsManagerHome.jsx",
-  "modules/inventoryRole/WarehouseManagerHome.jsx",
   "modules/jobs/Jobs.jsx",
   "modules/operations/panels/InventoryHealthPanel.jsx",
   "modules/operations/panels/ProcurementPanel.jsx",
@@ -57,6 +50,12 @@ const CONFORMANT_WORKSPACES = [
   "modules/accounts/AccountDetail.jsx", // Wave 2
   "modules/equipment/EquipmentDetail.jsx", // Wave 3
   "modules/equipment/EquipmentRegister.jsx", // Wave 3
+  "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
+  "modules/inventory/PartDetail.jsx", // Wave 4
+  "modules/inventory/PartsList.jsx", // Wave 4
+  "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
+  "modules/inventoryRole/PartsManagerHome.jsx", // Wave 4
+  "modules/inventoryRole/WarehouseManagerHome.jsx", // Wave 4
 ];
 // Non-workspace conformant surfaces (peer-object cards etc.) — status-standardized, but not shell hosts.
 const CONFORMANT_SURFACES = [
@@ -65,6 +64,8 @@ const CONFORMANT_SURFACES = [
   "modules/accounts/FinancialSummarySection.jsx", // Wave 2
   "modules/accounts/ServiceActivitySection.jsx", // Wave 2
   "modules/equipment/InventoryControlSection.jsx", // Wave 3
+  "modules/inventory/truckManagement/OutcomeBanner.jsx", // Wave 4
+  "modules/inventory/UsedInEquipmentSection.jsx", // Wave 4
 ];
 
 function walk(dir) {

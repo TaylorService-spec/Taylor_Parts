@@ -5,7 +5,7 @@
 import { TRUCK_COMMAND_OUTCOME } from "../../../domain/truckManagement.js";
 
 const KIND_CLASS = {
-  [TRUCK_COMMAND_OUTCOME.OK]: "fo-badge-completed",
+  [TRUCK_COMMAND_OUTCOME.OK]: "fo-outcome-banner--ok",
   [TRUCK_COMMAND_OUTCOME.DENIED]: "fo-warning",
   [TRUCK_COMMAND_OUTCOME.UNAVAILABLE]: "fo-warning",
   [TRUCK_COMMAND_OUTCOME.CONFLICT]: "fo-warning",
