@@ -22,7 +22,7 @@ test("end-to-end: SO allocates 2, its WO reserves 2 → total committed = 2, not
   //   other-SO allocation = 2 (this SO committed 2)
   //   WO reservation for that same demand = 2, but its WO is SO-linked ⇒ excluded from openWoReserved.
   const onHandEligible = 10;
-  const otherSoAllocated = sumOtherSoCommitments([{ ref: "PRT-1001", allocatedQty: 2 }], "PRT-1001").allocatedQty; // 2
+  const otherSoAllocated = sumOtherSoCommitments([{ kind: "PART", ref: "PRT-1001", allocatedQty: 2 }], "PART", "PRT-1001").allocatedQty; // 2
   const openWoReserved = openWorkOrderReserved(
     [{ type: "RESERVED", quantity: 2, workOrderId: "WO-fromSO" }],
     new Set(["WO-fromSO"]) // SO-linked ⇒ excluded
