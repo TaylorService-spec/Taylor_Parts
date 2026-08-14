@@ -26,6 +26,65 @@ import {
   MalformedAccessDataError,
   MAX_PERMISSION_IDS,
 } from "../lib/access/effectiveAccessFeed.js";
+import { __resetRuntimeCapabilityOverridesCacheForTest } from "../lib/access/environmentCapabilityOverrides.js";
+
+// --- Per-environment activation override regressions (spec 2026-08-14) ---
+// These use a FAKE db (like the backend-outage test) so they exercise the feed's
+// activation wiring WITHOUT the emulator and independently of any seeded data.
+
+// A fake Firestore returning one user (accessVersion) + a fixed assignment set.
+function fakeDb({ accessVersion = 1, assignments = [] } = {}) {
+  return {
+    collection(name) {
+      if (name === "users") {
+        return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ accessVersion }) }) }) };
+      }
+      return {
+        where() {
+          return this;
+        },
+        get: async () => ({ docs: assignments.map((a) => ({ id: a.id, data: () => a })) }),
+      };
+    },
+  };
+}
+
+// An active, well-formed, global-scoped assignment for a synthetic role that
+// grants a spine capability -- so ONLY the active:false gate stands between it
+// and ALLOW. Whether that gate lifts depends solely on the runtime override.
+function spineAssignment() {
+  return {
+    id: "a-spine",
+    principalUid: "p1",
+    roleId: "syntheticSpine",
+    scope: { type: "global" },
+    grantedBy: "test",
+    grantedAt: { toMillis: () => 0 },
+    status: "active",
+    accessVersionAtGrant: 1,
+  };
+}
+const SPINE_ROLES = { syntheticSpine: { id: "syntheticSpine", permissions: ["opportunity.write"] } };
+
+// Run `fn` with GCLOUD_PROJECT pinned (or cleared) and the cold-start override
+// cache reset before and after, so each case sees a fresh runtime resolution.
+async function withProject(projectId, fn) {
+  const prevG = process.env.GCLOUD_PROJECT;
+  const prevGG = process.env.GOOGLE_CLOUD_PROJECT;
+  try {
+    __resetRuntimeCapabilityOverridesCacheForTest();
+    delete process.env.GOOGLE_CLOUD_PROJECT;
+    if (projectId === null) delete process.env.GCLOUD_PROJECT;
+    else process.env.GCLOUD_PROJECT = projectId;
+    await fn();
+  } finally {
+    if (prevG === undefined) delete process.env.GCLOUD_PROJECT;
+    else process.env.GCLOUD_PROJECT = prevG;
+    if (prevGG === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
+    else process.env.GOOGLE_CLOUD_PROJECT = prevGG;
+    __resetRuntimeCapabilityOverridesCacheForTest();
+  }
+}
 
 const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -319,6 +378,55 @@ async function main() {
         { db: brokenDb },
       ),
     );
+  });
+
+  // === Per-environment activation override -- AUTH-CORE non-widening ===
+
+  await check("AUTH-CORE: a caller-supplied activationOverrides option is IGNORED -- the normal path cannot be widened", async () => {
+    // Production identity => runtime override EMPTY. A caller that tries to inject
+    // an activation set via options must have NO effect: the spine capability
+    // stays denied even though a role grants it. (Proves the removed options seam
+    // is genuinely gone -- an extra prop is inert.)
+    await withProject("taylor-parts", async () => {
+      const result = await resolveEffectiveAccess(
+        { principalUid: "p1", permissionIds: ["opportunity.write"] },
+        { db: fakeDb({ assignments: [spineAssignment()] }), roles: SPINE_ROLES, activationOverrides: new Set(["opportunity.write"]) },
+      );
+      assert.equal(result.decisions["opportunity.write"], false, "a caller override must never activate a spine capability");
+    });
+  });
+
+  await check("the feed FORWARDS the trusted runtime override: a sandbox projectId activates the spine when a role grants it", async () => {
+    // Sandbox identity => runtime override contains the spine. With a granting
+    // role, the feed must ALLOW -- proving it actually threads the runtime set
+    // into the resolver (not an empty set).
+    await withProject("eos-platform-sandbox", async () => {
+      const result = await resolveEffectiveAccess(
+        { principalUid: "p1", permissionIds: ["opportunity.write"] },
+        { db: fakeDb({ assignments: [spineAssignment()] }), roles: SPINE_ROLES },
+      );
+      assert.equal(result.decisions["opportunity.write"], true);
+    });
+  });
+
+  await check("activation alone never grants: sandbox projectId but NO qualifying role still DENIES the spine", async () => {
+    await withProject("eos-platform-sandbox", async () => {
+      const result = await resolveEffectiveAccess(
+        { principalUid: "p1", permissionIds: ["opportunity.write"] },
+        { db: fakeDb({ assignments: [] }), roles: SPINE_ROLES },
+      );
+      assert.equal(result.decisions["opportunity.write"], false);
+    });
+  });
+
+  await check("production projectId keeps the spine DENY even with a granting role (runtime override EMPTY)", async () => {
+    await withProject("taylor-parts", async () => {
+      const result = await resolveEffectiveAccess(
+        { principalUid: "p1", permissionIds: ["opportunity.write"] },
+        { db: fakeDb({ assignments: [spineAssignment()] }), roles: SPINE_ROLES },
+      );
+      assert.equal(result.decisions["opportunity.write"], false);
+    });
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);
