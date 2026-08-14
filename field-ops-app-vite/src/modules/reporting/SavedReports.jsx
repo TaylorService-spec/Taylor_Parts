@@ -15,11 +15,18 @@
 //
 // Keyboard-first, list semantics, live-region status. Opening a report revalidates it against the
 // current catalog (savedReportReconcile.js) and surfaces catalog drift without restoring it.
+//
+// Site-work r4 E (Fix 2) -- Open now actually hydrates the Report Builder: an openable report
+// navigates to /reporting/builder?open=<id> (ReportBuilder.jsx re-fetches + re-reconciles from
+// there itself, the same trusted get() + reconciler this file already uses for its own preview).
+// An UNOPENABLE report still shows the inline refusal below rather than navigating anywhere --
+// there is nothing useful to hydrate.
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { savedReportService } from "../../domain/reporting/savedReportService.js";
 import { normalizeList, mapSavedDefinitionError, SAVED_DEFINITION_OUTCOME } from "../../domain/reporting/savedReportServiceOutcome.js";
-import { reconcileSavedReport, describeReconciliation } from "../../domain/reporting/savedReportReconcile.js";
+import { reconcileSavedReport } from "../../domain/reporting/savedReportReconcile.js";
 import { REPORT_DEFINITION_CAPABILITIES as CAP } from "../../access/reportAccess.js";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -40,6 +47,7 @@ function statusForOutcome(kind) {
 }
 
 export default function SavedReports({ hasCapability = () => false, accessVersion = null, service = savedReportService }) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const can = (c) => hasCapability(c) === true;
@@ -104,7 +112,12 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
     setOpenState((o) => (o && o.id === id ? null : o));
     mutate(() => service.remove(id), "Report deleted.");
   };
-  const onOpen = (r) => setOpenState({ id: r.id, name: r.name, result: reconcileSavedReport(r) });
+  const onOpen = (r) => {
+    const result = reconcileSavedReport(r);
+    if (result.openable) { navigate(`/reporting/builder?open=${encodeURIComponent(r.id)}`); return; }
+    // Unopenable -- nothing to hydrate; show the inline refusal instead of navigating.
+    setOpenState({ id: r.id, name: r.name, result });
+  };
 
   return (
     <div className="fo-main">
@@ -213,27 +226,14 @@ function SavedReportRow({
   );
 }
 
-// Opening (revalidating) a saved report against the CURRENT catalog -- surfaced, never restored.
+// onOpen (above) navigates straight to the Report Builder for an OPENABLE report -- this inline
+// panel is reached only for the UNOPENABLE case, where there is nothing to hydrate.
 function OpenStatus({ openState, onDismiss }) {
   const { name, result } = openState;
-  if (!result.openable) {
-    return (
-      <div className="fo-state fo-tone-warning" role="alert">
-        <p className="fo-state-title">“{name}” can’t be opened</p>
-        <p className="fo-state-message fo-muted">{result.reason}</p>
-        <button type="button" className="fo-btn-secondary" onClick={onDismiss}>Dismiss</button>
-      </div>
-    );
-  }
-  const drift = describeReconciliation(result);
-  const needsEditing = result.residualErrors.length > 0;
   return (
-    <div className={`fo-state fo-tone-${drift || needsEditing ? "warning" : "info"}`} role="status" aria-live="polite">
-      <p className="fo-state-title">Opened “{name}”</p>
-      {drift && <p className="fo-warning fo-state-message">{drift}</p>}
-      {needsEditing && <p className="fo-warning fo-state-message">This report needs changes before it can run — some of its columns or options aren’t valid anymore.</p>}
-      {!drift && !needsEditing && <p className="fo-muted fo-state-message">This report is still valid against the current data catalog.</p>}
-      <p className="fo-muted fo-state-message">Editing and running reports isn’t available yet.</p>
+    <div className="fo-state fo-tone-warning" role="alert">
+      <p className="fo-state-title">“{name}” can’t be opened</p>
+      <p className="fo-state-message fo-muted">{result.reason}</p>
       <button type="button" className="fo-btn-secondary" onClick={onDismiss}>Dismiss</button>
     </div>
   );
