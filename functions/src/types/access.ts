@@ -294,7 +294,11 @@ export type AuditAction =
   // r3 item G) -- the same deterministic Audit Event id mechanism as the create markers above, so a retried
   // ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
   | "transitionOpportunity"
-  | "transitionSalesOrder";
+  | "transitionSalesOrder"
+  // P1.3 -- the governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
+  // Its own deterministic Audit Event id space, separate from createSalesOrder's, so a replay key never
+  // collides across the two callables.
+  | "createSalesOrderFromOpportunity";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

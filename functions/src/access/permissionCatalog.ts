@@ -146,6 +146,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // P1.3 -- the governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger;
+  // an explicit action, not auto-created on WON). Reuses the same buildCreateSalesOrder pure builder as the
+  // direct createSalesOrder callable; account/lines are server-derived from the WON Opportunity, never
+  // client-supplied. Registered active:false (fail-closed) pending a SEPARATE Owner grant.
+  Object.freeze({
+    id: "opportunity.createSalesOrder",
+    description:
+      "Create a committed Sales Order from a WON Opportunity via the governed createSalesOrderFromOpportunity action. Human-invoked only (no trigger); account and lines are server-derived from the Opportunity, never client-supplied.",
+    resource: "opportunity",
+    action: "createSalesOrder",
+    active: false,
+  }),
   // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command.
   // Registered active:false (fail-closed). The committed commercial order following a WON Opportunity; it does
   // not assign serialized assets or write Work Orders/inventory (later governed seams do).

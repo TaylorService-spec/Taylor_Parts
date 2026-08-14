@@ -161,6 +161,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // retried ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
   "transitionOpportunity",
   "transitionSalesOrder",
+  // P1.3 -- runtime mirror of the createSalesOrderFromOpportunity AuditAction union member (governed,
+  // human-invoked WON -> Create Sales Order action; own deterministic Audit Event id space).
+  "createSalesOrderFromOpportunity",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

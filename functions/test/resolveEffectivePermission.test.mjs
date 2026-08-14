@@ -106,6 +106,8 @@ function buildDeferredForNow(catalog) {
     "salesOrder.fulfill",
     // Sales Order Cycle 7: salesOrder.service -- ungranted-by-design, EXACT literal.
     "salesOrder.service",
+    // Sales Opportunity: opportunity.createSalesOrder -- ungranted-by-design, EXACT literal, active:false.
+    "opportunity.createSalesOrder",
     // Finance (Billing/AR): finance.invoice.issue -- ungranted-by-design (Admin-SDK-only issuance), EXACT literal.
     "finance.invoice.issue",
     // Finance (Billing/AR): finance.payment.apply -- ungranted-by-design (Admin-SDK-only payment application), EXACT literal.
