@@ -17,3 +17,27 @@ assert.equal((await db.collection("stock_locations").where("binCode", "==", "TRA
 await completeTransferOrder(order.id);
 assert.equal((await db.collection("stock_locations").doc(`${to}__P-1__B-02`).get()).data().quantity, 3);
 console.log("warehouse transfer bin integrity passed");
+
+// ITEM K: a transfer whose source and destination are identical
+// (same warehouse AND same bin) must be rejected at creation --
+// otherwise completeTransferOrder would apply -qty then +qty to the
+// SAME stock_locations doc in one transaction (last write wins),
+// fabricating stock from nothing.
+const selfId = `${Date.now()}-self`;
+const selfWarehouse = `warehouse-${selfId}`;
+await updateStockLocation(selfWarehouse, "P-1", "A-01", 5);
+await assert.rejects(
+  () => createTransferOrder({
+    partId: "P-1",
+    quantity: 3,
+    fromWarehouseId: selfWarehouse,
+    toWarehouseId: selfWarehouse,
+    fromBinCode: "A-01",
+    toBinCode: "A-01",
+  }),
+  /source and destination must differ/i
+);
+// Belt-and-suspenders: no phantom stock resulted from the rejected attempt.
+const selfStock = await db.collection("stock_locations").doc(`${selfWarehouse}__P-1__A-01`).get();
+assert.equal(selfStock.data().quantity, 5);
+console.log("warehouse self-transfer rejection passed");
