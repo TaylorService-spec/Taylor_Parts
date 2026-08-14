@@ -31,8 +31,8 @@ function runAllocationRound({ so, otherSoLines, stockRows, eligibleWarehouseIds,
       eligibleWarehouseIds
     );
     const openWoReserved = onHandEligible === null ? 0 : openWorkOrderReserved(woRows.filter((r) => r.partId === ref), excludeWorkOrderIds);
-    const other = sumOtherSoCommitments(otherSoLines, ref);
-    const self = sumOtherSoCommitments(so.lines, ref);
+    const other = sumOtherSoCommitments(otherSoLines, "PART", ref);
+    const self = sumOtherSoCommitments(so.lines, "PART", ref);
     availabilityByRef[ref] = computePartAvailability({
       onHandEligible,
       openWoReserved,
@@ -205,7 +205,7 @@ test("insufficient-stock rejection: allocation never exceeds the true remaining 
 
   // another active SO already holds the entire pool -> this SO gets nothing, honestly reported.
   const so2 = { lines: [partLine("PART-2", 5)] };
-  const otherSoLines = [{ ref: "PART-2", allocatedQty: 10 }];
+  const otherSoLines = [{ kind: "PART", ref: "PART-2", allocatedQty: 10 }];
   const stockRows2 = [stockRow("PART-2", "WH-A", 10)];
   const plan2 = runAllocationRound({ so: so2, otherSoLines, stockRows: stockRows2, eligibleWarehouseIds, woRows: [], excludeWorkOrderIds: new Set() });
   assert.equal(plan2.lines[0].allocatableQty, 0);

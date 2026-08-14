@@ -132,11 +132,11 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       for (const ref of distinctPartRefs) {
         const onHandEligible = await readPartOnHand(tx, ref, eligibleWarehouseIds);
         const openWoReserved = onHandEligible === null ? 0 : await readOpenWoReserved(tx, ref, soLinkedWorkOrderIds);
-        const other = sumOtherSoCommitments(otherSoLines, ref);
+        const other = sumOtherSoCommitments(otherSoLines, "PART", ref);
         // This SO's OWN prior allocation for this ref is also a live claim on the same physical on-hand pool
         // (stock_locations is never decremented for an SO allocation — see fulfillmentAvailability.ts). It must
         // be netted here too, or a re-run additively over-allocates against the same undiminished on-hand read.
-        const self = sumOtherSoCommitments(lines, ref);
+        const self = sumOtherSoCommitments(lines, "PART", ref);
         availabilityByRef[`PART:${ref}`] = computePartAvailability({
           onHandEligible,
           openWoReserved,
