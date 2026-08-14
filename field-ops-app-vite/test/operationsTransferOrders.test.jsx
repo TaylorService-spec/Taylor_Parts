@@ -25,7 +25,7 @@ vi.mock("../src/services/operationsQueries", () => ({
   fetchTransferOrders: async () => [],
   fetchSuppliers: async () => [],
   fetchSupplierCatalog: async () => [],
-  fetchPurchaseOrders: async () => [],
+  fetchProcurementPurchaseOrders: async () => [],
 }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));

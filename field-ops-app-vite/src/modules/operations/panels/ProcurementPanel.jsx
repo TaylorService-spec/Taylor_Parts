@@ -3,6 +3,15 @@
 // turning one into a real PurchaseOrder requires a human-triggered
 // Cloud Function call outside this dashboard's scope (see
 // procurementDraftEngine.ts's header comment).
+//
+// site-work r4 item A: `purchaseOrders` rows come from the LIVE
+// `reorder_purchase_orders` collection now (services/operationsQueries.ts's
+// fetchProcurementPurchaseOrders(), built from the same pure
+// domain/purchaseOrdersView.js used by Purchasing > Purchase Orders), not the
+// dormant Epic-5 `purchase_orders` collection this panel used to read -- so the
+// row shape mirrors that view-model's output (reorderRequestId/partId/
+// supplierName/externalPoNumber/orderedQuantity/orderedDate/expectedArrivalDate/
+// viewStatus), not the old supplierId/items/totalCost shape.
 export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName }) {
   const supplierName = (id) => suppliers.find((s) => s.id === id)?.name ?? id;
 
@@ -17,19 +26,25 @@ export default function ProcurementPanel({ purchaseOrders, suppliers, procuremen
         <table className="fo-table">
           <thead>
             <tr>
+              <th>Part</th>
               <th>Supplier</th>
+              <th>PO #</th>
+              <th>Qty</th>
+              <th>Ordered</th>
+              <th>Expected</th>
               <th>Status</th>
-              <th>Line Items</th>
-              <th>Total Cost</th>
             </tr>
           </thead>
           <tbody>
             {purchaseOrders.map((po) => (
-              <tr key={po.id}>
-                <td>{supplierName(po.supplierId)}</td>
-                <td>{po.status}</td>
-                <td>{po.items.length}</td>
-                <td>${po.totalCost.toFixed(2)}</td>
+              <tr key={po.reorderRequestId}>
+                <td>{po.partId ? resolveName(po.partId) : <span className="fo-muted">—</span>}</td>
+                <td>{po.supplierName ?? <span className="fo-muted">—</span>}</td>
+                <td>{po.externalPoNumber ?? <span className="fo-muted">—</span>}</td>
+                <td>{po.orderedQuantity ?? <span className="fo-muted">—</span>}</td>
+                <td>{po.orderedDate ?? <span className="fo-muted">—</span>}</td>
+                <td>{po.expectedArrivalDate ?? <span className="fo-muted">—</span>}</td>
+                <td>{po.viewStatus}</td>
               </tr>
             ))}
           </tbody>

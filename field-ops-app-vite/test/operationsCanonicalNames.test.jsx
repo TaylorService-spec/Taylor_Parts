@@ -21,7 +21,7 @@ vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async ()
 vi.mock("../src/services/operationsQueries", () => ({
   fetchInventoryTransactions: async () => [], fetchStockLocations: async () => [], fetchWarehouses: async () => [],
   fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [], fetchSuppliers: async () => [], fetchSupplierCatalog: async () => [],
-  fetchPurchaseOrders: async () => [],
+  fetchProcurementPurchaseOrders: async () => [],
 }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({
   normalizeLedgerTransaction: (t) => t, generateInventoryHealthDashboard: () => [], computeAvailableStockByPart: () => new Map(),

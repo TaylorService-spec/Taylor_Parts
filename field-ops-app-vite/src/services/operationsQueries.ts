@@ -4,8 +4,14 @@
 // Cloud-Function-only writes (firestore.rules denies create/update/
 // delete unconditionally) -- this file never writes to any of them,
 // it only reads what an admin/dispatcher is allowed to see.
-import { collection, getDocs, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, where, documentId, Timestamp } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import {
+  REORDER_REQUESTS_COLLECTION as LIVE_REORDER_REQUESTS_COLLECTION,
+  REORDER_REQUEST_STATUS,
+  PURCHASE_ORDERS_COLLECTION as LIVE_REORDER_PURCHASE_ORDERS_COLLECTION,
+} from "../domain/constants";
+import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
 
 const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 const STOCK_LOCATIONS_COLLECTION = "stock_locations";
@@ -124,3 +130,71 @@ export interface RawReorderPurchaseOrder { id: string; partId: string; status: s
 
 export const fetchReorderRequests = () => listCollection<RawReorderRequest>(REORDER_REQUESTS_COLLECTION);
 export const fetchReorderPurchaseOrders = () => listCollection<RawReorderPurchaseOrder>(REORDER_PURCHASE_ORDERS_COLLECTION);
+
+// site-work r4 item A: the Operations dashboard's Procurement panel was reading the
+// dormant Epic-5 `purchase_orders` collection above (fetchPurchaseOrders) -- its only
+// writer is a demo seed script, no deployed callable writes it, so the panel was
+// permanently empty/stale. The LIVE purchase orders (written by
+// domain/reorderPurchaseOrders.js's recordPurchaseOrder()/voidPurchaseOrder()) live in
+// `reorder_purchase_orders`, keyed 1:1 by reorderRequestId, exactly as Purchasing >
+// Purchase Orders (modules/purchasing/PurchaseOrders.jsx) already reads them.
+//
+// This reuses that same read shape and the SAME pure field-mapping domain module
+// (domain/purchaseOrdersView.js's buildPurchaseOrdersView/buildPurchaseOrderRow --
+// already unit-tested in test/purchaseOrdersView.test.mjs) instead of inventing a
+// second mapping -- only the read mechanics differ: PurchaseOrders.jsx subscribes live
+// via a live onSnapshot subscription (hooks/useReorderRequestsByStatuses.js, hooks/usePurchaseOrdersByIds.js),
+// this is a one-shot getDocs read, matching every other fetch* in this file (module
+// header comment above: "one-shot reads only").
+const PROCUREMENT_PO_REQUEST_STATUSES = [
+  REORDER_REQUEST_STATUS.ORDERED,
+  REORDER_REQUEST_STATUS.RECEIVED,
+  REORDER_REQUEST_STATUS.VOIDED,
+];
+
+function chunkIds(ids: string[], size: number): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+export interface ProcurementPurchaseOrderRow {
+  reorderRequestId: string;
+  purchaseOrderId: string | null;
+  partId: string | null;
+  supplierName: string | null;
+  externalPoNumber: string | null;
+  orderedQuantity: number | null;
+  orderedDate: string | null;
+  expectedArrivalDate: string | null;
+  orderedByUserId: string | null;
+  orderedAt: number | null;
+  viewStatus: string;
+  isReceiptCandidate: boolean;
+  receiptSource: { type: string; reorderRequestId: string; purchaseOrderId: string } | null;
+}
+
+export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
+  const requestsSnap = await getDocs(
+    query(collection(db, LIVE_REORDER_REQUESTS_COLLECTION), where("status", "in", PROCUREMENT_PO_REQUEST_STATUSES))
+  );
+  const requests = requestsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown> & { id: string });
+
+  const ids = requests.map((r) => r.id);
+  const purchaseOrdersById: Record<string, Record<string, unknown>> = {};
+  for (const idChunk of chunkIds(ids, 10)) {
+    if (idChunk.length === 0) continue;
+    const snap = await getDocs(
+      query(collection(db, LIVE_REORDER_PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
+    );
+    snap.forEach((d) => {
+      purchaseOrdersById[d.id] = { id: d.id, ...d.data() };
+    });
+  }
+
+  const view = buildPurchaseOrdersView({
+    requestsRead: { data: requests, loading: false, error: null },
+    purchaseOrdersRead: { purchaseOrdersById, loading: false, error: null },
+  });
+  return view.rows as ProcurementPurchaseOrderRow[];
+};
