@@ -13,6 +13,7 @@ import WorkOrderPreview from "./WorkOrderPreview";
 import TechnicianBoard from "./TechnicianBoard";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -111,7 +112,11 @@ export default function DispatcherBoard() {
       await transitionWorkOrder(workOrder.id, "Dispatch", { assignedTechId: technicianId });
     } catch (err) {
       console.error(err);
-      setDispatchError(err.message);
+      // site-work r3 L: previously surfaced err.message verbatim, leaking raw
+      // Firebase/Functions codes. Route through the same safe-copy helper
+      // Dispatch.jsx's assign() uses for this identical transitionWorkOrder()
+      // "Dispatch" failure shape.
+      setDispatchError(workflowActionErrorMessage(err));
     } finally {
       setDispatchingWorkOrderId((id) => (id === workOrder.id ? null : id));
     }

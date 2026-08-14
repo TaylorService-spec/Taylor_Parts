@@ -5,6 +5,7 @@ import { transitionWorkOrder } from "../../services/workOrderService";
 import { activeFieldWorkOrders, FIELD_ACTIONS } from "../../domain/fieldWorkOrder";
 import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import PartsScanner from "./PartsScanner";
 
 // F1 -- Field shell + Technician Home + Current Job.
@@ -85,9 +86,13 @@ export default function FieldMode() {
       await transitionWorkOrder(workOrderId, action);
       // The authoritative listener moves the Work Order. Nothing is fabricated here.
     } catch (err) {
+      // site-work r3 L: previously surfaced err?.message verbatim, leaking raw
+      // Firebase/Functions codes. Route through the same safe-copy helper
+      // TechnicianWorkOrderActions.jsx uses for this identical
+      // transitionWorkOrder() failure shape.
       setFailure({
         id: workOrderId,
-        message: err?.message || "That step could not be recorded. Try again.",
+        message: workflowActionErrorMessage(err),
       });
     } finally {
       setPending({ id: null, action: null });
@@ -121,7 +126,7 @@ export default function FieldMode() {
   if (error) {
     return (
       <div className="fo-field">
-        <p className="fo-muted" role="alert">Your work orders could not be loaded. {error.message}</p>
+        <p className="fo-muted" role="alert">Your work orders could not be loaded. {error}</p>
       </div>
     );
   }
