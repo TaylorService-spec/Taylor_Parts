@@ -12,28 +12,48 @@
 // Reachable only through the capability-gated /reporting/builder route (navConfig.js +
 // App.jsx) -- today the Owner Role alone holds the wave-1 report capabilities. Keyboard-first
 // (native <select>/<input>/<button>, associated <label>s) and responsive (shared fo- tokens).
-import { useState } from "react";
+//
+// Site-work r4 E (Fix 2) -- minimal Saved Reports wiring. Save persists the definition the user
+// actually built (via the SAME trusted createSavedDefinitionCallable Saved Reports uses); there is
+// no update/overwrite callable on the server (savedReportService.js only exposes create / get /
+// list / rename / duplicate / delete), so Save always creates a NEW saved report rather than
+// silently claiming to overwrite one it can't. Open (?open=<id>, pushed by SavedReports.jsx) loads
+// the definition via the same trusted get() Saved Reports uses and revalidates it through the
+// existing F2/W-SAVE-UI reconciler (savedReportReconcile.js) -- catalog drift is dropped and
+// surfaced exactly as it is in the Saved Reports "Open" preview, never silently restored.
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   availableObjects, availableFieldGroups, defaultComparator,
   setObject, toggleField, toggleGroupBy, addFilter, updateFilter, removeFilter,
   addSort, updateSort, removeSort, builderErrors, builderStatus,
   hasCountRows, toggleCountRows,
 } from "../../domain/reporting/reportBuilderModel.js";
-import { createReportDefinition, FILTER_COMPARATORS_BY_TYPE, SORT_DIRECTIONS } from "../../domain/reporting/reportQueryModel.js";
+import { createReportDefinition, FILTER_COMPARATORS_BY_TYPE, ARRAY_VALUE_COMPARATORS, SORT_DIRECTIONS } from "../../domain/reporting/reportQueryModel.js";
 import { rowColumns, aggregateColumns, formatCell } from "../../domain/reporting/reportResultTable.js";
 import { runReport } from "../../domain/reporting/reportExecutionSeam.js";
 import { describeRunOutcome } from "../../domain/reporting/reportResultState.js";
+import { savedReportService } from "../../domain/reporting/savedReportService.js";
+import { reconcileSavedReport, describeReconciliation } from "../../domain/reporting/savedReportReconcile.js";
+import { mapSavedDefinitionError } from "../../domain/reporting/savedReportServiceOutcome.js";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import LoadingState from "../../shared/ui/LoadingState";
 
 const OBJECTS = availableObjects();
 
 // `runReportFn` defaults to the real D-FN seam; it exists only so a browser/dev harness can inject
 // a fixture outcome (the trusted engine has no client-side test double). Production never passes it.
-export default function ReportBuilder({ runReportFn = runReport }) {
+// `savedReportServiceImpl` is likewise injectable so tests never touch firebase/functions directly.
+export default function ReportBuilder({ runReportFn = runReport, savedReportServiceImpl = savedReportService }) {
   const [def, setDef] = useState(() => createReportDefinition(null));
   const [outcome, setOutcome] = useState({ kind: "idle" });
   const [running, setRunning] = useState(false);
+  const [searchParams] = useSearchParams();
+  const openId = searchParams.get("open");
+  const [openState, setOpenState] = useState(() => (openId ? { status: "loading" } : { status: "idle" }));
+  const [saveName, setSaveName] = useState("");
+  const [saveState, setSaveState] = useState({ status: "idle" });
 
   const groups = def.objectId ? availableFieldGroups(def.objectId) : [];
   const selectableFields = groups.flatMap((g) => g.fields);
@@ -55,6 +75,48 @@ export default function ReportBuilder({ runReportFn = runReport }) {
     setRunning(false);
   };
 
+  // Hydrate from a saved report when the route carries ?open=<id> (SavedReports.jsx's "Open").
+  // Re-fetches via the trusted get() callable (never trusts a stale list-row embed) and runs the
+  // SAME reconciler Saved Reports' own "Open" preview uses, so catalog drift is handled identically
+  // in both places. Fail-closed: an unopenable/errored load leaves the builder blank, never guesses.
+  useEffect(() => {
+    if (!openId) { setOpenState({ status: "idle" }); return undefined; }
+    let cancelled = false;
+    setOpenState({ status: "loading" });
+    savedReportServiceImpl.get(openId).then((rec) => {
+      if (cancelled) return;
+      const result = reconcileSavedReport(rec);
+      if (!result.openable) {
+        setOpenState({ status: "error", message: result.reason });
+        return;
+      }
+      setDef(result.definition);
+      setOutcome({ kind: "idle" });
+      setSaveName(typeof rec?.name === "string" ? rec.name : "");
+      setOpenState({ status: "loaded", drift: describeReconciliation(result), needsEditing: result.residualErrors.length > 0 });
+    }).catch((err) => {
+      if (cancelled) return;
+      setOpenState({ status: "error", message: mapSavedDefinitionError(err).message });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the ?open id changes
+  }, [openId]);
+
+  // Save persists the CURRENT in-progress definition (not a stub) via the trusted create() callable
+  // -- the same one Saved Reports' "New" already uses. There is no server-side update path, so this
+  // always creates a new saved report; the label says so rather than implying an overwrite.
+  const onSave = async () => {
+    const name = saveName.trim();
+    if (!name) return;
+    setSaveState({ status: "saving" });
+    try {
+      await savedReportServiceImpl.create({ name, definition: def });
+      setSaveState({ status: "success", name });
+    } catch (err) {
+      setSaveState({ status: "error", message: mapSavedDefinitionError(err).message });
+    }
+  };
+
   return (
     <div className="fo-main">
       <div className="fo-panel">
@@ -63,6 +125,8 @@ export default function ReportBuilder({ runReportFn = runReport }) {
           Build a report from a governed business object. Only the data you're authorized to see is
           returned — fields you can't read are left out and shown as omitted.
         </p>
+
+        <OpenBanner openState={openState} />
 
         {/* 1. object */}
         <div className="fo-form">
@@ -106,6 +170,11 @@ export default function ReportBuilder({ runReportFn = runReport }) {
               </label>
             </section>
 
+            {/* 3c. save -- persists the definition built above via the same trusted create()
+                callable Saved Reports' "New" uses. No server-side update path exists yet, so this
+                always creates a NEW saved report (never claims to overwrite one). */}
+            <SaveControl saveName={saveName} setSaveName={setSaveName} saveState={saveState} onSave={onSave} />
+
             {/* 4. validation + run */}
             {errors.length > 0 && (
               <div className="fo-state" role="status">
@@ -129,6 +198,68 @@ export default function ReportBuilder({ runReportFn = runReport }) {
         )}
       </div>
     </div>
+  );
+}
+
+// Mirrors SavedReports.jsx's own OpenStatus copy/tone conventions -- loading while the trusted
+// get() resolves, a safe refusal reason when unopenable/errored, and a drift/needs-editing note
+// (never silently restored) once loaded.
+function OpenBanner({ openState }) {
+  if (openState.status === "idle") return null;
+  if (openState.status === "loading") return <LoadingState>Opening saved report…</LoadingState>;
+  if (openState.status === "error") {
+    return <FailureState title="Couldn't open this report" message={openState.message} />;
+  }
+  if (!openState.drift && !openState.needsEditing) {
+    return (
+      <p className="fo-state fo-tone-info fo-state-message" role="status" aria-live="polite">
+        Opened saved report. Still valid against the current data catalog.
+      </p>
+    );
+  }
+  return (
+    <div className="fo-state fo-tone-warning" role="status" aria-live="polite">
+      {openState.drift && <p className="fo-warning fo-state-message">{openState.drift}</p>}
+      {openState.needsEditing && (
+        <p className="fo-warning fo-state-message">
+          Some columns or options are no longer valid — fix them below before running.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SaveControl({ saveName, setSaveName, saveState, onSave }) {
+  return (
+    <section aria-labelledby="rb-save-h">
+      <h3 id="rb-save-h">Save</h3>
+      <div className="fo-form">
+        <label htmlFor="rb-save-name">Report name</label>
+        <input
+          id="rb-save-name"
+          type="text"
+          value={saveName}
+          onChange={(e) => setSaveName(e.target.value)}
+          placeholder="Name this report"
+        />
+        <button
+          type="button"
+          className="fo-btn-secondary"
+          onClick={onSave}
+          disabled={saveState.status === "saving" || saveName.trim() === ""}
+        >
+          {saveState.status === "saving" ? "Saving…" : "Save as new report"}
+        </button>
+      </div>
+      {saveState.status === "success" && (
+        <p className="fo-state fo-tone-info fo-state-message" role="status" aria-live="polite">
+          Saved “{saveState.name}”. Find it in Saved Reports.
+        </p>
+      )}
+      {saveState.status === "error" && (
+        <p className="fo-warning fo-state-message" role="alert">{saveState.message}</p>
+      )}
+    </section>
   );
 }
 
@@ -187,30 +318,95 @@ function FilterRow({ filter, filterable, onChange, onRemove }) {
     const next = filterable.find((f) => f.fieldId === e.target.value);
     onChange({ fieldId: next.fieldId, op: defaultComparator(next.dataType), value: "" });
   };
+  // Switching comparators can change the required value SHAPE (scalar <-> array, or a 2-element
+  // `between` pair) -- reset the value to a shape-appropriate empty when that boundary is crossed,
+  // otherwise leave it alone (e.g. "in" <-> "containsAny" both stay array-valued).
+  const onComparator = (e) => {
+    const op = e.target.value;
+    if (op === "between") { onChange({ op, value: ["", ""] }); return; }
+    const isArray = ARRAY_VALUE_COMPARATORS.includes(op);
+    // "in" <-> "containsAny" both take a plain array -- keep the value as the user built it.
+    const keepValue = isArray && ARRAY_VALUE_COMPARATORS.includes(filter.op) && filter.op !== "between";
+    onChange({ op, value: keepValue ? filter.value : (isArray ? [] : "") });
+  };
   return (
     <div className="fo-form" role="group" aria-label="Filter">
       <select aria-label="Field" value={filter.fieldId} onChange={onField}>
         {filterable.map((f) => <option key={f.fieldId} value={f.fieldId}>{f.label}</option>)}
       </select>
-      <select aria-label="Comparator" value={filter.op} onChange={(e) => onChange({ op: e.target.value })}>
+      <select aria-label="Comparator" value={filter.op} onChange={onComparator}>
         {comparators.map((op) => <option key={op} value={op}>{op}</option>)}
       </select>
-      {field.dataType === "boolean" ? (
-        <select aria-label="Value" value={String(filter.value)} onChange={(e) => onChange({ value: e.target.value === "true" })}>
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      ) : (
-        <input
-          aria-label="Value"
-          type={field.dataType === "number" ? "number" : "text"}
-          value={filter.value ?? ""}
-          placeholder="value"
-          onChange={(e) => onChange({ value: field.dataType === "number" ? Number(e.target.value) : e.target.value })}
-        />
-      )}
+      <FilterValueInput field={field} filter={filter} onChange={onChange} />
       <button type="button" className="fo-btn-secondary" onClick={onRemove} aria-label="Remove filter">Remove</button>
     </div>
+  );
+}
+
+// The value control's shape follows the comparator, not just the field's dataType: array-valued
+// comparators (in / containsAny) need a list, and `between` needs exactly two bounds (Spec-enforced
+// by reportQueryValidation.js). Rendering only a scalar input here was the bug -- an array
+// comparator could be selected but never given a legal value, so validation never cleared.
+function FilterValueInput({ field, filter, onChange }) {
+  const { op, value } = filter;
+
+  if (field.dataType === "boolean") {
+    return (
+      <select aria-label="Value" value={String(value)} onChange={(e) => onChange({ value: e.target.value === "true" })}>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    );
+  }
+
+  if (op === "between") {
+    const bounds = Array.isArray(value) ? value : ["", ""];
+    const inputType = field.dataType === "date" ? "date" : field.dataType === "number" ? "number" : "text";
+    const cast = (v) => (field.dataType === "number" && v !== "" ? Number(v) : v);
+    return (
+      <span className="fo-form" role="group" aria-label="Between">
+        <input aria-label="From" type={inputType} value={bounds[0] ?? ""} placeholder="from"
+          onChange={(e) => onChange({ value: [cast(e.target.value), bounds[1] ?? ""] })} />
+        <input aria-label="To" type={inputType} value={bounds[1] ?? ""} placeholder="to"
+          onChange={(e) => onChange({ value: [bounds[0] ?? "", cast(e.target.value)] })} />
+      </span>
+    );
+  }
+
+  if (ARRAY_VALUE_COMPARATORS.includes(op)) {
+    // Re-keyed on fieldId+op so switching field/comparator remounts with a fresh initial text
+    // instead of a stale one; while the row stays put, the input owns its own text so a mid-typed
+    // trailing "," or space isn't stripped out from under the user on every keystroke.
+    return <ArrayValueInput key={`${filter.fieldId}:${op}`} field={field} value={value} onChange={onChange} />;
+  }
+
+  return (
+    <input
+      aria-label="Value"
+      type={field.dataType === "number" ? "number" : "text"}
+      value={value ?? ""}
+      placeholder="value"
+      onChange={(e) => onChange({ value: field.dataType === "number" ? Number(e.target.value) : e.target.value })}
+    />
+  );
+}
+
+function ArrayValueInput({ field, value, onChange }) {
+  const [text, setText] = useState(() => (Array.isArray(value) ? value.join(", ") : ""));
+  const onInput = (e) => {
+    const raw = e.target.value;
+    setText(raw);
+    const parts = raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+    onChange({ value: field.dataType === "number" ? parts.map(Number) : parts });
+  };
+  return (
+    <input
+      aria-label="Value"
+      type="text"
+      value={text}
+      placeholder="comma-separated values (e.g. a, b, c)"
+      onChange={onInput}
+    />
   );
 }
 
