@@ -609,51 +609,58 @@
       {
         "discriminator": "workorderpreview-undefined-customeridentity-crash",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "A"
+        "prItem": "A",
+        "pr": 923
       },
       {
         "discriminator": "usescheduldingdata-drops-workorders-error",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "B"
+        "prItem": "B",
+        "pr": 924
       },
       {
         "discriminator": "client-warehouse-reconciliation-engine-not-updated",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "C"
+        "prItem": "C",
+        "pr": 920
       },
       {
         "discriminator": "getinventoryanalytics-callable-mixes-physical-stock",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "D"
+        "prItem": "D",
+        "pr": 921
       },
       {
         "discriminator": "mergeqtyused-no-upper-bound-or-finite-check",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "E"
+        "prItem": "E",
+        "pr": 925
       },
       {
         "discriminator": "installedequipmentpage-firstpage-name-failure-wipes-rows",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "F"
+        "prItem": "F",
+        "pr": 922
       },
       {
         "discriminator": "transition-callables-no-idempotency-guard-double-advance",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "G"
+        "prItem": "G",
+        "pr": 926
       },
       {
         "discriminator": "finance-oncall-callables-zero-test-coverage",
