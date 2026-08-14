@@ -31,6 +31,10 @@ async function assertRejects(promise, ErrorClass, label) { await assert.rejects(
 
 const COMMIT = "d0dad859ca67fbcfc955c41f4713ec4467a7206c";
 const OPERATOR = "infra-operator-1";
+// The emulator app is initialized with projectId "taylor-parts" (line 12), so the
+// confirmed target project passed to the command must match it (cross-project
+// fail-closed guard). A DIFFERENT project id is used only in the mismatch test.
+const PROJECT = "taylor-parts";
 // Seed a legacy admin: enabled Auth user + users/{uid}.role=admin, NO roleAssignment.
 async function seedLegacyAdmin(email) {
   const u = uid("legacy-admin");
@@ -48,7 +52,7 @@ await check("success: legacy admin -> active admin roleAssignment + applied audi
   const email = `${uid("e")}@test.com`;
   const u = await seedLegacyAdmin(email);
   const k = key(u);
-  const r = await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k });
+  const r = await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k });
   assert.equal(r.status, "applied");
   const asg = await db.collection("roleAssignments").doc(bootstrapId(u)).get();
   assert.ok(asg.exists);
@@ -71,7 +75,7 @@ await check("success: legacy admin -> active admin roleAssignment + applied audi
 await check("refuse: exact email mismatch -> InvalidStateError + denied audit, no assignment/version", async () => {
   const u = await seedLegacyAdmin(`${uid("e")}@test.com`);
   const k = key(u);
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: "wrong@test.com", provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "email mismatch");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: "wrong@test.com", provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "email mismatch");
   assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false);
   assert.equal((await getAudit(k)).outcome, "denied");
   assert.equal((await db.collection("users").doc(u).get()).data().accessVersion ?? 0, 0);
@@ -80,7 +84,7 @@ await check("refuse: exact email mismatch -> InvalidStateError + denied audit, n
 await check("refuse: unknown UID (no Auth user) -> denied", async () => {
   const u = uid("ghost");
   const k = key(u);
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: "x@test.com", provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "no auth user");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: "x@test.com", provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "no auth user");
   assert.equal((await getAudit(k)).outcome, "denied");
 });
 
@@ -89,7 +93,7 @@ await check("refuse: disabled Auth user -> denied", async () => {
   const u = await seedLegacyAdmin(email);
   await auth.updateUser(u, { disabled: true });
   const k = key(u);
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "disabled");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "disabled");
   assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false);
 });
 
@@ -98,18 +102,18 @@ await check("refuse: missing / non-admin legacy role -> denied", async () => {
   const u = uid("legacy-dispatcher");
   await auth.createUser({ uid: u, email });
   await db.collection("users").doc(u).set({ role: "dispatcher" });
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }), InvalidStateError, "not admin");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }), InvalidStateError, "not admin");
   // absent users doc entirely:
   const u2 = uid("no-user-doc");
   await auth.createUser({ uid: u2, email: `${uid("e")}@test.com` });
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u2, expectedEmail: (await auth.getUser(u2)).email, provenanceCommit: COMMIT, idempotencyKey: key(u2) }), InvalidStateError, "no users doc");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u2, expectedEmail: (await auth.getUser(u2)).email, provenanceCommit: COMMIT, idempotencyKey: key(u2) }), InvalidStateError, "no users doc");
 });
 
 await check("refuse: conflicting pre-existing active admin roleAssignment (different doc) -> denied", async () => {
   const email = `${uid("e")}@test.com`;
   const u = await seedLegacyAdmin(email);
   await db.collection("roleAssignments").doc(uid("other-admin")).set({ principalUid: u, roleId: "admin", scope: { type: "global" }, grantedBy: "someone", grantedAt: admin.firestore.Timestamp.now(), status: "active", accessVersionAtGrant: 0 });
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }), InvalidStateError, "conflicting admin");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }), InvalidStateError, "conflicting admin");
   assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false);
 });
 
@@ -119,16 +123,16 @@ await check("refuse: non-equivalent deterministic document -> fail closed with d
   // Pre-seed the DETERMINISTIC id with a non-equivalent doc (wrong grantedBy):
   await db.collection("roleAssignments").doc(bootstrapId(u)).set({ principalUid: u, roleId: "admin", scope: { type: "global" }, grantedBy: "not-the-bootstrap", grantedAt: admin.firestore.Timestamp.now(), status: "active", accessVersionAtGrant: 0 });
   const k = key(u);
-  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "non-equivalent");
+  await assertRejects(bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }), InvalidStateError, "non-equivalent");
   assert.equal((await getAudit(k)).outcome, "denied");
 });
 
 await check("idempotent: equivalent rerun (fresh key) -> alreadyApplied, no second version bump", async () => {
   const email = `${uid("e")}@test.com`;
   const u = await seedLegacyAdmin(email);
-  await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) });
+  await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) });
   const v1 = (await db.collection("users").doc(u).get()).data().accessVersion;
-  const r2 = await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) });
+  const r2 = await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) });
   assert.equal(r2.status, "alreadyApplied");
   assert.equal((await db.collection("users").doc(u).get()).data().accessVersion, v1, "no second version bump");
 });
@@ -137,8 +141,8 @@ await check("race: concurrent attempts remain a single write", async () => {
   const email = `${uid("e")}@test.com`;
   const u = await seedLegacyAdmin(email);
   const results = await Promise.allSettled([
-    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }),
-    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }),
+    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }),
+    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(u) }),
   ]);
   const applied = results.filter((r) => r.status === "fulfilled" && r.value.status === "applied");
   assert.equal(applied.length >= 1, true);
@@ -151,7 +155,7 @@ await check("race: concurrent attempts remain a single write", async () => {
 await check("end-to-end unblock: after bootstrap the resolver grants admin.roleAssignment.write; then assignApprovedRole(inventoryCreateExecutor) succeeds; privileged grants still need two people", async () => {
   const email = `${uid("e")}@test.com`;
   const adminUid = await seedLegacyAdmin(email);
-  await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: adminUid, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(adminUid) });
+  await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: adminUid, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: key(adminUid) });
   // Resolver now grants admin.roleAssignment.write for the bootstrapped admin:
   const assignmentsSnap = await db.collection("roleAssignments").where("principalUid", "==", adminUid).get();
   const decision = resolveEffectivePermission({
@@ -188,6 +192,47 @@ await check("operator script: dry-run performs ZERO writes (no assignment, no ve
   assert.match(run.stdout, /DRY-RUN/);
   assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false, "dry-run wrote no assignment");
   assert.equal((await db.collection("users").doc(u).get()).data().accessVersion ?? 0, 0, "dry-run bumped no version");
+});
+
+// --- Project-provenance regressions (AUTH-CORE bootstrap fix 2026-08-14):
+// the audit records the CONFIRMED target project (not a hard-coded literal), and
+// a project that mismatches the runtime write target fails closed. ---
+
+await check("provenance: audit records the CONFIRMED target project (input-driven, not hard-coded)", async () => {
+  const email = `${uid("e")}@test.com`;
+  const u = await seedLegacyAdmin(email);
+  const k = key(u);
+  await bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: PROJECT, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k });
+  const audit = await getAudit(k);
+  assert.match(audit.summary, new RegExp(`project=${PROJECT}`), "audit provenance must record the confirmed target project");
+  // Regression against the removed hard-coded BOOTSTRAP_ADMIN_PROJECT: the value
+  // is exactly the passed projectId. (Here PROJECT === runtime; the mismatch case
+  // below proves a different value cannot be recorded.)
+});
+
+await check("cross-project fail-closed: confirmed project != runtime project -> refuse, NO write, NO audit", async () => {
+  const email = `${uid("e")}@test.com`;
+  const u = await seedLegacyAdmin(email);
+  const k = key(u);
+  // Runtime app is "taylor-parts"; claim a DIFFERENT project.
+  await assertRejects(
+    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: "eos-platform-sandbox", uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }),
+    InvalidStateError, "project mismatch must fail closed",
+  );
+  assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false, "no assignment on mismatch");
+  assert.equal((await db.collection("users").doc(u).get()).data().accessVersion ?? 0, 0, "no version bump on mismatch");
+  assert.equal(await getAudit(k), null, "no audit written to the mismatched project (refused before any write)");
+});
+
+await check("missing projectId -> InvalidInputError, no write", async () => {
+  const email = `${uid("e")}@test.com`;
+  const u = await seedLegacyAdmin(email);
+  const k = key(u);
+  await assertRejects(
+    bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }),
+    InvalidInputError, "projectId is required",
+  );
+  assert.equal((await db.collection("roleAssignments").doc(bootstrapId(u)).get()).exists, false);
 });
 
 console.log(`\nbootstrapCompatibilityAdmin: ${passed} passed, ${failed} failed`);
