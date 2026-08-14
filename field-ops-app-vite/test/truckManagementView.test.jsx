@@ -2,10 +2,23 @@
 // the firebase-free TruckManagementPreview (real workspace + management components + in-memory
 // mock client + fixtures) for write flows, and TruckInventory directly for the role gate and
 // to prove the pre-existing read states/tabs stay intact.
+//
+// Site-work r4 truck-gate: deactivateTruck/deleteTruckCreatedInError are now ALSO gated on
+// their own dedicated TRUCK_DEACTIVATE_READY / TRUCK_DELETE_READY flags (default false in
+// every environment -- see config/environments.json and truckManagementReadiness.js). This
+// file's job is exercising the underlying confirm/reason/error-sanitizing command FLOW, which
+// is orthogonal to that new gate, so both are mocked true here; the gate itself (disabled +
+// explanation when false, everything else unaffected) is covered by the dedicated
+// manageTruckDrawerReadinessGate.test.jsx, which deliberately does NOT mock these flags.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import TruckInventory from "../src/modules/inventory/TruckInventory.jsx";
 import TruckManagementPreview from "../src/modules/inventory/truckManagement/TruckManagementPreview.jsx";
+
+vi.mock("../src/config/truckManagementReadiness.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, TRUCK_DEACTIVATE_READY: true, TRUCK_DELETE_READY: true };
+});
 
 afterEach(cleanup);
 
