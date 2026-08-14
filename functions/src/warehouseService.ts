@@ -91,6 +91,15 @@ export async function createTransferOrder(input: {
 }): Promise<TransferOrder> {
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) throw new Error("Transfer quantity must be positive");
   if (!input.fromWarehouseId || !input.toWarehouseId || !input.fromBinCode || !input.toBinCode) throw new Error("Transfer warehouse and bin are required");
+  // A transfer whose source and destination resolve to the same stock
+  // location doc (same warehouse AND same bin) is a no-op that must not
+  // be accepted: completeTransferOrder would apply -qty then +qty to the
+  // SAME doc in one transaction, the last write wins, and stock is
+  // fabricated from nothing. Reject at creation rather than let it reach
+  // completion.
+  if (input.fromWarehouseId === input.toWarehouseId && input.fromBinCode === input.toBinCode) {
+    throw new Error("Transfer source and destination must differ");
+  }
   const ref = db().collection(TRANSFER_ORDERS_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
   const order: TransferOrder = {
