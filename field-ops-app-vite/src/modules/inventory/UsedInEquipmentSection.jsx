@@ -16,9 +16,17 @@ import {
   SECTION_STATES,
 } from "../../domain/equipmentCompatibilitySection";
 import { inertEquipmentCompatibilitySource } from "../../services/equipmentCompatibilitySource";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 const PAGE_SIZE = 10; // OD-D
 
+// Wave 4 -- verification-status tone map for this section's own vocabulary (not urgency, so it
+// does not go through domain/inventoryUrgencyTone.js). VERIFIED/CONFLICT/IN_REVIEW/UNVERIFIED/
+// REJECTED never had real CSS before this migration (the retired equipment-compat status class
+// family had no rules in index.css -- confirmed by grep -- so these badges were always unstyled
+// plain text; StatusPill gives them their first real colour, a genuine upgrade, not a preserved
+// intent).
+const VERIFICATION_TONE = { VERIFIED: "positive", CONFLICT: "critical", IN_REVIEW: "attention", UNVERIFIED: "unknown", REJECTED: "muted" };
 const VERIFICATION_LABEL = { VERIFIED: "Verified", CONFLICT: "Conflicting", IN_REVIEW: "In review", UNVERIFIED: "Unverified", REJECTED: "Rejected" };
 const REASON_LABEL = {
   conflict: "Conflicting evidence — not for operational use",
@@ -39,7 +47,6 @@ function EvidenceCell({ evidence }) {
 }
 
 function RelationshipRow({ item }) {
-  const badgeClass = `fo-badge fo-badge-equipment-compat-${item.verificationStatus.toLowerCase().replace(/_/g, "-")}`;
   const model = item.model;
   return (
     <tr className={item.operational ? "" : "fo-equipment-compat-nonoperational"}>
@@ -62,9 +69,12 @@ function RelationshipRow({ item }) {
       </td>
       <td data-label="Applies to">{item.serialApplicabilitySummary}</td>
       <td data-label="Status">
-        <span className={badgeClass}>{VERIFICATION_LABEL[item.verificationStatus] || item.verificationStatus}</span>
+        <StatusPill
+          tone={VERIFICATION_TONE[item.verificationStatus] ?? "unknown"}
+          label={VERIFICATION_LABEL[item.verificationStatus] || item.verificationStatus}
+        />
         {item.operational
-          ? <span className="fo-badge fo-badge-equipment-compat-operational">Usable</span>
+          ? <StatusPill tone="positive" label="Usable" />
           : (item.reasons.length > 0 ? <div className="fo-muted">{item.reasons.map((r) => REASON_LABEL[r] || r).join("; ")}</div> : null)}
       </td>
       <td data-label="Evidence"><EvidenceCell evidence={item.evidence} /></td>

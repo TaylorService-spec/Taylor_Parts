@@ -586,10 +586,13 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-badge-pending { background: var(--color-danger-surface); color: var(--color-danger); }
 .fo-badge-on_job { background: var(--color-warning-surface); color: var(--color-warning); }
 .fo-badge-in_progress { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-badge-completed { background: var(--color-success-surface); color: var(--color-success); }
+/* Wave 4: retired fo-badge-completed's colour intent under a non-badge name. Deliberately
+   background+color ONLY, matching the original rule exactly -- it was used standalone
+   (never paired with the base .fo-badge pill styles), so OutcomeBanner's OK state has always
+   rendered as a plain coloured block, not a pill. Preserved as-is; not a Wave-4 redesign. */
+.fo-outcome-banner--ok { background: var(--color-success-surface); color: var(--color-success); }
 .fo-badge-available { background: var(--color-success-surface); color: var(--color-success); }
 .fo-badge-off_shift { background: var(--color-surface-sunken); color: var(--color-text-muted); }
-.fo-badge-low-stock { background: var(--color-danger-surface); color: var(--color-danger); }
 
 /* Operations dashboard -- severity/urgency levels shared by the
    Inventory Health, Warehouse reconciliation, and Procurement panels
@@ -1692,20 +1695,62 @@ button:hover {
 .fo-tone-text--unknown, .fo-tone-text--neutral { color: var(--color-text-secondary); }
 .fo-tone-text--muted { color: var(--color-text-muted); }
 
-/* Wave-1 composition — a browseable collection of PEER OBJECT cards (the legitimate card use), plus the
-   detail tablist and utility chip-row that replace the ad-hoc badge-row toolbar. Card chrome is defined once
-   here (was previously scattered inline per surface) so every peer card reads identically site-wide. */
-.fo-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
-.fo-card--peer { display: block; width: 100%; text-align: left; cursor: pointer; margin: 0;
+/* Peer Operational Card (Wave-4, shared/ui/OperationalCard.jsx) — the ONE card for a bounded peer
+   object in a browseable collection (a truck, a work order, a part, an equipment unit, a
+   technician, an operational exception). Generalizes Wave-1's one-off `.fo-card--peer` (retired --
+   TruckFleetCard.jsx is now this primitive's reference adopter) so every peer card, on every
+   surface, reads identically: same chrome, same states, same density scale. */
+.fo-op-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
+@media (max-width: 480px) {
+  .fo-op-card-grid { grid-template-columns: 1fr; } /* phone: one column, never a squeezed multi-column grid */
+}
+
+.fo-op-card-wrap { display: block; }
+.fo-op-card {
+  display: block; width: 100%; text-align: left; margin: 0; box-sizing: border-box;
   background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 10px;
-  padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: border-color .12s, box-shadow .12s; }
-.fo-card--peer:hover { border-color: var(--color-brand-secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
-.fo-card--peer:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
-.fo-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fo-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 0; }
-.fo-card__metrics dt { font-size: 12px; }
-.fo-card__metrics dd { margin: 0; font-size: 14px; }
-.fo-card__foot { margin-top: 8px; }
+  padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font: inherit; color: inherit;
+  transition: border-color .12s, box-shadow .12s, opacity .12s;
+}
+button.fo-op-card { cursor: pointer; } /* only the selectable (<button>) mode gets a pointer cursor */
+button.fo-op-card:hover { border-color: var(--color-brand-secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
+button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
+
+.fo-op-card--selected { border-color: var(--color-brand-secondary); box-shadow: 0 0 0 1px var(--color-brand-secondary) inset; }
+.fo-op-card--disabled { opacity: 0.55; cursor: not-allowed; }
+.fo-op-card--loading, .fo-op-card--unavailable { display: flex; align-items: center; min-height: 64px; }
+.fo-op-card__placeholder { margin: 0; color: var(--color-text-muted); font-size: 14px; }
+/* Attention/exception: a full-border colour shift + faint tint -- deliberately NOT a thick
+   side-tab accent border (the retired badge-era tell); the whole card reads as "needs a look",
+   not just one edge of it. */
+.fo-op-card--attention { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning-surface) 55%, var(--color-surface-elevated)); }
+
+.fo-op-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fo-op-card__title { font-weight: 600; }
+.fo-op-card__subtitle { margin-top: 2px; font-size: 13px; color: var(--color-text-muted); }
+.fo-op-card__attention { margin-top: 6px; font-size: 13px; color: var(--color-warning); }
+.fo-op-card__foot { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); }
+.fo-op-card__metric { margin-top: 10px; display: flex; align-items: baseline; gap: 6px; }
+.fo-op-card__metric-value { font-size: 20px; font-weight: 700; }
+.fo-op-card__metric-label { font-size: 12px; color: var(--color-text-muted); }
+.fo-op-card__metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 0; }
+.fo-op-card__metadata dt { font-size: 12px; color: var(--color-text-muted); }
+.fo-op-card__metadata dd { margin: 0; font-size: 14px; }
+.fo-op-card__actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Density scale (matches WorkspaceShell's own [data-density] convention). comfortable = default
+   spacing above; compact tightens for dense operational views; field/warehouse widen touch
+   targets and type for gloved/on-the-move use. Lives directly on .fo-op-card (button or
+   article), not a wrapper, so both interaction modes carry it identically. */
+.fo-op-card[data-density="compact"] { padding: 10px 12px; }
+.fo-op-card[data-density="compact"] .fo-op-card__metric-value { font-size: 17px; }
+.fo-op-card[data-density="field"],
+.fo-op-card[data-density="warehouse"] { padding: 18px 18px; min-height: 48px; }
+.fo-op-card[data-density="field"] .fo-op-card__title,
+.fo-op-card[data-density="warehouse"] .fo-op-card__title { font-size: 16px; }
+.fo-op-card[data-density="field"] .fo-op-card__metric-value,
+.fo-op-card[data-density="warehouse"] .fo-op-card__metric-value { font-size: 24px; }
 
 .fo-tablist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 12px; }
 

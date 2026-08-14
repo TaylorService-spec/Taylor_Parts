@@ -18,12 +18,14 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import GlobalSearch from "../../shared/search/GlobalSearch";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -536,11 +538,11 @@ export default function PartsList({ accessVersion } = {}) {
   }));
 
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Parts">
-        <GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />
-      </WorkspaceHeader>
-
+    <WorkspaceShell
+      title="Parts"
+      actions={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
+      className="fo-parts-list"
+    >
       <h3>Inventory Operational Queue</h3>
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
@@ -589,9 +591,9 @@ export default function PartsList({ accessVersion } = {}) {
                 <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
-                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
                   ) : (
-                    <span className="fo-badge">Needs planning</span>
+                    <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
                 <td className="fo-muted">
@@ -633,9 +635,9 @@ export default function PartsList({ accessVersion } = {}) {
                 <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
-                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
                   ) : (
-                    <span className="fo-badge">Needs planning</span>
+                    <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
                 <td className="fo-muted">
@@ -675,9 +677,9 @@ export default function PartsList({ accessVersion } = {}) {
                 <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
-                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
                   ) : (
-                    <span className="fo-badge">Needs planning</span>
+                    <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
                 <td className="fo-muted">
@@ -754,9 +756,9 @@ export default function PartsList({ accessVersion } = {}) {
                       <td>{getDisplayQty(request)}</td>
                       <td>
                         {request.urgency ? (
-                          <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                          <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
                         ) : (
-                          <span className="fo-badge">Needs planning</span>
+                          <StatusPill tone="unknown" label="Needs planning" />
                         )}
                       </td>
                       <td className="fo-muted">
@@ -776,8 +778,8 @@ export default function PartsList({ accessVersion } = {}) {
                 </tbody>
               </table>
             </div>
-          </LoadingEmptyState>
-        )}
+        </LoadingEmptyState>
+      )}
 
       <h3>Parts Catalog</h3>
       {/* INV-CONVERGENCE-E C1 -- three explicit states for the governed catalog:
@@ -826,11 +828,9 @@ export default function PartsList({ accessVersion } = {}) {
                       {!health ? (
                         <span className="fo-muted">No ledger activity</span>
                       ) : hasUsageHistory(health.usage) ? (
-                        <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
-                          {health.recommendation.urgency}
-                        </span>
+                        <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
                       ) : (
-                        <span className="fo-badge">Needs planning</span>
+                        <StatusPill tone="unknown" label="Needs planning" />
                       )}
                     </td>
                   </tr>
@@ -953,6 +953,6 @@ export default function PartsList({ accessVersion } = {}) {
           </div>
         </LoadingEmptyState>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

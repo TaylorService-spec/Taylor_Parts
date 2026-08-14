@@ -1,10 +1,12 @@
-// Truck Inventory — the ONE fleet peer-object card (Wave-1 composition).
-//
-// A card is the CORRECT primitive here: each truck is a peer object in a browseable collection (the
-// legitimate card use, as opposed to a card standing in for a page/section wrapper). It carries only
-// PRESENTATION — the parent owns selection, filtering, and every governed gate. Status chrome routes
-// through the shared StatusPill + the truck domain's tone maps so a truck's state reads identically to
-// the same semantic state on any other surface.
+// Truck Inventory — the fleet peer-object card. Reference adopter of the shared
+// shared/ui/OperationalCard.jsx primitive (Wave 4): each truck is a peer object in a
+// browseable collection (the legitimate card use), so it carries only PRESENTATION — the
+// parent owns selection, filtering, and every governed gate. Status chrome routes through
+// StatusPill + the truck domain's tone maps so a truck's state reads identically to the same
+// semantic state on any other surface. Preserves Wave 1's exact information density (id,
+// status, technician/location, Value/Serialized/Parts/Discrepancies, last-reconciled note) —
+// only the chrome moved to the shared primitive.
+import OperationalCard from "../../shared/ui/OperationalCard.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { truckFleetStatusTone, truckDiscrepancyTone } from "../../domain/truckInventoryView";
 
@@ -14,35 +16,30 @@ export default function TruckFleetCard({ truck, onOpen }) {
   const t = truck;
   const status = t.status;
   const discrepancies = t.metrics.discrepancies;
+
   return (
-    <button type="button" className="fo-card fo-card--peer" onClick={onOpen}>
-      <div className="fo-card__head">
-        <b>{t.id}</b>
-        {/* An ungoverned/absent status is "Unavailable" text, never a coloured pill (unknown tone). */}
-        {status == null ? (
-          <StatusPill tone="unknown" asText label="Unavailable" />
-        ) : (
-          <StatusPill tone={truckFleetStatusTone(status)} label={status} />
-        )}
-      </div>
-      <div className="fo-muted">
-        {t.technician || "Unassigned"}
-        {t.location ? ` · ${t.location}` : ""}
-      </div>
-      <dl className="fo-card__metrics">
-        <div><dt className="fo-muted">Value</dt><dd>{dash(t.metrics.inventoryValue)}</dd></div>
-        <div><dt className="fo-muted">Serialized</dt><dd>{dash(t.metrics.serializedCount)}</dd></div>
-        <div><dt className="fo-muted">Parts</dt><dd>{dash(t.metrics.partsCount)}</dd></div>
-        <div>
-          <dt className="fo-muted">Discrepancies</dt>
-          <dd>
-            {discrepancies == null ? "—" : (
-              <StatusPill tone={truckDiscrepancyTone(discrepancies)} label={String(discrepancies)} />
-            )}
-          </dd>
-        </div>
-      </dl>
-      <div className="fo-muted fo-card__foot">Reconciled {dash(t.metrics.lastReconciliation)}</div>
-    </button>
+    <OperationalCard
+      title={t.id}
+      status={
+        status == null
+          ? { tone: "unknown", asText: true, label: "Unavailable" }
+          : { tone: truckFleetStatusTone(status), label: status }
+      }
+      subtitle={`${t.technician || "Unassigned"}${t.location ? ` · ${t.location}` : ""}`}
+      metadata={[
+        { key: "value", label: "Value", value: dash(t.metrics.inventoryValue) },
+        { key: "serialized", label: "Serialized", value: dash(t.metrics.serializedCount) },
+        { key: "parts", label: "Parts", value: dash(t.metrics.partsCount) },
+        {
+          key: "discrepancies",
+          label: "Discrepancies",
+          value: discrepancies == null ? "—" : (
+            <StatusPill tone={truckDiscrepancyTone(discrepancies)} label={String(discrepancies)} />
+          ),
+        },
+      ]}
+      footer={`Reconciled ${dash(t.metrics.lastReconciliation)}`}
+      onSelect={onOpen}
+    />
   );
 }

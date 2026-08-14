@@ -9,10 +9,13 @@ import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
 import { INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -242,10 +245,17 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
-  return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Warehouse Manager" />
+  const context = (
+    <ContextBand
+      items={[
+        { key: "catalog", label: "Catalog", value: catalogRows.length },
+        { key: "needsPlanning", label: "Needs Planning", value: needsPlanningEntries.length },
+      ]}
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Warehouse Manager" context={context}>
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
         Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
@@ -332,11 +342,9 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                             {!health ? (
                               <span className="fo-muted">No ledger activity</span>
                             ) : health.recommendation.urgency ? (
-                              <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
-                                {health.recommendation.urgency}
-                              </span>
+                              <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
                             ) : (
-                              <span className="fo-badge">Needs planning</span>
+                              <StatusPill tone="unknown" label="Needs planning" />
                             )}
                           </td>
                           <td>
@@ -377,6 +385,6 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       {selectedPartId && (
         <PartActivityPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

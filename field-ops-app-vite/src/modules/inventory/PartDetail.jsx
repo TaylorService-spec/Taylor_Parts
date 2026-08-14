@@ -39,6 +39,11 @@ import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search.
@@ -305,9 +310,9 @@ function ReorderRequestReview({ request, onReviewed }) {
             <td>Risk at request time</td>
             <td>
               {request.urgency ? (
-                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
               ) : (
-                <span className="fo-badge">Needs planning</span>
+                <StatusPill tone="unknown" label="Needs planning" />
               )}
             </td>
           </tr>
@@ -411,9 +416,9 @@ function ReorderRequestAssignment({ request, onAssigned }) {
             <td>Urgency</td>
             <td>
               {request.urgency ? (
-                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
               ) : (
-                <span className="fo-badge">Needs planning</span>
+                <StatusPill tone="unknown" label="Needs planning" />
               )}
             </td>
           </tr>
@@ -490,9 +495,9 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
             <td>Urgency</td>
             <td>
               {request.urgency ? (
-                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
               ) : (
-                <span className="fo-badge">Needs planning</span>
+                <StatusPill tone="unknown" label="Needs planning" />
               )}
             </td>
           </tr>
@@ -1029,9 +1034,10 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
           <tr>
             <td>Decision</td>
             <td>
-              <span className={`fo-badge fo-badge-${request.reviewDecision === REORDER_REQUEST_STATUS.APPROVED ? "low" : "critical"}`}>
-                {request.reviewDecision}
-              </span>
+              <StatusPill
+                tone={request.reviewDecision === REORDER_REQUEST_STATUS.APPROVED ? "positive" : "critical"}
+                label={request.reviewDecision}
+              />
             </td>
           </tr>
           <tr>
@@ -1362,14 +1368,21 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
     );
   }
 
-  return (
-    <div className="fo-panel">
-      <Link to="/inventory">← Back to Parts</Link>
-      <h2>{part.name}</h2>
-      <p className="fo-muted">
-        {part.sku} -- {part.category} -- {part.unit}
-      </p>
+  const actions = (
+    <ActionRail start={<Link to="/inventory" className="fo-back-link">&larr; Back to Parts</Link>} />
+  );
+  const context = (
+    <ContextBand
+      items={[
+        { key: "sku", label: "SKU", value: part.sku },
+        { key: "category", label: "Category", value: part.category },
+        { key: "unit", label: "Unit", value: part.unit },
+      ]}
+    />
+  );
 
+  return (
+    <WorkspaceShell title={part.name} actions={actions} context={context} className="fo-part-detail">
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}
@@ -1494,11 +1507,9 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
                 <td>Risk</td>
                 <td>
                   {hasUsageHistory(health.usage) ? (
-                    <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
-                      {health.recommendation.urgency}
-                    </span>
+                    <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
                   ) : (
-                    <span className="fo-badge">Needs planning</span>
+                    <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
               </tr>
@@ -1559,6 +1570,6 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
           </table>
         )}
       </div>
-    </div>
+    </WorkspaceShell>
   );
 }

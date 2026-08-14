@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useInventory } from "../../demo/InventoryContext";
 import { LOW_STOCK_THRESHOLD } from "../../demo/inventoryData";
 import { HERO_IDS } from "../../demo/heroConfig";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Sprint 3.6.2: Inventory screen -- Warehouse stock, Truck stock, and a
 // Warehouse -> Truck transfer control. Visual/demo layer only: all state
@@ -51,11 +53,12 @@ export default function Inventory() {
   }
 
   return (
-    <div className="fo-panel">
-      <h2>Inventory</h2>
-
-      <div className="fo-card">
-        <h3>Warehouse Inventory</h3>
+    <WorkspaceShell title="Inventory">
+      {/* Warehouse Inventory, Truck Inventory, and Transfer are three distinct page REGIONS, not
+          peer objects in a collection -- the card primitive is deliberately not used here (a card
+          is for a bounded peer object; a section is for a fixed page region). Plain sections. */}
+      <section aria-labelledby="inv-warehouse">
+        <h3 id="inv-warehouse">Warehouse Inventory</h3>
         <table className="fo-table">
           <thead>
             <tr>
@@ -74,17 +77,17 @@ export default function Inventory() {
                   <td>{part.unit}</td>
                   <QuantityCell value={qty}>
                     {qty}
-                    {low && <span className="fo-badge fo-badge-low-stock"> Low Stock</span>}
+                    {low && <StatusPill tone="critical" label="Low Stock" />}
                   </QuantityCell>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
+      </section>
 
-      <div className="fo-card fo-card--hero">
-        <h3>
+      <section aria-labelledby="inv-truck">
+        <h3 id="inv-truck">
           Truck Inventory
           <span className="fo-chip fo-chip-hero">{HERO_IDS.truck}</span>
         </h3>
@@ -109,10 +112,10 @@ export default function Inventory() {
             })}
           </tbody>
         </table>
-      </div>
+      </section>
 
-      <div className="fo-card">
-        <h3>Transfer: Warehouse → Truck</h3>
+      <section aria-labelledby="inv-transfer">
+        <h3 id="inv-transfer">Transfer: Warehouse → Truck</h3>
         <form className="fo-form" onSubmit={handleTransfer}>
           <select value={transferPartId} onChange={(e) => setTransferPartId(e.target.value)}>
             {parts.map((part) => (
@@ -129,7 +132,7 @@ export default function Inventory() {
           />
           <button type="submit">Transfer to Truck</button>
         </form>
-      </div>
-    </div>
+      </section>
+    </WorkspaceShell>
   );
 }

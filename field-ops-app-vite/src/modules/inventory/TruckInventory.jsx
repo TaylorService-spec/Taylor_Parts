@@ -227,7 +227,7 @@ export default function TruckInventory({
       ) : rows.length === 0 ? (
         <EmptyState variant="filtered" title="No trucks match" message="No trucks match these filters." />
       ) : (
-        <ul className="fo-card-grid" aria-label="Truck fleet">
+        <ul className="fo-op-card-grid" aria-label="Truck fleet">
           {rows.map((t) => (
             <li key={t.id}>
               <TruckFleetCard truck={t} onOpen={() => { setSelectedId(t.id); setTab("inventory"); }} />
