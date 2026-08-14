@@ -87,6 +87,22 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "warehouse.record.read",
   "warehouse.stockLocation.read",
   "warehouse.transferOrder.read",
+  // Sales/Fulfillment spine -- OPERATIONAL grant (per-environment-capability-
+  // activation-spec Phase 6a, Owner-directed 2026-08-14). Granted directly to
+  // ADMIN + DISPATCHER (both spread this base); OWNER inherits by composition
+  // (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...]). Technician does NOT
+  // hold these. GRANT != ACTIVATION: these ids are registered `active: false`,
+  // so resolveEffectivePermission still DENIES them everywhere the per-
+  // environment activation override is off -- i.e. in production (role-keyed
+  // off) they remain inactivePermission DENY regardless of this grant. They
+  // become exercisable ONLY where activation is on (platform-sandbox). This is
+  // the spec's "grant globally in code, activate per-environment" model.
+  "opportunity.write",
+  "opportunity.read",
+  "opportunity.createSalesOrder",
+  "salesOrder.write",
+  "salesOrder.fulfill",
+  "salesOrder.service",
 ] as const;
 
 // reorder.purchaseOrder.void is double-gated in firestore.rules
@@ -119,6 +135,18 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "admin.userStatus.write",
     "admin.roleAssignment.write",
     "admin.accessRequest.decide",
+    // Sales/Fulfillment/Finance spine -- FINANCE grant (Phase 6a). ADMIN-only
+    // (NOT in the shared base) so DISPATCHER does not hold billing/AR authority;
+    // OWNER inherits these via OWNER_PERMISSIONS composition. Same GRANT !=
+    // ACTIVATION property as the operational spine above: registered
+    // `active: false`, so DENIED in production regardless of this grant, and
+    // exercisable only where the per-environment activation override is on
+    // (platform-sandbox).
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.adjustment.record",
+    "finance.refund.record",
+    "finance.read",
   ],
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
