@@ -816,30 +816,35 @@
       {
         "discriminator": "reportbuilder-array-comparators-have-no-usable-value-input",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P3",
-        "prItem": "E"
+        "prItem": "E",
+        "pr": 944
       },
       {
         "discriminator": "savedreports-disconnected-from-report-builder",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P3",
-        "prItem": "E"
+        "prItem": "E",
+        "pr": 944,
+        "note": "save-as-new + open-to-run wired (#944); true overwrite deferred — needs a server update-definition callable"
       },
       {
         "discriminator": "changestatus-bypasses-deactivate-inventory-guard",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "F"
+        "prItem": "F",
+        "pr": 943
       },
       {
         "discriminator": "truck-driver-no-cross-truck-uniqueness-check",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "F"
+        "prItem": "F",
+        "pr": 943
       },
       {
         "discriminator": "partmasterrepository-drops-wholeunit-equipmentmodelid-on-persist",
