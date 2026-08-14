@@ -294,7 +294,11 @@ export type AuditAction =
   // r3 item G) -- the same deterministic Audit Event id mechanism as the create markers above, so a retried
   // ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
   | "transitionOpportunity"
-  | "transitionSalesOrder";
+  | "transitionSalesOrder"
+  // P1.1 (Sales->Cash fulfillment spine) -- the trusted transitionWorkOrder Complete-action write-back to
+  // the linked Sales Order's `lines[].fulfilledQty`. Traceability only, NOT the idempotency gate (COMPLETED
+  // is structurally once-per-Work-Order via canTransition, see transitionWorkOrder.ts's header comment).
+  | "salesOrderFulfillmentWriteBack";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

@@ -15,16 +15,69 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { createWorkOrderRecord } from "../createWorkOrder";
+import { PARTS_COLLECTION } from "../partMaster/partMasterRepository";
+import type { SalesOrderLineRef, InventorySnapshotItem } from "../types/workOrder";
 
 export const SALES_ORDER_SERVICE_CAPABILITY = "salesOrder.service";
 
-interface SoLine { kind: string; ref: string; orderedQty: number }
+interface SoLine { kind: string; ref: string; orderedQty: number; allocatedQty?: number }
 interface SalesOrderDoc {
   state?: string;
   accountId?: string;
   locationId?: string;
   lines?: SoLine[];
   serviceWorkOrderIds?: string[];
+}
+
+// Mirrors setWorkOrderPartsPlan.ts's ResolvedPart/resolvePart contract (fail-closed identity resolution
+// against Part Master). Kept as a local, narrow shape here rather than importing that module's types, since
+// this seam resolves by the SO line's `ref` (== partId), not a plan-line partId, and never touches an
+// existing inventorySnapshot row (this only ever SEEDS a brand-new Work Order's snapshot).
+export interface ResolvedPart {
+  found: boolean;
+  sku: string | null;
+}
+export type PartResolver = (partId: string) => ResolvedPart;
+
+export class LineRefBuildError extends Error {
+  code: "PART_NOT_FOUND" | "SKU_UNRESOLVED";
+  constructor(code: "PART_NOT_FOUND" | "SKU_UNRESOLVED", message: string) {
+    super(message);
+    this.code = code;
+    this.name = "LineRefBuildError";
+  }
+}
+
+// PURE (Part Master resolution injected, exactly like setWorkOrderPartsPlan.ts's applyPartsPlan) --
+// independently unit-testable without Firestore/a transaction. Builds P1.2's two derived artifacts from an
+// SO's lines: the quantity+kind-bearing `salesOrderLineRefs` (every line) and the seeded `inventorySnapshot`
+// (PART lines only, sku resolved from Part Master). Fail-closed: throws LineRefBuildError on any PART line
+// whose ref does not resolve to a canonical Part / valid internalPartNumber -- never fabricates sku = partId.
+export function buildLineRefsAndInventorySnapshot(
+  soLines: SoLine[],
+  resolvePart: PartResolver
+): { lineRefs: SalesOrderLineRef[]; inventorySnapshot: InventorySnapshotItem[] } {
+  const lineRefs: SalesOrderLineRef[] = [];
+  const inventorySnapshot: InventorySnapshotItem[] = [];
+  for (const l of soLines) {
+    const orderedQty = typeof l.orderedQty === "number" ? l.orderedQty : 0;
+    const allocatedQty = typeof l.allocatedQty === "number" ? l.allocatedQty : 0;
+    lineRefs.push({ ref: l.ref, kind: l.kind, orderedQty, allocatedQty });
+    if (l.kind !== "PART") continue;
+    const resolved = resolvePart(l.ref);
+    if (!resolved.found) {
+      throw new LineRefBuildError("PART_NOT_FOUND", `No canonical Part record for partId "${l.ref}".`);
+    }
+    if (!resolved.sku || resolved.sku.trim().length === 0) {
+      throw new LineRefBuildError("SKU_UNRESOLVED", `Canonical Part "${l.ref}" has no valid internalPartNumber.`);
+    }
+    inventorySnapshot.push({
+      partId: l.ref,
+      sku: resolved.sku,
+      qtyPlanned: allocatedQty || orderedQty,
+    });
+  }
+  return { lineRefs, inventorySnapshot };
 }
 
 export const createServiceForSalesOrder = onCall({ region: "us-central1" }, async (request) => {
@@ -47,6 +100,8 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
   const soRef = db.collection(SALES_ORDERS_COLLECTION).doc(salesOrderId);
   const year = new Date().getFullYear();
 
+  const partsCol = db.collection(PARTS_COLLECTION);
+
   try {
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(soRef);
@@ -62,7 +117,38 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
       if (Array.isArray(so.serviceWorkOrderIds) && so.serviceWorkOrderIds.length > 0) {
         throw new HttpsError("failed-precondition", "Sales Order already has Service Work Order(s).");
       }
-      const lineRefs = (Array.isArray(so.lines) ? so.lines : []).map((l) => l.ref);
+      const soLines = Array.isArray(so.lines) ? so.lines : [];
+
+      // P1.2: resolve PART lines against Part Master (all reads before any write, per Firestore transaction
+      // rule) so the seeded inventorySnapshot carries a REAL canonical sku -- never sku = partId (mirrors
+      // setWorkOrderPartsPlan.ts's fail-closed PART_NOT_FOUND/SKU_UNRESOLVED identity contract). EQUIPMENT_
+      // MODEL/SERVICE lines never touch Part Master.
+      const partRefIds = [...new Set(soLines.filter((l) => l.kind === "PART").map((l) => l.ref))];
+      const partSnaps = await Promise.all(partRefIds.map((id) => tx.get(partsCol.doc(id))));
+      const resolvedParts = new Map<string, ResolvedPart>();
+      partRefIds.forEach((id, i) => {
+        const s = partSnaps[i];
+        if (!s.exists) {
+          resolvedParts.set(id, { found: false, sku: null });
+        } else {
+          const ipn = (s.data() as { internalPartNumber?: unknown }).internalPartNumber;
+          resolvedParts.set(id, { found: true, sku: typeof ipn === "string" && ipn.trim().length > 0 ? ipn.trim() : null });
+        }
+      });
+
+      let lineRefs: SalesOrderLineRef[];
+      let inventorySnapshot: InventorySnapshotItem[];
+      try {
+        ({ lineRefs, inventorySnapshot } = buildLineRefsAndInventorySnapshot(
+          soLines,
+          (partId) => resolvedParts.get(partId) ?? { found: false, sku: null }
+        ));
+      } catch (err) {
+        if (err instanceof LineRefBuildError) {
+          throw new HttpsError("failed-precondition", `${err.code}: ${err.message}`);
+        }
+        throw err;
+      }
 
       const wo = await createWorkOrderRecord(
         db,
@@ -74,6 +160,7 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
           complaint: `Sales Order fulfillment ${salesOrderId}: deliver/install ordered items`,
           salesOrderId,
           salesOrderLineRefs: lineRefs,
+          inventorySnapshot,
         },
         year
       );

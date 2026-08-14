@@ -161,6 +161,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // retried ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
   "transitionOpportunity",
   "transitionSalesOrder",
+  // P1.1 (Sales->Cash fulfillment spine): runtime mirror of the salesOrderFulfillmentWriteBack AuditAction
+  // union member (WO-Complete -> SO fulfilledQty write-back traceability).
+  "salesOrderFulfillmentWriteBack",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
