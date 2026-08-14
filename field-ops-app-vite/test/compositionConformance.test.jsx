@@ -25,12 +25,9 @@ const SRC = join(HERE, "..", "src");
 
 // Files still carrying the retired fo-badge treatment. This list may only ever SHRINK — each wave removes
 // the files it migrates. It must never grow. (Snapshot taken at Wave 1; Truck Inventory already migrated
-// out. Wave 2 removed the accounts cluster.)
+// out. Wave 2 removed the accounts cluster. Wave 3 removed the equipment cluster.)
 const LEGACY_BADGE_ALLOWLIST = new Set([
   "modules/dispatcherBoard/TechnicianBoard.jsx",
-  "modules/equipment/EquipmentDetail.jsx",
-  "modules/equipment/EquipmentRegister.jsx",
-  "modules/equipment/InventoryControlSection.jsx",
   "modules/inventory/Inventory.jsx",
   "modules/inventory/PartDetail.jsx",
   "modules/inventory/PartsList.jsx",
@@ -58,6 +55,8 @@ const CONFORMANT_WORKSPACES = [
   "modules/inventory/TruckInventory.jsx", // Wave 1
   "modules/accounts/AccountsList.jsx", // Wave 2
   "modules/accounts/AccountDetail.jsx", // Wave 2
+  "modules/equipment/EquipmentDetail.jsx", // Wave 3
+  "modules/equipment/EquipmentRegister.jsx", // Wave 3
 ];
 // Non-workspace conformant surfaces (peer-object cards etc.) — status-standardized, but not shell hosts.
 const CONFORMANT_SURFACES = [
@@ -65,6 +64,7 @@ const CONFORMANT_SURFACES = [
   "modules/inventory/TruckFleetCard.jsx",
   "modules/accounts/FinancialSummarySection.jsx", // Wave 2
   "modules/accounts/ServiceActivitySection.jsx", // Wave 2
+  "modules/equipment/InventoryControlSection.jsx", // Wave 3
 ];
 
 function walk(dir) {

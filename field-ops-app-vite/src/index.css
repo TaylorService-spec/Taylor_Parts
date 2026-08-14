@@ -1716,9 +1716,9 @@ button:hover {
 .fo-chip[aria-pressed="true"] { background: var(--color-brand-secondary); color: var(--color-text-inverse); border-color: var(--color-brand-secondary); }
 
 /* Fix the previously-undefined detail layout classes (EquipmentDetail et al. silently degraded to a card
-   stack). A responsive detail grid + a two-column dt/dd list + a header row. */
+   stack). A responsive detail grid + a two-column dt/dd list. fo-detail-header retired Wave 3 -- the
+   identity/status/actions row it laid out moved to WorkspaceShell's own header region. */
 .fo-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
-.fo-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .fo-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
 .fo-detail-list dt { color: var(--color-text-muted); }
 .fo-detail-list dd { margin: 0; color: var(--color-text-primary); }

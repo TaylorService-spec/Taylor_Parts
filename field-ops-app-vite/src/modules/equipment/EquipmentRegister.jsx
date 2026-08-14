@@ -9,10 +9,13 @@ import { createEquipment } from "../../domain/equipmentRepository";
 import { STATUS_FILTERS, statusFilterValue } from "./equipmentStatusFilters";
 import EquipmentCreateModal from "./EquipmentCreateModal";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import { equipmentStatusTone } from "../../domain/equipment";
 
 // Issue #232 unit E5 -- the Equipment register (Spec §7).
 //
@@ -111,9 +114,9 @@ export default function EquipmentRegister() {
     return result;
   }
 
-  return (
-    <section className="fo-workspace fo-equipment-register">
-      <WorkspaceHeader title="Equipment">
+  const actions = (
+    <ActionRail
+      start={
         <label className="fo-field-inline" htmlFor="equipment-account">
           <span>Customer</span>
           <select
@@ -133,12 +136,15 @@ export default function EquipmentRegister() {
             ))}
           </select>
         </label>
-        {/* Creation needs the fixed Account, so the action only exists once one is
-            chosen -- an "Add Equipment" button with no customer would have nothing to
-            add to. */}
-        {accountChosen && (
+      }
+      primary={
+        // Creation needs the fixed Account, so the action only exists once one is
+        // chosen -- an "Add Equipment" button with no customer would have nothing to
+        // add to.
+        accountChosen ? (
           <button
             type="button"
+            className="fo-btn-primary"
             onClick={() => {
               // Clear the live region on OPEN. Duplicate names are legal (§8), so
               // creating "Unit A" twice would set an identical announcement string --
@@ -150,9 +156,13 @@ export default function EquipmentRegister() {
           >
             + New Equipment
           </button>
-        )}
-      </WorkspaceHeader>
+        ) : null
+      }
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Equipment" actions={actions} className="fo-equipment-register">
       {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
@@ -321,12 +331,7 @@ export default function EquipmentRegister() {
                     </td>
                     <td>{locationName(locations, e.locationId, locationsError)}</td>
                     <td>
-                      {/* Namespaced to equipment: `fo-badge-${status}` would collide
-                          with Account's status badges, which are built the same way.
-                          See index.css's equipment lifecycle block. */}
-                      <span className={`fo-badge fo-badge-equipment-${String(e.status ?? "").toLowerCase()}`}>
-                        {statusLabel(e.status)}
-                      </span>
+                      <StatusPill tone={equipmentStatusTone(e.status)} label={statusLabel(e.status)} />
                     </td>
                   </tr>
                 ))}
@@ -336,7 +341,7 @@ export default function EquipmentRegister() {
           )}
         </>
       )}
-    </section>
+    </WorkspaceShell>
   );
 }
 
