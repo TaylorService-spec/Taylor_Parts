@@ -11,11 +11,6 @@ import { workOrderPriorityText } from "../../domain/workOrderPriority";
 // call.
 function ScoreBreakdown({ recommendation }) {
   const { breakdown, reasons } = recommendation;
-  const accountNames = useAccountNames(workOrder?.customerId ? [workOrder.customerId] : []);
-  const customerIdentity = resolveCustomerIdentity(
-    workOrder,
-    (id) => accountNames.get(id) ?? null,
-  );
 
   return (
     <div className="disp-score-breakdown">
@@ -48,6 +43,11 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
   const [expandedTechId, setExpandedTechId] = useState(null);
   const [pickerTechId, setPickerTechId] = useState("");
   const techName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+  const accountNames = useAccountNames(workOrder?.customerId ? [workOrder.customerId] : []);
+  const customerIdentity = resolveCustomerIdentity(
+    workOrder,
+    (id) => accountNames.get(id) ?? null,
+  );
 
   if (!workOrder) {
     return (
