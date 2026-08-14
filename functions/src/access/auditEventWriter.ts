@@ -157,6 +157,10 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Commercial create callables use the same deterministic Audit Event marker for retry replay.
   "createOpportunity",
   "createSalesOrder",
+  // Commercial TRANSITION callables (site-work r3 item G) use the same deterministic Audit Event marker so a
+  // retried ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
+  "transitionOpportunity",
+  "transitionSalesOrder",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

@@ -28,8 +28,11 @@ import { isOutcome, isStage, type TransitionIntent } from "./opportunityLifecycl
 
 export const OPPORTUNITY_WRITE_CAPABILITY = "opportunity.write";
 
-const createAuditId = (actorUid: string, key: string): string =>
-  `createOpportunity_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
+// Shared deterministic Audit Event id builder (same shape as coverageCallables.ts's mkAuditId): a retried
+// call with the same actorUid + idempotencyKey resolves to the SAME Audit Event document id, so the
+// transactional existence check below is the single source of truth for "was this exact call already applied."
+const mkAuditId = (action: string, actorUid: string, key: string): string =>
+  `${action}_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
 
 // Map the pure command's error code onto the right HttpsError. Bad payloads are invalid-argument; governed
 // precondition failures (already closed / illegal transition / outcome gate) are failed-precondition.
@@ -51,7 +54,7 @@ function mapCommandError(err: unknown): HttpsError {
 export async function persistCreatedOpportunity(
   db: Firestore, tx: Transaction, built: BuiltOpportunity, actorUid: string, idempotencyKey?: string,
 ) {
-  const aid = idempotencyKey ? createAuditId(actorUid, idempotencyKey) : null;
+  const aid = idempotencyKey ? mkAuditId("createOpportunity", actorUid, idempotencyKey) : null;
   const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
   if (aid) {
     const prior = await tx.get(auditEventDocRef(aid));
@@ -61,6 +64,39 @@ export async function persistCreatedOpportunity(
   tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createOpportunity", targetType: "opportunity", targetId: ref.id, outcome: "applied", summary: `created opportunity for account ${built.accountId}` });
   return { success: true as const, replayed: false as const, opportunityId: ref.id, stage: built.stage };
+}
+
+// Transactional core of transitionOpportunity, exported so tests can exercise the idempotency invariant
+// directly (below the capability gate — opportunity.write is registered active:false, a hard deny for
+// everyone until a separate Owner grant), exactly the pattern persistCreatedOpportunity already established.
+export async function persistTransitionedOpportunity(
+  db: Firestore, tx: Transaction, ref: FirebaseFirestore.DocumentReference,
+  opportunityId: string, intent: TransitionIntent, actorUid: string, idempotencyKey: string,
+) {
+  const aid = mkAuditId("transitionOpportunity", actorUid, idempotencyKey);
+  const prior = await tx.get(auditEventDocRef(aid));
+  const snap = await tx.get(ref);
+  if (!snap.exists) throw new HttpsError("not-found", `No Opportunity with id ${opportunityId}`);
+  const current = snap.data() as OpportunityDocState;
+  if (prior.exists) {
+    return { success: true as const, replayed: true as const, opportunityId, stage: current.stage, outcome: current.outcome };
+  }
+  const patch = buildTransitionPatch(current, intent, { actorUid, nowMillis: Date.now() });
+  const { updatedAtMillis: _u, closedAtMillis, ...rest } = patch;
+  tx.update(ref, {
+    ...rest,
+    ...(closedAtMillis != null ? { closedAt: FieldValue.serverTimestamp() } : {}),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "transitionOpportunity",
+    targetType: "opportunity",
+    targetId: opportunityId,
+    outcome: "applied",
+    summary: `transitioned opportunity ${opportunityId} to stage ${patch.stage}`,
+  });
+  return { success: true as const, replayed: false as const, opportunityId, stage: patch.stage, outcome: patch.outcome };
 }
 
 async function requireOpportunityWrite(uid: string): Promise<void> {
@@ -105,10 +141,17 @@ interface TransitionOpportunityInput {
   opportunityId: string;
   toStage?: string;
   outcome?: string;
+  idempotencyKey?: string;
 }
 
 // Advance an Opportunity one stage, or set its outcome (WON from DECISION, LOST from any open stage). Legality
 // is enforced by the pure transition authority; illegal transitions fail closed.
+//
+// Idempotency (site-work r3 item G): a retried ADVANCE/OUTCOME call — client timeout retry, double-tap — must
+// never apply twice. Mirrors createOpportunity's guard precisely: a REQUIRED idempotencyKey resolves to a
+// deterministic Audit Event id (mkAuditId), staged atomically with the state mutation in the SAME transaction.
+// A duplicate call finds that Audit Event already exists and returns `replayed:true` with the Opportunity's
+// CURRENT stage/outcome instead of recomputing and reapplying the transition.
 export const transitionOpportunity = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
   await requireOpportunityWrite(request.auth.uid);
@@ -116,6 +159,9 @@ export const transitionOpportunity = onCall({ region: "us-central1" }, async (re
   const data = (request.data ?? {}) as TransitionOpportunityInput;
   if (typeof data.opportunityId !== "string" || data.opportunityId.trim().length === 0) {
     throw new HttpsError("invalid-argument", "opportunityId is required.");
+  }
+  if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
   }
   // Exactly one intent: advance to a stage, OR set an outcome.
   const hasStage = data.toStage !== undefined;
@@ -132,23 +178,13 @@ export const transitionOpportunity = onCall({ region: "us-central1" }, async (re
     intent = { kind: "OUTCOME", outcome: data.outcome };
   }
 
+  const actorUid = request.auth.uid;
   const db = getFirestore();
   const ref = db.collection(OPPORTUNITIES_COLLECTION).doc(data.opportunityId);
   try {
-    const result = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError("not-found", `No Opportunity with id ${data.opportunityId}`);
-      const current = snap.data() as OpportunityDocState;
-      const patch = buildTransitionPatch(current, intent, { actorUid: request.auth!.uid, nowMillis: Date.now() });
-      const { updatedAtMillis: _u, closedAtMillis, ...rest } = patch;
-      tx.update(ref, {
-        ...rest,
-        ...(closedAtMillis != null ? { closedAt: FieldValue.serverTimestamp() } : {}),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return { stage: patch.stage, outcome: patch.outcome };
-    });
-    return { success: true as const, opportunityId: data.opportunityId, ...result };
+    return await db.runTransaction((tx) =>
+      persistTransitionedOpportunity(db, tx, ref, data.opportunityId, intent, actorUid, data.idempotencyKey!),
+    );
   } catch (err) {
     throw mapCommandError(err);
   }
