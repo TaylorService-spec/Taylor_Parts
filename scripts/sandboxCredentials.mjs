@@ -38,6 +38,18 @@ export const SANDBOX_PERSONAS = Object.freeze({
   partsManager: "partsmgr@sandbox.invalid",
   partsAssociate: "partsassoc@sandbox.invalid",
   restricted: "restricted@sandbox.invalid",
+  // Added 2026-08-14 (Owner-directed, sandbox 8 -> 13). accessApprover is a
+  // SECOND governed admin -- the distinct privileged approver that satisfies the
+  // ADR-005 two-person rule (e.g. to later grant the governed `owner` role).
+  // accounting maps to the existing governed accountingManager role. salesperson,
+  // controller, shopServiceManager are Auth shells whose governed roles do NOT
+  // exist yet (F-New-1 of the Sales-to-Cash-to-Commission lifecycle spec) -- their
+  // role assignment is deferred until those roles ship.
+  accessApprover: "accessApprover@sandbox.invalid",
+  accounting: "accounting@sandbox.invalid",
+  salesperson: "salesperson@sandbox.invalid",
+  controller: "controller@sandbox.invalid",
+  shopServiceManager: "shopmgr@sandbox.invalid",
 });
 
 export class CredentialAccessError extends Error {
