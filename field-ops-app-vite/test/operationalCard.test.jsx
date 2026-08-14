@@ -90,7 +90,7 @@ describe("OperationalCard — selectable mode (onSelect)", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("passing BOTH onSelect and actions drops actions rather than nesting a button in a button (dev-error guard)", () => {
+  it("passing BOTH onSelect and actions drops actions rather than nesting a button in a button", () => {
     const { container } = render(
       <OperationalCard
         title="X"
@@ -127,6 +127,23 @@ describe("OperationalCard — static mode (actions)", () => {
     expect(article.tagName).toBe("ARTICLE");
     expect(container.querySelectorAll("button").length).toBe(1); // only the action button, never the card itself
   });
+
+  // A disabled/loading/unavailable card must not leave its own action buttons live: disabled
+  // means nothing on the card should be executable, and loading/unavailable have no confirmed
+  // object to act on in the first place. Actions render ONLY in the "ready" state.
+  it.each(["disabled", "loading", "unavailable"])("state=%s suppresses actions entirely", (state) => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <OperationalCard
+        title="Part 9001"
+        state={state}
+        actions={<button type="button" onClick={onClick}>Reorder</button>}
+      />
+    );
+    expect(container.querySelector(".fo-op-card__actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reorder" })).toBeNull();
+    expect(container.querySelectorAll("button").length).toBe(0); // no action button present to click at all
+  });
 });
 
 describe("OperationalCard — loading / unavailable states", () => {
@@ -155,6 +172,36 @@ describe("OperationalCard — density", () => {
 
     const { container: staticContainer } = render(<OperationalCard title="X" density="compact" />);
     expect(staticContainer.querySelector("article.fo-op-card").getAttribute("data-density")).toBe("compact");
+  });
+});
+
+describe("OperationalCard — root-prop passthrough", () => {
+  it("selectable (button) mode forwards unrecognized props (e.g. a test-hook data attribute) to the root button", () => {
+    const { container } = render(
+      <OperationalCard title="Air Handler 2" onSelect={() => {}} data-equipment-status="ACTIVE" aria-label="Open Air Handler 2" />
+    );
+    const btn = container.querySelector("button.fo-op-card");
+    expect(btn.getAttribute("data-equipment-status")).toBe("ACTIVE");
+    expect(btn.getAttribute("aria-label")).toBe("Open Air Handler 2");
+  });
+
+  it("static (article) mode forwards unrecognized props to the root article", () => {
+    const { container } = render(
+      <OperationalCard title="Part 9001" data-equipment-status="ACTIVE" aria-label="Part 9001 card" />
+    );
+    const article = container.querySelector("article.fo-op-card");
+    expect(article.getAttribute("data-equipment-status")).toBe("ACTIVE");
+    expect(article.getAttribute("aria-label")).toBe("Part 9001 card");
+  });
+
+  it("passthrough cannot override the component's own controlled attributes (className/disabled/aria-busy)", () => {
+    const { container } = render(
+      <OperationalCard title="X" onSelect={() => {}} state="disabled" className="caller-class" disabled={false} aria-busy="false" />
+    );
+    const btn = container.querySelector("button.fo-op-card");
+    expect(btn.className).toContain("fo-op-card--disabled"); // component-controlled class survives alongside caller-class
+    expect(btn.className).toContain("caller-class");
+    expect(btn.disabled).toBe(true); // component's own disabled state wins, not the caller's stray override
   });
 });
 

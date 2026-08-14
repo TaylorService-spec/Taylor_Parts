@@ -13,13 +13,16 @@ import StatusPill from "./StatusPill.jsx";
 //                element without violating HTML nesting rules and screen-reader semantics.
 //   actions   -> the card is a plain, non-interactive <article>; the supplied actions (their own
 //                <button>/<a> elements) render in a footer row OUTSIDE any interactive wrapper.
-// Passing both is a caller error (dev-time warning); onSelect wins and actions are dropped,
-// so production never silently ships nested interactive elements either way.
+// Passing both is a caller error; onSelect wins and actions are dropped structurally, so
+// production never silently ships nested interactive elements either way.
 //
 // state: "ready" (default) | "loading" | "unavailable" | "disabled" — loading/unavailable
 // replace the body with an honest placeholder rather than rendering stale or fabricated
 // content; disabled keeps the content visible but suppresses the interaction (aria-disabled,
-// no click) rather than hiding a card the operator otherwise expects to see.
+// no click) rather than hiding a card the operator otherwise expects to see. `actions` render
+// ONLY in the "ready" state -- a loading/unavailable card has no confirmed object to act on,
+// and a disabled card's whole point is that no action should be executable, so its own
+// action buttons must not stay live either.
 //
 // density: "comfortable" (default) | "compact" | "field" | "warehouse" — a data-attribute the
 // CSS keys off, matching WorkspaceShell's own density convention (shared/ui/WorkspaceShell.jsx)
@@ -43,15 +46,18 @@ export default function OperationalCard({
   loadingMessage = "Loading…",
   className = "",
   children,
+  ...rest
 }) {
   const resolvedState = STATES.has(state) ? state : "ready";
   const selectable = typeof onSelect === "function";
-  // Selectable mode owns the whole card as one interactive element -- actions would nest a
-  // second interactive element inside it, so they are dropped rather than silently rendered.
-  const resolvedActions = selectable ? null : actions;
   const disabled = resolvedState === "disabled";
   const isLoading = resolvedState === "loading";
   const isUnavailable = resolvedState === "unavailable";
+  // Selectable mode owns the whole card as one interactive element -- actions would nest a
+  // second interactive element inside it, so they are dropped rather than silently rendered.
+  // Non-ready states drop actions too: loading/unavailable have no confirmed object to act on,
+  // and disabled means nothing on the card -- including its own actions -- should be executable.
+  const resolvedActions = selectable || resolvedState !== "ready" ? null : actions;
 
   const classes = [
     "fo-op-card",
@@ -109,6 +115,7 @@ export default function OperationalCard({
     return (
       <div className="fo-op-card-wrap">
         <button
+          {...rest}
           type="button"
           className={classes}
           data-density={density}
@@ -125,6 +132,7 @@ export default function OperationalCard({
 
   return (
     <article
+      {...rest}
       className={classes}
       data-density={density}
       aria-disabled={disabled || undefined}
