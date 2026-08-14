@@ -170,4 +170,17 @@ await check("idempotencyKey replay -> replayed:true, no second Sales Order creat
   assert.equal(soSnap.size, 1);
 });
 
+await check("the same idempotency key is scoped to its Opportunity", async () => {
+  const key = `shared-${Date.now()}`;
+  const firstOpp = `opp-scope-a-${Date.now()}`;
+  const secondOpp = `opp-scope-b-${Date.now()}`;
+  await seedOpportunity(firstOpp);
+  await seedOpportunity(secondOpp);
+  const first = await runCore({ opportunityId: firstOpp, ownerEmployeeId: "emp-1", salesChannel: "RETAIL", idempotencyKey: key });
+  const second = await runCore({ opportunityId: secondOpp, ownerEmployeeId: "emp-1", salesChannel: "RETAIL", idempotencyKey: key });
+  assert.equal(first.replayed, false);
+  assert.equal(second.replayed, false);
+  assert.notEqual(first.salesOrderId, second.salesOrderId);
+});
+
 console.log(`\n${passed} createSalesOrderFromOpportunity callable checks passed`);

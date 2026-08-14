@@ -28,8 +28,8 @@ export const OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY = "opportunity.createSale
 // Shared deterministic Audit Event id builder (same shape as salesOrderCallables.ts's mkAuditId), but keyed by
 // its OWN action string ("createSalesOrderFromOpportunity") so a replay key collides only with a prior call
 // through THIS action, never with the direct createSalesOrder callable's own idempotency space.
-const mkAuditId = (actorUid: string, key: string): string =>
-  `createSalesOrderFromOpportunity_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
+const mkAuditId = (actorUid: string, opportunityId: string, key: string): string =>
+  `createSalesOrderFromOpportunity_${createHash("sha256").update(`${actorUid}|${opportunityId}|${key}`).digest("hex").slice(0, 40)}`;
 
 function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
@@ -103,7 +103,7 @@ export async function persistSalesOrderFromOpportunity(
 
   // Idempotency check FIRST (read-phase): a replayed call must never re-derive/re-validate against a
   // possibly-since-changed Opportunity — it returns the prior outcome untouched.
-  const aid = mkAuditId(actorUid, input.idempotencyKey);
+  const aid = mkAuditId(actorUid, opportunityId, input.idempotencyKey);
   const priorAuditSnap = await tx.get(auditEventDocRef(aid));
   if (priorAuditSnap.exists) {
     return {
