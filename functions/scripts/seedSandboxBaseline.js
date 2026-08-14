@@ -156,7 +156,7 @@ async function main() {
 
   for (const p of PARTS) {
     await upsert(db, "parts", p.id, {
-      partId: p.id, sku: p.id, name: p.name, category: p.category, unitOfMeasure: p.unit,
+      partId: p.id, sku: p.id, internalPartNumber: p.id, name: p.name, category: p.category, unitOfMeasure: p.unit,
       partTrackingMode: "QUANTITY", status: "ACTIVE",
       createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
     });

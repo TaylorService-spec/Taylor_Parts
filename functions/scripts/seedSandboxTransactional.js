@@ -274,7 +274,7 @@ async function main() {
   ];
   for (const s of stock) {
     await set("stock_locations", `${s.wh}__${s.part}`, {
-      warehouseId: s.wh, partId: s.part, quantityOnHand: s.qty,
+      warehouseId: s.wh, partId: s.part, quantityOnHand: s.qty, quantity: s.qty,
       scenarioId: SCENARIO_ID, note: s.note, updatedAt: now, updatedBy: by,
     });
   }
