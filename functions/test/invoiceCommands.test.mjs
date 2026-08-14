@@ -11,8 +11,8 @@ const base = () => ({
   dueDate: 1_702_000_000_000, billingAction: "BILL_NOW",
   taxProvenance: "test-engine",
   lines: [
-    { kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, discountMinor: 2000, taxMinor: 4785 }, // 60000-2000=58000; +4785
-    { kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 }, // 10000; +825
+    { salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, discountMinor: 2000, taxMinor: 4785 },
+    { salesOrderLineId: "line-2", kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
   ],
 });
 
@@ -69,16 +69,16 @@ const soBase = () => ({
   currency: "USD",
   state: "IN_FULFILLMENT",
   lines: [
-    { kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
-    { kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+    { lineId: "line-1", kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
+    { lineId: "line-2", kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
   ],
 });
 const invoiceInput = () => ({
   companyId: "taylor", accountId: "ACCT-1", salesOrderId: "SO-1", currency: "USD",
   dueDate: 1_702_000_000_000, billingAction: "BILL_NOW",
   lines: [
-    { kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
-    { kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
+    { salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
+    { salesOrderLineId: "line-2", kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
   ],
 });
 
@@ -104,7 +104,7 @@ test("SO not billing-eligible (nothing fulfilled yet) rejects issuance (NOT_BILL
 });
 
 test("invoice line with no matching SO line ref is rejected (SALES_ORDER_LINE_NOT_FOUND)", () => {
-  const input = { ...invoiceInput(), lines: [{ kind: "PART", ref: "L-GHOST", billableQty: 1, unitPriceMinor: 100, taxMinor: 0 }] };
+  const input = { ...invoiceInput(), lines: [{ salesOrderLineId: "ghost", kind: "PART", ref: "L-GHOST", billableQty: 1, unitPriceMinor: 100, taxMinor: 0 }] };
   assert.throws(() => verifySalesOrderMatch(input, soBase()), (e) => e.code === "SALES_ORDER_LINE_NOT_FOUND");
 });
 
@@ -121,28 +121,28 @@ test("billableQty exceeding the billing-eligible qty (min(orderedQty, fulfilledQ
 
 test("partially fulfilled SO still allows billing up to the eligible qty (PARTIALLY_ELIGIBLE is billable, matches then passes)", () => {
   const so = { ...soBase(), lines: soBase().lines.map((l) => (l.ref === "L1" ? { ...l, fulfilledQty: 3 } : l)) };
-  const input = { ...invoiceInput(), lines: [{ kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 }, { kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 0 }] };
+  const input = { ...invoiceInput(), lines: [{ salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 }, { salesOrderLineId: "line-2", kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 0 }] };
   assert.doesNotThrow(() => verifySalesOrderMatch(input, so));
 });
 
 test("SO line with no committed unitPrice fails closed (UNPRICED) — no re-pricing basis", () => {
-  const so = { ...soBase(), lines: soBase().lines.map((l) => (l.ref === "L1" ? { kind: "PART", ref: "L1", orderedQty: 5, fulfilledQty: 5 } : l)) };
+  const so = { ...soBase(), lines: soBase().lines.map((l) => (l.ref === "L1" ? { lineId: "line-1", kind: "PART", ref: "L1", orderedQty: 5, fulfilledQty: 5 } : l)) };
   assert.throws(() => verifySalesOrderMatch(invoiceInput(), so), (e) => e.code === "UNPRICED");
 });
 
 test("same ref across kinds matches the requested kind, never a bare ref", () => {
   const so = { ...soBase(), lines: [
-    { kind: "PART", ref: "SHARED", unitPrice: 100, orderedQty: 1, fulfilledQty: 1 },
-    { kind: "SERVICE", ref: "SHARED", unitPrice: 200, orderedQty: 1, fulfilledQty: 1 },
+    { lineId: "part-shared", kind: "PART", ref: "SHARED", unitPrice: 100, orderedQty: 1, fulfilledQty: 1 },
+    { lineId: "service-shared", kind: "SERVICE", ref: "SHARED", unitPrice: 200, orderedQty: 1, fulfilledQty: 1 },
   ] };
-  const input = { ...invoiceInput(), lines: [{ kind: "SERVICE", ref: "SHARED", billableQty: 1, unitPriceMinor: 200, taxMinor: 0 }] };
+  const input = { ...invoiceInput(), lines: [{ salesOrderLineId: "service-shared", kind: "SERVICE", ref: "SHARED", billableQty: 1, unitPriceMinor: 200, taxMinor: 0 }] };
   assert.doesNotThrow(() => verifySalesOrderMatch(input, so));
 });
 
 test("duplicate input lines accumulate against remaining billing eligibility", () => {
   const input = { ...invoiceInput(), lines: [
-    { kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 },
-    { kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 },
+    { salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 },
+    { salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 3, unitPriceMinor: 12000, taxMinor: 0 },
   ] };
   assert.throws(() => verifySalesOrderMatch(input, soBase()), (e) => e.code === "QTY_EXCEEDS_ELIGIBLE");
 });
@@ -150,4 +150,13 @@ test("duplicate input lines accumulate against remaining billing eligibility", (
 test("already billed quantity is unavailable to a later invoice", () => {
   const so = { ...soBase(), lines: soBase().lines.map((line) => line.ref === "L1" ? { ...line, billedQty: 5 } : line) };
   assert.throws(() => verifySalesOrderMatch(invoiceInput(), so), (e) => e.code === "QTY_EXCEEDS_ELIGIBLE");
+});
+
+test("duplicate sibling kind/ref lines bill only their exact line identity", () => {
+  const so = { ...soBase(), lines: [
+    { lineId: "line-a", kind: "PART", ref: "DUP", unitPrice: 100, orderedQty: 2, fulfilledQty: 2, billedQty: 0 },
+    { lineId: "line-b", kind: "PART", ref: "DUP", unitPrice: 200, orderedQty: 2, fulfilledQty: 2, billedQty: 0 },
+  ] };
+  const input = { ...invoiceInput(), lines: [{ salesOrderLineId: "line-b", kind: "PART", ref: "DUP", billableQty: 2, unitPriceMinor: 200, taxMinor: 0 }] };
+  assert.doesNotThrow(() => verifySalesOrderMatch(input, so));
 });

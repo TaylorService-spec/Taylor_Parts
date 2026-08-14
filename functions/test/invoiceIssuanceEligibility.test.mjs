@@ -27,8 +27,8 @@ async function seedSalesOrder(overrides = {}) {
     currency: "USD",
     state: "IN_FULFILLMENT",
     lines: [
-      { kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
-      { kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+      { lineId: "line-1", kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
+      { lineId: "line-2", kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
     ],
     ...overrides,
   });
@@ -44,8 +44,8 @@ const baseData = (salesOrderId) => ({
   dueDate: 1_800_000_000_000,
   billingAction: "BILL_NOW",
   lines: [
-    { kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
-    { kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
+    { salesOrderLineId: "line-1", kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
+    { salesOrderLineId: "line-2", kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
   ],
 });
 
@@ -80,8 +80,8 @@ test("client unitPriceMinor that does not match the SO's committed unit price sn
 
 test("billableQty exceeding the billing-eligible qty (fulfilledQty) is rejected", async () => {
   const soId = await seedSalesOrder({ lines: [
-    { kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 2 }, // only 2 of 5 fulfilled
-    { kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+    { lineId: "line-1", kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 2 },
+    { lineId: "line-2", kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
   ] });
   const data = baseData(soId); // claims billableQty 5 for L1, but only 2 are eligible
   await assertRejects(
@@ -145,4 +145,16 @@ test("a different idempotency key cannot bill quantity already recorded on the S
   );
   const invoices = await db.collection("invoices").where("salesOrderId", "==", soId).get();
   assert.equal(invoices.size, 1, "a distinct idempotency key cannot produce a duplicate invoice");
+});
+
+test("issuance increments only the selected duplicate sibling line", async () => {
+  const soId = await seedSalesOrder({ lines: [
+    { lineId: "line-a", kind: "PART", ref: "DUP", unitPrice: 100, orderedQty: 2, fulfilledQty: 2 },
+    { lineId: "line-b", kind: "PART", ref: "DUP", unitPrice: 200, orderedQty: 2, fulfilledQty: 2 },
+  ] });
+  const data = { ...baseData(soId), lines: [{ salesOrderLineId: "line-b", kind: "PART", ref: "DUP", billableQty: 2, unitPriceMinor: 200, taxMinor: 0 }] };
+  await db.runTransaction((tx) => persistIssuedInvoice(db, tx, data, id("actor")));
+  const stored = (await db.collection("sales_orders").doc(soId).get()).data();
+  assert.equal(stored.lines.find((line) => line.lineId === "line-a").billedQty, undefined);
+  assert.equal(stored.lines.find((line) => line.lineId === "line-b").billedQty, 2);
 });

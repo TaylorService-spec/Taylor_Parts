@@ -63,6 +63,7 @@ const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.i
 const posInt = (v: unknown): v is number => finiteNum(v) && v > 0 && Number.isInteger(v);
 
 interface BuiltLine {
+  lineId: string;
   kind: SalesOrderLineKind;
   ref: string;
   orderedQty: number;
@@ -92,6 +93,7 @@ function validateLine(line: unknown, index: number): BuiltLine {
     throw new SalesOrderCommandError("LINE_INVALID", `Line ${index} unitPrice must be a number when present`);
   }
   const out: BuiltLine = {
+    lineId: `line-${index + 1}`,
     kind: l.kind as SalesOrderLineKind,
     ref: (l.ref as string).trim(),
     orderedQty: l.orderedQty as number,
