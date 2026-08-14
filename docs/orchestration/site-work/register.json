@@ -912,5 +912,33 @@
         "proposal": "docs/orchestration/site-work/round4-special-track-proposals.md"
       }
     ]
+  },
+  "lifecycleAudit": {
+    "note": "End-to-end sale->delivery lifecycle audit (2026-08-13). Runway-integrity map, NOT dispatched — Owner deciding sequencing against roadmap. Future site-work scouts MUST also dedup against these discriminators. Full detail: docs/orchestration/site-work/lifecycle-audit.md",
+    "capstone": [
+      "salesorder-fulfilledqty-never-written"
+    ],
+    "liveDefect": [
+      "consumeparts-ignores-field-recorded-qtyused"
+    ],
+    "latentSeamDefects": [
+      "won-to-so-no-referential-integrity",
+      "duplicate-so-per-won-opportunity",
+      "opportunity-missing-salesorder-backlink",
+      "issueinvoice-unverified-so-pricing-and-qty",
+      "allocatesalesorder-duplicate-ref-lines-double-allocate",
+      "setworkorderpartsplan-no-lifecycle-status-guard"
+    ],
+    "secondary": [
+      "dispatch-tech-status-filter-inconsistent-across-surfaces"
+    ],
+    "knownSeams": [
+      "opportunity-won-no-salesorder-handoff",
+      "so-service-handoff-drops-allocation-and-qty",
+      "scheduled-status-has-no-reschedule-transition",
+      "completion-to-billing-eligibility-unwired",
+      "wo-completion-equipment-custody-not-wired"
+    ],
+    "status": "DELIVERED_AWAITING_OWNER_SEQUENCING"
   }
 }
