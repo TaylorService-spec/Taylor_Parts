@@ -752,58 +752,66 @@
       {
         "discriminator": "reportexecution-contains-filter-broken-for-list-fields",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "B"
+        "prItem": "B",
+        "pr": 939
       },
       {
         "discriminator": "reportresultstate-truncation-masked-by-partially-authorized-kind",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "B"
+        "prItem": "B",
+        "pr": 939
       },
       {
         "discriminator": "partdetail-request-reorder-permanently-blocked-after-terminal",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "C"
+        "prItem": "C",
+        "pr": 940
       },
       {
         "discriminator": "usereorderrequestforpart-swallows-error-as-not-found",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "C"
+        "prItem": "C",
+        "pr": 940
       },
       {
         "discriminator": "partdetail-reorder-actions-bypass-safe-copy-error-convention",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "C"
+        "prItem": "C",
+        "pr": 940
       },
       {
         "discriminator": "appshell-drawer-not-closed-on-non-navlink-navigation",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P1",
-        "prItem": "D"
+        "prItem": "D",
+        "pr": 937
       },
       {
         "discriminator": "apprail-active-item-scrollintoview-misses-in-domain-navigation",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "D"
+        "prItem": "D",
+        "pr": 937
       },
       {
         "discriminator": "findactiveservicegroupkey-built-tested-never-wired",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "D"
+        "prItem": "D",
+        "pr": 937
       },
       {
         "discriminator": "reportbuilder-array-comparators-have-no-usable-value-input",
@@ -836,30 +844,34 @@
       {
         "discriminator": "partmasterrepository-drops-wholeunit-equipmentmodelid-on-persist",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "H"
+        "prItem": "H",
+        "pr": 936
       },
       {
         "discriminator": "createpurchaseorder-no-lineitem-validation",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "I"
+        "prItem": "I",
+        "pr": 935
       },
       {
         "discriminator": "allocatemoney-negative-amount-remainder-never-distributed",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "J"
+        "prItem": "J",
+        "pr": 934
       },
       {
         "discriminator": "importcompatibilitysource-unbounded-evidence-read-in-write-transaction",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "K"
+        "prItem": "K",
+        "pr": 941
       }
     ],
     "deferred": [
@@ -868,14 +880,16 @@
         "status": "DEFERRED",
         "track": "owner-decision",
         "decision": "OptionA-gate-approved; B1 roadmapped",
-        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md"
+        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md",
+        "optionAGate": "MERGED #942 (default-false all envs; disabled-not-hidden); production effect pending Hosting deploy"
       },
       {
         "discriminator": "truck-delete-created-in-error-permanently-fails-unknown-references",
         "status": "DEFERRED",
         "track": "owner-decision",
         "decision": "OptionA-gate-approved; B2 roadmapped (reconsider physical-delete vs ENTERED_IN_ERROR)",
-        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md"
+        "roadmap": "docs/roadmaps/truck-lifecycle-readiness.md",
+        "optionAGate": "MERGED #942 (default-false all envs; disabled-not-hidden); production effect pending Hosting deploy"
       },
       {
         "discriminator": "locations-write-rule-has-no-shape-or-accountid-immutability-validation",
