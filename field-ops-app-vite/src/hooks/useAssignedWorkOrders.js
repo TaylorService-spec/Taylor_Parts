@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { subscribeAssignedWorkOrders } from "../services/workOrderService";
+import { loadErrorMessage } from "../domain/loadErrorMessage";
+
+const ENTITY = "work orders";
 
 // PT-002 -- Assigned Work Order Query Layer. Separate from
 // useWorkOrders() (which stays unmodified for dispatcher/admin
@@ -32,8 +35,14 @@ export function useAssignedWorkOrders(technicianId) {
         setData(workOrders);
         setLoading(false);
       },
+      // site-work r3 L: previously passed the raw Firestore onSnapshot error
+      // object straight into state, which TechnicianDashboard and FieldMode
+      // rendered via error.message -- leaking internal codes/paths. Wrap it
+      // through loadErrorMessage, the same safe-copy helper this hook's read
+      // siblings (useCurrentTechnician.js, useContactsForAccount.js) use, so
+      // `error` is already a safe string and consumers can render it directly.
       (err) => {
-        setError(err);
+        setError(loadErrorMessage(err, { entity: ENTITY }));
         setLoading(false);
       }
     );

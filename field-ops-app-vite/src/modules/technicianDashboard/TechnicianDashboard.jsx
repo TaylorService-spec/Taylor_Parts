@@ -146,7 +146,7 @@ export default function TechnicianDashboard() {
     return (
       <div className="fo-panel">
         <h2>My Work Orders</h2>
-        <p className="fo-muted">Couldn't load your Work Orders: {error.message}</p>
+        <p className="fo-muted">Couldn't load your Work Orders: {error}</p>
       </div>
     );
   }
