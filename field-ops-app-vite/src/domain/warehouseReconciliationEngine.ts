@@ -1,12 +1,18 @@
 // Client mirror of functions/src/warehouseReconciliationService.ts's
 // pure reconciliation logic (Epic 4) -- same mirror pattern as
 // inventoryAnalyticsEngine.ts. functions/src/warehouseReconciliationService.ts
-// is authoritative.
+// is authoritative; if the two drift, that file wins.
 //
-// Same known limitation as the server file: inventory_transactions has
-// no warehouseId, so expectedQuantity is a global figure compared
-// against one warehouse's actual bin-level total -- exact for a single
-// warehouse, a real simplification for multi-warehouse.
+// Known limitation (same as the server file): inventory_transactions
+// (LedgerTransaction, see inventoryAnalyticsEngine.ts) has no
+// warehouseId -- it's warehouse-agnostic by design (Epic 2D). So a
+// caller building LedgerConsumptionEntry values from the live ledger
+// today cannot supply warehouseId. Rather than compare a global
+// consumption figure against one warehouse's bin-level total --
+// manufacturing spurious HIGH/CRITICAL discrepancies the moment a
+// deployment has more than one warehouse -- this fails closed (see
+// the guard in detectStockDiscrepancies below): no discrepancies
+// reported, never a wrong one.
 
 export interface StockLocation {
   id: string;
@@ -30,14 +36,7 @@ export interface WarehouseDiscrepancy {
 export interface LedgerConsumptionEntry {
   partId: string;
   quantity: number;
-}
-
-function sumQuantityByPart(entries: Array<{ partId: string; quantity: number }>): Map<string, number> {
-  const totals = new Map<string, number>();
-  for (const entry of entries) {
-    totals.set(entry.partId, (totals.get(entry.partId) ?? 0) + entry.quantity);
-  }
-  return totals;
+  warehouseId?: string;
 }
 
 function classifySeverity(expectedQuantity: number, variance: number): DiscrepancySeverity {
@@ -56,7 +55,15 @@ export function detectStockDiscrepancies(params: {
   ledgerConsumption: LedgerConsumptionEntry[];
 }): WarehouseDiscrepancy[] {
   const { warehouseStock, ledgerConsumption } = params;
-  const consumedByPart = sumQuantityByPart(ledgerConsumption);
+  // A global ledger entry cannot truthfully be compared to one warehouse.
+  // Fail closed until the producer supplies warehouse attribution instead of
+  // manufacturing HIGH/CRITICAL discrepancies from incompatible scopes.
+  if (warehouseStock.some((s) => s.warehouseId) && ledgerConsumption.some((e) => !e.warehouseId)) return [];
+  const consumedByWarehouseAndPart = new Map<string, number>();
+  for (const entry of ledgerConsumption) {
+    const key = `${entry.warehouseId ?? ""}__${entry.partId}`;
+    consumedByWarehouseAndPart.set(key, (consumedByWarehouseAndPart.get(key) ?? 0) + entry.quantity);
+  }
 
   const actualByWarehouseAndPart = new Map<string, number>();
   for (const loc of warehouseStock) {
@@ -67,7 +74,7 @@ export function detectStockDiscrepancies(params: {
   const discrepancies: WarehouseDiscrepancy[] = [];
   for (const [key, actualQuantity] of actualByWarehouseAndPart) {
     const [warehouseId, partId] = key.split("__");
-    const expectedQuantity = consumedByPart.get(partId) ?? 0;
+    const expectedQuantity = consumedByWarehouseAndPart.get(`${warehouseId}__${partId}`) ?? 0;
     const variance = actualQuantity - expectedQuantity;
     if (variance === 0) continue;
 
