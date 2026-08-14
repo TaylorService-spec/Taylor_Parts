@@ -26,7 +26,8 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { PARTS_COLLECTION } from "../partMaster/partMasterRepository";
-import type { WorkOrder, InventorySnapshotItem } from "../types/workOrder";
+import { TERMINAL_STATUSES } from "../transitionEngine";
+import type { WorkOrder, InventorySnapshotItem, WorkOrderStatus } from "../types/workOrder";
 
 export const PLAN_CAPABILITY = "workOrder.parts.plan";
 
@@ -58,7 +59,8 @@ export type PartsPlanErrorCode =
   | "SKU_UNRESOLVED"
   | "SKU_CONFLICT"
   | "IDENTITY_AMBIGUOUS"
-  | "USED_PART_REMOVAL";
+  | "USED_PART_REMOVAL"
+  | "TERMINAL_WORK_ORDER";
 
 export class PartsPlanError extends Error {
   code: PartsPlanErrorCode;
@@ -71,6 +73,21 @@ export class PartsPlanError extends Error {
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 const isPositiveInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
+
+// Terminal-status guard (P0.2). A COMPLETED/CLOSED/CANCELLED Work Order is final: there is no
+// reservation/consumption effect left to reconcile a rewritten plan against, so silently accepting one would
+// misrepresent a finished/dead job. Uses the SAME canonical TERMINAL_STATUSES set as
+// updateWorkOrderExecutionData.ts / transitionEngine.ts -- never a locally re-derived list. PURE: takes only
+// the status, so it stays testable without the callable/transaction runtime (same rationale as the rest of
+// this file's PartsPlanError core).
+export function assertPlannable(status: WorkOrderStatus | undefined): void {
+  if (status && TERMINAL_STATUSES.has(status)) {
+    throw new PartsPlanError(
+      "TERMINAL_WORK_ORDER",
+      `Cannot change the parts plan on a terminal Work Order (status: ${status}).`,
+    );
+  }
+}
 
 // Validate + normalize the business intent. PURE. Throws PartsPlanError("INVALID") — never a partial plan.
 // Note: a client-supplied `sku` is deliberately NOT accepted — sku is resolved canonically from Part Master.
@@ -216,6 +233,7 @@ export const setWorkOrderPartsPlan = onCall({ region: "us-central1" }, async (re
       });
 
       const wo = woSnap.data() as WorkOrder;
+      assertPlannable(wo.status);
       const nextSnapshot = applyPartsPlan(wo.inventorySnapshot, input.plan, (id) => resolved.get(id) ?? { found: false, sku: null });
 
       // ONLY inventorySnapshot + a planning timestamp. Never status, assignment, reservation, or usage.

@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   validatePartsPlan,
   applyPartsPlan,
+  assertPlannable,
   PartsPlanError,
 } from "../lib/workOrderPartsPlan/setWorkOrderPartsPlan.js";
 
@@ -133,6 +134,25 @@ check("PLAN != RESERVE != USE: only qtyPlanned/identity written; qtyUsed untouch
   assert.equal(next[0].qtyUsed, 1); // untouched
   assert.equal(next[0].notes, "keep"); // unrelated fields preserved
   assert.equal("reserved" in next[0], false); // nothing reservation-like fabricated
+});
+
+// (P0.2) terminal-status guard: a COMPLETED/CLOSED/CANCELLED Work Order must reject a parts-plan write --
+// there is no reservation/consumption effect left to reconcile a rewritten plan against, so a finished/dead
+// job must not be silently misrepresented. Uses the SAME canonical TERMINAL_STATUSES set as
+// updateWorkOrderExecutionData.ts (transitionEngine.ts), never a locally re-derived list.
+check("assertPlannable: rejects every terminal status (COMPLETED, CLOSED, CANCELLED)", () => {
+  for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
+    assert.throws(
+      () => assertPlannable(status),
+      (e) => e instanceof PartsPlanError && e.code === "TERMINAL_WORK_ORDER"
+    );
+  }
+});
+
+check("assertPlannable: active statuses (and no status yet) still succeed -- writes keep working exactly as today", () => {
+  for (const status of ["CREATED", "READY_TO_DISPATCH", "SCHEDULED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS", undefined]) {
+    assertPlannable(status); // must not throw
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
