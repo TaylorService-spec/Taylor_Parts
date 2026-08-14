@@ -158,14 +158,19 @@ export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
 // direct `/inventory/:partId` visit (bookmark, typed URL) has always
 // used and must keep using.
 //
-// `error` is a new field on the returned state, always `null` on the
-// no-requestId path (existing callers that don't destructure it are
-// unaffected). Two values on the requestId path: `"not_found"` (the
-// document doesn't exist) and `"mismatch"` (it exists, but its own
-// partId disagrees with the partId this hook was called with) -- this
-// hook deliberately does NOT fall back to the most-recent query on
-// either failure; a caller with an explicit-but-wrong id should see a
-// clear failure, not a silently different document.
+// `error` is a new field on the returned state. On the requestId path:
+// `"not_found"` (the document doesn't exist), `"mismatch"` (it exists, but
+// its own partId disagrees with the partId this hook was called with), or
+// a real Firestore SDK error code (e.g. `"permission-denied"`,
+// `"unavailable"`) when the read itself fails -- this hook deliberately
+// does NOT fall back to the most-recent query on any of these; a caller
+// with an explicit-but-wrong id, or a denied/failed read, should see a
+// clear failure, not a silently different document or a false empty state.
+// On the no-requestId path, `error` is `null` unless the read itself fails,
+// in which case it carries the same real Firestore SDK error code (Site-work
+// r4 C, Fix 2 -- previously always `null`, silently indistinguishable from
+// "no request exists yet"). Existing callers that don't destructure `error`
+// are unaffected either way.
 export function useReorderRequestForPart(partId, requestId) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
 
@@ -188,7 +193,13 @@ export function useReorderRequestForPart(partId, requestId) {
           }
           setState({ data, loading: false, error: null });
         },
-        () => setState({ data: null, loading: false, error: "not_found" })
+        // Site-work r4 C, Fix 2: preserve the real read error (mirrors
+        // useReorderRequestById/useReorderRequestsByStatus above) instead of
+        // discarding it into "not_found" -- a denied/failed read is not the same
+        // fact as "this document does not exist", and a caller (PartDetail.jsx)
+        // needs to tell them apart. "not_found" now only ever comes from the
+        // snap.exists() check above, never from this error callback.
+        (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
       );
 
       return unsubscribe;
@@ -201,7 +212,11 @@ export function useReorderRequestForPart(partId, requestId) {
         const forPart = toDocs(snap).sort((a, b) => b.createdAt - a.createdAt);
         setState({ data: forPart[0] ?? null, loading: false, error: null });
       },
-      () => setState({ data: null, loading: false, error: null })
+      // Site-work r4 C, Fix 2: preserve the real read error instead of discarding
+      // it to null -- a failed read on the no-requestId (most-recent-for-part)
+      // path used to render identically to "no request exists yet", hiding a
+      // denied/unavailable read from the caller.
+      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
     );
 
     return unsubscribe;
