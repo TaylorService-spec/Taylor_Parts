@@ -36,7 +36,17 @@ function previewAssignment(roleId) {
 // Curried factory: bind the real resolveEffectivePermission + COMPATIBILITY_ROLES
 // once at each call site (App.jsx/AppHeader.jsx), producing a previewHasPermission(
 // permissionId, role, { fallback }) function with no further imports to thread through.
-export function createPermissionPreviewer(resolveEffectivePermission, roles) {
+//
+// `activationOverrides` (spec 2026-08-14): the OPTIONAL build-time set of spine
+// capability ids this environment activates despite catalog active:false. Passed
+// straight into the resolver so the UI preview matches what the backend will
+// authorize in this environment. Omitted / [] => today's behavior (spine stays
+// preview-hidden), and it is [] in every production build by construction.
+export function createPermissionPreviewer(resolveEffectivePermission, roles, activationOverrides) {
+  const overrideSet =
+    activationOverrides instanceof Set
+      ? activationOverrides
+      : new Set(Array.isArray(activationOverrides) ? activationOverrides : []);
   return function previewHasPermission(permissionId, role, { fallback = false } = {}) {
     if (!roles[role]) return fallback;
     try {
@@ -46,6 +56,7 @@ export function createPermissionPreviewer(resolveEffectivePermission, roles) {
         roles,
         currentAccessVersion: 1,
         target: GLOBAL_TARGET,
+        activationOverrides: overrideSet,
       });
       return result.decision === "ALLOW";
     } catch {

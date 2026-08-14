@@ -37,6 +37,47 @@ export const READINESS_KEYS = Object.freeze([
   'TRUSTED_COMPLETION_ENABLED',
 ]);
 
+// Per-environment capability activation (per-environment-capability-activation-
+// spec.md, Owner-directed 2026-08-14). The 11 sales/fulfillment/finance spine
+// capability ids eligible for per-environment activation. Mirrors
+// functions/src/access/environmentCapabilityOverrides.ts's
+// SPINE_OVERRIDE_ELIGIBLE_IDS exactly (parity asserted by
+// environmentArchitecture.test.mjs). Hardcoded allow-list: bounds what ANY
+// environment can activate, so registry data can only ever be a subset.
+export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
+  'opportunity.write',
+  'opportunity.read',
+  'opportunity.createSalesOrder',
+  'salesOrder.write',
+  'salesOrder.fulfill',
+  'salesOrder.service',
+  'finance.invoice.issue',
+  'finance.payment.apply',
+  'finance.adjustment.record',
+  'finance.read',
+  'finance.refund.record',
+]);
+
+/**
+ * The spine capability ids `env` activates despite their catalog active:false.
+ * PURE mirror of environmentCapabilityOverrides.ts's resolveCapabilityOverrides,
+ * keyed the same way — this is what the frontend build bakes into the bundle.
+ *
+ * Fail-closed:
+ *  - role === "production"  -> [] unconditionally (role-keyed; ignores data)
+ *  - otherwise              -> declared overrides ∩ the eligible allow-list
+ * A production build therefore CANNOT carry a non-empty set even if the registry
+ * were mis-edited, and an absent key is simply [].
+ */
+export function resolveCapabilityActivationOverrides(env) {
+  if (!env || env.role === 'production') return [];
+  const declared = Array.isArray(env.capabilityActivationOverrides)
+    ? env.capabilityActivationOverrides
+    : [];
+  const eligible = new Set(SPINE_OVERRIDE_ELIGIBLE_IDS);
+  return declared.filter((id) => typeof id === 'string' && eligible.has(id));
+}
+
 /** Every environment id the registry knows. This is the allow-list. */
 export function knownEnvironmentIds(registry) {
   return (registry?.environments ?? []).map((e) => e.id);
@@ -124,6 +165,10 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
     status: env.status,
     firebase: env.firebase ? { ...env.firebase } : null,
     readiness: { ...readiness },
+    // Build-time projection of the per-environment activation override set
+    // (spec 2026-08-14). Always an array (never absent) so the consumer has a
+    // definite value; [] for production and for any env that declares none.
+    capabilityActivationOverrides: resolveCapabilityActivationOverrides(env),
   };
 }
 

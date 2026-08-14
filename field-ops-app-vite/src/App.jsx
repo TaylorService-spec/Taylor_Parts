@@ -52,11 +52,16 @@ import { ROLE_NAV_ACCESS, ROLES } from "./domain/constants";
 import { createPermissionPreviewer } from "./access/navPermissionPreview";
 import { resolveEffectivePermission } from "./access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
+import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "./config/capabilityActivationOverrides";
 import { useReportCapabilities } from "./access/useReportCapabilities";
 import ReportBuilder from "./modules/reporting/ReportBuilder";
 import SavedReports from "./modules/reporting/SavedReports";
 
-const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
+const previewHasPermission = createPermissionPreviewer(
+  resolveEffectivePermission,
+  COMPATIBILITY_ROLES,
+  CAPABILITY_ACTIVATION_OVERRIDE_SET,
+);
 // Issue #325 -- the Report Builder nav item is capability-gated (navConfig.js: `capabilityAccess`)
 // and resolved by the TRUSTED effective-access feed (useReportCapabilities, in App() below), never
 // from the raw `role`. A raw role must never confer a governed capability (the W1 correction);

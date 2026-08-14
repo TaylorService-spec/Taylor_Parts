@@ -525,6 +525,93 @@ check("D-226: no compatibility Role (admin/dispatcher/technician) is granted any
   }
 });
 
+// ---------------------------------------------------------------------------
+// Per-environment capability activation override (spec 2026-08-14). These lock
+// the resolver-layer contract: the OPTIONAL activationOverrides set lifts ONLY
+// the blanket active:false deny, and NEVER substitutes for a qualifying grant.
+// ---------------------------------------------------------------------------
+
+// A synthetic active:false capability + a role that grants it, so these tests do
+// not depend on which real spine ids happen to be active:false (they all are).
+const INACTIVE_ID = "spine.synthetic.inactive";
+function rolesGranting(id) {
+  return { syntheticSpine: { id: "syntheticSpine", permissions: [id] } };
+}
+// Force findPermission to see INACTIVE_ID as registered+inactive by using a real
+// catalog id that is active:false. opportunity.write is registered active:false.
+const REAL_INACTIVE_ID = "opportunity.write";
+
+check("override ABSENT: a registered active:false capability still denies inactivePermission", () => {
+  const result = resolveEffectivePermission({
+    permissionId: REAL_INACTIVE_ID,
+    assignments: [activeAssignment("syntheticSpine")],
+    roles: { syntheticSpine: { id: "syntheticSpine", permissions: [REAL_INACTIVE_ID] } },
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    // activationOverrides omitted -> strict no-op (today's behavior)
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("override PRESENT but NO qualifying grant: denies noQualifyingGrant, NOT allow", () => {
+  const result = resolveEffectivePermission({
+    permissionId: REAL_INACTIVE_ID,
+    assignments: [], // override lifts active gate, but there is no grant
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    activationOverrides: new Set([REAL_INACTIVE_ID]),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(
+    result.reason,
+    "noQualifyingGrant",
+    "activation alone must never grant -- a qualifying Role is still required",
+  );
+});
+
+check("override PRESENT AND a qualifying grant: ALLOW (activation + authorization both satisfied)", () => {
+  const result = resolveEffectivePermission({
+    permissionId: REAL_INACTIVE_ID,
+    assignments: [activeAssignment("syntheticSpine")],
+    roles: { syntheticSpine: { id: "syntheticSpine", permissions: [REAL_INACTIVE_ID] } },
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    activationOverrides: new Set([REAL_INACTIVE_ID]),
+  });
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.reason, "qualifyingGrant");
+});
+
+check("override for a DIFFERENT id does not lift THIS id's active:false deny", () => {
+  const result = resolveEffectivePermission({
+    permissionId: REAL_INACTIVE_ID,
+    assignments: [activeAssignment("syntheticSpine")],
+    roles: { syntheticSpine: { id: "syntheticSpine", permissions: [REAL_INACTIVE_ID] } },
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    activationOverrides: new Set(["salesOrder.fulfill"]), // not REAL_INACTIVE_ID
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("override never rescues an UNKNOWN permission id", () => {
+  const result = resolveEffectivePermission({
+    permissionId: "totally.unregistered.id",
+    assignments: [activeAssignment("syntheticSpine")],
+    roles: rolesGranting("totally.unregistered.id"),
+    currentAccessVersion: 1,
+    target: baseTarget(),
+    activationOverrides: new Set(["totally.unregistered.id"]),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "unknownPermission");
+});
+
+void INACTIVE_ID;
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);

@@ -6,8 +6,13 @@ import NotificationPanel from "./NotificationPanel";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
+import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 
-const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
+const previewHasPermission = createPermissionPreviewer(
+  resolveEffectivePermission,
+  COMPATIBILITY_ROLES,
+  CAPABILITY_ACTIVATION_OVERRIDE_SET,
+);
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Notification
 // Panel is admin/dispatcher only (same role scope as Inventory today) --

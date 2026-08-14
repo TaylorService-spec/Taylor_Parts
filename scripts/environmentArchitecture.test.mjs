@@ -24,6 +24,8 @@ import {
   EnvironmentResolutionError,
   REQUIRED_FIREBASE_KEYS,
   READINESS_KEYS,
+  SPINE_OVERRIDE_ELIGIBLE_IDS,
+  resolveCapabilityActivationOverrides,
 } from './resolveEnvironment.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -214,4 +216,73 @@ test('INVARIANT: the known-project allow-list is exactly the provisioned project
   // allow-list must never grow silently; each addition is a real project that
   // was really created.
   assert.deepEqual(knownProjectIds(registry).sort(), ['eos-platform-sandbox', 'taylor-parts']);
+});
+
+// ------------------------------ per-environment capability activation (spec 2026-08-14)
+
+test('INVARIANT: NO production-role environment may declare capabilityActivationOverrides', () => {
+  // Hard-block #1 (data). Production must NEVER be activatable via this path;
+  // absence of the key (not an empty array) is the contract.
+  for (const e of registry.environments) {
+    if (e.role === 'production') {
+      assert.ok(
+        !('capabilityActivationOverrides' in e),
+        `production environment '${e.id}' must not carry capabilityActivationOverrides`,
+      );
+    }
+  }
+});
+
+test('INVARIANT: every declared activation override is a spine-eligible id (no unrelated active:false sweep-in)', () => {
+  const eligible = new Set(SPINE_OVERRIDE_ELIGIBLE_IDS);
+  for (const e of registry.environments) {
+    if (!('capabilityActivationOverrides' in e)) continue;
+    assert.ok(Array.isArray(e.capabilityActivationOverrides), `${e.id} overrides must be an array`);
+    for (const id of e.capabilityActivationOverrides) {
+      assert.ok(eligible.has(id), `${e.id} declares non-eligible activation override '${id}'`);
+    }
+  }
+});
+
+test('INVARIANT: platform-sandbox activates exactly the 11 spine capabilities', () => {
+  const sandbox = registry.environments.find((e) => e.id === 'platform-sandbox');
+  assert.deepEqual(
+    [...sandbox.capabilityActivationOverrides].sort(),
+    [...SPINE_OVERRIDE_ELIGIBLE_IDS].sort(),
+  );
+});
+
+test('INVARIANT: the resolved projection is role-keyed — production resolves to [] even if data is poisoned', () => {
+  // Hard-block #2 (code). Mirrors environmentCapabilityOverrides.ts: role wins
+  // over registry data, so a mis-edit cannot leak activation into production.
+  const poisonedProd = { role: 'production', capabilityActivationOverrides: [...SPINE_OVERRIDE_ELIGIBLE_IDS] };
+  assert.deepEqual(resolveCapabilityActivationOverrides(poisonedProd), []);
+  // And the real production entry projects [].
+  const resolvedProd = resolveEnvironment(registry, 'taylor-parts-production');
+  assert.deepEqual(resolvedProd.capabilityActivationOverrides, []);
+});
+
+test('INVARIANT: resolveCapabilityActivationOverrides intersects with the eligible allow-list', () => {
+  const sneaky = { role: 'sandbox', capabilityActivationOverrides: ['opportunity.write', 'admin.credentialReset.initiate'] };
+  assert.deepEqual(resolveCapabilityActivationOverrides(sneaky), ['opportunity.write']);
+});
+
+test('INVARIANT: the sandbox build bakes in the full spine override set', () => {
+  const resolvedSandbox = resolveEnvironment(registry, 'platform-sandbox');
+  assert.deepEqual(
+    [...resolvedSandbox.capabilityActivationOverrides].sort(),
+    [...SPINE_OVERRIDE_ELIGIBLE_IDS].sort(),
+  );
+});
+
+test('INVARIANT: the frontend eligible allow-list matches the backend resolver mirror (no drift)', () => {
+  // Source-based parity: the two hardcoded eligible lists (scripts/resolveEnvironment.mjs
+  // and functions/src/access/environmentCapabilityOverrides.ts) must agree.
+  const backendSrc = readCode('functions/src/access/environmentCapabilityOverrides.ts');
+  const backendIds = new Set(
+    [...backendSrc.matchAll(/"([a-zA-Z]+(?:\.[a-zA-Z]+)+)"/g)].map((m) => m[1]),
+  );
+  for (const id of SPINE_OVERRIDE_ELIGIBLE_IDS) {
+    assert.ok(backendIds.has(id), `backend mirror is missing eligible id '${id}'`);
+  }
 });

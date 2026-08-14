@@ -37,8 +37,9 @@ import type { Firestore } from "firebase-admin/firestore";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "./governedBusinessRoles";
 import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
+import { resolveRuntimeCapabilityOverrides } from "./environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "./compactClaims";
-import type { Role } from "../types/access";
+import type { PermissionId, Role } from "../types/access";
 
 export class InvalidInputError extends Error {}
 export class MalformedAccessDataError extends Error {}
@@ -89,6 +90,13 @@ export interface ResolveEffectiveAccessOptions {
   // production behavior can be altered through this option (it does
   // not exist on the callable's own request contract at all).
   roles?: Readonly<Record<string, Role>>;
+  // Injectable for tests ONLY -- the per-environment capability activation
+  // override set (per-environment-capability-activation-spec). Omitted =>
+  // resolved from the deployed project's trusted GCLOUD_PROJECT identity via
+  // resolveRuntimeCapabilityOverrides(), which returns EMPTY for production
+  // and for any unknown project. Not on the callable's request contract:
+  // a client can neither supply nor influence it.
+  activationOverrides?: ReadonlySet<PermissionId>;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -161,6 +169,11 @@ export async function resolveEffectiveAccess(
 
   const db = options.db ?? getFirestore();
   const roles = options.roles ?? allRoles();
+  // Per-environment activation override for this deployed project. Resolved
+  // from the runtime's own trusted project identity (never the client's).
+  // EMPTY in production and for any unknown project -> the active:false spine
+  // capabilities stay hard-denied exactly as today.
+  const activationOverrides = options.activationOverrides ?? resolveRuntimeCapabilityOverrides();
 
   const [userSnap, assignmentsSnap] = await Promise.all([
     db.collection(USERS_COLLECTION).doc(input.principalUid).get(),
@@ -198,6 +211,7 @@ export async function resolveEffectiveAccess(
         roles,
         currentAccessVersion: accessVersion,
         target,
+        activationOverrides,
       }).decision === "ALLOW";
   }
 
