@@ -9,6 +9,7 @@
 // verification) are INJECTED from the governed sources; this projection never fabricates them.
 
 import type { CoordinatedVisit } from "./coordinatedVisit";
+import type { SalesOrderLineRef } from "../types/workOrder";
 
 export type UnitReadiness = "READY" | "ATTENTION" | "UNKNOWN";
 export type MissionReadiness = "READY" | "ATTENTION" | "PARTIAL" | "UNKNOWN";
@@ -24,7 +25,7 @@ export interface MissionUnit {
   workOrderId: string;
   woNumber: string | null;
   status: string | null;
-  lineRefs: string[];
+  lineRefs: SalesOrderLineRef[];
   partsReadiness: "READY" | "ATTENTION" | "UNKNOWN";
   loadVerified: boolean | null; // null = not yet determined (UNKNOWN), distinct from false (verified-missing)
   unitReadiness: UnitReadiness;

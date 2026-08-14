@@ -8,6 +8,8 @@
 // and never asserts sales ownership. Per-unit accountability = one Work Order per row; one coordinated visit =
 // this group; partial completion is honest (never a fake whole-visit COMPLETE/INCOMPLETE).
 
+import type { SalesOrderLineRef } from "../types/workOrder";
+
 export interface WorkOrderLike {
   id: string;
   woNumber?: string;
@@ -15,7 +17,7 @@ export interface WorkOrderLike {
   customerId?: string;
   locationId?: string;
   salesOrderId?: string;
-  salesOrderLineRefs?: string[];
+  salesOrderLineRefs?: SalesOrderLineRef[];
 }
 
 // Work Order statuses that count as "done" for the coordinated-visit rollup. Kept small + explicit; unknown
@@ -35,7 +37,7 @@ export interface CoordinatedVisit {
   completed: number;
   blocked: number;
   readiness: VisitReadiness;
-  workOrders: Array<{ id: string; woNumber: string | null; status: string | null; lineRefs: string[] }>;
+  workOrders: Array<{ id: string; woNumber: string | null; status: string | null; lineRefs: SalesOrderLineRef[] }>;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
