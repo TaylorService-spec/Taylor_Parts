@@ -242,10 +242,34 @@ const STATE_TRIGGERS: Partial<Record<WorkOrderStatus, (workOrderId: string) => P
   CANCELLED: releaseParts,
 };
 
-async function isStateProcessed(workOrderId: string, state: WorkOrderStatus): Promise<boolean> {
-  const snap = await db().collection(INVENTORY_SYNC_STATUS_COLLECTION).doc(workOrderId).get();
-  const status = snap.data() as InventorySyncStatus | undefined;
-  return status?.processedStates?.[state] === true;
+// Atomically claims (workOrderId, state) for processing so a state can
+// only ever be claimed by one in-flight caller at a time. Mirrors the
+// reservationLockRef pattern above: the claim is read and (conditionally)
+// written in the same transaction, so a second concurrent call racing the
+// first is forced by Firestore to retry its transaction and re-observe
+// the first call's write -- it then correctly sees processedStates[state]
+// or claims[state] already set and returns false without ever invoking
+// the underlying trigger. This is what closes the check-then-act gap
+// a plain "read processedStates, later write processedStates" guard
+// would otherwise have.
+async function claimStateForProcessing(workOrderId: string, state: WorkOrderStatus): Promise<boolean> {
+  const ref = db().collection(INVENTORY_SYNC_STATUS_COLLECTION).doc(workOrderId);
+  return db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const status = snap.data() as InventorySyncStatus | undefined;
+    if (status?.processedStates?.[state] === true) return false;
+    if (status?.claims?.[state] === true) return false;
+    tx.set(ref, { workOrderId, claims: { [state]: true } }, { merge: true });
+    return true;
+  });
+}
+
+// Releases a claim without marking the state processed -- used when the
+// trigger fails, so a later retry (a fresh claimStateForProcessing() call)
+// is able to claim the state again.
+async function clearClaim(workOrderId: string, state: WorkOrderStatus): Promise<void> {
+  const ref = db().collection(INVENTORY_SYNC_STATUS_COLLECTION).doc(workOrderId);
+  await ref.set({ workOrderId, claims: { [state]: FieldValue.delete() } }, { merge: true });
 }
 
 async function markStateProcessed(workOrderId: string, state: WorkOrderStatus): Promise<void> {
@@ -258,6 +282,9 @@ async function markStateProcessed(workOrderId: string, state: WorkOrderStatus): 
       // Firestore's merge:true keeps sibling fields (other states'
       // failures) untouched, only this state's failure key is removed.
       failures: { [state]: FieldValue.delete() },
+      // The claim served its purpose (serializing concurrent attempts);
+      // once processed, processedStates[state] alone is authoritative.
+      claims: { [state]: FieldValue.delete() },
     },
     { merge: true }
   );
@@ -284,22 +311,35 @@ async function recordFailure(workOrderId: string, state: WorkOrderStatus, error:
 // epic's failure model, section 10).
 //
 // Retrying is simply calling this function again for the same
-// (workOrderId, state) -- isStateProcessed() will correctly see it
-// hasn't succeeded yet (recordFailure() never marks it processed) and
+// (workOrderId, state) -- claimStateForProcessing() will correctly see
+// it hasn't succeeded yet (recordFailure() never marks it processed,
+// and a failed attempt's own clearClaim() releases the claim) and
 // re-attempt the trigger. No cron/background system exists or is
 // needed for this (per section 11's "No continuous background system
 // required") -- a future manual/admin retry action would just call
 // this same function.
+//
+// The processed-state guard is claimed atomically via
+// claimStateForProcessing() (a transactional create-if-absent against
+// inventory_sync_status, same pattern as reservationLockRef elsewhere in
+// this file) rather than a plain isStateProcessed() read followed by a
+// separate markStateProcessed() write. Two concurrent calls for the same
+// (workOrderId, state) -- e.g. a live transition-driven call racing an
+// operator retry tool -- can no longer both observe "unprocessed" and
+// both run the underlying trigger: only one claims it, the loser returns
+// immediately without touching the ledger.
 export async function triggerInventoryEffects(workOrderId: string, newState: WorkOrderStatus): Promise<void> {
   const trigger = STATE_TRIGGERS[newState];
   if (!trigger) return;
 
-  if (await isStateProcessed(workOrderId, newState)) return;
+  const claimed = await claimStateForProcessing(workOrderId, newState);
+  if (!claimed) return;
 
   try {
     await trigger(workOrderId);
     await markStateProcessed(workOrderId, newState);
   } catch (err) {
     await recordFailure(workOrderId, newState, err);
+    await clearClaim(workOrderId, newState);
   }
 }

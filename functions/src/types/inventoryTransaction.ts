@@ -32,5 +32,14 @@ export interface InventorySyncStatus {
   // regardless -- this is purely "something needs manual/future
   // attention," not a rollback signal.
   failures: Partial<Record<string, { error: string; at: Timestamp; retryNeeded: true }>>;
+  // Present only while a trigger for that state is actively running.
+  // Claimed transactionally by claimStateForProcessing() before the
+  // trigger runs, and cleared afterward (by markStateProcessed() on
+  // success or by clearClaim() on failure) -- see triggerInventoryEffects()
+  // in inventoryService.ts. This is what makes the processed-state guard
+  // atomic: a second concurrent call for the same (workOrderId, state)
+  // fails to claim (its transaction observes the claim already set) and
+  // never re-runs the trigger.
+  claims?: Partial<Record<string, true>>;
   finalized?: true;
 }
