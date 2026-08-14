@@ -20,7 +20,7 @@ import admin from "firebase-admin";
 
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
-const { issueInvoice, FINANCE_INVOICE_ISSUE_CAPABILITY } = await import("../lib/finance/invoiceCallables.js");
+const { issueInvoice, persistIssuedInvoice, FINANCE_INVOICE_ISSUE_CAPABILITY } = await import("../lib/finance/invoiceCallables.js");
 
 let passed = 0, failed = 0;
 async function check(name, fn) {

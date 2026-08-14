@@ -10,13 +10,19 @@
 // firestore.rules denies ALL direct client access to `invoices`, so this trusted command is the only write
 // path. EXPORT != DEPLOY, REGISTER != GRANT, MERGE != ACTIVATION.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
-import { INVOICES_COLLECTION } from "../constants/collections";
+import { INVOICES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { stageAuditEventWithId, auditEventDocRef } from "../access/auditEventWriter";
 import { allocateInvoiceNumber } from "./invoiceNumbering";
-import { buildInvoiceRecord, InvoiceCommandError, type IssueInvoiceInput } from "./invoiceCommands";
+import {
+  buildInvoiceRecord,
+  verifySalesOrderMatch,
+  InvoiceCommandError,
+  type IssueInvoiceInput,
+  type SalesOrderSnapshot,
+} from "./invoiceCommands";
 
 export const FINANCE_INVOICE_ISSUE_CAPABILITY = "finance.invoice.issue";
 
@@ -53,6 +59,44 @@ interface IssueInvoiceRequest extends IssueInvoiceInput {
   idempotencyKey: string;
 }
 
+// Transactional core of issueInvoice, exported so tests can exercise the SO cross-check + idempotency
+// invariant directly (below the capability gate — finance.invoice.issue is registered active:false, a hard
+// deny for everyone until a separate Owner grant), exactly the pattern persistTransitionedSalesOrder already
+// established in salesOrderCallables.ts. Reads the GOVERNED Sales Order inside the transaction — the client's
+// own claims (unitPrice, qty, accountId, currency) are never trusted; they are cross-checked against this
+// snapshot via verifySalesOrderMatch before amounts are recomputed.
+export async function persistIssuedInvoice(db: Firestore, tx: Transaction, data: IssueInvoiceRequest, actorUid: string) {
+  const aid = auditId(actorUid, data.salesOrderId, data.idempotencyKey);
+  // Idempotency / replay: a prior audit event at this id means this exact issuance already applied.
+  const prior = await tx.get(auditEventDocRef(aid));
+  if (prior.exists) {
+    const d = prior.data() ?? {};
+    // Replay: the invoice was already issued for this idempotency key — return its canonical id, do not
+    // re-issue or burn a new sequence number.
+    return { success: true as const, replayed: true as const, invoiceId: (d.targetId as string) ?? null };
+  }
+  const soSnap = await tx.get(db.collection(SALES_ORDERS_COLLECTION).doc(data.salesOrderId));
+  if (!soSnap.exists) {
+    throw new HttpsError("failed-precondition", `No Sales Order with id ${data.salesOrderId}`);
+  }
+  verifySalesOrderMatch(data, soSnap.data() as SalesOrderSnapshot);
+
+  // Allocate the per-company number INSIDE the transaction (concurrency-safe; never reused).
+  const allocated = await allocateInvoiceNumber(tx, data.companyId);
+  const record = buildInvoiceRecord(data, { invoiceNumber: allocated.invoiceNumber, sequence: allocated.sequence, nowMillis: Date.now() });
+  const invoiceRef = db.collection(INVOICES_COLLECTION).doc(); // canonical opaque identity, distinct from the number
+  tx.set(invoiceRef, { ...record, issuedAt: FieldValue.serverTimestamp() });
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "issueInvoice",
+    targetType: "invoice",
+    targetId: invoiceRef.id,
+    outcome: "applied",
+    summary: `issued invoice ${record.invoiceNumber} for salesOrder ${record.salesOrderId} total=${record.totalMinor} ${record.currency}`,
+  });
+  return { success: true as const, replayed: false as const, invoiceId: invoiceRef.id, invoiceNumber: record.invoiceNumber, totalMinor: record.totalMinor };
+}
+
 // Issue an invoice for a Sales Order's billable lines. The server RE-COMPUTES authoritative amounts (integer
 // minor units) from the committed unit-price snapshot + injected tax determination and fails closed on any
 // gap; the client never supplies the invoice number, the total, or the tax authority.
@@ -68,34 +112,10 @@ export const issueInvoice = onCall({ region: "us-central1" }, async (request) =>
     throw new HttpsError("invalid-argument", "salesOrderId is required.");
   }
   const actorUid = request.auth.uid;
-  const aid = auditId(actorUid, data.salesOrderId, data.idempotencyKey);
   const db = getFirestore();
 
   try {
-    return await db.runTransaction(async (tx) => {
-      // Idempotency / replay: a prior audit event at this id means this exact issuance already applied.
-      const prior = await tx.get(auditEventDocRef(aid));
-      if (prior.exists) {
-        const d = prior.data() ?? {};
-        // Replay: the invoice was already issued for this idempotency key — return its canonical id, do not
-        // re-issue or burn a new sequence number.
-        return { success: true as const, replayed: true as const, invoiceId: (d.targetId as string) ?? null };
-      }
-      // Allocate the per-company number INSIDE the transaction (concurrency-safe; never reused).
-      const allocated = await allocateInvoiceNumber(tx, data.companyId);
-      const record = buildInvoiceRecord(data, { invoiceNumber: allocated.invoiceNumber, sequence: allocated.sequence, nowMillis: Date.now() });
-      const invoiceRef = db.collection(INVOICES_COLLECTION).doc(); // canonical opaque identity, distinct from the number
-      tx.set(invoiceRef, { ...record, issuedAt: FieldValue.serverTimestamp() });
-      stageAuditEventWithId(tx, aid, {
-        actorUid,
-        action: "issueInvoice",
-        targetType: "invoice",
-        targetId: invoiceRef.id,
-        outcome: "applied",
-        summary: `issued invoice ${record.invoiceNumber} for salesOrder ${record.salesOrderId} total=${record.totalMinor} ${record.currency}`,
-      });
-      return { success: true as const, replayed: false as const, invoiceId: invoiceRef.id, invoiceNumber: record.invoiceNumber, totalMinor: record.totalMinor };
-    });
+    return await db.runTransaction((tx) => persistIssuedInvoice(db, tx, data, actorUid));
   } catch (err) {
     throw mapCommandError(err);
   }
