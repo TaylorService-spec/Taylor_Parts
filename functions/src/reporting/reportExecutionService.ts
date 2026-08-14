@@ -592,7 +592,17 @@ function matchesFilter(doc: Record<string, unknown>, objectId: string, flt: { fi
     case "gte": return typeof raw === "number" && typeof flt.value === "number" && raw >= flt.value;
     case "lt": return typeof raw === "number" && typeof flt.value === "number" && raw < flt.value;
     case "lte": return typeof raw === "number" && typeof flt.value === "number" && raw <= flt.value;
-    case "contains": return typeof raw === "string" && typeof flt.value === "string" && raw.includes(flt.value);
+    case "contains":
+      // List-typed fields (e.g. tags, relationshipTypes) store `raw` as an
+      // array (reportQueryModel.ts's FILTER_COMPARATORS_BY_TYPE.list
+      // legitimately allows "contains" alongside "containsAny" -- the
+      // validator has always accepted this combination). Mirror the
+      // sibling "containsAny" case's Array.isArray(raw) handling so a
+      // list field's "contains" filter actually matches instead of
+      // silently dropping every row (raw is never a string for a list
+      // field, so the string branch below could never have matched it).
+      if (Array.isArray(raw)) return typeof flt.value === "string" && (raw as unknown[]).includes(flt.value);
+      return typeof raw === "string" && typeof flt.value === "string" && raw.includes(flt.value);
     case "startsWith": return typeof raw === "string" && typeof flt.value === "string" && raw.startsWith(flt.value);
     case "in": return Array.isArray(flt.value) && flt.value.includes(raw);
     case "before": return toComparableDate(raw) !== null && toComparableDate(flt.value) !== null && (toComparableDate(raw) as number) < (toComparableDate(flt.value) as number);

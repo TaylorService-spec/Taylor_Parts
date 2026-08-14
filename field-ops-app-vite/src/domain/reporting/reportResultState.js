@@ -42,6 +42,23 @@ export function describeRunOutcome(outcome) {
       if (preds > 0) {
         notes.push(`${preds} filter${preds === 1 ? "" : "s"} you can't view ${preds === 1 ? "was" : "were"} not applied, so this result is wider than the saved report.`);
       }
+      // A run's outcome.kind picks ONE headline reason (Spec §12 -- the
+      // service resolves "partially-authorized" ahead of "truncated-
+      // widened" when both are true), but truncated/rowCap/widened
+      // travel through on every outcome regardless of kind, so this
+      // branch must read them too -- otherwise a run that is BOTH
+      // partially-authorized AND truncated silently drops the
+      // truncation signal (the reader would believe every row of the
+      // narrowed result set is present, when it was also cut off).
+      if (outcome.widened && !(preds > 0)) {
+        notes.push("Some filters weren't applied, so this result is wider than the saved report.");
+      }
+      if (outcome.truncated) {
+        const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
+        notes.push(cap
+          ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
+          : "This result was cut off and isn't complete.");
+      }
       if (notes.length === 0) notes.push("Some parts of this report weren't available to you and were left out.");
       return d("partially-authorized", "warning", "status", "Showing what you can view", null, notes);
     }

@@ -296,6 +296,41 @@ async function main() {
     assert.deepEqual(outcome.rows, []);
   });
 
+  // --- 'contains' on a list-typed field (e.g. tags) ---
+  // Bug: matchesFilter()'s "contains" case only ever checked
+  // `typeof raw === "string"`, so it was permanently dead for list-typed
+  // fields (tags/relationshipTypes) where `raw` is an array -- even
+  // though reportQueryModel.ts's FILTER_COMPARATORS_BY_TYPE.list has
+  // always declared "contains" a legal operator for list fields
+  // alongside "containsAny". Fixed to mirror "containsAny"'s
+  // Array.isArray(raw) handling.
+  await check("'contains' on a list-typed field (customer.tags) matches an array that includes the value", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    await seedCustomers([
+      { name: `${marker}-Has Tag`, status: "Active", createdAt: now, tags: ["vip", "regional"] },
+      { name: `${marker}-No Tag`, status: "Active", createdAt: now, tags: ["regional"] },
+    ]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [
+            { fieldId: "customer.name", op: "startsWith", value: marker },
+            { fieldId: "customer.tags", op: "contains", value: "vip" },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.kind, "results");
+    assert.equal(outcome.rowCount, 1);
+    assert.deepEqual(outcome.rows.map((r) => r["customer.name"]), [`${marker}-Has Tag`]);
+  });
+
   // --- Column-level predicate-drop / partial authorization ---
   await check("an unauthorized SELECTED field is dropped from the projection, never returned (partially-authorized)", async () => {
     const runnerUid = await seedRunner();
