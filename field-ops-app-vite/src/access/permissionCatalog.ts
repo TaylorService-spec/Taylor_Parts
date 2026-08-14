@@ -173,6 +173,89 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "service",
     active: false,
   }),
+  // Finance (Billing/AR) -- issue a governed invoice for a Sales Order's billable lines via the trusted
+  // issueInvoice command. The server allocates a per-company invoice number, recomputes authoritative amounts
+  // (integer minor units) from the committed unit-price snapshot + injected tax determination, and writes the
+  // immutable ISSUED invoice + an audit event. Registered active:false (fail-closed): hard DENY for everyone
+  // until a separate Owner grant. Invoices are Admin-SDK-only (deny-all client Rules); the client never writes
+  // invoices, allocates numbers, or computes authoritative money/tax.
+  Object.freeze({
+    id: "finance.invoice.issue",
+    description:
+      "Issue a governed invoice (per-company number, server-recomputed amounts, immutable ISSUED record + audit) for a committed Sales Order's billable lines via the trusted issueInvoice command. Does not compute tax authority, re-price, or write client-visible financial data.",
+    resource: "finance.invoice",
+    action: "issue",
+    active: false,
+  }),
+  // Finance (Billing/AR) -- apply a cash receipt to an invoice via the trusted applyPayment command. Records
+  // the receipt + the application and maintains the invoice's AR projection (outstanding/state DERIVED from
+  // the application fact, not an independent authority) + an audit event, in one transaction. Registered
+  // active:false (fail-closed). payments / payment_applications are Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.payment.apply",
+    description:
+      "Record a cash receipt and apply it to an invoice (maintaining the invoice's derived AR projection + audit) via the trusted applyPayment command. Does not expose client-direct financial writes or edit an outstanding balance independently of its facts.",
+    resource: "finance.payment",
+    action: "apply",
+    active: false,
+  }),
+  // Finance (Billing/AR) -- record an explicit linked invoice adjustment (credit memo / debit charge /
+  // write-off) via the trusted recordInvoiceAdjustment command. Writes the adjustment record + maintains the
+  // invoice's derived AR projection + audit, in one transaction; NEVER rewrites the issued invoice. Registered
+  // active:false (fail-closed). invoice_adjustments is Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.adjustment.record",
+    description:
+      "Record an explicit linked invoice adjustment (credit memo / debit charge / write-off) and maintain the invoice's derived AR projection + audit via the trusted recordInvoiceAdjustment command. Does not rewrite the issued invoice or expose client-direct financial writes.",
+    resource: "finance.adjustment",
+    action: "record",
+    active: false,
+  }),
+  // Finance (Billing/AR) -- trusted AR READ (a governed backend projection over the Admin-SDK-only invoices
+  // collection; the client never reads invoices directly). Registered active:false (fail-closed) pending a
+  // separate Owner grant. A READ capability -- it writes nothing and widens no client Rule.
+  Object.freeze({
+    id: "finance.read",
+    description:
+      "Read the minimal Finance AR projection (invoice + derived AR position) for an account via the trusted listAccountInvoiceAr callable. Backend read only; the client never reads invoices/payments/adjustments directly.",
+    resource: "finance",
+    action: "read",
+    active: false,
+  }),
+  // Finance (Billing/AR) -- record a refund (money returned after payment) via the trusted recordRefund
+  // command. Reverses applied payment on the invoice (outstanding/state re-derived) + audit; NEVER rewrites the
+  // issued invoice. Distinct from a credit/write-off. Registered active:false (fail-closed). refunds is
+  // Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.refund.record",
+    description:
+      "Record a refund (money returned after payment) and reverse the applied payment on the invoice via the trusted recordRefund command. Does not rewrite the issued invoice, collapse into a negative payment, or expose client-direct financial writes.",
+    resource: "finance.refund",
+    action: "record",
+    active: false,
+  }),
+  // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
+  // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
+  // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.
+  Object.freeze({
+    id: "coverage.write",
+    description:
+      "Create a Sales Territory or a Commercial Coverage Assignment via the governed coverage command. Records durable coverage facts only; does not resolve precedence, credit, or commission, and exposes no client-direct writes.",
+    resource: "coverage",
+    action: "write",
+    active: false,
+  }),
+  // Commercial Coverage & Territory (#15) -- trusted READ: resolve the coverageAssignments[] for a context via
+  // the governed backend (the client never reads coverage collections directly). Registered active:false
+  // (fail-closed). A READ capability -- writes nothing, widens no client Rule, resolves no precedence/winner.
+  Object.freeze({
+    id: "coverage.read",
+    description:
+      "Resolve the commercial coverage (all effective, matching coverage assignments) for a context via the trusted resolveCoverageForContext callable. Backend read only; returns every matching assignment (split coverage), never a single owner/credit/commission.",
+    resource: "coverage",
+    action: "read",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
@@ -688,6 +771,35 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Read the immutable Audit Event history.",
     resource: "audit.event",
     action: "read",
+  }),
+  // INV-1 Phase 1 PR 1.2 -- Part Master trusted write service (ADR-008 /
+  // Decision #40; capability ids named by the accepted Part Master spec
+  // sec10). Registered-but-ungranted: no Role grants these yet, so every
+  // real resolution DENIES (unavailable-not-unsafe, same posture the
+  // report.* ids launched with).
+  Object.freeze({
+    id: "inventory.catalog.manage",
+    description: "Create and edit canonical Part and Manufacturer descriptive records (trusted Part Master service).",
+    resource: "inventory.catalog",
+    action: "manage",
+  }),
+  Object.freeze({
+    id: "inventory.catalog.activate",
+    description: "Change Part or Manufacturer lifecycle status (trusted Part Master service).",
+    resource: "inventory.catalog",
+    action: "activate",
+  }),
+  // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
+  // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
+  // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so
+  // resolveEffectivePermission() denies `noQualifyingGrant` for every principal until a later,
+  // separately-authorized grant gate. The trusted command's authorization is an injected seam;
+  // nothing invokes it in production. Same ungranted posture as the inventory.catalog.* entries above.
+  Object.freeze({
+    id: "inventory.stock.receive",
+    description: "Receive inbound stock into an inventory location against a reorder purchase order (trusted Receiving service).",
+    resource: "inventory.stock",
+    action: "receive",
   }),
   // D4 -- Part-Equipment Compatibility trusted persistence (design package
   // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
