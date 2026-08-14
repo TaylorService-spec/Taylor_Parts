@@ -12,7 +12,7 @@ import { getFirestore, FieldValue, type Firestore, type Transaction } from "fire
 import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
-import { SALES_ORDERS_COLLECTION } from "../constants/collections";
+import { SALES_ORDERS_COLLECTION, OPPORTUNITIES_COLLECTION } from "../constants/collections";
 import {
   buildCreateSalesOrder,
   buildTransitionPatch,
@@ -45,6 +45,34 @@ function mapCommandError(err: unknown): HttpsError {
   return new HttpsError("internal", "Sales Order command failed.");
 }
 
+// When built.sourceOpportunityId is set, verify + reserve the source Opportunity INSIDE the same transaction
+// as the create (P1.4-1.6, Sales->Cash lifecycle build plan): the Opportunity must exist, be WON, and belong
+// to the same account as the new Sales Order; and no other Sales Order may already carry that
+// sourceOpportunityId (one WON Opportunity mints at most one SO via this path). All reads happen here, before
+// any write in persistCreatedSalesOrder, to respect Firestore's transaction read-before-write ordering.
+async function verifySourceOpportunity(
+  db: Firestore, tx: Transaction, sourceOpportunityId: string, accountId: string,
+): Promise<FirebaseFirestore.DocumentReference> {
+  const oppRef = db.collection(OPPORTUNITIES_COLLECTION).doc(sourceOpportunityId);
+  const oppSnap = await tx.get(oppRef);
+  if (!oppSnap.exists) {
+    throw new HttpsError("invalid-argument", `No Opportunity with id ${sourceOpportunityId}`);
+  }
+  const opp = oppSnap.data() as { outcome?: string | null; accountId?: string };
+  if (opp.outcome !== "WON") {
+    throw new HttpsError("failed-precondition", `Opportunity ${sourceOpportunityId} is not WON`);
+  }
+  if (opp.accountId !== accountId) {
+    throw new HttpsError("failed-precondition", `Opportunity ${sourceOpportunityId} does not belong to account ${accountId}`);
+  }
+  const dupQuery = db.collection(SALES_ORDERS_COLLECTION).where("sourceOpportunityId", "==", sourceOpportunityId).limit(1);
+  const dup = await tx.get(dupQuery);
+  if (!dup.empty) {
+    throw new HttpsError("failed-precondition", `Opportunity ${sourceOpportunityId} already has a Sales Order`);
+  }
+  return oppRef;
+}
+
 export async function persistCreatedSalesOrder(
   db: Firestore, tx: Transaction, built: BuiltSalesOrder, actorUid: string, idempotencyKey?: string,
 ) {
@@ -54,9 +82,13 @@ export async function persistCreatedSalesOrder(
     const prior = await tx.get(auditEventDocRef(aid));
     if (prior.exists) return { success: true as const, replayed: true as const, salesOrderId: ((prior.data() ?? {}).targetId as string) ?? null, state: built.state };
   }
+  const oppRef = built.sourceOpportunityId
+    ? await verifySourceOpportunity(db, tx, built.sourceOpportunityId, built.accountId)
+    : null;
   const ref = db.collection(SALES_ORDERS_COLLECTION).doc();
   tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createSalesOrder", targetType: "salesOrder", targetId: ref.id, outcome: "applied", summary: `created sales order for account ${built.accountId}` });
+  if (oppRef) tx.update(oppRef, { salesOrderId: ref.id });
   return { success: true as const, replayed: false as const, salesOrderId: ref.id, state: built.state };
 }
 
