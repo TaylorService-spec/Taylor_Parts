@@ -29,7 +29,8 @@ export type OpportunityCommandErrorCode =
   | "SERIALIZED_LINE_FORBIDDEN"
   | "ALREADY_CLOSED"
   | "ILLEGAL_TRANSITION"
-  | "OUTCOME_REQUIRES_DECISION";
+  | "OUTCOME_REQUIRES_DECISION"
+  | "LINE_QTY_REQUIRED_FOR_WON";
 
 export class OpportunityCommandError extends Error {
   code: OpportunityCommandErrorCode;
@@ -43,7 +44,7 @@ export class OpportunityCommandError extends Error {
 export interface OpportunityLineInput {
   kind: OpportunityLineKind;
   ref: string; // model number / partId / service code — a PRODUCT-level reference, never a serial
-  qty?: number;
+  qty: number;
 }
 
 export interface CreateOpportunityInput {
@@ -79,11 +80,14 @@ function validateLine(line: unknown, index: number): OpportunityLineInput {
   if (!nonEmpty(l.ref)) {
     throw new OpportunityCommandError("LINE_INVALID", `Line ${index} is missing a product reference`);
   }
-  if (l.qty !== undefined && (!finiteNum(l.qty) || l.qty <= 0)) {
-    throw new OpportunityCommandError("LINE_INVALID", `Line ${index} has an invalid qty`);
+  // qty is REQUIRED on every line (not merely validated-if-present): a line without a qty is not persistable.
+  // This is the enforcement point that closes the qty-less WON dead-end at its source — a line that can never
+  // be created without a valid qty can never reach WON without one either. (See also the WON-outcome guard in
+  // buildTransitionPatch below, which defends any opportunity persisted before this rule existed.)
+  if (!finiteNum(l.qty) || (l.qty as number) <= 0) {
+    throw new OpportunityCommandError("LINE_INVALID", `Line ${index} is missing a valid qty`);
   }
-  const out: OpportunityLineInput = { kind: l.kind as OpportunityLineKind, ref: (l.ref as string).trim() };
-  if (l.qty !== undefined) out.qty = l.qty as number;
+  const out: OpportunityLineInput = { kind: l.kind as OpportunityLineKind, ref: (l.ref as string).trim(), qty: l.qty as number };
   return out;
 }
 
@@ -159,8 +163,21 @@ export function buildTransitionPatch(
   ctx: { actorUid: string; nowMillis: number }
 ): TransitionPatch {
   if (!current || !isStage(current.stage)) throw new OpportunityCommandError("INVALID", "Invalid current state");
-  if (intent.kind === "OUTCOME" && intent.outcome === "WON" && (!Array.isArray(current.lines) || current.lines.length === 0)) {
-    throw new OpportunityCommandError("NO_LINES", "Opportunity requires at least one line before it can be WON");
+  if (intent.kind === "OUTCOME" && intent.outcome === "WON") {
+    if (!Array.isArray(current.lines) || current.lines.length === 0) {
+      throw new OpportunityCommandError("NO_LINES", "Opportunity requires at least one line before it can be WON");
+    }
+    // Defense in depth for opportunities that were persisted before qty became required at line-creation time
+    // (validateLine): WON is terminal/irreversible with no line-edit/reopen path, and downstream
+    // createSalesOrderFromOpportunity fails closed forever on a qty-less line, so a qty-less line must never
+    // be allowed to reach WON in the first place.
+    const badIndex = current.lines.findIndex((l) => !finiteNum(l?.qty) || (l.qty as number) <= 0);
+    if (badIndex !== -1) {
+      throw new OpportunityCommandError(
+        "LINE_QTY_REQUIRED_FOR_WON",
+        `Opportunity line ${badIndex} is missing a valid qty; WON requires every line to carry a qty`
+      );
+    }
   }
   const check = checkTransition({ stage: current.stage, outcome: current.outcome ?? null }, intent);
   if (!check.ok) {

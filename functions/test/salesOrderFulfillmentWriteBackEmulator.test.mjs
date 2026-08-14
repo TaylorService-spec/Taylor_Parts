@@ -85,7 +85,12 @@ test("Complete on an SO-linked WO keys PART fulfillment by partId rather than sk
   assert.equal(auditSnap.empty, false, "an Audit Event must be staged for the write-back");
 });
 
-test("Complete does not treat qtyPlanned as PART fulfillment without governed qtyUsed", async () => {
+test("Complete accepts qtyPlanned as PART fulfillment when the tech recorded no qtyUsed (missing-part-stall fix)", async () => {
+  // Owner-ratified Option A: reaching Complete -- a role-gated, terminal, governed transition -- IS the
+  // governed act that accepts planned usage as actual unless the tech recorded otherwise. Without this,
+  // consumeParts (inventoryService.ts) still consumes qtyUsed ?? qtyPlanned from inventory, but the SO
+  // write-back credited zero fulfilledQty, wedging the Sales Order in IN_FULFILLMENT forever with no way
+  // to backfill usage after a terminal Complete.
   const techUid = id("u-tech");
   const techId = id("tech");
   await seedTechnician(techUid, techId);
@@ -106,8 +111,33 @@ test("Complete does not treat qtyPlanned as PART fulfillment without governed qt
 
   await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
   const soSnap = await db.collection(SOS).doc(soId).get();
-  assert.equal(soSnap.data().lines[0].fulfilledQty, 0, "a plan alone is not actual PART fulfillment");
-  assert.equal(soSnap.data().state, "IN_FULFILLMENT");
+  assert.equal(soSnap.data().lines[0].fulfilledQty, 3, "completion accepts qtyPlanned as actual when qtyUsed was never recorded");
+  assert.equal(soSnap.data().state, "FULFILLED", "allLinesFulfilled auto-advances the SO");
+});
+
+test("Complete honors a recorded qtyUsed over qtyPlanned for PART fulfillment", async () => {
+  const techUid = id("u-tech");
+  const techId = id("tech");
+  await seedTechnician(techUid, techId);
+
+  const soId = id("so-recorded");
+  await seedSalesOrder(soId, {
+    state: "IN_FULFILLMENT",
+    lines: [{ kind: "PART", ref: "P-RECORDED", orderedQty: 5, allocatedQty: 5, fulfilledQty: 0 }],
+  });
+
+  const woId = id("wo-recorded");
+  await seedWorkOrder(woId, {
+    status: "WORK_IN_PROGRESS",
+    assignedTechId: techId,
+    salesOrderId: soId,
+    inventorySnapshot: [{ sku: "IPN-RECORDED", partId: "P-RECORDED", qtyPlanned: 5, qtyUsed: 2 }],
+  });
+
+  await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
+  const soSnap = await db.collection(SOS).doc(soId).get();
+  assert.equal(soSnap.data().lines[0].fulfilledQty, 2, "a recorded qtyUsed overrides qtyPlanned even though it is lower");
+  assert.equal(soSnap.data().state, "IN_FULFILLMENT", "not all lines fulfilled -- no auto-advance");
 });
 
 test("Complete accumulates additively across two separate Work Orders on the SAME Sales Order line", async () => {

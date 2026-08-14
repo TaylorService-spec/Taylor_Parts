@@ -49,7 +49,7 @@ test("buildCreateOpportunity: starts IDENTIFIED/open with canonical owner + prod
       salesChannel: "RETAIL",
       need: "New line",
       expectedValue: 1000,
-      lines: [{ kind: "EQUIPMENT_MODEL", ref: "C713", qty: 5 }, { kind: "PART", ref: "PRT-1" }],
+      lines: [{ kind: "EQUIPMENT_MODEL", ref: "C713", qty: 5 }, { kind: "PART", ref: "PRT-1", qty: 2 }],
     },
     CTX
   );
@@ -67,7 +67,7 @@ test("buildCreateOpportunity: fails closed on missing account/owner/invalid chan
 });
 
 test("buildCreateOpportunity: accepts the ratified STRATEGIC_ACCOUNTS channel (#15)", () => {
-  const built = buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p" }] }, CTX);
+  const built = buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p", qty: 1 }] }, CTX);
   assert.equal(built.salesChannel, "STRATEGIC_ACCOUNTS");
 });
 
@@ -89,6 +89,17 @@ test("buildCreateOpportunity: invalid line kind or qty fails closed", () => {
   assert.throws(() => buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "x", qty: 0 }] }, CTX), (e) => e.code === "LINE_INVALID");
 });
 
+test("buildCreateOpportunity: qty is REQUIRED on every line (closes the qty-less WON dead-end at its source)", () => {
+  assert.throws(
+    () => buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "PRT-1" }] }, CTX),
+    (e) => e instanceof OpportunityCommandError && e.code === "LINE_INVALID"
+  );
+  assert.throws(
+    () => buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "PRT-1", qty: -1 }] }, CTX),
+    (e) => e.code === "LINE_INVALID"
+  );
+});
+
 test("buildTransitionPatch: advance sets the next stage and keeps it open", () => {
   const patch = buildTransitionPatch({ stage: "IDENTIFIED" }, { kind: "ADVANCE", toStage: "QUALIFYING" }, CTX);
   assert.equal(patch.stage, "QUALIFYING");
@@ -97,14 +108,39 @@ test("buildTransitionPatch: advance sets the next stage and keeps it open", () =
 });
 
 test("buildTransitionPatch: WON from DECISION closes; illegal transitions throw fail-closed", () => {
-  const won = buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "WON" }, CTX);
+  const won = buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1", qty: 1 }] }, { kind: "OUTCOME", outcome: "WON" }, CTX);
   assert.equal(won.outcome, "WON");
   assert.equal(won.stage, "DECISION");
   assert.equal(won.closedAtMillis, CTX.nowMillis);
-  assert.throws(() => buildTransitionPatch({ stage: "QUOTING", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "OUTCOME_REQUIRES_DECISION");
+  assert.throws(() => buildTransitionPatch({ stage: "QUOTING", lines: [{ kind: "PART", ref: "P-1", qty: 1 }] }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "OUTCOME_REQUIRES_DECISION");
   assert.throws(() => buildTransitionPatch({ stage: "DECISION", outcome: "LOST" }, { kind: "ADVANCE", toStage: "DECISION" }, CTX), (e) => e.code === "ALREADY_CLOSED");
 });
 
 test("buildTransitionPatch: WON with zero lines is rejected", () => {
   assert.throws(() => buildTransitionPatch({ stage: "DECISION", lines: [] }, { kind: "OUTCOME", outcome: "WON" }, CTX), (e) => e.code === "NO_LINES");
+});
+
+test("buildTransitionPatch: WON with a qty-less line is rejected (closes the permanent Sales Order dead-end)", () => {
+  assert.throws(
+    () => buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "WON" }, CTX),
+    (e) => e instanceof OpportunityCommandError && e.code === "LINE_QTY_REQUIRED_FOR_WON"
+  );
+  assert.throws(
+    () => buildTransitionPatch({ stage: "DECISION", lines: [{ kind: "PART", ref: "P-1", qty: 3 }, { kind: "PART", ref: "P-2", qty: 0 }] }, { kind: "OUTCOME", outcome: "WON" }, CTX),
+    (e) => e.code === "LINE_QTY_REQUIRED_FOR_WON"
+  );
+});
+
+test("buildTransitionPatch: WON with every line carrying a valid qty is allowed", () => {
+  const won = buildTransitionPatch(
+    { stage: "DECISION", lines: [{ kind: "PART", ref: "P-1", qty: 3 }, { kind: "EQUIPMENT_MODEL", ref: "C713", qty: 1 }] },
+    { kind: "OUTCOME", outcome: "WON" },
+    CTX
+  );
+  assert.equal(won.outcome, "WON");
+});
+
+test("buildTransitionPatch: LOST is reachable regardless of line qty (an open opp can always be lost)", () => {
+  const lost = buildTransitionPatch({ stage: "QUALIFYING", lines: [{ kind: "PART", ref: "P-1" }] }, { kind: "OUTCOME", outcome: "LOST" }, CTX);
+  assert.equal(lost.outcome, "LOST");
 });

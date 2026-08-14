@@ -102,16 +102,24 @@ export function computeEquipmentAvailability(input: {
   return { availability: { kind: "KNOWN", quantity: freeSerials.length }, freeSerials };
 }
 
-// Sum other active Sales Orders' commitments for one ref: allocatedQty (parts) and selected serials
-// (equipment). `otherSoLines` is the flattened set of lines from OTHER active sales_orders.
+// Sum other active Sales Orders' commitments for one (kind, ref) pair: allocatedQty (parts) and selected
+// serials (equipment). `otherSoLines` is the flattened set of lines from OTHER active sales_orders.
+//
+// KIND-SCOPING (fix for site-work cross-kind collision, BD-6/BD-10 successor): a bare `ref` match is not
+// enough — PART, EQUIPMENT_MODEL, and SERVICE lines can share the same ref string (e.g. a SERVICE line and a
+// PART line both referencing "C713" for unrelated reasons). CX-4 (#956) kind-scoped the pool key in
+// allocationProjection.ts (`${kind}:${ref}`) but this netting site still matched on bare ref, so an unrelated
+// SERVICE/EQUIPMENT_MODEL commitment sharing a ref string with a PART line would be wrongly subtracted from
+// that PART's available-to-promise. A line only nets against other commitments of the SAME kind + ref.
 export function sumOtherSoCommitments(
-  otherSoLines: Array<{ ref: string; allocatedQty?: number; selectedSerialIds?: string[] }>,
+  otherSoLines: Array<{ kind: string; ref: string; allocatedQty?: number; selectedSerialIds?: string[] }>,
+  kind: string,
   ref: string
 ): { allocatedQty: number; selectedSerials: string[] } {
   let allocatedQty = 0;
   const selectedSerials: string[] = [];
   for (const l of otherSoLines) {
-    if (l.ref !== ref) continue;
+    if (l.kind !== kind || l.ref !== ref) continue;
     allocatedQty += num0(l.allocatedQty);
     if (Array.isArray(l.selectedSerialIds)) selectedSerials.push(...l.selectedSerialIds);
   }

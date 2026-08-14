@@ -65,7 +65,9 @@ interface TransitionWorkOrderInput {
   assignedTechId?: string;
   // P1.1 (Sales->Cash fulfillment spine): Complete-only. Explicit technician-declared acceptance for
   // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). PART actuals
-  // are derived solely from governed inventorySnapshot.qtyUsed, never supplied by the caller.
+  // are derived solely from governed inventorySnapshot (qtyUsed when recorded, else qtyPlanned -- completion
+  // is the governed acceptance of planned usage when the tech recorded nothing else), never supplied by the
+  // caller.
   fulfillmentAccepted?: FulfillmentAcceptance[];
 }
 
@@ -238,12 +240,22 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         const so = soSnap.data() as { state?: string; lines?: SalesOrderFulfillmentLine[] };
         const currentLines = Array.isArray(so.lines) ? so.lines : [];
 
-        // PART lines: derive acceptance exclusively from governed inventorySnapshot.qtyUsed, matched by
-        // canonical partId<->SO ref (never sku<->ref). A plan is not proof of actual fulfillment.
+        // PART lines: derive acceptance exclusively from governed inventorySnapshot, matched by canonical
+        // partId<->SO ref (never sku<->ref). Completion is a role-gated, terminal, governed transition --
+        // reaching it IS the governed act that accepts planned usage as actual unless the tech recorded
+        // otherwise (Owner-ratified Option A). Recorded qtyUsed always overrides the planned quantity;
+        // consumeParts (inventoryService.ts) already consumes qtyUsed ?? qtyPlanned, so this keeps the SO
+        // write-back consistent with what was actually consumed from inventory -- closing the gap where a
+        // WO could complete (a terminal, non-backfillable transition), consume inventory, but credit zero
+        // fulfilledQty, wedging the Sales Order in IN_FULFILLMENT forever.
         const derivedByKey = new Map<string, FulfillmentAcceptance>();
         for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
           if (typeof item.partId !== "string" || item.partId.trim().length === 0) continue;
-          const qty = typeof item.qtyUsed === "number" && Number.isFinite(item.qtyUsed) ? item.qtyUsed : 0;
+          const qty = Number.isFinite(item.qtyUsed)
+            ? (item.qtyUsed as number)
+            : Number.isFinite(item.qtyPlanned)
+              ? (item.qtyPlanned as number)
+              : 0;
           if (qty <= 0) continue;
           const key = `PART:${item.partId}`;
           const existing = derivedByKey.get(key);
