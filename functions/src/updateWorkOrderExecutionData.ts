@@ -62,6 +62,9 @@ function assertValidInput(data: unknown): asserts data is UpdateWorkOrderExecuti
       if (!entry || typeof entry.sku !== "string" || typeof entry.delta !== "number") {
         throw new HttpsError("invalid-argument", "Each qtyUsedUpdates entry requires { sku: string, delta: number }.");
       }
+      if (!Number.isFinite(entry.delta)) {
+        throw new HttpsError("invalid-argument", "Each qtyUsedUpdates entry's delta must be a finite number (NaN/Infinity are rejected).");
+      }
     }
   }
 
