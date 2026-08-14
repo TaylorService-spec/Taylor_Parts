@@ -43,6 +43,8 @@ function mapCommandError(err: unknown): HttpsError {
       case "ALREADY_CLOSED":
       case "ILLEGAL_TRANSITION":
       case "OUTCOME_REQUIRES_DECISION":
+      case "NO_LINES":
+      case "LINE_QTY_REQUIRED_FOR_WON":
         return new HttpsError("failed-precondition", err.message);
       default:
         return new HttpsError("invalid-argument", err.message);
