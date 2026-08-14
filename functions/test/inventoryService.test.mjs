@@ -231,6 +231,34 @@ test("triggerInventoryEffects is idempotent: re-applying the SAME state does not
   assert.equal(sync.processedStates.DISPATCHED, true);
 });
 
+test("triggerInventoryEffects claims atomically: two CONCURRENT calls for the same (workOrderId, state) do not both run the trigger", async () => {
+  // Regression test for the check-then-act gap: two callers racing for
+  // the same (workOrderId, state) -- e.g. the retryInventoryEffects
+  // operator tool racing a live transition-driven call -- must not both
+  // observe "unprocessed" and both execute reserveParts(), which would
+  // double-write the ledger (two RESERVED entries instead of one).
+  // Fired via Promise.all (not sequential awaits) so both calls' very
+  // first read races genuinely concurrently, the same way the pre-fix
+  // isStateProcessed() check-then-act bug would actually be triggered.
+  const woId = id("wo");
+  const sku = "TST-1040"; // ample warehouseQty, must not be the limiting factor here
+  await seedWorkOrder(woId, [{ sku, qtyPlanned: 1 }]);
+
+  await Promise.all([
+    triggerInventoryEffects(woId, "DISPATCHED"),
+    triggerInventoryEffects(woId, "DISPATCHED"),
+  ]);
+
+  const entries = await ledgerFor(woId, sku);
+  const reserved = entries.filter((e) => e.type === "RESERVED");
+  assert.equal(reserved.length, 1, "only one RESERVED entry must exist despite two concurrent DISPATCHED calls");
+  assert.equal(reserved[0].quantity, 1);
+
+  const sync = (await db.collection(SYNC).doc(woId).get()).data();
+  assert.equal(sync.processedStates.DISPATCHED, true);
+  assert.equal(sync.claims?.DISPATCHED, undefined, "claim is cleared once processing completes");
+});
+
 test("triggerInventoryEffects for an unmapped state (e.g. ARRIVED) is a pure no-op", async () => {
   const woId = id("wo");
   await seedWorkOrder(woId, [{ sku: "TST-1011", qtyPlanned: 1 }]);
