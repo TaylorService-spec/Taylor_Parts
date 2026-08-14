@@ -81,16 +81,17 @@ export interface AllocationPlan {
 // allocates, so total allocatableQty across sibling lines never exceeds that ref's available-to-promise.
 // UNAVAILABLE/UNKNOWN determinations have no quantity to share and are applied to every sibling line as-is.
 export function buildAllocationPlan(lines: SalesOrderLineLike[], availabilityByRef: Record<string, Availability>): AllocationPlan {
-  const remainingByRef: Record<string, number> = {};
+  const remainingByKindRef: Record<string, number> = {};
   const allocations = (Array.isArray(lines) ? lines : []).map((l) => {
-    const avail = availabilityByRef[l.ref] ?? { kind: "UNKNOWN" };
+    const key = `${l.kind}:${l.ref}`;
+    const avail = availabilityByRef[key] ?? availabilityByRef[l.ref] ?? { kind: "UNKNOWN" };
     let effectiveAvail: Availability = avail;
-    if (avail.kind === "KNOWN") {
-      if (!(l.ref in remainingByRef)) remainingByRef[l.ref] = avail.quantity;
-      effectiveAvail = { kind: "KNOWN", quantity: remainingByRef[l.ref] };
+    if (avail.kind === "KNOWN" && l.kind !== "SERVICE") {
+      if (!(key in remainingByKindRef)) remainingByKindRef[key] = avail.quantity;
+      effectiveAvail = { kind: "KNOWN", quantity: remainingByKindRef[key] };
     }
     const a = allocateLine(l, effectiveAvail);
-    if (avail.kind === "KNOWN") remainingByRef[l.ref] = Math.max(0, remainingByRef[l.ref] - a.allocatableQty);
+    if (avail.kind === "KNOWN" && l.kind !== "SERVICE") remainingByKindRef[key] = Math.max(0, remainingByKindRef[key] - a.allocatableQty);
     return a;
   });
   const counts: Record<AllocationState, number> = { ALLOCATED: 0, PARTIAL: 0, BACKORDERED: 0, UNAVAILABLE: 0, UNKNOWN: 0 };

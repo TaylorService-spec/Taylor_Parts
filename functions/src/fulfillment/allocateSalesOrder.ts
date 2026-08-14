@@ -137,7 +137,7 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
         // (stock_locations is never decremented for an SO allocation — see fulfillmentAvailability.ts). It must
         // be netted here too, or a re-run additively over-allocates against the same undiminished on-hand read.
         const self = sumOtherSoCommitments(lines, ref);
-        availabilityByRef[ref] = computePartAvailability({
+        availabilityByRef[`PART:${ref}`] = computePartAvailability({
           onHandEligible,
           openWoReserved,
           otherSoAllocated: other.allocatedQty,
@@ -147,7 +147,7 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       // Equipment availability via the governed contract (equipmentAvailabilityContract). Fail-closed UNKNOWN
       // today per the canonical-read assessment (availability substrate not-yet-connected + ordered-model↔serial
       // mapping unresolved + no #12 Temporary Placement authority); auto-activates when the substrate connects.
-      for (const ref of distinctEquipRefs) availabilityByRef[ref] = readEquipmentAvailability(ref);
+      for (const ref of distinctEquipRefs) availabilityByRef[`EQUIPMENT_MODEL:${ref}`] = readEquipmentAvailability(ref);
 
       // SERVICE lines need no inventory ⇒ treat as fully available.
       const planLines = lines.map((l) =>
@@ -155,7 +155,7 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       );
       const plan = buildAllocationPlan(
         planLines,
-        Object.fromEntries(planLines.map((l) => [l.ref, (l as { __availability?: Availability }).__availability ?? availabilityByRef[l.ref] ?? { kind: "UNKNOWN" }]))
+        Object.fromEntries(planLines.map((l) => [`${l.kind}:${l.ref}`, (l as { __availability?: Availability }).__availability ?? availabilityByRef[`${l.kind}:${l.ref}`] ?? { kind: "UNKNOWN" }]))
       );
 
       // ---- WRITE (only the Sales Order; allocation is a commitment on the SO, netted by future ATP) ----
