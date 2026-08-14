@@ -8,6 +8,14 @@
 // Ratified semantics preserved: SO unitPrice snapshot = basis (no re-pricing / no price book); tax injected,
 // missing ⇒ REQUIRES_REVIEW (reject issuance); invoice lifecycle (ISSUED) separate from AR; AR age begins at
 // dueDate (carried, not computed here); an issued invoice is immutable (this only CREATES the issued record).
+//
+// P1.8 (lifecycle-audit `issueinvoice-unverified-so-pricing-and-qty`): issuance must be checked against the
+// GOVERNED Sales Order, never trusted from the client. `verifySalesOrderMatch` is the pure cross-check the
+// callable runs (inside its transaction, against a tx.get'd SO doc) before recomputing amounts: commercial
+// facts (accountId/currency/per-line committed unitPrice/billing-eligible qty) must match the SO or issuance
+// is rejected. It reuses computeBillingEligibility (billingEligibility.ts) — the fulfillment→finance seam —
+// rather than re-deriving eligibility rules here.
+import { computeBillingEligibility, type BillingEligibilityInput } from "../fulfillment/billingEligibility";
 
 export class InvoiceCommandError extends Error {
   code: string;
@@ -35,6 +43,71 @@ export interface IssueInvoiceInput {
   billingAction: string; // must be BILL_NOW (or an explicit authorized Finance decision) — never auto-partial
   lines: IssueInvoiceLineInput[];
   taxProvenance?: string | null; // provenance of the injected tax determination (audit/evidence)
+}
+
+// The GOVERNED Sales Order facts the callable reads via tx.get (sales_orders/{salesOrderId}) — only the
+// fields this cross-check needs, never the client's own claims.
+export interface SalesOrderSnapshotLine {
+  ref: string;
+  unitPrice?: number; // committed SO pricing snapshot; absent ⇒ no basis to bill against
+  orderedQty: number;
+  fulfilledQty?: number;
+}
+
+export interface SalesOrderSnapshot {
+  accountId: string;
+  currency: string;
+  state?: string; // CONFIRMED | IN_FULFILLMENT | FULFILLED | CLOSED | CANCELLED
+  operationalBlocked?: boolean;
+  additionalWorkPending?: boolean;
+  lines: SalesOrderSnapshotLine[];
+}
+
+const billingEligibleQty = (l: SalesOrderSnapshotLine): number => {
+  const ordered = typeof l.orderedQty === "number" && Number.isFinite(l.orderedQty) && l.orderedQty > 0 ? l.orderedQty : 0;
+  const fulfilled = typeof l.fulfilledQty === "number" && Number.isFinite(l.fulfilledQty) && l.fulfilledQty > 0 ? l.fulfilledQty : 0;
+  return Math.min(ordered, fulfilled);
+};
+
+// Cross-check the client-supplied issuance input against the GOVERNED Sales Order — fail closed on any
+// mismatch rather than trusting the client. Basis: SO unitPrice snapshot (no re-pricing); billable qty capped
+// at the billing-eligible qty per line (min(orderedQty, fulfilledQty), same rule computeBillingEligibility
+// applies); accountId/currency must match the SO's committed values.
+export function verifySalesOrderMatch(input: IssueInvoiceInput, so: SalesOrderSnapshot): void {
+  if (!so || typeof so !== "object") throw new InvoiceCommandError("SALES_ORDER_NOT_FOUND", "sales order not found");
+  if (input.accountId !== so.accountId) {
+    throw new InvoiceCommandError("ACCOUNT_MISMATCH", "accountId does not match the sales order's committed account");
+  }
+  if (input.currency !== so.currency) {
+    throw new InvoiceCommandError("CURRENCY_MISMATCH", "currency does not match the sales order's committed currency");
+  }
+  const eligibilityInput: BillingEligibilityInput = {
+    salesOrderState: so.state,
+    operationalBlocked: so.operationalBlocked,
+    additionalWorkPending: so.additionalWorkPending,
+    lines: (Array.isArray(so.lines) ? so.lines : []).map((l) => ({ ref: l.ref, orderedQty: l.orderedQty, fulfilledQty: l.fulfilledQty })),
+  };
+  const eligibility = computeBillingEligibility(eligibilityInput);
+  if (eligibility.eligibility !== "ELIGIBLE" && eligibility.eligibility !== "PARTIALLY_ELIGIBLE") {
+    throw new InvoiceCommandError("NOT_BILLABLE", `sales order is not billing-eligible (${eligibility.eligibility}: ${eligibility.reasons.join("; ")})`);
+  }
+  const soLinesByRef = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [l.ref, l] as const));
+  const lines = Array.isArray(input.lines) ? input.lines : [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const soLine = soLinesByRef.get(line?.ref);
+    if (!soLine) throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} (${line?.ref}) has no matching sales order line`);
+    if (typeof soLine.unitPrice !== "number" || !Number.isFinite(soLine.unitPrice)) {
+      throw new InvoiceCommandError("UNPRICED", `sales order line ${line?.ref} has no committed unit price`);
+    }
+    if (line.unitPriceMinor !== soLine.unitPrice) {
+      throw new InvoiceCommandError("PRICE_MISMATCH", `line ${i} (${line?.ref}) unitPriceMinor does not match the sales order's committed unit price`);
+    }
+    const eligibleQty = billingEligibleQty(soLine);
+    if (line.billableQty > eligibleQty) {
+      throw new InvoiceCommandError("QTY_EXCEEDS_ELIGIBLE", `line ${i} (${line?.ref}) billableQty ${line.billableQty} exceeds billing-eligible qty ${eligibleQty}`);
+    }
+  }
 }
 
 export interface InvoiceLineRecord {
