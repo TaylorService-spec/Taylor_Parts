@@ -17,10 +17,17 @@ export function executionDataAuditId(actorUid: string, workOrderId: string, idem
   return `updateWorkOrderExecutionData_${digest}`;
 }
 
-// Pure qtyUsed merge: replace only each matching sku's qtyUsed with an additive, floored-at-0 delta, returning
-// a NEW array (never mutating the input). `unknownSku` is surfaced (not thrown) so the callable owns the
-// HttpsError mapping. This is the "applied exactly once" unit -- the transactional replay guard in the
-// callable is what ensures it is invoked once per idempotency key.
+// Pure qtyUsed merge: replace only each matching sku's qtyUsed with an additive delta, clamped to
+// [0, qtyPlanned] (when qtyPlanned is known -- an item with no qtyPlanned is only floored at 0, same as
+// before), returning a NEW array (never mutating the input). `unknownSku` is surfaced (not thrown) so the
+// callable owns the HttpsError mapping. This is the "applied exactly once" unit -- the transactional replay
+// guard in the callable is what ensures it is invoked once per idempotency key.
+//
+// This is the AUTHORITATIVE server write path: a non-finite delta (NaN/Infinity, which would otherwise
+// poison the additive sum) or a delta that would push qtyUsed above the item's own qtyPlanned is rejected
+// up front by assertValidInput / the transaction that calls this -- this function's own clamp is the
+// second, independent line of defense so qtyUsed can never persist outside [0, qtyPlanned] regardless of
+// what slips past validation.
 export function mergeQtyUsed(
   snapshot: InventorySnapshotItem[],
   updates: QtyUsedDelta[],
@@ -29,8 +36,15 @@ export function mergeQtyUsed(
   for (const { sku, delta } of updates) {
     const index = next.findIndex((item) => item.sku === sku);
     if (index === -1) return { ok: false, unknownSku: sku };
-    const current = next[index].qtyUsed ?? 0;
-    next[index] = { ...next[index], qtyUsed: Math.max(0, current + delta) };
+    const item = next[index];
+    const current = item.qtyUsed ?? 0;
+    const sum = current + delta;
+    const safeSum = Number.isFinite(sum) ? sum : current;
+    const upperBound = typeof item.qtyPlanned === "number" && Number.isFinite(item.qtyPlanned)
+      ? item.qtyPlanned
+      : Number.POSITIVE_INFINITY;
+    const clamped = Math.min(Math.max(0, safeSum), upperBound);
+    next[index] = { ...item, qtyUsed: clamped };
   }
   return { ok: true, snapshot: next };
 }

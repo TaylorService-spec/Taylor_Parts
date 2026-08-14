@@ -36,6 +36,34 @@ test("mergeQtyUsed surfaces an unknown sku instead of throwing", () => {
   assert.equal(r.ok === false && r.unknownSku, "NOPE");
 });
 
+test("mergeQtyUsed ignores a non-finite delta (NaN) instead of poisoning qtyUsed", () => {
+  const r = mergeQtyUsed([{ sku: "A", qtyUsed: 2 }], [{ sku: "A", delta: NaN }]);
+  assert.equal(r.ok, true);
+  assert.equal(r.snapshot[0].qtyUsed, 2, "non-finite delta must not change qtyUsed (defense in depth vs assertValidInput)");
+});
+
+test("mergeQtyUsed ignores a non-finite delta (Infinity) instead of poisoning qtyUsed", () => {
+  const r = mergeQtyUsed([{ sku: "A", qtyUsed: 2 }], [{ sku: "A", delta: Infinity }]);
+  assert.equal(r.ok, true);
+  assert.equal(r.snapshot[0].qtyUsed, 2, "non-finite delta must not change qtyUsed");
+
+  const r2 = mergeQtyUsed([{ sku: "A", qtyUsed: 2 }], [{ sku: "A", delta: -Infinity }]);
+  assert.equal(r2.ok, true);
+  assert.equal(r2.snapshot[0].qtyUsed, 2, "negative-infinity delta must not change qtyUsed");
+});
+
+test("mergeQtyUsed caps qtyUsed at the item's qtyPlanned instead of going unbounded", () => {
+  const r = mergeQtyUsed([{ sku: "A", qtyUsed: 8, qtyPlanned: 10 }], [{ sku: "A", delta: 1000 }]);
+  assert.equal(r.ok, true);
+  assert.equal(r.snapshot[0].qtyUsed, 10, "qtyUsed must clamp at qtyPlanned, never exceed it");
+});
+
+test("mergeQtyUsed with no qtyPlanned on the item still floors at 0 but has no upper cap", () => {
+  const r = mergeQtyUsed([{ sku: "A", qtyUsed: 2 }], [{ sku: "A", delta: 1000 }]);
+  assert.equal(r.ok, true);
+  assert.equal(r.snapshot[0].qtyUsed, 1002, "no qtyPlanned known -> unbounded above (unchanged legacy behavior), still floored below at 0");
+});
+
 test("THE INVARIANT the replay guard protects: merge is additive, so applying the same delta twice DOUBLE-COUNTS", () => {
   // This is exactly why an idempotency key is required: without the transactional replay guard, a retried
   // call re-runs mergeQtyUsed and the additive delta is applied again.

@@ -110,6 +110,31 @@ test("empty idempotencyKey is rejected (would collapse distinct calls to one mar
   );
 });
 
+for (const badDelta of [NaN, Infinity, -Infinity]) {
+  test(`non-finite delta (${String(badDelta)}) is rejected with invalid-argument`, async () => {
+    const uid = id("uid"), tech = id("tech"), woId = id("WO");
+    await seedTechUser(uid, tech);
+    await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
+    await assert.rejects(
+      updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: badDelta }] }, uid)),
+      (err) => err.code === "invalid-argument",
+    );
+    assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 0, "rejected call must not have written qtyUsed");
+  });
+}
+
+test("a delta that would exceed qtyPlanned is clamped, not persisted unbounded", async () => {
+  const uid = id("uid"), tech = id("tech"), woId = id("WO");
+  await seedTechUser(uid, tech);
+  await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 8, qtyPlanned: 10 }]);
+
+  const r = await updateWorkOrderExecutionData.run(
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1000 }] }, uid),
+  );
+  assert.equal(r.success, true);
+  assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 10, "qtyUsed must clamp at qtyPlanned (10), never persist unbounded");
+});
+
 for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
   test(`terminal ${status} Work Order rejects execution-data writes`, async () => {
     const uid = id("uid"), tech = id("tech"), woId = id("WO");
