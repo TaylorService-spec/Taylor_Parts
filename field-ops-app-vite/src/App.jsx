@@ -56,6 +56,7 @@ import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "./config/capabilityActivatio
 import { useReportCapabilities } from "./access/useReportCapabilities";
 import ReportBuilder from "./modules/reporting/ReportBuilder";
 import SavedReports from "./modules/reporting/SavedReports";
+import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -620,7 +621,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
 const ROUTER_BASENAME = routerBasenameFrom(import.meta.env.BASE_URL);
 
 export default function App() {
-  const { user, role, loading, operationalRoles, employmentStatus } = useAuth();
+  const { user, role, loading, operationalRoles, employmentStatus, identityError, retryIdentityResolution } = useAuth();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
   // Issue #325 -- capability gating from the TRUSTED effective-access feed (Inventory's
   // resolveEffectiveAccess callable), never from the raw role. The hook asks the callable for a
@@ -638,6 +639,23 @@ export default function App() {
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;
+
+  // Retention audit finding (#909): AuthContext has exposed identityError + retryIdentityResolution
+  // since PR #909, but no consumer ever read them -- a failed session-identity read (role/employeeId/
+  // operationalRoles/employmentStatus) silently fell through to the generic "No access" state below,
+  // which wrongly implies the account needs a role granted rather than that the read simply failed.
+  // The user IS authenticated here (AuthContext keeps `user` set on this path) -- this is a distinct,
+  // retryable read failure, not an access decision.
+  if (identityError) {
+    return (
+      <div className="fo-panel">
+        <FailureState
+          message={identityError}
+          action={<button type="button" className="fo-btn" onClick={retryIdentityResolution}>Retry</button>}
+        />
+      </div>
+    );
+  }
 
   if (!user) return <Login />;
 
