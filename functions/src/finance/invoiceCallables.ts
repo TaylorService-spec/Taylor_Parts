@@ -18,6 +18,7 @@ import { stageAuditEventWithId, auditEventDocRef } from "../access/auditEventWri
 import { allocateInvoiceNumber } from "./invoiceNumbering";
 import {
   buildInvoiceRecord,
+  applyBilledQuantities,
   verifySalesOrderMatch,
   InvoiceCommandError,
   type IssueInvoiceInput,
@@ -79,12 +80,14 @@ export async function persistIssuedInvoice(db: Firestore, tx: Transaction, data:
   if (!soSnap.exists) {
     throw new HttpsError("failed-precondition", `No Sales Order with id ${data.salesOrderId}`);
   }
-  verifySalesOrderMatch(data, soSnap.data() as SalesOrderSnapshot);
+  const salesOrder = soSnap.data() as SalesOrderSnapshot;
+  const nextLines = applyBilledQuantities(data, salesOrder);
 
   // Allocate the per-company number INSIDE the transaction (concurrency-safe; never reused).
   const allocated = await allocateInvoiceNumber(tx, data.companyId);
   const record = buildInvoiceRecord(data, { invoiceNumber: allocated.invoiceNumber, sequence: allocated.sequence, nowMillis: Date.now() });
   const invoiceRef = db.collection(INVOICES_COLLECTION).doc(); // canonical opaque identity, distinct from the number
+  tx.update(soSnap.ref, { lines: nextLines, updatedAt: FieldValue.serverTimestamp() });
   tx.set(invoiceRef, { ...record, issuedAt: FieldValue.serverTimestamp() });
   stageAuditEventWithId(tx, aid, {
     actorUid,

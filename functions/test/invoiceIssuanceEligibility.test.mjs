@@ -27,8 +27,8 @@ async function seedSalesOrder(overrides = {}) {
     currency: "USD",
     state: "IN_FULFILLMENT",
     lines: [
-      { ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
-      { ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+      { kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
+      { kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
     ],
     ...overrides,
   });
@@ -44,8 +44,8 @@ const baseData = (salesOrderId) => ({
   dueDate: 1_800_000_000_000,
   billingAction: "BILL_NOW",
   lines: [
-    { ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
-    { ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
+    { kind: "PART", ref: "L1", billableQty: 5, unitPriceMinor: 12000, taxMinor: 4785 },
+    { kind: "SERVICE", ref: "L2", billableQty: 2, unitPriceMinor: 5000, taxMinor: 825 },
   ],
 });
 
@@ -80,8 +80,8 @@ test("client unitPriceMinor that does not match the SO's committed unit price sn
 
 test("billableQty exceeding the billing-eligible qty (fulfilledQty) is rejected", async () => {
   const soId = await seedSalesOrder({ lines: [
-    { ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 2 }, // only 2 of 5 fulfilled
-    { ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+    { kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 2 }, // only 2 of 5 fulfilled
+    { kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
   ] });
   const data = baseData(soId); // claims billableQty 5 for L1, but only 2 are eligible
   await assertRejects(
@@ -129,4 +129,20 @@ test("matching + eligible issuance succeeds with SO-derived amounts, and a retri
 
   const invoices = await db.collection("invoices").where("salesOrderId", "==", soId).get();
   assert.equal(invoices.size, 1, "the retry did not create a second invoice");
+});
+
+test("a different idempotency key cannot bill quantity already recorded on the Sales Order", async () => {
+  const soId = await seedSalesOrder();
+  const firstData = baseData(soId);
+  await db.runTransaction((tx) => persistIssuedInvoice(db, tx, firstData, id("actor")));
+
+  const afterFirst = await db.collection("sales_orders").doc(soId).get();
+  assert.equal(afterFirst.data().lines.find((line) => line.ref === "L1").billedQty, 5);
+
+  await assertRejects(
+    db.runTransaction((tx) => persistIssuedInvoice(db, tx, baseData(soId), id("actor"))),
+    (err) => err instanceof InvoiceCommandError && err.code === "QTY_EXCEEDS_ELIGIBLE",
+  );
+  const invoices = await db.collection("invoices").where("salesOrderId", "==", soId).get();
+  assert.equal(invoices.size, 1, "a distinct idempotency key cannot produce a duplicate invoice");
 });
