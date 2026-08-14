@@ -34,6 +34,7 @@ import type {
   Transaction,
 } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { getApp } from "firebase-admin/app";
 import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { INVENTORY_CREATE_EXECUTOR_ROLE } from "./governedBusinessRoles";
@@ -821,10 +822,16 @@ export interface BootstrapCompatibilityAdminInput {
   expectedEmail: string; // the Auth user's email must match this exactly
   provenanceCommit: string; // approved repository commit, recorded in the audit
   idempotencyKey: string; // fresh per attempt (a denied attempt burns its key)
+  // The CONFIRMED target project (e.g. "taylor-parts" or "eos-platform-sandbox").
+  // Required. Recorded as the audit provenance project, and cross-checked against
+  // the runtime project the Admin SDK actually writes to (fail closed on
+  // mismatch) -- so the provenance can never claim a project other than the one
+  // the roleAssignment actually lands in. Replaces the former hard-coded
+  // BOOTSTRAP_ADMIN_PROJECT="taylor-parts", which mis-recorded the sandbox.
+  projectId: string;
 }
 const LEGACY_ADMIN_ROLE_ID = "admin";
 const BOOTSTRAP_ADMIN_PROVENANCE = "bootstrap:legacy-admin-migration";
-const BOOTSTRAP_ADMIN_PROJECT = "taylor-parts";
 const bootstrapAdminAssignmentId = (uid: string): string => `bootstrap-admin-${uid}`;
 
 // Full-equivalence test for the deterministic bootstrap assignment: only a
@@ -850,8 +857,33 @@ export async function bootstrapCompatibilityAdmin(
   assertNonEmptyString(input.uid, "uid");
   assertNonEmptyString(input.expectedEmail, "expectedEmail");
   assertNonEmptyString(input.provenanceCommit, "provenanceCommit");
+  assertNonEmptyString(input.projectId, "projectId");
 
   const db = getFirestore();
+  // Cross-project fail-closed guard (replaces the former hard-coded
+  // BOOTSTRAP_ADMIN_PROJECT="taylor-parts"). The confirmed target project MUST
+  // equal the runtime project this Admin SDK actually writes to, resolved from
+  // the initialized app's own projectId (then GCLOUD_PROJECT/GOOGLE_CLOUD_PROJECT
+  // as fallbacks). This makes it structurally impossible to stamp a provenance
+  // project different from where the roleAssignment lands -- e.g. recording
+  // "eos-platform-sandbox" while writing to "taylor-parts", or vice versa. We
+  // refuse BEFORE any write (no audit against the mismatched project).
+  const runtimeProject =
+    getApp().options.projectId ??
+    process.env.GCLOUD_PROJECT ??
+    process.env.GOOGLE_CLOUD_PROJECT ??
+    null;
+  if (!runtimeProject) {
+    throw new InvalidStateError(
+      "cannot resolve the runtime project identity; refusing to record bootstrap provenance (fail closed)",
+    );
+  }
+  if (runtimeProject !== input.projectId) {
+    throw new InvalidStateError(
+      `project mismatch: confirmed target "${input.projectId}" != runtime project "${runtimeProject}" ` +
+        "(fail closed; bootstrap provenance must match the write target)",
+    );
+  }
   const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(bootstrapAdminAssignmentId(input.uid));
   const userRef = db.collection(USERS_COLLECTION).doc(input.uid);
   const auditRef = auditEventDocRef(input.idempotencyKey);
@@ -870,7 +902,7 @@ export async function bootstrapCompatibilityAdmin(
   const summary =
     `bootstrap compatibility admin migration; source=legacy users.role=admin; ` +
     `provenance=${BOOTSTRAP_ADMIN_PROVENANCE}; operator=${input.operatorUid}; target=${input.uid}; ` +
-    `project=${BOOTSTRAP_ADMIN_PROJECT}; commit=${input.provenanceCommit}`;
+    `project=${input.projectId}; commit=${input.provenanceCommit}`;
 
   const result = await withDeniedAuditOnError(input.idempotencyKey, auditContext, async () => {
     // --- Immediately-before-mutation Auth verification (not transactional):

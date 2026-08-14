@@ -87,6 +87,10 @@ async function main() {
     expectedEmail: args.email,
     provenanceCommit: args.commit,
     idempotencyKey,
+    // The confirmed target project (--project-id === --confirm-project, already
+    // asserted). Recorded as audit provenance and cross-checked against the
+    // runtime project (the app was initializeApp'd with this same projectId).
+    projectId: args["project-id"],
   });
   console.log(`RESULT: ${result.status} (auditEventId ${result.auditEventId}, accessVersionAfter ${result.accessVersionAfter ?? "n/a"})`);
   return 0;

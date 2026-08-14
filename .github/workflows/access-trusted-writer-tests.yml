@@ -16,6 +16,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/trustedWriterCommands.test.mjs"
+      - "functions/test/bootstrapCompatibilityAdmin.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -26,6 +27,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/trustedWriterCommands.test.mjs"
+      - "functions/test/bootstrapCompatibilityAdmin.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -68,6 +70,10 @@ jobs:
 
       - name: Trusted-writer command tests (build + run)
         run: npm run test:trustedWriter
+        working-directory: functions
+
+      - name: Bootstrap compatibility-admin command tests (build + run)
+        run: npm run test:bootstrapCompatibilityAdmin
         working-directory: functions
 
       - name: Upload emulator debug logs
