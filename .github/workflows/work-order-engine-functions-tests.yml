@@ -17,12 +17,16 @@ on:
       - "functions/src/woNumbering.ts"
       - "functions/src/transitionEngine.ts"
       - "functions/src/inventoryService.ts"
+      - "functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts"
+      - "functions/src/salesOrder/salesOrderLifecycle.ts"
       - "functions/src/data/partsCatalog.ts"
       - "functions/src/types/inventoryTransaction.ts"
       - "functions/src/constants/collections.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
       - "functions/test/inventoryService.test.mjs"
+      - "functions/test/salesOrderFulfillmentWriteBack.test.mjs"
+      - "functions/test/salesOrderFulfillmentWriteBackEmulator.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -37,12 +41,16 @@ on:
       - "functions/src/woNumbering.ts"
       - "functions/src/transitionEngine.ts"
       - "functions/src/inventoryService.ts"
+      - "functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts"
+      - "functions/src/salesOrder/salesOrderLifecycle.ts"
       - "functions/src/data/partsCatalog.ts"
       - "functions/src/types/inventoryTransaction.ts"
       - "functions/src/constants/collections.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
       - "functions/test/inventoryService.test.mjs"
+      - "functions/test/salesOrderFulfillmentWriteBack.test.mjs"
+      - "functions/test/salesOrderFulfillmentWriteBackEmulator.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -90,6 +98,12 @@ jobs:
       - name: Inventory ledger (inventoryService.ts) behavioral tests (build + run)
         run: npm run build && node --test test/inventoryService.test.mjs
         working-directory: functions
+
+      - name: Sales Order fulfillment write-back tests (unit + emulator)
+        run: npm run test:salesOrderFulfillmentWriteBack && npm run test:salesOrderFulfillmentWriteBackEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       - name: Upload emulator debug logs
         if: always()
