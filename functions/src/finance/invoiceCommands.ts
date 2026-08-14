@@ -27,6 +27,7 @@ const isPosInt = (v: unknown): v is number => isInt(v) && v > 0;
 const isNonNegInt = (v: unknown): v is number => isInt(v) && v >= 0;
 
 export interface IssueInvoiceLineInput {
+  salesOrderLineId: string;
   kind: string;
   ref: string;
   billableQty: number; // positive integer
@@ -49,6 +50,7 @@ export interface IssueInvoiceInput {
 // The GOVERNED Sales Order facts the callable reads via tx.get (sales_orders/{salesOrderId}) — only the
 // fields this cross-check needs, never the client's own claims.
 export interface SalesOrderSnapshotLine {
+  lineId: string;
   kind: string;
   ref: string;
   unitPrice?: number; // committed SO pricing snapshot; absent ⇒ no basis to bill against
@@ -71,7 +73,6 @@ const billingEligibleQty = (l: SalesOrderSnapshotLine): number => {
   const fulfilled = typeof l.fulfilledQty === "number" && Number.isFinite(l.fulfilledQty) && l.fulfilledQty > 0 ? l.fulfilledQty : 0;
   return Math.min(ordered, fulfilled);
 };
-const lineKey = (kind: string, ref: string): string => `${kind}:${ref}`;
 
 // Cross-check the client-supplied issuance input against the GOVERNED Sales Order — fail closed on any
 // mismatch rather than trusting the client. Basis: SO unitPrice snapshot (no re-pricing); billable qty capped
@@ -95,23 +96,24 @@ export function verifySalesOrderMatch(input: IssueInvoiceInput, so: SalesOrderSn
   if (eligibility.eligibility !== "ELIGIBLE" && eligibility.eligibility !== "PARTIALLY_ELIGIBLE") {
     throw new InvoiceCommandError("NOT_BILLABLE", `sales order is not billing-eligible (${eligibility.eligibility}: ${eligibility.reasons.join("; ")})`);
   }
-  const soLinesByKey = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [lineKey(l.kind, l.ref), l] as const));
-  const requestedByKey = new Map<string, number>();
+  const soLinesById = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [l.lineId, l] as const));
+  const requestedById = new Map<string, number>();
   const lines = Array.isArray(input.lines) ? input.lines : [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (typeof line?.salesOrderLineId !== "string" || line.salesOrderLineId.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} salesOrderLineId required`);
     if (typeof line?.kind !== "string" || line.kind.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
-    const key = lineKey(line.kind, line.ref);
-    const soLine = soLinesByKey.get(key);
+    const soLine = soLinesById.get(line.salesOrderLineId);
     if (!soLine) throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} (${line?.ref}) has no matching sales order line`);
+    if (line.kind !== soLine.kind || line.ref !== soLine.ref) throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} does not match its governed sales order line identity`);
     if (typeof soLine.unitPrice !== "number" || !Number.isFinite(soLine.unitPrice)) {
       throw new InvoiceCommandError("UNPRICED", `sales order line ${line?.ref} has no committed unit price`);
     }
     if (line.unitPriceMinor !== soLine.unitPrice) {
       throw new InvoiceCommandError("PRICE_MISMATCH", `line ${i} (${line?.ref}) unitPriceMinor does not match the sales order's committed unit price`);
     }
-    const requested = (requestedByKey.get(key) ?? 0) + line.billableQty;
-    requestedByKey.set(key, requested);
+    const requested = (requestedById.get(line.salesOrderLineId) ?? 0) + line.billableQty;
+    requestedById.set(line.salesOrderLineId, requested);
     const billedQty = typeof soLine.billedQty === "number" && Number.isFinite(soLine.billedQty) && soLine.billedQty >= 0 ? soLine.billedQty : 0;
     const availableQty = billingEligibleQty(soLine) - billedQty;
     if (requested > availableQty) {
@@ -124,16 +126,16 @@ export function applyBilledQuantities(input: IssueInvoiceInput, so: SalesOrderSn
   verifySalesOrderMatch(input, so);
   const increments = new Map<string, number>();
   for (const line of input.lines) {
-    const key = lineKey(line.kind, line.ref);
-    increments.set(key, (increments.get(key) ?? 0) + line.billableQty);
+    increments.set(line.salesOrderLineId, (increments.get(line.salesOrderLineId) ?? 0) + line.billableQty);
   }
   return so.lines.map((line) => {
-    const increment = increments.get(lineKey(line.kind, line.ref)) ?? 0;
+    const increment = increments.get(line.lineId) ?? 0;
     return increment === 0 ? line : { ...line, billedQty: (line.billedQty ?? 0) + increment };
   });
 }
 
 export interface InvoiceLineRecord {
+  salesOrderLineId: string;
   kind: string;
   ref: string;
   billableQty: number;
@@ -184,6 +186,7 @@ export function buildInvoiceRecord(
   const out: InvoiceLineRecord[] = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
+    if (typeof l?.salesOrderLineId !== "string" || l.salesOrderLineId.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} salesOrderLineId required`);
     if (typeof l?.kind !== "string" || l.kind.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
     if (typeof l?.ref !== "string" || l.ref.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} ref required`);
     if (!isPosInt(l.billableQty)) throw new InvoiceCommandError("LINE_INVALID", `line ${i} billableQty must be a positive integer`);
@@ -196,7 +199,7 @@ export function buildInvoiceRecord(
     const taxableBaseMinor = subtotalMinor - discountMinor;
     if (taxableBaseMinor < 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} discount exceeds subtotal`);
     const lineTotalMinor = taxableBaseMinor + l.taxMinor;
-    out.push({ kind: l.kind, ref: l.ref, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
+    out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
   }
 
   const subtotalMinor = out.reduce((s, l) => s + l.subtotalMinor, 0);
