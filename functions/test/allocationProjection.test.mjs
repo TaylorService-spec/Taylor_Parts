@@ -82,9 +82,9 @@ test("buildAllocationPlan: sibling lines sharing a ref decrement the same pool (
 });
 
 test("SERVICE lines are independently allocatable and pools do not cross kinds", () => {
-  const services = [{ kind: "SERVICE", ref: "SAME", orderedQty: 2 }, { kind: "SERVICE", ref: "SAME", orderedQty: 2 }];
+  const services = [{ kind: "SERVICE", ref: "SAME", orderedQty: 5 }, { kind: "SERVICE", ref: "SAME", orderedQty: 2 }];
   const servicePlan = buildAllocationPlan(services, { "SERVICE:SAME": { kind: "KNOWN", quantity: 2 } });
-  assert.deepEqual(servicePlan.lines.map((l) => l.allocatableQty), [2, 2]);
+  assert.deepEqual(servicePlan.lines.map((l) => l.allocatableQty), [5, 2], "duplicate SERVICE refs remain line-local, not map-pooled");
   const mixed = [{ kind: "PART", ref: "SAME", orderedQty: 2 }, { kind: "EQUIPMENT_MODEL", ref: "SAME", orderedQty: 2 }];
   const mixedPlan = buildAllocationPlan(mixed, { "PART:SAME": { kind: "KNOWN", quantity: 2 }, "EQUIPMENT_MODEL:SAME": { kind: "KNOWN", quantity: 2 } });
   assert.deepEqual(mixedPlan.lines.map((l) => l.allocatableQty), [2, 2]);

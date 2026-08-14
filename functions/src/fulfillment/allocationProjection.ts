@@ -85,7 +85,11 @@ export function buildAllocationPlan(lines: SalesOrderLineLike[], availabilityByR
   const allocations = (Array.isArray(lines) ? lines : []).map((l) => {
     const key = `${l.kind}:${l.ref}`;
     const avail = availabilityByRef[key] ?? availabilityByRef[l.ref] ?? { kind: "UNKNOWN" };
-    let effectiveAvail: Availability = avail;
+    // SERVICE is never inventory-constrained: its own ordered quantity is its complete, line-local
+    // availability. Do not read, share, or decrement an availability map entry for SERVICE.
+    let effectiveAvail: Availability = l.kind === "SERVICE"
+      ? { kind: "KNOWN", quantity: l.orderedQty }
+      : avail;
     if (avail.kind === "KNOWN" && l.kind !== "SERVICE") {
       if (!(key in remainingByKindRef)) remainingByKindRef[key] = avail.quantity;
       effectiveAvail = { kind: "KNOWN", quantity: remainingByKindRef[key] };
