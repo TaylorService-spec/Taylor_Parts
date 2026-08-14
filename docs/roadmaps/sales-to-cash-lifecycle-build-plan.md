@@ -44,5 +44,7 @@ sell → convert → allocate → create service work → plan parts → dispatc
 - Larger builds (P1.1/P1.2/P1.3, P2.2, P3.x) get a short spec grounded in the settled decisions before implementation; report at each phase boundary.
 
 ## Status
-- P0: DONE (P0.1 #946 consumeParts honors actuals+releases remainder; P0.2 #945 setWorkOrderPartsPlan terminal guard).
-- P1 spine: SPEC IN PROGRESS.
+- P0: DONE (#946 consumeParts actuals+release; #945 setWorkOrderPartsPlan terminal guard).
+- P1 spine: P1.3 DONE (#947 governed WON->Create-SO, builds in verify/dedup/backlink for that path). P1.2+P1.1 (#948 SO->WO parts continuity + fulfilledQty write-back) MERGED-PENDING (rebasing over #947 audit-action collision).
+- P1 harden: P1.4-6 DONE (#950 harden direct createSalesOrder). P1.7 DONE (#949 duplicate-ref allocation). P1.8 DONE (#951 issueInvoice reads SO + eligibility).
+- Remaining P1: merge #948 after rebase. Then report P1 boundary -> P2.
