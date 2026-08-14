@@ -70,6 +70,18 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
     if (!isDrawer) setDrawerOpen(false);
   }, [isDrawer]);
 
+  // Close the drawer on ANY navigation to a new location, not just the ones
+  // that go through a rail <NavLink>'s onClick. Browser back/forward, a
+  // <Navigate replace> redirect, and an in-content <Link> all change
+  // location.pathname without ever calling handleNavigate, and each one used
+  // to strand the drawer open over the new page. This is location-driven
+  // rather than click-driven, so it closes regardless of how the navigation
+  // happened.
+  useEffect(() => {
+    if (isDrawer) setDrawerOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on pathname only; re-running for isDrawer flips is already covered by the effect above.
+  }, [location.pathname]);
+
   // Escape closes, and focus returns to the control that opened it.
   useEffect(() => {
     if (!drawerOpen) return undefined;

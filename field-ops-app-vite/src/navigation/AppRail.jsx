@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import {
   NAV_DOMAINS,
   isDomainVisible,
   isNavItemVisible,
   buildServiceNavGroups,
+  findActiveServiceGroupKey,
 } from "./navConfig";
 import VerenwardMark from "../shared/brand/VerenwardMark";
 
@@ -139,11 +140,19 @@ export default function AppRail({
   // Keep "where am I" visible. Review found the selected destination sitting at
   // y=866 inside an 844px drawer that opened at scrollTop 0 -- off-screen. The
   // active item registers itself below and is scrolled into view on mount and
-  // whenever the route's domain changes.
+  // whenever the current route changes.
+  //
+  // This used to depend on [activeDomainPath] alone, so switching between two
+  // items WITHIN the same already-expanded domain (e.g. Service > Scheduling
+  // -> Service > Warranty) changed which item was active without the effect
+  // ever re-running -- the newly active item never scrolled into view. Keying
+  // on the full pathname instead fires the effect for every in-domain
+  // selection too, not just a domain change.
+  const location = useLocation();
   const activeItemRef = useRef(null);
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: "nearest" });
-  }, [activeDomainPath]);
+  }, [location.pathname]);
 
   return (
     <nav className="fo-rail__nav" aria-label="Primary">
@@ -153,6 +162,20 @@ export default function AppRail({
           const { isLeaf, item: soleItem } = leafDestination(children);
           const open = expanded.has(domain.path);
           const panelId = `${idPrefix}-${domain.key}`;
+          // Which of this domain's groups (if any) contains the current
+          // route, so the group itself can carry an active/current visual
+          // cue -- not just its child item. Only meaningful when the
+          // current route is actually inside this domain; navConfig's
+          // findActiveServiceGroupKey was exported and unit-tested but never
+          // called from here, so the group heading never reflected "you are
+          // in this group" the way the item link already does.
+          const pathTail = isCurrent
+            ? location.pathname.slice(domain.path.length + 1).replace(/^\//, "")
+            : null;
+          const activeGroupKey =
+            isCurrent && children.groups.length > 0
+              ? findActiveServiceGroupKey(pathTail, children.groups)
+              : null;
 
           return (
             <li key={domain.key} className="fo-rail__domain">
@@ -202,13 +225,17 @@ export default function AppRail({
                   {children.groups.map((group) => (
                     <div
                       key={group.key}
-                      className="fo-rail__group"
+                      className={`fo-rail__group${group.key === activeGroupKey ? " fo-rail__group--active" : ""}`}
                       role="group"
                       aria-label={group.label}
+                      aria-current={group.key === activeGroupKey ? "true" : undefined}
                     >
                       {/* Organisational hierarchy, deliberately not a link: the
                           group's landing is simply its first child, which is
-                          already listed directly beneath it. */}
+                          already listed directly beneath it. findActiveServiceGroupKey
+                          decides whether THIS group contains the current route, so the
+                          heading itself can carry the same "you are here" cue its child
+                          item already gets from fo-rail__item--active. */}
                       <p className="fo-rail__group-label">{group.label}</p>
                       {group.items.map((item) => (
                         <ItemLink
