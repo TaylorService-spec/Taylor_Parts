@@ -1,0 +1,53 @@
+name: Composition Conformance Tests
+
+# Site-wide card/composition standardization gate. The design system (WorkspaceShell/ContextBand/ActionRail/
+# StatusPill, Wave 0) spreads surface-by-surface; this workflow is what stops it backsliding. It runs the
+# burn-down conformance gates (no new fo-badge outside a shrinking legacy allowlist; conformant surfaces adopt
+# the shell + carry zero fo-badge; the allowlist may not go stale) plus the migrated Truck Inventory render
+# regression. Broad path triggers on modules/** and shared/** because the "no new fo-badge" gate scans every
+# surface — a new offender anywhere must fail the PR. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/**"
+      - "field-ops-app-vite/src/shared/**"
+      - "field-ops-app-vite/src/domain/truckInventoryView.js"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/compositionConformance.test.jsx"
+      - "field-ops-app-vite/test/truckInventory.test.jsx"
+      - ".github/workflows/composition-conformance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/**"
+      - "field-ops-app-vite/src/shared/**"
+      - "field-ops-app-vite/src/domain/truckInventoryView.js"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/compositionConformance.test.jsx"
+      - "field-ops-app-vite/test/truckInventory.test.jsx"
+      - ".github/workflows/composition-conformance-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  composition-conformance-tests:
+    name: Composition conformance + Truck render (vitest + jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Conformance gates + Truck workspace regression
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx
+        working-directory: field-ops-app-vite
