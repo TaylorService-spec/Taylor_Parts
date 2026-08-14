@@ -185,8 +185,10 @@
       ],
       "problem": "The pure cores are well tested (functions/test/coverageCommands.test.mjs, coverageResolution.test.mjs), but the onCall I/O adapters in functions/src/coverage/coverageCallables.ts (createSalesTerritory, createCoverageAssignment) and coverageReadCallables.ts (resolveCoverageForContext) have zero tests — confirmed no test references any of them. Untested behavior includes: the deterministic-audit-id transaction replay/idempotency path (returns replayed:true with prior targetId), the required-idempotencyKey guard, requireCoverageWrite/requireCoverageRead capability gating (fail-closed on effective-access throw → permission-denied), mapCommandError translation of CoverageCommandError → invalid-argument, and the companyId-scoped read + territory join. These are the exact seams where regressions (double-write on retry, an auth bypass, leaking a raw error) would land.",
       "impact": "The transactional idempotency and authorization behavior of the governed coverage callables — where a bug means duplicate persisted assignments on client retry or an authorization bypass — can regress with no failing test to catch it.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 913,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "opportunity-date-field-has-a-utc-local-off-by-one-between-re",
@@ -214,8 +216,10 @@
       ],
       "problem": "In functions/src/inventoryService.ts, reserveParts()/getAvailableQuantity() compute available stock by summing the append-only inventory_transactions ledger inside a runTransaction, then CREATE new RESERVED docs. Firestore transaction contention only aborts when another transaction writes a document in your read set. Two concurrent reservations (e.g. two Work Orders dispatched at nearly the same time that both plan the same SKU) each read the same existing ledger docs and each append brand-new RESERVED docs that are NOT in the other transaction's read set, so neither invalidates the other. Both availability checks pass against the same pre-image and both commit. The header comment's 'all-or-nothing, no partial reservations ever land, atomic' guarantee does not actually hold for the cross-transaction case because Firestore does not lock the query gap against concurrent inserts.",
       "impact": "Stock can be reserved below zero (oversell): two jobs reserve the last unit of a part, both DISPATCH successfully, and only at consume/fulfillment does the shortfall surface in the field. Because this ledger is documented as the ONLY source of stock truth, the derived available quantity silently goes negative and every downstream analytic (days-remaining, reorder urgency, stockout risk) is computed from a corrupted position.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 914,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "completed-work-order-can-be-permanently-stuck-stock-never-co",
@@ -228,8 +232,10 @@
       ],
       "problem": "In functions/src/inventoryService.ts, triggerInventoryEffects() checks isStateProcessed() and calls markStateProcessed()/recordFailure() OUTSIDE the ledger transaction, and consumeParts() throws a shortfall if outstanding reservation < qtyPlanned. If the earlier DISPATCHED reserveParts recorded a failure (insufficient stock, retryNeeded:true) or was never run, or if consumeParts partially committed and the process died before markStateProcessed, then the COMPLETED trigger finds outstanding < qtyPlanned, throws, and recordFailure() flags it retryNeeded forever. Every retry re-hits the same shortfall (outstanding does not grow), so it can never self-heal and finalizeInventoryTransaction() never runs. Meanwhile the Work Order itself is already committed COMPLETED and is never rolled back.",
       "impact": "A completed job's parts are never consumed from the ledger, so on-hand/available stays overstated indefinitely and the sync-status doc sits in a permanent retryNeeded state that only manual operator intervention (retryInventoryEffects script/runbook) can address. The inconsistency between 'WO COMPLETED' and 'inventory not consumed' is invisible in the app UI.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 914,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "zero-test-coverage-for-the-single-source-of-truth-execution-",
@@ -431,8 +437,10 @@
       ],
       "problem": "In functions/src/warehouseService.ts, createTransferOrder() records a TransferOrder but moves no stock. completeTransferOrder() then applies deltas only against a hardcoded pseudo-bin TRANSFER_BIN_CODE='TRANSFER' at BOTH ends: applyStockDelta(fromWarehouseId, part, 'TRANSFER', -qty) and applyStockDelta(toWarehouseId, part, 'TRANSFER', +qty). Because no real source bin was ever debited (at creation or completion), the source warehouse's actual on-hand quantity in its real bin is never reduced, the source's 'TRANSFER' bin is decremented from an implicit 0 and goes negative, and the destination units land in a non-real 'TRANSFER' bin. getWarehouseStock() then returns these phantom/negative rows. The file comment only acknowledges the destination-bin refinement gap, not this source-debit/negative-bin incoherence.",
       "impact": "Any consumer that wires these functions gets corrupted bin-level inventory: overstated source stock, phantom destination stock, and negative quantities. Currently latent (warehouseService.ts is not exported from functions/src/index.ts and has no callable/test), so impact is deferred until it is wired, but the logic is already wrong.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 915,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "receive-location-options-fetch-has-no-request-generation-gua",
@@ -480,8 +488,10 @@
       ],
       "problem": "ledgerNormalizer.ts (normalizeLedgerTransaction), inventoryAnalyticsService.ts (generateInventoryHealthDashboard), warehouseReconciliationService.ts (detectStockDiscrepancies/generateReconciliationReport), and warehouseAnalyticsBridge.ts only reference each other; a grep across functions/src shows zero callers outside their own cluster and tests, and index.ts exports no reconciliation/analytics callable. ledgerNormalizer's own header justifies its existence by 'a future caller [that] reads the real ledger and feeds it into this analytics engine' — that caller does not exist. The actual reconciliation shown to users runs in a parallel client-side mirror (field-ops-app-vite/src/domain/warehouseReconciliationEngine.ts, inventoryAnalyticsEngine.ts).",
       "impact": "The server owns no authoritative reconciliation/forecast surface; the numbers users see come from a client mirror that must be kept byte-for-byte in sync by hand. Either the server pipeline is dead weight or the intended trusted wiring (a callable that reads inventory_transactions -> normalize -> analytics/reconcile) is the missing last step.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 918,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "failed-post-commit-inventory-effects-have-no-deployed-detect",
@@ -496,8 +506,10 @@
       ],
       "problem": "triggerInventoryEffects() (functions/src/inventoryService.ts) runs after the WO transition commits and swallows any failure, writing inventory_sync_status.failures[state] = { retryNeeded: true }. But nothing ever retries: the file comment concedes 'No cron/background system exists', and the pure detector built for exactly this (inventoryEffectDetection.ts detectWorkOrderInventoryEffects / SILENT_MISS classification) is referenced by no callable in index.ts. So when reserveParts() throws at DISPATCHED (e.g. insufficient stock) the WO stays DISPATCHED, no RESERVED ledger entries are written, and the only record of the miss is a retryNeeded flag no deployed surface reads or acts on.",
       "impact": "Ledger silently diverges from Work Order state with no operator-visible alert and no in-app remediation path; recovery depends on manual scripts. Stock a job depends on may never be reserved, yet the job proceeds toward COMPLETED where consumeParts() will then hit a reservation shortfall.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 916,
+      "reconciledBy": "claude-round3-prep"
     },
     {
       "discriminator": "detectstockdiscrepancies-compares-global-ledger-consumption-",
@@ -510,8 +522,10 @@
       ],
       "problem": "In functions/src/warehouseReconciliationService.ts, expectedQuantity for a (warehouse, part) is consumedByPart.get(partId) — the sum of CONSUMED across ALL warehouses (the ledger is warehouse-agnostic) — while actualQuantity is one warehouse's bin total. classifySeverity then flags any variance, and returns CRITICAL whenever expectedQuantity===0 and variance!==0. In any multi-warehouse deployment this makes every warehouse's per-part figure structurally wrong: each warehouse is charged with all warehouses' consumption, producing large spurious HIGH/CRITICAL discrepancies. The header flags this as a known limitation rather than solving it.",
       "impact": "If/when reconciliation is actually surfaced for more than one warehouse, the discrepancy report is systematically incorrect and would erode trust in the whole reconciliation feature; the CRITICAL classifications are noise, not signal.",
-      "status": "BACKLOG",
-      "source": "round-1-scan-not-top10"
+      "status": "FIXED",
+      "source": "round-1-scan-not-top10",
+      "pr": 917,
+      "reconciledBy": "claude-round3-prep"
     }
   ],
   "round2": {
