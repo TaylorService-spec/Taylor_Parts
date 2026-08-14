@@ -120,7 +120,7 @@ await check("WON, no prior Sales Order -> Sales Order created with correct sourc
   assert.equal(so.locationId, "loc-1");
   assert.equal(so.customerPO, "PO-77");
   assert.equal(so.state, "CONFIRMED");
-  assert.deepEqual(so.lines, [{ kind: "PART", ref: "PART-1", orderedQty: 3, allocatedQty: 0, fulfilledQty: 0 }]);
+  assert.deepEqual(so.lines, [{ lineId: "line-1", kind: "PART", ref: "PART-1", orderedQty: 3, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }]);
 
   const oppSnap = await db.collection("opportunities").doc(oppId).get();
   assert.equal(oppSnap.data().salesOrderId, result.salesOrderId);

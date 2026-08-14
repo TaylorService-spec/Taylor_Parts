@@ -8,11 +8,18 @@ name: Finance Invoice Persistence Tests
 # deploys) a callable, and adds a DENY-ALL Rules block — it activates, grants, and deploys nothing.
 # (The Firestore Rules regression suite + the governed-hash pin guard run in their own workflows, triggered by
 # the firestore.rules / verifyTruckRegistryDeployment.js changes.)
+#
+# Second job: Firestore-emulator coverage for the finance onCall adapter gate (unauthenticated / active:false
+# denial) plus the transactional cores that sit below those still-inactive finance.* capability gates --
+# invoice/payment/refund/adjustment idempotency replay and the issueInvoice-vs-governed-Sales-Order eligibility
+# cross-check (site-work r3 H/I, P1.8). Emulator-only, project "taylor-parts", loopback host -- no production
+# access, no credentials, no repository secrets.
 
 on:
   pull_request:
     paths:
       - "functions/src/finance/**"
+      - "functions/src/salesOrder/**"
       - "functions/src/constants/collections.ts"
       - "functions/src/index.ts"
       - "functions/src/access/permissionCatalog.ts"
@@ -26,11 +33,21 @@ on:
       - "functions/test/invoiceNumbering.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/test/financeReadCallables.test.mjs"
+      - "functions/test/invoiceCallables.test.mjs"
+      - "functions/test/invoiceIssuanceEligibility.test.mjs"
+      - "functions/test/paymentCallables.test.mjs"
+      - "functions/test/refundCallables.test.mjs"
+      - "functions/test/adjustmentCallables.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
       - ".github/workflows/finance-invoice-persistence-tests.yml"
   push:
     branches: [main]
     paths:
       - "functions/src/finance/**"
+      - "functions/src/salesOrder/**"
       - "functions/src/access/permissionCatalog.ts"
       - "functions/test/invoiceCommands.test.mjs"
       - "functions/test/paymentCommands.test.mjs"
@@ -38,6 +55,12 @@ on:
       - "functions/test/financeReadProjection.test.mjs"
       - "functions/test/refundCommands.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
+      - "functions/test/financeReadCallables.test.mjs"
+      - "functions/test/invoiceCallables.test.mjs"
+      - "functions/test/invoiceIssuanceEligibility.test.mjs"
+      - "functions/test/paymentCallables.test.mjs"
+      - "functions/test/refundCallables.test.mjs"
+      - "functions/test/adjustmentCallables.test.mjs"
       - ".github/workflows/finance-invoice-persistence-tests.yml"
   workflow_dispatch:
 
@@ -74,3 +97,48 @@ jobs:
       - name: Capability catalog + resolver exhaustiveness (node:test)
         run: node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs
         working-directory: functions
+
+  finance-callables-emulator:
+    name: Finance onCall adapters + eligibility (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/finance-callables-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/finance-callables-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/finance-callables-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Finance onCall adapter gate + eligibility tests (build + run)
+        run: npm run test:financeCallablesEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-callables-emulator-logs
+          path: /tmp/finance-callables-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
