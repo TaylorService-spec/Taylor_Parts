@@ -665,54 +665,61 @@
       {
         "discriminator": "finance-oncall-callables-zero-test-coverage",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "H"
+        "prItem": "H",
+        "pr": 929
       },
       {
         "discriminator": "listaccountinvoicear-caps-and-summarizes-without-truncation-signal",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "I"
+        "prItem": "I",
+        "pr": 928
       },
       {
         "discriminator": "permission-catalog-and-compatibility-roles-mirrors-drifted",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "J"
+        "prItem": "J",
+        "pr": 930
       },
       {
         "discriminator": "completetransferorder-same-source-dest-manufactures-stock",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
-        "prItem": "K"
+        "prItem": "K",
+        "pr": 927
       },
       {
         "discriminator": "useassignedworkorders-raw-error-leak",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
         "prItem": "L",
-        "batch": "safe-copy-sweep"
+        "batch": "safe-copy-sweep",
+        "pr": 931
       },
       {
         "discriminator": "fieldmode-advance-raw-transitionworkorder-error",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
         "prItem": "L",
-        "batch": "safe-copy-sweep"
+        "batch": "safe-copy-sweep",
+        "pr": 931
       },
       {
         "discriminator": "dispatcherboard-dispatcherror-raw-message-leak",
         "worker": "claude",
-        "status": "QUEUED",
+        "status": "FIXED",
         "priority": "P2",
         "prItem": "L",
-        "batch": "safe-copy-sweep"
+        "batch": "safe-copy-sweep",
+        "pr": 931
       },
       {
         "discriminator": "dispatch-schedule-guard-race-across-different-work-orders",
