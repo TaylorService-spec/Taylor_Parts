@@ -51,6 +51,8 @@ const FAILURE_MAP: Record<TruckRegistryFailureCode, { code: FunctionsErrorCode; 
   TRUCK_REFERENCED: { code: "failed-precondition", message: "This truck has operational history and cannot be deleted." },
   REFERENCE_STATE_UNKNOWN: { code: "failed-precondition", message: "The truck's operational history cannot be confirmed, so deletion is blocked." },
   MALFORMED_STORED_RECORD: { code: "internal", message: "The request could not be completed." },
+  STATUS_TRANSITION_FORBIDDEN: { code: "failed-precondition", message: "That status change is not allowed; use the deactivate action instead." },
+  DRIVER_ALREADY_ASSIGNED: { code: "failed-precondition", message: "That driver is already assigned to a different truck." },
 };
 
 // Exported for direct sanitization tests: proves a known service error surfaces ONLY its

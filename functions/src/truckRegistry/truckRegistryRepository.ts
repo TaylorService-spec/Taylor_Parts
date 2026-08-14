@@ -156,6 +156,16 @@ export interface TruckRegistryRepository {
   /** ACTIVE-existence checks for injected reference validation -- all reads through the txn. */
   isEmployeeActive(txn: Transaction, employeeId: string): Promise<boolean>;
   isWarehouseActive(txn: Transaction, warehouseId: string): Promise<boolean>;
+  /**
+   * Cross-truck driver-uniqueness lookup. Mirrors the boundedReferenceQuery pattern in
+   * operationalReferenceProbe.ts: a bounded (limit 2), single-field equality query on
+   * assignedDriverEmployeeId -- the automatic single-field index applies, no composite index
+   * required -- read through the SAME transaction so a concurrent conflicting assignment
+   * conflicts the commit. limit(2) (not 1) because excludeTruckId itself may already hold this
+   * driver (a same-truck reassign-to-current-driver is not a conflict); returns the truckId of
+   * the first OTHER truck found still holding this driver, or null if none.
+   */
+  findOtherTruckWithDriver(txn: Transaction, employeeId: string, excludeTruckId: string): Promise<string | null>;
 }
 
 export function buildFirestoreTruckRegistryRepository(db: Firestore): TruckRegistryRepository {
@@ -196,6 +206,13 @@ export function buildFirestoreTruckRegistryRepository(db: Firestore): TruckRegis
       if (!snap.exists) return false;
       const d = snap.data() ?? {};
       return d.active !== false && d.status !== "INACTIVE";
+    },
+    async findOtherTruckWithDriver(txn, employeeId, excludeTruckId) {
+      const snap = await txn.get(db.collection(TRUCKS_COLLECTION).where("assignedDriverEmployeeId", "==", employeeId).limit(2));
+      for (const doc of snap.docs) {
+        if (doc.id !== excludeTruckId) return doc.id;
+      }
+      return null;
     },
   };
 }

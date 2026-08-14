@@ -28,7 +28,7 @@ import {
   type StoredTruck,
   type StoredMobileLocation,
 } from "./truckRegistryRepository";
-import { validateCreateInput, parseTruckId, parseEmployeeId, parseWarehouseId, isTruckStatus, isReactivationStatus } from "./validation";
+import { validateCreateInput, parseTruckId, parseEmployeeId, parseWarehouseId, isTruckStatus, isChangeableStatus, isReactivationStatus } from "./validation";
 import {
   DEACTIVATED_STATUS,
   type InventoryPresence,
@@ -51,6 +51,8 @@ import {
   ClaimIntegrityError,
   TruckReferencedError,
   ReferenceStateUnknownError,
+  StatusTransitionForbiddenError,
+  DriverAlreadyAssignedError,
 } from "./types";
 
 // Injected governed-inventory-at-location predicate. It receives the SAME transaction and
@@ -268,6 +270,11 @@ async function setDriver(input: SetDriverInput, deps?: TruckRegistryDeps): Promi
     operation: "assignTruckDriver", action: "assignTruckDriver", fpPayload: { employeeId: eid.value },
     apply: async (current, txn, repo) => {
       if (!(await repo.isEmployeeActive(txn, eid.value))) throw new EmployeeInvalidError("employee is missing or not active");
+      // Cross-truck driver uniqueness: an employee may be assignedDriverEmployeeId on AT MOST one
+      // truck at a time. Assigning the same employee already on THIS truck is a harmless no-op
+      // replay (excluded); an employee assigned on a DIFFERENT truck is rejected.
+      const other = await repo.findOtherTruckWithDriver(txn, eid.value, current.truck.truckId);
+      if (other !== null) throw new DriverAlreadyAssignedError(`employee ${eid.value} is already assigned to truck ${other}`);
       return { nextTruck: { ...current.truck, assignedDriverEmployeeId: eid.value }, nextActive: current.active };
     },
     summary: (v, fp) => `assigned driver ${eid.value} to truck ${input.truckId} v=${v} fp=${fp}`,
@@ -290,6 +297,13 @@ export function unassignDriver(input: UnassignDriverInput, deps?: TruckRegistryD
 export interface ChangeStatusInput { actorUid: string; idempotencyKey: string; truckId: string; status: TruckStatus; expectedVersion: number; }
 export async function changeStatus(input: ChangeStatusInput, deps?: TruckRegistryDeps): Promise<MutationOutcome> {
   if (!isTruckStatus(input.status)) throw new InvalidInputError("invalid status");
+  // OUT_OF_SERVICE is the terminal DEACTIVATED_STATUS -- it must be reachable ONLY via the
+  // governed, inventory-guarded deactivateTruck path (which also flips active=false and
+  // requires governed inventory ABSENT). changeStatus is a purely descriptive status change and
+  // must never bypass that guard.
+  if (!isChangeableStatus(input.status)) {
+    throw new StatusTransitionForbiddenError("OUT_OF_SERVICE is only reachable via deactivateTruck, not changeStatus");
+  }
   return mutateTruck({
     actorUid: input.actorUid, idempotencyKey: input.idempotencyKey, truckId: input.truckId, expectedVersion: input.expectedVersion,
     operation: "changeTruckStatus", action: "changeTruckStatus", fpPayload: { status: input.status },
