@@ -34,6 +34,25 @@ function sumLineItems(items: PurchaseOrderLineItem[]): number {
   return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 }
 
+// Rejects the shapes that would otherwise commit as bookkeeping nonsense:
+// no line items at all (a $0 PO), or any item with a non-positive quantity
+// or a negative unitPrice (either of which can drive totalCost negative or
+// silently zero). Mirrors the rigor of partSupplierItems.ts's
+// validateSupplierItemTerms -- reject clearly, don't coerce/clip.
+function validateLineItems(items: PurchaseOrderLineItem[]): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("PurchaseOrder requires at least one line item");
+  }
+  items.forEach((item, i) => {
+    if (typeof item.quantity !== "number" || !Number.isFinite(item.quantity) || item.quantity <= 0) {
+      throw new Error(`PurchaseOrder line item ${i}: quantity must be a positive number`);
+    }
+    if (typeof item.unitPrice !== "number" || !Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
+      throw new Error(`PurchaseOrder line item ${i}: unitPrice must be a non-negative number`);
+    }
+  });
+}
+
 // Always creates in DRAFT -- there is no path in this epic that creates
 // a PurchaseOrder in any other status. Human approval (updatePurchaseOrderStatus
 // to APPROVED) is a separate, later, explicit call.
@@ -41,6 +60,7 @@ export async function createPurchaseOrder(input: {
   supplierId: string;
   items: PurchaseOrderLineItem[];
 }): Promise<PurchaseOrder> {
+  validateLineItems(input.items);
   const ref = db().collection(PURCHASE_ORDERS_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
   const order: PurchaseOrder = {

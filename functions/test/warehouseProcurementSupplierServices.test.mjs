@@ -29,6 +29,31 @@ test("purchase order lifecycle accepts forward transitions and rejects a termina
   await assert.rejects(updatePurchaseOrderStatus(order.id, "CANCELLED"), /Illegal PurchaseOrder transition/);
 });
 
+test("purchase order creation rejects empty line items", async () => {
+  await assert.rejects(
+    createPurchaseOrder({ supplierId: id("supplier"), items: [] }),
+    /at least one line item/
+  );
+});
+
+test("purchase order creation rejects a non-positive quantity", async () => {
+  await assert.rejects(
+    createPurchaseOrder({ supplierId: id("supplier"), items: [{ partId: id("part"), quantity: 0, unitPrice: 5 }] }),
+    /quantity must be a positive number/
+  );
+  await assert.rejects(
+    createPurchaseOrder({ supplierId: id("supplier"), items: [{ partId: id("part"), quantity: -1, unitPrice: 5 }] }),
+    /quantity must be a positive number/
+  );
+});
+
+test("purchase order creation rejects a negative unit price", async () => {
+  await assert.rejects(
+    createPurchaseOrder({ supplierId: id("supplier"), items: [{ partId: id("part"), quantity: 1, unitPrice: -5 }] }),
+    /unitPrice must be a non-negative number/
+  );
+});
+
 test("supplier selection breaks equal-price ties by shorter lead time", async () => {
   const partId = id("part"), slow = id("slow"), fast = id("fast");
   await db.collection("suppliers").doc(slow).set({ id: slow, name: "Slow", contactEmail: "slow@example.test", leadTimeDays: 8 });
