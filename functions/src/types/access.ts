@@ -289,7 +289,12 @@ export type AuditAction =
   | "createWorkOrder"
   // Commercial command idempotency markers for the Opportunity and Sales Order create callables.
   | "createOpportunity"
-  | "createSalesOrder";
+  | "createSalesOrder"
+  // Commercial command idempotency markers for the Opportunity and Sales Order TRANSITION callables (site-work
+  // r3 item G) -- the same deterministic Audit Event id mechanism as the create markers above, so a retried
+  // ADVANCE/OUTCOME/CANCEL call replays its prior result instead of skipping or double-applying a stage.
+  | "transitionOpportunity"
+  | "transitionSalesOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

@@ -24,8 +24,11 @@ import type { SalesOrderTransition } from "./salesOrderLifecycle";
 
 export const SALES_ORDER_WRITE_CAPABILITY = "salesOrder.write";
 
-const createAuditId = (actorUid: string, key: string): string =>
-  `createSalesOrder_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
+// Shared deterministic Audit Event id builder (same shape as coverageCallables.ts's mkAuditId): a retried
+// call with the same actorUid + idempotencyKey resolves to the SAME Audit Event document id, so the
+// transactional existence check below is the single source of truth for "was this exact call already applied."
+const mkAuditId = (action: string, actorUid: string, key: string): string =>
+  `${action}_${createHash("sha256").update(`${actorUid}|${key}`).digest("hex").slice(0, 40)}`;
 
 function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
@@ -45,7 +48,7 @@ function mapCommandError(err: unknown): HttpsError {
 export async function persistCreatedSalesOrder(
   db: Firestore, tx: Transaction, built: BuiltSalesOrder, actorUid: string, idempotencyKey?: string,
 ) {
-  const aid = idempotencyKey ? createAuditId(actorUid, idempotencyKey) : null;
+  const aid = idempotencyKey ? mkAuditId("createSalesOrder", actorUid, idempotencyKey) : null;
   const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
   if (aid) {
     const prior = await tx.get(auditEventDocRef(aid));
@@ -55,6 +58,35 @@ export async function persistCreatedSalesOrder(
   tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createSalesOrder", targetType: "salesOrder", targetId: ref.id, outcome: "applied", summary: `created sales order for account ${built.accountId}` });
   return { success: true as const, replayed: false as const, salesOrderId: ref.id, state: built.state };
+}
+
+// Transactional core of transitionSalesOrder, exported so tests can exercise the idempotency invariant
+// directly (below the capability gate — salesOrder.write is registered active:false, a hard deny for
+// everyone until a separate Owner grant), exactly the pattern persistCreatedSalesOrder already established.
+export async function persistTransitionedSalesOrder(
+  db: Firestore, tx: Transaction, ref: FirebaseFirestore.DocumentReference,
+  salesOrderId: string, transition: SalesOrderTransition, actorUid: string, idempotencyKey: string,
+) {
+  const aid = mkAuditId("transitionSalesOrder", actorUid, idempotencyKey);
+  const prior = await tx.get(auditEventDocRef(aid));
+  const snap = await tx.get(ref);
+  if (!snap.exists) throw new HttpsError("not-found", `No Sales Order with id ${salesOrderId}`);
+  const current = snap.data() as SalesOrderDocState;
+  if (prior.exists) {
+    return { success: true as const, replayed: true as const, salesOrderId, state: current.state };
+  }
+  const patch = buildTransitionPatch(current, transition, { actorUid, nowMillis: Date.now() });
+  const { updatedAtMillis: _u, ...rest } = patch;
+  tx.update(ref, { ...rest, updatedAt: FieldValue.serverTimestamp() });
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "transitionSalesOrder",
+    targetType: "salesOrder",
+    targetId: salesOrderId,
+    outcome: "applied",
+    summary: `transitioned sales order ${salesOrderId} to state ${patch.state}`,
+  });
+  return { success: true as const, replayed: false as const, salesOrderId, state: patch.state };
 }
 
 async function requireSalesOrderWrite(uid: string): Promise<void> {
@@ -92,10 +124,17 @@ export const createSalesOrder = onCall({ region: "us-central1" }, async (request
 interface TransitionSalesOrderInput {
   salesOrderId: string;
   transition: SalesOrderTransition;
+  idempotencyKey?: string;
 }
 
 // Advance a Sales Order along its lifecycle, or cancel it (before FULFILLED). Legality is enforced by the
 // pure authority; FULFILLED requires every line fully fulfilled.
+//
+// Idempotency (site-work r3 item G): a retried ADVANCE/CANCEL call — client timeout retry, double-tap — must
+// never apply twice. Mirrors createSalesOrder's guard precisely: a REQUIRED idempotencyKey resolves to a
+// deterministic Audit Event id (mkAuditId), staged atomically with the state mutation in the SAME transaction.
+// A duplicate call finds that Audit Event already exists and returns `replayed:true` with the Sales Order's
+// CURRENT state instead of recomputing and reapplying the transition.
 export const transitionSalesOrder = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
   await requireSalesOrderWrite(request.auth.uid);
@@ -107,20 +146,17 @@ export const transitionSalesOrder = onCall({ region: "us-central1" }, async (req
   if (data.transition !== "ADVANCE" && data.transition !== "CANCEL") {
     throw new HttpsError("invalid-argument", "transition must be ADVANCE or CANCEL.");
   }
+  if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
+  }
 
+  const actorUid = request.auth.uid;
   const db = getFirestore();
   const ref = db.collection(SALES_ORDERS_COLLECTION).doc(data.salesOrderId);
   try {
-    const result = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError("not-found", `No Sales Order with id ${data.salesOrderId}`);
-      const current = snap.data() as SalesOrderDocState;
-      const patch = buildTransitionPatch(current, data.transition, { actorUid: request.auth!.uid, nowMillis: Date.now() });
-      const { updatedAtMillis: _u, ...rest } = patch;
-      tx.update(ref, { ...rest, updatedAt: FieldValue.serverTimestamp() });
-      return { state: patch.state };
-    });
-    return { success: true as const, salesOrderId: data.salesOrderId, ...result };
+    return await db.runTransaction((tx) =>
+      persistTransitionedSalesOrder(db, tx, ref, data.salesOrderId, data.transition, actorUid, data.idempotencyKey!),
+    );
   } catch (err) {
     throw mapCommandError(err);
   }
