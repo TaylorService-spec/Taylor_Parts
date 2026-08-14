@@ -103,7 +103,11 @@ export function allocateMoney(m, weights) {
     .map((x, i) => ({ i, frac: (m.minor * x) % total }))
     .sort((a, b) => b.frac - a.frac || a.i - b.i);
   const out = base.slice();
-  for (let k = 0; remainder > 0 && k < order.length; k++, remainder--) out[order[k].i] += 1;
+  // sign-aware: for a negative Money the leftover remainder is negative too, so distribute it using its own
+  // sign (still by the same largest-remainder ordering) — otherwise negative remainders would never be handed
+  // out and the parts would fail to sum exactly to a negative whole.
+  const sign = remainder < 0 ? -1 : remainder > 0 ? 1 : 0;
+  for (let k = 0; remainder !== 0 && k < order.length; k++, remainder -= sign) out[order[k].i] += sign;
   return out.map((minor) => money(minor, m.currency));
 }
 

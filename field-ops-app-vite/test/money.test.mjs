@@ -65,6 +65,26 @@ test("allocateMoney distributes remainder so parts sum EXACTLY to the whole", ()
   assert.deepEqual(zeroWeights.map((p) => p.minor), [0, 0]);
 });
 
+test("allocateMoney distributes remainder for NEGATIVE amounts too — parts still sum EXACTLY to the whole", () => {
+  // sign-aware fix: a negative Money's leftover remainder is negative, so it must be handed out using its own
+  // sign — otherwise the minor unit(s) are silently dropped and the parts fail the exact-sum guarantee.
+  const negParts = allocateMoney(money(-1000, "USD"), [1, 1, 1]); // -1000 / 3
+  assert.deepEqual(negParts.map((p) => p.minor), [-334, -333, -333]);
+  assert.equal(sumMoney(negParts, "USD").minor, -1000); // no lost/invented cents
+
+  const negSmall = allocateMoney(money(-100, "USD"), [1, 1, 1]);
+  assert.deepEqual(negSmall.map((p) => p.minor), [-34, -33, -33]);
+  assert.equal(sumMoney(negSmall, "USD").minor, -100);
+
+  const negWeighted = allocateMoney(money(-1001, "USD"), [3, 2, 1]); // weighted negative split
+  assert.deepEqual(negWeighted.map((p) => p.minor), [-501, -334, -166]);
+  assert.equal(sumMoney(negWeighted, "USD").minor, -1001);
+
+  const negTiny = allocateMoney(money(-7, "USD"), [1, 1, 1]);
+  assert.deepEqual(negTiny.map((p) => p.minor), [-3, -2, -2]);
+  assert.equal(sumMoney(negTiny, "USD").minor, -7);
+});
+
 test("compare / zero / negative / sum / format", () => {
   assert.equal(compareMoney(money(1, "USD"), money(2, "USD")), -1);
   assert.equal(isNegativeMoney(money(-1, "USD")), true);
