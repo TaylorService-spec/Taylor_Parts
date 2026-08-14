@@ -68,6 +68,7 @@ interface BuiltLine {
   orderedQty: number;
   allocatedQty: number;
   fulfilledQty: number;
+  billedQty: number;
   unitPrice?: number;
 }
 
@@ -96,6 +97,7 @@ function validateLine(line: unknown, index: number): BuiltLine {
     orderedQty: l.orderedQty as number,
     allocatedQty: 0,
     fulfilledQty: 0,
+    billedQty: 0,
   };
   if (l.unitPrice !== undefined) out.unitPrice = l.unitPrice as number;
   return out;

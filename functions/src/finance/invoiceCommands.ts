@@ -27,6 +27,7 @@ const isPosInt = (v: unknown): v is number => isInt(v) && v > 0;
 const isNonNegInt = (v: unknown): v is number => isInt(v) && v >= 0;
 
 export interface IssueInvoiceLineInput {
+  kind: string;
   ref: string;
   billableQty: number; // positive integer
   unitPriceMinor: number; // committed SO unitPrice snapshot, integer minor units
@@ -48,10 +49,12 @@ export interface IssueInvoiceInput {
 // The GOVERNED Sales Order facts the callable reads via tx.get (sales_orders/{salesOrderId}) — only the
 // fields this cross-check needs, never the client's own claims.
 export interface SalesOrderSnapshotLine {
+  kind: string;
   ref: string;
   unitPrice?: number; // committed SO pricing snapshot; absent ⇒ no basis to bill against
   orderedQty: number;
   fulfilledQty?: number;
+  billedQty?: number;
 }
 
 export interface SalesOrderSnapshot {
@@ -68,6 +71,7 @@ const billingEligibleQty = (l: SalesOrderSnapshotLine): number => {
   const fulfilled = typeof l.fulfilledQty === "number" && Number.isFinite(l.fulfilledQty) && l.fulfilledQty > 0 ? l.fulfilledQty : 0;
   return Math.min(ordered, fulfilled);
 };
+const lineKey = (kind: string, ref: string): string => `${kind}:${ref}`;
 
 // Cross-check the client-supplied issuance input against the GOVERNED Sales Order — fail closed on any
 // mismatch rather than trusting the client. Basis: SO unitPrice snapshot (no re-pricing); billable qty capped
@@ -91,11 +95,14 @@ export function verifySalesOrderMatch(input: IssueInvoiceInput, so: SalesOrderSn
   if (eligibility.eligibility !== "ELIGIBLE" && eligibility.eligibility !== "PARTIALLY_ELIGIBLE") {
     throw new InvoiceCommandError("NOT_BILLABLE", `sales order is not billing-eligible (${eligibility.eligibility}: ${eligibility.reasons.join("; ")})`);
   }
-  const soLinesByRef = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [l.ref, l] as const));
+  const soLinesByKey = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [lineKey(l.kind, l.ref), l] as const));
+  const requestedByKey = new Map<string, number>();
   const lines = Array.isArray(input.lines) ? input.lines : [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const soLine = soLinesByRef.get(line?.ref);
+    if (typeof line?.kind !== "string" || line.kind.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
+    const key = lineKey(line.kind, line.ref);
+    const soLine = soLinesByKey.get(key);
     if (!soLine) throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} (${line?.ref}) has no matching sales order line`);
     if (typeof soLine.unitPrice !== "number" || !Number.isFinite(soLine.unitPrice)) {
       throw new InvoiceCommandError("UNPRICED", `sales order line ${line?.ref} has no committed unit price`);
@@ -103,14 +110,31 @@ export function verifySalesOrderMatch(input: IssueInvoiceInput, so: SalesOrderSn
     if (line.unitPriceMinor !== soLine.unitPrice) {
       throw new InvoiceCommandError("PRICE_MISMATCH", `line ${i} (${line?.ref}) unitPriceMinor does not match the sales order's committed unit price`);
     }
-    const eligibleQty = billingEligibleQty(soLine);
-    if (line.billableQty > eligibleQty) {
-      throw new InvoiceCommandError("QTY_EXCEEDS_ELIGIBLE", `line ${i} (${line?.ref}) billableQty ${line.billableQty} exceeds billing-eligible qty ${eligibleQty}`);
+    const requested = (requestedByKey.get(key) ?? 0) + line.billableQty;
+    requestedByKey.set(key, requested);
+    const billedQty = typeof soLine.billedQty === "number" && Number.isFinite(soLine.billedQty) && soLine.billedQty >= 0 ? soLine.billedQty : 0;
+    const availableQty = billingEligibleQty(soLine) - billedQty;
+    if (requested > availableQty) {
+      throw new InvoiceCommandError("QTY_EXCEEDS_ELIGIBLE", `line ${i} (${line?.ref}) cumulative billableQty ${requested} exceeds remaining billing-eligible qty ${availableQty}`);
     }
   }
 }
 
+export function applyBilledQuantities(input: IssueInvoiceInput, so: SalesOrderSnapshot): SalesOrderSnapshotLine[] {
+  verifySalesOrderMatch(input, so);
+  const increments = new Map<string, number>();
+  for (const line of input.lines) {
+    const key = lineKey(line.kind, line.ref);
+    increments.set(key, (increments.get(key) ?? 0) + line.billableQty);
+  }
+  return so.lines.map((line) => {
+    const increment = increments.get(lineKey(line.kind, line.ref)) ?? 0;
+    return increment === 0 ? line : { ...line, billedQty: (line.billedQty ?? 0) + increment };
+  });
+}
+
 export interface InvoiceLineRecord {
+  kind: string;
   ref: string;
   billableQty: number;
   unitPriceMinor: number;
@@ -160,6 +184,7 @@ export function buildInvoiceRecord(
   const out: InvoiceLineRecord[] = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
+    if (typeof l?.kind !== "string" || l.kind.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
     if (typeof l?.ref !== "string" || l.ref.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} ref required`);
     if (!isPosInt(l.billableQty)) throw new InvoiceCommandError("LINE_INVALID", `line ${i} billableQty must be a positive integer`);
     if (!isNonNegInt(l.unitPriceMinor)) throw new InvoiceCommandError("UNPRICED", `line ${i} has no committed unit price (unitPriceMinor)`);
@@ -171,7 +196,7 @@ export function buildInvoiceRecord(
     const taxableBaseMinor = subtotalMinor - discountMinor;
     if (taxableBaseMinor < 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} discount exceeds subtotal`);
     const lineTotalMinor = taxableBaseMinor + l.taxMinor;
-    out.push({ ref: l.ref, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
+    out.push({ kind: l.kind, ref: l.ref, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
   }
 
   const subtotalMinor = out.reduce((s, l) => s + l.subtotalMinor, 0);
