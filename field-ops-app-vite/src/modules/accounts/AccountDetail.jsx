@@ -16,6 +16,7 @@ import LocationCreateModal from "./LocationCreateModal";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
 import FinancialForecastSection from "./FinancialForecastSection";
+import AccountArSection from "./AccountArSection";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
@@ -342,6 +343,11 @@ export default function AccountDetail() {
           {/* Credit (unavailable) + Financial Forecast Horizons -- provider-neutral
               surfaces; unconfigured only, definitions-only (Commercial Profile PR 4) */}
           <FinancialForecastSection />
+
+          {/* Accounts Receivable -- the real governed AR read, wired directly (distinct
+              from Financial Summary above, which stays unconfigured pending a broader
+              7-metric provider). Post-Wave-5 activation of listAccountInvoiceAr. */}
+          <AccountArSection accountId={account.id} />
 
           {/* 3. Contacts */}
           <section className="wo-history">
