@@ -16,43 +16,36 @@ import { fetchPartMasterList } from "../../services/partMasterQueries";
 import { usePartMasterWrite } from "../../hooks/usePartMasterWrite";
 import {
   CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES,
-  allowedStatusTransitions,
+  allowedStatusTransitions, partStatusTone,
 } from "../../domain/partMasterWrite";
+import Modal from "../../shared/ui/Modal";
+import { Field, FormActions, FormStatus } from "../../shared/ui/form";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
 
-const STATUS_TONE = {
-  ACTIVE: { background: "var(--color-success-surface)", color: "var(--color-success)" },
-  DRAFT: { background: "var(--color-border)", color: "var(--color-text-primary)" },
-  INACTIVE: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
-  SUPERSEDED: { background: "var(--color-surface-sunken)", color: "var(--color-info)" },
-  DISCONTINUED: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
-};
-function StatusBadge({ status }) {
-  const tone = STATUS_TONE[status] ?? STATUS_TONE.DRAFT;
-  return <span style={{ ...tone, padding: "2px 8px", borderRadius: 12, fontSize: 12, fontWeight: 600 }}>{status}</span>;
-}
-
-// Governed-outcome banner: maps the domain outcome.kind to a tone + keeps the governed message verbatim.
+// Governed-outcome banner: maps the domain outcome.kind to a StatusPill tone + keeps the governed
+// message verbatim. `applied`/`replayed` are success-shaped; `denied`/`notFound`/`error` are hard
+// failures; `invalid`/`conflict` need the user to fix something; `noop`/`unavailable` are neutral.
 const OUTCOME_TONE = {
-  applied: { background: "var(--color-success-surface)", color: "var(--color-success)" },
-  replayed: { background: "var(--color-surface-sunken)", color: "var(--color-info)" },
-  noop: { background: "var(--color-border)", color: "var(--color-text-primary)" },
-  denied: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
-  invalid: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
-  conflict: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
-  notFound: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
-  unavailable: { background: "var(--color-border)", color: "var(--color-text-primary)" },
-  error: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
+  applied: "positive",
+  replayed: "info",
+  noop: "muted",
+  denied: "critical",
+  invalid: "attention",
+  conflict: "attention",
+  notFound: "critical",
+  unavailable: "muted",
+  error: "critical",
 };
 function OutcomeBanner({ outcome }) {
   if (!outcome) return null;
-  const tone = OUTCOME_TONE[outcome.kind] ?? OUTCOME_TONE.error;
-  return <div role="status" style={{ ...tone, padding: "8px 12px", borderRadius: 6, margin: "8px 0", fontSize: 13 }}>{outcome.message}</div>;
+  return (
+    <p className={`fo-state fo-tone-${OUTCOME_TONE[outcome.kind] ?? "critical"} fo-state-message`} role="status" aria-live="polite">
+      {outcome.message}
+    </p>
+  );
 }
-
-const SELECT = { padding: 6, fontSize: 13, minWidth: 140 };
-const INPUT = { padding: 6, fontSize: 13, width: "100%", boxSizing: "border-box" };
-const LABEL = { display: "block", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 };
-const FIELD = { marginBottom: 10 };
 
 // Shared create/edit fields. `mode` = "create" | "edit". partId + internalPartNumber are identity and
 // only editable at create (internalPartNumber IS updatable server-side, but we keep edit focused on the
@@ -60,22 +53,42 @@ const FIELD = { marginBottom: 10 };
 function PartForm({ mode, form, setForm, disabled }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   return (
-    <div style={{ maxWidth: 520 }}>
+    <>
       {mode === "create" && (
         <>
-          <div style={FIELD}><label style={LABEL}>Part ID</label><input style={INPUT} value={form.partId ?? ""} onChange={set("partId")} disabled={disabled} /></div>
-          <div style={FIELD}><label style={LABEL}>Internal part number</label><input style={INPUT} value={form.internalPartNumber ?? ""} onChange={set("internalPartNumber")} disabled={disabled} /></div>
+          <Field id="part-create-id" label="Part ID">
+            <input id="part-create-id" className="fo-wizard-control" value={form.partId ?? ""} onChange={set("partId")} disabled={disabled} />
+          </Field>
+          <Field id="part-create-number" label="Internal part number">
+            <input id="part-create-number" className="fo-wizard-control" value={form.internalPartNumber ?? ""} onChange={set("internalPartNumber")} disabled={disabled} />
+          </Field>
         </>
       )}
-      <div style={FIELD}><label style={LABEL}>Name</label><input style={INPUT} value={form.name ?? ""} onChange={set("name")} disabled={disabled} /></div>
-      <div style={FIELD}><label style={LABEL}>Description</label><input style={INPUT} value={form.description ?? ""} onChange={set("description")} disabled={disabled} /></div>
-      <div style={FIELD}><label style={LABEL}>Category</label><input style={INPUT} value={form.category ?? ""} onChange={set("category")} disabled={disabled} /></div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <div style={FIELD}><label style={LABEL}>Stocking unit</label><select style={SELECT} value={form.stockingUnit ?? "EACH"} onChange={set("stockingUnit")} disabled={disabled}>{UNIT_CODES.map((u) => <option key={u} value={u}>{u}</option>)}</select></div>
-        <div style={FIELD}><label style={LABEL}>Control type</label><select style={SELECT} value={form.controlType ?? "STANDARD"} onChange={set("controlType")} disabled={disabled}>{CONTROL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div style={FIELD}><label style={LABEL}>Stocking class</label><select style={SELECT} value={form.stockingClass ?? "STOCKED"} onChange={set("stockingClass")} disabled={disabled}>{STOCKING_CLASSES.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-      </div>
-    </div>
+      <Field id="part-form-name" label="Name">
+        <input id="part-form-name" className="fo-wizard-control" value={form.name ?? ""} onChange={set("name")} disabled={disabled} />
+      </Field>
+      <Field id="part-form-description" label="Description">
+        <input id="part-form-description" className="fo-wizard-control" value={form.description ?? ""} onChange={set("description")} disabled={disabled} />
+      </Field>
+      <Field id="part-form-category" label="Category">
+        <input id="part-form-category" className="fo-wizard-control" value={form.category ?? ""} onChange={set("category")} disabled={disabled} />
+      </Field>
+      <Field id="part-form-unit" label="Stocking unit">
+        <select id="part-form-unit" className="fo-wizard-control" value={form.stockingUnit ?? "EACH"} onChange={set("stockingUnit")} disabled={disabled}>
+          {UNIT_CODES.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+      </Field>
+      <Field id="part-form-control" label="Control type">
+        <select id="part-form-control" className="fo-wizard-control" value={form.controlType ?? "STANDARD"} onChange={set("controlType")} disabled={disabled}>
+          {CONTROL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </Field>
+      <Field id="part-form-class" label="Stocking class">
+        <select id="part-form-class" className="fo-wizard-control" value={form.stockingClass ?? "STOCKED"} onChange={set("stockingClass")} disabled={disabled}>
+          {STOCKING_CLASSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </Field>
+    </>
   );
 }
 
@@ -103,6 +116,10 @@ export default function PartMasterList(props) {
   const openEdit = (part) => { setForm({ ...part }); setOutcome(null); setPanel({ mode: "edit", part }); };
   const openStatus = (part) => { setOutcome(null); setPanel({ mode: "status", part }); };
   const close = () => { setPanel(null); setForm({}); };
+  // Converting the inline panel to a real Modal overlay adds Escape/backdrop-close for free (the
+  // old inline panel had neither) -- guard those the same way AccountsList/EquipmentCreateModal do,
+  // so a close while a write is in flight cannot drop it.
+  const requestClose = () => { if (!busy) close(); };
 
   // After a governed applied/replayed change, refresh from the trusted read so the UI reflects real state.
   const afterWrite = useCallback((o) => {
@@ -119,87 +136,92 @@ export default function PartMasterList(props) {
   if (state.phase === "error") return <p>The Part Master is currently unavailable. Try again later.</p>;
 
   const parts = state.parts ?? [];
+  const actions = (
+    <ActionRail
+      primary={<button type="button" className="fo-btn-primary" onClick={openCreate} disabled={busy}>New part</button>}
+    />
+  );
+
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Part Master</h2>
-        <button onClick={openCreate} disabled={busy} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: "var(--color-brand-secondary)", color: "white", cursor: "pointer" }}>New part</button>
-      </div>
-      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
+    <WorkspaceShell title="Part Master" actions={actions}>
+      <p className="fo-muted">
         Governed canonical part registry. Create and edit parts here; stock levels live in the inventory ledger.
         Every change goes through the catalog administration service and is authorized server-side.
         {state.invalidCount > 0 ? ` ${state.invalidCount} malformed record(s) were excluded and need review.` : ""}
       </p>
       {!writeReady && (
-        <div style={{ background: "var(--color-border)", color: "var(--color-text-primary)", padding: "8px 12px", borderRadius: 6, fontSize: 13, marginBottom: 8 }}>
+        <p className="fo-state fo-tone-muted fo-state-message" role="status">
           Editing isn’t enabled in this environment yet. You can review parts; create/edit/status changes are activated
           with the catalog administration service (a governed deployment + grant), not from this screen.
-        </div>
+        </p>
       )}
       {!panel && <OutcomeBanner outcome={outcome} />}
 
       {panel && (
-        <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, margin: "8px 0", background: "#fff" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0, fontSize: 15 }}>
-              {panel.mode === "create" ? "New part" : panel.mode === "edit" ? `Edit ${panel.part.internalPartNumber}` : `Change status — ${panel.part.internalPartNumber}`}
-            </h3>
-            <button onClick={close} disabled={busy} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)" }}>×</button>
-          </div>
+        <Modal
+          title={panel.mode === "create" ? "New part" : panel.mode === "edit" ? `Edit ${panel.part.internalPartNumber}` : `Change status — ${panel.part.internalPartNumber}`}
+          onClose={requestClose}
+        >
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
-            <div>
-              <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Current status: <StatusBadge status={panel.part.status} />. Choose a governed transition:</p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="fo-form fo-create-modal-form">
+              <p className="fo-muted">
+                Current status: <StatusPill tone={partStatusTone(panel.part.status)} label={panel.part.status} />. Choose a governed transition:
+              </p>
+              <FormActions>
                 {allowedStatusTransitions(panel.part.status).length === 0
-                  ? <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>No status changes are available from {panel.part.status}.</span>
+                  ? <span className="fo-muted">No status changes are available from {panel.part.status}.</span>
                   : allowedStatusTransitions(panel.part.status).map((s) => (
-                      <button key={s} onClick={() => submitStatus(s)} disabled={busy || !writeReady} style={{ padding: "8px 14px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: writeReady ? "pointer" : "not-allowed" }}>→ {s}</button>
+                      <button key={s} type="button" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</button>
                     ))}
-              </div>
+                <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
+              </FormActions>
             </div>
           ) : (
-            <>
+            <form className="fo-form fo-create-modal-form" onSubmit={(e) => { e.preventDefault(); panel.mode === "create" ? submitCreate() : submitEdit(); }}>
               <PartForm mode={panel.mode} form={form} setForm={setForm} disabled={busy || !writeReady} />
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={busy || !writeReady} style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: writeReady ? "var(--color-brand-secondary)" : "var(--color-info-surface)", color: "white", cursor: writeReady ? "pointer" : "not-allowed" }}>{busy ? "Saving…" : panel.mode === "create" ? "Create part" : "Save changes"}</button>
-                <button onClick={close} disabled={busy} style={{ padding: "8px 16px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Cancel</button>
-              </div>
-            </>
+              <FormStatus>{busy ? "Saving…" : ""}</FormStatus>
+              <FormActions>
+                <button type="submit" disabled={busy || !writeReady}>{busy ? "Saving…" : panel.mode === "create" ? "Create part" : "Save changes"}</button>
+                <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
+              </FormActions>
+            </form>
           )}
-        </div>
+        </Modal>
       )}
 
       {parts.length === 0 ? (
-        <p>No canonical Part records exist yet. Use “New part” to create the first governed part.</p>
+        <p className="fo-muted">No canonical Part records exist yet. Use “New part” to create the first governed part.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid var(--color-border)" }}>
-              <th style={{ padding: 8 }}>Part #</th><th style={{ padding: 8 }}>Name</th><th style={{ padding: 8 }}>Category</th>
-              <th style={{ padding: 8 }}>Control</th><th style={{ padding: 8 }}>Class</th><th style={{ padding: 8 }}>Unit</th>
-              <th style={{ padding: 8 }}>Status</th><th style={{ padding: 8 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {parts.map((part) => (
-              <tr key={part.partId} style={{ borderBottom: "1px solid var(--color-surface-sunken)" }}>
-                <td style={{ padding: 8, fontFamily: "monospace" }}>{part.internalPartNumber}</td>
-                <td style={{ padding: 8 }}>{part.name}</td>
-                <td style={{ padding: 8 }}>{part.category || "—"}</td>
-                <td style={{ padding: 8 }}>{part.controlType}</td>
-                <td style={{ padding: 8 }}>{part.stockingClass}</td>
-                <td style={{ padding: 8 }}>{part.stockingUnit}</td>
-                <td style={{ padding: 8 }}><StatusBadge status={part.status} /></td>
-                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <button onClick={() => openEdit(part)} disabled={busy} style={{ marginRight: 6, padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Edit</button>
-                  <button onClick={() => openStatus(part)} disabled={busy} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Status</button>
-                </td>
+        <div className="fo-table-scroll">
+          <table className="fo-table">
+            <thead>
+              <tr>
+                <th>Part #</th><th>Name</th><th>Category</th>
+                <th>Control</th><th>Class</th><th>Unit</th>
+                <th>Status</th><th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {parts.map((part) => (
+                <tr key={part.partId}>
+                  <td style={{ fontFamily: "monospace" }}>{part.internalPartNumber}</td>
+                  <td>{part.name}</td>
+                  <td>{part.category || "—"}</td>
+                  <td>{part.controlType}</td>
+                  <td>{part.stockingClass}</td>
+                  <td>{part.stockingUnit}</td>
+                  <td><StatusPill tone={partStatusTone(part.status)} label={part.status} /></td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}
+                    <button type="button" onClick={() => openStatus(part)} disabled={busy} className="fo-btn-secondary">Status</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

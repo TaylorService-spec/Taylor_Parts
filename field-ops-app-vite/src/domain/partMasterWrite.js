@@ -26,6 +26,21 @@ export function allowedStatusTransitions(currentStatus) {
   return PART_STATUS_TRANSITIONS[currentStatus] ?? [];
 }
 
+// Wave 5 -- StatusPill tone for PART_STATUSES, preserving the exact colour intent of
+// PartMasterList.jsx's former inline STATUS_TONE map (ACTIVE=success, DRAFT=neutral
+// border, INACTIVE=warning, SUPERSEDED=info, DISCONTINUED=danger).
+const PART_STATUS_TONE = {
+  ACTIVE: "positive",
+  DRAFT: "muted",
+  INACTIVE: "attention",
+  SUPERSEDED: "info",
+  DISCONTINUED: "critical",
+};
+
+export function partStatusTone(status) {
+  return PART_STATUS_TONE[status] ?? "unknown";
+}
+
 // Fields the update command accepts (mirror of UPDATABLE_FIELDS in partMasterCommands.ts). Used to build
 // a minimal `changes` diff; the command re-validates every one.
 export const UPDATABLE_FIELDS = Object.freeze([
