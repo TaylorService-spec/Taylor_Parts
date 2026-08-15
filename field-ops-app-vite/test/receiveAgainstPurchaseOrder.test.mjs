@@ -12,6 +12,13 @@ import {
   describeReceiveOutcome,
   isReceivingUnavailable,
   RECEIVE_STEP,
+  TRACKING_MODE,
+  PART_TRACKING_STATUS,
+  resolvePartTrackingMode,
+  describeSerialEntryIssues,
+  validateSerialNumbers,
+  describePartTrackingBlock,
+  describeLotNotSupported,
 } from "../src/domain/receiveAgainstPurchaseOrder.js";
 import { buildReceiveRequest, RECEIVING_OUTCOME } from "../src/domain/receivingTransport.js";
 
@@ -98,8 +105,96 @@ check("isReceivingUnavailable: true only for the UNAVAILABLE status", () => {
   assert.equal(isReceivingUnavailable(RECEIVING_OUTCOME.APPLIED), false);
 });
 
-check("RECEIVE_STEP vocabulary is present and ordered as the linear flow", () => {
-  assert.deepEqual(Object.keys(RECEIVE_STEP), ["SELECT_CANDIDATE", "SELECT_LOCATION", "CONFIRM", "RESULT"]);
+check("RECEIVE_STEP vocabulary is present and ordered as the linear flow (SERIALS inserted before CONFIRM)", () => {
+  assert.deepEqual(Object.keys(RECEIVE_STEP), ["SELECT_CANDIDATE", "SELECT_LOCATION", "SERIALS", "CONFIRM", "RESULT"]);
+});
+
+// ---- Wave 7 Part 2: SERIAL capture ----
+
+const okPartsFetch = (parts) => ({ ok: true, parts, invalid: [] });
+
+check("resolvePartTrackingMode: STANDARD -> NONE, SERIALIZED -> SERIAL, LOT -> LOT (mirrors the server mapping)", () => {
+  const parts = [
+    { partId: "p-standard", controlType: "STANDARD" },
+    { partId: "p-serial", controlType: "SERIALIZED" },
+    { partId: "p-lot", controlType: "LOT" },
+  ];
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch(parts), partId: "p-standard" }).trackingMode, TRACKING_MODE.NONE);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch(parts), partId: "p-serial" }).trackingMode, TRACKING_MODE.SERIAL);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch(parts), partId: "p-lot" }).trackingMode, TRACKING_MODE.LOT);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch(parts), partId: "p-standard" }).status, PART_TRACKING_STATUS.READY);
+});
+
+check("resolvePartTrackingMode: fails CLOSED (never defaults to NONE) on a denied/unavailable/not-found Part read", () => {
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "permission-denied" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_PERMISSION);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "unavailable" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch([{ partId: "other", controlType: "STANDARD" }]), partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_NOT_FOUND);
+  // malformed fetch result (not even a plain object) -> also fails closed, never throws
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: null, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE);
+  // none of the blocked statuses ever carry a trackingMode
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "permission-denied" }, partId: "p-1" }).trackingMode, undefined);
+});
+
+check("describeSerialEntryIssues / validateSerialNumbers: exactly orderedQuantity, no blanks, no duplicates", () => {
+  assert.equal(describeSerialEntryIssues({ serials: ["A", "B"], expectedCount: 2 }).ok, true);
+  assert.equal(describeSerialEntryIssues({ serials: ["A"], expectedCount: 2 }).ok, false); // count mismatch
+  assert.equal(describeSerialEntryIssues({ serials: ["A", "A"], expectedCount: 2 }).ok, false); // duplicate
+  assert.equal(describeSerialEntryIssues({ serials: ["A", " "], expectedCount: 2 }).ok, false); // blank after trim
+  assert.deepEqual(describeSerialEntryIssues({ serials: ["A", "A", "B"], expectedCount: 3 }).duplicateIndexes, [0, 1]);
+  assert.equal(validateSerialNumbers({ serialNumbers: ["A", "B"], expectedCount: 2 })[0], "A");
+  assert.equal(validateSerialNumbers({ serialNumbers: ["A"], expectedCount: 2 }), null);
+  assert.equal(validateSerialNumbers({ serialNumbers: ["A", "A"], expectedCount: 2 }), null);
+  assert.equal(validateSerialNumbers({ serialNumbers: ["A", ""], expectedCount: 2 }), null);
+  assert.equal(validateSerialNumbers({ serialNumbers: "not-an-array", expectedCount: 2 }), null);
+});
+
+check("validateSerialNumbers: trims whitespace but PRESERVES CASE (serial identity is case-significant)", () => {
+  const validated = validateSerialNumbers({ serialNumbers: ["  AbC123  ", " xyz "], expectedCount: 2 });
+  assert.deepEqual(validated, ["AbC123", "xyz"]);
+  // "abc123" and "AbC123" are NOT duplicates -- case is significant
+  assert.equal(describeSerialEntryIssues({ serials: ["abc123", "AbC123"], expectedCount: 2 }).ok, true);
+});
+
+check("buildReceiveRequestInput: NONE / omitted trackingMode -> the EXACT legacy line shape, no serialNumbers key", () => {
+  const input = buildReceiveRequestInput({ candidate: candidate(), locationId: "wh-1", trackingMode: TRACKING_MODE.NONE });
+  assert.deepEqual(input.lines[0], { lineId: "r1:1", partId: "part-r1", expectedQuantity: 5, receivedQuantity: 5 });
+  assert.equal(Object.prototype.hasOwnProperty.call(input.lines[0], "serialNumbers"), false);
+  // omitting trackingMode entirely (legacy caller) behaves identically
+  const legacyInput = buildReceiveRequestInput({ candidate: candidate(), locationId: "wh-1" });
+  assert.deepEqual(legacyInput.lines[0], input.lines[0]);
+});
+
+check("buildReceiveRequestInput: SERIAL -> requires exactly orderedQuantity valid serials, included on the line", () => {
+  const c = candidate({ orderedQuantity: 2 });
+  const ok = buildReceiveRequestInput({ candidate: c, locationId: "wh-1", trackingMode: TRACKING_MODE.SERIAL, serialNumbers: ["SN-1", "SN-2"] });
+  assert.deepEqual(ok.lines[0].serialNumbers, ["SN-1", "SN-2"]);
+  assert.equal(ok.lines[0].expectedQuantity, 2);
+  // wrong count, blank, duplicate, or missing entirely -> null (never a partial request)
+  assert.equal(buildReceiveRequestInput({ candidate: c, locationId: "wh-1", trackingMode: TRACKING_MODE.SERIAL, serialNumbers: ["SN-1"] }), null);
+  assert.equal(buildReceiveRequestInput({ candidate: c, locationId: "wh-1", trackingMode: TRACKING_MODE.SERIAL, serialNumbers: ["SN-1", ""] }), null);
+  assert.equal(buildReceiveRequestInput({ candidate: c, locationId: "wh-1", trackingMode: TRACKING_MODE.SERIAL, serialNumbers: ["SN-1", "SN-1"] }), null);
+  assert.equal(buildReceiveRequestInput({ candidate: c, locationId: "wh-1", trackingMode: TRACKING_MODE.SERIAL }), null);
+});
+
+check("buildReceiveRequestInput: LOT is deliberately blocked -> always null, regardless of other inputs", () => {
+  assert.equal(buildReceiveRequestInput({ candidate: candidate(), locationId: "wh-1", trackingMode: TRACKING_MODE.LOT }), null);
+});
+
+check("CONTRACT CROSS-CHECK (NONE): the legacy assembled input is still ACCEPTED by the transport's frozen buildReceiveRequest", () => {
+  const input = buildReceiveRequestInput({ candidate: candidate(), locationId: "wh-1", trackingMode: TRACKING_MODE.NONE });
+  const payload = buildReceiveRequest(input);
+  assert.notEqual(payload, null, "transport must still accept the unchanged NONE request shape");
+});
+
+check("describePartTrackingBlock / describeLotNotSupported: sanitized honest copy, no raw code/path", () => {
+  for (const status of Object.values(PART_TRACKING_STATUS)) {
+    if (status === PART_TRACKING_STATUS.READY) continue;
+    const d = describePartTrackingBlock(status);
+    assert.ok(d.title && d.message);
+    assert.ok(!/permission-denied|firestore|functions\/|\//.test(d.message));
+  }
+  const lot = describeLotNotSupported();
+  assert.ok(lot.title && lot.message);
 });
 
 console.log(`\n${passed} passed, 0 failed`);
