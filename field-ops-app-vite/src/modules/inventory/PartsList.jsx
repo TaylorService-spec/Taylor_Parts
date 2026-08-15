@@ -543,6 +543,17 @@ export default function PartsList({ accessVersion } = {}) {
       actions={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
       className="fo-parts-list"
     >
+      {/* Wave 6 -- Parts UX redesign (parts-ux-redesign-blueprint.md). Groups the page's
+          existing sections under WORK / PARTS / FLOW headings, per Decision #43's own plan
+          to converge the Parts workspace around what a user needs to DO, look UP, or track
+          through the LIFECYCLE, rather than the order features shipped historically. This is
+          presentation-only: every section below keeps its exact existing heading, data
+          source, hook, and link -- nothing is removed, hidden, or deduplicated in this slice
+          (deduplicating the role-Home surfaces' near-identical queues is a separate,
+          bounded follow-up, not bundled into this reorganization). */}
+      <h2 id="parts-group-work">Work</h2>
+      <p className="fo-muted">What needs action, what's assigned to you, and what your team is handling.</p>
+
       <h3>Inventory Operational Queue</h3>
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
@@ -781,6 +792,9 @@ export default function PartsList({ accessVersion } = {}) {
         </LoadingEmptyState>
       )}
 
+      <h2 id="parts-group-parts">Parts</h2>
+      <p className="fo-muted">Look up a part -- identity, category, stock, and reorder risk.</p>
+
       <h3>Parts Catalog</h3>
       {/* INV-CONVERGENCE-E C1 -- three explicit states for the governed catalog:
           (1) canonical read in flight -> loading; (2) canonical read blocked
@@ -854,6 +868,9 @@ export default function PartsList({ accessVersion } = {}) {
       </LoadingEmptyState>
       </>
       )}
+
+      <h2 id="parts-group-flow">Flow</h2>
+      <p className="fo-muted">Where reorder requests have already landed in the lifecycle.</p>
 
       <h3>History ({historyData.length})</h3>
       <p className="fo-muted">Cancelled, Voided, Received, and Rejected Reorder Requests, newest first.</p>
