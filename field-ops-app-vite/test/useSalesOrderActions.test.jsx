@@ -25,6 +25,35 @@ describe("useSalesOrderActions -- idempotency key strategy", () => {
     expect(result.current.peekTransitionIntentKey("ADVANCE")).toBeNull();
   });
 
+  it("a retained key NEVER crosses to a different Sales Order", async () => {
+    // The server's replay identity is mkAuditId(command, actorUid, idempotencyKey) -- salesOrderId is
+    // NOT part of it. If a key kept after a failed attempt on SO-1 were reused on SO-2, the server
+    // would take the replay branch and return { success: true, replayed: true } WITHOUT applying the
+    // transition: a reported success for a transition that never happened.
+    const client = mockClient();
+    client.transitionSalesOrder.mockResolvedValue({ errorStatus: "internal" });
+    const { result, rerender } = renderHook(({ id }) => useSalesOrderActions(id, { client }), {
+      initialProps: { id: "SO-1" },
+    });
+
+    await act(async () => {
+      await expect(result.current.runTransition("ADVANCE")).rejects.toThrow();
+    });
+    const keyForSo1 = client.transitionSalesOrder.mock.calls[0][0].idempotencyKey;
+    expect(result.current.peekTransitionIntentKey("ADVANCE")).toBe(keyForSo1);
+
+    // Same mounted component, different Sales Order (the route re-renders in place).
+    rerender({ id: "SO-2" });
+    expect(result.current.peekTransitionIntentKey("ADVANCE")).toBeNull();
+
+    await act(async () => {
+      await expect(result.current.runTransition("ADVANCE")).rejects.toThrow();
+    });
+    const keyForSo2 = client.transitionSalesOrder.mock.calls[1][0].idempotencyKey;
+    expect(client.transitionSalesOrder.mock.calls[1][0].salesOrderId).toBe("SO-2");
+    expect(keyForSo2).not.toBe(keyForSo1);
+  });
+
   it("a retry of the SAME failed intent reuses the exact same idempotencyKey", async () => {
     const client = mockClient();
     client.transitionSalesOrder

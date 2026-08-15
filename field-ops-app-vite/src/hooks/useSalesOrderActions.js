@@ -32,6 +32,23 @@ export function useSalesOrderActions(salesOrderId, deps) {
   const [pending, setPending] = useState({ advance: false, cancel: false, allocate: false, service: false });
   const transitionKeysRef = useRef({});
 
+  // A retained key MUST NOT survive a change of Sales Order.
+  //
+  // The server derives the replay identity as mkAuditId(command, actorUid, idempotencyKey) --
+  // salesOrderId is NOT part of it (functions/src/salesOrder/salesOrderCallables.ts). A key kept after
+  // a failed attempt on one Sales Order, then reused on a different one, would match the earlier audit
+  // id and take the replay branch, which returns `{ success: true, replayed: true }` WITHOUT applying
+  // the transition -- reporting success for a transition that never happened.
+  //
+  // This component is not guaranteed to remount between orders (the same route with a different
+  // :salesOrderId re-renders in place), so the cache is scoped explicitly rather than relying on
+  // unmount. Any pending intent belongs to the order it was created for and is dropped with it.
+  const keyScopeRef = useRef(salesOrderId);
+  if (keyScopeRef.current !== salesOrderId) {
+    keyScopeRef.current = salesOrderId;
+    transitionKeysRef.current = {};
+  }
+
   // Exposed so tests can assert stability without depending on internal timing.
   const peekTransitionIntentKey = useCallback((transition) => transitionKeysRef.current[transition] ?? null, []);
 
