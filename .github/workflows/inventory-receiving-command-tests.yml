@@ -69,6 +69,7 @@ jobs:
 
       - name: Receiving command tests (build + run)
         run: npm run test:receiveInventoryStock
+        working-directory: functions
 
       # Wave 7: SERIAL receipt through the SAME governed command -- atomicity with the receipt,
       # duplicate-serial refusal, replay safety, and the NONE/LOT regressions.
