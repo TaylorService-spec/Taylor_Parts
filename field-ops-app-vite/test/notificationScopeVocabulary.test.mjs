@@ -17,10 +17,12 @@ test("the panel states which authority its rows belong to", () => {
 });
 
 test("an urgency badge names its scale rather than showing a bare severity word", () => {
-  assert.match(panel, /Request urgency: \$\{request\.urgency\}/, "urgency must be labelled as request urgency");
+  // Wave 6: NotificationItem's local var renamed request -> item (it now renders a
+  // normalized Attention Item, not a raw reorder_requests doc) -- same contract, new name.
+  assert.match(panel, /Request urgency: \$\{item\.urgency\}/, "urgency must be labelled as request urgency");
   assert.doesNotMatch(
     panel,
-    />\{request\.urgency\}</,
+    />\{item\.urgency\}</,
     "a bare urgency value reads as a stock-condition severity",
   );
 });
