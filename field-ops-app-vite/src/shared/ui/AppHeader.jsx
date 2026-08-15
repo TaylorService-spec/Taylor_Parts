@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
+import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../../domain/partsAttentionProjection.js";
 import NotificationPanel from "./NotificationPanel";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
@@ -93,6 +95,24 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
     purchasingStartedRequestsError ||
     null;
 
+  // Wave 6 -- transitional bell migration (blueprint §14e-7 step 2). The four reads above
+  // are UNCHANGED (still the correctly-scoped source queries -- "Assigned to You" still
+  // reads only this user's own uid); what changes is that their combined results now flow
+  // through the ONE shared domain/partsAttentionProjection.js instead of each array being
+  // threaded to NotificationPanel separately with its own inline section label. This is
+  // the bell's own migration off independently-reconstructed status filters, matching
+  // Parts -> WORK's eventual use of the same projection -- not yet the full cross-domain
+  // Action Center, which is a separate, not-yet-authorized build.
+  const notificationSections = useMemo(() => {
+    const items = partsAttentionItems([
+      ...pendingReorderRequests,
+      ...partsManagerRequests,
+      ...assignedToYouRequests,
+      ...purchasingStartedRequests,
+    ]);
+    return groupPartsAttentionItemsBySection(items);
+  }, [pendingReorderRequests, partsManagerRequests, assignedToYouRequests, purchasingStartedRequests]);
+
   return (
     <div className="fo-appheader">
       <div className="fo-appheader-left">
@@ -126,10 +146,7 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
       <div className="fo-appheader-right">
         {canSeeReorderRequests && (
           <NotificationPanel
-            requests={pendingReorderRequests}
-            partsManagerRequests={partsManagerRequests}
-            assignedToYouRequests={assignedToYouRequests}
-            purchasingStartedRequests={purchasingStartedRequests}
+            sections={notificationSections}
             error={reorderRequestsError}
             resolveName={resolveName}
           />

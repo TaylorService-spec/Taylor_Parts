@@ -9,49 +9,30 @@ import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone";
 // (Version 0.1) notification experience: Header -> Notification Panel
 // -> Open Notification -> Inventory Request (no separate "My Work" view,
 // no new route -- each entry links to the existing /inventory/:partId
-// route). Purely presentational: AppHeader.jsx supplies `requests` via
-// useReorderRequests(), this component only renders them.
+// route). Purely presentational: AppHeader.jsx supplies the data.
 //
-// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Reused, not
-// replaced, for the new READY_FOR_PARTS_MANAGER notifications --
-// `partsManagerRequests` is a second, optional list rendered under its
-// own section heading in the same dropdown, same item template. No new
-// notification component, no new route.
-//
-// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Reused
-// again for the platform's first per-user notification --
-// `assignedToYouRequests` is a third, optional list: only the
-// signed-in user's own ASSIGNED_TO_PARTS_ASSOCIATE requests
-// (AppHeader.jsx filters by uid via useReorderRequestsAssignedTo()),
-// so this satisfies "notify only the assigned Parts Associate"
-// without a per-user notification system -- it's the same broadcast
-// read as the other two sections, filtered client-side to one user.
-//
-// Sprint 2.1.7 -- Purchase Execution Foundation. `purchasingStartedRequests`
-// is a fourth, optional list: PURCHASING_IN_PROGRESS requests, notifying
-// "the Parts Manager" -- role-level/broadcast (there's still no distinct
-// Parts Manager auth role), same as "Ready for Parts Manager" above, not
-// per-user like "Assigned to You".
+// Wave 6 -- transitional bell migration (blueprint §14e-7 step 2, Owner directive §17).
+// This panel now renders ONE normalized `items` list (domain/partsAttentionProjection.js's
+// Attention Items, grouped by AppHeader into the same four section labels this panel has
+// always shown), instead of four independently-labeled arrays each re-deriving its own
+// status filter inline. Same underlying business visibility, same deep links, same order --
+// the bell no longer reconstructs its own status-filter logic; it consumes the ONE shared
+// projection Parts -> WORK will eventually share too. This remains transitional (still no
+// new persistence, still no separate resolution workflow) -- NOT the generic cross-domain
+// Action Center, which is a separate, not-yet-authorized build.
 //
 // Zero-history reorder behavior sprint, PR 3 -- `request.urgency` is
 // null for a NEEDS_PLANNING request; shows a "Needs planning" badge
 // instead of crashing on `.toLowerCase()`.
 // Notification identity fix (docs/specifications/notification-identity.md,
-// Issue #145) -- `request.id` (the request's own Firestore document id,
-// already present on every notification object via toDocs(), already
-// used above as this list's React key) is now also passed as a
-// requestId query param, so PartDetail resolves the EXACT request that
-// produced this notification instead of "whichever request for this
-// part happens to be newest" -- which could silently be a different,
-// terminal request for the same part.
-function NotificationItem({ request, resolveName, onNavigate }) {
+// Issue #145) -- the deep link carries a `requestId` query param (already
+// part of every Attention Item's `deepLink`), so PartDetail resolves the
+// EXACT request that produced this notification instead of "whichever
+// request for this part happens to be newest."
+function NotificationItem({ item, resolveName, onNavigate }) {
   return (
-    <Link
-      to={`/inventory/${request.partId}?requestId=${request.id}`}
-      className="fo-notification-panel-item"
-      onClick={onNavigate}
-    >
-      <span>{resolveName(request.partId)}</span>
+    <Link to={item.deepLink} className="fo-notification-panel-item" onClick={onNavigate}>
+      <span>{resolveName(item.partId)}</span>
       {/* Personas read a bare "MEDIUM" here beside the Inventory queue's
           "Critical & High (0)" and took them for one scale -- then reported the two
           screens as contradicting each other. They are different authorities: this is
@@ -60,8 +41,8 @@ function NotificationItem({ request, resolveName, onNavigate }) {
           vocabulary, different meaning, nothing saying which. Name the scale on the
           row. This does not reconcile the two numbers -- they are not the same fact
           and must not be made to agree. */}
-      {request.urgency ? (
-        <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={`Request urgency: ${request.urgency}`} />
+      {item.urgency ? (
+        <StatusPill tone={inventoryUrgencyTone(item.urgency)} label={`Request urgency: ${item.urgency}`} />
       ) : (
         <StatusPill tone="unknown" label="Needs planning" />
       )}
@@ -70,12 +51,11 @@ function NotificationItem({ request, resolveName, onNavigate }) {
 }
 
 export default function NotificationPanel({
-  requests,
-  partsManagerRequests = [],
-  assignedToYouRequests = [],
-  purchasingStartedRequests = [],
+  // Wave 6: `sections` is `groupPartsAttentionItemsBySection()`'s own output shape --
+  // `{ sectionLabel, items }[]`, already in fixed display order, empty sections omitted.
+  sections = [],
   // site-work round-2 #4 (appheader-discards-reorder-error) -- any one of AppHeader's
-  // four reorder-request subscriptions failing (permission-denied, unavailable, ...).
+  // underlying reorder-request subscriptions failing (permission-denied, unavailable, ...).
   // A failed read must NEVER be shown as a confidently-wrong empty/undercounted bell
   // (mirrors WorkOrdersList.jsx/Dispatch.jsx/DispatcherBoard.jsx's "fail visibly"
   // pattern, test/dispatchSurfacesErrorState.test.jsx) -- so this takes priority over
@@ -87,8 +67,7 @@ export default function NotificationPanel({
   resolveName = (partId) => partId,
 }) {
   const [open, setOpen] = useState(false);
-  const total =
-    requests.length + partsManagerRequests.length + assignedToYouRequests.length + purchasingStartedRequests.length;
+  const total = sections.reduce((sum, section) => sum + section.items.length, 0);
   const close = () => setOpen(false);
 
   return (
@@ -116,38 +95,14 @@ export default function NotificationPanel({
               <p className="fo-muted fo-notification-panel-scope">
                 Reorder requests in progress. Stock levels live in Inventory.
               </p>
-              {requests.length > 0 && (
-                <>
-                  <p className="fo-notification-panel-section">Pending Review</p>
-                  {requests.map((request) => (
-                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
+              {sections.map((section) => (
+                <div key={section.sectionLabel}>
+                  <p className="fo-notification-panel-section">{section.sectionLabel}</p>
+                  {section.items.map((item) => (
+                    <NotificationItem key={item.objectId} item={item} resolveName={resolveName} onNavigate={close} />
                   ))}
-                </>
-              )}
-              {partsManagerRequests.length > 0 && (
-                <>
-                  <p className="fo-notification-panel-section">Ready for Parts Manager</p>
-                  {partsManagerRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
-                  ))}
-                </>
-              )}
-              {assignedToYouRequests.length > 0 && (
-                <>
-                  <p className="fo-notification-panel-section">Assigned to You</p>
-                  {assignedToYouRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
-                  ))}
-                </>
-              )}
-              {purchasingStartedRequests.length > 0 && (
-                <>
-                  <p className="fo-notification-panel-section">Purchasing Started</p>
-                  {purchasingStartedRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
-                  ))}
-                </>
-              )}
+                </div>
+              ))}
             </>
           )}
         </div>

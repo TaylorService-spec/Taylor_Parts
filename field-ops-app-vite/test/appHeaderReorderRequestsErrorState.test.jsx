@@ -42,6 +42,9 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
 
 import AppHeader from "../src/shared/ui/AppHeader.jsx";
 import NotificationPanel from "../src/shared/ui/NotificationPanel.jsx";
+import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../src/domain/partsAttentionProjection.js";
+
+const sectionsFor = (requests) => groupPartsAttentionItemsBySection(partsAttentionItems(requests));
 
 afterEach(() => {
   cleanup();
@@ -99,7 +102,7 @@ describe("NotificationPanel -- error prop takes priority over the empty/count st
   const openDropdown = () => fireEvent.click(screen.getByRole("button", { name: /Notifications/i }));
 
   it("renders an alert-role failure state, not '(0)'/'No pending reorder requests.', when error is truthy", () => {
-    renderPanel({ requests: [], error: PERMISSION_ERROR });
+    renderPanel({ sections: sectionsFor([]), error: PERMISSION_ERROR });
     const button = screen.getByRole("button", { name: /Notifications, couldn't load/i });
     expect(button.textContent).not.toContain("(0)");
     openDropdown();
@@ -109,7 +112,7 @@ describe("NotificationPanel -- error prop takes priority over the empty/count st
 
   it("error takes priority even when some sections already have real data (no confidently-wrong partial count)", () => {
     renderPanel({
-      requests: [{ id: "r1", partId: "TST-9001", urgency: "HIGH" }],
+      sections: sectionsFor([{ id: "r1", partId: "TST-9001", status: "PENDING_REVIEW", urgency: "HIGH" }]),
       error: PERMISSION_ERROR,
     });
     const button = screen.getByRole("button", { name: /Notifications, couldn't load/i });
@@ -119,7 +122,7 @@ describe("NotificationPanel -- error prop takes priority over the empty/count st
   });
 
   it("still shows the honest empty state when there is no error", () => {
-    renderPanel({ requests: [], error: null });
+    renderPanel({ sections: sectionsFor([]), error: null });
     expect(screen.getByRole("button", { name: "Notifications" }).textContent).toBe("Notifications");
     openDropdown();
     expect(screen.getByText(/no pending reorder requests/i)).toBeTruthy();
@@ -127,7 +130,7 @@ describe("NotificationPanel -- error prop takes priority over the empty/count st
   });
 
   it("still shows the honest count when there is no error and requests exist", () => {
-    renderPanel({ requests: [{ id: "r1", partId: "TST-9001", urgency: "HIGH" }], error: null });
+    renderPanel({ sections: sectionsFor([{ id: "r1", partId: "TST-9001", status: "PENDING_REVIEW", urgency: "HIGH" }]), error: null });
     expect(screen.getByRole("button", { name: "Notifications" }).textContent).toContain("(1)");
   });
 });
