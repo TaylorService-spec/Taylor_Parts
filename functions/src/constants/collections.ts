@@ -50,3 +50,12 @@ export const SALES_TERRITORIES_COLLECTION = "sales_territories";
 export const COMMERCIAL_COVERAGE_ASSIGNMENTS_COLLECTION = "commercial_coverage_assignments";
 // Finance — refunds (money returned after payment). Distinct from credit/write-off; Admin-SDK-only.
 export const REFUNDS_COLLECTION = "refunds";
+
+// Serialized Asset registry (docs/specifications/serialized-asset-equipment-installation.md §D, ADR-010 +
+// DECISIONS #59, Spec phase M.1). Persistent inventory identity for SERIAL-tracked Parts -- SEPARATE from
+// ADR-006 Equipment (the installed/customer-serviceable record). Admin-SDK-only, same fail-closed posture
+// as the ledger/warehouse collections above: firestore.rules has NO match block for this collection (default
+// deny), and this phase writes NOTHING here -- read-only via the trusted getAvailableEquipment service
+// (functions/src/serializedAsset/serializedAssetReadService.ts). The §H installation handoff command (a
+// future, separately authorized phase gated on Transfer Orders) is the only anticipated write path.
+export const SERIALIZED_ASSETS_COLLECTION = "serialized_assets";

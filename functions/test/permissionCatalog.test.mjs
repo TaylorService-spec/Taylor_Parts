@@ -201,7 +201,9 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // pending a separate Owner grant), same additive posture.
 // Sales Opportunity Cycle 3: opportunity.write is registered `active: false` (the governed Opportunity write
 // command's capability, ungranted-by-design pending a separate Owner grant), same additive posture.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read"];
+// Serialized Asset registry, Spec phase M.1: inventory.serializedAsset.read is registered `active: false`,
+// same additive posture as the other inactive entries above.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -214,6 +216,15 @@ check("every equipment.* entry is registered-but-not-grantable (active: false, n
   for (const permission of equipment) {
     assert.equal(permission.active, false, `"${permission.id}" must be inactive`);
   }
+});
+
+check("inventory.serializedAsset.read is registered exactly once, active: false, resource/action match the id", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.serializedAsset.read");
+  assert.equal(matches.length, 1, "inventory.serializedAsset.read must be registered exactly once");
+  const [permission] = matches;
+  assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.serializedAsset");
+  assert.equal(permission.action, "read");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

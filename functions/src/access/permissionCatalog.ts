@@ -831,6 +831,21 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Serialized Asset registry, Spec phase M.1 (docs/specifications/serialized-asset-equipment-installation.md
+  // §I / §M.1, ADR-010 + DECISIONS #59): trusted Available-Equipment read (functions/src/serializedAsset/
+  // serializedAssetReadService.ts). Backend-resolved scope; no client-direct serialized_assets read (no
+  // firestore.rules match block exists for this collection -- default deny). REGISTERED BUT UNGRANTED BY
+  // DESIGN: this phase grants the capability to NO compatibility Role and adds NO per-environment activation
+  // override, so resolveEffectivePermission() denies for every principal until a later, separately
+  // authorized grant + activation gate -- same posture as inventory.catalog.read at its own introduction.
+  Object.freeze({
+    id: "inventory.serializedAsset.read",
+    description:
+      "Read the minimal governed Available Equipment projection (serialNo, partId, currentLocationId, inventoryState, currentEquipmentId, ownership) via the trusted getAvailableEquipment read service. Backend-resolved scope; no client-direct serialized_assets read.",
+    resource: "inventory.serializedAsset",
+    action: "read",
+    active: false,
+  }),
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
   // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
   // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so
