@@ -37,6 +37,36 @@ function expectInvalid(data, label) {
 
 check("valid receive payload passes and returns the same object", () => { const r = validReq(); assert.equal(validateReceiveRequest(r), r); });
 
+// ---- SERIAL receipts (Wave 7) ------------------------------------------------------------------
+// Regression: this validator runs BEFORE the command, so omitting serialNumbers from LINE_KEYS
+// rejected every well-formed SERIAL payload as an unknown field and broke SERIAL receiving end to
+// end, even though the command's own validator accepted it.
+check("a SERIAL line carrying serialNumbers is accepted structurally", () => {
+  const r = validReq();
+  r.lines[0].serialNumbers = ["SN-1", "SN-2", "SN-3", "SN-4", "SN-5"];
+  assert.equal(validateReceiveRequest(r), r);
+});
+
+check("serialNumbers shape is enforced, but count/duplication are left to the command", () => {
+  const bad = (v) => { const r = validReq(); r.lines[0].serialNumbers = v; return r; };
+  expectInvalid(bad("SN-1"), "not an array");
+  expectInvalid(bad([""]), "blank serial");
+  expectInvalid(bad(["SN-1", 5]), "non-string serial");
+  expectInvalid(bad([{ serial: "SN-1" }]), "object serial");
+  // Count mismatch and duplicates are NOT rejected here: only the command knows the authoritative
+  // Part tracking mode and PO ordered quantity. Enforcing them here would fork the rule.
+  const mismatched = bad(["SN-1"]);              // 1 serial for a qty-5 line
+  assert.equal(validateReceiveRequest(mismatched), mismatched);
+  const duplicated = bad(["SN-1", "SN-1"]);
+  assert.equal(validateReceiveRequest(duplicated), duplicated);
+});
+
+check("lotId and other serial-adjacent keys are still rejected", () => {
+  const r = validReq();
+  r.lines[0].lotId = "LOT-1";
+  expectInvalid(r, "lotId");
+});
+
 check("unknown / server-owned / actor top-level fields -> invalid-argument", () => {
   expectInvalid({ ...validReq(), actor: { kind: "USER", id: "evil" } }, "actor");
   expectInvalid({ ...validReq(), version: 1 }, "version");
