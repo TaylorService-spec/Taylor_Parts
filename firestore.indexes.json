@@ -61,6 +61,20 @@
       ]
     },
     {
+      "collectionGroup": "fieldops_wos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "reorder_requests",
       "queryScope": "COLLECTION",
       "fields": [

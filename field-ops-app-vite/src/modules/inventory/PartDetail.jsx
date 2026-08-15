@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
+import PartWorkOrderDemandSection from "./PartWorkOrderDemandSection";
 import {
   buildPartDetailView,
   selectPartLedger,
@@ -1603,6 +1604,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       ) : (
         <p className="fo-muted">No ledger activity yet for this part -- stock position not yet forecastable.</p>
       )}
+
+      {/* Wave 7 Item 3 -- Part -> Work Order Demand. Keyed on the resolved governed identity, same as
+          every other section below the Stock Position card. A pure read/projection over the existing
+          fieldops_wos authority -- see modules/inventory/PartWorkOrderDemandSection.jsx's header. */}
+      <PartWorkOrderDemandSection partId={resolvedPartId} />
 
       {/* C2: keyed on the resolved governed identity (=== route partId when READY,
           the only state in which this renders). Write surface itself unchanged. */}
