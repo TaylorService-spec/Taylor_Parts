@@ -215,8 +215,17 @@ export const NAV_DOMAINS = [
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
       { key: "transfers", label: "Transfers", path: "transfers" },
       { key: "receiving", label: "Receiving", path: "receiving" },
-      { key: "cycleCounts", label: "Cycle Counts", path: "cycle-counts" },
-      { key: "backOrders", label: "Back Orders", path: "back-orders" },
+      // Wave 6 Owner decision (2026-08-15): hidden from normal navigation while these
+      // remain pure route stubs with no backend capability behind them (confirmed by
+      // repository audit -- no domain module, no Firestore collection, no engine).
+      // Navigation honesty, NOT capability removal: the route/PlaceholderPage/spec stay
+      // exactly as they were, reachable by direct URL; only isNavItemVisible-driven UI
+      // presentation (the rail) is filtered separately via `navHidden` (see AppRail.jsx),
+      // which App.jsx's route generator does NOT check, so nothing here changes what a
+      // direct/deep link resolves to. Restore the nav entry (delete this flag) once a
+      // real capability exists and is ready for user testing.
+      { key: "cycleCounts", label: "Cycle Counts", path: "cycle-counts", navHidden: true },
+      { key: "backOrders", label: "Back Orders", path: "back-orders", navHidden: true },
     ],
   },
   // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md)

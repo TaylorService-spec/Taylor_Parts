@@ -95,8 +95,10 @@ export default function AppRail({
     ).map((domain) => {
       const visibleSubnav = domain.future
         ? []
-        : (domain.subnav ?? []).filter((item) =>
-            isNavItemVisible(item, role, allowedLegacyKeys, operationalContext),
+        : (domain.subnav ?? []).filter(
+            (item) =>
+              isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) &&
+              !item.navHidden,
           );
       const children =
         domain.key === "service"
