@@ -79,7 +79,27 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
   assert.equal(indexKey(n[0]), 'fieldops_jobs|COLLECTION|technicianId:ASCENDING');
 });
 
-test('O-4: repo declares the six indexes that exist live', () => {
-  assert.equal(declared.length, 6);
+// Previously "repo declares the six indexes that exist live" — declared and live were equal, so one
+// number said both things. Wave 7 added an index that is declared but NOT yet deployed, so that
+// sentence is no longer true and bumping 6 to 7 would have made the assertion assert a falsehood.
+//
+// The two facts are now pinned separately. `PENDING_DEPLOY_INDEX_KEYS` is the explicit, reviewable
+// list of declarations that have not reached the live estate; everything else is expected live. An
+// index added without being listed here fails this test, which is the drift this guard exists to
+// catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
+// turns it back into an assertion that declared == live.
+const PENDING_DEPLOY_INDEX_KEYS = new Set([
+  // Wave 7 Item 3 (Part -> Work Order Demand). Required by the bounded open-Work-Order query;
+  // tracked as PENDING in docs/releases/wave7-sandbox-manifest.md.
+  'fieldops_wos|COLLECTION|status:ASCENDING,createdAt:DESCENDING',
+]);
+
+test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {
+  const pending = declared.filter((i) => PENDING_DEPLOY_INDEX_KEYS.has(indexKey(i)));
+  const expectedLive = declared.length - pending.length;
+
+  // The live estate is six indexes; that number only changes when a deployment actually happens.
+  assert.equal(expectedLive, 6, 'declared-minus-pending must match the live index count');
+  assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });

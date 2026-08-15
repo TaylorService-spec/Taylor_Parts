@@ -94,7 +94,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Merge SHA | `1b837e97c71c0a91a4fc477d2b0eb3138b8991e1` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **Deploy required.** `transitionSalesOrder`, `allocateSalesOrder`, `createServiceForSalesOrder` are exported but never deployed. No backend change in this PR. |
 | Hosting impact | **Rebuild + release required** — frontend-only change. |
@@ -104,6 +104,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Capability activation / grants | **Activation already in place** — `salesOrder.write`, `salesOrder.fulfill`, `salesOrder.service` are already in `platform-sandbox`'s `capabilityActivationOverrides`. **Role grants still required:** activation is not authorization, so a sandbox test persona needs a Role carrying these ids. |
 | Smoke / E2E validation required | Advance and Cancel a Sales Order through its lifecycle; allocate; create service work and confirm the resulting Work Order appears in the lineage section. Confirm an action invalid for the current state is not offered. **Idempotency:** retry a failed Advance and confirm it does not apply twice; then confirm a transition on a DIFFERENT Sales Order is not swallowed as a replay. Unauthorized persona: denied, not blank. Confirm no pricing/discount/tax/quote field is rendered or editable anywhere on the surface. |
 | Rollback notes | Frontend-only; revert the Hosting release. Lifecycle transitions performed during validation are real state changes on synthetic sandbox Sales Orders — CANCEL in particular is not reversible through the UI, so validate on throwaway records. Revoking the Role grants re-closes the surface immediately. |
+| Deployment status | PENDING |
+
+### PR #1003 — Part → Work Order Demand projection
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **NONE.** Pure client-side projection over the existing `fieldops_wos` authority. No callable added or changed. |
+| Hosting impact | **Rebuild + release required** — frontend-only change. |
+| Rules impact | **NONE.** `fieldops_wos` is already readable by admin/dispatcher (and own-technician); no rule changed. |
+| Indexes / config impact | **INDEX DEPLOY REQUIRED.** New composite index `fieldops_wos(status ASC, createdAt DESC)` in `firestore.indexes.json`. Without it the demand query fails at runtime, so the index must be deployed **before or with** the Hosting release. `firebase deploy --only firestore:indexes`. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — reuses the existing `fieldops_wos` read grant. No new capability. |
+| Smoke / E2E validation required | Open a Part that several open Work Orders plan. Confirm one row per Work Order with planned/used quantities matching those Work Orders, and that navigation reaches `/service/work-orders/:id`. Confirm a COMPLETED/CANCELLED Work Order does not appear as demand. Confirm a Part with no demand shows the empty state, not an error. Confirm the "showing the most recent N of M" disclosure appears only when the 300-row cap is actually hit. As a technician/unauthorized persona: denied state, not a blank card. Confirm no raw Firebase UID renders. |
+| Rollback notes | Frontend-only; revert the Hosting release. The index is additive and harmless if left in place. Read-only feature: no data is written, so nothing to undo. |
 | Deployment status | PENDING |
 
 -->
