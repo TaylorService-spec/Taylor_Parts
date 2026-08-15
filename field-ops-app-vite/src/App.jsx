@@ -11,6 +11,7 @@ import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
 import SalesWorkspace from "./modules/sales/SalesWorkspace";
+import { governedOpportunitySource } from "./access/opportunitySource.js";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
@@ -185,11 +186,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
   }
-  // Sales Cycle 2 -- the Opportunity Operating Workspace (READ-FIRST, synthetic source). Same brand-new-screen
-  // pattern as AccountsList/PartMasterList: no legacyKey, explicit branch; admin/dispatcher via
-  // PLACEHOLDER_DEFAULT_ROLES. Reads only; no governed write path is wired here yet.
+  // Sales Cycle 2 -- the Opportunity Operating Workspace. Same brand-new-screen pattern as
+  // AccountsList/PartMasterList: no legacyKey, explicit branch; admin/dispatcher via
+  // PLACEHOLDER_DEFAULT_ROLES. Post-Wave-5: reads the real governed listOpportunityContext
+  // callable (opportunity.read is granted + sandbox-activated) instead of the synthetic
+  // fixture source -- an authorized principal now sees real Opportunities; an unauthorized one
+  // (or production, where activation is off) gets the seam's honest denied/unavailable state,
+  // never fabricated data. Write path (create/transition) remains not wired here yet.
   if (domain.key === "customers" && item.key === "opportunities") {
-    return <SalesWorkspace />;
+    return <SalesWorkspace source={governedOpportunitySource} />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
