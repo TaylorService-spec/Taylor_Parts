@@ -66,6 +66,11 @@ on:
       - "field-ops-app-vite/src/navigation/AppRail.jsx"
       - "field-ops-app-vite/test/cycleCountsBackOrdersNavHidden.test.mjs"
       - "field-ops-app-vite/test/railDestinationParity.test.mjs"
+      - "field-ops-app-vite/src/shared/partMaster/PartWriteModal.jsx"
+      - "field-ops-app-vite/src/hooks/usePartMasterWrite.js"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
+      - "field-ops-app-vite/test/partWriteModal.test.jsx"
+      - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -125,6 +130,11 @@ on:
       - "field-ops-app-vite/src/navigation/AppRail.jsx"
       - "field-ops-app-vite/test/cycleCountsBackOrdersNavHidden.test.mjs"
       - "field-ops-app-vite/test/railDestinationParity.test.mjs"
+      - "field-ops-app-vite/src/shared/partMaster/PartWriteModal.jsx"
+      - "field-ops-app-vite/src/hooks/usePartMasterWrite.js"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
+      - "field-ops-app-vite/test/partWriteModal.test.jsx"
+      - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 
