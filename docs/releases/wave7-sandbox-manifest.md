@@ -43,7 +43,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Merge SHA | `825567c6f469c608384aecdd34a16617952bc1a1` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **Deploy required.** `createPart`, `updatePart`, `changePartStatus` are exported (`functions/src/index.ts:206-209`) but have never been deployed to `eos-platform-sandbox`. No new callable is added by this PR. |
 | Hosting impact | **Rebuild + release required.** `PART_MASTER_WRITE_READY` is a build-time constant injected from `config/environments.json`; the currently-served bundle was built with `false`. |
@@ -53,6 +53,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Capability activation / grants | **No activation override needed** — `inventory.catalog.manage` / `.activate` are not `active:false`, so they are outside the spine-override mechanism. **A grant IS required:** assign the newly-defined `inventoryCatalogAdministrator` Role to a sandbox **test** persona via the governed `roleAssignments` path (bumps `accessVersion`, syncs claims). This is the protected grant action; not performed. |
 | Smoke / E2E validation required | As authorized catalog-admin test persona: create a synthetic Part; update it; change status (activate/deactivate). As a persona **without** the Role: all three denied. Replay the same idempotency key → no duplicate. Validation failures surface honestly. Confirm a `.manage`-only principal cannot change status. Confirm the workspace no longer renders write-disabled. |
 | Rollback notes | Fully reversible, no data migration. Revoke the roleAssignment (capability lost immediately on `accessVersion` bump) → set `PART_MASTER_WRITE_READY` back to `false` + rebuild → redeploy the prior Functions estate (additive; removing the three callables is optional). Any Parts created during validation are synthetic sandbox data. |
+| Deployment status | PENDING |
+
+### PR #1001 — WO Parts Planning operational UI
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Deploy required.** `setWorkOrderPartsPlan` is exported (`functions/src/index.ts:16`) but has never been deployed. No backend change in this PR — the command, its capability registration and its producer tests are untouched. |
+| Hosting impact | **Rebuild + release required** — this is a frontend-only change. |
+| Rules impact | **NONE.** The plan lives on `fieldops_wos.inventorySnapshot`, already readable by admin/dispatcher/own-technician (`firestore.rules`); client writes remain `if false` and all writes go through the trusted command. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE — deliberately no client readiness flag. The capability itself is the single gate. |
+| Capability activation / grants | **Both required.** `workOrder.parts.plan` is registered `active: false` and granted to no Role. It is NOT in the sandbox `capabilityActivationOverrides` spine list, so it needs (a) activation for `platform-sandbox` and (b) a Role grant to a sandbox test persona. Until both, every save honestly reports denied. |
+| Smoke / E2E validation required | As an authorized dispatcher: open a live Work Order, add a part from the catalog, set a quantity, save, confirm the persisted plan re-renders from the document. Change a quantity; remove an unused part. Confirm a part with `qtyUsed > 0` cannot be removed. Confirm a COMPLETED/CLOSED/CANCELLED WO offers no edit. Confirm a WO whose snapshot has a legacy row with no `partId` refuses editing with the stated reason (data-loss guard). As an unauthorized persona: confirm denial, not a blank section. |
+| Rollback notes | Frontend-only; revert the Hosting release. No data migration. Any plans saved during validation are ordinary `qtyPlanned` values the command already governs and can be re-planned or cleared. Deactivating the capability re-closes the surface immediately. |
 | Deployment status | PENDING |
 
 
