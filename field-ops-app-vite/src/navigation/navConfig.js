@@ -204,13 +204,30 @@ export const NAV_DOMAINS = [
       { key: "parts", label: "Parts", path: "", legacyKey: "inventory" },
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
-      { key: "partMaster", label: "Part Master", path: "part-master" },
+      //
+      // Wave 6 nav-convergence gate (2026-08-15, Decision #43's own UD-5): PartsList.jsx/PartDetail.jsx
+      // now offer New Part / Edit Part Details / Change Status directly (the SAME governed commands this
+      // screen already used -- see src/shared/partMaster/PartWriteModal.jsx), so the individual-part CRUD
+      // workflow no longer needs this destination. The gate is NOT fully clear, though: this screen's
+      // TABLE view (browse every Part by master-data status/control/class in one place) has no equivalent
+      // inside Parts yet -- Parts Catalog shows category/available/risk, not master status. That is a
+      // real, still-legitimate admin workflow, so this is demoted out of normal primary navigation
+      // (`navHidden`, same mechanism as Cycle Counts/Back Orders below) rather than removed outright --
+      // the route/component/commands/tests/audit are all unchanged and still reachable by direct URL for
+      // whoever needs the bulk-catalog-review workflow. Re-promote to normal nav if that judgment is
+      // wrong, or build the equivalent status-browse view inside Parts and then fully retire this route.
+      { key: "partMaster", label: "Part Master", path: "part-master", navHidden: true },
       // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
       // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
       // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority
       // decision is DEFERRED to the Owner -- it interacts with the R-1 legacy-surface convergence gate),
-      // so the workspace read fails closed to a denied state until resolved.
-      { key: "manufacturers", label: "Manufacturers", path: "manufacturers" },
+      // so the workspace read fails closed to a denied state until resolved. Wave 6 (2026-08-15): hidden
+      // from normal navigation for the SAME reason as Cycle Counts/Back Orders -- unlike Part Master, this
+      // is not even a "still legitimate, just redundant" case: because the read is Rules-closed to EVERY
+      // persona, no one can use this screen at all today (confirmed by repository audit). Route/component/
+      // commands/Rules/tests unchanged; restore once the Manufacturer read-authority decision (see the
+      // parts-ux-redesign-blueprint.md §14d architecture writeup) is made and built.
+      { key: "manufacturers", label: "Manufacturers", path: "manufacturers", navHidden: true },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
       { key: "transfers", label: "Transfers", path: "transfers" },
