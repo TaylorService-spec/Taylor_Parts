@@ -170,6 +170,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | Pure code; revert restores the (broken) NONE-only boundary. Same append-only caveat as #1006 applies to anything already received. |
 | Deployment status | PENDING |
 
+### PR #1011 — Operational-role condition resolver (shared authorization infrastructure)
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Behavior change in the shared authorization path** (`effectiveAccessFeed`). No new callable. Every callable that authorizes through the feed is affected; requires the pooled Functions deploy. |
+| Hosting impact | NONE directly (nav visibility may change once deployed, since the feed also drives coarse availability signals). |
+| Rules impact | **NONE.** `firestore.rules` is unchanged; the resolver MIRRORS its `isActiveOperationalRole()` semantics in the governed path rather than altering them. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | **No grant is broadened.** No capability `active` flag, Role permission list, or environment activation changes. Previously-declared `operationalRoleActive` conditions simply become evaluable instead of failing closed unconditionally. |
+| Smoke / E2E validation required | With a persona holding security role `technician` AND an ACTIVE Employee carrying `PARTS_MANAGER`: confirm the conditioned reorder/inventory capabilities now resolve through the governed path. With the same persona whose Employee is INACTIVE, or lacking that operational role, or with a non-reciprocal `userId` link: confirm DENY. Confirm an unconditional capability is unchanged. Confirm a client cannot self-assert an operational role. |
+| Rollback notes | Pure code; reverting restores the prior fail-closed-by-omission behavior. No data written, no migration. Note the direction of risk: the previous state was MORE restrictive, so a rollback removes access rather than granting it. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements
