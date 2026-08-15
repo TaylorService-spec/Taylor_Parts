@@ -13,18 +13,32 @@ on:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
       - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
+      - "field-ops-app-vite/src/domain/salesOrderView.js"
       - "field-ops-app-vite/src/access/opportunitySource.js"
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/compatibilityRoles.ts"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useSalesOrder.js"
+      - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
       - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
+      - "field-ops-app-vite/test/useOpportunitiesAsync.test.jsx"
+      - "field-ops-app-vite/test/salesOrderView.test.mjs"
+      - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - "field-ops-app-vite/test/crmSalesNav.test.mjs"
       - "field-ops-app-vite/test/equipmentRegister.test.mjs"
+      - "field-ops-app-vite/test/permissionCatalogRoleParity.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - ".github/workflows/sales-opportunity-tests.yml"
   push:
     branches: [main]
@@ -33,14 +47,28 @@ on:
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
       - "field-ops-app-vite/src/access/opportunitySource.js"
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/compatibilityRoles.ts"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useSalesOrder.js"
+      - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
       - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
+      - "field-ops-app-vite/src/domain/salesOrderView.js"
+      - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
+      - "field-ops-app-vite/test/useOpportunitiesAsync.test.jsx"
+      - "field-ops-app-vite/test/salesOrderView.test.mjs"
+      - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
+      - "field-ops-app-vite/test/permissionCatalogRoleParity.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - ".github/workflows/sales-opportunity-tests.yml"
   workflow_dispatch:
 
@@ -66,18 +94,22 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
 
-      - name: Opportunity domain unit tests (node:test)
-        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs
+      - name: Opportunity + Sales Order domain unit tests (node:test)
+        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs && node test/salesOrderView.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Nav parity pins (crmSalesNav + equipmentRegister)
         run: node test/crmSalesNav.test.mjs && node test/equipmentRegister.test.mjs
         working-directory: field-ops-app-vite
 
-      - name: Opportunity workspace component tests (vitest + jsdom)
-        run: npx vitest run test/salesWorkspace.test.jsx
+      - name: Frontend/backend permission catalog + compatibility Role parity (node:test)
+        run: node --test test/permissionCatalogRoleParity.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Opportunity + Sales Order workspace component tests (vitest + jsdom)
+        run: npx vitest run test/salesWorkspace.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)
-        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/data/opportunityScenarioFixtures.js src/access/opportunityWriteReadiness.js
+        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/domain/salesOrderView.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/hooks/useSalesOrder.js src/services/salesOrderReadCallableClient.js src/data/opportunityScenarioFixtures.js src/access/opportunityWriteReadiness.js
         working-directory: field-ops-app-vite

@@ -17,15 +17,17 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
     expectedCloseAt: 123,
     nextAction: "call",
     lines: [{ kind: "PART", ref: "PRT-1", qty: 2 }],
+    salesOrderId: "SO-1",
     // fields that must NOT leak into the projection:
     createdByUid: "uid-abc",
     customerName: "Should Not Copy Co",
     internalNotes: "secret",
   });
   assert.deepEqual(Object.keys(p).sort(), [
-    "accountId", "expectedCloseAt", "expectedValue", "id", "lines", "need", "nextAction", "outcome", "ownerEmployeeId", "salesChannel", "stage",
+    "accountId", "expectedCloseAt", "expectedValue", "id", "lines", "need", "nextAction", "outcome", "ownerEmployeeId", "salesChannel", "salesOrderId", "stage",
   ]);
   assert.equal(p.accountId, "ACCT-1");
+  assert.equal(p.salesOrderId, "SO-1");
   // no raw UID, no copied Customer name
   assert.equal("createdByUid" in p, false);
   assert.equal("customerName" in p, false);
@@ -47,6 +49,11 @@ test("projectOpportunity drops invalid stage/outcome and malformed lines rather 
 test("projectOpportunity fails to null on missing id or data (counted as a degraded skip)", () => {
   assert.equal(projectOpportunity("", { stage: "QUOTING" }), null);
   assert.equal(projectOpportunity("O3", undefined), null);
+});
+
+test("projectOpportunity defaults salesOrderId to null (a WON Opportunity with no Sales Order created yet)", () => {
+  const p = projectOpportunity("O4", { stage: "DECISION", outcome: "WON" });
+  assert.equal(p.salesOrderId, null);
 });
 
 test("summarizeReadResult: clean set is ready; any skip makes it degraded; empty is ready+[]", () => {

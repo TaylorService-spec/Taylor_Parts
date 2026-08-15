@@ -48,6 +48,7 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'opportunity.write',
   'opportunity.read',
   'opportunity.createSalesOrder',
+  'salesOrder.read',
   'salesOrder.write',
   'salesOrder.fulfill',
   'salesOrder.service',

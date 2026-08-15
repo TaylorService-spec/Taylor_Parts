@@ -29,10 +29,15 @@ const CANONICAL_REGISTRY = JSON.parse(
   readFileSync(resolve(HERE, "../../config/environments.json"), "utf8"),
 );
 
+// 12 spine ids as of 2026-08-15 (salesOrder.read added -- Owner-ratified: a governed way to read
+// Sales Order state is required to meaningfully operate the already-granted write/fulfill/service
+// spine). Kept the SPINE_11 name historically in comments below; the constant itself is the
+// authoritative list, not the name.
 const SPINE_11 = [
   "opportunity.write",
   "opportunity.read",
   "opportunity.createSalesOrder",
+  "salesOrder.read",
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
@@ -45,9 +50,9 @@ const SPINE_11 = [
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 11 spine capability ids", () => {
+test("eligible allow-list is exactly the 12 spine capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 11);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 12);
 });
 
 test("sandbox project resolves the full spine override set", () => {

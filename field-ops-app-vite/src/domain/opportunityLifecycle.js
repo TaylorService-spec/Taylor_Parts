@@ -72,6 +72,10 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
     need: opp.need ?? null,
     lines: Array.isArray(opp.lines) ? opp.lines : [],
     ownerEmployeeId: opp.ownerEmployeeId ?? null,
+    // The Sales Order back-link (Owner-ratified 2026-08-15: "Preserve Opportunity -> Sales Order
+    // lineage visibly"). Was previously written server-side but never projected through to the UI --
+    // the exact "coordination invisibility" finding from the gap audit.
+    salesOrderId: opp.salesOrderId ?? null,
     attention,
     attentionTone: worstTone,
   };
