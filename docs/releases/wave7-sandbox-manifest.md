@@ -126,7 +126,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Merge SHA | `da6276ce48dc54801b6db9618d73fe2a12c82d06` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **New callable `getAvailableEquipment`** (exported, never deployed). Deploy required before it can be exercised. |
 | Hosting impact | **NONE** — this slice ships no UI. |
@@ -144,17 +144,27 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 Filled in as rows accumulate; this is the checklist a single authorized deployment executes.
 
+Five PRs (#1000–#1004) merged after the baseline. Order matters in one place only: the
+**index must be deployed before or with the Hosting release**, or the Part → Work Order Demand
+query fails at runtime.
+
 | Area | Required |
 | --- | --- |
-| Functions | *(pending)* |
-| Hosting | *(pending)* |
-| Rules | *(pending)* |
-| Indexes / config | *(pending)* |
-| Capabilities / grants | *(pending)* |
-| Readiness flags | *(pending)* |
-| Seed / migration steps | *(pending)* |
-| Smoke tests | *(pending)* |
-| E2E tests | *(pending)* |
+| Functions | Deploy `createPart`, `updatePart`, `changePartStatus` (#1000); `setWorkOrderPartsPlan` (#1001); `transitionSalesOrder`, `allocateSalesOrder`, `createServiceForSalesOrder` (#1002); `getAvailableEquipment` (#1004). All were already exported and have never been deployed. |
+| Hosting | One rebuild + release covering #1000–#1003. Required for #1000 specifically because `PART_MASTER_WRITE_READY` is a **build-time** constant — the currently-served bundle was built with `false`. |
+| Rules | **NONE.** No PR in this package changes `firestore.rules`. No protected Rules deployment is created or required. |
+| Indexes / config | **One index:** `fieldops_wos(status ASC, createdAt DESC)` (#1003) — `firebase deploy --only firestore:indexes`, **before or with** Hosting. Config: `platform-sandbox.readiness.PART_MASTER_WRITE_READY` is already `true` in-repo and takes effect at the rebuild. |
+| Capabilities / grants | **Activation needed:** `workOrder.parts.plan` (#1001) is `active:false` and not in the sandbox spine override. `inventory.serializedAsset.read` (#1004) is `active:false` with no override — leave it inactive; it has no writer yet. Already active: `salesOrder.write` / `.fulfill` / `.service`. **Grants needed (all to sandbox TEST personas, never production):** `inventoryCatalogAdministrator` for #1000; a Role carrying `workOrder.parts.plan` for #1001; a Role carrying the three sales capabilities for #1002. `inventory.catalog.manage`/`.activate` need no activation (they are not `active:false`). |
+| Readiness flags | `PART_MASTER_WRITE_READY=true` for `platform-sandbox` only — already committed; production/integration/emulator remain `false` and a test asserts no production-role environment enables it. |
+| Seed / migration steps | **NONE.** No migration, backfill or seed in this package. #1004 writes no document at all. |
+| Smoke tests | Per-PR smoke lists are in each row above. Minimum sequence: Part create/update/status → plan parts on a live Work Order → view that demand from the Part → advance/allocate/create-service on a Sales Order. |
+| E2E tests | The cross-item chain this package makes possible end to end: **plan parts on a Work Order (#1001) → see that Work Order as demand on the Part (#1003) → act on the originating Sales Order (#1002)**, with Part Master writes (#1000) supplying the catalog records the plan selects from. |
+
+### Post-deployment bookkeeping (do not skip)
+
+`scripts/indexDriftGuard.test.mjs` carries `PENDING_DEPLOY_INDEX_KEYS`. Once the index above is
+actually deployed, **remove its key from that list** — that is what restores the guard's
+declared-equals-live assertion. Leaving it listed would let a genuinely undeclared index hide.
 
 ## Boundaries
 
