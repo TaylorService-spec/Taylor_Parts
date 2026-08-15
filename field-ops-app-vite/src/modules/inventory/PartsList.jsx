@@ -28,6 +28,9 @@ import ActionRail from "../../shared/ui/ActionRail.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
+import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
+import { RequestCards, AssignedRequestDetail } from "../../shared/reorder/AssociateRequestPanel.jsx";
+import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversightTable.jsx";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -369,14 +372,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   }, [catalogRows]);
 
   const { data: pendingRequests } = useReorderRequests();
-  const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
+  const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
   );
-  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading } = useReorderRequestsAssignedTo(
+  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
   );
-  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading } = useReorderRequestsAssignedTo(
+  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
@@ -385,18 +388,19 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     loading: allAssignedWorkLoading,
     error: allAssignedWorkError,
   } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
-  // Concise, single-sentence summary for the role="status" live region
-  // below -- deliberately NOT the whole table's content. Covers all four
-  // states (loading/error/empty/populated), matching LoadingEmptyState's
-  // own visible-text states one-to-one without duplicating its logic.
-  const allAssignedWorkStatusMessage = allAssignedWorkError
-    ? `Unable to load All Assigned Work (${allAssignedWorkError}).`
-    : allAssignedWorkLoading
-      ? "Loading All Assigned Work..."
-      : allAssignedWork.length === 0
-        ? "No requests are currently assigned to anyone."
-        : `All Assigned Work: ${allAssignedWork.length} request${allAssignedWork.length === 1 ? "" : "s"} loaded.`;
-
+  // Wave 6 -- queue consolidation. Which assigned-to-me request's detail panel (if any) is
+  // open -- same shared AssignedRequestDetail PartsAssociateHome.jsx uses, same focus-
+  // restoration convention (the triggering "View" button regains focus on close).
+  const [selectedAssociateRequestId, setSelectedAssociateRequestId] = useState(null);
+  const associateLastTriggerRef = useRef(null);
+  function handleSelectAssociateRequest(requestId, triggerEl) {
+    associateLastTriggerRef.current = triggerEl;
+    setSelectedAssociateRequestId(requestId);
+  }
+  function handleCloseAssociateRequest() {
+    setSelectedAssociateRequestId(null);
+    associateLastTriggerRef.current?.focus();
+  }
   // Inventory Operational Queue, PR C -- Reorder Request History.
   // Test-seam wiring (see HISTORY_TEST_MODES/buildHistoryTestFetchImpl
   // above for the full rationale) -- import.meta.env.DEV is
@@ -602,225 +606,74 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         />
       </LoadingEmptyState>
 
-      <h3>Parts Manager Queue</h3>
-      <p className="fo-muted">
-        Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment.
-      </p>
-      <LoadingEmptyState
+      {/* Wave 6 -- queue consolidation (Owner directive, Option A). This is now the SAME
+          actionable ManagerQueuePanel PartsManagerHome.jsx uses (shared/reorder/
+          ManagerQueuePanel.jsx) -- an admin/dispatcher can Assign directly from here, not
+          just view. admin/dispatcher already hold `reorder.request.assign` unconditionally
+          (compatibilityRoles.ts SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS), so this widens no
+          capability -- it reuses one already granted. */}
+      <ManagerQueuePanel
+        queue={partsManagerQueue}
+        resolveName={resolveName}
         loading={partsManagerLoading}
-        isEmpty={partsManagerQueue.length === 0}
-        loadingText="Loading Parts Manager queue..."
-        emptyText="No requests awaiting the Parts Manager."
-      >
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Qty</th>
-              <th>Urgency</th>
-              <th>Approved</th>
-            </tr>
-          </thead>
-          <tbody>
-            {partsManagerQueue.map((request) => (
-              <tr key={request.id}>
-                <td>
-                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {resolveName(request.partId)}
-                  </Link>
-                </td>
-                <td>{getDisplayQty(request)}</td>
-                <td>
-                  {request.urgency ? (
-                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
-                  ) : (
-                    <StatusPill tone="unknown" label="Needs planning" />
-                  )}
-                </td>
-                <td className="fo-muted">
-                  {formatTimestamp(request.reviewedAt, { unknown: "—" })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </LoadingEmptyState>
+        error={partsManagerError}
+        title="Parts Manager Queue"
+        description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
+      />
 
-      <h3>Parts Associate Queue</h3>
+      <h3>My Work</h3>
       <p className="fo-muted">Reorder Requests assigned to you, split by whether you've started purchasing.</p>
 
+      {/* Wave 6 -- queue consolidation. The SAME actionable RequestCards + AssignedRequestDetail
+          PartsAssociateHome.jsx uses (shared/reorder/AssociateRequestPanel.jsx). Safe to reuse
+          here: `partsAssociateWaiting`/`partsAssociateInProgress` are ALREADY scoped to
+          useReorderRequestsAssignedTo(user.uid, ...) above (the signed-in viewer's own uid,
+          unchanged from before this refactor) -- the four write commands the detail panel
+          invokes are independently enforced server-side to require auth.uid ===
+          assignedToUserId, so this never exposes an action a different principal could use. */}
       <h4>Waiting</h4>
       <LoadingEmptyState
         loading={partsAssociateWaitingLoading}
         isEmpty={partsAssociateWaiting.length === 0}
-        loadingText="Loading Parts Associate queue..."
-        emptyText="No requests currently waiting on you."
+        loadingText="Loading your assigned requests..."
+        emptyText={partsAssociateWaitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
       >
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Qty</th>
-              <th>Urgency</th>
-              <th>Assigned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {partsAssociateWaiting.map((request) => (
-              <tr key={request.id}>
-                <td>
-                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {resolveName(request.partId)}
-                  </Link>
-                </td>
-                <td>{getDisplayQty(request)}</td>
-                <td>
-                  {request.urgency ? (
-                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
-                  ) : (
-                    <StatusPill tone="unknown" label="Needs planning" />
-                  )}
-                </td>
-                <td className="fo-muted">
-                  {formatTimestamp(request.assignedAt, { unknown: "—" })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
 
       <h4>In Progress</h4>
       <LoadingEmptyState
         loading={partsAssociateInProgressLoading}
         isEmpty={partsAssociateInProgress.length === 0}
-        loadingText="Loading Parts Associate queue..."
-        emptyText="No purchasing currently in progress."
+        loadingText="Loading your in-progress purchasing..."
+        emptyText={partsAssociateInProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
       >
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Qty</th>
-              <th>Urgency</th>
-              <th>Purchasing started</th>
-              <th>Latest Update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {partsAssociateInProgress.map((request) => (
-              <tr key={request.id}>
-                <td>
-                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {resolveName(request.partId)}
-                  </Link>
-                </td>
-                <td>{getDisplayQty(request)}</td>
-                <td>
-                  {request.urgency ? (
-                    <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
-                  ) : (
-                    <StatusPill tone="unknown" label="Needs planning" />
-                  )}
-                </td>
-                <td className="fo-muted">
-                  {formatTimestamp(request.purchasingStartedAt, { unknown: "—" })}
-                </td>
-                <td className="fo-muted">
-                  {request.lastPurchasingUpdateAt
-                    ? `${request.vendorContacted ? "Vendor contacted" : "No vendor contact yet"} -- ${new Date(
-                        request.lastPurchasingUpdateAt
-                      ).toLocaleString()}`
-                    : "No update yet"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
 
-      <h3>All Assigned Work ({allAssignedWork.length})</h3>
-      <p className="fo-muted">
-        Every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to --
-        oversight only, no action control here. Your own assignments above are a subset of this list.
-      </p>
-      {/* Final Review correction: a role="status" region must announce a SHORT
-          state summary, not wrap the entire interactive table -- wrapping the
-          table would make a screen reader read out the whole populated table
-          on every re-render, not just the transition itself. This paragraph is
-          the ONLY thing inside the live region; the table below sits in normal
-          document flow, outside it, and is navigated into deliberately by a
-          screen reader user rather than announced wholesale. Present in the DOM
-          unconditionally (not conditionally rendered away) so a screen reader
-          picks up the region before the first transition, not only after.
-          role="status" (implicit aria-live="polite") matches this codebase's
-          existing announcement convention (see EmployeeAssignmentPicker.jsx's
-          status/warning regions) rather than introducing a raw aria-live
-          attribute nowhere else uses. */}
-      <p role="status" className="fo-sr-only">{allAssignedWorkStatusMessage}</p>
-      {allAssignedWorkError ? (
-        <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
-      ) : (
-        <LoadingEmptyState
-          loading={allAssignedWorkLoading}
-          isEmpty={allAssignedWork.length === 0}
-          loadingText="Loading All Assigned Work..."
-          emptyText="No requests are currently assigned to anyone."
-        >
-          {/* Responsive behavior (Specification's "Responsive behavior" section):
-              this table gains an Assignee column beyond the page's other,
-              narrower tables -- wrapped in its own horizontally-scrollable
-              container on narrow viewports, matching the shared .fo-panel
-              overflow-x:auto pattern already established for this whole page,
-              but scoped to just this table so scrolling it doesn't drag the
-              rest of the page's other tables sideways with it. */}
-          <div className="fo-table-scroll">
-              <table className="fo-table">
-                <thead>
-                  <tr>
-                    <th>Part</th>
-                    <th>Qty</th>
-                    <th>Urgency</th>
-                    <th>Status</th>
-                    <th>Assignee</th>
-                    <th>Age</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allAssignedWork.map((request) => (
-                    <tr key={request.id}>
-                      <td>
-                        <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                          {resolveName(request.partId)}
-                        </Link>
-                      </td>
-                      <td>{getDisplayQty(request)}</td>
-                      <td>
-                        {request.urgency ? (
-                          <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
-                        ) : (
-                          <StatusPill tone="unknown" label="Needs planning" />
-                        )}
-                      </td>
-                      <td className="fo-muted">
-                        {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
-                      </td>
-                      <td className="fo-muted">
-                        {resolveAssigneeDisplay(
-                          request.assignedToUserId,
-                          employeeDirectory,
-                          employeeDirectoryLoading,
-                          employeeDirectoryError
-                        )}
-                      </td>
-                      <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-        </LoadingEmptyState>
+      {selectedAssociateRequestId && (
+        <AssignedRequestDetail
+          requestId={selectedAssociateRequestId}
+          resolveName={resolveName}
+          onClose={handleCloseAssociateRequest}
+        />
       )}
+
+      <h3>Team Work</h3>
+      <p className="fo-muted">Cross-user oversight -- every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to. Your own assignments above are a subset of this list.</p>
+      {/* Wave 6 -- queue consolidation, safe mechanical dedup (Owner directive §12). The SAME
+          shared/reorder/AssignedWorkOversightTable.jsx PartsManagerHome.jsx's "Assigned-Work
+          Oversight" now uses -- ONE implementation, not two independently-maintained copies.
+          Assignee-name resolution stays THIS page's own scope (useEmployeeDirectory(), already
+          visible to admin/dispatcher elsewhere) -- injected, not hardcoded in the shared table,
+          so reuse never widens or narrows either caller's own data visibility. */}
+      <AssignedWorkOversightTable
+        requests={allAssignedWork}
+        resolveName={resolveName}
+        resolveAssigneeDisplay={(userId) => resolveAssigneeDisplay(userId, employeeDirectory, employeeDirectoryLoading, employeeDirectoryError)}
+        loading={allAssignedWorkLoading}
+        error={allAssignedWorkError}
+      />
 
       <h2 id="parts-group-parts">Parts</h2>
       <p className="fo-muted">Look up a part -- identity, category, stock, and reorder risk.</p>
