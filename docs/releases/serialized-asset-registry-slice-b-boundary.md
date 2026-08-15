@@ -1,5 +1,30 @@
 # Serialized Asset Registry — slice B boundary (Wave 7, Item 5)
 
+> **RESOLVED — Owner decision, Wave 7.** The Owner authorized extending the **existing** governed
+> Receiving authority to accept `SERIAL` tracking mode, so that receipt creates and activates the
+> authoritative Serialized Asset per Specification §F. Slice B is implemented on that basis.
+>
+> **Scope of that authorization, verbatim in effect:** SERIAL intake through Receiving ONLY. It did
+> **not** authorize LOT tracking, a standalone "register serial" command, a second intake authority, a
+> second ledger, bypassing Receiving, Transfer Orders, customer-delivery/custody semantics, resolving
+> Ventana/Taylor ownership, or any deployment. Each of those remains closed and is asserted closed by
+> test.
+>
+> **What shipped:** `receivingValidation` accepts `NONE | SERIAL` (LOT still fails closed); a SERIAL
+> line carries exactly one serial per received unit; the receipt stages one ledger event per unit (the
+> ledger's own SERIAL rule) and activates one `serialized_assets` document per unit inside Receiving's
+> existing transaction. Identity is deterministic on `(partId, serialNo)`, so `create` is itself the
+> uniqueness check.
+>
+> **Still blocked, unchanged:** Transfer Orders / customer delivery / the §H installation handoff. A
+> received serial stays at its put-away location in state `RECEIVED`; nothing in this slice can move it
+> to a CUSTOMER location or link it to Equipment. See "Remaining boundary" at the end.
+
+The original boundary analysis is preserved below as the record of why this decision was needed.
+
+---
+
+
 **Status:** repository-safe work for the Specification's phase **M.1** is complete and merged
 (PR #1004). Slice **B** — the path that actually CREATES a `serialized_assets` record — cannot
 proceed without one Owner decision. This document records the exact boundary and the smallest
@@ -76,3 +101,18 @@ question above.
 - No `firestore.rules` change (a collection with no `match` block is denied by default; there is no
   `{document=**}` wildcard in the file).
 - No write, migration, backfill or seed of any kind.
+
+## Remaining boundary (unchanged by the SERIAL decision)
+
+Transfer Order / customer delivery / §H installation handoff remain blocked, and were deliberately not
+worked around:
+
+- No transfer module exists (Enterprise Inventory Phase 4).
+- Nothing in slice B relocates a serialized asset to a CUSTOMER location, and no alternative transfer
+  mechanism was invented. A received unit's `currentLocationId` is its put-away location and its
+  `inventoryState` is `RECEIVED`.
+- `currentEquipmentId` is written as `null` at activation and there is no code path in this slice that
+  ever sets it — the install link belongs to §H.
+
+The next Owner decision for this workstream, when it is wanted, is whether to authorize Enterprise
+Inventory Phase 4 (Transfer Orders), which is the prerequisite for delivery and therefore for §H.

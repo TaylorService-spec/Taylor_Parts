@@ -14,8 +14,9 @@ import {
 import {
   RECEIVING_SOURCE_TYPES,
   RECEIVING_INITIAL_VERSION,
-  RECEIVING_LINE_TRACKING_MODE,
+  RECEIVING_SUPPORTED_TRACKING_MODES,
   RECEIVING_LINE_STATUS,
+  type ReceivingLineTrackingMode,
   type ReceivingOrderValue,
   type ReceivingLineValue,
   type ReceivingAuthority,
@@ -32,7 +33,10 @@ function isFiniteNumber(v: unknown): v is number {
 // The ONLY keys the untrusted input may carry. Any server-authored / unknown field fails closed.
 const ALLOWED_INPUT_KEYS = new Set(["source", "receivingLocation", "lines", "idempotencyKey"]);
 const ALLOWED_SOURCE_KEYS = new Set(["type", "reorderRequestId", "purchaseOrderId"]);
-const ALLOWED_LINE_KEYS = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity"]);
+// `serialNumbers` is permitted as a KEY here but is only LEGAL on a SERIAL line -- see the per-mode
+// rules below, which reject it on a NONE line and require it on a SERIAL one. `lotId` and the
+// server-authored fields (status/trackingMode/timestamps) remain rejected outright.
+const ALLOWED_LINE_KEYS = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity", "serialNumbers"]);
 
 // Validate a first-slice receive request. `authority` supplies the canonical Part (partId + trackingMode)
 // and the authoritative PO orderedQuantity the single line is bound to. Returns the normalized value on
@@ -46,7 +50,12 @@ export function validateReceivingOrderInput(input: unknown, authority: unknown):
   const part = authority.part;
   if (!isPlainObject(part) || !isNonEmptyString(part.partId)) return fail("part_invalid");
   if (!isTrackingMode(part.trackingMode)) return fail("tracking_mode_invalid");
-  if (part.trackingMode !== RECEIVING_LINE_TRACKING_MODE) return fail("tracking_mode_unsupported"); // SERIAL/LOT deferred
+  // NONE (original behavior) and SERIAL (Wave 7 Owner decision) are supported. LOT is deliberately not
+  // in RECEIVING_SUPPORTED_TRACKING_MODES and still fails closed here.
+  if (!(RECEIVING_SUPPORTED_TRACKING_MODES as readonly string[]).includes(part.trackingMode)) {
+    return fail("tracking_mode_unsupported"); // LOT deferred
+  }
+  const trackingMode = part.trackingMode as ReceivingLineTrackingMode;
   if (!isFiniteNumber(authority.orderedQuantity) || authority.orderedQuantity <= 0) return fail("ordered_quantity_invalid");
   const orderedQuantity = authority.orderedQuantity;
 
@@ -78,15 +87,40 @@ export function validateReceivingOrderInput(input: unknown, authority: unknown):
   if (line.expectedQuantity !== orderedQuantity) return fail("expected_quantity_mismatch");
   if (line.receivedQuantity !== orderedQuantity) return fail("received_quantity_mismatch");
 
+  // ---- per-mode serial identity ----
+  // SERIAL: exactly one serial per received unit, each a non-empty string, no duplicates within the
+  // line. Serials are normalized by trimming ONLY -- case is preserved, because serial numbers are
+  // manufacturer identity and case can be significant. Duplicate detection is therefore exact-match,
+  // which is the same comparison the registry's deterministic document id uses, so "accepted here"
+  // and "unique there" can never disagree.
+  // NONE: serialNumbers must be absent entirely.
+  let serialNumbers: string[] | null = null;
+  if (trackingMode === "SERIAL") {
+    if (!Array.isArray(line.serialNumbers)) return fail("serial_numbers_missing");
+    const trimmed: string[] = [];
+    for (const raw of line.serialNumbers) {
+      if (!isNonEmptyString(raw)) return fail("serial_number_invalid");
+      trimmed.push((raw as string).trim());
+    }
+    // One serial per physical unit -- bound to the AUTHORITATIVE ordered quantity, not to a
+    // client-supplied count, so a caller cannot under- or over-declare serials for the receipt.
+    if (trimmed.length !== orderedQuantity) return fail("serial_count_mismatch");
+    if (new Set(trimmed).size !== trimmed.length) return fail("serial_numbers_duplicated");
+    serialNumbers = trimmed;
+  } else if (line.serialNumbers !== undefined) {
+    return fail("serial_numbers_not_allowed"); // NONE line carries no serial identity
+  }
+
   if (!isNonEmptyString(input.idempotencyKey)) return fail("idempotency_key_invalid");
 
   const normalizedLine: ReceivingLineValue = {
     lineId: line.lineId,
     partId: line.partId,
-    trackingMode: RECEIVING_LINE_TRACKING_MODE,
+    trackingMode,
     expectedQuantity: line.expectedQuantity,
     receivedQuantity: line.receivedQuantity,
     status: RECEIVING_LINE_STATUS,
+    ...(serialNumbers === null ? {} : { serialNumbers }),
   };
   const value: ReceivingOrderValue = {
     source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: source.reorderRequestId, purchaseOrderId: source.purchaseOrderId },
