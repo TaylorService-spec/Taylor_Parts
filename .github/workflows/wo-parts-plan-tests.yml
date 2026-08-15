@@ -13,6 +13,12 @@ on:
       - "functions/test/setWorkOrderPartsPlan.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
+      - "functions/src/transitionEngine.ts"
+      - "field-ops-app-vite/src/domain/workOrderPartsPlan.js"
+      - "field-ops-app-vite/src/hooks/useWorkOrderPartsPlan.js"
+      - "field-ops-app-vite/src/modules/workOrders/**"
+      - "field-ops-app-vite/test/workOrderPartsPlan.test.mjs"
+      - "field-ops-app-vite/test/workOrderPartsPlanEditor.test.jsx"
       - ".github/workflows/wo-parts-plan-tests.yml"
   push:
     branches: [main]
@@ -22,6 +28,12 @@ on:
       - "functions/test/setWorkOrderPartsPlan.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
+      - "functions/src/transitionEngine.ts"
+      - "field-ops-app-vite/src/domain/workOrderPartsPlan.js"
+      - "field-ops-app-vite/src/hooks/useWorkOrderPartsPlan.js"
+      - "field-ops-app-vite/src/modules/workOrders/**"
+      - "field-ops-app-vite/test/workOrderPartsPlan.test.mjs"
+      - "field-ops-app-vite/test/workOrderPartsPlanEditor.test.jsx"
       - ".github/workflows/wo-parts-plan-tests.yml"
   workflow_dispatch:
 
@@ -50,3 +62,36 @@ jobs:
       - name: setWorkOrderPartsPlan producer tests (build + run)
         run: npm run test:workOrderPartsPlan
         working-directory: functions
+
+  wo-parts-plan-client-tests:
+    name: WO parts planning client (domain + component + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install app dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      # Pure client core. Includes the lockstep check that PLAN_TERMINAL_STATUSES still matches the
+      # server's canonical TERMINAL_STATUSES -- which is why functions/src/transitionEngine.ts is a
+      # trigger path for this workflow.
+      - name: WO parts plan domain tests
+        run: node test/workOrderPartsPlan.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: WO parts plan editor component tests
+        run: npx vitest run test/workOrderPartsPlanEditor.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Lint
+        run: npx oxlint src/domain/workOrderPartsPlan.js src/hooks/useWorkOrderPartsPlan.js src/modules/workOrders/
+        working-directory: field-ops-app-vite

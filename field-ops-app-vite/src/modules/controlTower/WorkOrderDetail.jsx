@@ -3,7 +3,7 @@ import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
 import { formatClockTime } from "../../domain/displayTimestamp";
-import { snapshotPartName, snapshotPartSku, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
+import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import WorkOrderActions from "./WorkOrderActions";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 
@@ -101,27 +101,15 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
       {workOrder.inventorySnapshot?.length > 0 && (
         <div className="wo-inventory">
           <h4>Inventory</h4>
-          <div className="fo-muted">Visual only -- no inventory engine connected yet.</div>
+          {/* Planned parts moved to the governed Parts Plan section
+             (modules/workOrders/WorkOrderPartsPlanEditor.jsx), which reads the same
+             inventorySnapshot and can also EDIT it through the trusted
+             setWorkOrderPartsPlan command. Rendering the planned list here too would show
+             the same demand in two places on one screen, and the old "no inventory engine
+             connected yet" caption is no longer true of planned quantities.
 
-          <div>
-            <strong>Planned Parts:</strong>
-            {workOrder.inventorySnapshot
-              .filter((item) => item.qtyPlanned)
-              .map((item, idx) => {
-                // Snapshot-authoritative: name/category/unit come from the Work Order's own
-                // recorded inventorySnapshot -- NO catalog lookup. Missing/empty/whitespace/
-                // malformed -> raw SKU (name) / "—" (category) / "unit(s)" (unit). All values
-                // placed into output go through the safe string projections so a malformed
-                // legacy sku (object/array) can never crash the view.
-                const sku = snapshotPartSku(item);
-                return (
-                  <div key={sku || idx}>
-                    - {snapshotPartName(item)} ({sku}, {snapshotPartCategory(item)}) &rarr; {item.qtyPlanned} {snapshotPartUnit(item)}
-                    {item.notes && <span className="fo-muted"> -- {item.notes}</span>}
-                  </div>
-                );
-              })}
-          </div>
+             Recorded USAGE stays here: it is written by execution capture, not by planning,
+             and this component is the Work Order's own read-only record of it. */}
 
           <div>
             <strong>Used Parts:</strong>

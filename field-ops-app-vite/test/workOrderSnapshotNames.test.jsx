@@ -69,7 +69,7 @@ describe("Work Order snapshot-name cohort (OD-3)", () => {
     noStaticLeak();
   });
 
-  it("WorkOrderDetail: planned uses snapshot name/category/unit or neutral fallback; used uses snapshot name; no static leak", () => {
+  it("WorkOrderDetail: used parts use the recorded snapshot name; no static leak", () => {
     const workOrder = {
       id: "wo1", woNumber: "WO-1", status: "OPEN", priority: "HIGH", createdAt: 1, events: [],
       inventorySnapshot: [
@@ -79,14 +79,15 @@ describe("Work Order snapshot-name cohort (OD-3)", () => {
     };
     render(<WorkOrderDetail workOrder={workOrder} jobs={[]} role="dispatcher" technicians={[]} customerName="Acme" locationLabel="Site" />);
     const text = document.body.textContent;
-    // planned item 1: recorded name + snapshot category + snapshot unit (fragmented text nodes)
+    // USED parts: the recorded snapshot name, never a catalog lookup.
     expect(text.includes("RECORDED-A")).toBe(true);
-    expect(text.includes("(TST-9001, Valves)")).toBe(true);
-    expect(text.includes("each")).toBe(true);
-    // planned item 2: name-less -> SKU, neutral category "—", neutral unit "unit(s)"
-    expect(text.includes("(TST-9002, —)")).toBe(true);
-    expect(text.includes("unit(s)")).toBe(true);
     noStaticLeak();
+    // The PLANNED half of this invariant moved with the planned-parts display, which is now the
+    // governed Parts Plan surface (modules/workOrders/WorkOrderPartsPlanEditor.jsx) so that planned
+    // demand is shown in ONE place and can be edited through the trusted command. Equivalent
+    // coverage -- snapshot name/category/unit, the neutral fallbacks, and no static-catalog leak --
+    // lives in test/workOrderPartsPlanEditor.test.jsx ("OD-3: planned rows use snapshot
+    // name/category/unit or the neutral fallback, with NO catalog lookup").
   });
 
   it("malformed legacy sku (object / array) does not crash WorkOrderDetail or PartsOverviewPanel; safe projection, no [object Object]", () => {

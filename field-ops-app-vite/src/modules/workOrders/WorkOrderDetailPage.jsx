@@ -8,6 +8,7 @@ import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
+import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -66,6 +67,12 @@ export default function WorkOrderDetailPage() {
         customerName={account?.name}
         locationLabel={location?.name}
       />
+      {/* WO Parts Planning. Hosted here rather than inside WorkOrderDetail because this route is the
+          admin/dispatcher-gated planning surface (see the gate note above), while WorkOrderDetail is a
+          pure presentation component. No refresh prop is needed: useWorkOrder is an onSnapshot
+          listener, so a saved plan re-renders from the persisted document rather than from optimistic
+          client state. */}
+      <WorkOrderPartsPlanEditor workOrder={workOrder} />
     </div>
   );
 }
