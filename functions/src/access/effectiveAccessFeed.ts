@@ -39,6 +39,7 @@ import { GOVERNED_BUSINESS_ROLES } from "./governedBusinessRoles";
 import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
 import { resolveRuntimeCapabilityOverrides } from "./environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "./compactClaims";
+import { buildOperationalRoleActiveResolverFromEmployeeId } from "./operationalRoleContext";
 import type { Role } from "../types/access";
 
 export class InvalidInputError extends Error {}
@@ -189,15 +190,44 @@ export async function resolveEffectiveAccess(
   // per-record ("can the caller do X to THIS document") question -- a
   // per-record decision is each governed surface's own Rules/Function
   // concern (e.g. reportExecutionService.ts's own per-field/per-object
-  // resolution), not this feed's. isOwnAssignment/operationalRoleActive-
-  // style Conditions therefore never evaluate true here by construction
-  // (empty condition context) -- a capability gated behind one of those
-  // Conditions correctly DENIES through this feed even for a principal
-  // who WOULD pass it in the right per-record context; that is by
-  // design; this feed is a coarse "is X available to me at all" signal
-  // (e.g. for nav visibility), never the authority for a specific
-  // action against a specific record.
-  const target: TargetContext = { scope: { type: "global" }, condition: {} };
+  // resolution), not this feed's. isOwnAssignment stays unpopulated here
+  // by construction (empty in condition) for exactly that reason -- it
+  // is inherently record-scoped ("is THIS the caller's own assignment"),
+  // and this feed has no record in play.
+  //
+  // CORRECTION (Wave 7 extension PART 4): operationalRoleActive is NOT a
+  // per-record predicate the way isOwnAssignment is -- it asks "is
+  // operational role R currently active for the calling principal,"
+  // which is answerable purely from the principal's own linked Employee
+  // document, with no target record involved at all. The comment
+  // previously here grouped it with isOwnAssignment and left it
+  // unpopulated "by design," which meant every operationalRoleActive-
+  // conditioned capability (the nine ids on TECHNICIAN_ROLE in
+  // compatibilityRoles.ts: reorder.request.*, reorder.purchaseOrder.*,
+  // inventory.transaction.read, inventory.action.read,
+  // inventory.catalog.read) DENIED unconditionally through this feed for
+  // every principal, active operational role or not -- fail-closed (not a
+  // security bug), but also not the resolvable-condition behavior the
+  // catalog declares. operationalRoleContext.ts now resolves it here, the
+  // ONE canonical resolver path, from the SAME userSnap already read above
+  // (no extra users/{uid} read) plus one additional employees/{employeeId}
+  // read when a candidate link exists. Every OTHER call site building its
+  // own GLOBAL_TARGET (partMasterCommands.ts, savedDefinitionCommands.ts,
+  // reportExecutionService.ts, receivingCallableWiring.ts,
+  // trustedWriterCommands.ts) still deliberately passes `condition: {}` --
+  // none of them evaluates a permission id an operationalRoleActive
+  // Condition gates, so populating it there would be dead code, and
+  // wiring it individually into each would defeat the point of having one
+  // shared resolver.
+  const operationalRoleActive = await buildOperationalRoleActiveResolverFromEmployeeId(
+    db,
+    input.principalUid,
+    userSnap.data()?.employeeId,
+  );
+  const target: TargetContext = {
+    scope: { type: "global" },
+    condition: { operationalRoleActive },
+  };
 
   const decisions: Record<string, boolean> = {};
   for (const permissionId of new Set(input.permissionIds)) {
