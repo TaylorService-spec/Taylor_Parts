@@ -8,9 +8,18 @@
 // second write path.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+
+const manufacturerCatalogState = { current: { loading: true, errorStatus: null, result: null } };
+vi.mock("../src/hooks/useManufacturerCatalog", () => ({
+  useManufacturerCatalog: () => manufacturerCatalogState.current,
+}));
+
 import PartWriteModal from "../src/shared/partMaster/PartWriteModal.jsx";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  manufacturerCatalogState.current = { loading: true, errorStatus: null, result: null };
+});
 
 const PART = { partId: "PRT-1", internalPartNumber: "PRT-1", name: "Valve", version: 3, status: "ACTIVE", category: "Valves", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" };
 
@@ -111,5 +120,55 @@ describe("PartWriteModal -- readinessOverride:true exercises the real governed f
     fireEvent.click(screen.getByRole("button", { name: /create part/i }));
     await screen.findByText(/not authorized to make this change/i);
     expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe("PartWriteModal -- Manufacturer field honors the trusted catalog read state", () => {
+  it("catalog UNAVAILABLE: falls back to a free-text id, with honest copy -- never fabricates a picker", () => {
+    manufacturerCatalogState.current = { loading: false, errorStatus: "unavailable", result: null };
+    render(<PartWriteModal mode="create" onClose={() => {}} onSaved={() => {}} writeDeps={{ readinessOverride: true, client: {} }} />);
+    expect(screen.getByLabelText(/manufacturer id/i)).toBeTruthy();
+    expect(screen.getByText(/manufacturer catalog is currently unavailable/i)).toBeTruthy();
+  });
+
+  it("catalog DENIED: falls back to a free-text id, with distinct honest copy", () => {
+    manufacturerCatalogState.current = { loading: false, errorStatus: "denied", result: null };
+    render(<PartWriteModal mode="create" onClose={() => {}} onSaved={() => {}} writeDeps={{ readinessOverride: true, client: {} }} />);
+    expect(screen.getByText(/do not have access to the manufacturer catalog/i)).toBeTruthy();
+  });
+
+  it("catalog READY: a real governed Manufacturer selector replaces the free-text field, ACTIVE-only options", () => {
+    manufacturerCatalogState.current = {
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        manufacturers: [
+          { manufacturerId: "MFG-1", name: "Acme Valve Co", status: "ACTIVE" },
+          { manufacturerId: "MFG-2", name: "Retired Co", status: "INACTIVE" },
+        ],
+        excludedCount: 0,
+      },
+    };
+    render(<PartWriteModal mode="create" onClose={() => {}} onSaved={() => {}} writeDeps={{ readinessOverride: true, client: {} }} />);
+    expect(screen.queryByLabelText(/manufacturer id/i)).toBeNull();
+    const select = screen.getByLabelText(/^manufacturer$/i);
+    expect(select.tagName).toBe("SELECT");
+    expect(screen.getByRole("option", { name: "Acme Valve Co" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Retired Co" })).toBeNull();
+  });
+
+  it("catalog READY, editing a part whose existing manufacturerId is no longer ACTIVE: value is preserved, not silently dropped", () => {
+    manufacturerCatalogState.current = {
+      loading: false,
+      errorStatus: null,
+      result: { status: "ready", manufacturers: [{ manufacturerId: "MFG-1", name: "Acme Valve Co", status: "ACTIVE" }], excludedCount: 0 },
+    };
+    render(
+      <PartWriteModal mode="edit" part={{ ...PART, manufacturerId: "MFG-9-RETIRED" }} onClose={() => {}} onSaved={() => {}} writeDeps={{ readinessOverride: true, client: {} }} />
+    );
+    const select = screen.getByLabelText(/^manufacturer$/i);
+    expect(select.value).toBe("MFG-9-RETIRED");
+    expect(screen.getByRole("option", { name: /MFG-9-RETIRED \(not currently active\)/i })).toBeTruthy();
   });
 });

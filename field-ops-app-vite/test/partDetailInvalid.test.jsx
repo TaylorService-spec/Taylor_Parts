@@ -15,6 +15,7 @@ vi.mock("../src/data/partsCatalog", () => ({
 vi.mock("../src/hooks/useInventoryLedger", () => ({ useInventoryLedger: () => ({ transactions: [], healthEntries: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useReorderRequests", () => ({ useReorderRequestForPart: () => ({ request: null, loading: false, error: null }) }));
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
+vi.mock("../src/hooks/useManufacturerCatalog", () => ({ useManufacturerCatalog: () => ({ loading: true, errorStatus: null, result: null }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => ({ data: null, loading: false }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrderVoids", () => ({ useReorderPurchaseOrderVoid: () => ({ data: null, loading: false }) }));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({ useEmployeeDirectory: () => ({ byUserId: {}, loading: false }), resolveActorDisplayName: (id) => id }));

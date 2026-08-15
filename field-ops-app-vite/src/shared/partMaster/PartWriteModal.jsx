@@ -9,6 +9,12 @@
 // authority, not a refactor of the already-tested admin screen.
 import { useState } from "react";
 import { usePartMasterWrite } from "../../hooks/usePartMasterWrite";
+import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
+import {
+  MANUFACTURER_CATALOG_VIEW_STATE,
+  manufacturerCatalogViewState,
+  manufacturerPickerOptions,
+} from "../../domain/manufacturerCatalogView";
 import {
   CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES,
   allowedStatusTransitions, partStatusTone,
@@ -38,6 +44,46 @@ function OutcomeBanner({ outcome }) {
   );
 }
 
+// Wave 6 Owner Decision (2026-08-15): a REAL governed Manufacturer selector where the trusted
+// inventory.catalog.read projection is available -- never a free-text field silently masquerading
+// as a verified relationship. Falls back to the pre-existing free-text id ONLY when the catalog
+// read genuinely cannot resolve (loading/denied/unavailable), with honest copy explaining why --
+// still writes the same `manufacturerId` field either way, no new write authority.
+function ManufacturerField({ form, setForm, disabled }) {
+  const catalog = useManufacturerCatalog();
+  const state = manufacturerCatalogViewState(catalog);
+  const set = (e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }));
+
+  if (state === MANUFACTURER_CATALOG_VIEW_STATE.READY) {
+    const options = manufacturerPickerOptions(catalog.result.manufacturers);
+    const currentValue = form.manufacturerId ?? "";
+    // Preserve an existing value even if it's no longer ACTIVE (or unknown) -- never silently drop it.
+    const hasCurrentOption = currentValue === "" || options.some((o) => o.value === currentValue);
+    return (
+      <Field id="parts-write-manufacturer" label="Manufacturer">
+        <select id="parts-write-manufacturer" className="fo-wizard-control" value={currentValue} onChange={set} disabled={disabled}>
+          <option value="">— None —</option>
+          {!hasCurrentOption && <option value={currentValue}>{currentValue} (not currently active)</option>}
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
+    );
+  }
+
+  return (
+    <Field id="parts-write-manufacturer" label="Manufacturer ID">
+      <input id="parts-write-manufacturer" className="fo-wizard-control" value={form.manufacturerId ?? ""} onChange={set} disabled={disabled} />
+      <p className="fo-muted">
+        {state === MANUFACTURER_CATALOG_VIEW_STATE.DENIED
+          ? "You do not have access to the Manufacturer catalog, so this is an unverified id."
+          : state === MANUFACTURER_CATALOG_VIEW_STATE.UNAVAILABLE
+            ? "The Manufacturer catalog is currently unavailable, so this is an unverified id."
+            : "Loading the Manufacturer catalog…"}
+      </p>
+    </Field>
+  );
+}
+
 function PartForm({ mode, form, setForm, disabled }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   return (
@@ -61,9 +107,7 @@ function PartForm({ mode, form, setForm, disabled }) {
       <Field id="parts-write-category" label="Category">
         <input id="parts-write-category" className="fo-wizard-control" value={form.category ?? ""} onChange={set("category")} disabled={disabled} />
       </Field>
-      <Field id="parts-write-manufacturer" label="Manufacturer ID">
-        <input id="parts-write-manufacturer" className="fo-wizard-control" value={form.manufacturerId ?? ""} onChange={set("manufacturerId")} disabled={disabled} />
-      </Field>
+      <ManufacturerField form={form} setForm={setForm} disabled={disabled} />
       <Field id="parts-write-unit" label="Stocking unit">
         <select id="parts-write-unit" className="fo-wizard-control" value={form.stockingUnit ?? "EACH"} onChange={set("stockingUnit")} disabled={disabled}>
           {UNIT_CODES.map((u) => <option key={u} value={u}>{u}</option>)}

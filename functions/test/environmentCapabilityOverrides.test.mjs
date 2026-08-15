@@ -29,10 +29,9 @@ const CANONICAL_REGISTRY = JSON.parse(
   readFileSync(resolve(HERE, "../../config/environments.json"), "utf8"),
 );
 
-// 12 spine ids as of 2026-08-15 (salesOrder.read added -- Owner-ratified: a governed way to read
-// Sales Order state is required to meaningfully operate the already-granted write/fulfill/service
-// spine). Kept the SPINE_11 name historically in comments below; the constant itself is the
-// authoritative list, not the name.
+// 13 spine ids as of 2026-08-15 (inventory.catalog.read added -- Wave 6 Owner Decision: a governed
+// trusted read for the Manufacturer catalog the Parts experience needs). Kept the SPINE_11 name
+// historically in comments below; the constant itself is the authoritative list, not the name.
 const SPINE_11 = [
   "opportunity.write",
   "opportunity.read",
@@ -46,13 +45,14 @@ const SPINE_11 = [
   "finance.adjustment.record",
   "finance.read",
   "finance.refund.record",
+  "inventory.catalog.read",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 12 spine capability ids", () => {
+test("eligible allow-list is exactly the 13 spine capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 12);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 13);
 });
 
 test("sandbox project resolves the full spine override set", () => {

@@ -32,6 +32,13 @@ vi.mock("../src/hooks/useEmployeeDirectory", () => ({ useEmployeeDirectory: () =
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({ hasUsageHistory: () => false }));
 vi.mock("../src/shared/search/GlobalSearch", () => ({ default: () => null }));
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
+vi.mock("../src/hooks/useManufacturerCatalog", () => ({
+  useManufacturerCatalog: () => ({
+    loading: false,
+    errorStatus: null,
+    result: { status: "ready", manufacturers: [{ manufacturerId: "MFG-1", name: "Acme Valve Co", status: "ACTIVE" }], excludedCount: 0 },
+  }),
+}));
 vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => ({ data: null, loading: false }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrderVoids", () => ({ useReorderPurchaseOrderVoid: () => ({ data: null, loading: false }) }));
 vi.mock("../src/modules/inventory/UsedInEquipmentSection", () => ({ default: () => null }));
@@ -55,7 +62,7 @@ import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; });
 
-const READY = { ok: true, parts: [{ partId: "TST-9001", internalPartNumber: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each", controlType: "STANDARD", stockingClass: "STOCKED", status: "ACTIVE", version: 2 }], invalid: [] };
+const READY = { ok: true, parts: [{ partId: "TST-9001", internalPartNumber: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each", controlType: "STANDARD", stockingClass: "STOCKED", status: "ACTIVE", version: 2, manufacturerId: "MFG-1" }], invalid: [] };
 
 describe("PartsList -- New Part entry point", () => {
   it("no modal mounted until 'New Part' is clicked; clicking opens mode='create'", async () => {
@@ -83,6 +90,13 @@ describe("PartDetail -- Edit/Status entry points", () => {
     fireEvent.click(screen.getByRole("button", { name: /change status/i }));
     expect(screen.getByTestId("part-write-modal").textContent).toBe("status");
     expect(captured[captured.length - 1].mode).toBe("status");
+  });
+
+  it("shows the resolved Manufacturer NAME (via the trusted catalog read), not the opaque manufacturerId", async () => {
+    fetchPartMasterList.mockResolvedValue(READY);
+    render(<PartDetail />);
+    await screen.findByText("Acme Valve Co");
+    expect(screen.queryByText("MFG-1")).toBeNull();
   });
 
   it("no Edit/Status buttons when the canonical read cannot resolve this part (BLOCKED)", async () => {

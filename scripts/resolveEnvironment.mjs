@@ -57,6 +57,7 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'finance.adjustment.record',
   'finance.read',
   'finance.refund.record',
+  'inventory.catalog.read',
 ]);
 
 /**

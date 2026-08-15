@@ -27,6 +27,7 @@ export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderF
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
 export { getSalesOrderContext } from "./salesOrder/salesOrderReadService";
+export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
