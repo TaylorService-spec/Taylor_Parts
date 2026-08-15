@@ -109,6 +109,11 @@ function buildDeferredForNow(catalog) {
     "coverage.write",
     // Commercial Coverage & Territory (#15): coverage.read -- ungranted-by-design (trusted backend resolve), EXACT literal.
     "coverage.read",
+    // Serialized Asset registry, Spec phase M.1 (docs/specifications/serialized-asset-equipment-installation.md
+    // §I / §M.1): inventory.serializedAsset.read -- registered `active: false`, granted to NO compatibility
+    // Role by this phase. EXACT literal (not a prefix), so a future inventory.serializedAsset.* capability
+    // stays UNACCOUNTED until separately reviewed (same protection the A3-inv gate applies elsewhere).
+    "inventory.serializedAsset.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

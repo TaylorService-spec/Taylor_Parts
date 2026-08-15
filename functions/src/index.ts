@@ -28,6 +28,9 @@ export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderF
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
 export { getSalesOrderContext } from "./salesOrder/salesOrderReadService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
+// Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
+// `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+export { getAvailableEquipment } from "./serializedAsset/serializedAssetReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
