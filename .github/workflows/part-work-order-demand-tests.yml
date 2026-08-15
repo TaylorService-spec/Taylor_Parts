@@ -1,0 +1,58 @@
+name: Part Work Order Demand Tests
+
+# Regression guard for Wave 7 Item 3 (Part -> Work Order Demand): the Part detail "Which Work Orders need
+# this part?" projection. A new subsystem with no dedicated workflow is CI-uncovered in this repo, so this
+# mirrors service-operations-risk-tests.yml's shape -- offline: no emulator, deploy, or secrets. Runs the
+# pure domain projection test (node:test), the component test (vitest + jsdom), and oxlint over the
+# touched surfaces.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/partWorkOrderDemand.js"
+      - "field-ops-app-vite/src/hooks/usePartWorkOrderDemand.js"
+      - "field-ops-app-vite/src/modules/inventory/PartWorkOrderDemandSection.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/test/partWorkOrderDemand.test.mjs"
+      - "field-ops-app-vite/test/partWorkOrderDemandSection.test.jsx"
+      - ".github/workflows/part-work-order-demand-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/partWorkOrderDemand.js"
+      - "field-ops-app-vite/src/hooks/usePartWorkOrderDemand.js"
+      - "field-ops-app-vite/src/modules/inventory/PartWorkOrderDemandSection.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/test/partWorkOrderDemand.test.mjs"
+      - "field-ops-app-vite/test/partWorkOrderDemandSection.test.jsx"
+      - ".github/workflows/part-work-order-demand-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  part-work-order-demand-tests:
+    name: Part Work Order Demand projection + section (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Domain projection tests (node:test)
+        run: node test/partWorkOrderDemand.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Section component tests (vitest + jsdom)
+        run: npx vitest run test/partWorkOrderDemandSection.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/partWorkOrderDemand.js src/hooks/usePartWorkOrderDemand.js src/modules/inventory/PartWorkOrderDemandSection.jsx src/modules/inventory/PartDetail.jsx
+        working-directory: field-ops-app-vite
