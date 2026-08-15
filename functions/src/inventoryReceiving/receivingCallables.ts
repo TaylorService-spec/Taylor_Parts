@@ -38,7 +38,12 @@ export function requireAuth(request: { auth?: { uid?: unknown } | null }): strin
 const RECEIVE_TOP_KEYS: ReadonlySet<string> = new Set(["source", "receivingLocation", "lines", "idempotencyKey"]);
 const SOURCE_KEYS: ReadonlySet<string> = new Set(["type", "reorderRequestId", "purchaseOrderId"]);
 const LOCATION_KEYS: ReadonlySet<string> = new Set(["type", "locationId"]);
-const LINE_KEYS: ReadonlySet<string> = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity"]);
+// `serialNumbers` is permitted STRUCTURALLY here (SERIAL receipts, Wave 7). This layer only checks
+// shape; whether serials are required, forbidden, correctly counted or duplicated is decided by the
+// command's own validator against the AUTHORITATIVE Part tracking mode and PO ordered quantity, which
+// this boundary cannot see. Omitting the key here silently broke SERIAL receiving end to end: this
+// check runs BEFORE the command, so a well-formed serial payload was rejected as an unknown field.
+const LINE_KEYS: ReadonlySet<string> = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity", "serialNumbers"]);
 
 // Validate the exact receive payload; any unknown/server-owned/actor field or wrong type is invalid-argument.
 export function validateReceiveRequest(data: unknown): Record<string, unknown> {
@@ -63,6 +68,13 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
     if (!isNonBlankString(line.partId)) throw invalidArg("line.partId is invalid.");
     if (!isFiniteNumber(line.expectedQuantity)) throw invalidArg("line.expectedQuantity is invalid.");
     if (!isFiniteNumber(line.receivedQuantity)) throw invalidArg("line.receivedQuantity is invalid.");
+    // Shape only: when present it must be an array of non-blank strings. Count, duplication and
+    // whether serials are required at all are the command's decisions, made against the authoritative
+    // Part tracking mode -- this boundary must not second-guess them or it would fork the rule.
+    if (line.serialNumbers !== undefined) {
+      if (!Array.isArray(line.serialNumbers)) throw invalidArg("line.serialNumbers is invalid.");
+      if (!line.serialNumbers.every((s) => isNonBlankString(s))) throw invalidArg("line.serialNumbers is invalid.");
+    }
   }
   if (!isNonBlankString(data.idempotencyKey)) throw invalidArg("idempotencyKey is invalid.");
   return data;

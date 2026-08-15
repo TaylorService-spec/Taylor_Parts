@@ -154,6 +154,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | **Not a pure code rollback once exercised.** Reverting the code restores NONE-only receiving, but any `serialized_assets` documents and per-serial ledger events created during validation REMAIN — the ledger is append-only and completed business history is immutable by design (Specification §L). In sandbox those are synthetic records and can be left in place or cleared as sandbox data; there is no migration to undo, and no production data is involved. |
 | Deployment status | PENDING |
 
+### PR #1008 — SERIAL receiving: unblock the callable + client request boundary
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Defect fix to `receiveInventoryStock`.** No new callable. Rides the pooled Functions deploy. |
+| Hosting impact | **Rebuild required** — the client transport also stripped the field. |
+| Rules impact | **NONE.** |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE for this fix. Note `RECEIVING_TRANSPORT_READY` is `true` for `platform-sandbox` already. |
+| Capability activation / grants | NONE — rides the existing `inventory.stock.receive`, already granted to `{admin, dispatcher, owner}`. |
+| Smoke / E2E validation required | Submit a SERIAL receipt **through the callable** (not just the command): confirm it is accepted rather than rejected as an unknown field, and that assets + per-unit ledger events are created. Confirm a NONE receipt still sends no `serialNumbers` key and still succeeds. Confirm a malformed serial list is refused at the boundary. |
+| Rollback notes | Pure code; revert restores the (broken) NONE-only boundary. Same append-only caveat as #1006 applies to anything already received. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements

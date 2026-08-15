@@ -54,7 +54,12 @@ function hasExactKeys(obj, keys) {
 const RECEIVE_TOP_KEYS = ["source", "receivingLocation", "lines", "idempotencyKey"];
 const SOURCE_KEYS = ["type", "reorderRequestId", "purchaseOrderId"];
 const LOCATION_KEYS = ["type", "locationId"];
+// A SERIAL line additionally carries serialNumbers. It is OPTIONAL at this layer: a NONE receipt
+// must not send the key at all (the server rejects it there), and only the server knows the Part's
+// authoritative tracking mode. hasExactKeys is therefore replaced by an explicit optional-key check
+// for lines -- keeping the "no unknown key can ride along" guarantee while allowing this one.
 const LINE_KEYS = ["lineId", "partId", "expectedQuantity", "receivedQuantity"];
+const LINE_OPTIONAL_KEYS = ["serialNumbers"];
 
 // Validate + SANITIZE the caller's receive request into the exact frozen payload, rebuilt from
 // validated fields (so no unknown key can ride along). Returns a frozen payload, or null if the
@@ -73,14 +78,28 @@ export function buildReceiveRequest(request) {
   const lines = request.lines;
   if (!Array.isArray(lines) || lines.length !== 1) return null;
   const line = lines[0];
-  if (!isPlainObject(line) || !hasExactKeys(line, LINE_KEYS)) return null;
+  if (!isPlainObject(line)) return null;
+  // every required key present, and every present key either required or the one allowed optional key
+  if (!LINE_KEYS.every((k) => Object.prototype.hasOwnProperty.call(line, k))) return null;
+  if (!Object.keys(line).every((k) => LINE_KEYS.includes(k) || LINE_OPTIONAL_KEYS.includes(k))) return null;
   if (!isNonBlankString(line.lineId) || !isNonBlankString(line.partId)) return null;
   if (!isFiniteNumber(line.expectedQuantity) || !isFiniteNumber(line.receivedQuantity)) return null;
+  let serialNumbers = null;
+  if (line.serialNumbers !== undefined) {
+    if (!Array.isArray(line.serialNumbers) || line.serialNumbers.length === 0) return null;
+    if (!line.serialNumbers.every((s) => isNonBlankString(s))) return null;
+    serialNumbers = line.serialNumbers.map((s) => s.trim());
+  }
   if (!isNonBlankString(request.idempotencyKey)) return null;
   return Object.freeze({
     source: Object.freeze({ type: "REORDER_PURCHASE_ORDER", reorderRequestId: source.reorderRequestId, purchaseOrderId: source.purchaseOrderId }),
     receivingLocation: Object.freeze({ type: "WAREHOUSE", locationId: loc.locationId }),
-    lines: Object.freeze([Object.freeze({ lineId: line.lineId, partId: line.partId, expectedQuantity: line.expectedQuantity, receivedQuantity: line.receivedQuantity })]),
+    lines: Object.freeze([Object.freeze({
+      lineId: line.lineId, partId: line.partId,
+      expectedQuantity: line.expectedQuantity, receivedQuantity: line.receivedQuantity,
+      // Rebuilt, not spread: the key is present ONLY when the caller supplied it.
+      ...(serialNumbers === null ? {} : { serialNumbers: Object.freeze(serialNumbers) }),
+    })]),
     idempotencyKey: request.idempotencyKey,
   });
 }

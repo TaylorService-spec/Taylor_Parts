@@ -52,6 +52,48 @@ describe("receivingTransport -- frozen names + requests", () => {
   });
 });
 
+describe("buildReceiveRequest -- SERIAL lines (Wave 7)", () => {
+  const withSerials = (serialNumbers) => {
+    const r = RECEIVE_REQ();
+    r.lines[0].serialNumbers = serialNumbers;
+    return r;
+  };
+
+  it("carries serialNumbers through when supplied", () => {
+    const built = buildReceiveRequest(withSerials(["SN-1", "SN-2"]));
+    expect(built.lines[0].serialNumbers).toEqual(["SN-1", "SN-2"]);
+  });
+
+  it("omits the key entirely for a NONE receipt -- never sends an empty array", () => {
+    const built = buildReceiveRequest(RECEIVE_REQ());
+    expect("serialNumbers" in built.lines[0]).toBe(false);
+  });
+
+  it("trims serials but preserves case (serial identity is case-significant)", () => {
+    const built = buildReceiveRequest(withSerials(["  SN-1 ", "sn-1"]));
+    expect(built.lines[0].serialNumbers).toEqual(["SN-1", "sn-1"]);
+  });
+
+  it("rejects a malformed serial list rather than silently dropping it", () => {
+    expect(buildReceiveRequest(withSerials("SN-1"))).toBeNull();
+    expect(buildReceiveRequest(withSerials([]))).toBeNull();
+    expect(buildReceiveRequest(withSerials([""]))).toBeNull();
+    expect(buildReceiveRequest(withSerials(["SN-1", 5]))).toBeNull();
+  });
+
+  it("still rejects any OTHER unknown line key", () => {
+    const r = RECEIVE_REQ();
+    r.lines[0].lotId = "LOT-1";
+    expect(buildReceiveRequest(r)).toBeNull();
+  });
+
+  it("still requires every mandatory line field", () => {
+    const r = withSerials(["SN-1"]);
+    delete r.lines[0].partId;
+    expect(buildReceiveRequest(r)).toBeNull();
+  });
+});
+
 describe("buildReceiveRequest -- exact frozen fields, sanitized, verbatim key", () => {
   it("builds the exact sanitized payload for a valid request", () => {
     expect(buildReceiveRequest(RECEIVE_REQ())).toEqual(RECEIVE_REQ());
