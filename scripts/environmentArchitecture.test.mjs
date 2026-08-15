@@ -131,8 +131,15 @@ test('INVARIANT: existing production guards remain hard and un-weakened', () => 
   assert.ok(codec.includes('projectId must be taylor-parts'),
     'warehouseBackupCodec production guard was weakened');
   const trusted = read('functions/src/access/trustedWriterCommands.ts');
-  assert.ok(trusted.includes('BOOTSTRAP_ADMIN_PROJECT = "taylor-parts"'),
-    'BOOTSTRAP_ADMIN_PROJECT guard was weakened');
+  // #973 replaced the former hard-coded `BOOTSTRAP_ADMIN_PROJECT = "taylor-parts"`
+  // literal with a stronger cross-project fail-closed check: the confirmed target
+  // project must equal the runtime project the Admin SDK actually writes to, for
+  // ANY known project (not just "taylor-parts"). Assert the structural guard that
+  // replaced it is still present and still refuses on mismatch.
+  assert.ok(trusted.includes('runtimeProject !== input.projectId'),
+    'bootstrapCompatibilityAdmin cross-project fail-closed guard was weakened');
+  assert.ok(trusted.includes('project mismatch:') && trusted.includes('fail closed; bootstrap provenance must match the write target'),
+    'bootstrapCompatibilityAdmin no longer fails closed on a project mismatch');
 });
 
 // ------------------------------------------- role/deployment not conflated
