@@ -15,6 +15,8 @@ on:
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/test/partWorkOrderDemand.test.mjs"
       - "field-ops-app-vite/test/partWorkOrderDemandSection.test.jsx"
+      # Imported for the terminal-status set, which is itself drift-tested against the server.
+      - "field-ops-app-vite/src/domain/workOrderPartsPlan.js"
       - ".github/workflows/part-work-order-demand-tests.yml"
   push:
     branches: [main]
@@ -25,6 +27,8 @@ on:
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/test/partWorkOrderDemand.test.mjs"
       - "field-ops-app-vite/test/partWorkOrderDemandSection.test.jsx"
+      # Imported for the terminal-status set, which is itself drift-tested against the server.
+      - "field-ops-app-vite/src/domain/workOrderPartsPlan.js"
       - ".github/workflows/part-work-order-demand-tests.yml"
   workflow_dispatch:
 

@@ -17,14 +17,21 @@
 // simply not counted as a match -- never fabricated into a row, never silently treated as "0 for this
 // part" either.
 //
-// Terminal Work Orders (COMPLETED/CLOSED/CANCELLED -- functions/src/transitionEngine.ts's TERMINAL_STATUSES,
-// mirrored client-side by every other WO consumer, e.g. domain/workOrderPartsPlan.js's
-// PLAN_TERMINAL_STATUSES and domain/technicianRecommendationEngine.ts's own copy) no longer NEED the part --
-// a finished or dead job has stopped consuming inventory. They are therefore excluded from the demand rows
-// (a completed job is not "demand"), but the exclusion is counted and reported (`excludedTerminalCount`) so
-// the caller can be honest about what was filtered rather than making terminal Work Orders silently vanish.
+// Terminal Work Orders (COMPLETED/CLOSED/CANCELLED) no longer NEED the part -- a finished or dead job has
+// stopped consuming inventory. They are therefore excluded from the demand rows (a completed job is not
+// "demand"), but the exclusion is counted and reported (`excludedTerminalCount`) so the caller can be
+// honest about what was filtered rather than making terminal Work Orders silently vanish.
+//
+// The set is IMPORTED from workOrderPartsPlan.js rather than copied. That module's
+// PLAN_TERMINAL_STATUSES is already drift-tested against the server's canonical TERMINAL_STATUSES
+// (functions/src/transitionEngine.ts) by workOrderPartsPlan.test.mjs, so importing it means this module
+// inherits that guarantee. A third hand-maintained copy would be a third thing to silently drift --
+// this repo already carries one such copy in technicianRecommendationEngine.ts, and adding another is
+// not a precedent worth extending.
 
-const TERMINAL_STATUSES = new Set(["COMPLETED", "CLOSED", "CANCELLED"]);
+import { PLAN_TERMINAL_STATUSES } from "./workOrderPartsPlan.js";
+
+const TERMINAL_STATUSES = new Set(PLAN_TERMINAL_STATUSES);
 
 const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
 const isFiniteNonNegNumber = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
