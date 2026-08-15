@@ -11,6 +11,8 @@ import {
   varianceText,
   summariseReconciliation,
 } from "../../../domain/reconciliationRowHonesty.js";
+import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
+import StatusPill from "../../../shared/ui/StatusPill.jsx";
 
 // One transfer endpoint cell: a WAREHOUSE shows its resolved name; every
 // other location type shows a type badge plus the raw locationId (no
@@ -19,7 +21,7 @@ function TransferEndpoint({ endpoint }) {
   if (endpoint.type === "WAREHOUSE") return <>{endpoint.label}</>;
   return (
     <>
-      <span className="fo-badge">{endpoint.type}</span> {endpoint.locationId}
+      <StatusPill tone="neutral" label={endpoint.type} /> {endpoint.locationId}
     </>
   );
 }
@@ -98,7 +100,7 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
                   <td>
                     {(() => {
                       const { severity } = classifyReconciliationRow(d);
-                      return <span className={`fo-badge fo-badge-${severity.toLowerCase()}`}>{severity}</span>;
+                      return <StatusPill tone={inventoryUrgencyTone(severity)} label={severity} />;
                     })()}
                   </td>
                 </tr>

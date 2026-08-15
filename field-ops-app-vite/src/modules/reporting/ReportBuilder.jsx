@@ -39,6 +39,7 @@ import { mapSavedDefinitionError } from "../../domain/reporting/savedReportServi
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 const OBJECTS = availableObjects();
 
@@ -278,7 +279,7 @@ function FieldGroups({ groups, selected, onToggle }) {
                 onChange={() => onToggle(f.fieldId)}
               />
               {f.label}
-              {f.sensitivity !== "standard" && <span className="fo-badge">{f.sensitivity}</span>}
+              {f.sensitivity !== "standard" && <StatusPill tone="attention" label={f.sensitivity} />}
             </label>
           ))}
         </fieldset>

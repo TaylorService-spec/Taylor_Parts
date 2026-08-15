@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { createTechnician } from "../../domain/jobActions";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import NewTechnicianModal from "./NewTechnicianModal";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // A technician is: { id, name, phone, status }
 // status is one of "available" | "on_job" | "off_shift"
@@ -45,13 +49,14 @@ export default function Technicians() {
     setAnnouncement(`Technician ${created.name} added.`);
   }
 
-  return (
-    <div className="fo-panel">
-      <div className="fo-panel-head">
-        <h2>Technicians</h2>
-        <button type="button" onClick={() => setShowCreate(true)}>New Technician</button>
-      </div>
+  const actions = (
+    <ActionRail
+      primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>New Technician</button>}
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Technicians" actions={actions}>
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
       {showCreate && (
@@ -82,7 +87,7 @@ export default function Technicians() {
                   <td>{tech.name}</td>
                   <td>{tech.phone}</td>
                   <td>
-                    <span className={`fo-badge fo-badge-${tech.status}`}>{tech.status}</span>
+                    <StatusPill tone={technicianStatusTone(tech.status)} label={tech.status} />
                   </td>
                 </tr>
               ))}
@@ -90,6 +95,6 @@ export default function Technicians() {
           </table>
         </div>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

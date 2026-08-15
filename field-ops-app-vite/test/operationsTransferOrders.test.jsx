@@ -75,7 +75,7 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
   it("shows a type badge + raw locationId for non-warehouse endpoints", () => {
     renderPanel([{ docId: "TO-2", data: { partId: "PART-1", origin: { type: "WAREHOUSE", locationId: "WH-1" }, destination: { type: "MOBILE", locationId: "TRUCK-7" }, status: "IN_TRANSIT" } }]);
     const badge = screen.getByText("MOBILE");
-    expect(badge.className).toContain("fo-badge");
+    expect(badge.className).toContain("fo-status-pill");
     expect(screen.getByText("TRUCK-7")).toBeTruthy();
     expect(screen.getByText("Main Warehouse")).toBeTruthy();
   });

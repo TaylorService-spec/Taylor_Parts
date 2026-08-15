@@ -1,7 +1,9 @@
 import { memo, useEffect, useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
+import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import TechnicianCapacityCard from "./TechnicianCapacityCard";
 import { technicianStatusLabel } from "./technicianStatusLabel";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Epic 2 Phase 2C -- right pane, drop targets for drag-and-drop
 // dispatch. Ranking display only -- onDropTechnician (passed down from
@@ -98,7 +100,7 @@ function TechnicianBoard({ technicians, selectedWorkOrder, recommendations, allW
           >
             <div className="disp-tech-column-header">
               <span>{tech.name}</span>
-              <span className={`fo-badge fo-badge-${tech.status}`}>{technicianStatusLabel(tech.status)}</span>
+              <StatusPill tone={technicianStatusTone(tech.status)} label={technicianStatusLabel(tech.status)} />
             </div>
             <TechnicianCapacityCard technician={tech} workOrders={allWorkOrders} />
             {rec && (

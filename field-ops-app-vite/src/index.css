@@ -582,31 +582,17 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-muted { color: var(--color-text-secondary); font-size: 14px; }
 
-.fo-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--color-surface-sunken); color: var(--color-text-secondary); }
-.fo-badge-pending { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-badge-on_job { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-badge-in_progress { background: var(--color-warning-surface); color: var(--color-warning); }
 /* Wave 4: retired fo-badge-completed's colour intent under a non-badge name. Deliberately
    background+color ONLY, matching the original rule exactly -- it was used standalone
    (never paired with the base .fo-badge pill styles), so OutcomeBanner's OK state has always
    rendered as a plain coloured block, not a pill. Preserved as-is; not a Wave-4 redesign. */
 .fo-outcome-banner--ok { background: var(--color-success-surface); color: var(--color-success); }
-.fo-badge-available { background: var(--color-success-surface); color: var(--color-success); }
-.fo-badge-off_shift { background: var(--color-surface-sunken); color: var(--color-text-muted); }
 
-/* Operations dashboard -- severity/urgency levels shared by the
-   Inventory Health, Warehouse reconciliation, and Procurement panels
-   (Epics 3/4/5). */
-.fo-badge-critical { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-badge-high { background: var(--color-surface-sunken); color: #B2591F; }
-.fo-badge-medium { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-badge-low { background: var(--color-success-surface); color: var(--color-success); }
-
-/* Sprint 2.0.2 -- Account status (ACCOUNT_STATUS, domain/constants.js) */
-.fo-badge-active { background: var(--color-success-surface); color: var(--color-success); }
-.fo-badge-inactive { background: var(--color-surface-sunken); color: var(--color-text-muted); }
-.fo-badge-prospect { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-badge-archived { background: var(--color-surface-sunken); color: var(--color-text-secondary); }
+/* Wave 5: the entire retired fo-badge family (.fo-badge base + every -status/-severity/
+   -urgency variant) removed here -- the last consumers (CustomerPicker, TechnicianBoard,
+   TechnicianDashboard, Technicians, the three operations panels, ReportBuilder,
+   NotificationPanel, Jobs) all migrated to StatusPill in this wave, and a repo-wide grep
+   confirms zero remaining .jsx/.js references to any fo-badge class. */
 
 /* Customer/Account Business Model -- Customer PR 2. Sectioned-page helpers
    and the relationship fieldset. No tab styles here -- the tab shell is

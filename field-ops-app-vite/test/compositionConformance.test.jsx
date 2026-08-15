@@ -26,19 +26,8 @@ const SRC = join(HERE, "..", "src");
 // Files still carrying the retired fo-badge treatment. This list may only ever SHRINK — each wave removes
 // the files it migrates. It must never grow. (Snapshot taken at Wave 1; Truck Inventory already migrated
 // out. Wave 2 removed the accounts cluster. Wave 3 removed the equipment cluster. Wave 4 removed the
-// inventory + inventoryRole clusters.)
-const LEGACY_BADGE_ALLOWLIST = new Set([
-  "modules/dispatcherBoard/TechnicianBoard.jsx",
-  "modules/jobs/Jobs.jsx",
-  "modules/operations/panels/InventoryHealthPanel.jsx",
-  "modules/operations/panels/ProcurementPanel.jsx",
-  "modules/operations/panels/WarehousePanel.jsx",
-  "modules/reporting/ReportBuilder.jsx",
-  "modules/technicianDashboard/TechnicianDashboard.jsx",
-  "modules/technicians/Technicians.jsx",
-  "modules/workOrders/CustomerPicker.jsx",
-  "shared/ui/NotificationPanel.jsx",
-]);
+// inventory + inventoryRole clusters. Wave 5 removed the remaining 10 files -- allowlist is now empty.)
+const LEGACY_BADGE_ALLOWLIST = new Set([]);
 
 // Surfaces that have completed migration to the composition primitives. Grows each wave.
 const CONFORMANT_WORKSPACES = [
@@ -56,6 +45,9 @@ const CONFORMANT_WORKSPACES = [
   "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
   "modules/inventoryRole/PartsManagerHome.jsx", // Wave 4
   "modules/inventoryRole/WarehouseManagerHome.jsx", // Wave 4
+  "modules/jobs/Jobs.jsx", // Wave 5
+  "modules/technicians/Technicians.jsx", // Wave 5
+  "modules/technicianDashboard/TechnicianDashboard.jsx", // Wave 5
 ];
 // Non-workspace conformant surfaces (peer-object cards etc.) — status-standardized, but not shell hosts.
 const CONFORMANT_SURFACES = [
@@ -66,6 +58,13 @@ const CONFORMANT_SURFACES = [
   "modules/equipment/InventoryControlSection.jsx", // Wave 3
   "modules/inventory/truckManagement/OutcomeBanner.jsx", // Wave 4
   "modules/inventory/UsedInEquipmentSection.jsx", // Wave 4
+  "modules/dispatcherBoard/TechnicianBoard.jsx", // Wave 5
+  "modules/operations/panels/InventoryHealthPanel.jsx", // Wave 5
+  "modules/operations/panels/ProcurementPanel.jsx", // Wave 5
+  "modules/operations/panels/WarehousePanel.jsx", // Wave 5
+  "modules/reporting/ReportBuilder.jsx", // Wave 5
+  "modules/workOrders/CustomerPicker.jsx", // Wave 5
+  "shared/ui/NotificationPanel.jsx", // Wave 5
 ];
 
 function walk(dir) {

@@ -17,7 +17,7 @@ test("the panel states which authority its rows belong to", () => {
 });
 
 test("an urgency badge names its scale rather than showing a bare severity word", () => {
-  assert.match(panel, /Request urgency: \{request\.urgency\}/, "urgency must be labelled as request urgency");
+  assert.match(panel, /Request urgency: \$\{request\.urgency\}/, "urgency must be labelled as request urgency");
   assert.doesNotMatch(
     panel,
     />\{request\.urgency\}</,
