@@ -62,7 +62,7 @@
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
-        "PART_MASTER_WRITE_READY": false,
+        "PART_MASTER_WRITE_READY": true,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true
       },

@@ -24,6 +24,7 @@ import {
   OPERATIONS_MANAGER_ROLE,
   OWNER_ROLE,
   INVENTORY_CREATE_EXECUTOR_ROLE,
+  INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
 } from "../lib/access/governedBusinessRoles.js";
 import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
@@ -53,6 +54,7 @@ const EXPECTED_IDS = [
   "operationsManager",
   "owner",
   "inventoryCreateExecutor",
+  "inventoryCatalogAdministrator",
 ];
 
 function grant(roleId, roles) {
@@ -80,9 +82,9 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the nine ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the ten ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator)", () => {
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 9);
+  assert.equal(ALL_GOVERNED_ROLES.length, 10);
 });
 
 check("every governed business Role's own .id matches its map key", () => {
@@ -264,10 +266,81 @@ check("without any assignment, inventory.catalog.manage remains DENIED (grant re
   assert.equal(denied.decision, "DENY");
 });
 
-check("no OTHER governed business Role grants inventory.catalog.manage (only the temporary executor)", () => {
-  for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
-    if (id === "inventoryCreateExecutor") continue;
+check("catalog write is confined to the two purpose-built catalog Roles -- no title-based Role grants it", () => {
+  // Was "only the temporary executor" before the durable
+  // inventoryCatalogAdministrator existed (Option A,
+  // docs/releases/supplier-master-promotion-package.md SS A). The invariant that
+  // actually matters is unchanged and is asserted more strictly here: catalog
+  // write stays OFF every title-based Role -- including admin and owner --
+  // and is carried ONLY by Roles created for that specific authority.
+  const CATALOG_WRITE_ROLES = ["inventoryCreateExecutor", "inventoryCatalogAdministrator"];
+  const granting = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
+    (id) => resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
+  );
+  assert.deepEqual(granting.sort(), [...CATALOG_WRITE_ROLES].sort());
+  for (const [id] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    if (CATALOG_WRITE_ROLES.includes(id)) continue;
     assert.equal(resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+  // owner is the strongest governed Role and still must not hold catalog write.
+  assert.equal(resolve("inventory.catalog.manage", "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  assert.equal(resolve("inventory.catalog.activate", "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+});
+
+// === Catalog administrator (durable) -- Option A of the accepted role design ===
+
+check("Inventory Catalog Administrator: grants EXACTLY inventory.catalog.manage + .activate", () => {
+  assert.deepEqual(
+    [...INVENTORY_CATALOG_ADMINISTRATOR_ROLE.permissions].sort(),
+    ["inventory.catalog.activate", "inventory.catalog.manage"],
+  );
+  assert.equal(resolve("inventory.catalog.manage", "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+  assert.equal(resolve("inventory.catalog.activate", "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+});
+
+check("Inventory Catalog Administrator: inherits NO capability outside the catalog resource", () => {
+  for (const id of [
+    "account.record.read", "account.record.create", "account.governedField.write",
+    "workOrder.create", "workOrder.transition", "workOrder.cancel",
+    "admin.roleAssignment.write", "admin.userStatus.write",
+    "reorder.request.assign", "warehouse.record.read", "inventory.transaction.read",
+    "inventory.stock.receive",
+    "salesOrder.write", "salesOrder.fulfill", "finance.invoice.issue",
+  ]) {
+    assert.equal(resolve(id, "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Inventory Catalog Administrator: durable + operational -- NOT privileged, systemSeed, non-compatibility", () => {
+  // Catalog write administers no security/access policy, grants no admin
+  // authority, changes no role/permission definition, and cannot touch audit
+  // integrity -- one authorized approver plus append-only audit, not
+  // two-person (docs/governance/privileged-approval-classification.md).
+  assert.equal(INVENTORY_CATALOG_ADMINISTRATOR_ROLE.privileged, false);
+  assert.equal(INVENTORY_CATALOG_ADMINISTRATOR_ROLE.systemSeed, true);
+  assert.equal(INVENTORY_CATALOG_ADMINISTRATOR_ROLE.compatibility, false);
+  assert.equal(INVENTORY_CATALOG_ADMINISTRATOR_ROLE.id, "inventoryCatalogAdministrator");
+});
+
+check("Inventory Catalog Administrator: distinct from the transitional executor (.activate is the difference)", () => {
+  // inventoryCreateExecutor is execution-scoped and revoked after one approved
+  // CREATE run; it deliberately withholds .activate. The durable role carries it.
+  assert.equal(resolve("inventory.catalog.activate", "inventoryCreateExecutor", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  assert.equal(resolve("inventory.catalog.activate", "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+  assert.notEqual(INVENTORY_CATALOG_ADMINISTRATOR_ROLE.id, INVENTORY_CREATE_EXECUTOR_ROLE.id);
+});
+
+check("Inventory Catalog Administrator: defining the Role grants nothing without an assignment", () => {
+  // The protected action is the roleAssignments write, not this definition.
+  for (const permissionId of ["inventory.catalog.manage", "inventory.catalog.activate"]) {
+    const denied = resolveEffectivePermission({
+      permissionId,
+      assignments: [], // never granted / revoked
+      roles: GOVERNED_BUSINESS_ROLES,
+      currentAccessVersion: 1,
+      target: { scope: { type: "global" }, condition: {} },
+    });
+    assert.equal(denied.decision, "DENY", permissionId);
   }
 });
 

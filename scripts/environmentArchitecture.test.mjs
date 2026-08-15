@@ -65,12 +65,34 @@ test('INVARIANT: readiness flags are registry-resolved, not compiled-in literals
     'field-ops-app-vite/src/config/receivingReadiness.js': 'RECEIVING_TRANSPORT_READY',
     'field-ops-app-vite/src/config/truckManagementReadiness.js': 'TRUCK_MANAGEMENT_WRITE_READY',
     'field-ops-app-vite/src/config/trustedCompletion.js': 'TRUSTED_COMPLETION_ENABLED',
+    'field-ops-app-vite/src/config/partMasterWriteReadiness.js': 'PART_MASTER_WRITE_READY',
   };
   for (const [file, flag] of Object.entries(files)) {
     const src = readCode(file);
     assert.ok(src.includes(`__APP_READINESS__.${flag}`), `${file} must resolve ${flag} from the registry`);
     assert.ok(!new RegExp(`export const ${flag} = (true|false);`).test(src),
       `${file} re-introduced a compiled-in literal for ${flag}`);
+  }
+});
+
+test('INVARIANT: PART_MASTER_WRITE_READY is enabled in the sandbox ONLY — never in a production-role environment', () => {
+  // Wave 7 activation: platform-sandbox may attempt the Part Master write
+  // callables so the governed create/edit/status UX is exercisable there.
+  // Readiness is NOT authorization -- a principal still needs the deployed
+  // callables plus a governed roleAssignment carrying inventory.catalog.manage
+  // / .activate. This asserts the blast radius of the flag itself, which is the
+  // part a repo edit can widen by accident.
+  const enabled = registry.environments
+    .filter((e) => e.readiness.PART_MASTER_WRITE_READY === true)
+    .map((e) => e.id);
+  assert.deepEqual(enabled, ['platform-sandbox']);
+  for (const e of registry.environments) {
+    if (e.role !== 'production') continue;
+    assert.equal(
+      e.readiness.PART_MASTER_WRITE_READY,
+      false,
+      `production environment '${e.id}' must not enable Part Master write`,
+    );
   }
 });
 

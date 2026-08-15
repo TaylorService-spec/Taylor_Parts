@@ -249,6 +249,64 @@ export const INVENTORY_CREATE_EXECUTOR_ROLE: Role = Object.freeze({
   permissions: ["inventory.catalog.manage"],
 }) as Role;
 
+// Durable catalog/reference-data administrator -- Option A of the accepted
+// role design in docs/releases/supplier-master-promotion-package.md §A
+// ("Adopt Option A"), referenced as accepted by the Part Master RC
+// (docs/releases/part-master-write-rc.md §"Exact production delta" item 2),
+// the Manufacturer RC, and the three catalog sandbox-handoff docs. Until now
+// the design existed only in prose and in `// future inventoryCatalogAdministrator`
+// comments in index.ts / partMasterCallables.ts / manufacturerCallables.ts /
+// partSupplierItemCallables.ts, so there was no Role object to assign to
+// anyone -- the catalog write callables were unreachable by construction
+// rather than merely ungranted.
+//
+// One catalog authority, not three: `inventory.catalog.manage` +
+// `inventory.catalog.activate` govern ALL catalog reference data -- Parts,
+// Manufacturers, and (reused per DECISIONS #78) Suppliers. A supplier-only
+// or part-only role would fragment a single authority and mint symmetry-only
+// structure; §A rejects that explicitly.
+//
+// Least privilege, exactly two ids and nothing else. The pair is one coherent
+// resource authority (`resource: "inventory.catalog"`, actions `manage` +
+// `activate`), so granting both to one purpose-built role is the minimal
+// auditable unit. Catalog write deliberately stays OFF `admin`/`owner`
+// (see the `inventoryCreateExecutor` rationale above): catalog write is a
+// specific operational authority, not a title-based one.
+//
+// Durable, unlike `inventoryCreateExecutor` -- that role is execution-scoped,
+// `.manage`-only, and revoked after one approved CREATE run. This one is a
+// standing role for ongoing catalog administration, and carries `.activate`
+// (lifecycle status changes) which the executor deliberately does not.
+//
+// `privileged: false` per docs/governance/privileged-approval-classification.md,
+// on the same reasoning recorded for `inventoryCreateExecutor`: catalog write
+// administers no security/access policy, grants no admin authority, changes no
+// role/permission definition or tenant isolation, bypasses no trusted-command
+// authorization, and cannot alter or suppress audit evidence. It is ordinary
+// operational authority -- one authorized approver plus append-only audit,
+// not two-person approval.
+//
+// Mints NO new capability id, so it stays consistent with R-1 convergence:
+// R-1 governs how capabilities map to Roles, and this is a clean
+// single-resource Role with nothing for convergence to retire.
+//
+// DECLARING THIS OBJECT GRANTS NOTHING. A principal gains these capabilities
+// only through a governed, audited `roleAssignments/{id}` write via the access
+// command path (functions/src/access/trustedWriterCommands.ts), which bumps
+// `accessVersion` and syncs claims. §A names that grant as "the protected
+// grant action" -- it is a separate authorization from this definition, and no
+// grant is performed here, in any environment.
+export const INVENTORY_CATALOG_ADMINISTRATOR_ROLE: Role = Object.freeze({
+  id: "inventoryCatalogAdministrator",
+  name: "Inventory Catalog Administrator",
+  description:
+    "Durable least-privilege Role for governed catalog reference data: creating and curating Parts, Manufacturers and Suppliers and changing their lifecycle status. Carries exactly inventory.catalog.manage + inventory.catalog.activate and nothing else. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["inventory.catalog.manage", "inventory.catalog.activate"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -259,4 +317,5 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   operationsManager: OPERATIONS_MANAGER_ROLE,
   owner: OWNER_ROLE,
   inventoryCreateExecutor: INVENTORY_CREATE_EXECUTOR_ROLE,
+  inventoryCatalogAdministrator: INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
 });
