@@ -18,17 +18,18 @@
 //   • distinguishes the states the UI must tell apart: denied · unavailable · ready.
 //
 // NOTE on operational-role readers (PARTS_MANAGER/WAREHOUSE_MANAGER): the governed capability model
-// already declares an `operationalRoleActive` condition kind (resolveEffectivePermission.ts) and two
-// sibling capabilities (`inventory.transaction.read`, `inventory.action.read`) already declare this
-// exact condition in compatibilityRoles.ts -- but NO callable in this repository (this one included)
-// has ever supplied a populated `operationalRoleActive` resolver; resolveEffectiveAccess's own coarse
-// feed (effectiveAccessFeed.ts) always passes an empty condition context by design ("this feed is a
-// coarse is-X-available-to-me-at-all signal, never the authority for a specific record"). This
-// service inherits that same, already-existing posture: the operational-role grant is DECLARED
-// (compatibilityRoles.ts) for parity/documentation but DENIES today through this feed, identically to
-// its two siblings -- not a regression, not a broken promise, matching existing precedent exactly.
-// Activating it for real (a per-record Employee-lookup resolver, wired into a real callable) is a
-// genuine, first-of-its-kind authorization-infrastructure decision, out of scope for this service.
+// declares an `operationalRoleActive` condition kind (resolveEffectivePermission.ts), and this
+// capability plus its two siblings (`inventory.transaction.read`, `inventory.action.read`) declare
+// this exact condition in compatibilityRoles.ts. UPDATE (Wave 7 extension PART 4,
+// functions/src/access/operationalRoleContext.ts): resolveEffectiveAccess's canonical feed
+// (effectiveAccessFeed.ts) now resolves a real, server-read `operationalRoleActive` closure from the
+// caller's linked `employees/{employeeId}` document (mirrors firestore.rules'
+// isActiveOperationalRole() exactly), so a technician with an ACTIVE PARTS_MANAGER or
+// WAREHOUSE_MANAGER operational role now genuinely qualifies for this capability through that feed --
+// this is no longer a declared-but-unreachable grant. It still requires the SAME independent gates
+// this whole capability has always required regardless of operational role: `active:false` in
+// permissionCatalog.ts (per-environment activation) and, in production, a real Owner grant -- neither
+// of those changed here.
 //
 // EXPORT != DEPLOY, REGISTER != GRANT. Exported for build/test only; nothing runs in production
 // until a separate deploy + capability grant + per-environment activation.

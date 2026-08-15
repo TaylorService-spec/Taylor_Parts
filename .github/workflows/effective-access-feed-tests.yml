@@ -16,6 +16,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/effectiveAccessFeed.test.mjs"
+      - "functions/test/operationalRoleContext.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -26,6 +27,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/effectiveAccessFeed.test.mjs"
+      - "functions/test/operationalRoleContext.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -75,6 +77,15 @@ jobs:
 
       - name: Effective access feed tests (build + run)
         run: npm run test:effectiveAccess
+        working-directory: functions
+
+      # Wave 7 extension PART 4 -- functions/src/access/operationalRoleContext.ts,
+      # the shared operationalRoleActive Condition resolver this workflow's own
+      # effectiveAccessFeed.ts now wires in. Runs against the SAME emulator
+      # instance (already started above); npm run build is a no-op re-run here
+      # (tsc is incremental-safe, matches this repo's other multi-step jobs).
+      - name: Operational-role condition resolver tests (build + run)
+        run: npm run test:operationalRoleContext
         working-directory: functions
 
       - name: Upload emulator debug logs

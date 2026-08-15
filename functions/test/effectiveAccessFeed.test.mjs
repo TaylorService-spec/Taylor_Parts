@@ -369,6 +369,17 @@ async function main() {
           where() {
             return this;
           },
+          // FIX (pre-existing latent bug, surfaced by later awaits added for
+          // Wave 7 extension PART 4): without this, `.where().where().get()`
+          // throws synchronously (no `get` on the object `where()` returns),
+          // which happens WHILE building the Promise.all() array -- AFTER the
+          // sibling `doc().get()` rejected promise above has already been
+          // constructed but BEFORE Promise.all() ever attaches a handler to
+          // it, leaving it an unhandled rejection that crashes the process on
+          // a later tick. assert.rejects() below still observed the intended
+          // synchronous-throw rejection either way, masking this until enough
+          // subsequent awaits gave the unhandled rejection a tick to fire.
+          get: () => Promise.reject(new Error("simulated backend outage")),
         };
       },
     };
@@ -427,6 +438,84 @@ async function main() {
       );
       assert.equal(result.decisions["opportunity.write"], false);
     });
+  });
+
+  // === Wave 7 extension PART 4 -- operationalRoleActive Conditions now
+  // resolve through this canonical feed (functions/src/access/
+  // operationalRoleContext.ts wired into effectiveAccessFeed.ts). Exercises
+  // TECHNICIAN_ROLE's real, unmodified Condition declarations
+  // (compatibilityRoles.ts) against a real users/employees linkage, proving
+  // reuse across MORE THAN ONE conditional capability id and role. ===
+
+  async function seedEmployeeLinkedUser({ employmentStatus = "ACTIVE", operationalRoles = [] } = {}) {
+    const principalUid = uid("techuser");
+    const employeeId = uid("emp");
+    await db.collection("users").doc(principalUid).set({ accessVersion: 1, employeeId });
+    await db.collection("employees").doc(employeeId).set({
+      displayName: "Test Technician",
+      employmentStatus,
+      operationalRoles,
+      userId: principalUid,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return { principalUid, employeeId };
+  }
+
+  await check("operationalRoleActive: technician with PARTS_MANAGER ALLOWs reorder.request.read.queue (Condition params.role)", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["PARTS_MANAGER"] });
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["reorder.request.read.queue"] });
+    assert.equal(result.decisions["reorder.request.read.queue"], true);
+  });
+
+  await check("operationalRoleActive: technician with PARTS_ASSOCIATE (not PARTS_MANAGER) DENIEs reorder.request.read.queue -- wrong role", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["PARTS_ASSOCIATE"] });
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["reorder.request.read.queue"] });
+    assert.equal(result.decisions["reorder.request.read.queue"], false);
+  });
+
+  await check("operationalRoleActive: a SECOND, distinct conditioned capability (inventory.transaction.read, params.roles ANY-of) also resolves via the same shared resolver", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["WAREHOUSE_MANAGER"] });
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({
+      principalUid,
+      // One call, multiple conditioned ids -- proves the SAME resolver
+      // instance answers correctly for a params.role id AND a params.roles
+      // (ANY-of) id in the same response.
+      permissionIds: ["inventory.transaction.read", "reorder.request.read.own"],
+    });
+    assert.equal(result.decisions["inventory.transaction.read"], true, "WAREHOUSE_MANAGER qualifies via MANAGER_OR_WAREHOUSE");
+    assert.equal(result.decisions["reorder.request.read.own"], false, "WAREHOUSE_MANAGER does not satisfy PARTS_ASSOCIATE_ONLY");
+  });
+
+  await check("operationalRoleActive: technician whose Employee is INACTIVE DENIEs despite having the role", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ employmentStatus: "TERMINATED", operationalRoles: ["PARTS_MANAGER"] });
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["reorder.request.read.queue"] });
+    assert.equal(result.decisions["reorder.request.read.queue"], false);
+  });
+
+  await check("operationalRoleActive: technician with NO linked Employee DENIEs every operationalRoleActive-conditioned id", async () => {
+    const principalUid = await seedUser(1); // users doc, but no employeeId at all
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({
+      principalUid,
+      permissionIds: ["reorder.request.read.queue", "inventory.catalog.read", "reorder.purchaseOrder.read"],
+    });
+    assert.deepEqual(result.decisions, {
+      "reorder.request.read.queue": false,
+      "inventory.catalog.read": false,
+      "reorder.purchaseOrder.read": false,
+    });
+  });
+
+  await check("operationalRoleActive: unconditional technician grant (workOrder.transition) is UNCHANGED by this wiring -- resolves ALLOW with no Employee link at all", async () => {
+    const principalUid = await seedUser(1); // no employeeId
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["workOrder.transition"] });
+    assert.equal(result.decisions["workOrder.transition"], true, "unconditional capabilities must resolve identically before/after this change");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -28,6 +28,7 @@
     "test:authPr4Gate": "node test/authPr4ProductionGate.test.mjs",
     "test:authPr4Init": "node test/authPr4InitProgression.test.mjs",
     "test:effectiveAccess": "npm run build && node test/effectiveAccessFeed.test.mjs",
+    "test:operationalRoleContext": "npm run build && node test/operationalRoleContext.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
     "test:bootstrapCompatibilityAdmin": "npm run build && node test/bootstrapCompatibilityAdmin.test.mjs",
