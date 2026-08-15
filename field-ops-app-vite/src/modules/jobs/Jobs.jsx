@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { fieldPhase } from "../../domain/fieldWorkOrder";
+import { fieldPhaseTone } from "../../domain/fieldWorkOrder";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // F0 -- this surface now READS the governed Work Order Engine (fieldops_wos)
 // instead of the legacy fieldops_jobs collection.
@@ -35,13 +38,14 @@ export default function Jobs() {
     }
   }, [focusRowId, jobs]);
 
-  return (
-    <div className="fo-panel">
-      <div className="fo-panel-head">
-        <h2>Job Assignments</h2>
-        <Link className="fo-btn-link" to="/service/work-orders/new">New Work Order</Link>
-      </div>
+  const actions = (
+    <ActionRail
+      primary={<Link className="fo-btn-link" to="/service/work-orders/new">New Work Order</Link>}
+    />
+  );
 
+  return (
+    <WorkspaceShell title="Job Assignments" actions={actions}>
       {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
@@ -79,7 +83,7 @@ export default function Jobs() {
                   <td>{job.complaint ?? job.description ?? "—"}</td>
                   <td className="fo-muted">{job.assignedTechId ?? "—"}</td>
                   <td>
-                    <span className={`fo-badge fo-badge-${fieldPhase(job)}`}>{job.status}</span>
+                    <StatusPill tone={fieldPhaseTone(job)} label={job.status} />
                   </td>
                 </tr>
               ))}
@@ -87,6 +91,6 @@ export default function Jobs() {
           </table>
         </div>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

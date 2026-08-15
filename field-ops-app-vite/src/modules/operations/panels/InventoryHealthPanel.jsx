@@ -1,5 +1,7 @@
 import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyticsEngine";
+import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
+import StatusPill from "../../../shared/ui/StatusPill.jsx";
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -96,11 +98,9 @@ export default function InventoryHealthPanel({
                 <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td>
                   {hasHistory ? (
-                    <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
-                      {recommendation.urgency}
-                    </span>
+                    <StatusPill tone={inventoryUrgencyTone(recommendation.urgency)} label={recommendation.urgency} />
                   ) : (
-                    <span className="fo-badge">Needs planning</span>
+                    <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
                 <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>

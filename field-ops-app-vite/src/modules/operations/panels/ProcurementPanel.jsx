@@ -12,6 +12,9 @@
 // row shape mirrors that view-model's output (reorderRequestId/partId/
 // supplierName/externalPoNumber/orderedQuantity/orderedDate/expectedArrivalDate/
 // viewStatus), not the old supplierId/items/totalCost shape.
+import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
+import StatusPill from "../../../shared/ui/StatusPill.jsx";
+
 export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName }) {
   const supplierName = (id) => suppliers.find((s) => s.id === id)?.name ?? id;
 
@@ -73,7 +76,7 @@ export default function ProcurementPanel({ purchaseOrders, suppliers, procuremen
                 <td>{resolveName(draft.partId)}</td>
                 <td>{draft.recommendedQuantity}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${draft.urgency.toLowerCase()}`}>{draft.urgency}</span>
+                  <StatusPill tone={inventoryUrgencyTone(draft.urgency)} label={draft.urgency} />
                 </td>
                 <td>{draft.suggestedSupplierId ? supplierName(draft.suggestedSupplierId) : "No supplier available"}</td>
                 <td>{draft.estimatedUnitPrice != null ? `$${draft.estimatedUnitPrice.toFixed(2)}` : "—"}</td>

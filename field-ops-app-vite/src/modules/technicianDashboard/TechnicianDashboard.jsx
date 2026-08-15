@@ -2,11 +2,15 @@ import { useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel";
+import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import TechnicianWorkOrderCard from "./TechnicianWorkOrderCard";
 import TechnicianWorkOrderDetail from "./TechnicianWorkOrderDetail";
 import PerformanceSnapshot from "./PerformanceSnapshot";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
 // the technician role. UI + read-layer composition (6.1) plus the
@@ -95,22 +99,20 @@ export default function TechnicianDashboard() {
 
   if (loading) {
     return (
-      <div className="fo-panel">
-        <h2>My Work Orders</h2>
+      <WorkspaceShell title="My Work Orders">
         <p className="fo-muted">Loading your Work Orders...</p>
-      </div>
+      </WorkspaceShell>
     );
   }
 
   if (technicianError) {
     return (
-      <div className="fo-panel">
-        <h2>My Work Orders</h2>
+      <WorkspaceShell title="My Work Orders">
         <p className="fo-muted" role="alert">
           Your technician profile could not be loaded. {technicianError}
         </p>
         <button type="button" onClick={retryTechnician}>Retry</button>
-      </div>
+      </WorkspaceShell>
     );
   }
 
@@ -122,48 +124,43 @@ export default function TechnicianDashboard() {
     // Point them at the one that is, rather than leaving an error as their landing page.
     if (operationalRoles && operationalRoles.length > 0) {
       return (
-        <div className="fo-panel">
-          <h2>My Dashboard</h2>
+        <WorkspaceShell title="My Dashboard">
           <p className="fo-muted">
             This account is set up for inventory and purchasing work, not field work.
           </p>
           <p><Link to="/inventory-role">Go to My Inventory Role</Link></p>
-        </div>
+        </WorkspaceShell>
       );
     }
     return (
-      <div className="fo-panel">
-        <h2>My Work Orders</h2>
+      <WorkspaceShell title="My Work Orders">
         <p className="fo-muted">
           Your account isn't linked to a technician record yet. Contact an admin to get this set up (see PT-001's
           technician identity mapping).
         </p>
-      </div>
+      </WorkspaceShell>
     );
   }
 
   if (error) {
     return (
-      <div className="fo-panel">
-        <h2>My Work Orders</h2>
+      <WorkspaceShell title="My Work Orders">
         <p className="fo-muted">Couldn't load your Work Orders: {error}</p>
-      </div>
+      </WorkspaceShell>
     );
   }
 
-  return (
-    <div className="fo-panel">
-      <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-        <div>
-          <h2 style={{ margin: 0 }}>Hi, {technician.name}</h2>
-          <span className={`fo-badge fo-badge-${technician.status}`}>{technicianStatusLabel(technician.status)}</span>
-        </div>
-        <div className="fo-stat">
-          <div className="fo-stat-value">{buckets.activeCount}</div>
-          <div className="fo-stat-label">My Active Work Orders</div>
-        </div>
-      </div>
+  const context = (
+    <ContextBand
+      items={[
+        { key: "status", label: "Status", value: <StatusPill tone={technicianStatusTone(technician.status)} label={technicianStatusLabel(technician.status)} /> },
+        { key: "active", label: "My Active Work Orders", value: buckets.activeCount },
+      ]}
+    />
+  );
 
+  return (
+    <WorkspaceShell title={`Hi, ${technician.name}`} context={context}>
       {selectedWorkOrder ? (
         <TechnicianWorkOrderDetail workOrder={selectedWorkOrder} onClose={() => setSelectedId(null)} />
       ) : (
@@ -199,6 +196,6 @@ export default function TechnicianDashboard() {
           />
         </>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

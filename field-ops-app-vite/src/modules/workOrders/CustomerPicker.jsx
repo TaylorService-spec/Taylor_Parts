@@ -8,6 +8,8 @@ import {
   customerLocationState,
   LOCATIONS_ERROR_LINE,
 } from "../../domain/customerSearch";
+import { accountStatusTone } from "../../domain/accountPortfolio";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 
 // Work Order wizard, Step 1 -- accessible Customer picker. Replaces the generic
 // Global Search box with a combobox whose results are unambiguous: each shows
@@ -169,7 +171,7 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
                     <div className="fo-customer-picker-name">{account.name}</div>
                     <div className="fo-customer-picker-meta">
                       {account.status && (
-                        <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
+                        <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
                       )}
                       {secondary && <span className="fo-customer-picker-secondary">{secondary}</span>}
                     </div>

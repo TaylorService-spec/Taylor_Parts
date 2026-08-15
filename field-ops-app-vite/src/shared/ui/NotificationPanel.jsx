@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import FailureState from "./FailureState";
+import StatusPill from "./StatusPill.jsx";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
 // (Version 0.1) notification experience: Header -> Notification Panel
@@ -59,11 +61,9 @@ function NotificationItem({ request, resolveName, onNavigate }) {
           row. This does not reconcile the two numbers -- they are not the same fact
           and must not be made to agree. */}
       {request.urgency ? (
-        <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>
-          Request urgency: {request.urgency}
-        </span>
+        <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={`Request urgency: ${request.urgency}`} />
       ) : (
-        <span className="fo-badge">Needs planning</span>
+        <StatusPill tone="unknown" label="Needs planning" />
       )}
     </Link>
   );

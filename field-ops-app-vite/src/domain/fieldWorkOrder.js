@@ -148,6 +148,22 @@ export function fieldPhase(statusOrWorkOrder) {
   return PHASE_BY_STATUS[status] ?? FIELD_PHASE.AWAITING_DISPATCH;
 }
 
+// Wave 5 -- StatusPill tone for the phase projection above. Jobs.jsx's `fo-badge
+// fo-badge-${phase}` never had a matching CSS rule for any of the four phase values
+// (index.css defines no fo-badge-awaiting_dispatch/assigned/on_site/finished), so every
+// row rendered the generic untinted badge -- there is no prior colour intent to preserve
+// here, unlike the Wave 1-3 tone maps. Genuine new visual signal, not a preserved one.
+const PHASE_TONE = {
+  [FIELD_PHASE.AWAITING_DISPATCH]: "muted",
+  [FIELD_PHASE.ASSIGNED]: "info",
+  [FIELD_PHASE.ON_SITE]: "attention",
+  [FIELD_PHASE.FINISHED]: "positive",
+};
+
+export function fieldPhaseTone(statusOrWorkOrder) {
+  return PHASE_TONE[fieldPhase(statusOrWorkOrder)] ?? "unknown";
+}
+
 /** Work still owed to a customer: assigned or on site, not finished. */
 export function isOpenWorkOrder(workOrder) {
   const phase = fieldPhase(workOrder);
