@@ -815,6 +815,16 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "inventory.catalog",
     action: "activate",
   }),
+  // Wave 6 Owner Decision (2026-08-15): trusted catalog/reference read the Parts experience needs,
+  // starting with the Manufacturer catalog (functions/src/partMaster/manufacturerReadService.ts).
+  // Backend-resolved scope; no client-direct manufacturers read (Rules stay deny-all).
+  Object.freeze({
+    id: "inventory.catalog.read",
+    description: "Read the minimal governed catalog/reference projection (Manufacturer identity/status) via the trusted getManufacturerCatalog read service. Backend-resolved scope; no client-direct manufacturers read.",
+    resource: "inventory.catalog",
+    action: "read",
+    active: false,
+  }),
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
   // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
   // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so

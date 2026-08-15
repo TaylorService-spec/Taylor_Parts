@@ -70,6 +70,10 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",
+  // Wave 6 Owner Decision (2026-08-15): trusted Manufacturer catalog read, direct grant to admin +
+  // dispatcher (both spread this base); Owner inherits by composition. See the operational-role note
+  // near TECHNICIAN_ROLE.conditionsByPermission below.
+  "inventory.catalog.read",
   // EI Phase-2 Receiving -- Capability Grant Gate. DIRECT grant to the governed ADMIN + DISPATCHER roles
   // (both spread this shared base). The governed OWNER role INHERITS it too by explicit composition
   // (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...reports], i.e. owner >= admin), so the effective
@@ -203,6 +207,14 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     "reorder.purchaseOrder.create",
     "inventory.transaction.read",
     "inventory.action.read",
+    // Wave 6 Owner Decision (2026-08-15): declared for parity with the two capabilities directly
+    // above (same operational-role-conditioned shape below), matching the Owner's requested reader
+    // list (active Parts Manager / Warehouse Manager). NOTE: like its siblings, this DENIES today
+    // through resolveEffectiveAccess's coarse feed (effectiveAccessFeed.ts always passes an empty
+    // condition context by design -- no callable in this repo has ever supplied a populated
+    // operationalRoleActive resolver). Declared here so the grant is documented and consistent with
+    // existing precedent, not silently omitted; see manufacturerReadService.ts's header comment.
+    "inventory.catalog.read",
   ],
   // reorder.purchaseOrder.void is deliberately NOT granted to technician
   // at all -- firestore.rules (current `main`) keeps Void gated to
@@ -246,6 +258,9 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     ],
     "inventory.action.read": [
       { kind: "operationalRoleActive", params: WAREHOUSE_MANAGER_ONLY },
+    ],
+    "inventory.catalog.read": [
+      { kind: "operationalRoleActive", params: MANAGER_OR_WAREHOUSE },
     ],
   },
 }) as Role;

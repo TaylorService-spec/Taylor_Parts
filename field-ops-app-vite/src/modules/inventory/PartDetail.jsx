@@ -44,6 +44,8 @@ import ActionRail from "../../shared/ui/ActionRail.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
+import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
+import { MANUFACTURER_CATALOG_VIEW_STATE, manufacturerCatalogViewState, manufacturerNameById } from "../../domain/manufacturerCatalogView";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
@@ -1289,6 +1291,10 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const resolvedPartId = part ? part.partId : null;
 
   const { transactions, healthEntries, loading } = useInventoryLedger();
+  // Wave 6 Owner Decision (2026-08-15) -- must be called unconditionally, before any early
+  // return below, per the Rules of Hooks; the derived name-lookup map itself is computed
+  // further down, after `canonicalPart` resolves.
+  const manufacturerCatalog = useManufacturerCatalog();
   const {
     data: reorderRequest,
     loading: reorderRequestLoading,
@@ -1385,6 +1391,14 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // query. `detail.part` above is the leaner display projection buildPartDetailView
   // produces and doesn't carry those fields.
   const canonicalPart = canonicalRead?.rows?.find((r) => r.partId === resolvedPartId) ?? null;
+  // Wave 6 Owner Decision (2026-08-15): resolve the Manufacturer NAME via the trusted
+  // inventory.catalog.read projection where it's available -- honest fallback to the raw
+  // manufacturerId (never a fabricated name) when the catalog read isn't READY.
+  const manufacturerCatalogState = manufacturerCatalogViewState(manufacturerCatalog);
+  const manufacturerNamesById =
+    manufacturerCatalogState === MANUFACTURER_CATALOG_VIEW_STATE.READY
+      ? manufacturerNameById(manufacturerCatalog.result.manufacturers)
+      : new Map();
   const actions = (
     <ActionRail
       start={<Link to="/inventory" className="fo-back-link">&larr; Back to Parts</Link>}
@@ -1477,6 +1491,14 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <h3>Catalog</h3>
         <table className="fo-table">
           <tbody>
+            {canonicalPart?.manufacturerId && (
+              <tr>
+                <td>Manufacturer</td>
+                <td>
+                  {manufacturerNamesById.get(canonicalPart.manufacturerId) ?? canonicalPart.manufacturerId}
+                </td>
+              </tr>
+            )}
             <tr>
               <td>Cost</td>
               <td>{money(part.cost)}</td>

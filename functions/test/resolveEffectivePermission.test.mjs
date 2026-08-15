@@ -601,9 +601,11 @@ void INACTIVE_ID;
 
 // ---------------------------------------------------------------------------
 // Phase 6a -- Sales/Fulfillment/Finance spine ROLE GRANTS (spec 2026-08-14).
-// owner/admin = full 12; dispatcher = 7 operational only; technician = 0.
+// owner/admin = full 13; dispatcher = 8 operational only; technician = 0.
 // (salesOrder.read added 2026-08-15, Owner-ratified, same operational grant shape
-// as the other 3 operational Sales ids -- see permissionCatalog.ts's entry.)
+// as the other 3 operational Sales ids -- see permissionCatalog.ts's entry.
+// inventory.catalog.read added 2026-08-15, Wave 6 Owner Decision -- same operational
+// admin+dispatcher grant shape, see manufacturerReadService.ts.)
 // Every ALLOW here also passes an activationOverrides set (the sandbox posture);
 // the final test proves the production posture (grant without activation = DENY).
 // ---------------------------------------------------------------------------
@@ -615,6 +617,7 @@ const SPINE_OPERATIONAL = [
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
+  "inventory.catalog.read",
 ];
 const SPINE_FINANCE = [
   "finance.invoice.issue",
@@ -637,21 +640,21 @@ function resolveWithActivation(roleId, permissionId, roles = COMPATIBILITY_ROLES
   });
 }
 
-check("Phase 6a: admin ALLOWs the FULL spine (all 12) under sandbox activation", () => {
+check("Phase 6a: admin ALLOWs the FULL spine (all 13) under sandbox activation", () => {
   for (const id of SPINE_ALL) {
     const r = resolveWithActivation("admin", id);
     assert.equal(r.decision, "ALLOW", `admin should ALLOW ${id}: got ${r.reason}`);
   }
 });
 
-check("Phase 6a: owner ALLOWs the FULL spine (all 12) under activation (inherits admin)", () => {
+check("Phase 6a: owner ALLOWs the FULL spine (all 13) under activation (inherits admin)", () => {
   const roles = { ...COMPATIBILITY_ROLES, owner: OWNER_ROLE };
   for (const id of SPINE_ALL) {
     assert.equal(resolveWithActivation("owner", id, roles).decision, "ALLOW", `owner should ALLOW ${id}`);
   }
 });
 
-check("Phase 6a: dispatcher ALLOWs the 7 OPERATIONAL spine ids under activation", () => {
+check("Phase 6a: dispatcher ALLOWs the 8 OPERATIONAL spine ids under activation", () => {
   for (const id of SPINE_OPERATIONAL) {
     assert.equal(resolveWithActivation("dispatcher", id).decision, "ALLOW", `dispatcher should ALLOW ${id}`);
   }

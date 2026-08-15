@@ -25,12 +25,16 @@
 // The resolver itself adds a fourth: an omitted/empty set is a strict no-op.
 import type { PermissionId } from "../types/access";
 
-// The exact 11 spine capability ids eligible for per-environment activation
+// The exact 13 spine capability ids eligible for per-environment activation
 // (spec §31). This is a hardcoded allow-list, NOT read from the registry: it
 // bounds what ANY environment can possibly activate, so registry data can only
 // ever be a subset of a known-safe set. Excluded on purpose (stay active:false
 // even in sandbox): workOrder.parts.plan, admin.credentialReset.initiate,
-// report.*, coverage.*, equipment.* -- separate workstreams.
+// report.*, coverage.*, inventory.catalog.manage, inventory.catalog.activate --
+// separate workstreams. `inventory.catalog.read` is a deliberate, narrow
+// exception (Wave 6 Owner Decision, 2026-08-15): a trusted READ-only projection
+// (functions/src/partMaster/manufacturerReadService.ts), never the write/
+// activate authority Part Master's own governance track still owns.
 export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<PermissionId>([
   "opportunity.write",
   "opportunity.read",
@@ -44,6 +48,7 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "finance.adjustment.record",
   "finance.read",
   "finance.refund.record",
+  "inventory.catalog.read",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -128,6 +133,7 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "finance.adjustment.record",
         "finance.read",
         "finance.refund.record",
+        "inventory.catalog.read",
       ]),
     }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),

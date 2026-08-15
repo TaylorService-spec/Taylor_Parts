@@ -1,0 +1,109 @@
+name: Manufacturer Catalog Read Tests
+
+# Wave 6 Owner Decision (2026-08-15) -- inventory.catalog.read, a trusted governed read for the
+# Manufacturer catalog the Parts experience needs (getManufacturerCatalog). Pure-logic unit tests for
+# the projection core (no emulator, no deployment, no production access, no secrets) plus
+# Firestore-emulator coverage for the trusted callable's authorization boundary (unauthenticated /
+# ungranted / activation / production-hard-block / malformed-document honesty). Capability
+# `inventory.catalog.read` is active:false and the callable is undeployed.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/partMaster/manufacturerReadService.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/partMaster/types.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
+      - "scripts/resolveEnvironment.mjs"
+      - "functions/test/manufacturerReadService.test.mjs"
+      - "functions/test/manufacturerReadCallable.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/manufacturer-read-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/partMaster/manufacturerReadService.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/partMaster/types.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
+      - "scripts/resolveEnvironment.mjs"
+      - "functions/test/manufacturerReadService.test.mjs"
+      - "functions/test/manufacturerReadCallable.test.mjs"
+      - ".github/workflows/manufacturer-read-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manufacturer-read-unit-tests:
+    name: Manufacturer catalog read -- pure projection (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Manufacturer catalog read projection tests (build + run)
+        run: npm run test:manufacturerRead
+        working-directory: functions
+
+  manufacturer-read-emulator:
+    name: Manufacturer catalog read callable -- authorization boundary (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/manufacturer-read-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/manufacturer-read-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/manufacturer-read-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Manufacturer catalog read callable tests (build + run)
+        run: npm run test:manufacturerReadEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manufacturer-read-emulator-logs
+          path: /tmp/manufacturer-read-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

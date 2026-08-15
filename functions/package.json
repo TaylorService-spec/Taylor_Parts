@@ -101,6 +101,8 @@
     "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs",
     "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs",
     "test:manufacturerCallables": "npm run build && node test/manufacturerCallablesExport.test.mjs && node test/manufacturerCallables.test.mjs",
+    "test:manufacturerRead": "npm run build && node --test test/manufacturerReadService.test.mjs",
+    "test:manufacturerReadEmulator": "npm run build && node --test test/manufacturerReadCallable.test.mjs",
     "test:partSupplierItemCallables": "npm run build && node test/partSupplierItemCallablesExport.test.mjs && node test/partSupplierItemProjections.test.mjs && node test/partSupplierItemCallables.test.mjs",
     "test:workOrderFieldContext": "npm run build && node --test test/workOrderFieldContext.test.mjs"
   },
