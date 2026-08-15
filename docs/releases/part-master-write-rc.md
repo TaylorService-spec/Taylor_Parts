@@ -47,15 +47,35 @@ explicit readiness + a mocked client via `usePartMasterWrite(deps)`; server auth
 - Independent design-code reviews: Phase 1 + Phase 2 — **zero correctness/authorization findings**; all
   mechanical fixes applied.
 
+## Sandbox activation status (Wave 7)
+
+The two **repo-side** prerequisites are now done and merged; the environment-side steps are not.
+
+| Step | Kind | Status |
+| --- | --- | --- |
+| `inventoryCatalogAdministrator` Role defined (`access/governedBusinessRoles.ts`, both mirrors) | repo | **done** — inert; declaring it grants nothing |
+| `PART_MASTER_WRITE_READY: true` for `platform-sandbox` (sandbox only) | repo | **done** — production/integration/emulator remain `false`, test-locked |
+| Deploy `createPart`/`updatePart`/`changePartStatus` to `eos-platform-sandbox` | deploy | **pending** — pooled, see `wave7-sandbox-manifest.md` |
+| Grant the Role to a sandbox **test** persona (`roleAssignments` write) | protected grant | **pending** |
+| Hosting release serving the bundle built with the new readiness value | deploy | **pending** |
+
+Readiness `true` does **not** mean activated: until the callables are deployed and a governed
+roleAssignment exists, an authorized-looking sandbox user still gets `permission-denied`. That is the
+intended fail-closed path, not a defect.
+
 ## Exact production delta (all protected; none done)
+
+Production is unchanged by the Wave 7 sandbox activation above.
 
 1. **Deploy the three Part callables:**
    `firebase deploy --only functions:createPart,functions:updatePart,functions:changePartStatus` (scope to exactly these three).
-2. **Define + grant the catalog-admin authority** — no standing role carries `inventory.catalog.manage`/`.activate`.
-   This is the SAME `inventoryCatalogAdministrator` role design accepted for Supplier Master (see
-   `docs/releases/supplier-master-promotion-package.md` §A). Define it (repo) + grant it (protected).
-3. **Flip write-readiness:** set `PART_MASTER_WRITE_READY: true` for the target environment in
-   `config/environments.json`.
+2. **Grant the catalog-admin authority** — no standing role carries `inventory.catalog.manage`/`.activate`.
+   The `inventoryCatalogAdministrator` Role (design accepted for Supplier Master,
+   `docs/releases/supplier-master-promotion-package.md` §A) is now **defined in code**; the remaining
+   step is the grant itself, which stays protected.
+3. **Flip write-readiness:** set `PART_MASTER_WRITE_READY: true` for the **production** entry in
+   `config/environments.json` (currently `false`, and a test asserts no production-role environment
+   enables it).
 4. **Frontend promotion** of the bundle serving the workspace (Hosting/Pages — protected; the only
    existing frontend deploy is the ungated Pages workflow, which must be replaced by a governed release).
 

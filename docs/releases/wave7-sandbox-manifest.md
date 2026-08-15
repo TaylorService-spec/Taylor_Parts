@@ -39,7 +39,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 ## Pending sandbox merges
 
-*(none yet — Wave 7 has not merged its first PR)*
+### PR #1000 — Part Master governed write: sandbox activation readiness
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Deploy required.** `createPart`, `updatePart`, `changePartStatus` are exported (`functions/src/index.ts:206-209`) but have never been deployed to `eos-platform-sandbox`. No new callable is added by this PR. |
+| Hosting impact | **Rebuild + release required.** `PART_MASTER_WRITE_READY` is a build-time constant injected from `config/environments.json`; the currently-served bundle was built with `false`. |
+| Rules impact | **NONE.** `parts`/`manufacturers` stay `read, write: if false`; all writes go through the trusted callables via Admin SDK. |
+| Indexes / config impact | `config/environments.json` — `platform-sandbox.readiness.PART_MASTER_WRITE_READY` `false → true`. No index change. |
+| Readiness flags required | `PART_MASTER_WRITE_READY=true` for `platform-sandbox` only (already set in-repo by this PR; takes effect at the Hosting rebuild). |
+| Capability activation / grants | **No activation override needed** — `inventory.catalog.manage` / `.activate` are not `active:false`, so they are outside the spine-override mechanism. **A grant IS required:** assign the newly-defined `inventoryCatalogAdministrator` Role to a sandbox **test** persona via the governed `roleAssignments` path (bumps `accessVersion`, syncs claims). This is the protected grant action; not performed. |
+| Smoke / E2E validation required | As authorized catalog-admin test persona: create a synthetic Part; update it; change status (activate/deactivate). As a persona **without** the Role: all three denied. Replay the same idempotency key → no duplicate. Validation failures surface honestly. Confirm a `.manage`-only principal cannot change status. Confirm the workspace no longer renders write-disabled. |
+| Rollback notes | Fully reversible, no data migration. Revoke the roleAssignment (capability lost immediately on `accessVersion` bump) → set `PART_MASTER_WRITE_READY` back to `false` + rebuild → redeploy the prior Functions estate (additive; removing the three callables is optional). Any Parts created during validation are synthetic sandbox data. |
+| Deployment status | PENDING |
+
 
 <!-- Row template — copy per merged PR:
 
