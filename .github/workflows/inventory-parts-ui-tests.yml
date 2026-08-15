@@ -71,6 +71,7 @@ on:
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
+      - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -135,6 +136,7 @@ on:
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
+      - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 
