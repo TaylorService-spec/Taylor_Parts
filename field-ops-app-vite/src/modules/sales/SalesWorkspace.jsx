@@ -372,8 +372,8 @@ function PipelineRow({ row, selected, onSelect }) {
 // Props are optional injection seams for tests/activation: `readiness` defaults to the fail-closed write-
 // readiness seam; `onSaveSection` is the governed save command (unwired today ⇒ Save stays inert). Production
 // renders <SalesWorkspace /> with neither, preserving the fully fail-closed posture.
-export default function SalesWorkspace({ readiness, onSaveSection } = {}) {
-  const { opportunities, accountNameById, status } = useOpportunities();
+export default function SalesWorkspace({ readiness, onSaveSection, source } = {}) {
+  const { opportunities, accountNameById, status } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   // Write-readiness through the seam. Fail-closed today (governed write built but inert); every edit + lifecycle
   // affordance renders disabled/honest. When a later cycle grants + deploys, this flips with no UI change here.

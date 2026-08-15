@@ -59,7 +59,31 @@ export function mapOpportunityReadResult({ ok, payload, errorCode } = {}) {
   };
 }
 
-// The default the app uses today. Centralized here so the synthetic→governed swap is a one-line change.
-// (Governed swap: a thin source that calls `listOpportunityContext` and returns mapOpportunityReadResult(...).
-// Deferred to activation because the callable is undeployed and the capability ungranted.)
+// GOVERNED read source (post-Wave-5 activation). `listOpportunityContext` is exported/deployed
+// (functions/src/index.ts), and `opportunity.read` is granted to admin/dispatcher/owner
+// (compatibilityRoles.ts) and sandbox-activated (config/environments.json's
+// capabilityActivationOverrides) -- so this is now safe to call. Firebase is imported LAZILY
+// (dynamic import) so this module has no import-time initializeApp side effect, mirroring
+// services/receivingCallableClient.js. Takes no request payload; the callable resolves the
+// caller's own authorized scope server-side.
+export async function governedOpportunitySource() {
+  try {
+    const [{ httpsCallable }, { functions }] = await Promise.all([
+      import("firebase/functions"),
+      import("../firebase/firebase.js"),
+    ]);
+    const res = await httpsCallable(functions, "listOpportunityContext")({});
+    return mapOpportunityReadResult({ ok: true, payload: res?.data });
+  } catch (err) {
+    const raw = err && typeof err.code === "string" ? err.code : "";
+    const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
+    return mapOpportunityReadResult({ ok: false, errorCode: code || "unavailable" });
+  }
+}
+
+// The default the app uses when no source is explicitly injected -- stays synthetic (test call
+// sites and any other `<SalesWorkspace />` mount with no `source` prop keep rendering fixtures
+// unchanged). The real production mount (App.jsx) now passes `source={governedOpportunitySource}`
+// explicitly, so the synthetic→governed swap happens at the ONE call site that should carry it,
+// not by silently changing what every caller (including tests) gets by default.
 export const DEFAULT_OPPORTUNITY_SOURCE = syntheticOpportunitySource;
