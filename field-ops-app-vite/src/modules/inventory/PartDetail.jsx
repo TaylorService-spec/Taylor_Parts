@@ -43,6 +43,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
@@ -1235,7 +1236,7 @@ function InventoryActionsPanel({ partId }) {
   );
 }
 
-export default function PartDetail({ hasCapability, accessVersion } = {}) {
+export default function PartDetail({ hasCapability, accessVersion, writeDeps } = {}) {
   const { partId } = useParams();
   // Notification identity fix (docs/specifications/notification-identity.md,
   // Issue #145) -- every Notification Panel/PartsList.jsx queue link now
@@ -1251,6 +1252,10 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
   // null until the first read resolves. Mapped to the canonicalRead status contract
   // the pure buildPartDetailView() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
   const [canonicalRead, setCanonicalRead] = useState(null);
+  // Wave 6 -- master-data-in-Parts. Bumped after a governed Edit/Status save so the
+  // SAME canonical read this page already performs re-fetches -- no second read
+  // surface, no cache bypass, just the existing effect re-running.
+  const [canonicalRefreshToken, setCanonicalRefreshToken] = useState(0);
   useEffect(() => {
     let cancelled = false;
     fetchPartMasterList().then((result) => {
@@ -1263,7 +1268,7 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canonicalRefreshToken]);
   const canonicalLoading = canonicalRead === null;
 
   // Governed detail composition (pure). While the read is in flight we pass a
@@ -1320,6 +1325,12 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
   const [reorderSubmitting, setReorderSubmitting] = useState(false);
   const [reorderError, setReorderError] = useState(null);
 
+  // Wave 6 -- master-data-in-Parts. null | "edit" | "status" -- which governed
+  // Part Master action panel (if any) is open. Uses the SAME PartWriteModal +
+  // usePartMasterWrite governed hook PartMasterList.jsx's own dedicated admin
+  // screen uses -- no second write path.
+  const [masterDataPanel, setMasterDataPanel] = useState(null);
+
   async function handleRequestReorder(manualQty) {
     setReorderSubmitting(true);
     setReorderError(null);
@@ -1368,8 +1379,28 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
     );
   }
 
+  // Wave 6 -- master-data-in-Parts. The RAW canonical Part record (with `version`/
+  // `status`, needed by the governed update/status-change commands) -- the SAME
+  // canonical read this page already performs (canonicalRead.rows), never a second
+  // query. `detail.part` above is the leaner display projection buildPartDetailView
+  // produces and doesn't carry those fields.
+  const canonicalPart = canonicalRead?.rows?.find((r) => r.partId === resolvedPartId) ?? null;
   const actions = (
-    <ActionRail start={<Link to="/inventory" className="fo-back-link">&larr; Back to Parts</Link>} />
+    <ActionRail
+      start={<Link to="/inventory" className="fo-back-link">&larr; Back to Parts</Link>}
+      secondary={
+        canonicalPart && (
+          <>
+            <button type="button" className="fo-btn-secondary" onClick={() => setMasterDataPanel("edit")}>
+              Edit Part Details
+            </button>{" "}
+            <button type="button" className="fo-btn-secondary" onClick={() => setMasterDataPanel("status")}>
+              Change Status
+            </button>
+          </>
+        )
+      }
+    />
   );
   const context = (
     <ContextBand
@@ -1383,6 +1414,18 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
 
   return (
     <WorkspaceShell title={part.name} actions={actions} context={context} className="fo-part-detail">
+      {masterDataPanel && canonicalPart && (
+        <PartWriteModal
+          mode={masterDataPanel}
+          part={canonicalPart}
+          writeDeps={writeDeps}
+          onClose={() => setMasterDataPanel(null)}
+          onSaved={() => {
+            setMasterDataPanel(null);
+            setCanonicalRefreshToken((t) => t + 1);
+          }}
+        />
+      )}
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}

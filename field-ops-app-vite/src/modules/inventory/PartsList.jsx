@@ -24,8 +24,10 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -305,7 +307,7 @@ function catalogBlockedMessage(status) {
   return "The Parts catalog could not be verified against the canonical source, so no parts are shown (an incomplete catalog is never displayed). Try again later.";
 }
 
-export default function PartsList({ accessVersion } = {}) {
+export default function PartsList({ accessVersion, writeDeps } = {}) {
   const { user } = useAuth();
   const {
     byUserId: employeeDirectory,
@@ -327,6 +329,10 @@ export default function PartsList({ accessVersion } = {}) {
   const currentKey = partNamesBoundaryKey(user?.uid, accessVersion);
   const [stored, setStored] = useState({ key: currentKey, read: null });
   const tokenRef = useRef(0);
+  // Wave 6 -- master-data-in-Parts. Bumped after a governed New Part create so the
+  // SAME canonical read this page already performs re-fetches -- no second read
+  // surface, no cache bypass, just the existing effect re-running.
+  const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   useEffect(() => {
     const token = ++tokenRef.current;
     let cancelled = false;
@@ -343,7 +349,7 @@ export default function PartsList({ accessVersion } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [currentKey]);
+  }, [currentKey, catalogRefreshToken]);
   const canonicalRead = selectCanonicalReadForKey(stored, currentKey, null);
   const canonicalLoading = canonicalRead === null;
   // Governed catalog composition (pure). While the read is in flight we pass a
@@ -459,6 +465,10 @@ export default function PartsList({ accessVersion } = {}) {
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
   const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
+  // Wave 6 -- master-data-in-Parts. `writeDeps` lets tests/preview inject a mocked
+  // client without touching partMasterCommandClient/firebase (same seam PartMasterList
+  // and PartWriteModal already use).
+  const [newPartOpen, setNewPartOpen] = useState(false);
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
@@ -540,9 +550,29 @@ export default function PartsList({ accessVersion } = {}) {
   return (
     <WorkspaceShell
       title="Parts"
-      actions={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
+      actions={
+        <ActionRail
+          start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
+          primary={
+            <button type="button" className="fo-btn-primary" onClick={() => setNewPartOpen(true)}>
+              New Part
+            </button>
+          }
+        />
+      }
       className="fo-parts-list"
     >
+      {newPartOpen && (
+        <PartWriteModal
+          mode="create"
+          writeDeps={writeDeps}
+          onClose={() => setNewPartOpen(false)}
+          onSaved={() => {
+            setNewPartOpen(false);
+            setCatalogRefreshToken((t) => t + 1);
+          }}
+        />
+      )}
       {/* Wave 6 -- Parts UX redesign (parts-ux-redesign-blueprint.md). Groups the page's
           existing sections under WORK / PARTS / FLOW headings, per Decision #43's own plan
           to converge the Parts workspace around what a user needs to DO, look UP, or track
