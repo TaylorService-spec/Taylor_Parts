@@ -35,7 +35,6 @@ export interface SalesOrderLineProjection {
   allocatedQty: number;
   fulfilledQty: number;
   billedQty: number;
-  unitPrice: number | null;
 }
 
 // The minimal projected shape the Sales Order UX consumes. No raw UID beyond createdByUid/updatedByUid
@@ -81,7 +80,6 @@ function projectLine(raw: unknown, index: number): SalesOrderLineProjection | nu
     allocatedQty: nonNegNum(l.allocatedQty),
     fulfilledQty: nonNegNum(l.fulfilledQty),
     billedQty: nonNegNum(l.billedQty),
-    unitPrice: num(l.unitPrice),
   };
 }
 

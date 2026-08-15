@@ -19,7 +19,7 @@ function baseDoc(overrides = {}) {
     state: "IN_FULFILLMENT",
     lines: [
       { lineId: "line-1", kind: "PART", ref: "PRT-1", orderedQty: 5, allocatedQty: 3, fulfilledQty: 2, billedQty: 1, unitPrice: 12.5 },
-    ],
+    ], // unitPrice included in the RAW doc on purpose -- proves the projection strips it, not just that it's absent from a fixture that never had it
     serviceWorkOrderIds: ["WO-1", "WO-2"],
     createdAtMillis: 1000,
     updatedAtMillis: 2000,
@@ -49,8 +49,16 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
 test("projectSalesOrder projects lines with the full ordered/allocated/fulfilled/billed quantity model", () => {
   const p = projectSalesOrder("SO-1", baseDoc());
   assert.deepEqual(p.lines, [
-    { lineId: "line-1", kind: "PART", ref: "PRT-1", orderedQty: 5, allocatedQty: 3, fulfilledQty: 2, billedQty: 1, unitPrice: 12.5 },
+    { lineId: "line-1", kind: "PART", ref: "PRT-1", orderedQty: 5, allocatedQty: 3, fulfilledQty: 2, billedQty: 1 },
   ]);
+});
+
+test("projectSalesOrder never exposes unitPrice or any other price field -- no pricing policy in this projection", () => {
+  const p = projectSalesOrder("SO-1", baseDoc());
+  assert.deepEqual(Object.keys(p.lines[0]).sort(), ["allocatedQty", "billedQty", "fulfilledQty", "kind", "lineId", "orderedQty", "ref"]);
+  assert.equal("unitPrice" in p.lines[0], false);
+  assert.equal("price" in p.lines[0], false);
+  assert.equal("amount" in p.lines[0], false);
 });
 
 test("projectSalesOrder returns null for an invalid/unrecognized state rather than trusting it", () => {
@@ -69,7 +77,7 @@ test("projectSalesOrder drops malformed lines rather than fabricating them, keep
     ],
   }));
   assert.deepEqual(p.lines, [
-    { lineId: "line-1", kind: "PART", ref: "ok", orderedQty: 1, allocatedQty: 0, fulfilledQty: 0, billedQty: 0, unitPrice: null },
+    { lineId: "line-1", kind: "PART", ref: "ok", orderedQty: 1, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 },
   ]);
 });
 
