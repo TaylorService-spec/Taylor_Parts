@@ -142,7 +142,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge)* |
+| Merge SHA | `d745da560f14d59e020e7ecaf26bacad9905d17a` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **Changed behavior in an existing callable.** `receiveInventoryStock` now accepts `SERIAL` in addition to `NONE`. No new callable. Requires the Functions deploy already pooled for this package. |
 | Hosting impact | **NONE** — no UI in this slice. |
