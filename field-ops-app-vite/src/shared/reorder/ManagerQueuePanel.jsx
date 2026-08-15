@@ -1,0 +1,147 @@
+import { useRef, useState } from "react";
+import { assignReorderRequest, getDisplayQty } from "../../domain/inventoryReorderRequests.js";
+import { OPERATIONAL_ROLE } from "../../domain/constants.js";
+import EmployeeAssignmentPicker from "../assignment/EmployeeAssignmentPicker.jsx";
+import LoadingEmptyState from "../ui/LoadingEmptyState.jsx";
+import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
+
+// Wave 6 -- queue consolidation (Owner directive, Option A: Parts -> WORK becomes the
+// primary actionable Parts workspace; extract/reuse the existing actionable components
+// rather than a third independently-maintained copy). Extracted from PartsManagerHome.jsx's
+// own "Parts Manager Queue" section + AssignPanel, UNCHANGED behavior -- same governed
+// assignReorderRequest() call PartDetail.jsx's own Assign action already uses, same
+// EmployeeAssignmentPicker(requiredOperationalRole: PARTS_ASSOCIATE) eligibility scoping.
+// Reused by PartsManagerHome.jsx (unchanged persona/scope) AND PartsList.jsx's Parts ->
+// WORK "Team Work" section (admin/dispatcher, who already hold `reorder.request.assign`
+// unconditionally -- see compatibilityRoles.ts's SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS
+// -- so making this actionable there widens no capability, it only reuses one already
+// granted). The server-side trusted command is the SAME either way; this component invokes
+// no new write path.
+function AssignPanel({ request, resolveName, onAssigned, onClose }) {
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [assignedToUserId, setAssignedToUserId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const partName = resolveName(request.partId);
+
+  function handleEmployeeSelect(employee) {
+    setSelectedEmployeeId(employee.employeeId);
+    setAssignedToUserId(employee.userId);
+  }
+
+  async function handleAssign(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await assignReorderRequest(request.id, { assignedToUserId });
+      onAssigned();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <div className="fo-workspace-header">
+        <h3 className="fo-workspace-header-title">Assign -- {partName}</h3>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <form className="fo-form" onSubmit={handleAssign}>
+        {error && <p className="fo-muted">{error}</p>}
+        <EmployeeAssignmentPicker
+          requiredOperationalRole={OPERATIONAL_ROLE.PARTS_ASSOCIATE}
+          selectedEmployeeId={selectedEmployeeId}
+          onSelect={handleEmployeeSelect}
+          disabled={submitting}
+          label="Assign to Parts Associate"
+          placeholder="Search employees by name..."
+        />
+        <div className="disp-board-toolbar">
+          <button type="submit" disabled={submitting || !assignedToUserId}>
+            {submitting ? "Assigning..." : "Assign"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// `queue`: READY_FOR_PARTS_MANAGER requests. `title`/`description`: caller-supplied copy
+// (PartsManagerHome and Parts WORK use slightly different framing for the same queue).
+export default function ManagerQueuePanel({
+  queue,
+  resolveName,
+  loading,
+  error,
+  title = "Parts Manager Queue",
+  description = "Reorder Requests approved by Inventory review, awaiting assignment to a Parts Associate.",
+}) {
+  const [assigningRequestId, setAssigningRequestId] = useState(null);
+  // Focus restoration: the triggering "Assign" button that opened the inline Assign panel.
+  const lastTriggerRef = useRef(null);
+  const assigningRequest = queue.find((r) => r.id === assigningRequestId) ?? null;
+
+  function handleCloseAssignPanel() {
+    setAssigningRequestId(null);
+    lastTriggerRef.current?.focus();
+  }
+
+  return (
+    <>
+      <h3>{title}</h3>
+      <p className="fo-muted">{description}</p>
+      <LoadingEmptyState
+        loading={loading}
+        isEmpty={queue.length === 0}
+        loadingText={`Loading ${title}...`}
+        emptyText={error ? `Unable to load the ${title} right now. Try again shortly.` : "No requests awaiting assignment."}
+      >
+        <OperationalCardGrid aria-label={title}>
+          {queue.map((request) => (
+            <li key={request.id}>
+              <OperationalCard
+                title={resolveName(request.partId)}
+                status={
+                  request.urgency
+                    ? { tone: inventoryUrgencyTone(request.urgency), label: request.urgency }
+                    : { tone: "unknown", label: "Needs planning" }
+                }
+                metadata={[
+                  { key: "qty", label: "Qty", value: getDisplayQty(request) },
+                  { key: "approved", label: "Approved", value: formatTimestamp(request.reviewedAt, { unknown: "—" }) },
+                ]}
+                actions={
+                  <button
+                    type="button"
+                    aria-label={`Assign ${resolveName(request.partId)}`}
+                    onClick={(e) => {
+                      lastTriggerRef.current = e.currentTarget;
+                      setAssigningRequestId(request.id);
+                    }}
+                  >
+                    Assign
+                  </button>
+                }
+              />
+            </li>
+          ))}
+        </OperationalCardGrid>
+      </LoadingEmptyState>
+
+      {assigningRequest && (
+        <AssignPanel
+          request={assigningRequest}
+          resolveName={resolveName}
+          onAssigned={handleCloseAssignPanel}
+          onClose={handleCloseAssignPanel}
+        />
+      )}
+    </>
+  );
+}
