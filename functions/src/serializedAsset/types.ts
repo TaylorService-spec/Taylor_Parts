@@ -17,11 +17,15 @@
 //     REFERENCE OBJECT `{ type, locationId }` (field-ops-app-vite/src/domain/inventoryLocation.js's
 //     `validateLocationRef` shape), not a flat id string. The Specification's §D bracket literally names
 //     the persisted field `currentLocationId` (a scalar id), so THIS document contract uses that scalar --
-//     matching the governing Specification text exactly -- while the projection below additionally exposes
-//     a `currentLocation` reference (`{ type, locationId }`, itself resolved via a second trusted read of
-//     the Location authority) so composeAvailableEquipment's existing shape is NOT broken by this change.
+//     matching the governing Specification text exactly. The projection carries the SAME scalar and does
+//     NOT resolve a `{ type, locationId }` reference: doing so would require reading a Location authority
+//     that this slice does not read, and fabricating a `type` would be exactly the invented fact this
+//     contract refuses to produce. CONSEQUENCE, stated plainly: `composeAvailableEquipment` cannot consume
+//     this projection as-is -- a caller must adapt the shapes, and no such caller exists yet (this slice
+//     ships no UI). Reconciling the two (rename one side, or add a governed Location read) is a spec-author
+//     decision, deliberately left open rather than pre-empted here.
 //     This is a real, pre-existing naming inconsistency between the Specification and the already-merged
-//     pure module; this contract does not invent a resolution beyond exposing both. See the report for the
+//     pure module; this contract does not invent a resolution. See the report for the
 //     full callout.
 //   * `ownership`: the Specification's §D "ownership attribute (company / vendor-consignment §4.13)".
 //     §4.13 (vendor consignment) is REFERENCED, not itself implemented here; the two-value enum below names

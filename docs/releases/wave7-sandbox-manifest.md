@@ -110,7 +110,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Merge SHA | `397e7c46aeebe90c5c502d1df731cb385c1bad2c` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **NONE.** Pure client-side projection over the existing `fieldops_wos` authority. No callable added or changed. |
 | Hosting impact | **Rebuild + release required** — frontend-only change. |
@@ -120,6 +120,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Capability activation / grants | NONE — reuses the existing `fieldops_wos` read grant. No new capability. |
 | Smoke / E2E validation required | Open a Part that several open Work Orders plan. Confirm one row per Work Order with planned/used quantities matching those Work Orders, and that navigation reaches `/service/work-orders/:id`. Confirm a COMPLETED/CANCELLED Work Order does not appear as demand. Confirm a Part with no demand shows the empty state, not an error. Confirm the "showing the most recent N of M" disclosure appears only when the 300-row cap is actually hit. As a technician/unauthorized persona: denied state, not a blank card. Confirm no raw Firebase UID renders. |
 | Rollback notes | Frontend-only; revert the Hosting release. The index is additive and harmless if left in place. Read-only feature: no data is written, so nothing to undo. |
+| Deployment status | PENDING |
+
+### PR #1004 — Serialized Asset registry: identity contract + governed read (Item 5, slice A)
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **New callable `getAvailableEquipment`** (exported, never deployed). Deploy required before it can be exercised. |
+| Hosting impact | **NONE** — this slice ships no UI. |
+| Rules impact | **NONE, and none is required.** `serialized_assets` has no `match` block and `firestore.rules` contains no `{document=**}` wildcard, so the collection is denied by default. Verified by inspection; the rules diff on this branch is empty. Reads go only through the trusted callable via Admin SDK. |
+| Indexes / config impact | NONE in this slice. §L's registry indexes (by `partId` / `currentLocationId` / `inventoryState` / `currentEquipmentId`) are only needed once a list/query read exists; this slice reads by id. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | New capability `inventory.serializedAsset.read`, registered `active: false`, granted to **no** Role and added to **no** environment activation override — deliberately stricter than `salesOrder.read` / `inventory.catalog.read` were at introduction. Exercising it later needs BOTH activation and a grant. Emulator tests prove admin, dispatcher and technician are all denied today, in every project including sandbox. |
+| Smoke / E2E validation required | **Nothing to exercise until a writer exists.** The registry has no write path in this slice, so `serialized_assets` will be empty and the callable correctly returns `not-found`. Post-deploy validation is limited to: callable resolves; unauthenticated is rejected; an authorized-looking persona is still denied (no grant). Full validation belongs with slice B (the write/registration path). |
+| Rollback notes | Fully reversible. No document is ever written by this slice, so there is no data to undo; no migration, no backfill. Removing the callable and the catalog entry restores the prior state exactly. |
 | Deployment status | PENDING |
 
 -->
