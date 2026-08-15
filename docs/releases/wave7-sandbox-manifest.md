@@ -59,7 +59,7 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 
 | Field | Value |
 | --- | --- |
-| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Merge SHA | `7679ceb7db935f6c5d1db78b2082fe46b13e7fa2` |
 | Lifecycle stage | SANDBOX BUILD |
 | Functions impact | **Deploy required.** `setWorkOrderPartsPlan` is exported (`functions/src/index.ts:16`) but has never been deployed. No backend change in this PR — the command, its capability registration and its producer tests are untouched. |
 | Hosting impact | **Rebuild + release required** — this is a frontend-only change. |
@@ -88,6 +88,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Capability activation / grants | <capability ids needing activation override + Role grants, or NONE> |
 | Smoke / E2E validation required | <what must be exercised post-deploy to reach SANDBOX VERIFIED> |
 | Rollback notes | <what reverting costs; any one-way steps> |
+| Deployment status | PENDING |
+
+### PR #1002 — Sales Order operational actions
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge — see reconciliation at package close)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Deploy required.** `transitionSalesOrder`, `allocateSalesOrder`, `createServiceForSalesOrder` are exported but never deployed. No backend change in this PR. |
+| Hosting impact | **Rebuild + release required** — frontend-only change. |
+| Rules impact | **NONE.** All four commands are trusted callables using the Admin SDK; `sales_orders` client access is unchanged. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | **Activation already in place** — `salesOrder.write`, `salesOrder.fulfill`, `salesOrder.service` are already in `platform-sandbox`'s `capabilityActivationOverrides`. **Role grants still required:** activation is not authorization, so a sandbox test persona needs a Role carrying these ids. |
+| Smoke / E2E validation required | Advance and Cancel a Sales Order through its lifecycle; allocate; create service work and confirm the resulting Work Order appears in the lineage section. Confirm an action invalid for the current state is not offered. **Idempotency:** retry a failed Advance and confirm it does not apply twice; then confirm a transition on a DIFFERENT Sales Order is not swallowed as a replay. Unauthorized persona: denied, not blank. Confirm no pricing/discount/tax/quote field is rendered or editable anywhere on the surface. |
+| Rollback notes | Frontend-only; revert the Hosting release. Lifecycle transitions performed during validation are real state changes on synthetic sandbox Sales Orders — CANCEL in particular is not reversible through the UI, so validate on throwaway records. Revoking the Role grants re-closes the surface immediately. |
 | Deployment status | PENDING |
 
 -->

@@ -5,22 +5,30 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
+import SalesOrderActions from "./SalesOrderActions.jsx";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
-// getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated). Makes
-// visible: identity, account, originating Opportunity, lifecycle state, lines with the
-// ordered/allocated/fulfilled/billed quantity model, and service/Work Order lineage. Not a
-// CRM redesign — read-only today; lifecycle/allocation/service actions are a later slice
-// once their own write-readiness seams are built (same shape as opportunityWriteReadiness.js).
+// getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
+// operational actions (Item 4, salesOrder.write/.fulfill/.service — same sandbox activation) layered
+// on top via SalesOrderActions.jsx. Makes visible: identity, account, originating Opportunity,
+// lifecycle state, lines with the ordered/allocated/fulfilled/billed quantity model, and
+// service/Work Order lineage. Still not a CRM redesign, and still exposes NO pricing/discount/tax/
+// quote-term field — those stay out of scope for this operational surface.
 //
 // Distinguishes LOADING / DENIED / UNAVAILABLE / NOT_FOUND / READY — DENIED never renders as
 // EMPTY (Item 4A finding, explicitly preserved here).
-export default function SalesOrderDetail() {
+// `actionDeps` is an injectable test-only seam (mirrors PartWriteModal's `writeDeps`): passed straight
+// through to SalesOrderActions -> useSalesOrderActions so tests can supply a MOCKED command client
+// without touching `firebase`. Production routing never supplies it, so it defaults to the real client.
+export default function SalesOrderDetail({ actionDeps } = {}) {
   const { salesOrderId } = useParams();
-  const { loading, errorStatus, result } = useSalesOrder(salesOrderId);
+  const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
   const view = salesOrderView({ loading, errorStatus, result });
 
-  const actions = null; // read-only today; a future write-readiness seam adds lifecycle actions here
+  const actions =
+    view.kind === SALES_ORDER_VIEW_STATE.READY
+      ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} />
+      : null;
 
   return (
     <WorkspaceShell title={view.kind === SALES_ORDER_VIEW_STATE.READY ? `Sales Order ${view.id}` : "Sales Order"} actions={actions}>
