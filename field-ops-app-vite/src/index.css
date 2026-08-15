@@ -1959,10 +1959,39 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-sales-detail__line-kind { color: var(--color-text-muted); font-size: 12px; }
 .fo-sales-detail__attention { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 
-/* Opportunity lifecycle actions (Cycle 3b) — write-readiness seam surfaces the ratified actions as honest,
-   disabled affordances until a governed grant + deploy enable them. */
-.fo-sales-detail__lifecycle { display: grid; gap: 6px; }
+/* Opportunity lifecycle actions (Cycle 3b, chevrons added Wave 7) — write-readiness seam surfaces the
+   ratified actions as honest, disabled affordances until a governed grant enables them. */
+.fo-sales-detail__lifecycle { display: grid; gap: 8px; }
 .fo-sales-lifecycle-note { margin: 0; font-size: 12px; }
+.fo-sales-lifecycle-error { margin: 0; font-size: 12px; color: var(--color-danger); }
+
+/* Generic lifecycle-chevron row (shared/ui/LifecycleChevrons.jsx) — reusable, business-rule-free. Steps
+   recompose to a wrapped flex row rather than a rigid table so it holds up at phone widths. */
+.fo-chevrons { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.fo-chevrons__step { display: flex; align-items: center; }
+.fo-chevrons__step:not(:last-child)::after { content: "›"; margin: 0 4px; color: var(--color-text-muted); }
+.fo-chevrons__label, .fo-chevrons__btn {
+  padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4;
+}
+.fo-chevrons__label { color: var(--color-text-muted); background: var(--color-surface-sunken); }
+.fo-chevrons__btn {
+  border: 1px solid var(--color-info); background: var(--color-info-surface); color: var(--color-info);
+  cursor: pointer; font-family: inherit;
+}
+.fo-chevrons__btn:disabled { cursor: not-allowed; opacity: 0.65; }
+.fo-chevrons__step.is-complete .fo-chevrons__label { color: var(--color-success); background: transparent; }
+.fo-chevrons__step.is-current .fo-chevrons__label { color: var(--color-text-primary); background: var(--color-info-surface); font-weight: 700; }
+.fo-chevrons__terminal {
+  padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-left: 2px;
+}
+.fo-chevrons__terminal--positive { color: var(--color-success); background: var(--color-success-surface); }
+.fo-chevrons__terminal--muted { color: var(--color-text-muted); background: var(--color-surface-sunken); }
+
+/* New Opportunity create form (Wave 7) — a Modal body reusing the same section-edit-form field styling as
+   the existing SectionEditForm (fo-sales-editform__field/note/actions), so it feels like one design system
+   rather than a bespoke form. */
+.fo-sales-createform { display: grid; gap: 12px; }
+.fo-sales-createform__error { margin: 0; font-size: 12px; color: var(--color-danger); }
 
 /* ── COORDINATED OPERATIONS (Service/Dispatch visit + Technician mission) ───────────────────────────────
    User-consumable reads of the coordinatedVisit / coordinatedFieldMission projections. Reuse the Wave-0
