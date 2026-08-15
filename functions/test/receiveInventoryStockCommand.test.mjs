@@ -144,11 +144,21 @@ await check("inactive / missing Part fails closed", async () => {
   await assert.rejects(receiveInventoryStock(request(sc2), makeDeps(sc2, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "NONE", active: false }) }).deps), (e) => e instanceof PartInvalidError);
 });
 
-await check("SERIAL / LOT part fails closed", async () => {
-  for (const mode of ["SERIAL", "LOT"]) {
-    const sc = await seedScenario();
-    await assert.rejects(receiveInventoryStock(request(sc), makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: mode, active: true }) }).deps), (e) => e instanceof PartInvalidError);
-  }
+// SERIAL was authorized for Receiving in Wave 7 (Owner decision:
+// docs/releases/serialized-asset-registry-slice-b-boundary.md), so this no longer asserts that SERIAL
+// fails closed. LOT's deferral is unchanged and still locked here; SERIAL's own behavior -- including
+// every way it must fail closed -- is covered in test/receiveSerializedStockCommand.test.mjs.
+await check("LOT part still fails closed", async () => {
+  const sc = await seedScenario();
+  await assert.rejects(receiveInventoryStock(request(sc), makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "LOT", active: true }) }).deps), (e) => e instanceof PartInvalidError);
+});
+
+await check("a SERIAL part is refused when the request carries no serial identity", async () => {
+  // Guards the seam between the two suites: a SERIAL part received through a NONE-shaped request must
+  // not quietly succeed as an untracked receipt.
+  const sc = await seedScenario();
+  await assert.rejects(receiveInventoryStock(request(sc), makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "SERIAL", active: true }) }).deps));
+  assert.equal((await db.collection("serialized_assets").where("partId", "==", sc.partId).get()).size, 0);
 });
 
 await check("empty / multiple lines and bad quantities fail closed", async () => {

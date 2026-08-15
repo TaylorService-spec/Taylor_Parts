@@ -138,6 +138,22 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | Fully reversible. No document is ever written by this slice, so there is no data to undo; no migration, no backfill. Removing the callable and the catalog entry restores the prior state exactly. |
 | Deployment status | PENDING |
 
+### PR #1006 — SERIAL receiving intake → Serialized Asset activation (Item 5, slice B)
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | *(filled at merge)* |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Changed behavior in an existing callable.** `receiveInventoryStock` now accepts `SERIAL` in addition to `NONE`. No new callable. Requires the Functions deploy already pooled for this package. |
+| Hosting impact | **NONE** — no UI in this slice. |
+| Rules impact | **NONE.** `serialized_assets` still has no `match` block and remains default-denied; writes occur only inside the trusted command via Admin SDK. `receiving_orders` rules are unchanged. |
+| Indexes / config impact | NONE. The command reads serialized assets by deterministic document id, not by query. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | **No new capability.** SERIAL intake rides the existing `inventory.stock.receive`, already granted to `{admin, dispatcher, owner}`. Note the consequence: once deployed, any principal who can already receive stock can receive SERIAL stock — that is the authorized scope, not an expansion of who may receive. |
+| Smoke / E2E validation required | Receive a SERIAL-tracked Part (`controlType: SERIALIZED`) with one serial per unit; confirm one `serialized_assets` document per unit at the put-away location in state `RECEIVED` with `currentEquipmentId: null`, and one ledger event per unit with `quantity: 1` and its `serialNo`. Retry the identical request → replay, with no second asset and no second ledger effect. Re-present an already-received serial for the same Part → whole receipt refused. Same serial on a DIFFERENT Part → allowed. Receive a `STANDARD` Part → unchanged single bulk ledger event and no asset. Receive a `LOT` Part → refused. |
+| Rollback notes | **Not a pure code rollback once exercised.** Reverting the code restores NONE-only receiving, but any `serialized_assets` documents and per-serial ledger events created during validation REMAIN — the ledger is append-only and completed business history is immutable by design (Specification §L). In sandbox those are synthetic records and can be left in place or cleared as sandbox data; there is no migration to undo, and no production data is involved. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements
@@ -150,7 +166,7 @@ query fails at runtime.
 
 | Area | Required |
 | --- | --- |
-| Functions | Deploy `createPart`, `updatePart`, `changePartStatus` (#1000); `setWorkOrderPartsPlan` (#1001); `transitionSalesOrder`, `allocateSalesOrder`, `createServiceForSalesOrder` (#1002); `getAvailableEquipment` (#1004). All were already exported and have never been deployed. |
+| Functions | Deploy `createPart`, `updatePart`, `changePartStatus` (#1000); `setWorkOrderPartsPlan` (#1001); `transitionSalesOrder`, `allocateSalesOrder`, `createServiceForSalesOrder` (#1002); `getAvailableEquipment` (#1004). All were already exported and have never been deployed. **Plus a behavior change to the existing `receiveInventoryStock` (#1006): it now accepts SERIAL as well as NONE.** |
 | Hosting | One rebuild + release covering #1000–#1003. Required for #1000 specifically because `PART_MASTER_WRITE_READY` is a **build-time** constant — the currently-served bundle was built with `false`. |
 | Rules | **NONE.** No PR in this package changes `firestore.rules`. No protected Rules deployment is created or required. |
 | Indexes / config | **One index:** `fieldops_wos(status ASC, createdAt DESC)` (#1003) — `firebase deploy --only firestore:indexes`, **before or with** Hosting. Config: `platform-sandbox.readiness.PART_MASTER_WRITE_READY` is already `true` in-repo and takes effect at the rebuild. |

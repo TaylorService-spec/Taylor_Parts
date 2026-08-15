@@ -15,7 +15,8 @@
 import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
-import { INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections.js";
+import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
+import { serializedAssetDocId, buildSerializedAssetForReceipt } from "../serializedAsset/serializedAssetRegistration.js";
 import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { RECEIVING_ORDERS_COLLECTION, type ReceivingActor } from "./receivingTypes.js";
 import { validateReceivingOrderInput } from "./receivingValidation.js";
@@ -34,6 +35,7 @@ export type ReceiveCommandFailureCode =
   | "SOURCE_NOT_RECEIVABLE"
   | "DESTINATION_INVALID"
   | "PART_INVALID"
+  | "SERIAL_IDENTITY_CONFLICT"
   | "RECEIVING_INTEGRITY";
 export class ReceiveCommandError extends Error {
   readonly code: ReceiveCommandFailureCode;
@@ -49,6 +51,8 @@ export class SourceNotReceivableError extends ReceiveCommandError { constructor(
 export class DestinationInvalidError extends ReceiveCommandError { constructor(m: string) { super("DESTINATION_INVALID", m); } }
 export class PartInvalidError extends ReceiveCommandError { constructor(m: string) { super("PART_INVALID", m); } }
 export class ReceivingIntegrityError extends ReceiveCommandError { constructor(m: string) { super("RECEIVING_INTEGRITY", m); } }
+// A serial already registered by a DIFFERENT receipt: the same physical unit cannot be received twice.
+export class SerialIdentityConflictError extends ReceiveCommandError { constructor(m = "serial number is already registered to another receipt") { super("SERIAL_IDENTITY_CONFLICT", m); } }
 
 export interface ResolvedPart { readonly partId: string; readonly trackingMode: string; readonly active: boolean; }
 
@@ -79,12 +83,19 @@ export interface ReceiveAuditInput {
   readonly locationType: string;
   readonly locationId: string;
   readonly ledgerEventId: string;
+  // SERIAL receipts only: how many Serialized Assets this receipt activated. Absent for NONE.
+  readonly serialCount?: number;
 }
 
 export interface ReceiveInventoryStockOutcome {
   readonly outcome: "applied" | "replayed";
   readonly receivingId: string;
+  // The FIRST staged ledger event. A SERIAL receipt stages one per unit; ledgerEventIds carries all of
+  // them, and for a NONE receipt it is that single id. Kept alongside the original field so existing
+  // callers are unaffected.
   readonly ledgerEventId: string;
+  readonly ledgerEventIds: readonly string[];
+  readonly serializedAssetIds?: readonly string[];
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -96,6 +107,13 @@ function str(v: unknown): string | null { return typeof v === "string" && v.trim
 // receivingId + lineId (JSON quoting makes the components unambiguous, unlike raw delimiter concatenation).
 function ledgerLineIdempotencyKey(receivingId: string, lineId: string): string {
   return "recvln_" + createHash("sha256").update(JSON.stringify([receivingId, lineId])).digest("hex").slice(0, 40);
+}
+
+// SERIAL receipts stage ONE ledger event PER UNIT (the ledger requires quantity === 1 and a serialNo for
+// SERIAL-tracked parts -- see inventoryLedger/operationalMovementValidation.ts). Each therefore needs its
+// own idempotency key, derived from the same fixed inputs so an exact retry reproduces it exactly.
+function ledgerSerialIdempotencyKey(receivingId: string, lineId: string, serialNo: string): string {
+  return "recvsn_" + createHash("sha256").update(JSON.stringify([receivingId, lineId, serialNo])).digest("hex").slice(0, 40);
 }
 
 // The trusted command. `request` is the UNTRUSTED receive payload ONLY (no actor). The server-derived
@@ -163,7 +181,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     const authority = { part: { partId: part.partId, trackingMode: part.trackingMode }, orderedQuantity };
     const validated = validateReceivingOrderInput(request, authority);
     if (!validated.valid) {
-      if (validated.reason === "tracking_mode_unsupported") throw new PartInvalidError("tracking mode not supported (SERIAL/LOT deferred)");
+      if (validated.reason === "tracking_mode_unsupported") throw new PartInvalidError("tracking mode not supported (LOT deferred)");
       throw new SourceNotReceivableError(`receiving input invalid: ${validated.reason}`);
     }
     const value = validated.value;
@@ -181,27 +199,87 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     // ---- 8. stage the Receiving Order (reads idempotency doc; buffers create if applying) ----
     const receivingOutcome = await stageReceivingOrder(receivingStore, request, authority, { actor, now });
 
-    // ---- 9. stage exactly one RECEIVED ledger event (reads ledger idempotency doc; buffers create) ----
+    // ---- 9. stage the RECEIVED ledger effect(s) (reads ledger idempotency docs; buffers creates) ----
+    //
+    // NONE  -> exactly one event carrying the whole received quantity (unchanged behavior).
+    // SERIAL-> one event PER UNIT, each quantity 1 and carrying its serialNo. That is not a choice made
+    //          here: the ledger's own validator requires quantity === 1 and a serialNo for a
+    //          SERIAL-tracked part (inventoryLedger/operationalMovementValidation.ts). The single
+    //          append-only ledger stays the one movement authority; this only stages the shape it
+    //          already defines.
     const ledgerStore = bufferedStore(INVENTORY_TRANSACTIONS_COLLECTION);
-    const ledgerEvent = {
+    const isSerial = line.trackingMode === "SERIAL";
+    const serialNumbers = line.serialNumbers ?? [];
+    if (isSerial && serialNumbers.length !== orderedQuantity) {
+      // Defensive: the validator already binds this to the authoritative ordered quantity.
+      throw new ReceivingIntegrityError("serial count does not match the ordered quantity");
+    }
+
+    const ledgerEventBase = {
       type: "RECEIVED",
       partId: part.partId,
       location: { type: value.receivingLocation.type, locationId: value.receivingLocation.locationId },
-      quantity: orderedQuantity,
       sourceObject: { type: "RECEIVING_ORDER", id: receivingId },
-      idempotencyKey: ledgerLineIdempotencyKey(receivingId, line.lineId),
       actor: { kind: actor.kind, id: actor.id },
       occurredAt: occurredAtMillis,
     };
-    const ledgerOutcome = await stageOperationalMovement(ledgerStore, ledgerEvent, { partId: part.partId, trackingMode: part.trackingMode }, { now });
-    const ledgerEventId = ledgerOutcome.docId;
 
-    // ---- decide apply vs replay (coherence: the two must agree) ----
-    if (receivingOutcome.outcome === "replayed") {
-      if (ledgerOutcome.outcome !== "replayed") throw new ReceivingIntegrityError("receiving replayed but ledger did not");
-      return { outcome: "replayed", receivingId, ledgerEventId };
+    const ledgerEvents = isSerial
+      ? serialNumbers.map((serialNo) => ({
+          ...ledgerEventBase,
+          quantity: 1,
+          serialNo,
+          idempotencyKey: ledgerSerialIdempotencyKey(receivingId, line.lineId, serialNo),
+        }))
+      : [{ ...ledgerEventBase, quantity: orderedQuantity, idempotencyKey: ledgerLineIdempotencyKey(receivingId, line.lineId) }];
+
+    const ledgerOutcomes = [];
+    for (const ev of ledgerEvents) {
+      ledgerOutcomes.push(await stageOperationalMovement(ledgerStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
     }
-    if (ledgerOutcome.outcome !== "applied") throw new ReceivingIntegrityError("receiving applied but ledger did not");
+    const ledgerEventIds = ledgerOutcomes.map((o) => o.docId);
+    const ledgerEventId = ledgerEventIds[0];
+
+    // ---- 9b. SERIAL: activate one Serialized Asset per unit, in THIS transaction ----
+    //
+    // Identity is deterministic on (partId, serialNo), so `create` IS the uniqueness check -- there is no
+    // read-then-write race. A pre-existing document is only acceptable when THIS receipt created it
+    // (activatedByReceivingId matches), which is the replay case; any other owner means the same physical
+    // unit is being received twice, and the whole receipt fails closed.
+    const serializedAssetIds: string[] = [];
+    if (isSerial) {
+      for (const serialNo of serialNumbers) {
+        const assetId = serializedAssetDocId(part.partId, serialNo);
+        const assetRef = deps.db.collection(SERIALIZED_ASSETS_COLLECTION).doc(assetId);
+        const assetSnap = await txn.get(assetRef); // read stays before the buffered write flush
+        if (assetSnap.exists) {
+          const existing = assetSnap.data() ?? {};
+          if (existing.activatedByReceivingId !== receivingId) throw new SerialIdentityConflictError();
+          // Same receipt -> replay; do not re-create.
+        } else {
+          writes.push({
+            op: "create",
+            ref: assetRef,
+            data: buildSerializedAssetForReceipt({
+              partId: part.partId,
+              serialNo,
+              locationId: value.receivingLocation.locationId,
+              receivingId,
+              actorId: actor.id,
+              now,
+            }),
+          });
+        }
+        serializedAssetIds.push(assetId);
+      }
+    }
+
+    // ---- decide apply vs replay (coherence: receiving and EVERY ledger effect must agree) ----
+    if (receivingOutcome.outcome === "replayed") {
+      if (ledgerOutcomes.some((o) => o.outcome !== "replayed")) throw new ReceivingIntegrityError("receiving replayed but ledger did not");
+      return { outcome: "replayed", receivingId, ledgerEventId, ledgerEventIds, ...(isSerial ? { serializedAssetIds } : {}) };
+    }
+    if (ledgerOutcomes.some((o) => o.outcome !== "applied")) throw new ReceivingIntegrityError("receiving applied but ledger did not");
 
     // ---- 10. transition ONLY reorder_requests ORDERED -> RECEIVED (apply path) ----
     if (req.status !== ORDERED) throw new SourceNotReceivableError("reorder request is not ORDERED");
@@ -218,6 +296,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       locationType: value.receivingLocation.type,
       locationId: value.receivingLocation.locationId,
       ledgerEventId,
+      ...(isSerial ? { serialCount: serialNumbers.length } : {}),
     });
 
     // ---- 13. flush all buffered writes. reorder_purchase_orders is never written. Commit is
@@ -226,6 +305,6 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       if (w.op === "create") txn.create(w.ref, w.data);
       else txn.update(w.ref, w.data);
     }
-    return { outcome: "applied", receivingId, ledgerEventId };
+    return { outcome: "applied", receivingId, ledgerEventId, ledgerEventIds, ...(isSerial ? { serializedAssetIds } : {}) };
   });
 }

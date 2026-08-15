@@ -53,9 +53,9 @@ export async function resolveReceivePermissionThroughTxn(txn: Transaction, db: F
   return result.decision === "ALLOW";
 }
 
-// First slice is NONE-only; the receiving validator rejects SERIAL/LOT. Map the Part-Master controlType
-// vocabulary to the ledger trackingMode vocabulary; anything non-STANDARD becomes a non-NONE mode the
-// validator will reject as "tracking mode not supported".
+// Map the Part-Master controlType vocabulary to the ledger trackingMode vocabulary. NONE and SERIAL are
+// both accepted by the receiving validator (Wave 7); LOT and any unrecognized controlType resolve to a
+// mode the validator rejects as "tracking mode not supported" -- fail closed on the unknown.
 function controlTypeToTrackingMode(controlType: string): string {
   switch (controlType) {
     case "STANDARD": return "NONE";
@@ -80,7 +80,12 @@ export async function resolveReceivePartThroughTxn(txn: Transaction, db: Firesto
 // Adapt the command's ReceiveAuditInput to the immutable trusted audit writer, staged on the same txn
 // (append-only). Uses the registered "receiveInventoryStock" AuditAction; summary is bounded + sanitized.
 export function stageReceiveAuditEvent(txn: Transaction, a: ReceiveAuditInput): void {
-  const summary = `Received qty ${a.quantity} of part ${a.partId} into ${a.locationType}:${a.locationId} (reorder ${a.reorderRequestId}, ledger ${a.ledgerEventId})`.slice(0, 500);
+  // SERIAL receipts additionally record how many Serialized Assets were activated. The serial NUMBERS
+  // themselves are deliberately not written into the summary: they are already durably recorded on the
+  // receiving order, the ledger events and the assets, and the audit summary is a bounded, sanitized
+  // line rather than a second copy of inventory identity.
+  const serials = typeof a.serialCount === "number" ? `, ${a.serialCount} serialized asset(s)` : "";
+  const summary = `Received qty ${a.quantity} of part ${a.partId} into ${a.locationType}:${a.locationId} (reorder ${a.reorderRequestId}, ledger ${a.ledgerEventId}${serials})`.slice(0, 500);
   stageAuditEvent(txn, {
     actorUid: a.actorId,
     action: a.action,

@@ -127,7 +127,7 @@ export async function runReceiveInventoryStock(request: CallableRequest<unknown>
   const actorUid = requireAuth(request);
   const validated = validateReceiveRequest(request.data);
   try {
-    return await receiveInventoryStockProduction(validated, {
+    const outcome = await receiveInventoryStockProduction(validated, {
       db: wiring.db,
       actor: { kind: "USER", id: actorUid },
       authorize: (txn, actorId, _capability) => wiring.resolvePermission(txn, actorId),
@@ -135,6 +135,12 @@ export async function runReceiveInventoryStock(request: CallableRequest<unknown>
       stageAudit: wiring.stageAudit,
       now: wiring.now,
     });
+    // The callable's PUBLIC response stays exactly these three fields. The command's own outcome also
+    // carries `ledgerEventIds` (and `serializedAssetIds` for a SERIAL receipt), but those are internal
+    // detail: widening a deployed callable's response is a contract change in its own right, and a
+    // client has no use for per-serial ids it cannot read anyway (serialized_assets is client-denied).
+    // receivingCallablesEmulator.test.mjs pins this key set deliberately.
+    return { outcome: outcome.outcome, receivingId: outcome.receivingId, ledgerEventId: outcome.ledgerEventId };
   } catch (err) {
     throw mapReceiveError(err);
   }

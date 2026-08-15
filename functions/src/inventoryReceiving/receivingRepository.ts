@@ -16,7 +16,8 @@ import {
   RECEIVING_SCHEMA_VERSION,
   RECEIVING_INITIAL_VERSION,
   RECEIVING_SOURCE_TYPES,
-  RECEIVING_LINE_TRACKING_MODE,
+  RECEIVING_SUPPORTED_TRACKING_MODES,
+  type ReceivingLineTrackingMode,
   RECEIVING_LINE_STATUS,
   IdempotencyConflictError,
   InvalidReceivingError,
@@ -63,7 +64,13 @@ export function serializeReceivingOrder(value: ReceivingOrderValue, actor: Recei
     receivingLocation: { type: value.receivingLocation.type, locationId: value.receivingLocation.locationId },
     status: value.status,
     version: value.version,
-    lines: value.lines.map((l) => ({ lineId: l.lineId, partId: l.partId, trackingMode: l.trackingMode, expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: l.status })),
+    lines: value.lines.map((l) => ({
+      lineId: l.lineId, partId: l.partId, trackingMode: l.trackingMode,
+      expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: l.status,
+      // Written only for a SERIAL line; a NONE line stores no serial key at all (the deserializer
+      // enforces that in both directions).
+      ...(l.serialNumbers === undefined ? {} : { serialNumbers: [...l.serialNumbers] }),
+    })),
     idempotencyKey: value.idempotencyKey,
     actor: { kind: actor.kind, id: actor.id },
     createdAt: Timestamp.fromDate(now),
@@ -86,7 +93,7 @@ const STORED_KEYS = new Set([
   "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint",
 ]);
 const RECEIVING_ID_RE = /^rcv_[0-9a-f]{40}$/;
-const STORED_LINE_KEYS = new Set(["lineId", "partId", "trackingMode", "expectedQuantity", "receivedQuantity", "status"]);
+const STORED_LINE_KEYS = new Set(["lineId", "partId", "trackingMode", "expectedQuantity", "receivedQuantity", "status", "serialNumbers"]);
 
 // Fail-closed deserialize of a stored receiving_orders record. Validates self-consistency (first-slice
 // shape: PUTAWAY_COMPLETE / version 1 / one NONE line / expected == received), converts server
@@ -112,9 +119,26 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
   const l = data.lines[0];
   if (!isPlainObject(l) || Object.keys(l).some((k) => !STORED_LINE_KEYS.has(k))) throw new MalformedStoredRecordError("stored line shape invalid");
   if (!isNonEmptyString(l.lineId) || !isNonEmptyString(l.partId)) throw new MalformedStoredRecordError("stored line identity invalid");
-  if (l.trackingMode !== RECEIVING_LINE_TRACKING_MODE || l.status !== RECEIVING_LINE_STATUS) throw new MalformedStoredRecordError("stored line mode/status invalid");
+  if (!(RECEIVING_SUPPORTED_TRACKING_MODES as readonly string[]).includes(l.trackingMode as string) || l.status !== RECEIVING_LINE_STATUS) {
+    throw new MalformedStoredRecordError("stored line mode/status invalid");
+  }
+  const storedMode = l.trackingMode as ReceivingLineTrackingMode;
   if (!isPositiveFiniteNumber(l.expectedQuantity) || !isPositiveFiniteNumber(l.receivedQuantity) || l.expectedQuantity !== l.receivedQuantity) {
     throw new MalformedStoredRecordError("stored line quantity invalid");
+  }
+  // Serial identity, re-validated on the way OUT with the same rules applied on the way in. A stored
+  // record that lost, gained, duplicated or mis-counted its serials is malformed -- never normalized
+  // into validity, because this value is what replay coherence is fingerprinted against.
+  let storedSerialNumbers: string[] | undefined;
+  if (storedMode === "SERIAL") {
+    if (!Array.isArray(l.serialNumbers)) throw new MalformedStoredRecordError("stored SERIAL line has no serialNumbers");
+    const serials = l.serialNumbers as unknown[];
+    if (!serials.every((s) => isNonEmptyString(s))) throw new MalformedStoredRecordError("stored serialNumbers invalid");
+    if (serials.length !== l.receivedQuantity) throw new MalformedStoredRecordError("stored serialNumbers count does not match receivedQuantity");
+    if (new Set(serials as string[]).size !== serials.length) throw new MalformedStoredRecordError("stored serialNumbers contain duplicates");
+    storedSerialNumbers = [...(serials as string[])];
+  } else if (l.serialNumbers !== undefined) {
+    throw new MalformedStoredRecordError("stored NONE line must not carry serialNumbers");
   }
   if (!isNonEmptyString(data.idempotencyKey)) throw new MalformedStoredRecordError("stored idempotencyKey invalid");
   // Stored identity must be a path-safe receivingId that agrees with the idempotency-derived doc id.
@@ -129,7 +153,11 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
   if (data.createdAt.toMillis() !== data.updatedAt.toMillis()) throw new MalformedStoredRecordError("stored createdAt/updatedAt are not the same instant");
   if (typeof data.fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(data.fingerprint)) throw new MalformedStoredRecordError("stored fingerprint invalid");
 
-  const line: ReceivingLineValue = { lineId: l.lineId, partId: l.partId, trackingMode: RECEIVING_LINE_TRACKING_MODE, expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: RECEIVING_LINE_STATUS };
+  const line: ReceivingLineValue = {
+    lineId: l.lineId, partId: l.partId, trackingMode: storedMode,
+    expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: RECEIVING_LINE_STATUS,
+    ...(storedSerialNumbers === undefined ? {} : { serialNumbers: storedSerialNumbers }),
+  };
   const value: ReceivingOrderValue = {
     source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: source.reorderRequestId, purchaseOrderId: source.purchaseOrderId },
     receivingLocation: { type: location.type, locationId: location.locationId },

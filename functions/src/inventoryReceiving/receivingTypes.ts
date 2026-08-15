@@ -26,8 +26,17 @@ export type ReceivingOrderStatus = (typeof RECEIVING_ORDER_STATUSES)[number];
 export const RECEIVING_SOURCE_TYPES = ["REORDER_PURCHASE_ORDER"] as const;
 export type ReceivingSourceType = (typeof RECEIVING_SOURCE_TYPES)[number];
 
-// First slice: NONE tracking only; SERIAL/LOT fail closed (deferred).
+// NONE remains the default/first-slice mode. Kept as its own constant because a great deal of existing
+// code and test data refers to "the NONE line".
 export const RECEIVING_LINE_TRACKING_MODE = "NONE" as const;
+
+// Wave 7 (Owner decision, docs/releases/serialized-asset-registry-slice-b-boundary.md): Receiving is
+// authorized to accept SERIAL in ADDITION to NONE, so that receipt creates/activates the authoritative
+// Serialized Asset per the serialized-asset Specification §F. LOT stays deferred and fails closed --
+// it is deliberately absent from this list, so it still resolves to "tracking_mode_unsupported".
+export const RECEIVING_SUPPORTED_TRACKING_MODES = ["NONE", "SERIAL"] as const;
+export type ReceivingLineTrackingMode = (typeof RECEIVING_SUPPORTED_TRACKING_MODES)[number];
+
 export const RECEIVING_LINE_STATUS = "RECEIVED" as const;
 
 export interface ReceivingSourceRef {
@@ -46,10 +55,15 @@ export interface ReceivingActor {
 export interface ReceivingLineValue {
   readonly lineId: string;
   readonly partId: string;
-  readonly trackingMode: typeof RECEIVING_LINE_TRACKING_MODE;
+  readonly trackingMode: ReceivingLineTrackingMode;
   readonly expectedQuantity: number;
   readonly receivedQuantity: number;
   readonly status: typeof RECEIVING_LINE_STATUS;
+  // SERIAL ONLY. Present iff trackingMode === "SERIAL", and then exactly `receivedQuantity` distinct
+  // serial numbers -- one physical unit, one serial, one Serialized Asset, one ledger effect. Absent
+  // for NONE (its presence there fails closed): a NONE line has no serial identity to record, and
+  // accepting one would create a second, unauthoritative place serial identity could live.
+  readonly serialNumbers?: readonly string[];
 }
 
 // The normalized, shape-validated Receiving Order value (the untrusted-input-derived part). Server-

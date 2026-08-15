@@ -96,10 +96,79 @@ await check("empty / multiple lines and part mismatch rejected", () => {
   assert.equal(V.validateReceivingOrderInput(input({ line: { partId: "OTHER" } }), AUTH).reason, "part_mismatch");
 });
 
-// ---- SERIAL / LOT deferred --------------------------------------------------------------------
-await check("SERIAL and LOT fail closed (tracking_mode_unsupported)", () => {
-  assert.equal(V.validateReceivingOrderInput(input(), { ...AUTH, part: { partId: "P1", trackingMode: "SERIAL" } }).reason, "tracking_mode_unsupported");
+// ---- SERIAL supported (Wave 7 Owner decision) / LOT still deferred -----------------------------
+//
+// This check previously asserted that SERIAL *and* LOT both failed closed. The Owner authorized SERIAL
+// intake through the existing Receiving authority (docs/releases/serialized-asset-registry-slice-b-boundary.md),
+// so the SERIAL half is restated rather than deleted: SERIAL is now accepted, and its own rules are
+// asserted below. LOT's deferral is unchanged and still locked here.
+const SERIAL_AUTH = { ...AUTH, part: { partId: "P1", trackingMode: "SERIAL" } };
+const serialLine = (over = {}) => line({ serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", "SN-5"], ...over });
+const serialInput = (over = {}) => input({ line: serialLine(over) });
+
+await check("LOT still fails closed (tracking_mode_unsupported)", () => {
   assert.equal(V.validateReceivingOrderInput(input(), { ...AUTH, part: { partId: "P1", trackingMode: "LOT" } }).reason, "tracking_mode_unsupported");
+  // An unrecognized mode is not silently treated as NONE either.
+  assert.equal(V.validateReceivingOrderInput(input(), { ...AUTH, part: { partId: "P1", trackingMode: "WHATEVER" } }).reason, "tracking_mode_invalid");
+});
+
+await check("SERIAL: a valid receipt carries one serial per received unit", () => {
+  const r = V.validateReceivingOrderInput(serialInput(), SERIAL_AUTH);
+  assert.equal(r.valid, true, r.reason);
+  assert.deepEqual(r.value.lines[0], {
+    lineId: "L1", partId: "P1", trackingMode: "SERIAL",
+    expectedQuantity: 5, receivedQuantity: 5, status: "RECEIVED",
+    serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", "SN-5"],
+  });
+});
+
+await check("SERIAL: missing, miscounted, malformed or duplicated serials all fail closed", () => {
+  assert.equal(V.validateReceivingOrderInput(input(), SERIAL_AUTH).reason, "serial_numbers_missing");
+  assert.equal(V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1"] }), SERIAL_AUTH).reason, "serial_count_mismatch");
+  assert.equal(V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", "SN-5", "SN-6"] }), SERIAL_AUTH).reason, "serial_count_mismatch");
+  assert.equal(V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", ""] }), SERIAL_AUTH).reason, "serial_number_invalid");
+  assert.equal(V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", 5] }), SERIAL_AUTH).reason, "serial_number_invalid");
+  assert.equal(V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1", "SN-1", "SN-3", "SN-4", "SN-5"] }), SERIAL_AUTH).reason, "serial_numbers_duplicated");
+});
+
+await check("SERIAL: serials are trimmed but NOT case-folded (serial identity is case-significant)", () => {
+  const r = V.validateReceivingOrderInput(serialInput({ serialNumbers: ["  SN-1 ", "sn-1", "SN-3", "SN-4", "SN-5"] }), SERIAL_AUTH);
+  assert.equal(r.valid, true, r.reason);
+  // "  SN-1 " trims to "SN-1"; "sn-1" stays distinct from it rather than colliding.
+  assert.deepEqual(r.value.lines[0].serialNumbers, ["SN-1", "sn-1", "SN-3", "SN-4", "SN-5"]);
+});
+
+await check("NONE: a serialNumbers key is REJECTED (a NONE line has no serial identity)", () => {
+  assert.equal(V.validateReceivingOrderInput(input({ line: line({ serialNumbers: ["SN-1"] }) }), AUTH).reason, "serial_numbers_not_allowed");
+});
+
+await check("SERIAL: serialize -> deserialize round-trips the serials; a tampered stored line fails closed", () => {
+  const v = V.validateReceivingOrderInput(serialInput(), SERIAL_AUTH).value;
+  const data = R.serializeReceivingOrder(v, actor, now, R.fingerprintReceivingOrder(v));
+  assert.deepEqual(R.deserializeReceivingOrder(data).value, v);
+
+  const dropped = { ...data, lines: [{ ...data.lines[0], serialNumbers: undefined }] };
+  delete dropped.lines[0].serialNumbers;
+  assert.throws(() => R.deserializeReceivingOrder(dropped), /serialNumbers/);
+
+  const miscounted = { ...data, lines: [{ ...data.lines[0], serialNumbers: ["SN-1"] }] };
+  assert.throws(() => R.deserializeReceivingOrder(miscounted), /count/);
+
+  const duped = { ...data, lines: [{ ...data.lines[0], serialNumbers: ["SN-1", "SN-1", "SN-3", "SN-4", "SN-5"] }] };
+  assert.throws(() => R.deserializeReceivingOrder(duped), /duplicates/);
+
+  // A NONE line that somehow acquired serials is malformed too.
+  const noneValue = V.validateReceivingOrderInput(input(), AUTH).value;
+  const noneData = R.serializeReceivingOrder(noneValue, actor, now, R.fingerprintReceivingOrder(noneValue));
+  const noneWithSerials = { ...noneData, lines: [{ ...noneData.lines[0], serialNumbers: ["SN-1"] }] };
+  assert.throws(() => R.deserializeReceivingOrder(noneWithSerials), /must not carry serialNumbers/);
+});
+
+await check("SERIAL: the same key with DIFFERENT serials is a conflict, not a replay", () => {
+  // Serials are part of the fingerprinted request value, so swapping one cannot masquerade as a retry.
+  const a = V.validateReceivingOrderInput(serialInput(), SERIAL_AUTH).value;
+  const b = V.validateReceivingOrderInput(serialInput({ serialNumbers: ["SN-1", "SN-2", "SN-3", "SN-4", "SN-9"] }), SERIAL_AUTH).value;
+  assert.notEqual(R.fingerprintReceivingOrder(a), R.fingerprintReceivingOrder(b));
 });
 
 // ---- idempotency ------------------------------------------------------------------------------
