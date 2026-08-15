@@ -104,7 +104,9 @@
     "test:manufacturerRead": "npm run build && node --test test/manufacturerReadService.test.mjs",
     "test:manufacturerReadEmulator": "npm run build && node --test test/manufacturerReadCallable.test.mjs",
     "test:partSupplierItemCallables": "npm run build && node test/partSupplierItemCallablesExport.test.mjs && node test/partSupplierItemProjections.test.mjs && node test/partSupplierItemCallables.test.mjs",
-    "test:workOrderFieldContext": "npm run build && node --test test/workOrderFieldContext.test.mjs"
+    "test:workOrderFieldContext": "npm run build && node --test test/workOrderFieldContext.test.mjs",
+    "test:serializedAssetRead": "npm run build && node --test test/serializedAssetValue.test.mjs test/serializedAssetReadService.test.mjs",
+    "test:serializedAssetReadEmulator": "npm run build && node --test test/serializedAssetReadCallable.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
