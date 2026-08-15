@@ -100,6 +100,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "opportunity.write",
   "opportunity.read",
   "opportunity.createSalesOrder",
+  "salesOrder.read",
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",

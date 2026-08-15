@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -286,6 +287,19 @@ function OpportunityDetail({ row, readiness, onSaveSection }) {
     { key: "value", label: "Est. value", value: currency(row.expectedValue) },
     { key: "close", label: "Expected close", value: shortDate(row.expectedCloseAt) },
     { key: "owner", label: "Owner", value: row.ownerEmployeeId ?? "—" },
+    // Sales Order lineage (Owner-ratified 2026-08-15: "Preserve Opportunity -> Sales Order
+    // lineage visibly"). WON-with-no-SO-yet is an honest, distinct state from "not applicable" --
+    // never hidden just because the row isn't WON (a real link should always be reachable the
+    // moment it exists, regardless of stage/outcome).
+    {
+      key: "salesOrder",
+      label: "Sales Order",
+      value: row.salesOrderId
+        ? <Link to={`/customers/opportunities/sales-order/${row.salesOrderId}`}>{row.salesOrderId}</Link>
+        : row.outcome === "WON"
+          ? <span className="fo-muted">Not created yet</span>
+          : "—",
+    },
   ];
 
   // Render order: commercial / need / solution / next-action / qualification (editable), then a Lifecycle

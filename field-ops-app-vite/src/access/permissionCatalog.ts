@@ -155,6 +155,20 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "createSalesOrder",
     active: false,
   }),
+  // Sales Order read -- Owner-ratified 2026-08-15: "A user cannot meaningfully perform... governed
+  // Sales Order operations without a governed way to inspect the Sales Order state they operate on.
+  // This is an authority gap, not merely a missing screen." Follows the opportunity.read pattern
+  // exactly: a trusted minimal read projection (functions/src/salesOrder/salesOrderReadService.ts),
+  // never a client-direct sales_orders Rules widening (sales_orders stays Admin-SDK-only deny-all).
+  // Registered active:false (fail-closed) until a separate grant + per-environment activation.
+  Object.freeze({
+    id: "salesOrder.read",
+    description:
+      "Read the minimal governed Sales Order projection (identity, account, source Opportunity, lifecycle state, lines with the ordered/allocated/fulfilled/billed quantity model, service Work Order lineage) via the trusted getSalesOrderContext read service. Backend-resolved scope; no client-direct sales_orders read.",
+    resource: "salesOrder",
+    action: "read",
+    active: false,
+  }),
   // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command,
   // registered active:false. Committed commercial order following a WON Opportunity.
   Object.freeze({

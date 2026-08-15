@@ -11,6 +11,7 @@ import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
 import SalesWorkspace from "./modules/sales/SalesWorkspace";
+import SalesOrderDetail from "./modules/sales/SalesOrderDetail.jsx";
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
@@ -490,6 +491,12 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               {["contacts", "locations", "equipment", "service-history"].map((retired) => (
                 <Route key={retired} path={retired} element={<Navigate to="/customers" replace />} />
               ))}
+              {/* Post-Wave-5 -- minimum usable Sales Order view (Owner-ratified 2026-08-15).
+                  Nested under opportunities/ since the Sales Order back-link is reached from an
+                  Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
+                  the dynamic :accountId sibling route, same reasoning as the retired-paths block
+                  above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
+              <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetail />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>
           )}

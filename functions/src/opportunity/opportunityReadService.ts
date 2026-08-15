@@ -40,6 +40,12 @@ export interface OpportunityProjection {
   expectedCloseAt: number | null;
   nextAction: string | null;
   lines: Array<{ kind: string; ref: string; qty?: number }>;
+  // The Sales Order back-link createSalesOrderFromOpportunity.ts writes atomically on WON->Create
+  // Sales Order (functions/src/opportunity/createSalesOrderFromOpportunity.ts). Added 2026-08-15
+  // alongside salesOrder.read -- Owner: "Preserve Opportunity -> Sales Order lineage visibly." Was
+  // previously written but never projected, so the lineage existed in Firestore but was invisible
+  // to every reader (the exact "coordination invisibility" finding from the gap audit).
+  salesOrderId: string | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
@@ -73,6 +79,7 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     expectedCloseAt: num(data.expectedCloseAt),
     nextAction: str(data.nextAction),
     lines,
+    salesOrderId: str(data.salesOrderId),
   };
 }
 

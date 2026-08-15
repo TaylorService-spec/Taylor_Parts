@@ -24,6 +24,9 @@ export { listOpportunityContext } from "./opportunity/opportunityReadService";
 // P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
 // EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT).
 export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";
+// Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
+// active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
+export { getSalesOrderContext } from "./salesOrder/salesOrderReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
