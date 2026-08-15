@@ -201,7 +201,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // pending a separate Owner grant), same additive posture.
 // Sales Opportunity Cycle 3: opportunity.write is registered `active: false` (the governed Opportunity write
 // command's capability, ungranted-by-design pending a separate Owner grant), same additive posture.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read"];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
