@@ -364,6 +364,92 @@ export const CRM_ACTIVITY_CONTRIBUTOR_ROLE: Role = Object.freeze({
   permissions: ["crm.activity.create", "crm.activity.read"],
 }) as Role;
 
+// Inventory transfer operator -- the durable least-privilege Role for the governed Transfer Order
+// authority (create -> dispatch -> receive, plus cancel).
+//
+// Same situation the two Roles above were written for: all four ids were registered active:false and
+// carried by NO Role, so the Transfer surface could ship, be activated in an environment, and still
+// deny every principal. Activation is not authorization; this Role is the authorization half.
+//
+// WHY ONE ROLE FOR ALL FOUR: a transfer is a single custody movement whose steps are performed by the
+// same operational owner -- whoever sends stock is who confirms it arrived, and cancel is the same
+// authority declining to complete its own movement. Splitting dispatch from receive would not create
+// segregation of duties, it would only make an ordinary transfer un-completable by its owner. Cycle
+// Count below is split precisely because that separation IS meaningful there.
+//
+// Least privilege: exactly these four ids. It confers no catalog write, no receiving authority, and
+// no stock adjustment power -- a transfer moves existing units between locations and creates none.
+//
+// `privileged: false` on the same reasoning as its siblings: it administers no security/access
+// policy, grants no admin authority, bypasses no trusted-command authorization, and cannot alter or
+// suppress audit evidence. DECLARING THIS OBJECT GRANTS NOTHING.
+export const INVENTORY_TRANSFER_OPERATOR_ROLE: Role = Object.freeze({
+  id: "inventoryTransferOperator",
+  name: "Inventory Transfer Operator",
+  description:
+    "Durable least-privilege Role for moving stock between inventory locations through the governed Transfer Order commands. Carries exactly inventory.transfer.create/dispatch/receive/cancel and nothing else; it confers no catalog write, receiving, or stock-adjustment authority. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "inventory.transfer.cancel",
+  ],
+}) as Role;
+
+// Cycle count counter -- opens a count, submits the counted figures, and may cancel a count it
+// opened. Deliberately does NOT carry inventory.cycleCount.reconcile.
+//
+// SEGREGATION OF DUTIES, not fragmentation for its own sake. Reconciling a cycle count is what turns
+// a claimed variance into a real ledger adjustment -- it is the step that changes on-hand quantity.
+// Letting the same principal both report the count and approve the adjustment it implies would mean
+// one person could write inventory to any number they chose and have it accepted, with no second
+// party in the path. That is the classic inventory-shrinkage control, and it is the reason these four
+// ids are split across two Roles rather than collected into one convenient "cycle count" Role.
+//
+// A principal may of course hold both Roles where an organisation accepts that risk; the point is
+// that doing so is then an explicit, audited grant decision rather than an invisible default.
+//
+// `privileged: false` on the same reasoning as its siblings. DECLARING THIS OBJECT GRANTS NOTHING.
+export const INVENTORY_CYCLE_COUNT_COUNTER_ROLE: Role = Object.freeze({
+  id: "inventoryCycleCountCounter",
+  name: "Inventory Cycle Count Counter",
+  description:
+    "Durable least-privilege Role for performing a physical cycle count: opening a count, submitting counted quantities, and cancelling one. Carries exactly inventory.cycleCount.create/submit/cancel and deliberately NOT inventory.cycleCount.reconcile, so the principal who reports a variance is not also the one who approves the adjustment. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.submit",
+    "inventory.cycleCount.cancel",
+  ],
+}) as Role;
+
+// Cycle count reconciler -- the approving half of the control described above. Carries exactly
+// inventory.cycleCount.reconcile: the authority to accept a submitted count and let it adjust
+// on-hand quantity through the governed reconcile command's own append-only ledger write.
+//
+// It carries no ability to open or submit a count, which is what keeps the two halves independent:
+// a reconciler can only ever act on a count somebody else reported.
+//
+// `privileged: false`. Reconciling adjusts inventory, not access: it administers no security policy,
+// grants no admin authority, and cannot alter or suppress the audit evidence of its own decision --
+// the adjustment and its Audit Event are written in the command's single transaction.
+// DECLARING THIS OBJECT GRANTS NOTHING.
+export const INVENTORY_CYCLE_COUNT_RECONCILER_ROLE: Role = Object.freeze({
+  id: "inventoryCycleCountReconciler",
+  name: "Inventory Cycle Count Reconciler",
+  description:
+    "Durable least-privilege Role for approving a submitted cycle count and allowing it to adjust on-hand quantity. Carries exactly inventory.cycleCount.reconcile and nothing else -- notably no authority to open or submit a count, so a reconciler can only act on a count reported by someone else. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["inventory.cycleCount.reconcile"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -377,4 +463,7 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   inventoryCatalogAdministrator: INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
   workOrderPartsPlanner: WORK_ORDER_PARTS_PLANNER_ROLE,
   crmActivityContributor: CRM_ACTIVITY_CONTRIBUTOR_ROLE,
+  inventoryTransferOperator: INVENTORY_TRANSFER_OPERATOR_ROLE,
+  inventoryCycleCountCounter: INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
+  inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
 });

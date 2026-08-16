@@ -59,6 +59,9 @@ const EXPECTED_IDS = [
   "inventoryCatalogAdministrator",
   "workOrderPartsPlanner",
   "crmActivityContributor",
+  "inventoryTransferOperator",
+  "inventoryCycleCountCounter",
+  "inventoryCycleCountReconciler",
 ];
 
 function grant(roleId, roles) {
@@ -86,9 +89,45 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the twelve ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the fifteen ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator + the four capability-specific Roles added since)", () => {
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 12);
+  assert.equal(ALL_GOVERNED_ROLES.length, 15);
+});
+
+// Cycle Count segregation of duties. The counting authority and the approving authority are split
+// across two Roles on purpose: reconcile is the step that actually adjusts on-hand quantity, so a
+// principal who could both submit a count and reconcile it could write inventory to any number with
+// no second party in the path. Collapsing these two Roles into one convenient "cycle count" Role
+// would silently remove that control, so it is pinned here rather than left to a code comment.
+check("cycle count COUNTER cannot reconcile, and RECONCILER cannot count", () => {
+  const counter = GOVERNED_BUSINESS_ROLES.inventoryCycleCountCounter;
+  const reconciler = GOVERNED_BUSINESS_ROLES.inventoryCycleCountReconciler;
+  assert.equal(counter.permissions.includes("inventory.cycleCount.reconcile"), false);
+  assert.equal(reconciler.permissions.includes("inventory.cycleCount.submit"), false);
+  assert.equal(reconciler.permissions.includes("inventory.cycleCount.create"), false);
+  // Between them they cover the whole family exactly once -- no id is orphaned or duplicated.
+  const union = [...counter.permissions, ...reconciler.permissions].sort();
+  assert.deepEqual(union, [
+    "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.submit",
+  ]);
+});
+
+// The transfer Role is deliberately NOT split (a transfer is one custody movement performed by one
+// operational owner), but it must still stay inside its own domain.
+check("transfer operator carries exactly the four transfer ids and no adjacent inventory authority", () => {
+  const role = GOVERNED_BUSINESS_ROLES.inventoryTransferOperator;
+  assert.deepEqual([...role.permissions].sort(), [
+    "inventory.transfer.cancel",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+  ]);
+  for (const forbidden of ["inventory.catalog.manage", "inventory.stock.receive", "inventory.cycleCount.reconcile"]) {
+    assert.equal(role.permissions.includes(forbidden), false, `transfer operator must not carry ${forbidden}`);
+  }
 });
 
 check("every governed business Role's own .id matches its map key", () => {
