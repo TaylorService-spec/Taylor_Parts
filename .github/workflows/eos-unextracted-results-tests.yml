@@ -1,0 +1,29 @@
+name: EOS unextracted-result detector
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/unextractedResults*.mjs"
+      - "docs/orchestration/context/scan-unextracted-results.mjs"
+      - ".github/workflows/eos-unextracted-results-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/unextractedResults*.mjs"
+      - "docs/orchestration/context/scan-unextracted-results.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests
+        run: node --test "docs/orchestration/lib/unextractedResults.test.mjs"
+      # Report-only on purpose: known-unextracted historical results (EOS-ISSUE-852)
+      # are expected to be flagged until they are dispositioned. Not --strict, so a
+      # pre-existing backlog cannot block unrelated PRs.
+      - name: Scan landed results (report-only)
+        run: node docs/orchestration/context/scan-unextracted-results.mjs
