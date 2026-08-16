@@ -1,5 +1,10 @@
 import { ROLES, EMPLOYMENT_STATUS, OPERATIONAL_ROLE } from "../domain/constants.js";
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITIES } from "../access/reportAccess.js";
+import {
+  TRANSFER_SURFACE_CAPABILITIES,
+  CYCLE_COUNT_SURFACE_CAPABILITIES,
+  CATALOG_SURFACE_CAPABILITIES,
+} from "../access/governedSurfaceCapabilities.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
@@ -207,7 +212,9 @@ export const NAV_DOMAINS = [
     label: "Inventory",
     path: "inventory",
     subnav: [
-      { key: "parts", label: "Parts", path: "", legacyKey: "inventory" },
+      // The catalog operating surface. Reachable by governed catalog authority (so an
+      // inventoryCatalogAdministrator can exercise what it holds) OR by the unchanged compatibility path.
+      { key: "parts", label: "Parts", path: "", legacyKey: "inventory", capabilityAccess: CATALOG_SURFACE_CAPABILITIES },
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       //
@@ -236,7 +243,10 @@ export const NAV_DOMAINS = [
       { key: "manufacturers", label: "Manufacturers", path: "manufacturers", navHidden: true },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
-      { key: "transfers", label: "Transfers", path: "transfers" },
+      // Reachable by governed transfer authority OR by the existing compatibility path. `legacyKey`
+      // "inventory" is the SAME admin/dispatcher set this item already had via PLACEHOLDER_DEFAULT_ROLES,
+      // stated explicitly so the capability check has something to fall through to without widening access.
+      { key: "transfers", label: "Transfers", path: "transfers", legacyKey: "inventory", capabilityAccess: TRANSFER_SURFACE_CAPABILITIES },
       { key: "receiving", label: "Receiving", path: "receiving" },
       // Wave 6 Owner decision (2026-08-15): hidden from normal navigation while these
       // remain pure route stubs with no backend capability behind them (confirmed by
@@ -247,7 +257,12 @@ export const NAV_DOMAINS = [
       // which App.jsx's route generator does NOT check, so nothing here changes what a
       // direct/deep link resolves to. Restore the nav entry (delete this flag) once a
       // real capability exists and is ready for user testing.
-      { key: "cycleCounts", label: "Cycle Counts", path: "cycle-counts", navHidden: true },
+      // navHidden REMOVED (Owner decision 2026-08-16). The flag above was explicit that it should be
+      // restored "once a real capability exists and is ready for user testing" -- that condition is now
+      // met: four governed cycle-count callables are deployed and ACTIVE, the capabilities are activated
+      // in this environment, and two governed Roles carry them. Keeping it hidden would now be the
+      // dishonest state, not the honest one. Back Orders below stays hidden -- it still has no backend.
+      { key: "cycleCounts", label: "Cycle Counts", path: "cycle-counts", legacyKey: "inventory", capabilityAccess: CYCLE_COUNT_SURFACE_CAPABILITIES },
       { key: "backOrders", label: "Back Orders", path: "back-orders", navHidden: true },
     ],
   },
@@ -414,23 +429,39 @@ function hasEligibleOperationalRole(operationalRoleAccess, role, operationalCont
 // existing legacyKey/PLACEHOLDER_DEFAULT_ROLES/alwaysVisible item's
 // behavior is byte-for-byte unchanged regardless of whether this
 // argument is passed at all.
+function holdsDeclaredCapability(item, operationalContext) {
+  const hasCapability = operationalContext?.hasCapability;
+  // Fails closed when no previewer is supplied, and when the feed is loading/errored/unknown --
+  // buildHasCapability() only ever returns true for a current, version-matched positive decision.
+  return typeof hasCapability === "function"
+    && item.capabilityAccess.some((cap) => hasCapability(cap) === true);
+}
+
 export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
   if (item.alwaysVisible) return true;
-  // Issue #325 W1 -- capability-gated item: visible iff the session effectively holds at least one
-  // of the item's declared capabilities, decided by the injected `hasCapability` preview
-  // (operationalContext.hasCapability, bound in App.jsx to the Permission resolver over the
-  // compatibility + governed-business Roles). Fails closed when no previewer is supplied.
-  if (item.capabilityAccess) {
-    const hasCapability = operationalContext?.hasCapability;
-    return typeof hasCapability === "function"
-      && item.capabilityAccess.some((cap) => hasCapability(cap) === true);
-  }
+
+  // GOVERNED CAPABILITY IS THE FINAL ACCESS AUTHORITY FOR GOVERNED SURFACES (Owner decision
+  // 2026-08-16, closing #1065). A positive governed decision grants visibility OUTRIGHT and is never
+  // overridden by the compatibility-role checks below -- that is the whole point: a principal holding
+  // only a governed business Role (inventoryTransferOperator, inventoryCycleCountCounter, ...) used to
+  // resolve ALLOW for the capability and still be redirected away from the surface it was for.
+  //
+  // A NEGATIVE decision, by contrast, falls THROUGH to the paths below rather than denying outright,
+  // so an item may declare both a capability set and a compatibility path and admit either. That is
+  // what keeps today's admin/dispatcher users working unchanged while the governed model converges.
+  if (item.capabilityAccess && holdsDeclaredCapability(item, operationalContext)) return true;
+
   if (item.operationalRoleAccess) {
     return hasEligibleOperationalRole(item.operationalRoleAccess, role, operationalContext);
   }
   if (item.legacyKey) {
     return (allowedLegacyKeys ?? []).includes(item.legacyKey);
   }
+  // A capability-gated item that declares NO compatibility path stays fail-closed: reaching here means
+  // its capability decision was not positive, and it must NOT fall back to the default role list.
+  // (Report Builder / Saved Reports rely on exactly this -- byte-for-byte their previous behaviour.)
+  if (item.capabilityAccess) return false;
+
   return PLACEHOLDER_DEFAULT_ROLES.includes(role);
 }
 

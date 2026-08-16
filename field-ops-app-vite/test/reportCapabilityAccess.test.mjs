@@ -13,6 +13,7 @@ import {
   SIGNED_OUT_VERSION, IDLE_FEED, isValidObservedVersion, interpretAccessResult, buildHasCapability,
 } from "../src/access/reportCapabilityAccess.js";
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "../src/access/reportAccess.js";
+import { GOVERNED_SURFACE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -22,15 +23,24 @@ const versionReady = (uid, v) => ({ status: VERSION_STATUS.READY, uid, version: 
 const feedReady = (uid, forVersion, decisions) => ({ status: FEED_STATUS.READY, forUid: uid, forVersion, decisions });
 const grants = (version, feed, uid) => buildHasCapability({ version, feed }, uid)(CAP);
 
-ok("requests the four wave-1 object-read ids PLUS the five saved-definition ids -- nothing more", () => {
+ok("requests the report ids PLUS the governed surface ids -- a closed, declared list, nothing more", () => {
+  // EXTENDED 2026-08-16 (Owner decision closing #1065): navigation for capability-backed surfaces is
+  // now decided by governed capabilities, so the shell must have a DECISION on those ids too --
+  // resolved in the SAME request against the SAME accessVersion, which is the consistency property
+  // this request exists to guarantee. Still closed and declared: the assertion below is exact, so an
+  // arbitrary or accidental id cannot be slipped into the feed request without failing here.
   assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [
-    ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES, ...REPORT_DEFINITION_CAPABILITY_IDS,
+    ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
+    ...REPORT_DEFINITION_CAPABILITY_IDS,
+    ...GOVERNED_SURFACE_CAPABILITY_IDS,
   ]);
   assert.deepEqual([...REPORT_DEFINITION_CAPABILITY_IDS].sort(), [
     "report.definition.create", "report.definition.delete", "report.definition.duplicate",
     "report.definition.read", "report.definition.rename",
   ]);
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9);
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length);
+  // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
+  assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });
 
 // ---- observed-version validation -------------------------------------------
