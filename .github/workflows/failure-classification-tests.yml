@@ -1,0 +1,25 @@
+name: Failure classification
+
+# Guards the rule that a deterministic failure fails ONCE. A regression here restores the
+# 2026-08-13 defect: a workflows-permission denial retried five times, wasting capacity and
+# burying the root cause for three days.
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/failureClassification*.mjs"
+      - "docs/orchestration/lib/autonomyPolicy*.mjs"
+      - ".github/workflows/failure-classification-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/failureClassification*.mjs"
+      - "docs/orchestration/lib/autonomyPolicy*.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test docs/orchestration/lib/failureClassification.test.mjs docs/orchestration/lib/autonomyPolicy.test.mjs

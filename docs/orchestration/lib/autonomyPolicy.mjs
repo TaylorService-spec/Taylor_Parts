@@ -1,3 +1,4 @@
+import { classifyFailure } from "./failureClassification.mjs";
 // Option-B bounded autonomy policy (Phase 5) — DESIGN ONLY, NOT ACTIVATED.
 //
 // Pure, tested parameters + decision functions for eventual unattended operation.
@@ -54,7 +55,17 @@ export function classifyBudget(spent = {}, policy = PROPOSED_AUTONOMY_POLICY) {
 }
 
 // --- Retries / backoff (network-aware: no retry storm) ---
-export function retryDecision({ attempt = 0, networkState = "NORMAL" } = {}, policy = PROPOSED_AUTONOMY_POLICY) {
+export function retryDecision({ attempt = 0, networkState = "NORMAL", failure = null } = {}, policy = PROPOSED_AUTONOMY_POLICY) {
+  // CLASSIFY BEFORE RETRYING (eos-operational-authorization.md §6). Attempt count alone cannot
+  // distinguish a transient blip from a deterministic denial -- which is how a workflows-permission
+  // rejection was retried FIVE TIMES on 2026-08-13. When the caller supplies the failure, a
+  // non-retryable class fails FAST and once. Optional, so existing callers are unaffected.
+  if (failure) {
+    const c = classifyFailure(failure);
+    if (!c.retryable) {
+      return { decision: "FAIL_FAST", reason: c.failureClass, detail: c.reason, backoffSeconds: null };
+    }
+  }
   if (networkState === "NETWORK_UNAVAILABLE" || networkState === "NETWORK_PRESSURE") {
     return { decision: "HOLD", reason: "NETWORK_NOT_NORMAL", backoffSeconds: null }; // do not retry against a degraded link
   }
