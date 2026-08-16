@@ -14,9 +14,12 @@ import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
 import ServiceActivitySection from "./ServiceActivitySection";
-import FinancialSummarySection from "./FinancialSummarySection";
-import FinancialForecastSection from "./FinancialForecastSection";
-import AccountArSection from "./AccountArSection";
+import AccountFinancialsSection from "./AccountFinancialsSection";
+import AccountHealthStrip from "./AccountHealthStrip";
+import { useAccountAr } from "../../hooks/useAccountAr";
+import { accountArView } from "../../domain/accountArView";
+import { useAccountWorkOrderCount } from "../../hooks/useAccountServiceActivity";
+import { fetchAccountOpenWorkOrderCount } from "../../domain/accountWorkOrders";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
@@ -171,6 +174,11 @@ export default function AccountDetail() {
   const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  // Health-strip inputs. Both are EXISTING authoritative account-scoped reads; the AR read is the
+  // SAME one AccountFinancialsSection renders, so the strip and the AR area can never disagree.
+  const arState = useAccountAr(accountId);
+  // fetchFn must be a stable module-level reference (the hook keys its effect on it).
+  const workOrderCount = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
 
   const [isEditing, setIsEditing] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -306,7 +314,9 @@ export default function AccountDetail() {
         />
       ) : (
         <>
-          {/* 1. Account Summary -- always visible, never collapsed */}
+          {/* HEADER -- identity and relationship metadata in the shared ContextBand primitive
+              (previously imported here but never rendered). Only authoritative values appear;
+              ContextBand itself drops any item whose label is null. */}
           <section className="fo-account-summary">
             <div className="fo-pill-row">
               {account.status && (
@@ -316,38 +326,40 @@ export default function AccountDetail() {
               <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
             </div>
 
-            {account.customerNumber && (
-              <div className="fo-muted">Customer #: {account.customerNumber}</div>
-            )}
-            {billingLine && <div className="fo-muted">Billing: {billingLine}</div>}
+            <ContextBand
+              items={[
+                account.customerNumber ? { key: "customerNumber", label: "Customer #", value: account.customerNumber } : null,
+                billingLine ? { key: "billing", label: "Billing", value: billingLine } : null,
+                (account.tags ?? []).length > 0 ? { key: "tags", label: "Tags", value: account.tags.join(", ") } : null,
+              ].filter(Boolean)}
+            />
             <PrimaryContactSummary contacts={contacts} />
-            {(account.tags ?? []).length > 0 && (
-              <div className="fo-muted">Tags: {account.tags.join(", ")}</div>
-            )}
           </section>
 
-          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
-          <CommercialProfileSection
-            account={account}
-            contacts={contacts}
-            contactsLoading={contactsLoading}
-            contactsError={contactsError}
-            byUserId={byUserId}
-            directoryLoading={directoryLoading}
-            directoryError={directoryError}
-          />
+          {/* HEALTH STRIP -- only metrics with a real account-scoped authority behind them.
+              See domain/accountHealthStrip.js for what is deliberately absent and why. */}
+          <AccountHealthStrip workOrderCount={workOrderCount} arView={accountArView(arState)} />
+          {/* MAIN BODY -- roughly 2/3 primary + 1/3 secondary on desktop, collapsing to a
+              single column on narrow viewports (see .fo-account-layout in index.css).
+              PRIMARY holds the operational record surfaces; SECONDARY holds profile and
+              relationship context.
+          
+              Opportunities and Sales Orders are NOT sections here: neither has an
+              account-scoped read today (listOpportunityContext takes no accountId, and
+              getSalesOrderContext fetches exactly one order by id). An empty shell for
+              each would imply this account has none, which is not something the app
+              currently knows. They slot in here when those reads exist. */}
+          <div className="fo-account-layout">
+            <div className="fo-account-primary">
 
-          {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
-          <FinancialSummarySection />
+          {/* Accounts Receivable + the provider-dependent financial surfaces, composed into ONE
+              area. Previously these were three separate blocks and the same "not connected"
+              sentence rendered four times on a single page load; AccountFinancialsSection keeps
+              the real AR read prominent and collapses the unconfigured provider into one line. */}
+          <AccountFinancialsSection accountId={account.id} />
 
-          {/* Credit (unavailable) + Financial Forecast Horizons -- provider-neutral
-              surfaces; unconfigured only, definitions-only (Commercial Profile PR 4) */}
-          <FinancialForecastSection />
-
-          {/* Accounts Receivable -- the real governed AR read, wired directly (distinct
-              from Financial Summary above, which stays unconfigured pending a broader
-              7-metric provider). Post-Wave-5 activation of listAccountInvoiceAr. */}
-          <AccountArSection accountId={account.id} />
+          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
+          <ServiceActivitySection accountId={account.id} />
 
           {/* 3. Contacts */}
           <section className="wo-history">
@@ -447,9 +459,23 @@ export default function AccountDetail() {
             />
           )}
 
-          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
-          <ServiceActivitySection accountId={account.id} />
+            </div>
+            <aside className="fo-account-secondary" aria-label="Account context">
 
+          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
+          <CommercialProfileSection
+            account={account}
+            contacts={contacts}
+            contactsLoading={contactsLoading}
+            contactsError={contactsError}
+            byUserId={byUserId}
+            directoryLoading={directoryLoading}
+            directoryError={directoryError}
+          />
+
+              {/* Account Attention and the Marketing seam mount here. Neither renders a
+                  placeholder while absent: an optional section that has nothing to say
+                  should contribute nothing, not a permanent apology. */}
           {/* 6. Notes / Identifiers -- collapsed by default */}
           <details className="fo-account-collapsible">
             <summary>Notes &amp; Identifiers</summary>
@@ -469,6 +495,8 @@ export default function AccountDetail() {
               <p className="fo-muted">No external identifiers.</p>
             )}
           </details>
+            </aside>
+          </div>
         </>
       )}
     </WorkspaceShell>

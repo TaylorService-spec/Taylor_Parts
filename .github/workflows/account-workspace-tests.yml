@@ -1,0 +1,75 @@
+name: Account Workspace Tests
+
+# Wave 7 extension PART 1.3 -- the Account/Customer CRM workspace. NOTHING under
+# field-ops-app-vite/src/modules/accounts/ had ANY workflow coverage before this file: the account
+# detail screen, its fail-closed read tests and its AR surface were all CI-uncovered. Offline only
+# (vitest + node:test); no emulator, no deployment, no secrets, no production access.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/accounts/**"
+      - "field-ops-app-vite/src/domain/accountHealthStrip.js"
+      - "field-ops-app-vite/src/domain/accountArView.js"
+      - "field-ops-app-vite/src/domain/financialSummaryView.js"
+      - "field-ops-app-vite/src/domain/financialForecastHorizons.js"
+      - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
+      - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
+      - ".github/workflows/account-workspace-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/accounts/**"
+      - "field-ops-app-vite/src/domain/accountHealthStrip.js"
+      - "field-ops-app-vite/src/domain/accountArView.js"
+      - "field-ops-app-vite/src/domain/financialSummaryView.js"
+      - "field-ops-app-vite/src/domain/financialForecastHorizons.js"
+      - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
+      - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
+      - ".github/workflows/account-workspace-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-workspace-tests:
+    name: Account workspace (health strip + financials composition + fail-closed reads)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install app dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      # Pure view model: which metrics exist, and that an unavailable source never becomes a number.
+      - name: Account health strip (offline)
+        run: node test/accountHealthStrip.test.mjs
+        working-directory: field-ops-app-vite
+
+      # Locks the repetition regression: the unconfigured-provider sentence must not return 4x.
+      - name: Account financials composition
+        run: npx vitest run test/accountFinancialsSection.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Pre-existing fail-closed guarantees for the account/contacts reads.
+      - name: Account detail fail-closed reads
+        run: npx vitest run test/accountDetailFailClosed.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Lint
+        run: npx oxlint src/modules/accounts/ src/domain/accountHealthStrip.js
+        working-directory: field-ops-app-vite

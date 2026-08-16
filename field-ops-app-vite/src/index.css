@@ -2141,3 +2141,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* States what Operational History IS, on the surface rather than in a source comment. */
 .wo-history__basis { font-size: 12px; margin: 2px 0 8px; max-width: 62ch; }
+
+/* Account workspace: roughly 2/3 primary + 1/3 secondary on desktop, one column on narrow
+   viewports. Same responsive posture as .integration-faq-layout above -- a single breakpoint,
+   no separate mobile component, so there is one source of truth for the composition. */
+.fo-account-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 18px; align-items: start; }
+.fo-account-primary, .fo-account-secondary { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.fo-account-health { margin: 12px 0 18px; }
+.fo-stat-label { font-size: 0.85em; }
+.fo-stat-value { font-size: 1.15em; font-weight: 600; }
+.fo-stat-warn { color: var(--color-danger, #b42318); }
+
+@media (max-width: 900px) {
+  .fo-account-layout { grid-template-columns: 1fr; }
+}
