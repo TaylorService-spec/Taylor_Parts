@@ -1,0 +1,23 @@
+name: Domain knowledge graph
+
+# Guards the queries that turn researched knowledge into answers -- the moat calculation,
+# the claim-vs-complaint wedge, the no-source-no-finding rule, and the boundary that keeps
+# opportunity clustering to SEGMENTS rather than individuals.
+on:
+  pull_request:
+    paths:
+      - "docs/research/domainGraph*.mjs"
+      - ".github/workflows/domain-graph-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/research/domainGraph*.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test docs/research/domainGraph.test.mjs
