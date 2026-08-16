@@ -306,7 +306,15 @@ export type AuditAction =
   // Wave 7 extension PART 1.4 -- the trusted createCrmActivity command's deterministic Audit Event marker
   // (same idempotency-replay mechanism as createSalesOrder/createOpportunity above). Capability
   // crm.activity.create registered active:false -- see permissionCatalog.ts.
-  | "createCrmActivity";
+  | "createCrmActivity"
+  // Enterprise Inventory Phase 4 (Transfer operating authority) -- the trusted transfer command
+  // family's Audit Event actions. WAREHOUSE/MOBILE(truck) endpoints only -- CUSTOMER delivery is a
+  // separate, not-yet-authorized phase. Capabilities inventory.transfer.create/dispatch/receive/cancel
+  // registered active:false -- see permissionCatalog.ts.
+  | "createTransferOrder"
+  | "dispatchTransferOrder"
+  | "receiveTransferOrder"
+  | "cancelTransferOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

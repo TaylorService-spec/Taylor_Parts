@@ -120,11 +120,19 @@ function buildDeferredForNow(catalog) {
     // stays UNACCOUNTED until separately reviewed -- the same protection A3-inv applies elsewhere.
     "crm.activity.create",
     "crm.activity.read",
-    // Coordinated Operations fidelity fix (2026-08-15): fulfillment.coordinatedVisit.read -- registered
-    // `active: false`, granted to NO compatibility Role by this phase. EXACT literal (not a prefix), so a
-    // future fulfillment.coordinatedVisit.* or fulfillment.* capability stays UNACCOUNTED until separately
-    // reviewed -- the same protection A3-inv applies elsewhere.
+    // Coordinated Operations fidelity fix: fulfillment.coordinatedVisit.read -- registered
+    // `active: false`, granted to NO compatibility Role. EXACT literal (never a prefix), so a future
+    // fulfillment.* capability stays UNACCOUNTED until separately reviewed.
     "fulfillment.coordinatedVisit.read",
+    // Enterprise Inventory Phase 4 (Transfer operating authority): registered `active: false` and
+    // granted to NO compatibility Role, pending a separate Owner grant. EXACT literals, never an
+    // "inventory.transfer." prefix, so a future inventory.transfer.* capability stays UNACCOUNTED --
+    // the same protection A3-inv applies elsewhere. Both sets landed in the same wave and are merged
+    // here deliberately rather than one overwriting the other.
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "inventory.transfer.cancel",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

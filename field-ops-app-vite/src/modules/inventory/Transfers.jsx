@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
+import { useTransferActions } from "../../hooks/useTransferActions";
+import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
 import { buildTransferOrdersView } from "../operations/transferOrdersViewModel";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import {
@@ -17,15 +19,21 @@ import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
+import TransferOrderForm from "./TransferOrderForm";
 
-// Inventory > Transfers -- the first-class workspace for the inventory-transfer capability
-// (movement of stock between locations). It is READ-ONLY: transfer_orders is Admin-SDK-write-only
-// (no client/deployed write path), so this surfaces transfers, it does not create/mutate them.
+// Inventory > Transfers -- the operating workspace for the governed Transfer command family
+// (functions/src/inventoryTransfer/*). It REUSES the shared read (useTransferOrders ->
+// operationsQueries) and the CANONICAL view-model (buildTransferOrdersView -- the same one the
+// Operations dashboard uses) for display, then adds New Transfer / Dispatch / Receive / Cancel
+// actions through useTransferActions -> services/transferCommandClient (the four onCall
+// createTransferOrder/dispatchTransferOrder/receiveTransferOrder/cancelTransferOrder exports).
 //
-// Single source of truth: it REUSES the shared read (useTransferOrders -> operationsQueries) and
-// the CANONICAL view-model (buildTransferOrdersView -- the same one the Operations dashboard uses),
-// then composes operator-centric status groups + exception surfacing (domain/transfersView.js). It
-// adds no parallel read, no re-mapping of raw docs, and no direct Firebase access.
+// HONEST POSTURE: every inventory.transfer.* capability is registered `active: false` and granted
+// to NO Role today, so every real action attempt resolves `permission-denied` server-side. The
+// controls render (so the workspace is reviewable and ready for the day the grant lands) but every
+// call is re-authorized by the trusted backend regardless of what this UI shows -- there is no
+// client-side bypass. A denied action surfaces the honest mapped message, never a fabricated
+// success.
 //
 // Access: the Inventory > Transfers nav item is admin/dispatcher (PLACEHOLDER_DEFAULT_ROLES),
 // matching the transfer_orders read rule's common path; a denied read fails closed to a
@@ -42,13 +50,41 @@ function Endpoint({ end }) {
 }
 
 export default function Transfers({ accessVersion }) {
-  const read = useTransferOrders(accessVersion);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const read = useTransferOrders(accessVersion, refreshKey);
+  const { status, clearStatus, busyId, createTransfer, dispatchTransfer, receiveTransfer, cancelTransfer } = useTransferActions({ onSettled: bumpRefresh });
+
   const { rows, hiddenInvalidCount } = useMemo(
     () => buildTransferOrdersView(read.transferOrderDocs, read.warehouses),
     [read.transferOrderDocs, read.warehouses]
   );
   const summary = useMemo(() => summarizeTransfers(rows), [rows]);
   const [filterKey, setFilterKey] = useState(DEFAULT_TRANSFER_FILTER);
+  const [showForm, setShowForm] = useState(false);
+
+  const warehouseOptions = useMemo(
+    () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
+    [read.warehouses],
+  );
+  const [truckLocations, setTruckLocations] = useState({ loading: true, options: [] });
+  useEffect(() => {
+    let cancelled = false;
+    fetchMobileLocationDocs()
+      .then((docs) => {
+        if (cancelled) return;
+        const options = docs
+          .filter((d) => d?.data?.active !== false)
+          .map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId }));
+        setTruckLocations({ loading: false, options });
+      })
+      .catch(() => {
+        if (!cancelled) setTruckLocations({ loading: false, options: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const intro = <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>;
 
@@ -76,8 +112,33 @@ export default function Transfers({ accessVersion }) {
 
   return (
     <div className="fo-panel">
-      <WorkspaceHeader title="Transfers" />
+      <WorkspaceHeader title="Transfers">
+        {!showForm && (
+          <button type="button" className="fo-btn-primary" onClick={() => setShowForm(true)}>
+            New transfer
+          </button>
+        )}
+      </WorkspaceHeader>
       {intro}
+      {status && (
+        <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
+          {status.message}{" "}
+          <button type="button" className="fo-transfer-dismiss" onClick={clearStatus}>Dismiss</button>
+        </p>
+      )}
+      {showForm && (
+        <TransferOrderForm
+          warehouseOptions={warehouseOptions}
+          truckOptions={truckLocations.options}
+          submitting={busyId === "create"}
+          onCancel={() => setShowForm(false)}
+          onSubmit={async (draft) => {
+            const result = await createTransfer(draft);
+            if (result.ok) setShowForm(false);
+            return result;
+          }}
+        />
+      )}
       {summary.inFlight > 0 && (
         <p className="fo-muted" role="status">
           {summary.inFlight} transfer{summary.inFlight === 1 ? "" : "s"} in flight
@@ -105,22 +166,44 @@ export default function Transfers({ accessVersion }) {
                 <th scope="col" aria-hidden="true"></th>
                 <th scope="col">To</th>
                 <th scope="col">Status</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => (
-                <tr key={row.transferOrderId}>
-                  <td>{row.partId ? <Link to={`/inventory/${row.partId}`}>{row.partId}</Link> : <span className="fo-muted">—</span>}</td>
-                  <td><Endpoint end={row.origin} /></td>
-                  <td className="fo-transfer-arrow" aria-hidden="true">→</td>
-                  <td><Endpoint end={row.destination} /></td>
-                  <td>
-                    <span className={`fo-transfer-status fo-transfer-status--${transferStatusTone(row.status)}`}>
-                      {transferStatusLabel(row.status)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {visibleRows.map((row) => {
+                const rowBusy = busyId === row.transferOrderId;
+                return (
+                  <tr key={row.transferOrderId}>
+                    <td>{row.partId ? <Link to={`/inventory/${row.partId}`}>{row.partId}</Link> : <span className="fo-muted">—</span>}</td>
+                    <td><Endpoint end={row.origin} /></td>
+                    <td className="fo-transfer-arrow" aria-hidden="true">→</td>
+                    <td><Endpoint end={row.destination} /></td>
+                    <td>
+                      <span className={`fo-transfer-status fo-transfer-status--${transferStatusTone(row.status)}`}>
+                        {transferStatusLabel(row.status)}
+                      </span>
+                    </td>
+                    <td className="fo-transfer-actions">
+                      {row.status === "REQUESTED" && (
+                        <>
+                          <button type="button" className="fo-transfer-action-btn" disabled={rowBusy} onClick={() => dispatchTransfer(row.transferOrderId)}>
+                            {rowBusy ? "Working…" : "Dispatch"}
+                          </button>
+                          <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={rowBusy} onClick={() => cancelTransfer(row.transferOrderId)}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      {row.status === "IN_TRANSIT" && (
+                        <button type="button" className="fo-transfer-action-btn" disabled={rowBusy} onClick={() => receiveTransfer(row.transferOrderId)}>
+                          {rowBusy ? "Working…" : "Receive"}
+                        </button>
+                      )}
+                      {row.status !== "REQUESTED" && row.status !== "IN_TRANSIT" && <span className="fo-muted">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
