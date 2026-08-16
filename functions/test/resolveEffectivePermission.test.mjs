@@ -120,6 +120,11 @@ function buildDeferredForNow(catalog) {
     // stays UNACCOUNTED until separately reviewed -- the same protection A3-inv applies elsewhere.
     "crm.activity.create",
     "crm.activity.read",
+    // Coordinated Operations fidelity fix (2026-08-15): fulfillment.coordinatedVisit.read -- registered
+    // `active: false`, granted to NO compatibility Role by this phase. EXACT literal (not a prefix), so a
+    // future fulfillment.coordinatedVisit.* or fulfillment.* capability stays UNACCOUNTED until separately
+    // reviewed -- the same protection A3-inv applies elsewhere.
+    "fulfillment.coordinatedVisit.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

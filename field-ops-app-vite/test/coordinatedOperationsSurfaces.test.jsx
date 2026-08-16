@@ -7,10 +7,8 @@ import { afterEach, describe, it, expect } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import CoordinatedVisitsWorkspace from "../src/modules/service/CoordinatedVisitsWorkspace.jsx";
 import CoordinatedMissionView from "../src/modules/mobile/CoordinatedMissionView.jsx";
-import {
-  syntheticCoordinatedOperationsSource,
-  inertCoordinatedOperationsSource,
-} from "../src/access/coordinatedOperationsSource.js";
+import { syntheticCoordinatedOperationsSource } from "../src/access/coordinatedOperationsSyntheticSource.js";
+import { inertCoordinatedOperationsSource } from "../src/access/coordinatedOperationsSource.js";
 
 afterEach(cleanup);
 

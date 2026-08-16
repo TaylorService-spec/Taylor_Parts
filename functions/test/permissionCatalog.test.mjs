@@ -207,7 +207,9 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // ungranted-by-design pending a separate Owner grant -- the same additive posture. Adding the prefix
 // here WIDENS this guard, so it is paired with an explicit assertion below that both ids are
 // active:false and never true; the guard must not become a loophole for an active:true id.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity."];
+// Coordinated Operations fidelity fix (2026-08-15): fulfillment.coordinatedVisit.read is registered
+// `active: false`, same additive posture as inventory.serializedAsset.read above.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -236,6 +238,15 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   const [permission] = matches;
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
+  assert.equal(permission.action, "read");
+});
+
+check("fulfillment.coordinatedVisit.read is registered exactly once, active: false, resource/action match the id", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "fulfillment.coordinatedVisit.read");
+  assert.equal(matches.length, 1, "fulfillment.coordinatedVisit.read must be registered exactly once");
+  const [permission] = matches;
+  assert.equal(permission.active, false, "fulfillment.coordinatedVisit.read must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "fulfillment.coordinatedVisit");
   assert.equal(permission.action, "read");
 });
 
