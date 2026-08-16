@@ -1,0 +1,71 @@
+name: Available Equipment Governed Read Tests
+
+# Sandbox-fidelity package, Part 3 -- CI coverage for wiring Equipment > Available Equipment to the
+# REAL trusted `getAvailableEquipment` read (functions/src/serializedAsset/serializedAssetReadService.ts,
+# Wave 7) instead of the inert placeholder source. Runs the pure domain mapper test (node:test), the
+# render regression proving the stale "registry does not exist" copy is gone and LOADING/DENIED/
+# UNAVAILABLE/EMPTY/READY are five distinct states (vitest + jsdom), the EquipmentWorkspace tab
+# coverage that exercises the same seam, plus lint. `inventory.serializedAsset.read` stays registered
+# `active:false` / granted to no Role -- this surface is expected to fail closed to DENIED in every
+# environment until a later, separately authorized grant + per-environment activation. Offline: no
+# emulator, deploy, or secrets; the trusted callable itself is never invoked (the governed hook is
+# mocked at the render layer, exactly like every other trusted-callable UI test in this repo).
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
+      - "field-ops-app-vite/src/hooks/useAvailableEquipmentSource.js"
+      - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentGovernedProjection.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentCatalogView.js"
+      - "field-ops-app-vite/src/access/serializedAssetSource.js"
+      - "field-ops-app-vite/test/availableEquipmentGovernedProjection.test.mjs"
+      - "field-ops-app-vite/test/availableEquipmentGovernedRead.test.jsx"
+      - "field-ops-app-vite/test/availableEquipmentCatalogView.test.mjs"
+      - "field-ops-app-vite/test/equipmentWorkspace.test.jsx"
+      - ".github/workflows/available-equipment-governed-read-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
+      - "field-ops-app-vite/src/hooks/useAvailableEquipmentSource.js"
+      - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentGovernedProjection.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentCatalogView.js"
+      - "field-ops-app-vite/src/access/serializedAssetSource.js"
+      - "field-ops-app-vite/test/availableEquipmentGovernedProjection.test.mjs"
+      - "field-ops-app-vite/test/availableEquipmentGovernedRead.test.jsx"
+      - "field-ops-app-vite/test/availableEquipmentCatalogView.test.mjs"
+      - "field-ops-app-vite/test/equipmentWorkspace.test.jsx"
+      - ".github/workflows/available-equipment-governed-read-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  available-equipment-governed-read-tests:
+    name: Available Equipment governed read (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Pure domain mapper + catalog view tests (node:test)
+        run: node test/availableEquipmentGovernedProjection.test.mjs && node test/availableEquipmentCatalogView.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Governed-read render regression + EquipmentWorkspace tab coverage (vitest + jsdom)
+        run: npx vitest run test/availableEquipmentGovernedRead.test.jsx test/equipmentWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/modules/equipment/AvailableEquipment.jsx src/hooks/useAvailableEquipmentSource.js src/services/serializedAssetReadCallableClient.js src/domain/availableEquipmentGovernedProjection.js src/domain/availableEquipmentCatalogView.js src/access/serializedAssetSource.js
+        working-directory: field-ops-app-vite

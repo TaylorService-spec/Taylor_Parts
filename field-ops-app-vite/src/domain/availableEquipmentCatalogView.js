@@ -17,7 +17,8 @@ export const AVAILABLE_FILTER_NOTE =
 export const AVAILABLE_FILTER_KEYS = Object.freeze(["term", "category", "manufacturer", "model", "status", "location"]);
 
 export const AVAILABLE_STATE = Object.freeze({
-  UNAVAILABLE: "unavailable", // registry not connected (honest default)
+  LOADING: "loading", // the governed read is in flight
+  UNAVAILABLE: "unavailable", // governed read failed for a reason other than denial (fail closed)
   DENIED: "denied",
   EMPTY: "empty", // connected, but nothing available (or filters exclude all)
   READY: "ready",
@@ -92,6 +93,7 @@ export function anyAvailableFilterActive(filters = {}) {
 
 // Coarse render state from the injected source status + counts (fail-closed).
 export function deriveAvailableState({ sourceStatus = AVAILABLE_STATE.UNAVAILABLE, totalAvailable = 0, filteredCount = 0 } = {}) {
+  if (sourceStatus === AVAILABLE_STATE.LOADING) return AVAILABLE_STATE.LOADING;
   if (sourceStatus === AVAILABLE_STATE.DENIED) return AVAILABLE_STATE.DENIED;
   if (sourceStatus !== AVAILABLE_STATE.READY) return AVAILABLE_STATE.UNAVAILABLE;
   if (totalAvailable === 0) return AVAILABLE_STATE.EMPTY;

@@ -74,6 +74,7 @@ ok("anyAvailableFilterActive detects active filters", () => {
 });
 
 ok("deriveAvailableState fail-closed order", () => {
+  assert.strictEqual(deriveAvailableState({ sourceStatus: AVAILABLE_STATE.LOADING }), AVAILABLE_STATE.LOADING);
   assert.strictEqual(deriveAvailableState({ sourceStatus: AVAILABLE_STATE.DENIED }), AVAILABLE_STATE.DENIED);
   assert.strictEqual(deriveAvailableState({ sourceStatus: AVAILABLE_STATE.UNAVAILABLE }), AVAILABLE_STATE.UNAVAILABLE);
   assert.strictEqual(deriveAvailableState({ sourceStatus: "ready", totalAvailable: 0 }), AVAILABLE_STATE.EMPTY);

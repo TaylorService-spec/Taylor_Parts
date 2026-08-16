@@ -1,8 +1,10 @@
 // INV-EQ-P1b -- component tests (vitest + jsdom) for the visible Equipment workspace.
-// Proves: two WAI-ARIA tabs with roving tabindex + arrow/Home/End keyboard nav;
-// Customer Equipment is the default; the Available tab shows an honest not-yet-
-// connected surface (never blank); and CustomerEquipment renders each fail-closed
-// state, the loaded-only filter note, row -> detail links, and Load more.
+// Proves: three WAI-ARIA tabs with roving tabindex + arrow/Home/End keyboard nav;
+// Customer Equipment is the default; the Available tab reads the governed
+// getAvailableEquipment projection (Part 3 sandbox-fidelity fix -- see
+// test/availableEquipmentGovernedRead.test.jsx for the full state-matrix regression);
+// and CustomerEquipment renders each fail-closed state, the loaded-only filter note,
+// row -> detail links, and Load more.
 // Run via `npm run test:components` (vitest).
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
@@ -14,6 +16,15 @@ let mockPageState;
 vi.mock("../src/hooks/useInstalledEquipmentPage", () => ({
   useInstalledEquipmentPage: () => mockPageState,
   EQUIPMENT_PAGE_SIZE: 25,
+}));
+
+// Part 3 -- AvailableEquipment reads through this governed hook (no more injected
+// `source` prop). Mock it here too so mounting EquipmentWorkspace/its Available tab
+// never touches Firebase; individual AvailableEquipment tests below set the return
+// value directly (same pattern as test/availableEquipmentGovernedRead.test.jsx).
+let mockAvailableEquipmentSource = { connected: false, status: "loading", assets: [] };
+vi.mock("../src/hooks/useAvailableEquipmentSource", () => ({
+  useAvailableEquipmentSource: () => mockAvailableEquipmentSource,
 }));
 
 // site-work #10 -- the third tab mounts the REAL EquipmentRegister, which reads
@@ -123,27 +134,29 @@ describe("Equipment nav access is unchanged by wiring in Add Equipment", () => {
   });
 });
 
+// Part 3 -- the state-matrix regression (loading/denied/unavailable/empty/ready, plus the stale
+// "registry doesn't exist" copy proof) now lives in test/availableEquipmentGovernedRead.test.jsx.
+// These two describe blocks keep the catalog-filtering coverage local to this file, updated to drive
+// the new governed-hook seam instead of the retired `source` prop.
 describe("AvailableEquipment honest state", () => {
-  it("renders an explicit not-yet-connected surface (never blank, no fabricated inventory)", () => {
+  it("an unauthorized/unactivated governed read renders an explicit denied surface (never blank, no fabricated inventory)", () => {
+    mockAvailableEquipmentSource = { connected: false, status: "denied", assets: [] };
     render(<AvailableEquipment />);
-    expect(screen.getByText(/governed Serialized Asset registry/i)).toBeTruthy();
-    expect(screen.getByText(/not available yet/i)).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByText(/not able to view available serialized assets/i)).toBeTruthy();
   });
 });
 
 describe("AvailableEquipment catalog filtering (READY source)", () => {
-  const readySource = {
-    connected: true,
-    status: "ready",
-    assets: [
-      { serialNo: "S1", partId: "P1", internalPartNumber: "IPN-1", category: "Valve", manufacturer: "Acme", model: "M1", status: "NEW", locationLabel: "WH-A", currentEquipmentId: null, availableForAssignment: true },
-      { serialNo: "S2", partId: "P2", type: "Pump", manufacturer: "Beta", model: "M2", condition: "REFURB", location: "Truck-7", currentEquipmentId: null, availableForAssignment: true },
-      { serialNo: "S3", partId: "P1", currentEquipmentId: "EQ-9", availableForAssignment: false }, // installed -> excluded
-    ],
-  };
+  const readyAssets = [
+    { serialNo: "S1", partId: "P1", internalPartNumber: "IPN-1", category: "Valve", manufacturer: "Acme", model: "M1", status: "NEW", locationLabel: "WH-A", currentEquipmentId: null, availableForAssignment: true },
+    { serialNo: "S2", partId: "P2", type: "Pump", manufacturer: "Beta", model: "M2", condition: "REFURB", location: "Truck-7", currentEquipmentId: null, availableForAssignment: true },
+    { serialNo: "S3", partId: "P1", currentEquipmentId: "EQ-9", availableForAssignment: false }, // installed -> excluded
+  ];
 
   it("lists only available assets with a count, no customer filter, and accessible controls", () => {
-    render(<AvailableEquipment source={readySource} />);
+    mockAvailableEquipmentSource = { connected: true, status: "ready", assets: readyAssets };
+    render(<AvailableEquipment />);
     expect(screen.getByRole("group", { name: /available equipment filters/i })).toBeTruthy();
     // no customer/account filter control on this tab
     expect(screen.queryByLabelText(/customer/i)).toBeNull();
@@ -153,7 +166,8 @@ describe("AvailableEquipment catalog filtering (READY source)", () => {
   });
 
   it("combined filters narrow the list and update the count; Clear resets", () => {
-    render(<AvailableEquipment source={readySource} />);
+    mockAvailableEquipmentSource = { connected: true, status: "ready", assets: readyAssets };
+    render(<AvailableEquipment />);
     fireEvent.change(screen.getByLabelText(/Type \/ category/i), { target: { value: "Valve" } });
     expect(screen.getByText(/1 of 2 available/i)).toBeTruthy();
     expect(screen.queryByText(/S\/N S2/)).toBeNull();
