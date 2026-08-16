@@ -44,6 +44,46 @@ durable branch/PR/result, never an uncommitted working tree.
 `git reset --hard` · production deployment · secret extraction · credential mutation ·
 bypassing protected-branch controls.
 
+### 2.1 The profile as implemented — and the gap it cannot close
+
+**Implemented in `.claude/settings.json` (2026-08-16).** ALLOW gained 17 entries covering only
+§2-authorized operations: `git add` · `commit` · `checkout -b` / `switch -c` · `gh pr create` ·
+worktree add/remove · and **push scoped to branch prefixes** (`feat/` `fix/` `docs/` `chore/`
+`eos/`) rather than a bare `git push`.
+
+DENY gained 8 entries. **Adding a deny strengthens the control surface, which §3.1 permits** — it
+forbids removing, weakening, or narrowing a deny, never adding one. The additions block the
+expressible forms of a main push (`git push origin main*`, `git push * main`, `HEAD:main`,
+`:main`) plus history rewriting (`rebase`, `filter-branch`, `update-ref`).
+
+#### ⚠ RESIDUAL GAP — this is policy, not mechanism
+
+**`main` is NOT branch-protected** (verified 2026-08-16: the protection API returns
+`404 Branch not protected`).
+
+Pattern-based permissions **cannot** close this. A bare `git push`, where the branch already
+tracks `main`, matches no pattern above — the branch name never appears in the command. The
+prefix-scoped allows and main-shaped denies are **defence in depth, not a control.**
+
+So §2's *"never direct push to main"* currently rests on **agent compliance, not enforcement** —
+exactly the policy-without-mechanism shape this document exists to eliminate.
+
+#### The conflict that makes this an Owner decision
+
+**EOS's own write-back commits directly to `main` today** — see the `eos: intake execution result
+write-back for EOS-ISSUE-… [skip ci]` commits. **Enabling branch protection would break the
+write-back path that currently works.**
+
+That is a genuine trade-off with materially different outcomes, so it escalates under §9:
+
+| Option | Effect |
+| --- | --- |
+| **A — protect `main`, move write-back to PRs** | Real server-side enforcement. Changes EOS behavior, adds latency and a merge step to every result. |
+| **B — leave `main` unprotected** | Write-back keeps working. "Never push to main" stays unenforceable. |
+| **C — protect `main` with an exception for the EOS identity** | Enforcement for agents, write-back preserved. Most configuration, and the exception becomes a new control surface to govern. |
+
+**No option is taken here.** The profile is implemented; the enforcement question is the Owner's.
+
 ## 3. Protected control surfaces
 
 ### 3.1 The `deny` block is protected
