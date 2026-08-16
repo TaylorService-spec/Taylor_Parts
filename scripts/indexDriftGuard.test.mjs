@@ -89,7 +89,11 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // Empty again: the Wave 7 Part -> Work Order Demand index
+  // Cycle Count (Part 6) declares a serialized_assets(partId, currentLocationId) composite so a
+  // SERIAL count can enumerate the units expected at one location. DECLARED, NOT YET DEPLOYED --
+  // remove this key once a real deployment ships it, which is what restores declared == live.
+  'serialized_assets|COLLECTION|partId:ASCENDING,currentLocationId:ASCENDING,inventoryState:ASCENDING',
+  // Historical note: the Wave 7 Part -> Work Order Demand index
   // ('fieldops_wos|COLLECTION|status:ASCENDING,createdAt:DESCENDING') was deployed to
   // platform-sandbox with the Wave 7 consolidated release, so declared == live once more and it no
   // longer belongs on this list. Removing a key after a REAL deployment is exactly what restores
