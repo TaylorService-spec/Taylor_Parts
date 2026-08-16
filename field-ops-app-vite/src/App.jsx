@@ -684,7 +684,7 @@ export default function App() {
   // granted only from a successful, current-principal decision; denied while loading, on
   // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
   // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
-  const { hasCapability, accessVersion } = useReportCapabilities(user);
+  const { hasCapability, accessVersion, accessResolving } = useReportCapabilities(user);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
   // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
@@ -713,6 +713,13 @@ export default function App() {
   }
 
   if (!user) return <Login />;
+
+  // Governed access is not known YET. Rendering the route table now would emit the route set for a
+  // principal whose capabilities have not resolved, and the router's catch-all would immediately
+  // redirect a capability-gated deep link to /dashboard -- destroying the URL before the answer
+  // arrives. Waiting grants nothing (hasCapability still denies until a positive decision lands);
+  // it only stops the shell from acting on an absence as though it were a refusal.
+  if (accessResolving) return <div className="fo-panel">Loading...</div>;
 
   if (!hasAnyAccess) {
     return (
