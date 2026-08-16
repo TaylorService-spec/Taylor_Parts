@@ -186,6 +186,54 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | Pure code; reverting restores the prior fail-closed-by-omission behavior. No data written, no migration. Note the direction of risk: the previous state was MORE restrictive, so a rollback removes access rather than granting it. |
 | Deployment status | PENDING |
 
+### PR #1012 — Opportunity create flow + lifecycle chevrons
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `f5fd5d91b13429af206be9f775fe969c638e43f5` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Deploy required.** `createOpportunity` / `transitionOpportunity` are exported but never deployed. No backend change in this PR. |
+| Hosting impact | **Rebuild + release required** — frontend-only change. |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | `opportunity.write` / `.read` / `.createSalesOrder` are **already sandbox-activated** in `config/environments.json` AND **already granted** to `admin`/`dispatcher` (owner inherits). No activation or grant work remains. |
+| Smoke / E2E validation required | Create an Opportunity: pick an account, set owner + sales channel, submit; confirm it appears from an authoritative refetch (not fabricated). Retry a failed create and confirm the same idempotency key is reused. Walk the chevrons IDENTIFIED→QUALIFYING→…→DECISION; confirm only the single legal ADVANCE is actionable, WON is offered ONLY from DECISION, LOST from any open stage, and a closed opportunity offers nothing. Confirm a denied actor sees denial, not an empty state. Confirm no raw Firebase UID renders. |
+| Rollback notes | Frontend-only; revert the Hosting release. Opportunities created during validation are real governed records on synthetic sandbox accounts — they can be advanced to LOST but there is no reopen path, so validate on throwaway records. |
+| Deployment status | PENDING |
+
+### PR #1013 — Serial capture step in the Receiving UI
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `e85d5fb56eda71797a6ae4bf163f19647e83a983` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — client-only. (The SERIAL-capable command itself ships via #1006 + #1009.) |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. Note `RECEIVING_TRANSPORT_READY` is already `true` for `platform-sandbox`. |
+| Capability activation / grants | NONE — rides the existing `inventory.stock.receive`, already granted to `{admin, dispatcher, owner}`. |
+| Smoke / E2E validation required | Receive a SERIALIZED Part: confirm the serial step appears, requires exactly the ordered quantity, rejects blanks/duplicates, trims but preserves case, and that submitting creates one asset + one ledger event per unit. Receive a STANDARD Part: confirm no serial step and unchanged behavior. Receive a LOT Part: confirm the honest "not supported" block. Force a Part-read failure: confirm the receipt is blocked honestly rather than proceeding as NONE. |
+| Rollback notes | Frontend-only; revert the Hosting release. Anything actually received during validation is subject to the append-only caveat recorded on #1006. |
+| Deployment status | PENDING |
+
+### PR #1014 — WO / Dispatch attention projection
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `0bda865063386d4549fea41f57301e4576f80024` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — pure client-side projection over already-read Work Orders. |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — no new capability; reuses the existing `fieldops_wos` read. |
+| Smoke / E2E validation required | On Control Tower confirm: READY-but-unscheduled work appears; a scheduled Work Order whose start is in the past appears as past-due; a technician double-booked on one day appears as a conflict; terminal Work Orders never appear; the empty state is honest. Confirm every item deep-links to the governed Work Order surface. Confirm the Parts Blocked subsection is honestly EMPTY (its dimensions are not read by ControlTower yet) rather than showing a fabricated value. |
+| Rollback notes | Frontend-only; revert the Hosting release. Read-only projection — nothing is written, so there is nothing to undo. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements
