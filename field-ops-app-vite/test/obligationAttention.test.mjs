@@ -19,15 +19,21 @@ test("all complete ⇒ satisfied, no reasons, no intervention", () => {
   assert.equal(a.tone, "positive");
 });
 
+// NOTE on the fixtures below: these previously used a status literal "BLOCKED", which is NOT a
+// member of the canonical WorkOrderStatus set -- the projection matched it only because
+// BLOCKED_STATUSES itself contained the same non-canonical value. Both were fixed together, so
+// these fixtures now use CANCELLED, the one genuinely canonical blocking status. The EXPECTED
+// BEHAVIOUR of the projection is unchanged; only the fixture status is corrected to a real one.
+
 test("blocked WO with no material evidence ⇒ BLOCKED, intervention", () => {
-  const a = deriveObligationAttention(visitOf(wo("a", "COMPLETED"), wo("b", "BLOCKED")));
+  const a = deriveObligationAttention(visitOf(wo("a", "COMPLETED"), wo("b", "CANCELLED")));
   assert.equal(a.primaryReason, "BLOCKED");
   assert.equal(a.needsIntervention, true);
   assert.equal(a.tone, "attention");
 });
 
 test("blocked WO whose blocker is material ⇒ WAITING_ON_MATERIAL (specialized), intervention", () => {
-  const visit = visitOf(wo("a", "COMPLETED"), wo("b", "BLOCKED"));
+  const visit = visitOf(wo("a", "COMPLETED"), wo("b", "CANCELLED"));
   const mission = buildCoordinatedFieldMission(visit, {
     b: { partsReadiness: "ATTENTION", loadVerified: false, materialBlocker: { partRef: "PRT-X", replenishmentConnected: false } },
   });
@@ -91,7 +97,7 @@ test("does NOT invent severity/SLA/ETA fields", () => {
 test("summarizeObligationAttention counts honestly across obligations", () => {
   const attns = [
     deriveObligationAttention(visitOf(wo("a", "COMPLETED"))),                     // satisfied
-    deriveObligationAttention(visitOf(wo("a", "COMPLETED"), wo("b", "BLOCKED"))), // intervention
+    deriveObligationAttention(visitOf(wo("a", "COMPLETED"), wo("b", "CANCELLED"))), // intervention
     deriveObligationAttention(visitOf(wo("a", "COMPLETED"), wo("b", "IN_PROGRESS"))), // watch (partial)
   ];
   const s = summarizeObligationAttention(attns);
