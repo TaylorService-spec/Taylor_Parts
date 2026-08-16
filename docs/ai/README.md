@@ -25,6 +25,20 @@ intro and "Standing operating rule" sections). Committing every
 architecture decision closes that gap the same way version control
 already closes it for code.
 
+## Enforcement — the AI state contract and memory manifests
+
+The principle above (*the repository, not any chat session, is the durable source of truth*) was stated
+here on 2026-08-11 and was **not** being honored: an audit on 2026-08-16 found Claude holding 723 KB of
+private memory, 88% of it project state, duplicating `docs/` where nobody could audit it.
+
+- [`ai-state-contract.md`](./ai-state-contract.md) — the binding contract for every AI on this repo:
+  project truth in the repo, private memory limited to working preferences and pointers, the repo always
+  wins, memory is never evidence, and every AI publishes a manifest. **Hand this to any AI starting work here.**
+- [`memory-manifest.md`](./memory-manifest.md) — what Claude currently holds privately, so the Owner can
+  open and diff it instead of trusting an assurance.
+- [`memory-archive/`](./memory-archive/) — the retired private journals, retained verbatim and clearly
+  marked **not authority**.
+
 ## Relationship to ADRs
 
 `docs/architecture/ADR-00N-*.md` remains the permanent record of major,
