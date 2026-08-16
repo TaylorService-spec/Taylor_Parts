@@ -321,3 +321,53 @@ test("decideRetry: bounded attempts then ESCALATE_OWNER; backoff between retries
   assert.equal(decideRetry({ state: "FAILED", attempts: 3, maxAttempts: 3 }).decision, "ESCALATE_OWNER");
   assert.equal(decideRetry({ state: "CORRECTING", attempts: 5, maxAttempts: 3 }).decision, "ESCALATE_OWNER");
 });
+
+// ── decideIntakeDispatch: a deterministic block must not be re-dispatched forever ────────────
+const blockedStatus = (sha, state = "BLOCKED_EXECUTION", currentWork = "required execution receipts missing: tests") => ({
+  state, currentWork, workArtifact: { sha256: sha },
+});
+
+test("DEFECT GUARD: BLOCKED_EXECUTION on the SAME work sha => SKIP, not re-dispatch", () => {
+  // 2026-08-16: seven items in this state were re-attempted by EVERY execute run, burning 30+
+  // minutes per run on work that could not succeed and starving new intake off the one runner.
+  const sha = "b".repeat(64);
+  const d = decideIntakeDispatch({ requestId: "EOS-ISSUE-1056", workSha256: sha, committedStatus: blockedStatus(sha) });
+  assert.equal(d.decision, "SKIP_DETERMINISTIC_BLOCK");
+  assert.equal(d.state, "BLOCKED_EXECUTION");
+  assert.match(d.reason, /nothing has changed/);
+  assert.match(d.blocker, /receipts missing/);
+});
+
+test("FAILED on the same work sha is equally terminal until the work changes", () => {
+  const sha = "c".repeat(64);
+  const d = decideIntakeDispatch({ requestId: "EOS-ISSUE-868", workSha256: sha, committedStatus: blockedStatus(sha, "FAILED", "worker failed") });
+  assert.equal(d.decision, "SKIP_DETERMINISTIC_BLOCK");
+  assert.equal(d.state, "FAILED");
+});
+
+test("DEFECT GUARD: editing the work artifact makes a blocked item eligible again", () => {
+  // The work sha IS the state change. This is how a human fixes a blocked item: change the work,
+  // re-run. Without this the skip would be a permanent grave rather than a pause.
+  const d = decideIntakeDispatch({
+    requestId: "EOS-ISSUE-1056",
+    workSha256: "d".repeat(64),                       // artifact edited -> new sha
+    committedStatus: blockedStatus("b".repeat(64)),   // blocked against the OLD sha
+  });
+  assert.equal(d.decision, "DISPATCH");
+});
+
+test("a blocked status with no recorded work artifact still dispatches — never skip on a guess", () => {
+  const d = decideIntakeDispatch({
+    requestId: "EOS-ISSUE-1", workSha256: "e".repeat(64),
+    committedStatus: { state: "BLOCKED_EXECUTION", currentWork: "x" },
+  });
+  assert.equal(d.decision, "DISPATCH");
+});
+
+test("in-flight and fresh states are unaffected", () => {
+  const sha = "f".repeat(64);
+  for (const state of ["EXECUTING", "STAGED", "QUEUED", undefined]) {
+    const d = decideIntakeDispatch({ requestId: "X", workSha256: sha, committedStatus: state ? { state, workArtifact: { sha256: sha } } : null });
+    assert.equal(d.decision, "DISPATCH", `state ${state} should still dispatch`);
+  }
+});
