@@ -57,6 +57,7 @@ pushes back.
 | Topic | File | Last researched |
 | --- | --- | --- |
 | Microsoft Dynamics 365 Field Service + Business Central | [`microsoft-dynamics-field-service.md`](./microsoft-dynamics-field-service.md) | 2026-08-16 |
+| Competitor pricing (Salesforce / Dynamics / Business Central) | [`competitor-pricing.md`](./competitor-pricing.md) | 2026-08-16 |
 
 ## Scope note
 
