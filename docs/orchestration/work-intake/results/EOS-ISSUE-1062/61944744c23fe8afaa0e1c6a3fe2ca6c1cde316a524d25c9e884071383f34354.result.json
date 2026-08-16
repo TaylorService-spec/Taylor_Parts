@@ -1,0 +1,38 @@
+{
+  "resultId": "EOS-ISSUE-1062:8d0531ff51e41db0",
+  "requestId": "EOS-ISSUE-1062",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "b25531fe8ccbfb4e56854c7bb29411c1ae32809a6b5d95bf11ba21647b2da072",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "Sandbox Functions deployment verification helper implemented, tested, documented; PR #1070 open with green CI (MERGED not required). CI workflow wiring omitted -- token lacks workflows permission scope.",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/8d0531ff51e41db0761076ab677b6a95d4f2d8a09bfc8ffab526b34c3feece74.content.md",
+  "contentSha256": "8d0531ff51e41db0761076ab677b6a95d4f2d8a09bfc8ffab526b34c3feece74",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/8d0531ff51e41db0761076ab677b6a95d4f2d8a09bfc8ffab526b34c3feece74.content.md",
+      "sha256": "8d0531ff51e41db0761076ab677b6a95d4f2d8a09bfc8ffab526b34c3feece74"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/1062"
+    ],
+    "pullRequests": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/pull/1070"
+    ]
+  },
+  "createdAt": "2026-08-16T23:55:00.000Z",
+  "pointer": "result://EOS-ISSUE-1062",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/61944744c23fe8afaa0e1c6a3fe2ca6c1cde316a524d25c9e884071383f34354.result.json",
+  "sha256": "61944744c23fe8afaa0e1c6a3fe2ca6c1cde316a524d25c9e884071383f34354"
+}
