@@ -144,7 +144,9 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: the catalog parity test reads src/access/permissionCatalog.ts, and only
+          # Node 22 strips TypeScript. sales-opportunity-tests.yml pins 22 for the same reason.
+          node-version: 22
           cache: npm
           cache-dependency-path: field-ops-app-vite/package-lock.json
 

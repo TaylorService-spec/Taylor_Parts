@@ -114,6 +114,12 @@ function buildDeferredForNow(catalog) {
     // Role by this phase. EXACT literal (not a prefix), so a future inventory.serializedAsset.* capability
     // stays UNACCOUNTED until separately reviewed (same protection the A3-inv gate applies elsewhere).
     "inventory.serializedAsset.read",
+    // CRM Activity (Wave 7 extension Part 1.4): crm.activity.create / crm.activity.read --
+    // registered `active: false` and granted to NO compatibility Role, pending a separate Owner
+    // grant. EXACT literals, never a "crm.activity." prefix, so a future crm.activity.* capability
+    // stays UNACCOUNTED until separately reviewed -- the same protection A3-inv applies elsewhere.
+    "crm.activity.create",
+    "crm.activity.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's
