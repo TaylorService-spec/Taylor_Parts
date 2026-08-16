@@ -1,0 +1,23 @@
+name: E2E verification contract
+
+# Guards the rules that decide whether an item may be called E2E VERIFIED. A regression
+# here would let a positive-path-only run, an evidence-free claim, or evidence gathered
+# against a commit the environment no longer serves advance the truth matrix.
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/verificationEvidence*.mjs"
+      - ".github/workflows/verification-evidence-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/verificationEvidence*.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test docs/orchestration/lib/verificationEvidence.test.mjs
