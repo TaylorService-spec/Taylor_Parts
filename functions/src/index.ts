@@ -31,6 +31,10 @@ export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.
 export { getAvailableEquipment } from "./serializedAsset/serializedAssetReadService";
+// Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/
+// coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability
+// `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+export { listCoordinatedOperations } from "./fulfillment/coordinatedVisitReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";

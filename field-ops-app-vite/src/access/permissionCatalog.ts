@@ -923,6 +923,22 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Coordinated Operations fidelity fix (2026-08-15): the trusted read backing `Coordinated Visits`
+  // (Service/Dispatch) and `Coordinated Mission` (Technician) -- functions/src/fulfillment/
+  // coordinatedVisitReadService.ts. Serves the TWO ALREADY-EXISTING pure projections
+  // (coordinatedVisit.ts / coordinatedFieldMission.ts) from real fieldops_wos data; no new coordination
+  // model, no new Job/Visit/WorkOrderGroup authority. REGISTERED BUT UNGRANTED BY DESIGN: this phase grants
+  // the capability to NO compatibility Role and adds NO per-environment activation override, so
+  // resolveEffectivePermission() denies for every principal until a later, separately authorized grant +
+  // activation gate -- same posture as inventory.serializedAsset.read's own introduction.
+  Object.freeze({
+    id: "fulfillment.coordinatedVisit.read",
+    description:
+      "Read the minimal governed coordinated-Work-Order projection (id, woNumber, status, customerId, locationId, salesOrderId, salesOrderLineRefs) for active Work Orders that carry a salesOrderId, via the trusted listCoordinatedOperations read service. Backend-resolved scope; no client-direct fieldops_wos read.",
+    resource: "fulfillment.coordinatedVisit",
+    action: "read",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {
