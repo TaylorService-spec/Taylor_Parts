@@ -1,0 +1,24 @@
+name: Repo graph
+
+on:
+  pull_request:
+    paths:
+      - "scripts/repoGraph*.mjs"
+      - "scripts/buildRepoGraph.mjs"
+      - ".github/workflows/repo-graph-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/repoGraph*.mjs"
+      - "scripts/buildRepoGraph.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test scripts/repoGraph.test.mjs
+      # Report-only: the hygiene backlog is pre-existing and must not block PRs.
+      - run: node scripts/buildRepoGraph.mjs
