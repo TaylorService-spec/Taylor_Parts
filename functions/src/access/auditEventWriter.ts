@@ -169,6 +169,12 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "salesOrderFulfillmentWriteBack",
   // Wave 7 extension PART 1.4: runtime mirror of the createCrmActivity AuditAction union member.
   "createCrmActivity",
+  // Enterprise Inventory Phase 4 (Transfer operating authority): runtime mirror of the transfer
+  // command family's AuditAction union members.
+  "createTransferOrder",
+  "dispatchTransferOrder",
+  "receiveTransferOrder",
+  "cancelTransferOrder",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

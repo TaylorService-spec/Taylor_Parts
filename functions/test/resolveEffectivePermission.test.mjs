@@ -120,6 +120,15 @@ function buildDeferredForNow(catalog) {
     // stays UNACCOUNTED until separately reviewed -- the same protection A3-inv applies elsewhere.
     "crm.activity.create",
     "crm.activity.read",
+    // Enterprise Inventory Phase 4 (Transfer operating authority): inventory.transfer.create/.dispatch/
+    // .receive/.cancel -- registered `active: false` and granted to NO compatibility Role, pending a
+    // separate Owner grant. EXACT literals, never an "inventory.transfer." prefix, so a future
+    // inventory.transfer.* capability stays UNACCOUNTED until separately reviewed -- the same
+    // protection A3-inv applies elsewhere.
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "inventory.transfer.cancel",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

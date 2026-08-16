@@ -12,7 +12,11 @@ import { fetchTransferOrderDocs, fetchWarehouses } from "../services/operationsQ
 // list); the workspace renders an honest FailureState. One-shot fetch (transfer_orders + warehouses
 // change rarely and both are write-closed to clients), re-run when accessVersion changes -- the
 // same access-freshness convention the Operations dashboard uses.
-export function useTransferOrders(accessVersion) {
+// `refreshKey` is an OPTIONAL second trigger (e.g. bumped after a successful write from
+// useTransferActions) so the workspace can re-fetch on demand without a full accessVersion churn.
+// Omitted callers are unaffected -- undefined !== undefined is false, so the effect still only
+// re-runs on an actual accessVersion change unless a caller opts in by bumping refreshKey.
+export function useTransferOrders(accessVersion, refreshKey) {
   const [state, setState] = useState({ loading: true, error: null, transferOrderDocs: [], warehouses: [] });
 
   useEffect(() => {
@@ -28,7 +32,7 @@ export function useTransferOrders(accessVersion) {
     return () => {
       cancelled = true;
     };
-  }, [accessVersion]);
+  }, [accessVersion, refreshKey]);
 
   return state;
 }

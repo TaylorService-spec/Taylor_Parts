@@ -207,7 +207,10 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // ungranted-by-design pending a separate Owner grant -- the same additive posture. Adding the prefix
 // here WIDENS this guard, so it is paired with an explicit assertion below that both ids are
 // active:false and never true; the guard must not become a loophole for an active:true id.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity."];
+// Enterprise Inventory Phase 4 (Transfer operating authority): inventory.transfer.create/.dispatch/
+// .receive/.cancel are registered `active: false`, same additive posture as the other inactive entries
+// above (registered-but-ungranted pending a separate Owner grant gate).
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity.", "inventory.transfer."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -227,6 +230,17 @@ check("every equipment.* entry is registered-but-not-grantable (active: false, n
   assert.equal(equipment.length, 5, "D4 registers exactly five equipment capabilities");
   for (const permission of equipment) {
     assert.equal(permission.active, false, `"${permission.id}" must be inactive`);
+  }
+});
+check("every inventory.transfer.* entry is registered-but-not-grantable (active: false, never true)", () => {
+  const transfer = PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.transfer."));
+  assert.deepEqual(
+    transfer.map((p) => p.id).sort(),
+    ["inventory.transfer.cancel", "inventory.transfer.create", "inventory.transfer.dispatch", "inventory.transfer.receive"],
+    "Enterprise Inventory Phase 4 registers exactly four transfer capabilities",
+  );
+  for (const permission of transfer) {
+    assert.equal(permission.active, false, `"${permission.id}" must be inactive (registered-but-ungranted)`);
   }
 });
 

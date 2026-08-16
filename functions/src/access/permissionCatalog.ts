@@ -858,6 +858,42 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "inventory.stock",
     action: "receive",
   }),
+  // Enterprise Inventory Phase 4 -- Transfer operating authority (functions/src/inventoryTransfer/*).
+  // Closes the WAREHOUSE -> MOBILE/TRUCK -> WAREHOUSE loop over the already-merged transfer_orders read
+  // model + inventoryLedger TRANSFER_OUT/TRANSFER_IN contract. REGISTERED BUT UNGRANTED by design -- no
+  // compatibility/default/operational Role holds any of these four ids, no claims initializer/migration/
+  // fixture mints them, and there is no superuser/wildcard bypass, so resolveEffectivePermission() denies
+  // `noQualifyingGrant` for every principal until a later, separately-authorized grant gate. Same
+  // ungranted posture as inventory.stock.receive at its own introduction. CUSTOMER delivery is a separate,
+  // not-yet-authorized future capability -- not registered here.
+  Object.freeze({
+    id: "inventory.transfer.create",
+    description: "Create a governed Transfer Order between two active WAREHOUSE/MOBILE(truck) inventory locations (trusted Transfer service).",
+    resource: "inventory.transfer",
+    action: "create",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.transfer.dispatch",
+    description: "Dispatch a REQUESTED Transfer Order (stage TRANSFER_OUT ledger effect(s), REQUESTED -> IN_TRANSIT).",
+    resource: "inventory.transfer",
+    action: "dispatch",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.transfer.receive",
+    description: "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED).",
+    resource: "inventory.transfer",
+    action: "receive",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.transfer.cancel",
+    description: "Cancel a REQUESTED Transfer Order before any movement has been dispatched (REQUESTED -> CANCELLED).",
+    resource: "inventory.transfer",
+    action: "cancel",
+    active: false,
+  }),
   // D4 -- Part-Equipment Compatibility trusted persistence (design package
   // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
   // REGISTERED BUT NOT GRANTABLE: every entry is `active: false`, so
