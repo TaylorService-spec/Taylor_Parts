@@ -119,6 +119,85 @@ export interface SalesOrderReadResult {
   salesOrder: SalesOrderProjection | null;
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// ACCOUNT-SCOPED read (Wave 7 completion, PART 3). Answers "which Sales Orders belong to THIS Account?".
+// getSalesOrderContext above fetches exactly one order by id -- the wrong shape for an Account workspace
+// section. Reuses the SAME governed capability (`salesOrder.read`); the authorization question doesn't
+// change, only the query shape does. accountId is a real server-side Firestore `where` clause (never a
+// client-side filter over a broader read). Bounded exactly like readAccountInvoiceAr / the account-scoped
+// Opportunity read above: fetch limit+1, and an extra row honestly sets `truncated: true` rather than
+// silently dropping rows. PR #991's pricing exclusion (no unitPrice, no pricing policy, no quote state, no
+// operatingCompanyId, no Ventana/D-5 semantics) is preserved exactly -- this reuses projectSalesOrder(),
+// the SAME projection function getSalesOrderContext uses, so there is no second place pricing could leak in.
+const DEFAULT_ACCOUNT_SALES_ORDER_LIMIT = 50;
+const MAX_ACCOUNT_SALES_ORDER_LIMIT = 200;
+
+export interface AccountSalesOrderListResult {
+  status: "ready";
+  salesOrders: SalesOrderProjection[];
+  skipped: number; // docs on this account that could not be honestly projected (e.g. malformed/legacy state)
+  truncated: boolean; // true when the account's real Sales Order count exceeds `limit`
+}
+
+// Core bounded read, factored out of the onCall adapter for direct testability (mirrors
+// readOpportunitiesForAccount / readAccountInvoiceAr).
+export async function readSalesOrdersForAccount(
+  db: FirebaseFirestore.Firestore,
+  accountId: string,
+  limit: number
+): Promise<AccountSalesOrderListResult> {
+  // No `.orderBy()`: an equality filter + limit needs no composite index (see the parallel comment in
+  // opportunityReadService.ts's readOpportunitiesForAccount).
+  const snap = await db.collection(SALES_ORDERS_COLLECTION).where("accountId", "==", accountId).limit(limit + 1).get();
+  const truncated = snap.size > limit;
+  const docs = snap.docs.slice(0, limit);
+  const salesOrders: SalesOrderProjection[] = [];
+  let skipped = 0;
+  for (const d of docs) {
+    const projection = projectSalesOrder(d.id, d.data() as Record<string, unknown>);
+    if (projection) salesOrders.push(projection);
+    else skipped += 1;
+  }
+  return { status: "ready", salesOrders, skipped, truncated };
+}
+
+// The trusted account-scoped read callable. Same fail-closed shape as getSalesOrderContext: unauthenticated
+// -> unauthenticated, missing/blank accountId -> invalid-argument (checked before authorization), ungranted
+// -> permission-denied, read failure -> internal ("unavailable"). A malformed/unknown accountId is not an
+// error -- an honest "ready" result with zero Sales Orders, matching the Opportunity account-scoped read.
+export const listSalesOrdersForAccount = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+  const data = (request.data ?? {}) as { accountId?: unknown; limit?: unknown };
+  if (typeof data.accountId !== "string" || data.accountId.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "accountId is required.");
+  }
+  const accountId = data.accountId.trim();
+  const limit =
+    Number.isSafeInteger(data.limit) && (data.limit as number) > 0 && (data.limit as number) <= MAX_ACCOUNT_SALES_ORDER_LIMIT
+      ? (data.limit as number)
+      : DEFAULT_ACCOUNT_SALES_ORDER_LIMIT;
+
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: request.auth.uid,
+      permissionIds: [SALES_ORDER_READ_CAPABILITY],
+    });
+    allowed = decisions[SALES_ORDER_READ_CAPABILITY] === true;
+  } catch {
+    allowed = false; // fail closed
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Sales Orders.");
+
+  try {
+    const db = getFirestore();
+    return await readSalesOrdersForAccount(db, accountId, limit);
+  } catch {
+    throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
+  }
+});
+
 // The trusted read callable -- ONE Sales Order by id (the natural entry point: an Opportunity's own
 // `salesOrderId` back-link, or a Work Order's `salesOrderId`, both already-authoritative refs).
 // Returns the projected result; maps failures to HttpsError so the client can distinguish denied
