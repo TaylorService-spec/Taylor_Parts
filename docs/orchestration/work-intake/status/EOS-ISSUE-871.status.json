@@ -4,11 +4,11 @@
   "pointer": "status://EOS-ISSUE-871",
   "work": "work://EOS-ISSUE-871",
   "result": "result://EOS-ISSUE-871",
-  "state": "FAILED",
-  "currentWork": "runtime terminated abnormally (PROCESS_ERROR)",
+  "state": "BLOCKED_EXECUTION",
+  "currentWork": "required execution receipts missing: tests",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-13T21:55:33.454Z",
+  "updatedAt": "2026-08-16T21:24:18.626Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-871.status.json",
-  "sha256": "fad016519e1ad82419f78caa8a782088bc2d4c51d79843d34c3db2ebbc9d0152"
+  "sha256": "a92c5e78ca29f46d806c9f65b083fc5a050829a41654e818a96bf2cb3c0dbf71"
 }
