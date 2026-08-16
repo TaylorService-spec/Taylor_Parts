@@ -29,9 +29,12 @@ const CANONICAL_REGISTRY = JSON.parse(
   readFileSync(resolve(HERE, "../../config/environments.json"), "utf8"),
 );
 
-// 13 spine ids as of 2026-08-15 (inventory.catalog.read added -- Wave 6 Owner Decision: a governed
-// trusted read for the Manufacturer catalog the Parts experience needs). Kept the SPINE_11 name
-// historically in comments below; the constant itself is the authoritative list, not the name.
+// 16 eligible ids as of Wave 7. Grew from the original 11: inventory.catalog.read (Wave 6 Owner
+// Decision -- a governed trusted read the Parts experience needs), then workOrder.parts.plan,
+// crm.activity.create and crm.activity.read (Wave 7 Owner-authorized sandbox activation, so the
+// parts-planning and CRM Activity surfaces are exercisable at all rather than permanently denied).
+// The historical SPINE_11 name is kept because the constant, not its name, is the authoritative
+// list -- renaming it would churn every reference below for no behavioral gain.
 const SPINE_11 = [
   "opportunity.write",
   "opportunity.read",
@@ -46,13 +49,16 @@ const SPINE_11 = [
   "finance.read",
   "finance.refund.record",
   "inventory.catalog.read",
+  "workOrder.parts.plan",
+  "crm.activity.create",
+  "crm.activity.read",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 13 spine capability ids", () => {
+test("eligible allow-list is exactly the 16 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 13);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 16);
 });
 
 test("sandbox project resolves the full spine override set", () => {

@@ -58,6 +58,12 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'finance.read',
   'finance.refund.record',
   'inventory.catalog.read',
+  // Wave 7 (Owner-authorized sandbox activation) -- mirrors the same three additions in
+  // functions/src/access/environmentCapabilityOverrides.ts. Parity between the two is asserted
+  // by environmentArchitecture.test.mjs, so this list can never silently drift from the backend.
+  'workOrder.parts.plan',
+  'crm.activity.create',
+  'crm.activity.read',
 ]);
 
 /**
