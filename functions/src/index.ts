@@ -35,6 +35,10 @@ export { getAvailableEquipment } from "./serializedAsset/serializedAssetReadServ
 // coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability
 // `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Role.
 export { listCoordinatedOperations } from "./fulfillment/coordinatedVisitReadService";
+// Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for
+// WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability
+// `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+export { getLocationDisplay } from "./inventoryLocation/locationDisplayReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";

@@ -133,6 +133,11 @@ function buildDeferredForNow(catalog) {
     "inventory.transfer.dispatch",
     "inventory.transfer.receive",
     "inventory.transfer.cancel",
+    // Sandbox-fidelity package PART 11A: inventory.location.display.read -- registered
+    // `active: false`, granted to NO compatibility Role, pending a separate Owner grant. EXACT
+    // literal, never an "inventory.location." prefix, so a future inventory.location.* capability
+    // stays UNACCOUNTED until separately reviewed -- the same protection A3-inv applies elsewhere.
+    "inventory.location.display.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

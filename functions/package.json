@@ -64,6 +64,7 @@
     "test:partMasterCommands": "npm run build && node test/partMasterCommands.test.mjs",
     "test:truckRegistryCommands": "npm run build && node test/truckRegistryCommands.test.mjs",
     "test:truckRegistryCallables": "npm run build && node test/truckRegistryCallables.test.mjs",
+    "test:mobileLocationInventoryProbes": "npm run build && node test/mobileLocationInventoryProbes.test.mjs",
     "test:operationalReferenceProbe": "npm run build && node --test test/operationalReferenceProbe.test.mjs",
     "test:inventoryLedger": "npm run build && node test/operationalMovementLedger.test.mjs",
     "test:inventoryReceiving": "npm run build && node test/inventoryReceivingFoundation.test.mjs",
@@ -114,7 +115,9 @@
     "test:serializedAssetRead": "npm run build && node --test test/serializedAssetValue.test.mjs test/serializedAssetReadService.test.mjs",
     "test:serializedAssetReadEmulator": "npm run build && node --test test/serializedAssetReadCallable.test.mjs",
     "test:coordinatedVisitRead": "npm run build && node --test test/coordinatedVisitReadService.test.mjs",
-    "test:coordinatedVisitReadEmulator": "npm run build && node --test test/coordinatedVisitReadCallable.test.mjs"
+    "test:coordinatedVisitReadEmulator": "npm run build && node --test test/coordinatedVisitReadCallable.test.mjs",
+    "test:locationDisplayRead": "npm run build && node --test test/locationDisplayReadService.test.mjs",
+    "test:locationDisplayReadEmulator": "npm run build && node --test test/locationDisplayReadCallable.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

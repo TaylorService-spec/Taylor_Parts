@@ -97,9 +97,20 @@ await check("assign driver: success, then wrong expectedVersion -> aborted", asy
   await assertHttps(c.assignTruckDriverCallable.run(req({ idempotencyKey: key("a2"), truckId, employeeId: emp, expectedVersion: 99 }, admin1)), "aborted");
 });
 
-// ---- deactivate FAILS CLOSED on UNKNOWN (default predicate) ----
-await check("deactivate -> failed-precondition (INVENTORY_STATE_UNKNOWN, fail-closed)", async () => {
+// ---- deactivate: Enterprise Inventory Phase 5 -- the DEFAULT predicate is now a REAL,
+// conclusive check (mobileLocationPresenceProbe.ts), not an always-UNKNOWN stub ----
+await check("deactivate on a genuinely empty truck -> succeeds (real default predicate resolves ABSENT)", async () => {
   const { truckId } = await createOk(admin1);
+  const r = await c.deactivateTruckCallable.run(req({ idempotencyKey: key("d"), truckId, expectedVersion: 1 }, admin1));
+  assert.equal(r.outcome, "applied");
+  assert.equal((await db.collection("trucks").doc(truckId).get()).data().active, false);
+});
+await check("deactivate on a truck carrying serialized-asset inventory -> failed-precondition (real default predicate resolves PRESENT)", async () => {
+  const { truckId, locationId } = await createOk(admin1);
+  await db.collection("serialized_assets").doc(uid("sa")).set({
+    schemaVersion: 1, serialNo: uid("SN"), partId: uid("part"), currentLocationId: locationId,
+    inventoryState: "AVAILABLE", currentEquipmentId: null, ownership: "OWNED",
+  });
   await assertHttps(c.deactivateTruckCallable.run(req({ idempotencyKey: key("d"), truckId, expectedVersion: 1 }, admin1)), "failed-precondition");
   assert.equal((await db.collection("trucks").doc(truckId).get()).data().active, true); // unchanged
 });

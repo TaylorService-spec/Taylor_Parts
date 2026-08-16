@@ -44,12 +44,26 @@ test("crosswalk covers EXACTLY the governed authority keys (no missing / no extr
   assert.deepEqual(registryKeys, enumKeys);
 });
 
-test("current schema: EVERY authority is unverifiable with a documented blocker -> real probe UNKNOWN", async () => {
-  for (const a of buildReferenceCrosswalk()) {
-    assert.equal(a.verifiableNow, false, `${a.key} verifiableNow`);
-    assert.ok(typeof a.blocker === "string" && a.blocker.length > 0, `${a.key} has a blocker`);
+// Enterprise Inventory Phase 5: five authorities became conclusively verifiable (backed by real
+// queries over serialized_assets / inventory_transactions / transfer_orders); six remain genuinely
+// unprovable on the current schema. This offline test constructs no real Firestore, so the five
+// "verifiable" checks throw when they try to call db.collection() on the bare {} fixture -- proving
+// they still fail closed to UNKNOWN without any I/O available, exactly like the six unverifiable ones.
+const NOW_VERIFIABLE = new Set(["serializedAssets", "partsStock", "transferOrders", "transferLines", "ledgerEvents"]);
+const STILL_UNVERIFIABLE = new Set(["custodyAssignmentHistory", "receiving", "reconciliation", "cycleCount", "rma", "scrap"]);
+
+test("current schema: 5 authorities are now verifiable (real checks), 6 remain unverifiable with a documented blocker", () => {
+  const crosswalk = buildReferenceCrosswalk();
+  assert.deepEqual(new Set(crosswalk.filter((a) => a.verifiableNow).map((a) => a.key)), NOW_VERIFIABLE);
+  assert.deepEqual(new Set(crosswalk.filter((a) => !a.verifiableNow).map((a) => a.key)), STILL_UNVERIFIABLE);
+  for (const a of crosswalk) {
+    if (a.verifiableNow) assert.equal(a.blocker, null, `${a.key} verifiable authority carries no blocker`);
+    else assert.ok(typeof a.blocker === "string" && a.blocker.length > 0, `${a.key} has a blocker`);
   }
-  const probe = buildOperationalReferenceProbe(DB); // real REFERENCE_AUTHORITIES
+});
+
+test("current schema, offline (no real Firestore): the real registry still reports UNKNOWN in aggregate -- the newly-provable authorities fail closed without I/O, and the six unresolved authorities are still unresolved", async () => {
+  const probe = buildOperationalReferenceProbe(DB); // real REFERENCE_AUTHORITIES, DB={db:{}} has no .collection()
   assert.equal(await probe(ARGS, TXN), "UNKNOWN");
 });
 

@@ -7,11 +7,17 @@
 //
 // "Export is not deployment": exporting these from functions/src/index.ts does NOT deploy or
 // activate them. As wired here there is NO App Check requirement (matching every other callable
-// in this repo -- no callable enforces App Check), NO Admin UI calls them, and the governed
-// inventory predicate does NOT exist yet -- so deactivateTruck runs with the default UNKNOWN
-// predicate and FAILS CLOSED (INVENTORY_STATE_UNKNOWN -> failed-precondition) until a separate,
-// later gate injects a real predicate. Authorization is admin/dispatcher (users/{uid}.role),
-// enforced inside the service -- no new capability, no Issue #100 change.
+// in this repo -- no callable enforces App Check), NO Admin UI calls them. Enterprise Inventory
+// Phase 5: deactivateTruck now runs with a REAL default governed-inventory predicate
+// (mobileLocationPresenceProbe.ts, wired as truckRegistryCommands.ts's own resolveDeps default) --
+// it genuinely resolves ABSENT for an empty MOBILE location and PRESENT for one carrying SERIAL or
+// NONE-mode inventory; it still FAILS CLOSED (INVENTORY_STATE_UNKNOWN -> failed-precondition) when
+// its own reads are inconclusive. deleteTruckCreatedInErrorCallable explicitly injects the real
+// operational-reference registry (also now the truckRegistryCommands.ts default) -- five of eleven
+// governed authorities are conclusive; six remain unverifiable on the current schema, so a delete
+// is still necessarily blocked (REFERENCE_STATE_UNKNOWN -> failed-precondition) until they exist.
+// Authorization is admin/dispatcher (users/{uid}.role), enforced inside the service -- no new
+// capability, no Issue #100 change.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { FunctionsErrorCode } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";

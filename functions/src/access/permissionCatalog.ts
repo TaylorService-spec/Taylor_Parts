@@ -981,6 +981,26 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Sandbox-fidelity package PART 11A (2026-08-15): the trusted location-DISPLAY resolver backing
+  // Available Equipment's location column (functions/src/inventoryLocation/locationDisplayReadService.ts).
+  // PR #1029 left location display BLOCKED because the governed Serialized Asset read returns only the
+  // scalar `currentLocationId`; this resolves id -> { type, label } for WAREHOUSE (warehouses/{id}.name)
+  // and MOBILE (mobile_locations/{id}.displayLabel) ONLY -- CUSTOMER and any other category resolve to
+  // UNRESOLVED (label null), never a fabricated type. Bounded point-reads only (getAll on the exact
+  // requested ids, capped at 50) -- no collection scan, no new index, no client-direct warehouses
+  // widening, no client-direct mobile_locations read (unchanged: no Rules match block, default deny).
+  // REGISTERED BUT UNGRANTED BY DESIGN: this phase grants the capability to NO compatibility Role and
+  // adds NO per-environment activation override, so resolveEffectivePermission() denies for every
+  // principal until a later, separately authorized grant + activation gate -- same posture as
+  // inventory.serializedAsset.read's own introduction.
+  Object.freeze({
+    id: "inventory.location.display.read",
+    description:
+      "Read the minimal governed location-display projection ({ locationId, type, label }) for a bounded set of location ids (WAREHOUSE via warehouses/{id}.name, MOBILE via mobile_locations/{id}.displayLabel; any other category resolves UNRESOLVED) via the trusted getLocationDisplay read service. Backend-resolved scope; no client-direct warehouses widening; no client-direct mobile_locations read.",
+    resource: "inventory.location.display",
+    action: "read",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {
