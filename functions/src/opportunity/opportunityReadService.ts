@@ -104,6 +104,81 @@ export function summarizeReadResult(docs: Array<{ id: string; data: Record<strin
   return { status: skipped > 0 ? "degraded" : "ready", opportunities, skipped };
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// ACCOUNT-SCOPED read (Wave 7 completion, PART 2). Answers "which Opportunities belong to THIS Account?" --
+// listOpportunityContext above returns the caller's whole authorized scope with no accountId filter, which
+// is the wrong shape for an Account workspace section. Reuses the SAME governed capability
+// (`opportunity.read`) rather than minting a new one: the authorization question ("can this principal read
+// Opportunities at all?") is identical: only the SERVER-SIDE query shape changes (accountId is a real
+// Firestore `where` clause -- never a client-side filter over a broader read). Bounded: fetches `limit + 1`
+// (mirrors financeReadCallables.ts's readAccountInvoiceAr) so a hit on the extra row honestly discloses
+// `truncated: true` rather than silently dropping rows -- the UI shows "showing first N" instead of
+// pretending the page is the whole account.
+const DEFAULT_ACCOUNT_OPPORTUNITY_LIMIT = 50;
+const MAX_ACCOUNT_OPPORTUNITY_LIMIT = 200;
+
+export interface AccountOpportunityListResult {
+  status: "ready";
+  opportunities: OpportunityProjection[];
+  skipped: number; // docs on this account that failed projection (honestly counted, not silently dropped)
+  truncated: boolean; // true when the account's real Opportunity count exceeds `limit`
+}
+
+// Core bounded read, factored out of the onCall adapter so it is directly testable without a live
+// `opportunity.read` grant (mirrors readAccountInvoiceAr's own factoring).
+export async function readOpportunitiesForAccount(
+  db: FirebaseFirestore.Firestore,
+  accountId: string,
+  limit: number
+): Promise<AccountOpportunityListResult> {
+  // No `.orderBy()` here on purpose: an equality filter + limit is served by Firestore's automatic
+  // single-field index with zero composite-index requirement. Adding an orderBy on a different field would
+  // require a new composite index (accountId ASC, <field> ASC) that does not exist today.
+  const snap = await db.collection(OPPORTUNITIES_COLLECTION).where("accountId", "==", accountId).limit(limit + 1).get();
+  const truncated = snap.size > limit;
+  const docs = snap.docs.slice(0, limit).map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
+  const result = summarizeReadResult(docs);
+  return { status: "ready", opportunities: result.opportunities, skipped: result.skipped, truncated };
+}
+
+// The trusted account-scoped read callable. Same fail-closed shape as listOpportunityContext: unauthenticated
+// -> unauthenticated, missing/blank accountId -> invalid-argument (checked BEFORE authorization, matching
+// getSalesOrderContext's own ordering), ungranted -> permission-denied, read failure -> internal ("unavailable").
+// A genuinely malformed/unknown accountId is not an error -- it is an honest "ready" result with zero
+// Opportunities (the account simply has none), exactly like listOpportunityContext's own empty case.
+export const listOpportunitiesForAccount = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+  const data = (request.data ?? {}) as { accountId?: unknown; limit?: unknown };
+  if (typeof data.accountId !== "string" || data.accountId.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "accountId is required.");
+  }
+  const accountId = data.accountId.trim();
+  const limit =
+    Number.isSafeInteger(data.limit) && (data.limit as number) > 0 && (data.limit as number) <= MAX_ACCOUNT_OPPORTUNITY_LIMIT
+      ? (data.limit as number)
+      : DEFAULT_ACCOUNT_OPPORTUNITY_LIMIT;
+
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: request.auth.uid,
+      permissionIds: [OPPORTUNITY_READ_CAPABILITY],
+    });
+    allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
+  } catch {
+    allowed = false; // fail closed
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
+
+  try {
+    const db = getFirestore();
+    return await readOpportunitiesForAccount(db, accountId, limit);
+  } catch {
+    throw new HttpsError("internal", "The opportunity read is temporarily unavailable.");
+  }
+});
+
 // The trusted read callable. Returns the projected result; maps failures to HttpsError so the client can
 // distinguish denied (permission-denied) from unavailable (internal). Empty and degraded ride the payload.
 export const listOpportunityContext = onCall({ region: "us-central1" }, async (request) => {

@@ -31,3 +31,19 @@ export function resolveActorDisplayName(userId, byUserId) {
   if (!userId) return userId;
   return byUserId?.get(userId)?.displayName ?? UNKNOWN_ACTOR_DISPLAY_NAME;
 }
+
+// Wave 7 completion (account-scoped Opportunity/Sales Order sections) -- resolves an Employee DOC id
+// (Opportunity.ownerEmployeeId / SalesOrder.ownerEmployeeId; NOT a Firebase uid) to a current display
+// name via useEmployeeDirectory's byEmployeeId map. State-aware like commercialProfile.js's
+// resolveOwnerIdentity/resolveContactIdentity (loading/error/resolved/unknown stay distinct, never
+// collapsed to a guessed name), and consistent with that pair's contract shape so callers can share
+// rendering logic. Never returns the raw employeeId as a "name" -- an id that doesn't resolve is
+// "unknown", not silently displayed as if it were a name.
+export function resolveEmployeeIdentity(employeeId, { byEmployeeId, loading = false, error = null } = {}) {
+  if (!employeeId) return { state: "unset", name: null };
+  if (error) return { state: "error", name: "Owner name unavailable" };
+  if (loading) return { state: "loading", name: null };
+  const employee = byEmployeeId?.get?.(employeeId);
+  if (employee?.displayName) return { state: "resolved", name: employee.displayName };
+  return { state: "unknown", name: "Unknown owner" };
+}
