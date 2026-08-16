@@ -58,3 +58,50 @@ through the UI.
 Deeper per-surface flows (Transfer create→dispatch→receive, Cycle Count submit→reconcile, Receiving,
 Purchasing, Truck Inventory) are blocked from UI verification by the gap above for exactly the
 personas that should exercise them. They remain NOT_VERIFIED rather than FAILED.
+
+---
+
+# Round 2 — after navigation convergence
+
+Environment: `eos-platform-sandbox`, Hosting `4572e919`, 82/82 Functions reachable.
+
+The OPEN GAP recorded above is CLOSED. Governed capability is now the final access authority for
+governed surfaces (#1066), plus the routing race that convergence exposed (#1068).
+
+## VERIFIED — governed-only principals reach their own surfaces, and only their own
+
+Zero console errors for every persona on every route.
+
+| Persona | Reaches | Correctly does NOT reach |
+|---|---|---|
+| warehouseManager (`inventoryTransferOperator`) | Transfers (real content) | Cycle Counts, Parts catalog |
+| partsAssociate (`inventoryCycleCountCounter`) | Cycle Counts (real content) | Transfers, Parts catalog |
+| partsManager (`inventoryCycleCountReconciler` + `inventoryCatalogAdministrator`) | Parts catalog (full listing) + Cycle Counts; rail shows both | Transfers |
+
+Before convergence all three saw an empty product and were redirected to Dashboard.
+
+The scoping is the load-bearing evidence: holding transfer authority does NOT open Cycle Counts, and
+holding cycle-count authority does NOT open the catalog. There is no blanket inventory gate.
+
+## VERIFIED — no regression for existing personas
+
+| Persona | Result |
+|---|---|
+| admin | every inventory surface, full content |
+| dispatcher | every inventory surface, full rail |
+| technician | still redirected off governed routes — holds neither capability nor legacy key |
+| restricted | DENY on every route |
+
+## Note — a correct denial that looks like an error
+
+`partsManager` sees an HTTP 403 from `getManufacturerCatalog` in the console. This is CORRECT
+fail-closed behaviour, not a defect: Firebase callables map `permission-denied` to HTTP 403, and
+`inventoryCatalogAdministrator` deliberately carries `inventory.catalog.manage` + `.activate` but NOT
+`inventory.catalog.read`. The function itself is fully reachable (preflight 204, unauthenticated POST
+401, `allUsers` invoker bound) — verified directly, so this is not a repeat of the invoker gap.
+
+Whether a catalog administrator SHOULD also hold `inventory.catalog.read` to see the manufacturer
+panel is a Role-scope question, deliberately left to the Owner rather than widening a Role mid-run.
+
+The `net::ERR_ABORTED` entries on Firestore Listen channels are ordinary listener teardown on
+navigation, not failures.
