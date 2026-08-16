@@ -89,17 +89,22 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // Wave 7 Item 3 (Part -> Work Order Demand). Required by the bounded open-Work-Order query;
-  // tracked as PENDING in docs/releases/wave7-sandbox-manifest.md.
-  'fieldops_wos|COLLECTION|status:ASCENDING,createdAt:DESCENDING',
+  // Empty again: the Wave 7 Part -> Work Order Demand index
+  // ('fieldops_wos|COLLECTION|status:ASCENDING,createdAt:DESCENDING') was deployed to
+  // platform-sandbox with the Wave 7 consolidated release, so declared == live once more and it no
+  // longer belongs on this list. Removing a key after a REAL deployment is exactly what restores
+  // this guard's strength; leaving a deployed key listed would let a genuinely undeclared index hide
+  // behind it.
 ]);
 
 test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {
   const pending = declared.filter((i) => PENDING_DEPLOY_INDEX_KEYS.has(indexKey(i)));
   const expectedLive = declared.length - pending.length;
 
-  // The live estate is six indexes; that number only changes when a deployment actually happens.
-  assert.equal(expectedLive, 6, 'declared-minus-pending must match the live index count');
+  // The live estate is SEVEN indexes as of the Wave 7 consolidated sandbox deployment, which
+  // actually shipped fieldops_wos(status, createdAt). This number only moves when a deployment
+  // really happens -- it moved from six to seven because one did.
+  assert.equal(expectedLive, 7, 'declared-minus-pending must match the live index count');
   assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });
