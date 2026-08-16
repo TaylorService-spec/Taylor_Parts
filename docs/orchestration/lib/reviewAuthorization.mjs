@@ -4,6 +4,10 @@ const SAFE_ID = /^[A-Z0-9][A-Z0-9._-]{2,79}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const verifiedArtifacts = new WeakSet();
+// Mirrors secretProvider.CAPABILITIES' keys (kept local, not imported, to avoid a circular import —
+// secretProvider.mjs already imports FROM this module). EOS-ISSUE-842 adds OPENAI_PATCH_PRODUCER as a
+// second, distinct authorization scope over the SAME transport/broker mechanism — never a new one.
+const AUTHORIZATION_CAPABILITIES = Object.freeze(["OPENAI_REVIEW", "OPENAI_PATCH_PRODUCER"]);
 
 export const authorizationPointer = (reviewId) => `authorization://${reviewId}`;
 export const reviewAuthorizationDigest = (artifact) => {
@@ -17,7 +21,7 @@ export function validateReviewAuthorization(a) {
   need(a && typeof a === "object", "authorization artifact is required");
   if (!a || typeof a !== "object") return errors;
   need(SAFE_ID.test(a.workId || "") && SAFE_ID.test(a.reviewId || ""), "workId and reviewId must be stable uppercase identifiers");
-  need(a.capability === "OPENAI_REVIEW", "capability must be OPENAI_REVIEW");
+  need(AUTHORIZATION_CAPABILITIES.includes(a.capability), `capability must be one of ${AUTHORIZATION_CAPABILITIES.join("/")}`);
   need(["AUTHORIZED", "UNAUTHORIZED"].includes(a.authorizationState), "work authorization state is invalid");
   need(["AUTHORIZED", "UNAUTHORIZED"].includes(a.budgetAuthorizationState), "budget authorization state is invalid");
   need(typeof a.maxSpendUsd === "number" && Number.isFinite(a.maxSpendUsd) && a.maxSpendUsd > 0, "maxSpendUsd must be positive and finite");
@@ -33,7 +37,7 @@ export function validateReviewAuthorization(a) {
 
 export function buildReviewAuthorization(input, auth, now = new Date().toISOString()) {
   const payload = {
-    workId: input.workId, reviewId: input.reviewId, capability: "OPENAI_REVIEW",
+    workId: input.workId, reviewId: input.reviewId, capability: input.capability || "OPENAI_REVIEW",
     authorizationState: input.authorizationState || "AUTHORIZED", budgetAuthorizationState: input.budgetAuthorizationState || "AUTHORIZED", maxSpendUsd: input.maxSpendUsd,
     sourceCommit: input.sourceCommit, workArtifactSha256: input.workArtifactSha256, provenance: input.provenance,
     authorizedBy: { subject: auth.subject, oauthClientId: auth.clientId }, createdAt: now,

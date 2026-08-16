@@ -1,43 +1,31 @@
 {
-  "schema": "eos.intake.status/2",
+  "schema": "eos.intake.status/1",
   "requestId": "EOS-ISSUE-842",
   "pointer": "status://EOS-ISSUE-842",
   "work": "work://EOS-ISSUE-842",
   "result": "result://EOS-ISSUE-842",
-  "state": "BLOCKED_EXECUTION",
-  "currentWork": "required execution receipts missing: tests",
-  "activeWorker": null,
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
   "startedAt": null,
-  "updatedAt": "2026-08-16T21:57:19.474Z",
+  "updatedAt": "2026-08-16T22:40:00.000Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "actualProviderCostUsd": "UNKNOWN",
-  "estimatedExecutionCostUsd": null,
-  "providerCapacityUsage": {
-    "shortWindow": "UNKNOWN",
-    "weekly": "UNKNOWN",
-    "concurrency": {
-      "used": 0,
-      "limit": 1
-    },
-    "ownerReserve": "UNKNOWN"
-  },
-  "budgetStopReason": null,
-  "costProvenance": {
-    "actual": "UNAVAILABLE",
-    "estimated": "UNAVAILABLE"
-  },
-  "freshness": "UNKNOWN",
+  "costToDateUsd": 0,
   "workArtifact": {
-    "location": "docs/orchestration/work-intake/EOS-ISSUE-842.work.json",
     "sha256": "771f704ff330515d80d9718016c63fa31d5ebb3d38c1a1716fbbe3afe7d53781"
   },
-  "resultRef": null,
+  "resultRef": {
+    "sha256": "0c28409a2c78a1c3283e25fea6026e28c0b23981c5b7007e80b2916deb5fe988",
+    "pointer": "result://EOS-ISSUE-842"
+  },
   "artifactRefs": [],
   "provenance": {
     "producer": "GitHub Issue intake workflow",
-    "provenance": "Authenticated GitHub owner issue labeled eos-intake"
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/842",
+    "githubActor": "TaylorService-spec"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-842.status.json",
-  "sha256": "0daf7cdb033c1e3ec8ce1428c34ba5894c282b384e5e7d961d9392d6516a4304"
+  "sha256": "a961e69019a337031e4fa8d4c321ac13b37b7162dd1167df8fd942c55d3aeca8"
 }

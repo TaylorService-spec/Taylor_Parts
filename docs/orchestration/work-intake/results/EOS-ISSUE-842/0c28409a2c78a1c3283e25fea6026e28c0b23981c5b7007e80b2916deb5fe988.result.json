@@ -1,0 +1,36 @@
+{
+  "resultId": "EOS-ISSUE-842:3c7b855884204f38",
+  "requestId": "EOS-ISSUE-842",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "771f704ff330515d80d9718016c63fa31d5ebb3d38c1a1716fbbe3afe7d53781",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "PATCH_PRODUCER activated: runCortexPatchProducer/persistPatchProducerResult added to cortexProviderAdapter.mjs (project-keystone Control Center surfaces only, governed execution-profile grant required, fail-closed on provider/model/budget/capacity/scope/hash/verifier mismatches). Live-provider activation seam (cortexPatchProducerActivation.mjs) reuses openaiCredentialTransport/secretProvider under capability OPENAI_PATCH_PRODUCER — no second credential mechanism, fail-closed on unconfigured model. Deterministic conformance test proves the full AgentRequest -> PATCH_PRODUCER execution -> AgentResult -> Verifier PASS -> durable artifact lifecycle. READ_ONLY_PILOT code/tests untouched. Draft PR opened on main; not merged.",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-842/3c7b855884204f38ec9dcc6e90460d6a3a5085f9775f15df54e46916cd4d3a3c.content.md",
+  "contentSha256": "3c7b855884204f38ec9dcc6e90460d6a3a5085f9775f15df54e46916cd4d3a3c",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-842/3c7b855884204f38ec9dcc6e90460d6a3a5085f9775f15df54e46916cd4d3a3c.content.md",
+      "sha256": "3c7b855884204f38ec9dcc6e90460d6a3a5085f9775f15df54e46916cd4d3a3c"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/842"
+    ],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-16T22:40:00.000Z",
+  "pointer": "result://EOS-ISSUE-842",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-842/0c28409a2c78a1c3283e25fea6026e28c0b23981c5b7007e80b2916deb5fe988.result.json",
+  "sha256": "0c28409a2c78a1c3283e25fea6026e28c0b23981c5b7007e80b2916deb5fe988"
+}
