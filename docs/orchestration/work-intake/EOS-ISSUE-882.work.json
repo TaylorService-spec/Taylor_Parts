@@ -1,0 +1,48 @@
+{
+  "requestId": "EOS-ISSUE-882",
+  "title": "EOS classifier fix — explicit read-only audit misclassified as PATCH_PRODUCER",
+  "intent": "Fix the narrow EOS intake-classification defect exposed by Issue #872: an explicitly read-only analysis mission that says `READ_ONLY_ANALYSIS`, `Do not fix anything`, and prohibits edits/patches/PRs was classified as `PATCH_PRODUCER` because implementation/fix-related words appeared in descriptive or negative context.\n\nRequired work:\n1. Reproduce the current-main #872 classification from `docs/orchestration/work-intake/EOS-ISSUE-872.work.json`: requested mission is read-only analysis, but `execution.taskClass` is `PATCH_PRODUCER`, `expectedArtifactClass` is `PATCH`, and `requiredExecutionReceipts` includes `tests` while `authority.authorizedExecutionProfile` correctly remains `READ_ONLY_ANALYSIS`.\n2. Identify the classifier rule that treats implementation/fix/build/code-change keywords in prohibitions, examples, remediation descriptions, or other non-requested-change context as positive mutation intent.\n3. Make explicit read-only intent and explicit mutation prohibitions classify as `READ_ONLY_ANALYSIS` unless the requested work actually asks the worker to edit/build/implement/fix source. Keep ambiguous cases fail-closed to the safe read-only class; never infer `GOVERNED_INTEGRATION`.\n4. Add focused regression tests using #872-like text proving: explicit `READ_ONLY_ANALYSIS` + `Do not fix anything` + remediation/fix vocabulary remains read-only; genuine implementation requests remain `PATCH_PRODUCER`; `READ_ONLY_VERIFY` remains non-mutating; issue/worker text cannot self-authorize a stronger execution profile.\n5. Run focused classifier tests and the normal orchestration regression suite.\n6. Produce a governed patch/PR with verifier evidence. Do not treat analysis-only output as completion.\n7. After the fix is merged, redispatch #872 under its original read-only 10-child mission without widening or changing its completion criteria.\n\nCompletion:\nComplete only when the classifier regression is fixed on current main with passing regression evidence, the governed patch is merged through the normal review path, and a fresh #872 dispatch artifact correctly records `execution.taskClass: READ_ONLY_ANALYSIS` with `authority.authorizedExecutionProfile: READ_ONLY_ANALYSIS`. No auto-merge or deploy.",
+  "scope": [
+    "Smallest EOS intake classifier correction and focused regression coverage only. Preserve the existing two-key model: request `taskClass` is separate from `authority.authorizedExecutionProfile`. Do not widen authority, provider boundaries, shell permissions, merge/deploy rights, credential access, or protected-branch permissions. Do not redesign unrelated EOS tooling."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "KEYWORD_IMPLEMENTATION",
+    "ambiguous": false,
+    "reason": "implementation/fix/build/code-change intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/882",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-16T21:56:36Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-882.work.json",
+  "sha256": "532c330bef331aeed7ff7ae59c161a7ff74b7e751bd70401ede90a2fbfcee17c",
+  "createdAt": "2026-08-13T22:07:29Z",
+  "updatedAt": "2026-08-16T21:56:36Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/882"
+    ],
+    "pullRequests": []
+  }
+}
