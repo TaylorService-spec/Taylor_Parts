@@ -268,6 +268,34 @@ and it runs **before provider invocation**:
 - **One review per head SHA**, and every invocation — including a refusal — emits a cost record,
   because an unmeasured cost cannot be tuned.
 
+### 11.3 Credential state is UNKNOWN, never assumed
+
+**Owner decision 2026-08-16.** If the execution boundary cannot inspect repo secrets, the state of
+`OPENAI_API_KEY` is **UNKNOWN — not absent.** Do not infer either way.
+
+- The reviewer **remains fail-closed** whenever the credential is unavailable.
+- **Never expose, print, retrieve, log, or otherwise inspect the secret value.** Not to check whether
+  it exists, not for diagnostics, not in an error message.
+- A credential/configuration failure is **non-retryable until state changes** (§6).
+- The Owner handles the protected secret/configuration step separately.
+- **This does not block EOS engineering work.**
+
+### 11.4 APPROVED trigger: explicit label only
+
+**Owner decision 2026-08-16 — approved.** The review fires on the explicit label
+**`needs-gpt-review`** and nothing else. **Automatic path-triggered paid review is NOT enabled.**
+
+Initial operating model:
+
+- runs **only** when the label is applied
+- one label application must not cause **duplicate paid reviews** (dedupe on head SHA, §11.2)
+- review **status and result are recorded durably**, not left in a workflow log
+- retry **only** legitimate transient invocation failures
+- **credential/configuration failure is non-retryable** until state changes
+- **metered usage is observable** — every firing, including a refusal, emits a cost record
+
+The purpose is controlled live experience before considering broader automatic triggering.
+
 ## 12. Handoff protocol
 
 Because the reviewer is polled rather than pushed, a handoff must be **explicit and dated** so
