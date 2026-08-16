@@ -234,6 +234,38 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | Frontend-only; revert the Hosting release. Read-only projection — nothing is written, so there is nothing to undo. |
 | Deployment status | PENDING |
 
+### PR #1016 — Account workspace redesign (header, health strip, consolidated AR)
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `c7f56333906d3d652d377d33dd860ce8b758b753` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — client-only composition. |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — reuses the existing account/AR/work-order reads. No new capability. |
+| Smoke / E2E validation required | Open an Account with invoices and open work orders. Confirm the health strip shows open work orders and outstanding/past-due AR from the SAME AR read the AR area renders. Confirm the phrase "Sales data source not connected" appears AT MOST ONCE on the page (it previously appeared four times). Confirm a denied AR read shows "Not visible to you", not 0. Confirm the two-column layout collapses to one column below 900px. Confirm no pipeline / sales-order-backlog / equipment tile is shown (no authoritative read exists). |
+| Rollback notes | Frontend-only; revert the Hosting release. Read-only composition — nothing written. |
+| Deployment status | PENDING |
+
+### PR #1017 — Account Attention projection + workspace mount
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `f3209fe25e8240ba86c21b62aa6235cb95318c9e` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — client-only projection. |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE — the new bounded read is served by the ALREADY-DEPLOYED `fieldops_wos(customerId, status)` index. No new index. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — reuses existing reads. |
+| Smoke / E2E validation required | On an Account with an overdue invoice AND a past-due scheduled work order, confirm both appear in SEPARATE sections (never interleaved or ranked against each other). Confirm the AR item deep-links to the AR anchor on the same page and the work-order item to /service/work-orders/:id. Confirm a healthy account renders NO attention section at all. Confirm a failed or truncated work-order read shows an honest unavailable note rather than an under-reported list. |
+| Rollback notes | Frontend-only; revert the Hosting release. Read-only projection — nothing written. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements

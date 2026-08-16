@@ -119,3 +119,31 @@ No native EOS Marketing is built or started. No vendor is hard-coded (verified: 
 HubSpot reference in application code), no vendor-specific CRM field is added, and no campaign
 persistence is introduced. With no Marketing provider configured the seam contributes no section rather
 than a permanent placeholder, and core CRM does not depend on it.
+
+---
+
+## Part 1.5 — Follow-up / Next Action: **BOUNDARY-BLOCKED** (dependency, not difficulty)
+
+A dated follow-up cannot be built here without prematurely creating the roadmap capability
+**Exception Ownership / Operational Accountability**.
+
+**What was checked first, and what exists:** an exhaustive search for any existing task / follow-up /
+reminder / next-action authority found **none** — no collection, no trusted command, no capability,
+no domain module. The nearest things are `domain/timelineBuilder.js` (a *derived, non-persisted*
+Work-Order timeline) and `account.notes` (a single mutable blob). Neither is a follow-up authority,
+and repurposing either would create exactly the competing generic task engine the package forbids.
+
+**Why CRM Activity is not the answer.** The Wave 7 CRM Activity authority records *what happened* —
+an immutable, attributed interaction. A follow-up is *what must happen next*, and needs an owner, a
+due date, and a completion state. Adding those three fields to the activity record would silently
+convert an append-only history into the global task authority, which the Owner explicitly ruled out.
+The CRM Activity record therefore carries **no assignee, no due date, and no completion state**, and
+that omission is deliberate rather than incidental.
+
+**Seam preserved:** the Activity & Notes UX is the natural host for a future "add follow-up" action,
+and the Account Attention projection already has a documented slot for a `CRM follow-up` signal that
+is currently omitted because no authority backs it. Neither fabricates one in the meantime.
+
+**Smallest unblocking decision:** authorize the Exception Ownership / Operational Accountability
+capability — the owner + due date + completion-state model — as its own governed authority. Sales
+follow-up then becomes one consumer of it rather than a private CRM task engine.
