@@ -210,7 +210,11 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(call).toBe(2); // the authoritative refetch actually ran
+    // FLAKE FIX: the dialog closing and the authoritative refetch are SEPARATE async steps, so a
+    // bare expect() here raced the refetch and failed intermittently in CI (observed on two
+    // unrelated PRs). Waiting for the condition removes the race WITHOUT weakening the assertion:
+    // it is still exactly 2, so a missing refetch OR a duplicate refetch still fails.
+    await waitFor(() => expect(call).toBe(2)); // the authoritative refetch actually ran
     // The newly created Opportunity's own re-read data now shows in the detail -- not a client-fabricated row.
     await screen.findByText(/Freezer replacement/i);
   });

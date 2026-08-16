@@ -66,7 +66,7 @@ export const NAV_DOMAINS = [
       // docs/reviews/ux3-activity-destination-scope.md.
       // The existing activity/history surfaces are untouched: their grains and
       // authorities are genuinely distinct.
-      { key: "notifications", label: "Notifications", path: "notifications", placeholderExplanation: "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet." },
+      { key: "notifications", label: "Notifications", path: "notifications", placeholderExplanation: "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet.", navHidden: true },
     ],
   },
   {
@@ -183,7 +183,7 @@ export const NAV_DOMAINS = [
       // is a new, third view over the SAME governed reads/writes those two already use. No legacyKey ->
       // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES (matches every other item in this group).
       { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling" },
-      { key: "warranty", label: "Warranty", path: "warranty" },
+      { key: "warranty", label: "Warranty", path: "warranty", navHidden: true },
     ],
   },
   // Platform Task 3 -- Service Operations, promoted from the former Service >
@@ -306,9 +306,9 @@ export const NAV_DOMAINS = [
     subnav: [
       { key: "purchaseOrders", label: "Purchase Orders", path: "" },
       { key: "suppliers", label: "Suppliers", path: "suppliers" },
-      { key: "quotes", label: "Quotes", path: "quotes" },
+      { key: "quotes", label: "Quotes", path: "quotes", navHidden: true },
       { key: "receipts", label: "Receipts", path: "receipts" },
-      { key: "demandPlanning", label: "Demand Planning", path: "demand-planning" },
+      { key: "demandPlanning", label: "Demand Planning", path: "demand-planning", navHidden: true },
     ],
   },
   {
@@ -328,14 +328,14 @@ export const NAV_DOMAINS = [
       // only to a principal the feed grants read, hidden/unavailable otherwise (incl. production,
       // where the callables are undeployed and the feed itself errors).
       { key: "savedReports", label: "Saved Reports", path: "saved", capabilityAccess: [REPORT_DEFINITION_CAPABILITIES.read] },
-      { key: "executive", label: "Executive", path: "", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "service", label: "Service", path: "service", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "inventory", label: "Inventory", path: "inventory", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "purchasing", label: "Purchasing", path: "purchasing", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "warehouse", label: "Warehouse", path: "warehouse", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "employees", label: "Employees", path: "employees", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "customers", label: "Customers", path: "customers", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
-      { key: "financial", label: "Financial", path: "financial", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting." },
+      { key: "executive", label: "Executive", path: "", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "service", label: "Service", path: "service", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "inventory", label: "Inventory", path: "inventory", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "purchasing", label: "Purchasing", path: "purchasing", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "warehouse", label: "Warehouse", path: "warehouse", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "employees", label: "Employees", path: "employees", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "customers", label: "Customers", path: "customers", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
+      { key: "financial", label: "Financial", path: "financial", placeholderExplanation: "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting.", navHidden: true },
     ],
   },
   {
@@ -360,10 +360,10 @@ export const NAV_DOMAINS = [
       // Real read-only content (effective-permission preview render) lands in
       // Row 11 (Task 16) -- this row only adds the reachable nav slot.
       { key: "permissionPreview", label: "Permission Preview", path: "permission-preview" },
-      { key: "vehicles", label: "Vehicles", path: "vehicles" },
-      { key: "regions", label: "Regions", path: "regions" },
-      { key: "companySettings", label: "Company Settings", path: "company-settings" },
-      { key: "integrations", label: "Integrations", path: "integrations" },
+      { key: "vehicles", label: "Vehicles", path: "vehicles", navHidden: true },
+      { key: "regions", label: "Regions", path: "regions", navHidden: true },
+      { key: "companySettings", label: "Company Settings", path: "company-settings", navHidden: true },
+      { key: "integrations", label: "Integrations", path: "integrations", navHidden: true },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],
   },
@@ -375,7 +375,11 @@ export const NAV_DOMAINS = [
   // /customers), so this stub was obsolete and redundant. Its route was generated only from this
   // future list, so removing the entry removes the /sales-crm route (App.jsx unchanged); a hit on
   // the retired /sales-crm URL falls through to the top-level catch-all (Navigate to /dashboard).
-  { key: "financials", label: "Financials", path: "financials", future: true },
+  // Hidden from normal navigation (sandbox production-fidelity): this is a FUTURE top-level
+  // placeholder with no landing of its own. Real finance/AR capability is NOT hidden by this --
+  // it remains reachable inside Account and Sales flows (AccountFinancialsSection, the governed
+  // listAccountInvoiceAr read). Only the empty top-level destination is hidden.
+  { key: "financials", label: "Financials", path: "financials", future: true, navHidden: true },
 ];
 
 // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
