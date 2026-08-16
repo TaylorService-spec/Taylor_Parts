@@ -153,7 +153,12 @@ export default function Transfers({ accessVersion }) {
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       {rows.length === 0 ? (
-        <EmptyState variant="database" title="No transfers yet" message="Inventory transfers between locations will appear here." />
+        <EmptyState
+          variant="database"
+          title="No transfers yet"
+          message="Inventory transfers between locations will appear here."
+          guidance="A transfer records stock moving from one location to another. Transfers are created by Field Ops' backend processes rather than from this read-only screen, so this list stays empty until inventory actually moves."
+        />
       ) : visibleRows.length === 0 ? (
         <EmptyState variant="filtered" title="No matching transfers" message="No transfers match this filter." />
       ) : (

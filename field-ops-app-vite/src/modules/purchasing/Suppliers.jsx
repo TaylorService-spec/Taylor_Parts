@@ -77,7 +77,12 @@ export default function Suppliers({ accessVersion }) {
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       {rows.length === 0 ? (
-        <EmptyState variant="database" title="No suppliers" message="No suppliers are recorded yet." />
+        <EmptyState
+          variant="database"
+          title="No suppliers"
+          message="No suppliers are recorded yet."
+          guidance="Suppliers are the vendors parts are purchased from. Each carries a status showing whether it is active for purchasing. Suppliers are recorded outside this read-only screen."
+        />
       ) : visibleRows.length === 0 ? (
         <EmptyState variant="filtered" title="No matching suppliers" message="No suppliers match this filter." />
       ) : (

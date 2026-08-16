@@ -76,7 +76,12 @@ export default function Warehouses({ accessVersion }) {
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       {rows.length === 0 ? (
-        <EmptyState variant="database" title="No warehouses" message="No warehouses are recorded yet." />
+        <EmptyState
+          variant="database"
+          title="No warehouses"
+          message="No warehouses are recorded yet."
+          guidance="Warehouses are the stocking locations inventory is received into and issued from. They are set up outside this read-only screen, and a warehouse must be Active to be eligible to receive."
+        />
       ) : visibleRows.length === 0 ? (
         <EmptyState variant="filtered" title="No matching warehouses" message="No warehouses match this filter." />
       ) : (

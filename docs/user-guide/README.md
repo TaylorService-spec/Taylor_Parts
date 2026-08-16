@@ -20,6 +20,7 @@ Every guide is tagged so you're never misled about what actually works:
 - [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the app frame plus the role-specific My Dashboard (live technician dashboard; placeholder for admin/dispatcher, who use Operations Dashboard).
 - [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the top area tabs and sub-tabs, what each role sees, and an honest note that many sub-sections are not-yet-built placeholders.
 - [Sign out of Field Ops](getting-started/sign-out.md) — **live** — Use the Logout button in the top-right to end your session, especially on shared devices.
+- [When a screen is empty](getting-started/when-a-screen-is-empty.md) — **live** — Tell "nothing exists yet" apart from "your filters are hiding everything," and read the guidance line that explains what a brand-new screen is for.
 
 ## Work orders
 

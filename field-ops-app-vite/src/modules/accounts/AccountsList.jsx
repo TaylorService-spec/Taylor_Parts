@@ -180,6 +180,7 @@ export default function AccountsList() {
           variant="database"
           title="No customers yet"
           message="Add your first customer to get started."
+          guidance="A customer is the account everything else hangs off — its locations are where service happens, and its work orders, equipment, and financial summary all roll up here."
           action={<button type="button" onClick={() => setShowCreate(true)}>+ New Customer</button>}
         />
       ) : (

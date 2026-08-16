@@ -439,7 +439,11 @@ export default function AccountDetail() {
                 <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
               </div>
             ) : locations.length === 0 ? (
-              <EmptyState variant="database" message="No locations yet." />
+              <EmptyState
+                variant="database"
+                message="No locations yet."
+                guidance="A location is a physical site where service happens for this customer. Raising a work order needs one, so add the customer's first location here before scheduling work for them."
+              />
             ) : (
               locations.map((loc) => {
                 const locLine = formatAddress(loc.address);

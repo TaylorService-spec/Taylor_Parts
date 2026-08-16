@@ -136,6 +136,7 @@ export default function PurchaseOrders() {
           variant="database"
           title="No purchase orders yet"
           message="A purchase order appears here once a Reorder Request is placed with a supplier."
+          guidance="A purchase order is the record of stock ordered from a supplier against a reorder request. Orders are placed from the reorder workflow, not from this read-only screen, and stay here as open, received, or voided."
         />
       ) : visibleRows.length === 0 ? (
         <EmptyState variant="filtered" title="No matching purchase orders" message="No purchase orders match this filter." />
