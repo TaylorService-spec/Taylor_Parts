@@ -35,7 +35,7 @@ ok("admin: all three groups present with their children in display order", () =>
   assert.deepEqual(m.groups.map((g) => g.key), ["workManagement", "dispatch", "technicianWorkspace"]);
   assert.deepEqual(keys(groupByKey(m, "workManagement").items), ["workOrders", "jobAssignments", "warranty"]);
   // Coordinated Visits (admin/dispatcher, no legacyKey) is grouped under Dispatch.
-  assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatch", "coordinatedVisits"]);
+  assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"]);
   // Coordinated Mission (legacyKey fieldMode → admin + technician) is grouped under Technician Workspace.
   assert.deepEqual(keys(groupByKey(m, "technicianWorkspace").items), ["technicianWorkspace", "coordinatedMission"]);
 });
@@ -79,7 +79,7 @@ ok("technician: Control Tower NOT exposed (fails closed, no broadening)", () => 
   assert.deepEqual(m.ungrouped, []);
   const allShown = [...m.groups.flatMap((g) => keys(g.items)), ...keys(m.ungrouped)];
   // coordinatedVisits is admin/dispatcher-only (no legacyKey) — a technician must never see the Dispatch read.
-  for (const forbidden of ["workOrders", "dispatch", "dispatcherBoard", "scheduling", "warranty", "controlTower", "coordinatedVisits"]) {
+  for (const forbidden of ["workOrders", "dispatch", "dispatcherBoard", "scheduling", "dispatchScheduling", "warranty", "controlTower", "coordinatedVisits"]) {
     assert.ok(!allShown.includes(forbidden), `technician must not see ${forbidden}`);
   }
 });
@@ -103,6 +103,8 @@ ok("active group: 'dispatcher-board' -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatcher-board", adminGroups), "dispatch"));
 ok("active group: 'dispatch' (Dispatch Queue) -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatch", adminGroups), "dispatch"));
+ok("active group: 'dispatch-scheduling' (Dispatch Board) -> Dispatch", () =>
+  assert.equal(findActiveServiceGroupKey("dispatch-scheduling", adminGroups), "dispatch"));
 ok("active group: 'technician-workspace' -> Technician Workspace", () =>
   assert.equal(findActiveServiceGroupKey("technician-workspace", adminGroups), "technicianWorkspace"));
 ok("active group: 'coordinated-visits' -> Dispatch", () =>
