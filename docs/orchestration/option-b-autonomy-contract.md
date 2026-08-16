@@ -1,4 +1,10 @@
-# Option-B bounded autonomy contract (Phase 5) — DESIGN ONLY, NOT ACTIVATED
+#> **SUPERSEDED IN PART (2026-08-16).** The Owner has since ratified
+> [`eos-operational-authorization.md`](./eos-operational-authorization.md), which grants bounded unattended
+> execution and sets the canonical ceilings (90-min segment, 10-child fail-safe, 20-spawn checkpoint) plus a
+> 25% Owner capacity reserve. Operating concurrency remains `REMOTE_AI = 2` as designed here. Read that
+> document first; this one remains the design rationale behind the parameters.
+
+ Option-B bounded autonomy contract (Phase 5) — DESIGN ONLY, NOT ACTIVATED
 
 **Status: design (Tier-1). Option B is OFF.** This defines the bounded unattended policy **without activating
 it**. Option A (in-session `/loop`) remains current; ceilings stay `2/1/1`; the Owner ratifies activation
