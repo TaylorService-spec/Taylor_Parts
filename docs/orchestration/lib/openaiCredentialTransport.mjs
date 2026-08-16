@@ -39,14 +39,23 @@ export function createFileSpendLedger({ path, fs }) {
   });
 }
 
-export function createOpenAICredentialTransport({ broker, authorizedInvocation, estimateSpendUsd, invokeOpenAI, spendLedger }) {
-  if (!broker?.withCredential || typeof estimateSpendUsd !== "function" || typeof invokeOpenAI !== "function" || !spendLedger?.reserve) throw new Error("OPENAI_REVIEW transport is not configured");
-  return async function openAIReviewTransport(invocation) {
+// The ONLY capability scopes this transport may ever pass to broker.withCredential — a fixed, source-
+// verified allowlist (never a free-form/caller-influenced string). EOS-ISSUE-842 adds
+// OPENAI_PATCH_PRODUCER as a second, distinct authorization scope over the SAME broker/DPAPI/spend-
+// ledger mechanism; it does not introduce a new credential path (see credentialPathAudit.mjs).
+const KNOWN_TRANSPORT_CAPABILITIES = Object.freeze(["OPENAI_REVIEW", "OPENAI_PATCH_PRODUCER"]);
+
+// `capability` selects which of the fixed allowlist scopes above this call uses (default OPENAI_REVIEW,
+// preserving exact prior behavior for existing callers).
+export function createOpenAICredentialTransport({ broker, authorizedInvocation, estimateSpendUsd, invokeOpenAI, spendLedger, capability = "OPENAI_REVIEW" }) {
+  if (!KNOWN_TRANSPORT_CAPABILITIES.includes(capability)) throw new Error(`unknown credential capability: ${capability}`);
+  if (!broker?.withCredential || typeof estimateSpendUsd !== "function" || typeof invokeOpenAI !== "function" || !spendLedger?.reserve) throw new Error(`${capability} transport is not configured`);
+  return async function openAICredentialTransport(invocation) {
     if (invocation?.workId !== authorizedInvocation.workId || invocation?.reviewId !== authorizedInvocation.reviewId || invocation?.sourceCommit !== authorizedInvocation.sourceCommit || invocation?.workArtifactSha256 !== authorizedInvocation.workArtifactSha256 || !invocation?.invocationId) throw new SecretBrokerError(SECRET_FAILURE.WORK_UNAUTHORIZED);
     const estimatedSpendUsd = estimateSpendUsd(invocation);
     if (!Number.isFinite(estimatedSpendUsd) || estimatedSpendUsd < 0 || estimatedSpendUsd > authorizedInvocation.maxSpendUsd) throw new SecretBrokerError(SECRET_FAILURE.BUDGET_UNAUTHORIZED);
     const budget = spendLedger.reserve({ authorizationSha256: authorizedInvocation.sha256, invocationId: invocation.invocationId, amountUsd: estimatedSpendUsd, ceilingUsd: authorizedInvocation.maxSpendUsd });
-    const result = await broker.withCredential("OPENAI_REVIEW", authorizedInvocation, async (apiKey) => invokeOpenAI({ apiKey, invocation }));
+    const result = await broker.withCredential(capability, authorizedInvocation, async (apiKey) => invokeOpenAI({ apiKey, invocation }));
     return Object.freeze({ ...result, budget: { ...budget, authorizationSha256: authorizedInvocation.sha256 } });
   };
 }

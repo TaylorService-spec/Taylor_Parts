@@ -20,6 +20,10 @@ export const SECRET_FAILURE = Object.freeze({
 
 export const CAPABILITIES = Object.freeze({
   OPENAI_REVIEW: Object.freeze({ credentialId: "eos-openai-review", secretName: "OPENAI_API_KEY" }),
+  // Company-work PATCH_PRODUCER activation seam (EOS-ISSUE-842). Deliberately reuses the SAME
+  // OPENAI_API_KEY secret/DPAPI transport as OPENAI_REVIEW — this is a second AUTHORIZATION SCOPE
+  // (distinct credentialId, distinct work/budget grant), never a second credential mechanism.
+  OPENAI_PATCH_PRODUCER: Object.freeze({ credentialId: "eos-openai-patch-producer", secretName: "OPENAI_API_KEY" }),
 });
 
 export class SecretBrokerError extends Error {
