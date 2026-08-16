@@ -307,6 +307,63 @@ export const INVENTORY_CATALOG_ADMINISTRATOR_ROLE: Role = Object.freeze({
   permissions: ["inventory.catalog.manage", "inventory.catalog.activate"],
 }) as Role;
 
+// Work Order parts planner -- the durable least-privilege Role for the governed WO parts-planning
+// producer (setWorkOrderPartsPlan, capability workOrder.parts.plan).
+//
+// WHY THIS EXISTS. The capability was registered active:false and carried by NO Role, so there was
+// literally nothing to grant: the planning UI shipped and activated but every principal resolved
+// DENY, with no assignable Role to fix it. Defining the Role is what makes the grant possible; it is
+// not itself a grant.
+//
+// Least privilege: exactly one capability id. Planning is not reserving and not consuming -- this
+// Role confers no inventory movement, no reservation, and no execution authority, matching the
+// command's own PLAN != RESERVE != USE invariant.
+//
+// `privileged: false` per docs/governance/privileged-approval-classification.md, on the same
+// reasoning recorded for inventoryCreateExecutor and inventoryCatalogAdministrator: planning parts
+// administers no security/access policy, grants no admin authority, changes no role/permission
+// definition, bypasses no trusted-command authorization, and cannot alter or suppress audit
+// evidence. Ordinary operational authority -- one authorized approver plus append-only audit.
+//
+// DECLARING THIS OBJECT GRANTS NOTHING. A principal holds it only through a governed, audited
+// roleAssignments write, which bumps accessVersion and syncs claims.
+export const WORK_ORDER_PARTS_PLANNER_ROLE: Role = Object.freeze({
+  id: "workOrderPartsPlanner",
+  name: "Work Order Parts Planner",
+  description:
+    "Durable least-privilege Role for planning parts on a Work Order through the governed setWorkOrderPartsPlan command. Carries exactly workOrder.parts.plan and nothing else: planning is not reserving and not consuming. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["workOrder.parts.plan"],
+}) as Role;
+
+// CRM activity contributor -- the durable least-privilege Role for the CRM Activity authority
+// (crm.activity.create + crm.activity.read).
+//
+// Same situation as above: both capabilities were registered active:false and carried by NO Role, so
+// the Activity & Notes surface could ship, activate, and still deny everyone.
+//
+// The two ids are kept as separate capabilities deliberately, so a future read-only Role remains
+// possible without redefining the authority. This Role holds both because a salesperson who records
+// interaction history necessarily also reads it; a read-only variant is a separate future Role, not a
+// reason to fragment this one now.
+//
+// Least privilege: exactly these two ids. It confers no Account, Opportunity or Sales Order write
+// authority -- the activity record references those objects and never restates or mutates them.
+//
+// `privileged: false` on the same reasoning as its siblings. DECLARING THIS OBJECT GRANTS NOTHING.
+export const CRM_ACTIVITY_CONTRIBUTOR_ROLE: Role = Object.freeze({
+  id: "crmActivityContributor",
+  name: "CRM Activity Contributor",
+  description:
+    "Durable least-privilege Role for recording and reading governed CRM activity/notes on an Account. Carries exactly crm.activity.create + crm.activity.read and nothing else; it confers no Account, Opportunity or Sales Order write authority. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["crm.activity.create", "crm.activity.read"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -318,4 +375,6 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   owner: OWNER_ROLE,
   inventoryCreateExecutor: INVENTORY_CREATE_EXECUTOR_ROLE,
   inventoryCatalogAdministrator: INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
+  workOrderPartsPlanner: WORK_ORDER_PARTS_PLANNER_ROLE,
+  crmActivityContributor: CRM_ACTIVITY_CONTRIBUTOR_ROLE,
 });

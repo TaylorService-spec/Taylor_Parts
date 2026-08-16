@@ -25,6 +25,8 @@ import {
   OWNER_ROLE,
   INVENTORY_CREATE_EXECUTOR_ROLE,
   INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
+  WORK_ORDER_PARTS_PLANNER_ROLE,
+  CRM_ACTIVITY_CONTRIBUTOR_ROLE,
 } from "../lib/access/governedBusinessRoles.js";
 import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
@@ -55,6 +57,8 @@ const EXPECTED_IDS = [
   "owner",
   "inventoryCreateExecutor",
   "inventoryCatalogAdministrator",
+  "workOrderPartsPlanner",
+  "crmActivityContributor",
 ];
 
 function grant(roleId, roles) {
@@ -82,9 +86,9 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the ten ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the twelve ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator)", () => {
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 10);
+  assert.equal(ALL_GOVERNED_ROLES.length, 12);
 });
 
 check("every governed business Role's own .id matches its map key", () => {
@@ -243,6 +247,90 @@ check("Inventory CREATE Executor: NOT privileged (operational -- single-approver
   assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.privileged, false);
   assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.systemSeed, true);
   assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.compatibility, false);
+});
+
+// === Wave 7 completion: Roles that make the activated capabilities grantable ===
+
+check("Work Order Parts Planner: carries EXACTLY workOrder.parts.plan", () => {
+  assert.deepEqual(WORK_ORDER_PARTS_PLANNER_ROLE.permissions, ["workOrder.parts.plan"]);
+});
+
+check("GRANT IS NOT ACTIVATION: holding the Role still resolves DENY while the capability is active:false", () => {
+  // workOrder.parts.plan is registered active:false, and the resolver's active check overrides ANY
+  // grant. So a principal holding this Role is still denied everywhere the per-environment activation
+  // override is off -- which is every environment except platform-sandbox. This is the property that
+  // keeps production safe from a Role definition, and it is asserted rather than assumed.
+  assert.equal(resolve("workOrder.parts.plan", "workOrderPartsPlanner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+});
+
+check("Work Order Parts Planner: planning confers NO reservation, consumption or execution authority", () => {
+  // PLAN != RESERVE != USE -- the command's own invariant, mirrored in the Role's grant set.
+  for (const id of [
+    "inventory.transaction.read", "inventory.stock.receive", "inventory.catalog.manage",
+    "workOrder.create", "workOrder.transition", "workOrder.cancel",
+    "salesOrder.write", "salesOrder.fulfill", "admin.roleAssignment.write",
+  ]) {
+    assert.equal(resolve(id, "workOrderPartsPlanner", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("CRM Activity Contributor: carries EXACTLY crm.activity.create + .read", () => {
+  assert.deepEqual(
+    [...CRM_ACTIVITY_CONTRIBUTOR_ROLE.permissions].sort(),
+    ["crm.activity.create", "crm.activity.read"],
+  );
+});
+
+check("GRANT IS NOT ACTIVATION: both CRM ids still resolve DENY while registered active:false", () => {
+  for (const id of ["crm.activity.create", "crm.activity.read"]) {
+    assert.equal(resolve(id, "crmActivityContributor", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("CRM Activity Contributor: recording history confers NO commercial write authority", () => {
+  // The activity record REFERENCES Account/Opportunity/Sales Order; it never restates or mutates them.
+  for (const id of [
+    "account.record.create", "account.record.update", "account.governedField.write",
+    "opportunity.write", "salesOrder.write", "finance.invoice.issue",
+    "admin.roleAssignment.write",
+  ]) {
+    assert.equal(resolve(id, "crmActivityContributor", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("both new Roles are durable + operational: NOT privileged, systemSeed, non-compatibility", () => {
+  for (const role of [WORK_ORDER_PARTS_PLANNER_ROLE, CRM_ACTIVITY_CONTRIBUTOR_ROLE]) {
+    assert.equal(role.privileged, false, role.id);
+    assert.equal(role.systemSeed, true, role.id);
+    assert.equal(role.compatibility, false, role.id);
+  }
+});
+
+check("defining either Role grants nothing without an assignment", () => {
+  for (const permissionId of ["workOrder.parts.plan", "crm.activity.create", "crm.activity.read"]) {
+    const denied = resolveEffectivePermission({
+      permissionId,
+      assignments: [],
+      roles: GOVERNED_BUSINESS_ROLES,
+      currentAccessVersion: 1,
+      target: { scope: { type: "global" }, condition: {} },
+    });
+    assert.equal(denied.decision, "DENY", permissionId);
+  }
+});
+
+check("no OTHER governed Role carries these capabilities in its permission set", () => {
+  // Asserted on the permission SETS, not on resolution: every id here resolves DENY anyway while
+  // active:false, so a resolution-based check would pass vacuously and prove nothing.
+  for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    if (id !== "workOrderPartsPlanner") {
+      assert.equal(role.permissions.includes("workOrder.parts.plan"), false, id);
+    }
+    if (id !== "crmActivityContributor") {
+      assert.equal(role.permissions.includes("crm.activity.create"), false, id);
+      assert.equal(role.permissions.includes("crm.activity.read"), false, id);
+    }
+  }
 });
 
 check("security-sensitive Roles remain privileged (two-person preserved): owner privileged; the operational executor is not", () => {
