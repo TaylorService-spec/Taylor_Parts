@@ -184,6 +184,41 @@ check("CONTRACT CROSS-CHECK (NONE): the legacy assembled input is still ACCEPTED
   const input = buildReceiveRequestInput({ candidate: candidate(), locationId: "wh-1", trackingMode: TRACKING_MODE.NONE });
   const payload = buildReceiveRequest(input);
   assert.notEqual(payload, null, "transport must still accept the unchanged NONE request shape");
+  // A NONE receipt must carry NO serial key at all -- not an empty array.
+  assert.equal("serialNumbers" in payload.lines[0], false);
+});
+
+// The SERIAL half of the same cross-check. This could not be asserted while it was written, because
+// the transport had not yet been taught to pass serialNumbers through (that landed in #1009). It is
+// the seam where SERIAL receiving previously broke end to end -- the command accepted serials while
+// the boundary either stripped or rejected them -- so it is asserted directly rather than assumed.
+check("CONTRACT CROSS-CHECK (SERIAL): an assembled SERIAL input is ACCEPTED by the transport and keeps its serials", () => {
+  const serials = ["SN-1", "SN-2", "SN-3", "SN-4", "SN-5"];
+  const input = buildReceiveRequestInput({
+    candidate: candidate(),
+    locationId: "wh-1",
+    trackingMode: TRACKING_MODE.SERIAL,
+    serialNumbers: serials,
+  });
+  assert.notEqual(input, null, "a valid SERIAL input must be assembled");
+  const payload = buildReceiveRequest(input);
+  assert.notEqual(payload, null, "transport must accept the SERIAL request shape");
+  assert.deepEqual([...payload.lines[0].serialNumbers], serials, "serials must survive the transport verbatim");
+  // one serial per received unit, bound to the ordered quantity
+  assert.equal(payload.lines[0].serialNumbers.length, payload.lines[0].receivedQuantity);
+});
+
+check("CONTRACT CROSS-CHECK (SERIAL): trimming is preserved and case is NOT folded through the transport", () => {
+  const input = buildReceiveRequestInput({
+    candidate: candidate(),
+    locationId: "wh-1",
+    trackingMode: TRACKING_MODE.SERIAL,
+    serialNumbers: ["  SN-1 ", "sn-1", "SN-3", "SN-4", "SN-5"],
+  });
+  const payload = buildReceiveRequest(input);
+  assert.notEqual(payload, null);
+  // "  SN-1 " trims to "SN-1"; "sn-1" stays distinct rather than collapsing into it.
+  assert.deepEqual([...payload.lines[0].serialNumbers], ["SN-1", "sn-1", "SN-3", "SN-4", "SN-5"]);
 });
 
 check("describePartTrackingBlock / describeLotNotSupported: sanitized honest copy, no raw code/path", () => {
