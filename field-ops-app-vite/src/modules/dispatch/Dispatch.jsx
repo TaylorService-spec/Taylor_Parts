@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
@@ -7,7 +7,6 @@ import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
-import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
@@ -33,11 +32,23 @@ import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 // backend logic, no schema change -- assign() below is byte-for-byte the
 // same governed Dispatch transition this screen already invoked.
 //
-// Hero-story follow-up: pins demo/heroConfig.js's hero job to the top and
-// pre-selects the hero technician in its assign dropdown. Pure display
-// ordering/defaultValue -- no data mutation, no change to assign()'s
-// call, and any job/technician not matching the hero config renders
-// exactly as before.
+// Sandbox-fidelity fix (Part 2): this screen previously imported
+// demo/heroConfig.js and used it to pin a hardcoded "hero" job (matched by
+// customer name "Beacon Manufacturing") to the top of the queue, badge it
+// "Active Demo Job", and pre-select a hardcoded "hero" technician (matched
+// by name "Alex Rivera") in the assign dropdown. That is demo-only
+// presentation bleeding into production-shaped runtime: a job or
+// technician with a matching name in a REAL environment would silently get
+// special treatment it never asked for and no governed field explains.
+// heroConfig.js is now used ONLY by demo/test fixtures (see
+// demo/inventoryData.js and test/*), never imported by this screen. This
+// remains the canonical Work Order Dispatch transition surface (see the
+// F0 note above) -- the combined Dispatch/Scheduling workspace
+// (DispatchSchedulingWorkspace.jsx) only performs the Schedule transition
+// (unscheduled -> SCHEDULED with a suggested tech/time); it does not
+// perform the Dispatch transition (SCHEDULED -> DISPATCHED, the actual
+// "send this job to this technician now" governed write), so this screen
+// keeps a unique, still-necessary operational responsibility.
 
 // Chips read the governed operational phase, so all eleven statuses are
 // covered without this surface enumerating them.
@@ -70,14 +81,6 @@ export default function Dispatch() {
   const [dispatchError, setDispatchError] = useState(null);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
-  const heroTechnician = technicians.find(
-    (t) => isHeroTechnician(t.name) && t.status === TECH_STATUS.AVAILABLE
-  );
-
-  const sortedJobs = useMemo(
-    () => [...jobs].sort((a, b) => (isHeroActiveJob(b.woNumber) ? 1 : 0) - (isHeroActiveJob(a.woNumber) ? 1 : 0)),
-    [jobs]
-  );
 
   // Governed dispatch: the server sets assignedTechId, enforces the
   // CREATED/READY_TO_DISPATCH/SCHEDULED -> DISPATCHED transition and the
@@ -113,19 +116,15 @@ export default function Dispatch() {
       ) : jobs.length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
       ) : (
-        sortedJobs.map((job) => {
+        jobs.map((job) => {
           const chip = statusChipFor(job);
-          const isHero = isHeroActiveJob(job.woNumber);
           return (
             <div
               key={job.id}
-              className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}${isHero ? " fo-card--hero" : ""}`}
+              className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}`}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3>
-                  {job.woNumber ?? job.id}
-                  {isHero && <span className="fo-chip fo-chip-hero">Active Demo Job</span>}
-                </h3>
+                <h3>{job.woNumber ?? job.id}</h3>
                 <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
               </div>
               <p>{job.description}</p>
@@ -144,11 +143,7 @@ export default function Dispatch() {
                     : "Not ready to dispatch — this work order must be scheduled first."}
                 </div>
               ) : !job.assignedTechId ? (
-                <select
-                  key={heroTechnician?.id ?? "none"}
-                  defaultValue={isHero && heroTechnician ? heroTechnician.id : ""}
-                  onChange={(e) => assign(job, e.target.value)}
-                >
+                <select defaultValue="" onChange={(e) => assign(job, e.target.value)}>
                   <option value="" disabled>
                     Select technician…
                   </option>
