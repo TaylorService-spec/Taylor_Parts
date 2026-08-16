@@ -89,26 +89,24 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // Cycle Count (Part 6) declares a serialized_assets(partId, currentLocationId) composite so a
-  // SERIAL count can enumerate the units expected at one location. DECLARED, NOT YET DEPLOYED --
-  // remove this key once a real deployment ships it, which is what restores declared == live.
-  'serialized_assets|COLLECTION|partId:ASCENDING,currentLocationId:ASCENDING,inventoryState:ASCENDING',
-  // Historical note: the Wave 7 Part -> Work Order Demand index
-  // ('fieldops_wos|COLLECTION|status:ASCENDING,createdAt:DESCENDING') was deployed to
-  // platform-sandbox with the Wave 7 consolidated release, so declared == live once more and it no
-  // longer belongs on this list. Removing a key after a REAL deployment is exactly what restores
-  // this guard's strength; leaving a deployed key listed would let a genuinely undeclared index hide
-  // behind it.
+  // EMPTY. Every declared index has reached the live estate.
+  //
+  // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
+  // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That
+  // removal is the point of this list -- it is what turns the assertion below back into a strict
+  // declared == live check. Leaving a deployed key listed would let a genuinely undeclared index
+  // hide behind it, which is the drift this guard exists to catch.
 ]);
 
 test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {
   const pending = declared.filter((i) => PENDING_DEPLOY_INDEX_KEYS.has(indexKey(i)));
   const expectedLive = declared.length - pending.length;
 
-  // The live estate is SEVEN indexes as of the Wave 7 consolidated sandbox deployment, which
-  // actually shipped fieldops_wos(status, createdAt). This number only moves when a deployment
-  // really happens -- it moved from six to seven because one did.
-  assert.equal(expectedLive, 7, 'declared-minus-pending must match the live index count');
+  // The live estate is EIGHT indexes as of the sandbox convergence deployment, which shipped the
+  // serialized_assets(partId, currentLocationId, inventoryState) composite. This number only moves
+  // when a deployment really happens -- it moved from seven to eight because one did, verified
+  // against `firebase firestore:indexes --project eos-platform-sandbox` (8 live, 8 declared).
+  assert.equal(expectedLive, 8, 'declared-minus-pending must match the live index count');
   assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });
