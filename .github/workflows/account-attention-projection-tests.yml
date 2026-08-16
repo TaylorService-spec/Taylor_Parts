@@ -1,0 +1,64 @@
+name: Account Attention Projection Tests
+
+# Wave 7 extension, PART 1.6 -- CI coverage for the Account Attention Projection (the third bounded
+# attention-projection slice, mirroring Wave 6's Parts Attention Projection and Wave 7 PART 5's WO/Dispatch
+# Attention Projection -- see wo-dispatch-attention-projection-tests.yml, same shape). Runs the pure domain
+# test (node:test), the section render test (vitest + jsdom), and lint over exactly the files this slice
+# touches. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/accountAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/accountArView.js"
+      - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/src/hooks/useAccountAttentionWorkOrders.js"
+      - "field-ops-app-vite/src/hooks/useAccountAr.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountArSection.jsx"
+      - "field-ops-app-vite/test/accountAttentionProjection.test.mjs"
+      - "field-ops-app-vite/test/accountAttentionSection.test.jsx"
+      - ".github/workflows/account-attention-projection-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/accountAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/accountArView.js"
+      - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/src/hooks/useAccountAttentionWorkOrders.js"
+      - "field-ops-app-vite/src/hooks/useAccountAr.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountArSection.jsx"
+      - "field-ops-app-vite/test/accountAttentionProjection.test.mjs"
+      - "field-ops-app-vite/test/accountAttentionSection.test.jsx"
+      - ".github/workflows/account-attention-projection-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-attention-projection-tests:
+    name: Account attention projection (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Pure domain projection tests (node:test)
+        run: node test/accountAttentionProjection.test.mjs
+        working-directory: field-ops-app-vite
+      - name: AccountAttentionSection render tests (vitest + jsdom)
+        run: npx vitest run test/accountAttentionSection.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/accountAttentionProjection.js src/domain/accountWorkOrders.js src/hooks/useAccountAttentionWorkOrders.js src/modules/accounts/AccountAttentionSection.jsx src/modules/accounts/AccountArSection.jsx
+        working-directory: field-ops-app-vite
