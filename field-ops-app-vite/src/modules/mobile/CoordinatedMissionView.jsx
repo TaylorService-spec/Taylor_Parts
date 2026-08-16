@@ -127,7 +127,11 @@ export default function CoordinatedMissionView({ source } = {}) {
           Showing a synthetic sample mission (C713×5). The live coordinated-operations feed connects in a later cycle.
         </p>
       )}
-      {status !== "ready" ? (
+      {status === "loading" ? (
+        <p className="fo-muted">Loading your coordinated mission…</p>
+      ) : status === "denied" ? (
+        <p className="fo-muted">You are not authorized to view your coordinated mission.</p>
+      ) : status !== "ready" ? (
         <p className="fo-muted">The coordinated-operations source is not connected yet.</p>
       ) : !mission ? (
         <p className="fo-muted">No coordinated mission assigned.</p>

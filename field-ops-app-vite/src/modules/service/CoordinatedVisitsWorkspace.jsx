@@ -195,7 +195,11 @@ export default function CoordinatedVisitsWorkspace({ source } = {}) {
           a later cycle.
         </p>
       )}
-      {status !== "ready" ? (
+      {status === "loading" ? (
+        <p className="fo-muted">Loading coordinated visits…</p>
+      ) : status === "denied" ? (
+        <p className="fo-muted">You are not authorized to view coordinated visits.</p>
+      ) : status !== "ready" ? (
         <p className="fo-muted">The coordinated-operations source is not connected yet.</p>
       ) : visits.length === 0 ? (
         <p className="fo-muted">No coordinated visits.</p>
