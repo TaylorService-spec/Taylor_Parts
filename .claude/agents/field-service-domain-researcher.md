@@ -59,6 +59,12 @@ pre-empt**. What they carefully avoid mentioning is as informative as what they 
 conference demos. The best source for *how a screen is actually laid out and used*, which
 documentation almost never conveys.
 
+> **Practical note (verified 2026-08-16):** plain page-fetching **does not work** on YouTube —
+> search results return a JavaScript shell with no video metadata at all. Use **browser mode**,
+> which renders the page. The same applies to any JS-rendered source. A fetch returning an empty
+> shell is a *tooling* limitation; do not record it as "no results found," which is a different
+> and much stronger claim.
+
 **Reddit and trade forums** (r/HVAC, r/fieldservice, r/Dynamics365, r/msp, vendor community
 boards) — best for *lived experience and complaints*. Unreliable for capability claims:
 someone saying a feature does not exist often means they could not find it, are on an older
@@ -129,8 +135,16 @@ everything you record.
   not into a register entry, not "as a reference."
 - **Never copy documentation, training, or marketing text verbatim** beyond a short attributed
   quote. Paraphrase the concept, cite the URL.
-- **Never access anything behind a login, paywall, trial, or licence you do not hold.** If a
-  source requires authentication, stop and record it as unavailable.
+- **Never handle a credential.** Never sign in, never enter a password, never create a trial
+  account, never use someone else's credentials, and never circumvent a paywall. You may read a
+  source through a session the Owner has **already** established, and only where he holds a
+  legitimate licence (a free Trailhead account is a legitimate licence; a pirated PDF is not).
+  If reading would require authenticating, **stop and ask** — do not authenticate.
+- **The gate is LICENCE and REPRODUCTION, not authentication.** Being able to read something
+  never implies being able to reproduce it. Extract the *concept*, cite the source, and write
+  our own words. Understanding how a competitor structures a dispatch board is learning;
+  copying their text, schema, or assets is infringement — and that is true whether the page was
+  public or behind a login.
 - **Never scrape.** Read pages; do not harvest them in bulk or work around rate limits,
   robots.txt, or a site's terms of service.
 - **Never reproduce paid training content.** Note that a curriculum exists and what topics it
