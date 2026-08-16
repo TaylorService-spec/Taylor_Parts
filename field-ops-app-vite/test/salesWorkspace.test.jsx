@@ -18,6 +18,35 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     expect(within(table).queryByText("Riverside Diner")).toBeNull();
   });
 
+  // Owner-reported gap: the queue showed WHAT state an Opportunity was in, never HOW FAR ALONG it
+  // was. Stage chevrons existed only in the detail panel, so the pipeline -- the surface actually
+  // scanned -- carried no progression at all. These pin the compact track on the list rows.
+  it("shows a stage progression on each pipeline row, not just a state pill", () => {
+    render(<SalesWorkspace />);
+    const table = screen.getByRole("table");
+    const row = within(table).getByText("Northgate Grocery").closest("tr");
+    // The summary names the current stage AND its position, which is the progression information the
+    // state pill alone could never carry.
+    expect(within(row).getByText(/stage \d of \d/i)).toBeTruthy();
+  });
+
+  it("renders one track segment per stage, marked complete/current/future", () => {
+    render(<SalesWorkspace />);
+    const table = screen.getByRole("table");
+    const row = within(table).getByText("Northgate Grocery").closest("tr");
+    const bars = row.querySelectorAll(".fo-stagetrack__bar");
+    expect(bars.length).toBeGreaterThan(1);
+    // Exactly one current stage -- an open Opportunity is in one place, not several.
+    expect(row.querySelectorAll(".fo-stagetrack__bar.is-current").length).toBe(1);
+  });
+
+  it("keeps the state pill: the track adds progression, it does not replace state", () => {
+    render(<SalesWorkspace />);
+    const table = screen.getByRole("table");
+    const row = within(table).getByText("Northgate Grocery").closest("tr");
+    expect(row.querySelector(".fo-stagetrack")).toBeTruthy();
+    expect(row.querySelector(".fo-status-pill, .fo-statuspill, [class*='pill']")).toBeTruthy();
+  });
   it("shows an honest synthetic-data banner and an inert (disabled) create control", () => {
     render(<SalesWorkspace />);
     expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();
@@ -218,4 +247,5 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
     // The newly created Opportunity's own re-read data now shows in the detail -- not a client-fabricated row.
     await screen.findByText(/Freezer replacement/i);
   });
+
 });
