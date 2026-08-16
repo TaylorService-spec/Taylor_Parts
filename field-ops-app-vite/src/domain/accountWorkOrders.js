@@ -100,3 +100,40 @@ export async function fetchAccountWorkOrderTimelinePage(
   const lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
   return { items, lastDoc, hasMore: snap.docs.length === pageSize };
 }
+
+// Wave 7 extension, PART 1.6 -- Account Attention. A bounded, honest, account-scoped read of this
+// account's SCHEDULED work orders, carrying exactly the fields domain/workOrderAttentionProjection.js's
+// OWN workOrderPastDueItem() needs (id, status, scheduledStart) -- so PART 1.6 can COMPOSE that already-
+// merged, authoritative PAST_DUE signal (PR #1014) instead of re-deriving past-due logic here. This is a
+// SEPARATE query from fetchAccountWorkOrderTimelinePage (which is createdAt-ordered and omits
+// scheduledStart entirely) -- reusing it would silently under-report past-due WOs sitting outside
+// whatever page the timeline happened to load.
+//
+// customerId=="..." AND status=="SCHEDULED" is a pure-equality compound query, served by the SAME
+// already-deployed fieldops_wos(customerId ASC, status ASC) composite index
+// fetchAccountWorkOrderCountForStatuses uses above -- no new index required.
+//
+// `limit` is a defensive bound (an account's own SCHEDULED backlog is normally small); `hasMore` tells
+// the caller when the result may be truncated, so a caller can degrade to an honest "unavailable" instead
+// of confidently under-reporting past-due WOs it never saw -- mirrors accountArView.js's own "a truncated
+// page is never labeled ready" rule.
+export async function fetchAccountScheduledWorkOrdersForAttention(accountId, { limit: pageLimit = 200 } = {}) {
+  const snap = await getDocs(
+    query(
+      collection(db, WORK_ORDERS_COLLECTION),
+      where("customerId", "==", accountId),
+      where("status", "==", "SCHEDULED"),
+      limit(pageLimit)
+    )
+  );
+  const items = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      woNumber: data.woNumber ?? null,
+      status: data.status ?? null,
+      scheduledStart: data.scheduledStart ?? null,
+    };
+  });
+  return { items, hasMore: snap.docs.length === pageLimit };
+}
