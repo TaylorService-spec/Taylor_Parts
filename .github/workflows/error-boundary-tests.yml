@@ -1,0 +1,30 @@
+name: Error boundary
+
+# The root ErrorBoundary wraps the entire application (main.jsx, above AuthProvider).
+# A regression here does not degrade one screen -- it kills the whole session. Its guard
+# therefore needs its own path trigger; without one, editing the boundary runs no suite.
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/components/ErrorBoundary.jsx"
+      - "field-ops-app-vite/src/shared/ui/FailureState.jsx"
+      - "field-ops-app-vite/test/errorBoundary.test.jsx"
+      - ".github/workflows/error-boundary-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/components/ErrorBoundary.jsx"
+      - "field-ops-app-vite/test/errorBoundary.test.jsx"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: field-ops-app-vite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: field-ops-app-vite/package-lock.json }
+      - run: npm ci
+      - run: npx vitest run test/errorBoundary.test.jsx
