@@ -1,4 +1,6 @@
 import { classifyFailure } from "./failureClassification.mjs";
+import { assessOwnerCapacity, ownerReserveStopReason } from "./ownerCapacityReserve.mjs";
+import { assessStagnation } from "./progressDetection.mjs";
 // Option-B bounded autonomy policy (Phase 5) — DESIGN ONLY, NOT ACTIVATED.
 //
 // Pure, tested parameters + decision functions for eventual unattended operation.
@@ -113,5 +115,16 @@ export function hardStopReason(ctx = {}, policy = PROPOSED_AUTONOMY_POLICY) {
   if (failureContainment(ctx.consecutiveFailures || 0, policy).decision === "HARD_STOP") return "FAILURE_CONTAINMENT";
   if ((ctx.networkUnavailableMinutes || 0) >= policy.networkUnavailableMaxMinutes) return "NETWORK_UNAVAILABLE_TOO_LONG";
   if ((ctx.minutesElapsed || 0) >= policy.maxWorkWindowMinutes) return "WORK_WINDOW_ELAPSED";
+  // OWNER CAPACITY RESERVE (§4.1). Unattended EOS yields to interactive Owner work. This is a
+  // SUSPEND-class reason -- the mission is intact, only this segment pauses until capacity returns.
+  if (ctx.ownerCapacity) {
+    const reserve = ownerReserveStopReason(assessOwnerCapacity(ctx.ownerCapacity));
+    if (reserve) return reserve;
+  }
+  // STAGNATION (§5.1/5.2) -- the PRIMARY control. The ceilings above catch a run that has gone
+  // too long; this catches one that is busy and getting nowhere, which nothing else sees.
+  if (ctx.progressWindow) {
+    if (assessStagnation(ctx.progressWindow).stagnant) return "STAGNATION_DETECTED";
+  }
   return null; // no hard stop — continue autonomously
 }

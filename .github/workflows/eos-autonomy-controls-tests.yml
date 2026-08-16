@@ -1,0 +1,28 @@
+name: EOS autonomy controls
+
+# Guards the controls that make unattended EOS safe to leave running: the Owner capacity reserve
+# (§4.1), no-progress/stagnation detection (§5.1-5.2), and their wiring into hardStopReason.
+# A regression here means a run can consume the Owner's subscription, or spin indefinitely while
+# every existing ceiling reads it as healthy.
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/ownerCapacityReserve*.mjs"
+      - "docs/orchestration/lib/progressDetection*.mjs"
+      - "docs/orchestration/lib/autonomyPolicy*.mjs"
+      - ".github/workflows/eos-autonomy-controls-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/ownerCapacityReserve*.mjs"
+      - "docs/orchestration/lib/progressDetection*.mjs"
+      - "docs/orchestration/lib/autonomyPolicy*.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test docs/orchestration/lib/ownerCapacityReserve.test.mjs docs/orchestration/lib/progressDetection.test.mjs docs/orchestration/lib/autonomyPolicy.test.mjs
