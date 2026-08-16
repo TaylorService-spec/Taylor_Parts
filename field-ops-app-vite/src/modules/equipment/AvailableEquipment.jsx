@@ -14,13 +14,21 @@
 // so this surface fails closed to the DENIED state in every environment until a later, separately
 // authorized grant + activation -- that is expected, not a bug (see the hook's own header).
 //
-// LOCATION: the governed read returns only the raw, authoritative `currentLocationId` scalar -- no
-// resolved display label and no `{type, locationId}` reference (Location descriptive authority is a
-// separate, unread authority). See domain/availableEquipmentGovernedProjection.js's header for the
-// full callout. Rows show that raw id as their location field rather than inventing a friendly label.
+// LOCATION: the governed Serialized Asset read returns only the raw, authoritative
+// `currentLocationId` scalar -- no resolved display label and no `{type, locationId}` reference
+// (see domain/availableEquipmentGovernedProjection.js's header for the full callout). PART 11A adds
+// a SEPARATE trusted resolver (hooks/useLocationDisplaySource.js -> the governed getLocationDisplay
+// read) that turns the distinct raw ids on the fetched rows into a WAREHOUSE/MOBILE display label
+// where one is governedly resolvable; an id neither authority recognizes stays UNRESOLVED and the
+// row keeps rendering its raw id (composeAvailableRow's existing fallback) -- never a guessed type.
+// `inventory.location.display.read` is registered `active:false` / granted to no Role as of this
+// build, so in every environment today the location column still shows the raw id (the resolver
+// itself fails closed to DENIED) -- this wiring is repo-only until a later, separately authorized
+// grant + activation, exactly like the Available Equipment read itself at its own introduction.
 import { useMemo, useState } from "react";
 import { readSerializedAssetSource } from "../../access/serializedAssetSource";
 import { useAvailableEquipmentSource } from "../../hooks/useAvailableEquipmentSource";
+import { useLocationDisplaySource } from "../../hooks/useLocationDisplaySource";
 import {
   AVAILABLE_FILTER_NOTE,
   AVAILABLE_STATE,
@@ -30,6 +38,7 @@ import {
   deriveAvailableState,
   anyAvailableFilterActive,
 } from "../../domain/availableEquipmentCatalogView";
+import { distinctLocationIds, applyLocationDisplay } from "../../domain/locationDisplayProjection";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -38,7 +47,12 @@ const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", sta
 
 export default function AvailableEquipment() {
   const liveSource = useAvailableEquipmentSource();
-  const { status: sourceStatus, assets } = readSerializedAssetSource(liveSource);
+  const { status: sourceStatus, assets: rawAssets } = readSerializedAssetSource(liveSource);
+
+  const requestedLocationIds = useMemo(() => distinctLocationIds(rawAssets), [rawAssets]);
+  const { displayMap } = useLocationDisplaySource(requestedLocationIds);
+  const assets = useMemo(() => applyLocationDisplay(rawAssets, displayMap), [rawAssets, displayMap]);
+
   const [filters, setFilters] = useState(EMPTY_FILTERS);
 
   const options = useMemo(() => buildAvailableFilterOptions(assets), [assets]);

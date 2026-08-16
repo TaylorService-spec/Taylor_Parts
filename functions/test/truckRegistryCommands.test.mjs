@@ -313,10 +313,22 @@ await check("deactivate with PRESENT inventory -> INVENTORY_PRESENT (blocked, no
   await assert.rejects(deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, PRESENT), InventoryPresentError);
   assert.equal((await db.collection("trucks").doc(truckId).get()).data().active, true);
 });
-await check("deactivate with UNKNOWN inventory (default probe) -> INVENTORY_STATE_UNKNOWN (fail closed)", async () => {
+// Enterprise Inventory Phase 5: the DEFAULT probe (no injected `hasGovernedInventoryAtLocation`) is
+// now a REAL conclusive check (mobileLocationPresenceProbe.ts's buildMobileLocationGovernedInventoryProbe),
+// not an always-UNKNOWN stub -- see mobileLocationInventoryProbes.test.mjs's "deactivateTruck: empty
+// truck -> a successful eligible action (DEFAULT deps)" for that positive case. UNKNOWN still happens,
+// but only when the probe's OWN reads genuinely fail (or when a caller explicitly injects one) --
+// exercised here with an explicitly-injected failing probe, never loosened to a false ABSENT.
+await check("deactivate with UNKNOWN inventory (explicitly-injected failing probe) -> INVENTORY_STATE_UNKNOWN (fail closed)", async () => {
   const { truckId } = await makeTruck();
-  await assert.rejects(deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, DEPS), InventoryStateUnknownError);
+  const UNKNOWN_PROBE = { ...DEPS, hasGovernedInventoryAtLocation: async () => "UNKNOWN" };
+  await assert.rejects(deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, UNKNOWN_PROBE), InventoryStateUnknownError);
   assert.equal((await db.collection("trucks").doc(truckId).get()).data().active, true);
+});
+await check("deactivate with the REAL default probe on a genuinely empty truck -> succeeds (no injected probe needed)", async () => {
+  const { truckId } = await makeTruck();
+  const r = await deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, DEPS);
+  assert.equal(r.outcome, "applied");
 });
 
 // ---- reactivation ----

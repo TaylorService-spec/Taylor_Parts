@@ -8,21 +8,51 @@
 // no MOBILE-location/truck-indexed persisted reference to query); else CLEAR only when EVERY
 // required authority is conclusively CLEAR.
 //
-// CURRENT-SCHEMA RECONCILIATION (main @ 0794557): NO persisted operational collection references a
-// truck (trucks/{truckId}) or its MOBILE location (mobile_locations/{locationId}). inventory_
-// transactions is workOrderId/partId-keyed and location-blind; stock_locations is warehouseId-keyed;
-// transfer_orders is warehouse->warehouse (fromWarehouseId/toWarehouseId); equipment is customer-
-// location-keyed; work orders (fieldops_wos) carry no truckId; there is no serialized-asset-on-truck,
-// truck-custody-history, receiving, reconciliation, cycle-count, RMA, or scrap collection keyed by a
-// MOBILE location or truck. Therefore NO authority is conclusively verifiable today: every authority
-// reports UNKNOWN, so this probe is NECESSARILY FAIL-CLOSED and a delete cannot succeed until the
-// governed persistence + MOBILE-location/truck indexing exists and its check is wired in below. We
-// NEVER treat absent/unmodeled persistence as CLEAR.
+// CURRENT-SCHEMA RECONCILIATION, ROUND 2 (Enterprise Inventory Phase 5, reconciled against Phase 4 /
+// PR #1032's Transfer operating authority): FIVE of the eleven governed authorities are now
+// CONCLUSIVELY verifiable and wired to real checks below --
+//   * serializedAssets -- serialized_assets.currentLocationId is a queryable scalar (equality; the
+//     automatic single-field index applies), kept in sync with custody at Transfer receive/completion;
+//   * ledgerEvents      -- inventory_transactions (schemaVersion 2 operational records) carries a
+//     queryable `location: { type, locationId }` map, written by the Transfer command's TRANSFER_OUT/
+//     TRANSFER_IN effects and by Receiving;
+//   * partsStock        -- on the current schema there is NO MOBILE-indexed stock document separate
+//     from the ledger (`stock_locations` stays warehouseId-keyed); a truck's parts-stock reference is
+//     therefore PROVABLY CO-EXTENSIVE with `ledgerEvents` and is checked with the identical query,
+//     documented here rather than silently duplicated as a "different" authority;
+//   * transferOrders    -- `transfer_orders.origin.locationId` / `.destination.locationId` are
+//     queryable scalars (equality on either endpoint);
+//   * transferLines      -- SERIAL transfer membership is embedded on the `transfer_orders` document
+//     itself (`serialNumbers[]`) rather than a separate transfer_lines collection (transferOrderTypes.ts's
+//     own header: Phase 4 accepts the full serial set at CREATE time instead of building an incremental
+//     membership collection) -- so this authority is ALSO provably co-extensive with `transferOrders`
+//     and is checked with the identical query.
+//
+// The remaining SIX authorities are still genuinely UNPROVABLE on the current schema -- no persisted
+// collection carries a MOBILE-location/truck-indexed reference for any of them:
+//   * custodyAssignmentHistory -- only the truck's CURRENT driver assignment is modeled
+//     (trucks/{id}.assignedDriverEmployeeId); PAST assignment history is not persisted anywhere, and
+//     the current-assignment check already happens conclusively in-command (deleteTruckCreatedInError),
+//     separately from this probe -- so this authority remains UNKNOWN here on purpose (it is not a
+//     redundant re-check of the in-command guard, it is a different, unmodeled question: "has this
+//     truck ever had prior custody history").
+//   * receiving, reconciliation, cycleCount, rma, scrap -- no collection keyed by a MOBILE location or
+//     truck exists for any of these on the current schema (cycleCount is explicitly out of scope for
+//     this change too).
+// So the AGGREGATE probe result for a delete is still NECESSARILY UNKNOWN today (aggregateReferenceStates
+// treats any UNKNOWN as inconclusive) -- five authorities becoming individually provable does not by
+// itself make a delete provable; it narrows exactly which authorities remain the blocker. We NEVER
+// treat absent/unmodeled persistence as CLEAR.
 //
 // No collection name, document data, or query detail leaks past the trust boundary: the callable maps
 // the probe's UNKNOWN/REFERENCED to a sanitized failed-precondition. The crosswalk here is a code +
 // review artifact, not a client response.
 import type { Firestore, Transaction, Query } from "firebase-admin/firestore";
+import { TRANSFER_ORDERS_COLLECTION } from "../constants/collections.js";
+import {
+  probeSerializedAssetsReferencedAtLocation,
+  probeLedgerReferencedAtLocation,
+} from "../inventoryLedger/mobileLocationPresenceProbe.js";
 import type { OperationalReferenceState } from "./truckRegistryCommands";
 
 // The canonical set of governed operational-reference authorities that must ALL be conclusively CLEAR
@@ -81,18 +111,91 @@ function unverifiable(key: ReferenceAuthorityKey, description: string, blocker: 
   return { key, description, verifiableNow: false, blocker, check: async () => "UNKNOWN" };
 }
 
-// The PRODUCTION registry against main @ 0794557. Every authority is currently unverifiable (see the
-// module reconciliation); each documents its candidate collection(s) and the exact blocker.
+// A NOW-provable authority backed by a real bounded (equality + limit, no orderBy, no composite
+// index) query. Wraps the check so a throw/malformed read fails closed to UNKNOWN (mirrors
+// `unverifiable`'s shape) rather than trusting the underlying probe's own try/catch alone.
+function verifiable(
+  key: ReferenceAuthorityKey,
+  description: string,
+  check: ReferenceAuthority["check"],
+): ReferenceAuthority {
+  return {
+    key,
+    description,
+    verifiableNow: true,
+    check: async (ctx) => {
+      try {
+        const state = await check(ctx);
+        return state === "CLEAR" || state === "REFERENCED" || state === "UNKNOWN" ? state : "UNKNOWN";
+      } catch {
+        return "UNKNOWN";
+      }
+    },
+  };
+}
+
+// Adapt a presence result (PRESENT/ABSENT/UNKNOWN) to a reference result (REFERENCED/CLEAR/UNKNOWN) --
+// the two probe families ask the same underlying "does anything exist" question with different vocab.
+function presenceToReference(state: "PRESENT" | "ABSENT" | "UNKNOWN"): OperationalReferenceState {
+  if (state === "PRESENT") return "REFERENCED";
+  if (state === "ABSENT") return "CLEAR";
+  return "UNKNOWN";
+}
+
+// transfer_orders references either endpoint by `origin.locationId` / `destination.locationId`
+// (both queryable scalars). REFERENCED if EITHER endpoint ever named this location, regardless of
+// the order's status -- delete-safety asks "has this location ever appeared in transfer history,"
+// not "is a transfer currently active." Two equality-only queries, no composite index.
+async function checkTransferOrderReference(ctx: ReferenceCheckContext): Promise<OperationalReferenceState> {
+  const coll = ctx.db.collection(TRANSFER_ORDERS_COLLECTION);
+  const origin = await boundedReferenceQuery(ctx, () => coll.where("origin.locationId", "==", ctx.locationId));
+  if (origin === "REFERENCED") return "REFERENCED";
+  const destination = await boundedReferenceQuery(ctx, () => coll.where("destination.locationId", "==", ctx.locationId));
+  if (destination === "REFERENCED") return "REFERENCED";
+  if (origin === "UNKNOWN" || destination === "UNKNOWN") return "UNKNOWN";
+  return "CLEAR";
+}
+
+// The PRODUCTION registry against main @ c1e30971 (post Enterprise Inventory Phase 4). Five
+// authorities are now real, conclusive checks; six remain unverifiable (see the module
+// reconciliation above for exactly why each of the six cannot yet be answered).
 export const REFERENCE_AUTHORITIES: readonly ReferenceAuthority[] = [
-  unverifiable("serializedAssets", "Serialized assets / installed equipment carried on the truck", "no serialized-asset-on-truck persistence; `equipment` is customer-location-keyed (locationId -> locations/{id}), never a mobile_locations/{id}"),
-  unverifiable("partsStock", "Parts / stock inventory held on the truck", "`stock_locations` is warehouseId+partId-keyed; truck (MOBILE-location) stock is not modeled"),
-  unverifiable("transferOrders", "Transfer orders to/from the truck's MOBILE location", "`transfer_orders` is warehouse->warehouse (fromWarehouseId/toWarehouseId); no MOBILE-location/truck field"),
-  unverifiable("transferLines", "SERIAL transfer lines referencing the truck's MOBILE location", "no persisted transfer_lines collection keyed by a MOBILE location/truck exists (EI-P1b/c contracts are pure/unpersisted)"),
-  unverifiable("ledgerEvents", "Inventory ledger / transaction events at the truck's MOBILE location", "`inventory_transactions` is workOrderId+partId-keyed and location-blind; no MOBILE-location/truck field"),
-  unverifiable("custodyAssignmentHistory", "Truck custody / assignment history records", "no truck custody/assignment-history collection exists; the current driver link is checked conclusively in-command"),
+  verifiable(
+    "serializedAssets",
+    "Serialized assets currently or ever custodied at the truck's MOBILE location",
+    (ctx) => probeSerializedAssetsReferencedAtLocation(ctx.txn, ctx.db, ctx.locationId).then(presenceToReference),
+  ),
+  verifiable(
+    "partsStock",
+    "Parts / stock inventory movement recorded against the truck's MOBILE location. PROVABLY " +
+      "CO-EXTENSIVE with `ledgerEvents` on the current schema -- no MOBILE-indexed stock document " +
+      "exists separately from the ledger (`stock_locations` stays warehouseId-keyed), so this check " +
+      "is intentionally the identical ledger-location query, not a duplicated authority.",
+    (ctx) => probeLedgerReferencedAtLocation(ctx.txn, ctx.db, ctx.locationId).then(presenceToReference),
+  ),
+  verifiable(
+    "transferOrders",
+    "Transfer orders whose origin or destination is the truck's MOBILE location (any status, ever)",
+    checkTransferOrderReference,
+  ),
+  verifiable(
+    "transferLines",
+    "SERIAL transfer-line membership referencing the truck's MOBILE location. PROVABLY CO-EXTENSIVE " +
+      "with `transferOrders` on the current schema -- SERIAL membership is embedded on the " +
+      "transfer_orders document (`serialNumbers[]`), not a separate transfer_lines collection " +
+      "(transferOrderTypes.ts: Phase 4 accepts the full serial set at CREATE time), so this check is " +
+      "intentionally the identical transfer_orders query, not a duplicated authority.",
+    checkTransferOrderReference,
+  ),
+  verifiable(
+    "ledgerEvents",
+    "Inventory ledger / operational-movement events recorded at the truck's MOBILE location",
+    (ctx) => probeLedgerReferencedAtLocation(ctx.txn, ctx.db, ctx.locationId).then(presenceToReference),
+  ),
+  unverifiable("custodyAssignmentHistory", "Truck custody / assignment HISTORY records (past assignments, not the current one)", "only the CURRENT driver assignment is modeled (trucks/{id}.assignedDriverEmployeeId), checked conclusively in-command, separately from this probe; no past-assignment-history collection exists"),
   unverifiable("receiving", "Receiving records against the truck", "no receiving collection keyed by a MOBILE location/truck exists on the current schema"),
   unverifiable("reconciliation", "Reconciliation records for the truck's inventory", "no reconciliation collection keyed by a MOBILE location/truck exists on the current schema"),
-  unverifiable("cycleCount", "Cycle-count records for the truck", "no cycle-count collection keyed by a MOBILE location/truck exists on the current schema"),
+  unverifiable("cycleCount", "Cycle-count records for the truck", "no cycle-count collection keyed by a MOBILE location/truck exists on the current schema (also out of scope for this change)"),
   unverifiable("rma", "RMA / return records referencing the truck", "no RMA collection keyed by a MOBILE location/truck exists on the current schema"),
   unverifiable("scrap", "Scrap / disposal records referencing the truck", "no scrap collection keyed by a MOBILE location/truck exists on the current schema"),
 ];

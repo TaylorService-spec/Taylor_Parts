@@ -29,6 +29,8 @@ import {
   type StoredMobileLocation,
 } from "./truckRegistryRepository";
 import { validateCreateInput, parseTruckId, parseEmployeeId, parseWarehouseId, isTruckStatus, isChangeableStatus, isReactivationStatus } from "./validation";
+import { buildMobileLocationGovernedInventoryProbe } from "../inventoryLedger/mobileLocationPresenceProbe";
+import { buildOperationalReferenceProbe } from "./operationalReferenceProbe";
 import {
   DEACTIVATED_STATUS,
   type InventoryPresence,
@@ -56,10 +58,11 @@ import {
 } from "./types";
 
 // Injected governed-inventory-at-location predicate. It receives the SAME transaction and
-// performs ALL reads through it (Owner decision). The default returns UNKNOWN because no
-// governed serialized-asset/ledger-at-location source exists yet -> deactivation fails closed.
+// performs ALL reads through it (Owner decision). DEFAULT (Enterprise Inventory Phase 5): a REAL
+// probe built from mobileLocationPresenceProbe.ts -- serialized_assets.currentLocationId (SERIAL
+// custody) + a NONE-mode net ledger balance at the location. Still returns UNKNOWN (fail closed)
+// whenever either axis cannot be conclusively read; ABSENT only when BOTH are conclusively empty.
 export type GovernedInventoryProbe = (locationId: string, txn: Transaction) => Promise<InventoryPresence>;
-const UNKNOWN_INVENTORY: GovernedInventoryProbe = async () => "UNKNOWN";
 
 // Injected cross-collection operational-history probe for Created-in-Error delete. It receives
 // the SAME transaction and performs ALL reads through it, and reports whether ANY operational
@@ -68,12 +71,14 @@ const UNKNOWN_INVENTORY: GovernedInventoryProbe = async () => "UNKNOWN";
 //   CLEAR       -- conclusively no references anywhere it checks;
 //   REFERENCED  -- at least one reference exists -> block the delete;
 //   UNKNOWN     -- could NOT be conclusively determined -> FAIL CLOSED (block).
-// The default returns UNKNOWN because the governed EI history-at-location persistence does not
-// exist yet, so a delete is impossible until a real probe is injected by a later gate. (The
-// truck's OWN driver assignment is checked conclusively in-transaction, separately.)
+// DEFAULT (Enterprise Inventory Phase 5): the REAL production registry (operationalReferenceProbe.ts's
+// REFERENCE_AUTHORITIES). Five of eleven governed authorities are now conclusive real checks; six
+// remain unverifiable on the current schema (see that module's header) -- so a delete is STILL
+// necessarily UNKNOWN in aggregate today (aggregateReferenceStates fails closed on any UNKNOWN), even
+// though the individual provable authorities now report real CLEAR/REFERENCED. (The truck's OWN
+// current driver assignment is checked conclusively in-transaction, separately.)
 export type OperationalReferenceState = "CLEAR" | "REFERENCED" | "UNKNOWN";
 export type OperationalReferenceProbe = (args: { truckId: string; locationId: string }, txn: Transaction) => Promise<OperationalReferenceState>;
-const UNKNOWN_REFERENCES: OperationalReferenceProbe = async () => "UNKNOWN";
 
 export interface TruckRegistryDeps {
   db?: Firestore;
@@ -92,8 +97,8 @@ function resolveDeps(deps: TruckRegistryDeps | undefined) {
   return {
     db,
     repo: deps?.repo ?? buildFirestoreTruckRegistryRepository(db),
-    probe: deps?.hasGovernedInventoryAtLocation ?? UNKNOWN_INVENTORY,
-    referenceProbe: deps?.hasOperationalReferences ?? UNKNOWN_REFERENCES,
+    probe: deps?.hasGovernedInventoryAtLocation ?? buildMobileLocationGovernedInventoryProbe(db),
+    referenceProbe: deps?.hasOperationalReferences ?? buildOperationalReferenceProbe({ db }),
     now: deps?.now ?? (() => new Date()),
     failAfterStage: deps?.__simulateFailureAfterStage,
     afterAuthReadHook: deps?.__afterAuthReadHook,

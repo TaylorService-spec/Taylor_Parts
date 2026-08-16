@@ -1,0 +1,123 @@
+name: Location Display Read Service Tests
+
+# Sandbox-fidelity package PART 11A (2026-08-15): Available Equipment's location column has rendered
+# the raw `currentLocationId` scalar since PR #1029, because the governed Serialized Asset read
+# returns no display label. This is the trusted BACKEND resolver that closes that gap --
+# functions/src/inventoryLocation/locationDisplayReadService.ts -- id -> { type, label } for
+# WAREHOUSE (warehouses/{id}.name) and MOBILE (mobile_locations/{id}.displayLabel) ONLY; any other
+# category (CUSTOMER included) resolves UNRESOLVED, never a fabricated type. Pure-logic unit tests
+# (no emulator) plus Firestore-emulator coverage for the bounded point-read resolution and the
+# trusted callable's authorization boundary (unauthenticated / ungranted-in-every-project, since
+# `inventory.location.display.read` is registered active:false and granted to NO Role). The
+# callable is undeployed; this workflow builds and runs tests against the compiled functions/lib
+# output only.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inventoryLocation/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/truckRegistry/truckRegistryRepository.ts"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/index.ts"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "functions/test/locationDisplayReadService.test.mjs"
+      - "functions/test/locationDisplayReadCallable.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/location-display-read-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inventoryLocation/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/truckRegistry/truckRegistryRepository.ts"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/index.ts"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "functions/test/locationDisplayReadService.test.mjs"
+      - "functions/test/locationDisplayReadCallable.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - ".github/workflows/location-display-read-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  location-display-read-unit-tests:
+    name: Location Display read -- pure validation (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Location Display read validation tests (build + run)
+        run: npm run test:locationDisplayRead
+        working-directory: functions
+      - name: Capability catalog registration tests (build + run)
+        run: node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs
+        working-directory: functions
+
+  location-display-read-emulator:
+    name: Location Display read callable -- resolution + authorization boundary (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/location-display-read-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/location-display-read-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/location-display-read-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Location Display read callable tests (build + run)
+        run: npm run test:locationDisplayReadEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: location-display-read-emulator-logs
+          path: /tmp/location-display-read-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
