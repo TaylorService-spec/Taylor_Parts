@@ -1,0 +1,89 @@
+name: Account-Scoped Commercial Reads Tests
+
+# Wave 7 completion PARTS 2/3 -- "which Opportunities/Sales Orders belong to THIS Account?" Reuses the
+# existing `opportunity.read` / `salesOrder.read` capabilities (no new capability minted); only the
+# query shape is new (a real server-side accountId `where` clause, bounded with an honest truncation
+# disclosure). Emulator-only, project "taylor-parts", loopback host -- no production access, no
+# credentials, no repository secrets. Node 20 (not 22): these tests import the COMPILED
+# functions/lib/*.js output (npm run build), the same pattern financeReadCallables.test.mjs and
+# salesOrderReadCallable.test.mjs already use on Node 20 -- nothing here reads a .ts file directly.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/opportunity/opportunityReadService.ts"
+      - "functions/src/salesOrder/salesOrderReadService.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/constants/collections.ts"
+      - "config/environments.json"
+      - "functions/test/opportunityAccountRead.test.mjs"
+      - "functions/test/salesOrderAccountRead.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/account-scoped-commercial-reads-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/opportunity/opportunityReadService.ts"
+      - "functions/src/salesOrder/salesOrderReadService.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/constants/collections.ts"
+      - "config/environments.json"
+      - "functions/test/opportunityAccountRead.test.mjs"
+      - "functions/test/salesOrderAccountRead.test.mjs"
+      - ".github/workflows/account-scoped-commercial-reads-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-scoped-commercial-reads-emulator:
+    name: Account-scoped Opportunity + Sales Order reads (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/account-scoped-commercial-reads-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/account-scoped-commercial-reads-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/account-scoped-commercial-reads-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Account-scoped Opportunity + Sales Order read tests (build + run)
+        run: npm run test:accountScopedCommercialReadsEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-scoped-commercial-reads-emulator-logs
+          path: /tmp/account-scoped-commercial-reads-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

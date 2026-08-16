@@ -14,6 +14,8 @@ import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
 import ServiceActivitySection from "./ServiceActivitySection";
+import AccountOpportunitiesSection from "./AccountOpportunitiesSection";
+import AccountSalesOrdersSection from "./AccountSalesOrdersSection";
 import AccountFinancialsSection from "./AccountFinancialsSection";
 import AccountHealthStrip from "./AccountHealthStrip";
 import AccountAttentionSection from "./AccountAttentionSection";
@@ -344,15 +346,16 @@ export default function AccountDetail() {
           {/* MAIN BODY -- roughly 2/3 primary + 1/3 secondary on desktop, collapsing to a
               single column on narrow viewports (see .fo-account-layout in index.css).
               PRIMARY holds the operational record surfaces; SECONDARY holds profile and
-              relationship context.
-          
-              Opportunities and Sales Orders are NOT sections here: neither has an
-              account-scoped read today (listOpportunityContext takes no accountId, and
-              getSalesOrderContext fetches exactly one order by id). An empty shell for
-              each would imply this account has none, which is not something the app
-              currently knows. They slot in here when those reads exist. */}
+              relationship context. */}
           <div className="fo-account-layout">
             <div className="fo-account-primary">
+
+          {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
+              exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
+              real record surfaces, not an empty shell implying "this account has none." Ordered
+              Opportunities, then Sales Orders, above Financials in the PRIMARY column. */}
+          <AccountOpportunitiesSection accountId={account.id} />
+          <AccountSalesOrdersSection accountId={account.id} />
 
           {/* Accounts Receivable + the provider-dependent financial surfaces, composed into ONE
               area. Previously these were three separate blocks and the same "not connected"

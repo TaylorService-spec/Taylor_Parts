@@ -14,9 +14,21 @@ on:
       - "field-ops-app-vite/src/domain/financialSummaryView.js"
       - "field-ops-app-vite/src/domain/financialForecastHorizons.js"
       - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/src/domain/accountOpportunitiesView.js"
+      - "field-ops-app-vite/src/domain/accountSalesOrdersView.js"
+      - "field-ops-app-vite/src/domain/actorDisplayName.js"
+      - "field-ops-app-vite/src/hooks/useAccountOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useAccountSalesOrders.js"
+      - "field-ops-app-vite/src/hooks/useEmployeeDirectory.js"
+      - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
+      - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
       - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
+      - "field-ops-app-vite/test/accountOpportunitiesView.test.mjs"
+      - "field-ops-app-vite/test/accountSalesOrdersView.test.mjs"
+      - "field-ops-app-vite/test/accountOpportunitiesAndSalesOrdersSections.test.jsx"
+      - "field-ops-app-vite/test/actorDisplayName.test.mjs"
       - ".github/workflows/account-workspace-tests.yml"
   push:
     branches: [main]
@@ -27,9 +39,21 @@ on:
       - "field-ops-app-vite/src/domain/financialSummaryView.js"
       - "field-ops-app-vite/src/domain/financialForecastHorizons.js"
       - "field-ops-app-vite/src/domain/accountWorkOrders.js"
+      - "field-ops-app-vite/src/domain/accountOpportunitiesView.js"
+      - "field-ops-app-vite/src/domain/accountSalesOrdersView.js"
+      - "field-ops-app-vite/src/domain/actorDisplayName.js"
+      - "field-ops-app-vite/src/hooks/useAccountOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useAccountSalesOrders.js"
+      - "field-ops-app-vite/src/hooks/useEmployeeDirectory.js"
+      - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
+      - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
       - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
+      - "field-ops-app-vite/test/accountOpportunitiesView.test.mjs"
+      - "field-ops-app-vite/test/accountSalesOrdersView.test.mjs"
+      - "field-ops-app-vite/test/accountOpportunitiesAndSalesOrdersSections.test.jsx"
+      - "field-ops-app-vite/test/actorDisplayName.test.mjs"
       - ".github/workflows/account-workspace-tests.yml"
   workflow_dispatch:
 
@@ -70,6 +94,19 @@ jobs:
         run: npx vitest run test/accountDetailFailClosed.test.jsx
         working-directory: field-ops-app-vite
 
+      # Wave 7 completion PARTS 2/3 -- account-scoped Opportunity/Sales Order pure view-models
+      # (loading/denied/unavailable/empty/ready, bounded-truncation disclosure) and the owner-identity
+      # resolver's new employeeId branch.
+      - name: Account-scoped Opportunity/Sales Order view models (offline)
+        run: node test/accountOpportunitiesView.test.mjs && node test/accountSalesOrdersView.test.mjs && node test/actorDisplayName.test.mjs
+        working-directory: field-ops-app-vite
+
+      # Component coverage: loading/denied/unavailable/empty/populated states, EMPTY kept distinct from
+      # every FAILURE state, no raw uid ever rendered, and deep links point at real routes.
+      - name: Account-scoped Opportunities + Sales Orders sections
+        run: npx vitest run test/accountOpportunitiesAndSalesOrdersSections.test.jsx
+        working-directory: field-ops-app-vite
+
       - name: Lint
-        run: npx oxlint src/modules/accounts/ src/domain/accountHealthStrip.js
+        run: npx oxlint src/modules/accounts/ src/domain/accountHealthStrip.js src/domain/accountOpportunitiesView.js src/domain/accountSalesOrdersView.js src/domain/actorDisplayName.js src/hooks/useAccountOpportunities.js src/hooks/useAccountSalesOrders.js src/hooks/useEmployeeDirectory.js src/services/accountOpportunitiesReadCallableClient.js src/services/accountSalesOrdersReadCallableClient.js
         working-directory: field-ops-app-vite

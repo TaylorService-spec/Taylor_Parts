@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import {
   resolveActorDisplayName,
+  resolveEmployeeIdentity,
   UNKNOWN_ACTOR_DISPLAY_NAME,
 } from "../src/domain/actorDisplayName.js";
 
@@ -82,6 +83,39 @@ ok("no raw uid survives for ANY unresolved uid shape (fuzz over uid-like inputs)
     assert.notStrictEqual(result, uid);
     assert.ok(!String(result).includes(uid));
   }
+});
+
+// resolveEmployeeIdentity -- Wave 7 completion (account-scoped Opportunity/Sales Order sections).
+// Employee DOC ids (ownerEmployeeId), NOT Firebase uids -- but the same fail-closed/never-fabricate
+// shape as commercialProfile.js's resolveOwnerIdentity applies: state stays distinct across
+// unset/loading/error/resolved/unknown, and a raw employeeId never masquerades as a resolved name.
+
+ok("resolveEmployeeIdentity: resolved Employee -> state=resolved with the current display name", () => {
+  const byEmployeeId = new Map([["EMP-9", { id: "EMP-9", displayName: "Jamie Rivera" }]]);
+  const result = resolveEmployeeIdentity("EMP-9", { byEmployeeId });
+  assert.deepEqual(result, { state: "resolved", name: "Jamie Rivera" });
+});
+
+ok("resolveEmployeeIdentity: no employeeId -> state=unset, name=null (omit from UI)", () => {
+  for (const empty of [null, undefined, ""]) {
+    assert.deepEqual(resolveEmployeeIdentity(empty, { byEmployeeId: new Map() }), { state: "unset", name: null });
+  }
+});
+
+ok("resolveEmployeeIdentity: still loading -> state=loading, never a guessed name", () => {
+  const result = resolveEmployeeIdentity("EMP-9", { byEmployeeId: new Map(), loading: true });
+  assert.deepEqual(result, { state: "loading", name: null });
+});
+
+ok("resolveEmployeeIdentity: directory read failed -> state=error, never silently 'unknown'", () => {
+  const result = resolveEmployeeIdentity("EMP-9", { byEmployeeId: new Map(), error: new Error("boom") });
+  assert.equal(result.state, "error");
+});
+
+ok("resolveEmployeeIdentity: employeeId with no directory match -> state=unknown, never the raw id as a name", () => {
+  const result = resolveEmployeeIdentity("EMP-does-not-exist", { byEmployeeId: new Map() });
+  assert.equal(result.state, "unknown");
+  assert.notStrictEqual(result.name, "EMP-does-not-exist");
 });
 
 console.log(`\n${passed} passed, 0 failed`);
