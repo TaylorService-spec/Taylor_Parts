@@ -42,6 +42,8 @@
     "test:inventoryService": "npm run build && node --test test/inventoryService.test.mjs",
     "test:opportunity": "npm run build && node --test test/opportunityCommands.test.mjs test/opportunityReadService.test.mjs",
     "test:salesOrder": "npm run build && node --test test/salesOrderCommands.test.mjs test/salesOrderReadService.test.mjs",
+    "test:crmActivity": "npm run build && node --test test/crmActivityCommands.test.mjs test/crmActivityReadService.test.mjs",
+    "test:crmActivityEmulator": "npm run build && node --test test/crmActivityCommandsEmulator.test.mjs test/crmActivityReadCallable.test.mjs",
     "test:salesOrderFulfillmentWriteBack": "npm run build && node --test test/salesOrderFulfillmentWriteBack.test.mjs",
     "test:salesOrderFulfillmentWriteBackEmulator": "npm run build && node --test test/salesOrderFulfillmentWriteBackEmulator.test.mjs",
     "test:salesOrderSourceOpportunityEmulator": "npm run build && node --test test/createSalesOrderSourceOpportunity.test.mjs test/createSalesOrderFromOpportunityCallable.test.mjs test/commercialCreateIdempotency.test.mjs test/commercialTransitionIdempotency.test.mjs test/salesOrderReadCallable.test.mjs",

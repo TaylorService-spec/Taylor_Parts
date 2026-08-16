@@ -59,3 +59,14 @@ export const REFUNDS_COLLECTION = "refunds";
 // (functions/src/serializedAsset/serializedAssetReadService.ts). The §H installation handoff command (a
 // future, separately authorized phase gated on Transfer Orders) is the only anticipated write path.
 export const SERIALIZED_ASSETS_COLLECTION = "serialized_assets";
+
+// CRM Activity / Notes (Wave 7 extension PART 1.4) -- the SMALLEST domain-correct CRM interaction
+// authority: an account-scoped, immutable-identity activity/note record (Sales Note / Call / Meeting /
+// Relationship / General). Admin-SDK-only, same fail-closed posture as every other collection above --
+// firestore.rules has NO match block for this collection (default deny), and the only write path is the
+// trusted createCrmActivity command (functions/src/crmActivity/crmActivityCallables.ts). This record owns
+// the CRM interaction ONLY -- it references Account/Contact/Opportunity/Sales Order by id and never
+// restates their fields. It carries NO assignee/due date/completion/status workflow -- a dated follow-up /
+// next-action is a SEPARATE, NOT-YET-authorized roadmap capability (Exception Ownership / Operational
+// Accountability, PART 1.5); this is a deliberate SEAM, not an oversight.
+export const CRM_ACTIVITIES_COLLECTION = "crm_activities";

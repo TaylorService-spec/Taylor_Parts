@@ -241,3 +241,11 @@ export {
   changePartSupplierItemStatusCallable as changePartSupplierItemStatus,
   setPreferredSupplierCallable as setPreferredSupplier,
 } from "./partMaster/partSupplierItemCallables";
+
+// CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT:
+// exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered
+// active:false and granted to NO Role -- nothing runs in production until a separate deploy + Owner
+// grant + per-environment activation. `crm_activities` is Admin-SDK-only (no firestore.rules match block,
+// default deny); these two trusted callables are the only read/write path.
+export { createCrmActivity } from "./crmActivity/crmActivityCallables";
+export { getCrmActivities } from "./crmActivity/crmActivityReadService";
