@@ -1,11 +1,15 @@
 name: Sales Opportunity Workspace Tests
 
-# Sales Cycle 2 -- the read-first Opportunity Operating Workspace. Runs the pure-domain unit chain
-# (opportunityLifecycle: lifecycle vocabulary, stage->tone, honest attention derivation, pipeline
-# projection), the component render gate (vitest + jsdom: pipeline over the synthetic source, attention
-# sort, row->detail selection, inert create control), the nav-parity pins (crmSalesNav/equipmentRegister),
-# and lint. Pure/offline: no emulator, no Firebase, no deployment, no production access, no secrets. This
-# surface reads a SYNTHETIC in-memory source and writes nothing -- it activates, grants, and deploys nothing.
+# Sales Cycle 2 -- the read-first Opportunity Operating Workspace. Wave 7 added the governed CREATE flow +
+# lifecycle chevrons on top of it. Runs the pure-domain unit chain (opportunityLifecycle: lifecycle
+# vocabulary, stage->tone, honest attention derivation, pipeline projection, chevron stageProgress), the
+# server/client lifecycle drift lockstep test, the create-form validation + write-outcome-mapping unit
+# tests, the write-capability access glue test, the action-hook idempotency tests (create + transition), the
+# component render gate (vitest + jsdom: pipeline over the synthetic source, attention sort, row->detail
+# selection, create flow, lifecycle control), the nav-parity pins (crmSalesNav/equipmentRegister), and lint.
+# Pure/offline: no emulator, no Firebase, no deployment, no production access, no secrets. This surface reads
+# a SYNTHETIC in-memory source by default and every write path is exercised only against a MOCKED command
+# client -- it activates, grants, and deploys nothing.
 
 on:
   pull_request:
@@ -13,28 +17,50 @@ on:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
       - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
+      - "field-ops-app-vite/src/domain/opportunityCreateForm.js"
+      - "field-ops-app-vite/src/domain/opportunityCommandOutcome.js"
+      - "field-ops-app-vite/src/domain/localDateInput.js"
       - "field-ops-app-vite/src/domain/salesOrderView.js"
       - "field-ops-app-vite/src/access/opportunitySource.js"
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
+      - "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
+      - "field-ops-app-vite/src/access/useOpportunityCapabilities.js"
+      - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
       - "field-ops-app-vite/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/access/compatibilityRoles.ts"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useOpportunityCreate.js"
+      - "field-ops-app-vite/src/hooks/useOpportunityTransitions.js"
       - "field-ops-app-vite/src/hooks/useSalesOrder.js"
       - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
+      - "field-ops-app-vite/src/services/opportunityCommandClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
+      - "field-ops-app-vite/src/shared/ui/LifecycleChevrons.jsx"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
+      - "field-ops-app-vite/test/opportunityLifecycleDrift.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
+      - "field-ops-app-vite/test/opportunityCreateForm.test.mjs"
+      - "field-ops-app-vite/test/opportunityCommandOutcome.test.mjs"
+      - "field-ops-app-vite/test/opportunityCapabilityAccess.test.mjs"
       - "field-ops-app-vite/test/useOpportunitiesAsync.test.jsx"
+      - "field-ops-app-vite/test/useOpportunityCreate.test.jsx"
+      - "field-ops-app-vite/test/useOpportunityTransitions.test.jsx"
+      - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      - "field-ops-app-vite/test/newOpportunityForm.test.jsx"
       - "field-ops-app-vite/test/salesOrderView.test.mjs"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
+      - "field-ops-app-vite/test/salesWorkspaceDate.test.jsx"
       - "field-ops-app-vite/test/crmSalesNav.test.mjs"
       - "field-ops-app-vite/test/equipmentRegister.test.mjs"
       - "field-ops-app-vite/test/permissionCatalogRoleParity.test.mjs"
+      - "functions/src/opportunity/opportunityLifecycle.ts"
+      - "functions/src/opportunity/opportunityCommands.ts"
+      - "functions/src/opportunity/opportunityCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/access/environmentCapabilityOverrides.ts"
@@ -45,26 +71,48 @@ on:
     paths:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/opportunityCreateForm.js"
+      - "field-ops-app-vite/src/domain/opportunityCommandOutcome.js"
+      - "field-ops-app-vite/src/domain/localDateInput.js"
       - "field-ops-app-vite/src/access/opportunitySource.js"
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
+      - "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
+      - "field-ops-app-vite/src/access/useOpportunityCapabilities.js"
+      - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
       - "field-ops-app-vite/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/access/compatibilityRoles.ts"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/hooks/useOpportunityCreate.js"
+      - "field-ops-app-vite/src/hooks/useOpportunityTransitions.js"
       - "field-ops-app-vite/src/hooks/useSalesOrder.js"
       - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
+      - "field-ops-app-vite/src/services/opportunityCommandClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
+      - "field-ops-app-vite/src/shared/ui/LifecycleChevrons.jsx"
       - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
       - "field-ops-app-vite/src/domain/salesOrderView.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
+      - "field-ops-app-vite/test/opportunityLifecycleDrift.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
+      - "field-ops-app-vite/test/opportunityCreateForm.test.mjs"
+      - "field-ops-app-vite/test/opportunityCommandOutcome.test.mjs"
+      - "field-ops-app-vite/test/opportunityCapabilityAccess.test.mjs"
       - "field-ops-app-vite/test/useOpportunitiesAsync.test.jsx"
+      - "field-ops-app-vite/test/useOpportunityCreate.test.jsx"
+      - "field-ops-app-vite/test/useOpportunityTransitions.test.jsx"
+      - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      - "field-ops-app-vite/test/newOpportunityForm.test.jsx"
       - "field-ops-app-vite/test/salesOrderView.test.mjs"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
+      - "field-ops-app-vite/test/salesWorkspaceDate.test.jsx"
       - "field-ops-app-vite/test/permissionCatalogRoleParity.test.mjs"
+      - "functions/src/opportunity/opportunityLifecycle.ts"
+      - "functions/src/opportunity/opportunityCommands.ts"
+      - "functions/src/opportunity/opportunityCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/access/environmentCapabilityOverrides.ts"
@@ -95,7 +143,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity + Sales Order domain unit tests (node:test)
-        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs && node test/salesOrderView.test.mjs
+        run: node test/opportunityLifecycle.test.mjs && node test/opportunityLifecycleDrift.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs && node test/opportunityCreateForm.test.mjs && node test/opportunityCommandOutcome.test.mjs && node test/opportunityCapabilityAccess.test.mjs && node test/salesOrderView.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Nav parity pins (crmSalesNav + equipmentRegister)
@@ -106,10 +154,14 @@ jobs:
         run: node --test test/permissionCatalogRoleParity.test.mjs
         working-directory: field-ops-app-vite
 
+      - name: Opportunity write-action hook tests (vitest + jsdom, idempotency-key behavior)
+        run: npx vitest run test/useOpportunityCreate.test.jsx test/useOpportunityTransitions.test.jsx
+        working-directory: field-ops-app-vite
+
       - name: Opportunity + Sales Order workspace component tests (vitest + jsdom)
-        run: npx vitest run test/salesWorkspace.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx
+        run: npx vitest run test/salesWorkspace.test.jsx test/salesWorkspaceDate.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx test/opportunityLifecycleControl.test.jsx test/newOpportunityForm.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)
-        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/domain/salesOrderView.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/hooks/useSalesOrder.js src/services/salesOrderReadCallableClient.js src/data/opportunityScenarioFixtures.js src/access/opportunityWriteReadiness.js
+        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/domain/opportunityCreateForm.js src/domain/opportunityCommandOutcome.js src/domain/localDateInput.js src/domain/salesOrderView.js src/access/opportunitySource.js src/access/opportunityWriteReadiness.js src/access/opportunityCapabilityAccess.js src/access/useOpportunityCapabilities.js src/hooks/useOpportunities.js src/hooks/useOpportunityCreate.js src/hooks/useOpportunityTransitions.js src/hooks/useSalesOrder.js src/services/salesOrderReadCallableClient.js src/services/opportunityCommandClient.js src/data/opportunityScenarioFixtures.js src/shared/ui/LifecycleChevrons.jsx
         working-directory: field-ops-app-vite

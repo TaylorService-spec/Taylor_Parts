@@ -13,6 +13,9 @@ import AccountsList from "./modules/accounts/AccountsList";
 import SalesWorkspace from "./modules/sales/SalesWorkspace";
 import SalesOrderDetail from "./modules/sales/SalesOrderDetail.jsx";
 import { governedOpportunitySource } from "./access/opportunitySource.js";
+import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
+import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
+import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
@@ -176,6 +179,26 @@ function TruckInventoryConnected({ accessVersion, role }) {
   );
 }
 
+// Sales Wave 7 -- connects the REAL trusted write-capability signal (access/useOpportunityCapabilities,
+// the resolveEffectiveAccessCallable feed requested for opportunity.write) to SalesWorkspace's injected
+// `readiness` prop. This is the fix for the known defect where SalesWorkspace called
+// opportunityWriteReadiness() with NO args at its own default (always fail-closed regardless of the real
+// grant): the seam function itself stays pure and still defaults to fail-closed for any caller that does
+// not inject `readiness` (every unit/component test), but THIS is the one production call site, and it now
+// feeds the seam real deps. There is no separate client signal for "is the callable deployed" (mirrors
+// services/salesOrderCommandClient.js's posture once its capability went live) -- the SAME live capability
+// decision is used for both `capabilityGranted` and `commandDeployed`, since server-side authorization
+// (resolveEffectiveAccess) is re-checked on every call regardless, and a genuinely undeployed/unreachable
+// callable still surfaces honestly through the write hooks' own denied/unavailable/error mapping
+// (domain/opportunityCommandOutcome.js) rather than through a fabricated second static flag.
+function OpportunityWorkspaceConnected() {
+  const { user } = useAuth();
+  const { hasCapability } = useOpportunityCapabilities(user);
+  const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
+  const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
+  return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} />;
+}
+
 function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "dashboard" && item.key === "my") {
     return <DashboardIndex role={role} />;
@@ -193,9 +216,11 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // callable (opportunity.read is granted + sandbox-activated) instead of the synthetic
   // fixture source -- an authorized principal now sees real Opportunities; an unauthorized one
   // (or production, where activation is off) gets the seam's honest denied/unavailable state,
-  // never fabricated data. Write path (create/transition) remains not wired here yet.
+  // never fabricated data. Wave 7: the write path (create + lifecycle transitions) is now wired through
+  // OpportunityWorkspaceConnected, which feeds SalesWorkspace's readiness seam the real
+  // resolveEffectiveAccessCallable decision for opportunity.write instead of a hardcoded fail-closed value.
   if (domain.key === "customers" && item.key === "opportunities") {
-    return <SalesWorkspace source={governedOpportunitySource} />;
+    return <OpportunityWorkspaceConnected />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest

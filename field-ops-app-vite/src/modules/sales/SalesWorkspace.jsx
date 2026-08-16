@@ -5,9 +5,13 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
-import { buildOpportunityPipeline, channelLabel, stageLabel, allowedActions } from "../../domain/opportunityLifecycle.js";
+import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
+import { buildOpportunityPipeline, channelLabel } from "../../domain/opportunityLifecycle.js";
 import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "../../domain/opportunityFieldModel.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
+import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
+import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
+import NewOpportunityForm from "./NewOpportunityForm.jsx";
 
 // Sales — Opportunity OPERATING Workspace. The commercial pipeline is the entry point to Sales (ratified:
 // Opportunity Management, NOT Account→Create Work Order). This surface reads opportunities through the
@@ -22,26 +26,23 @@ import { opportunityWriteReadiness } from "../../access/opportunityWriteReadines
 // LEVEL (one section at a time), which is the interaction that recomposes cleanly from desktop down to phone
 // (a section edit is a small stacked form, never a desktop grid squeezed narrow).
 //
-// FAIL-CLOSED: no write path is live. Field editing AND lifecycle transitions are both governed writes; both
-// are gated by the SAME write-readiness seam (access/opportunityWriteReadiness). Today the seam reports writes
-// disabled (capability ungranted + command not deployed), so every edit/lifecycle affordance renders DISABLED
-// with an honest reason. When a later, separately-authorized cycle grants + deploys, the seam flips and the
-// SAME affordances become live — no structural change here. Nothing on this screen writes, and the data model
-// (what CAN be maintained) is kept separate from the seam (whether it may be maintained right now).
+// WRITE-READINESS: field editing AND lifecycle transitions AND create are all governed writes; all three
+// are gated by the SAME write-readiness seam (access/opportunityWriteReadiness), fed by the REAL trusted
+// effective-access signal (access/useOpportunityCapabilities → resolveEffectiveAccessCallable), wired at the
+// production mount in App.jsx. Any caller that does NOT inject a `readiness` prop (including every existing
+// test render here) still gets the seam's own fail-closed default (opportunityWriteReadiness() with no
+// deps evaluates to disabled) — this component never assumes writes are live; it only ever reads through
+// the injected/defaulted seam. When capabilityGranted flips server-side, the SAME affordances (Edit, the
+// lifecycle chevrons/actions, New opportunity) go live with no structural change here.
+
+// isoDate/parseLocalDate live in domain/localDateInput.js (shared with NewOpportunityForm.jsx without a
+// circular import); re-exported here so the existing `import { isoDate, parseLocalDate } from
+// ".../SalesWorkspace.jsx"` call site (test/salesWorkspaceDate.test.jsx) is unchanged.
+export { isoDate, parseLocalDate };
 
 const currency = (v) =>
   typeof v === "number" ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "—";
 const shortDate = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—");
-// ISO date for <input type="date"> binding (yyyy-mm-dd); null-safe.
-export const isoDate = (ms) => {
-  if (typeof ms !== "number") return "";
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-export const parseLocalDate = (value) => {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day).getTime();
-};
 
 function LineSummary({ lines }) {
   if (!lines?.length) return <span className="fo-muted">No solution lines yet</span>;
@@ -239,45 +240,18 @@ function SectionReadBody({ section }) {
   );
 }
 
-// The ratified lifecycle actions for the selected opportunity, rendered through the WRITE-READINESS seam.
-// Stage / WON / LOST are GOVERNED TRANSITIONS, not field edits — so they live here, never as a Stage <select>
-// in an edit form. Actions come from the pure domain graph (allowedActions); today the seam reports writes
-// disabled, so each renders DISABLED with an honest reason. When a later cycle grants + deploys, the SAME
-// buttons become live (each would call the governed transitionOpportunity callable). Nothing here writes.
-function LifecycleActions({ row, readiness }) {
-  const actions = allowedActions(row);
-  if (!actions.advanceTo && actions.outcomes.length === 0) {
-    return <p className="fo-muted">Closed — no further lifecycle actions.</p>;
-  }
-  const disabled = !readiness.enabled;
-  const title = readiness.enabled ? undefined : readiness.reason;
-  const advance = actions.advanceTo ? (
-    <button type="button" className="fo-btn-primary" disabled={disabled} title={title}>
-      Advance to {stageLabel(actions.advanceTo)}
-    </button>
-  ) : null;
-  const outcomeBtns = actions.outcomes.map((o) => (
-    <button key={o} type="button" className="fo-btn-ghost" disabled={disabled} title={title}>
-      Mark {o === "WON" ? "Won" : "Lost"}
-    </button>
-  ));
-  return (
-    <div className="fo-sales-detail__lifecycle">
-      <ActionRail primary={advance} secondary={outcomeBtns.length ? <>{outcomeBtns}</> : null} />
-      {disabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
-    </div>
-  );
-}
-
 // The detail aside. A ContextBand scans the key facts (read), then the editing-ready sections operate on the
 // underlying data. Same datum can appear as a scannable fact AND be maintained in a section — scan up top,
 // operate below. Lifecycle sits between the derived attention and the read-only record.
-function OpportunityDetail({ row, readiness, onSaveSection }) {
+function OpportunityDetail({ row, readiness, onSaveSection, onChanged }) {
   const [editingSection, setEditingSection] = useState(null);
   const model = useMemo(
     () => opportunityDetailModel(row, { format: { currency, date: shortDate } }),
     [row]
   );
+  // Called unconditionally (rules-of-hooks) — `row?.id ?? null` scopes the transition idempotency cache to
+  // whichever Opportunity is selected right now; useOpportunityTransitions resets its cache on an id change.
+  const transitions = useOpportunityTransitions(row?.id ?? null);
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
 
   const facts = [
@@ -336,7 +310,7 @@ function OpportunityDetail({ row, readiness, onSaveSection }) {
       {editableOrder.map(renderSection)}
       <section className="fo-sales-detail__block" aria-label="Lifecycle" data-dataclass={OPPORTUNITY_DATA_CLASS.LIFECYCLE_ACTION}>
         <div className="fo-sales-detail__block-head"><h4>Lifecycle</h4></div>
-        <LifecycleActions row={row} readiness={readiness} />
+        <OpportunityLifecycleControl row={row} readiness={readiness} transitions={transitions} onChanged={onChanged} />
       </section>
       {renderSection("attention")}
       {renderSection("record")}
@@ -385,12 +359,16 @@ function PipelineRow({ row, selected, onSelect }) {
 
 // Props are optional injection seams for tests/activation: `readiness` defaults to the fail-closed write-
 // readiness seam; `onSaveSection` is the governed save command (unwired today ⇒ Save stays inert). Production
-// renders <SalesWorkspace /> with neither, preserving the fully fail-closed posture.
-export default function SalesWorkspace({ readiness, onSaveSection, source } = {}) {
-  const { opportunities, accountNameById, status } = useOpportunities(source);
+// renders <SalesWorkspace readiness={...} /> from App.jsx's connected wrapper, which computes readiness from
+// the REAL trusted capability feed (access/useOpportunityCapabilities); a caller that passes neither (every
+// existing test here) still gets the seam's own fail-closed default.
+export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps } = {}) {
+  const { opportunities, accountNameById, status, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
-  // Write-readiness through the seam. Fail-closed today (governed write built but inert); every edit + lifecycle
-  // affordance renders disabled/honest. When a later cycle grants + deploys, this flips with no UI change here.
+  const [creating, setCreating] = useState(false);
+  // Write-readiness through the seam. Fail-closed by default (governed write built but inert unless a real
+  // `readiness` is injected); every create/edit/lifecycle affordance renders disabled/honest. When capability
+  // is granted, the seam flips and the SAME affordances become live — no structural change here.
   const writeReadiness = readiness ?? opportunityWriteReadiness();
 
   // Fixed "now" for the render pass so attention derivation is stable within a paint; sourced once from the
@@ -412,13 +390,22 @@ export default function SalesWorkspace({ readiness, onSaveSection, source } = {}
     { key: "lost", label: "Lost", value: pipeline.counts.lost },
   ];
 
-  // The inert "New opportunity" reason is exposed BOTH as an accessible label (keyboard/AT) and as visible
-  // on-page text (below), not tooltip-only — consistent with the disabled lifecycle actions in the detail.
-  const createDisabledReason = "Creating opportunities is not enabled yet — the governed write path arrives in a later cycle.";
+  // The disabled-state reason is exposed BOTH as an accessible label (keyboard/AT) and as visible on-page
+  // text (below), not tooltip-only — consistent with the disabled lifecycle actions in the detail. When
+  // readiness IS enabled, the button opens the governed New Opportunity form (NewOpportunityForm.jsx); a
+  // successful create authoritatively refetches (never fabricates the row) and selects the new opportunity.
+  const createEnabled = writeReadiness.enabled;
   const actions = (
     <ActionRail
       primary={
-        <button type="button" className="fo-btn-primary" disabled aria-label={`New opportunity — ${createDisabledReason}`} title={createDisabledReason}>
+        <button
+          type="button"
+          className="fo-btn-primary"
+          disabled={!createEnabled}
+          aria-label={createEnabled ? "New opportunity" : `New opportunity — ${writeReadiness.reason}`}
+          title={createEnabled ? undefined : writeReadiness.reason}
+          onClick={createEnabled ? () => setCreating(true) : undefined}
+        >
           New opportunity
         </button>
       }
@@ -442,12 +429,26 @@ export default function SalesWorkspace({ readiness, onSaveSection, source } = {}
       actions={actions}
       context={<ContextBand items={contextItems} />}
       attention={attention}
-      supporting={<OpportunityDetail row={selectedRow} readiness={writeReadiness} onSaveSection={onSaveSection} />}
+      supporting={
+        <OpportunityDetail row={selectedRow} readiness={writeReadiness} onSaveSection={onSaveSection} onChanged={refetch} />
+      }
     >
+      {creating && (
+        <NewOpportunityForm
+          readiness={writeReadiness}
+          deps={createDeps}
+          onClose={() => setCreating(false)}
+          onCreated={(opportunityId) => {
+            setCreating(false);
+            refetch();
+            if (opportunityId) setSelectedId(opportunityId);
+          }}
+        />
+      )}
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
           Showing synthetic sample opportunities. The live sales pipeline connects in a later cycle.
-          {" "}{createDisabledReason}
+          {!createEnabled && <>{" "}{writeReadiness.reason}</>}
         </p>
       )}
       {status !== "ready" ? (

@@ -101,6 +101,33 @@ export function allowedActions(opp) {
   };
 }
 
+// Chevron progression status for one stage step, relative to an opportunity's current stage.
+export const STAGE_PROGRESS_STATUS = Object.freeze({ COMPLETE: "complete", CURRENT: "current", FUTURE: "future" });
+
+// The persistent lifecycle-chevron VIEW MODEL for one opportunity: an ordered stage list (each carrying its
+// progression status) plus an optional terminal outcome badge. PURE projection, no React — the presentational
+// chevron component (shared/ui/LifecycleChevrons.jsx) knows nothing about Opportunity; this is where the
+// Opportunity-specific reading of "which stages are done" lives, kept separate from allowedActions (which
+// decides what is LEGAL to click next).
+export function stageProgress(opp) {
+  const stage = opp?.stage;
+  const outcome = opp?.outcome ?? null;
+  const reachedIdx = OPPORTUNITY_STAGES.indexOf(stage);
+  const stages = OPPORTUNITY_STAGES.map((s, i) => {
+    let status;
+    if (reachedIdx < 0) status = STAGE_PROGRESS_STATUS.FUTURE;
+    else if (i < reachedIdx) status = STAGE_PROGRESS_STATUS.COMPLETE;
+    else if (i === reachedIdx) status = outcome != null ? STAGE_PROGRESS_STATUS.COMPLETE : STAGE_PROGRESS_STATUS.CURRENT;
+    else status = STAGE_PROGRESS_STATUS.FUTURE;
+    return { key: s, label: stageLabel(s), status };
+  });
+  const terminal =
+    outcome === "WON" ? { key: "WON", label: OUTCOME_LABEL.WON, tone: "positive" }
+    : outcome === "LOST" ? { key: "LOST", label: OUTCOME_LABEL.LOST, tone: "muted" }
+    : null;
+  return { stages, terminal };
+}
+
 // The pipeline/work-queue view model for the Sales workspace. Active (open) opportunities are the work;
 // closed ones are counted but not the queue. Sorted attention-first, then by nearest expected close.
 export function buildOpportunityPipeline(opportunities = [], { nowMillis = null, accountNameById = {} } = {}) {

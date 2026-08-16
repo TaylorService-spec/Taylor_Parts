@@ -1,8 +1,8 @@
 // Sales Opportunity Operating Workspace (Cycle 2) — RENDER tests (vitest + jsdom). Exercises the read-first
 // pipeline over the injected SYNTHETIC source: open opportunities appear (closed excluded from the queue),
 // attention sorts to the top, selecting a row drives the detail aside, and the write affordance is inert.
-import { afterEach, describe, it, expect } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import SalesWorkspace from "../src/modules/sales/SalesWorkspace.jsx";
 
 afterEach(cleanup);
@@ -164,5 +164,54 @@ describe("SalesWorkspace (pipeline responsive content priority)", () => {
     const { container } = render(<SalesWorkspace />);
     const labels = [...container.querySelectorAll("tbody tr:first-child td")].map((td) => td.getAttribute("data-label"));
     expect(labels).toEqual(["Customer", "Stage", "Channel", "Est. value", "Expected close", "Attention / next"]);
+  });
+});
+
+// New Opportunity create flow -- Wave 7. `readiness` enabled unlocks the button; a real create client is
+// injected via `createDeps` so no firebase import is ever touched from a test.
+describe("SalesWorkspace (New Opportunity create flow)", () => {
+  const ENABLED = { enabled: true, reason: null };
+
+  function createDepsFor(client) {
+    return { client, useAccounts: () => ({ data: [{ id: "A1", name: "Northgate Grocery" }], loading: false, error: null }) };
+  }
+
+  it("readiness enabled: the New opportunity button is live and opens the create form", () => {
+    render(<SalesWorkspace readiness={ENABLED} createDeps={createDepsFor({ createOpportunity: vi.fn() })} />);
+    const btn = screen.getByRole("button", { name: /^new opportunity$/i });
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(screen.getByRole("dialog", { name: /new opportunity/i })).toBeTruthy();
+  });
+
+  it("a successful create closes the form, refetches authoritatively, and selects the new opportunity -- never fabricating the row", async () => {
+    let call = 0;
+    const source = () => {
+      call += 1;
+      return call === 1
+        ? { status: "ready", opportunities: [{ id: "EXIST-1", accountId: "A1", customerName: "Northgate Grocery", stage: "QUALIFYING" }], accountNameById: {}, error: null }
+        : {
+            status: "ready",
+            opportunities: [
+              { id: "EXIST-1", accountId: "A1", customerName: "Northgate Grocery", stage: "QUALIFYING" },
+              { id: "NEW-OPP-1", accountId: "A1", customerName: "Northgate Grocery", stage: "IDENTIFIED", need: "Freezer replacement" },
+            ],
+            accountNameById: {},
+            error: null,
+          };
+    };
+    const client = { createOpportunity: vi.fn().mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "NEW-OPP-1", stage: "IDENTIFIED" } }) };
+    render(<SalesWorkspace readiness={ENABLED} source={source} createDeps={createDepsFor(client)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^new opportunity$/i }));
+    fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
+    fireEvent.change(screen.getByLabelText(/owner \(employee id\)/i), { target: { value: "EMP-1" } });
+    fireEvent.change(screen.getByLabelText(/^channel$/i), { target: { value: "RETAIL" } });
+    fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(call).toBe(2); // the authoritative refetch actually ran
+    // The newly created Opportunity's own re-read data now shows in the detail -- not a client-fabricated row.
+    await screen.findByText(/Freezer replacement/i);
   });
 });

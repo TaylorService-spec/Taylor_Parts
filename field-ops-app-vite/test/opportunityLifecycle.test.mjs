@@ -10,6 +10,8 @@ import {
   channelLabel,
   nextStage,
   allowedActions,
+  stageProgress,
+  STAGE_PROGRESS_STATUS,
 } from "../src/domain/opportunityLifecycle.js";
 
 const NOW = new Date(2026, 7, 8, 12, 0, 0, 0).getTime(); // fixed "now" = Aug 8 2026
@@ -97,4 +99,45 @@ test("stage/channel labels are humanized with a safe fallback", () => {
   assert.equal(channelLabel("NATIONAL_ACCOUNTS"), "National Accounts");
   assert.equal(stageLabel("WEIRD"), "WEIRD");
   assert.equal(channelLabel(undefined), "—");
+});
+
+// ── stageProgress (chevron view model) ──────────────────────────────────────────────────────────────────
+
+test("stageProgress: an early open stage marks earlier stages complete, itself current, the rest future", () => {
+  const { stages, terminal } = stageProgress({ stage: "SOLUTION" });
+  assert.equal(terminal, null);
+  const byKey = Object.fromEntries(stages.map((s) => [s.key, s.status]));
+  assert.equal(byKey.IDENTIFIED, STAGE_PROGRESS_STATUS.COMPLETE);
+  assert.equal(byKey.QUALIFYING, STAGE_PROGRESS_STATUS.COMPLETE);
+  assert.equal(byKey.SOLUTION, STAGE_PROGRESS_STATUS.CURRENT);
+  assert.equal(byKey.QUOTING, STAGE_PROGRESS_STATUS.FUTURE);
+  assert.equal(byKey.CUSTOMER_REVIEW, STAGE_PROGRESS_STATUS.FUTURE);
+  assert.equal(byKey.DECISION, STAGE_PROGRESS_STATUS.FUTURE);
+});
+
+test("stageProgress: the very first stage has no complete steps yet, just itself current", () => {
+  const { stages } = stageProgress({ stage: "IDENTIFIED" });
+  assert.equal(stages[0].status, STAGE_PROGRESS_STATUS.CURRENT);
+  assert.ok(stages.slice(1).every((s) => s.status === STAGE_PROGRESS_STATUS.FUTURE));
+});
+
+test("stageProgress: WON marks every stage up to and including DECISION complete, plus a positive terminal badge", () => {
+  const { stages, terminal } = stageProgress({ stage: "DECISION", outcome: "WON" });
+  assert.ok(stages.every((s) => s.status === STAGE_PROGRESS_STATUS.COMPLETE));
+  assert.deepEqual(terminal, { key: "WON", label: "Won", tone: "positive" });
+});
+
+test("stageProgress: LOST from a mid stage marks reached stages complete and appends a muted terminal badge", () => {
+  const { stages, terminal } = stageProgress({ stage: "QUOTING", outcome: "LOST" });
+  const byKey = Object.fromEntries(stages.map((s) => [s.key, s.status]));
+  assert.equal(byKey.IDENTIFIED, STAGE_PROGRESS_STATUS.COMPLETE);
+  assert.equal(byKey.QUOTING, STAGE_PROGRESS_STATUS.COMPLETE); // the reached stage itself, since it's closed
+  assert.equal(byKey.CUSTOMER_REVIEW, STAGE_PROGRESS_STATUS.FUTURE);
+  assert.deepEqual(terminal, { key: "LOST", label: "Lost", tone: "muted" });
+});
+
+test("stageProgress: an unrecognized/missing stage is honestly all-future with no terminal badge", () => {
+  const { stages, terminal } = stageProgress({ stage: undefined });
+  assert.ok(stages.every((s) => s.status === STAGE_PROGRESS_STATUS.FUTURE));
+  assert.equal(terminal, null);
 });
