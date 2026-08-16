@@ -1,0 +1,51 @@
+{
+  "requestId": "EOS-ISSUE-1056",
+  "title": "EOS: Add sandbox callable deployment verification helper",
+  "intent": "Sandbox Functions deployments currently require repeated manual commands to verify that a known set of deployed callables are present, ACTIVE, and running the expected Node runtime. Recent sandbox convergence required manually running `gcloud functions describe` against multiple named callables, one at a time.\n\nMake that check repeatable with a small, repo-safe verification helper.\n\nThis is intentionally small. The primary acceptance target is **EOS itself**, not the complexity of the feature — a fresh Owner-gated `eos-intake` must travel through the real unattended machinery and reach durable COMPLETE with independently inspectable receipts.\n\nRequired work:\n1. Add a repository script that accepts a Firebase/GCP project id and one or more expected callable names.\n2. Query the deployed Gen-2 Functions using the supported `gcloud --v2` path.\n3. For every supplied function, verify: the function **exists**, its state is **ACTIVE**, and its runtime is **nodejs22**.\n4. Exit **non-zero** if a function is missing, state is not ACTIVE, runtime is not nodejs22, or the underlying command fails.\n5. Print a concise human-readable result identifying **PASS/FAIL per callable**.\n6. Perform **verification only** — it must NOT deploy, mutate cloud state, access secrets, or modify permissions.\n7. Add focused automated tests for the deterministic/local logic where practical (parsing, evaluation, argument handling) without invoking `gcloud`.\n8. Document the supported invocation in the appropriate existing sandbox deployment/runbook documentation.\n\nCompletion:\nDurable evidence must show all of the following:\n\n- the new script exists in the repository\n- valid arguments are accepted\n- missing required arguments **fail closed**\n- expected ACTIVE / nodejs22 output evaluates **PASS**\n- a missing function evaluates **FAIL**\n- a wrong runtime evaluates **FAIL**\n- a non-ACTIVE state evaluates **FAIL**\n- a command/query failure evaluates **FAIL**\n- the new automated tests pass\n- existing affected tests remain green\n- documentation contains the supported invocation\n- **no production deployment occurs**\n- **no Firestore Rules change occurs**\n- **no permission or security widening occurs**\n\nReturn as receipts: this issue number · worker/run identifier · branch · changed files · test commands and their results · commit SHA · evidence of the pushed non-main branch · PR number · CI result · final EOS state · durable COMPLETE write-back evidence.\n\nCompletion means **MERGED is not required** — the terminal state for this item is a durable COMPLETE result with a pushed branch and an open PR carrying green CI.\n\n---\n\n*Owner authorizes this specific issue for normal EOS unattended execution under the current repo-governed EOS authority. Do not manually shepherd the worker around ordinary implementation problems. Exercise the retry/recovery mechanism on a retryable failure; on a deterministic prohibited action, stop rather than repeatedly retrying. **Deploy nothing as part of this work item.***",
+  "scope": [
+    "`scripts/` — the new verification helper",
+    "`scripts/` — focused automated tests for the deterministic/local logic",
+    "existing sandbox deployment/runbook documentation — a concise usage example",
+    "Do **not** redesign the deployment system."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "KEYWORD_IMPLEMENTATION",
+    "ambiguous": false,
+    "reason": "implementation/fix/build/code-change intent detected"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/1056",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-16T21:59:41Z",
+    "authorizedExecutionProfile": "READ_ONLY_ANALYSIS",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-1056.work.json",
+  "sha256": "66c1732ad32ccbfcb056958367d9f24312231a4f15a51af954d71b74e22f1bf7",
+  "createdAt": "2026-08-16T21:59:34Z",
+  "updatedAt": "2026-08-16T21:59:41Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/1056"
+    ],
+    "pullRequests": []
+  }
+}
