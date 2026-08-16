@@ -6,13 +6,17 @@
       "file": "functions/src/inventoryService.ts",
       "symbol": "triggerInventoryEffects",
       "severity": "HIGH",
-      "status": "KNOWN_ACCEPTED",
+      "status": "FIXED",
       "source": "EOS-ISSUE-852",
-      "verifiedAtCommit": "472eea405cb4c063419f170df007900913f21f46",
-      "evidence": "Ledger write uses an auto-id doc so a crash between the effect and markStateProcessed() can double-apply on manual retry — but this is the DOCUMENTED failure model (idempotent-by-retry, never-throws, epic section 10). Real edge, consciously accepted; not an unaddressed bug.",
-      "regressionTest": null,
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "evidence": "FIXED (register was stale at KNOWN_ACCEPTED): functions/src/inventoryService.ts now claims (workOrderId,state) atomically via claimStateForProcessing() inside db().runTransaction, mirroring the reservationLockRef pattern, so a crash between the ledger write and the processed marker can no longer re-run trigger() and duplicate entries. Landed by #932 (54e11b59, site-work r3 N) with 28 lines of new test coverage.",
+      "regressionTest": "functions/test/inventoryService.test.mjs (claimStateForProcessing atomicity coverage added in #932)",
       "deferralRef": null,
-      "discriminator": "ledger-effect-not-atomic-with-processed-marker"
+      "discriminator": "ledger-effect-not-atomic-with-processed-marker",
+      "fix": {
+        "code": "functions/src/inventoryService.ts claimStateForProcessing() + functions/src/types/inventoryTransaction.ts",
+        "by": "site-work round 3 (#932)"
+      }
     },
     {
       "file": "functions/src/transitionWorkOrder.ts",
@@ -42,6 +46,76 @@
       "deferralRef": "#15",
       "revalidateWhen": "Blaze billing active (the flag's dependency) — re-dispose then, not on every audit",
       "discriminator": "receive-does-not-write-inventory-ledger"
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "field-ops-app-vite/src/components/ErrorBoundary.jsx",
+      "symbol": "ErrorBoundary",
+      "severity": "HIGH",
+      "discriminator": "error-boundary-has-no-reset",
+      "evidence": "Verified open at this commit: the component defines getDerivedStateFromError and componentDidCatch but contains zero reset/retry/remount wiring (grep for reset|retry returns 0). Any single render crash latches the fallback for the remainder of the session with no user-recoverable path -- the whole app is dead until a manual reload."
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "functions/src/inventoryService.ts",
+      "symbol": "getAvailableQuantity",
+      "severity": "MEDIUM",
+      "discriminator": "availability-blind-to-received-and-transfer-movements",
+      "evidence": "Verified open: getAvailableQuantity sums only RESERVED/RELEASED against the static catalog baseline and contains no reference to RECEIVED/TRANSFER_IN/TRANSFER_OUT (0 matches in the function body), while receiveInventoryStockCommand stages those types into the same inventory_transactions collection. Dormant only because the receiving capability is registered-but-ungranted; it will activate silently on grant, with received stock never affecting reservation availability."
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "field-ops-app-vite/src/domain/jobActions.js",
+      "symbol": "assignJob",
+      "severity": "MEDIUM",
+      "discriminator": "dead-but-rules-authorized-legacy-assign-path",
+      "evidence": "Verified open: assignJob is still exported with zero live call sites, yet firestore.rules fieldops_jobs still authorizes the update unconditionally for admin/dispatcher. Unlike the governed fieldops_wos path it is a bare client runTransaction with no audit event and no idempotency key, so a direct console call (or any future rewiring) reintroduces unaudited dual-write authority over assignment."
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "field-ops-app-vite/src/domain/equipmentRepository.js",
+      "severity": "MEDIUM",
+      "discriminator": "repository-comment-contradicts-live-rules",
+      "evidence": "Verified open: the file header still asserts Production Rules DENY the equipment collection outright, while firestore.rules already grants create/update to isAdminOrDispatcher() with shape/ownership/transition validation. Not an active vulnerability -- the Rules boundary is sound -- but anyone assessing blast radius from this comment will wrongly believe Equipment writes are blocked at the database layer."
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "field-ops-app-vite/src/domain/jobWorkflow.js",
+      "symbol": "canTransitionJob",
+      "severity": "LOW",
+      "discriminator": "client-transition-check-is-role-blind",
+      "evidence": "Verified open: signature is canTransitionJob(currentStatus, nextStatus) -- no role parameter -- so it permits in_progress->complete for any caller, while firestore.rules reserves technician completion for the trusted completeAssignedJob callable. Fails closed today only because updateJobStatus has no live UI call site; wiring it into technician-facing Field Mode would ship a button whose only defence is a mid-transaction permission-denied."
+    },
+    {
+      "source": "EOS-ISSUE-852 (recovered 2026-08-16)",
+      "verifiedAtCommit": "7e8eff53dd6088e5ed0fcefaf8b4753922358c04",
+      "status": "CONFIRMED_OPEN",
+      "deferralRef": null,
+      "regressionTest": null,
+      "file": "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts",
+      "severity": "LOW",
+      "discriminator": "stale-not-exported-header-comment",
+      "evidence": "Verified open: the file header still claims it is NOT exported from functions/src/index.ts and has no callable, but index.ts does export it via receivingCallables.ts. Documentation drift, not a functional defect."
     }
   ]
 }
