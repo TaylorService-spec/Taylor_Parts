@@ -133,6 +133,14 @@ function buildDeferredForNow(catalog) {
     "inventory.transfer.dispatch",
     "inventory.transfer.receive",
     "inventory.transfer.cancel",
+    // Enterprise Inventory -- Cycle Count operating authority: registered `active: false` and granted to
+    // NO compatibility Role, pending a separate Owner grant. EXACT literals, never an
+    // "inventory.cycleCount." prefix, so a future inventory.cycleCount.* capability stays UNACCOUNTED --
+    // the same protection A3-inv applies elsewhere.
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.submit",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.cancel",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

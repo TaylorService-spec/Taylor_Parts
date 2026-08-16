@@ -888,6 +888,42 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "cancel",
     active: false,
   }),
+  // Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*). Re-audited the
+  // location-aware operational ledger PR #1032 made live for Transfer sufficiency and reused the SAME
+  // authority as Cycle Count's expected-quantity source (never a second manually maintained on-hand
+  // number). REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds any
+  // of these four ids, no claims initializer/migration/fixture mints them, and there is no superuser/
+  // wildcard bypass, so resolveEffectivePermission() denies `noQualifyingGrant` for every principal until
+  // a later, separately-authorized grant gate. Same ungranted posture as inventory.transfer.* at its own
+  // introduction.
+  Object.freeze({
+    id: "inventory.cycleCount.create",
+    description: "Create a governed Cycle Count at an active WAREHOUSE/MOBILE(truck) inventory location, snapshotting expected quantity/serials from the ledger/registry authority (trusted Cycle Count service).",
+    resource: "inventory.cycleCount",
+    action: "create",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.cycleCount.submit",
+    description: "Record the counted quantity/serials for an OPEN Cycle Count and compute variance evidence (OPEN -> COUNTED).",
+    resource: "inventory.cycleCount",
+    action: "submit",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.cycleCount.reconcile",
+    description: "Reconcile a COUNTED Cycle Count's variance by staging ADJUSTED ledger evidence (COUNTED -> RECONCILED); requires a reason on non-zero variance.",
+    resource: "inventory.cycleCount",
+    action: "reconcile",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.cycleCount.cancel",
+    description: "Cancel an OPEN Cycle Count before any count has been submitted (OPEN -> CANCELLED).",
+    resource: "inventory.cycleCount",
+    action: "cancel",
+    active: false,
+  }),
   // D4 -- Part-Equipment Compatibility trusted persistence (design package
   // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
   // REGISTERED BUT NOT GRANTABLE: every entry is `active: false`, so

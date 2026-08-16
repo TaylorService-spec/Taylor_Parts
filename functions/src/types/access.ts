@@ -314,7 +314,14 @@ export type AuditAction =
   | "createTransferOrder"
   | "dispatchTransferOrder"
   | "receiveTransferOrder"
-  | "cancelTransferOrder";
+  | "cancelTransferOrder"
+  // Enterprise Inventory -- Cycle Count operating authority -- the trusted cycle count command family's
+  // Audit Event actions. Capabilities inventory.cycleCount.create/submit/reconcile/cancel registered
+  // active:false -- see permissionCatalog.ts.
+  | "createCycleCount"
+  | "submitCycleCount"
+  | "reconcileCycleCount"
+  | "cancelCycleCount";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

@@ -1,0 +1,206 @@
+// Enterprise Inventory -- Cycle Count operating authority: shared TYPES + failure taxonomy.
+//
+// AUDIT PREMISE (re-established, not assumed): PR #1032 (Transfer operating authority) made the
+// location-aware operational ledger (functions/src/inventoryLedger/operationalMovement*) a LIVE
+// expected-quantity authority for NONE-mode Parts -- transferOrderCommand.ts's
+// computeNoneOnHandThroughTxn sums RECEIVED/RETURNED/TRANSFER_IN (+), TRANSFER_OUT/SCRAPPED (-), and
+// ADJUSTED (signed) at a (partId, location) pair, and that sum is what gates whether a Transfer may be
+// created. This module reuses the SAME sourcing discipline for Cycle Count's "expected quantity" -- it
+// is never a second manually maintained on-hand number (data/partsCatalog.ts's warehouseQty baseline and
+// the legacy RESERVED/RELEASED/CONSUMED WO ledger are a DIFFERENT, disjoint, non-location-aware system
+// this module never reads). For SERIAL-tracked Parts, the authority is the serialized_assets registry's
+// AVAILABLE units at a location (the same rule transferOrderCommand.ts's SERIAL sufficiency check uses),
+// not a ledger sum.
+//
+// LIFECYCLE (new vocabulary -- COUNTED/ADJUSTED already existed as INERT OPERATIONAL_MOVEMENT_TYPES
+// members with zero writers before this module; this is their first live producer for COUNTED semantics
+// on the count-sheet side, and ADJUSTED's first live producer for count-driven reconciliation):
+//   createCycleCount    : (none) -> OPEN        (snapshots expected quantity/serials at creation time)
+//   submitCycleCount    : OPEN -> COUNTED        (records counted quantity/serials, computes variance)
+//   reconcileCycleCount : COUNTED -> RECONCILED  (stages ADJUSTED ledger evidence; reason required on
+//                                                  non-zero variance; never overwrites stock truth)
+//   cancelCycleCount    : OPEN -> CANCELLED       (domain-safe only -- before any count is submitted)
+
+export const CYCLE_COUNT_STATUSES = ["OPEN", "COUNTED", "RECONCILED", "CANCELLED"] as const;
+export type CycleCountStatus = (typeof CYCLE_COUNT_STATUSES)[number];
+
+export const CYCLE_COUNT_SCHEMA_VERSION = 1;
+
+// Same endpoint fence as Transfer Phase 4: WAREHOUSE + MOBILE(truck) only. A cycle count at a BIN/VENDOR/
+// CUSTOMER/VIRTUAL location is out of scope (matches the reused location-resolver's own fence).
+export const CYCLE_COUNT_LOCATION_TYPES = ["WAREHOUSE", "MOBILE"] as const;
+export type CycleCountLocationType = (typeof CYCLE_COUNT_LOCATION_TYPES)[number];
+
+// NONE + SERIAL only (LOT deferred, same posture as Receiving/Transfer).
+export const CYCLE_COUNT_SUPPORTED_TRACKING_MODES = ["NONE", "SERIAL"] as const;
+export type CycleCountTrackingMode = (typeof CYCLE_COUNT_SUPPORTED_TRACKING_MODES)[number];
+
+export interface CycleCountLocationRef {
+  readonly type: CycleCountLocationType;
+  readonly locationId: string;
+}
+export interface CycleCountActor {
+  readonly kind: "USER" | "SYSTEM";
+  readonly id: string;
+}
+
+// The request-derived IDENTITY (everything the caller actually supplies, shape-validated and bound to
+// the authoritative Part). This -- and ONLY this -- is what the idempotency fingerprint covers: the
+// expected-quantity snapshot below is server-computed and frozen at creation time, so it must never
+// factor into replay-vs-conflict detection (a later ledger movement must not make an already-created
+// count's replay look like a conflict, or vice versa).
+export interface CycleCountIdentity {
+  readonly partId: string;
+  readonly trackingMode: CycleCountTrackingMode;
+  readonly location: CycleCountLocationRef;
+  readonly idempotencyKey: string;
+}
+
+// The full stored value: the request identity plus the server-computed SNAPSHOT (expectedQuantity/
+// expectedSerialNumbers), computed server-side at create time from the ledger/registry authority and
+// NEVER accepted from input.
+export interface CycleCountValue extends CycleCountIdentity {
+  readonly expectedQuantity: number; // NONE mode
+  readonly expectedSerialNumbers?: readonly string[]; // SERIAL mode
+}
+
+// SERIAL reconciliation evidence: which expected units were not found, and which found units were not
+// expected. Both are explicit, never collapsed into a single quantity delta (briefing requirement).
+export interface SerialVariance {
+  readonly missing: readonly string[]; // expected but not counted
+  readonly unexpected: readonly string[]; // counted but not expected
+}
+
+export interface DeserializedCycleCount {
+  readonly cycleCountId: string;
+  readonly value: CycleCountValue;
+  readonly status: CycleCountStatus;
+  readonly version: number;
+  readonly actor: CycleCountActor;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly createdBy: string;
+  readonly updatedBy: string;
+  readonly schemaVersion: number;
+  readonly fingerprint: string;
+  // Present once submitCycleCount has run (status COUNTED or RECONCILED).
+  readonly countedQuantity?: number; // NONE mode
+  readonly countedSerialNumbers?: readonly string[]; // SERIAL mode
+  readonly variance?: number; // NONE mode: countedQuantity - expectedQuantity
+  readonly serialVariance?: SerialVariance; // SERIAL mode
+  // Present once reconcileCycleCount has run (status RECONCILED).
+  readonly reconciliationReason?: string;
+  readonly reconciledAt?: number;
+  readonly reconciledBy?: string;
+  readonly ledgerEventIds?: readonly string[];
+}
+
+export type ValidationResult<T> =
+  | { readonly valid: true; readonly value: T; readonly reason: null }
+  | { readonly valid: false; readonly value: null; readonly reason: string };
+
+// There is NO client-Firestore read path for cycle_counts (Rules deny all direct client read/write,
+// matching receiving_orders' posture -- "Admin-SDK-only, no UI reads it"). So each command's outcome
+// carries the full record-relevant fields the caller needs to render its own state, session by session,
+// entirely from callable responses -- never a second read authority.
+export type CycleCountCreateOutcome = {
+  readonly outcome: "applied" | "replayed";
+  readonly cycleCountId: string;
+  readonly fingerprint: string;
+  readonly partId: string;
+  readonly trackingMode: CycleCountTrackingMode;
+  readonly location: CycleCountLocationRef;
+  readonly expectedQuantity: number;
+  readonly expectedSerialNumbers?: readonly string[];
+  readonly status: CycleCountStatus;
+};
+
+export interface CycleCountActionOutcome {
+  readonly outcome: "applied" | "replayed";
+  readonly cycleCountId: string;
+  readonly status: CycleCountStatus;
+  readonly ledgerEventIds?: readonly string[];
+  readonly countedQuantity?: number;
+  readonly countedSerialNumbers?: readonly string[];
+  readonly variance?: number;
+  readonly serialVariance?: SerialVariance;
+  readonly reconciliationReason?: string;
+}
+
+// -------- sanitized, class-per-reason failure taxonomy (mirrors Receiving/Transfer precedent) --------
+export type CycleCountCommandFailureCode =
+  | "PERMISSION_DENIED"
+  | "CYCLE_COUNT_NOT_FOUND"
+  | "LOCATION_INVALID"
+  | "PART_INVALID"
+  | "SERIAL_INVALID"
+  | "QUANTITY_INVALID"
+  | "REASON_REQUIRED"
+  | "STATUS_INVALID"
+  | "IDEMPOTENCY_CONFLICT"
+  | "MALFORMED_STORED_RECORD"
+  | "CYCLE_COUNT_INTEGRITY";
+
+export class CycleCountCommandError extends Error {
+  readonly code: CycleCountCommandFailureCode;
+  constructor(code: CycleCountCommandFailureCode, message: string) {
+    super(message);
+    this.code = code;
+    this.name = new.target.name;
+  }
+}
+export class UnauthorizedCycleCountError extends CycleCountCommandError {
+  constructor(m = "actor is not authorized to perform this cycle count action") {
+    super("PERMISSION_DENIED", m);
+  }
+}
+export class CycleCountNotFoundError extends CycleCountCommandError {
+  constructor(m = "cycle count not found") {
+    super("CYCLE_COUNT_NOT_FOUND", m);
+  }
+}
+export class CycleCountLocationInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("LOCATION_INVALID", m);
+  }
+}
+export class CycleCountPartInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("PART_INVALID", m);
+  }
+}
+export class CycleCountSerialInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("SERIAL_INVALID", m);
+  }
+}
+export class CycleCountQuantityInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("QUANTITY_INVALID", m);
+  }
+}
+export class CycleCountReasonRequiredError extends CycleCountCommandError {
+  constructor(m = "a reconciliation reason is required when there is a non-zero variance") {
+    super("REASON_REQUIRED", m);
+  }
+}
+export class CycleCountStatusInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("STATUS_INVALID", m);
+  }
+}
+export class CycleCountIdempotencyConflictError extends CycleCountCommandError {
+  constructor(m = "idempotencyKey was already used for a different cycle count") {
+    super("IDEMPOTENCY_CONFLICT", m);
+  }
+}
+export class CycleCountMalformedStoredRecordError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("MALFORMED_STORED_RECORD", m);
+  }
+}
+export class CycleCountIntegrityError extends CycleCountCommandError {
+  constructor(m = "the cycle count could not be completed due to a transient integrity error") {
+    super("CYCLE_COUNT_INTEGRITY", m);
+  }
+}
