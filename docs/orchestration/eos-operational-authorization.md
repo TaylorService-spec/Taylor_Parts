@@ -234,6 +234,23 @@ of child results · a truthful final state.
 
 **Do not call EOS operational because unit tests pass.**
 
+### 10.1 Why the negative tests are gated on §2.1
+
+The positive assertions (branch → edit → add → commit → push → PR) are safe to run now.
+
+**The negative assertion "cannot push to `main`" is NOT safe to run**, and must not be attempted
+until branch protection exists. `main` is currently unprotected and the deny patterns are leaky
+by construction (§2.1). An attempt to prove the control works could therefore **succeed** — which
+would not be a failed test, it would be **an unauthorized commit to `main`**, i.e. the incident
+the control exists to prevent.
+
+**A negative test that can cause the harm it is testing for is not a test.** Run the positive
+acceptance path now; run the main-push negative only once §2.1 is resolved and the control is
+real. Until then, record that assertion as **UNPROVEN**, never as passing.
+
+The same reasoning applies to any other protected negative whose failure mode is destructive:
+prove it against a real control, or leave it explicitly unproven.
+
 ## 11. The ChatGPT review path
 
 The **ChatGPT app cannot be woken** — it has no inbound webhook; polling is the only mechanism.
