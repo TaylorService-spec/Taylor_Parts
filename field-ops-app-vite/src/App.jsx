@@ -30,6 +30,7 @@ import Receipts from "./modules/purchasing/Receipts";
 import Suppliers from "./modules/purchasing/Suppliers";
 import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
+import CycleCounts from "./modules/inventory/CycleCounts";
 import Warehouses from "./modules/inventory/Warehouses";
 import SchedulingWorkspace from "./modules/scheduling/SchedulingWorkspace";
 import DispatchSchedulingWorkspace from "./modules/dispatch/DispatchSchedulingWorkspace";
@@ -426,6 +427,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // accessVersion is threaded so the read re-runs on any access change (inventory convention).
   if (domain.key === "inventory" && item.key === "transfers") {
     return <Transfers accessVersion={operationalContext?.accessVersion} />;
+  }
+  // Inventory > Cycle Counts -- first-class workspace for the Cycle Count operating authority
+  // (functions/src/cycleCount/*), replacing the prior route stub (navConfig.js's `cycleCounts` entry
+  // stays `navHidden: true` -- that flag is owned by the nav orchestrator, not changed here). There is
+  // NO live Firestore read for cycle_counts (Rules-denied, Admin-SDK-only like receiving_orders), so
+  // this workspace has no accessVersion-driven read to thread; its state is session-scoped, built
+  // entirely from the four governed callables' own responses (see useCycleCountActions.js).
+  if (domain.key === "inventory" && item.key === "cycleCounts") {
+    return <CycleCounts />;
   }
   // Inventory > Warehouses -- first-class registry workspace for the warehouse (inventory-
   // location) capability: warehouse list + governed status (ACTIVE/INACTIVE) + receiving-

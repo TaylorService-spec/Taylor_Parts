@@ -26,8 +26,11 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // bb1492b9... to ec1f0a9b... to track the merged Phase-D `receiving_orders` deny-all
 // block (PR #537), then to 37593fc0... to track the WO Parts Planning Phase-3 additive
 // `reorder_requests.workOrderId` back-link (Owner-authorized narrow schema change). The
-// smoke-verifier's own test asserts this equals HEAD:firestore.rules.
-const GOVERNED_RULES_SHA256 = "ff22df90580ee91ead797f19c62e71c7300a0c56a56964776f783a9fde5809da";
+// smoke-verifier's own test asserts this equals HEAD:firestore.rules. Re-pinned again to
+// 4605a7f0... to track the Cycle Count `cycle_counts` deny-all block (Part 6): a NEW collection
+// whose block is purely ADDITIVE -- no existing collection's deny was weakened. That is the only
+// kind of rules change this pin should be re-pinned for without a wider review.
+const GOVERNED_RULES_SHA256 = "4605a7f0775986da7b087abcbab00c53d7dde6e0167ff2a3dd223208263bd1cf";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

@@ -212,7 +212,10 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display."];
+// Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
+// concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
+// overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -242,6 +245,18 @@ check("every inventory.transfer.* entry is registered-but-not-grantable (active:
     "Enterprise Inventory Phase 4 registers exactly four transfer capabilities",
   );
   for (const permission of transfer) {
+    assert.equal(permission.active, false, `"${permission.id}" must be inactive (registered-but-ungranted)`);
+  }
+});
+
+check("every inventory.cycleCount.* entry is registered-but-not-grantable (active: false, never true)", () => {
+  const cycleCount = PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.cycleCount."));
+  assert.deepEqual(
+    cycleCount.map((p) => p.id).sort(),
+    ["inventory.cycleCount.cancel", "inventory.cycleCount.create", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit"],
+    "Cycle Count operating authority registers exactly four capabilities",
+  );
+  for (const permission of cycleCount) {
     assert.equal(permission.active, false, `"${permission.id}" must be inactive (registered-but-ungranted)`);
   }
 });

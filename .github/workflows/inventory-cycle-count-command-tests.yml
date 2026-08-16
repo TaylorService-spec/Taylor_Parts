@@ -1,0 +1,88 @@
+name: Inventory Cycle Count Command Tests
+
+# Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/**).
+# Firestore-emulator tests only: NO production, NO deployment. Every inventory.cycleCount.* capability
+# is registered `active: false` and granted to NO Role, so the callables never authorize a real
+# principal until a later, separately-authorized grant + activation gate. Reuses the SAME
+# location-aware operational ledger (inventoryLedger) and Serialized Asset registry Transfer's own
+# workflow depends on, so this workflow's path filter mirrors inventory-transfer-command-tests.yml's.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/cycleCount/**"
+      - "functions/src/inventoryLedger/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/inventoryTransfer/transferLocationResolver.ts"
+      - "functions/src/truckRegistry/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/test/cycleCountCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/inventory-cycle-count-command-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/cycleCount/**"
+      - "functions/src/inventoryLedger/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/inventoryTransfer/transferLocationResolver.ts"
+      - "functions/src/truckRegistry/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/test/cycleCountCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/inventory-cycle-count-command-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory-cycle-count-command-tests:
+    name: Inventory cycle count command tests (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/cycle-count-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/cycle-count-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/cycle-count-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Cycle count command tests (create/submit/reconcile/cancel; NONE + SERIAL; WAREHOUSE + MOBILE)
+        run: npm run test:cycleCountCommand
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-count-emulator-logs
+          path: |
+            /tmp/cycle-count-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
