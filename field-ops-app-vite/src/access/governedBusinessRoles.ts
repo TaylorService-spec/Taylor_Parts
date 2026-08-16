@@ -300,11 +300,21 @@ export const INVENTORY_CATALOG_ADMINISTRATOR_ROLE: Role = Object.freeze({
   id: "inventoryCatalogAdministrator",
   name: "Inventory Catalog Administrator",
   description:
-    "Durable least-privilege Role for governed catalog reference data: creating and curating Parts, Manufacturers and Suppliers and changing their lifecycle status. Carries exactly inventory.catalog.manage + inventory.catalog.activate and nothing else. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+    "Durable least-privilege Role for governed catalog reference data: reading the governed catalog, creating and curating Parts, Manufacturers and Suppliers, and changing their lifecycle status. Carries exactly inventory.catalog.read + inventory.catalog.manage + inventory.catalog.activate and nothing else. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
   systemSeed: true,
   compatibility: false,
   privileged: false,
-  permissions: ["inventory.catalog.manage", "inventory.catalog.activate"],
+  // inventory.catalog.read ADDED 2026-08-16 (Owner decision). Live E2E: partsManager could open the
+  // catalog surface and then got HTTP 403 from getManufacturerCatalog -- correct enforcement of the
+  // Role as written, but the Role scope was operationally incomplete. A principal authorized to
+  // MANAGE and ACTIVATE governed catalog data must be able to READ the catalog required to do that
+  // work; curating a Part against a manufacturer list you cannot see is not a coherent authority.
+  //
+  // Deliberately narrow: the catalog read ONLY. This confers no stock, transfer, cycle-count,
+  // receiving or transaction read authority, and the Role stays privileged:false -- it administers
+  // reference data, not access. No admin/owner bypass is involved: admin already resolves this id
+  // through its own compatibility grant, unchanged by this edit.
+  permissions: ["inventory.catalog.read", "inventory.catalog.manage", "inventory.catalog.activate"],
 }) as Role;
 
 // Work Order parts planner -- the durable least-privilege Role for the governed WO parts-planning
