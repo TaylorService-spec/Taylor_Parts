@@ -34,9 +34,19 @@ Management.
 
 **$105 (Field Service) + $110 (BC Premium) = ~$215 per user per month.**
 
-At 25 seats that is roughly **$64,500/year in licences alone**, before anyone implements
-anything. Add $25–45k implementation and ~25% of that annually to keep it running:
-**~$100k in year one, ~$65k+ every year after, indefinitely.**
+**That per-seat figure is the supported claim.** It stands on the sourced licence costs above and
+is safe to use as a general comparison.
+
+> **⚠ ILLUSTRATIVE ONLY — NOT A PROSPECT-SPECIFIC NUMBER.**
+> *At 25 seats* the arithmetic gives ~**$64,500/year** in licences alone, plus $25–45k
+> implementation and ~25% of that annually — roughly **$100k in year one** and **$65k+ each year
+> after**.
+>
+> **25 is a worked example, not anyone's seat count.** Owner decision 2026-08-16: **do not
+> fabricate a prospect-specific ROI number.** Seat count is a **required discovery input** before
+> any named-customer cost comparison is produced or spoken. Totals move sharply with headcount, so
+> an invented seat count produces an invented conclusion — and one wrong number in a room
+> discredits every other number with it.
 
 ## What this changes for us
 
@@ -57,6 +67,16 @@ capability objection and the pricing objection are the same objection.
 - **Totals move sharply with seat count.** A general argument becomes a specific one only once
   the prospect's actual seat count is known — worth asking.
 - **List price is not street price.** Partners discount, and bundles change the arithmetic.
+
+## Required discovery inputs (Owner decision 2026-08-16)
+
+| Input | Status | Blocks |
+| --- | --- | --- |
+| Prospect seat count | **UNKNOWN** | any named-customer cost comparison |
+| Which products/tiers they actually hold today | **UNKNOWN** | whether the licence argument even applies |
+| Whether a partner discount is available at their size | **UNKNOWN** | the accuracy of every total above |
+
+Until these are supplied, the **per-seat** figure is usable and the **totals are illustrative only**.
 
 ## Next research
 
