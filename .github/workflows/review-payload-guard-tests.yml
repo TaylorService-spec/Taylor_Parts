@@ -1,0 +1,23 @@
+name: Review payload guard
+
+# Guards the mechanism that keeps the metered reviewer AVAILABLE: refusal of an oversized or
+# wrong-mode payload before provider invocation, and the capacity reserve. A regression here
+# means one malformed send can take the review capability offline until the cap resets.
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/reviewPayloadGuard*.mjs"
+      - ".github/workflows/review-payload-guard-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/reviewPayloadGuard*.mjs"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node --test docs/orchestration/lib/reviewPayloadGuard.test.mjs

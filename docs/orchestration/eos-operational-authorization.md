@@ -249,6 +249,25 @@ that is the same over-routing that produced 463 relayed review verdicts in 32 da
 costs one deliberate action and makes every paid review an explicit choice, which is the lowest
 possible cost to initiate.
 
+### 11.2 The mechanism, not just the policy
+
+§11.1 is policy. [`lib/reviewPayloadGuard.mjs`](./lib/reviewPayloadGuard.mjs) is what enforces it,
+and it runs **before provider invocation**:
+
+- **Refuses, never truncates.** A truncated review looks completely valid and is not — the exact
+  failure shape this project keeps hitting (`COMPLETE, 0 findings`).
+- **Refuses `FULL_CONTEXT` outright** on a metered path. That is the #788 defect, not a fallback.
+- **Estimates conservatively (rounds up).** A guard that under-estimates lets through the only
+  case it exists to catch.
+- **Refuses before invocation when unconfigured** — a misconfiguration must never become a paid call.
+- **Reserves 25% of the provider cap** (`checkProviderCapacity`). Owner correction 2026-08-16: the
+  risk is **not the money** — the cap bounds that. Burning the cap removes the reviewer entirely
+  until it resets, so one malformed payload takes the whole capability offline. This is the
+  OpenAI-side analogue of the Owner capacity reserve in §4.1: reserve headroom so the thing stays
+  **usable**. Unknown spend is treated as fully consumed — it fails toward availability.
+- **One review per head SHA**, and every invocation — including a refusal — emits a cost record,
+  because an unmeasured cost cannot be tuned.
+
 ## 12. Handoff protocol
 
 Because the reviewer is polled rather than pushed, a handoff must be **explicit and dated** so
