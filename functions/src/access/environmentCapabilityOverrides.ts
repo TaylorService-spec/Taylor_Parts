@@ -49,6 +49,20 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "finance.read",
   "finance.refund.record",
   "inventory.catalog.read",
+  // WAVE 7 (Owner-authorized sandbox activation). Eligible so the Wave 7 package is
+  // exercisable in platform-sandbox at all: without these, #1001's parts-planning UI and
+  // #1019's CRM Activity surface are permanently denied and there is nothing to validate.
+  // The exclusion note above named workOrder.parts.plan as a separate workstream; that was
+  // true until this decision, and it is corrected here rather than left to contradict the list.
+  //
+  // ELIGIBILITY IS NOT ACTIVATION, AND NEITHER IS AUTHORIZATION. This set only bounds what an
+  // environment MAY activate; config/environments.json decides what it DOES activate, and a
+  // principal still needs a qualifying Role grant on top. Production stays triple-blocked:
+  // role-keyed resolution, no override key on any production environment, and a test asserting it.
+  // create and read stay separate ids so a future read-only grant remains possible.
+  "workOrder.parts.plan",
+  "crm.activity.create",
+  "crm.activity.read",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -134,6 +148,12 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "finance.read",
         "finance.refund.record",
         "inventory.catalog.read",
+        // Wave 7 Owner-authorized sandbox activation. This embedded snapshot ships in the
+        // Functions deploy bundle (config/environments.json does not), so it must be kept in
+        // step with the canonical registry -- a drift guard test asserts exactly that.
+        "workOrder.parts.plan",
+        "crm.activity.create",
+        "crm.activity.read",
       ]),
     }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),

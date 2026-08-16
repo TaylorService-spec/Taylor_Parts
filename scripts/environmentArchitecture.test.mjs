@@ -273,7 +273,12 @@ test('INVARIANT: every declared activation override is a spine-eligible id (no u
   }
 });
 
-test('INVARIANT: platform-sandbox activates exactly the 11 spine capabilities', () => {
+test('INVARIANT: platform-sandbox activates exactly the eligible capability set (nothing more)', () => {
+  // Was "the 11 spine capabilities". Wave 7 added three Owner-authorized ids
+  // (workOrder.parts.plan, crm.activity.create, crm.activity.read), so a hard-coded count would
+  // now be a number to maintain rather than a property. The property that actually matters is
+  // unchanged and asserted below: sandbox activates the eligible set EXACTLY -- never a superset,
+  // and never a stale subset that would leave a shipped capability silently denied.
   const sandbox = registry.environments.find((e) => e.id === 'platform-sandbox');
   assert.deepEqual(
     [...sandbox.capabilityActivationOverrides].sort(),
