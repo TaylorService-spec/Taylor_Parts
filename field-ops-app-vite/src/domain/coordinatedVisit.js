@@ -9,9 +9,13 @@
 
 // Work Order statuses that count as "done" for the rollup. Small + explicit; any unknown status is treated as
 // not-done (we never assume completion we cannot read).
-const DONE_STATUSES = new Set(["COMPLETED", "CLOSED"]);
+// Exported (not just module-local) so tests can assert every status this projection references is a member
+// of the canonical WorkOrderStatus set -- see test/coordinatedVisit.test.mjs.
+export const DONE_STATUSES = new Set(["COMPLETED", "CLOSED"]);
 // Statuses that actively need attention (blockers). Everything else is simply "in progress".
-const BLOCKED_STATUSES = new Set(["BLOCKED", "ON_HOLD", "CANCELLED"]);
+// ONLY canonical WorkOrderStatus values (types/workOrder.ts) belong here -- "BLOCKED"/"ON_HOLD" are NOT real
+// lifecycle statuses (PR #1030 audit finding, mirrors the fix in functions/src/fulfillment/coordinatedVisit.ts).
+export const BLOCKED_STATUSES = new Set(["CANCELLED"]);
 
 const str = (v) => (typeof v === "string" && v.trim().length > 0 ? v : null);
 

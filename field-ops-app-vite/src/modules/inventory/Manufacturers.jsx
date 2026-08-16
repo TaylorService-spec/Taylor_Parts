@@ -1,13 +1,20 @@
 // Manufacturer administration workspace (catalog reference object). Closes the referential gap Part
-// write created (parts.manufacturerId -> a manageable/readable Manufacturer). READ via
-// services/manufacturerQueries.fetchManufacturerList + domain/manufacturersView (the `manufacturers`
-// collection read is still Rules-closed; the governed read-authority decision is DEFERRED to the Owner --
-// it interacts with the R-1 legacy-surface convergence gate -- so the read fails closed to a denied state
-// until resolved). WRITE via useManufacturerWrite -> manufacturerCommandClient -> the trusted
+// write created (parts.manufacturerId -> a manageable/readable Manufacturer).
+//
+// READ via services/manufacturerQueries.fetchManufacturerList -> the trusted `getManufacturerCatalog`
+// callable (capability `inventory.catalog.read`). Part 11 reconciliation (2026-08-15): this surface
+// used to read the `manufacturers` collection DIRECTLY over the client SDK -- always permission-denied,
+// since that collection is Rules-closed (`allow read, write: if false`) for every principal. Revalidated
+// rather than repeating that stale blocker: the governed read that already serves the Parts picker
+// surfaces now also carries the `version` field this workspace's write actions need for optimistic
+// concurrency, so it is reused here as-is -- no new capability, no Rules change, no parallel read path.
+//
+// WRITE via useManufacturerWrite -> manufacturerCommandClient -> the trusted
 // createManufacturer/updateManufacturer/changeManufacturerStatus callables. ONE Manufacturer authority;
 // NO client Firestore writes; NO parallel validator; NO parallel status vocabulary (client mirror; the
-// command re-validates). FAIL-CLOSED: MANUFACTURER_WRITE_READY=false -> write-disabled + zero callable
-// attempts. Honest outcomes; never claims a success it did not receive.
+// command re-validates). FAIL-CLOSED: MANUFACTURER_WRITE_READY=false (config/environments.json, every
+// environment today) -> write-disabled + zero callable attempts, independent of the read-side fix above.
+// Honest outcomes; never claims a success it did not receive.
 import { useCallback, useEffect, useState } from "react";
 import { fetchManufacturerList } from "../../services/manufacturerQueries";
 import { useManufacturerWrite } from "../../hooks/useManufacturerWrite";
@@ -50,7 +57,7 @@ export default function Manufacturers(props) {
     fetchManufacturerList().then((r) => {
       if (cancelled) return;
       if (!r.ok) setState({ phase: r.code === "permission-denied" ? "denied" : "error" });
-      else setState({ phase: "ready", manufacturers: r.manufacturers, invalidCount: r.invalid.length });
+      else setState({ phase: "ready", manufacturers: r.manufacturers, invalidCount: r.invalidCount });
     });
     return () => { cancelled = true; };
   }, []);

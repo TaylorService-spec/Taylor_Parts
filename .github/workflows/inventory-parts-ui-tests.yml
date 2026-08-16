@@ -89,6 +89,13 @@ on:
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"
       - "field-ops-app-vite/src/shared/partMaster/PartWriteModal.jsx"
       - "field-ops-app-vite/test/manufacturerCatalogView.test.mjs"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/services/manufacturerQueries.js"
+      - "field-ops-app-vite/src/hooks/useManufacturerWrite.js"
+      - "field-ops-app-vite/src/domain/manufacturerWrite.js"
+      - "field-ops-app-vite/src/domain/manufacturersView.js"
+      - "field-ops-app-vite/test/manufacturerQueries.test.mjs"
+      - "field-ops-app-vite/test/manufacturerWrite.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -171,6 +178,13 @@ on:
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"
       - "field-ops-app-vite/src/shared/partMaster/PartWriteModal.jsx"
       - "field-ops-app-vite/test/manufacturerCatalogView.test.mjs"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/services/manufacturerQueries.js"
+      - "field-ops-app-vite/src/hooks/useManufacturerWrite.js"
+      - "field-ops-app-vite/src/domain/manufacturerWrite.js"
+      - "field-ops-app-vite/src/domain/manufacturersView.js"
+      - "field-ops-app-vite/test/manufacturerQueries.test.mjs"
+      - "field-ops-app-vite/test/manufacturerWrite.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 

@@ -10,17 +10,26 @@ test("projectManufacturer returns only the minimal Manufacturer-catalog fields",
   const p = projectManufacturer("MFG-1", {
     name: "Acme Valve Co",
     status: "ACTIVE",
+    version: 3,
     // fields that must NOT leak into the projection:
     createdByUid: "uid-abc",
     updatedByUid: "uid-def",
     internalNotes: "vendor contract terms confidential",
   });
-  assert.deepEqual(Object.keys(p).sort(), ["manufacturerId", "name", "status"]);
+  assert.deepEqual(Object.keys(p).sort(), ["manufacturerId", "name", "status", "version"]);
   assert.equal(p.manufacturerId, "MFG-1");
   assert.equal(p.name, "Acme Valve Co");
   assert.equal(p.status, "ACTIVE");
+  assert.equal(p.version, 3);
   assert.equal("createdByUid" in p, false);
   assert.equal("internalNotes" in p, false);
+});
+
+test("projectManufacturer: version defaults to 0 when absent or non-integer (never fabricated, matches the client mirror's default)", () => {
+  assert.equal(projectManufacturer("MFG-7", { name: "Foxtrot Filters", status: "ACTIVE" }).version, 0);
+  assert.equal(projectManufacturer("MFG-8", { name: "Golf Gaskets", status: "ACTIVE", version: "3" }).version, 0);
+  assert.equal(projectManufacturer("MFG-9", { name: "Hotel Hoses", status: "ACTIVE", version: 1.5 }).version, 0);
+  assert.equal(projectManufacturer("MFG-10", { name: "India Injectors", status: "ACTIVE", version: 7 }).version, 7);
 });
 
 test("projectManufacturer returns null for a missing/blank name (never fabricated)", () => {
