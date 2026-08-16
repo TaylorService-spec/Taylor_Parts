@@ -27,6 +27,7 @@ import { USERS_COLLECTION } from "../domain/constants";
 import {
   REPORT_CAPABILITY_REQUEST, VERSION_STATUS, FEED_STATUS,
   SIGNED_OUT_VERSION, IDLE_FEED, isValidObservedVersion, interpretAccessResult, buildHasCapability,
+  isAccessResolving,
 } from "./reportCapabilityAccess.js";
 
 const RESOLVE_EFFECTIVE_ACCESS_CALLABLE = "resolveEffectiveAccessCallable";
@@ -100,5 +101,9 @@ export function useReportCapabilities(user, deps = {}) {
   // `accessVersion` is the current observed version (null unless ready); a consumer keys on it to
   // re-fetch its own data on every access change (freshness), e.g. Saved Reports re-lists.
   const accessVersion = version.status === VERSION_STATUS.READY ? version.version : null;
-  return { hasCapability, accessVersion, versionStatus: version.status, feedStatus: feed.status };
+  // `accessResolving` distinguishes "don't know yet" from "known to be no". Routing needs that
+  // distinction: an absent capability-gated route falls through to a catch-all REDIRECT, which
+  // destroys the requested URL before the decision arrives. See isAccessResolving()'s note.
+  const accessResolving = isAccessResolving({ version, feed }, uid);
+  return { hasCapability, accessVersion, accessResolving, versionStatus: version.status, feedStatus: feed.status };
 }
