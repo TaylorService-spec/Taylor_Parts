@@ -1,8 +1,15 @@
 # Wave 7 — consolidated sandbox deployment runbook
 
-**Status: READY TO DEPLOY — but the deployment could not be executed from the build session.**
-The agent session's tool policy denies `firebase deploy`, so every repo-safe prerequisite is complete
-and this runbook exists to be executed by the operator. Nothing below has run.
+**Status: EXECUTED by the operator.** The build session could not run `firebase deploy` (tool policy),
+so this runbook was handed over and the operator executed it. `platform-sandbox` now serves commit
+`b09f3a13` with `environmentId: platform-sandbox` — verified by reading the live
+[`/version.json`](https://eos-platform-sandbox.web.app/version.json).
+
+Indexes, Functions, Hosting and Rules were deployed and the sandbox identity was corrected. Two
+process defects surfaced during that execution and are recorded in
+[`functions-and-hosting-deployment-guidance.md`](../deployment/functions-and-hosting-deployment-guidance.md);
+the sequence below has been corrected accordingly. **Role grants and E2E verification are still
+outstanding** — deployment is not activation and neither is verification.
 
 ## Reconciliation from the deployed baseline
 
@@ -32,6 +39,15 @@ Recalculated from the repository, not carried forward from any earlier total.
 
 ## Deployment sequence
 
+> **CORRECTION (post-deployment).** An earlier revision of this runbook told the operator to run
+> a raw `npm run build` followed by a bare `firebase deploy --only hosting`, and to deploy the whole
+> Functions estate in one request. Both were wrong and both caused real problems: the raw build
+> produced an artifact that misidentified its own environment, and the full-estate deploy
+> transiently failed a subset. The corrected steps below use `scripts/deployHosting.mjs` (which
+> already existed and fails closed on identity mismatch) and domain-batched Functions. See
+> [`functions-and-hosting-deployment-guidance.md`](../deployment/functions-and-hosting-deployment-guidance.md).
+
+
 Order matters in exactly one place: **the index must exist before or with the Hosting release**, or
 the Part → Work Order Demand query fails at runtime.
 
@@ -42,12 +58,12 @@ git fetch origin && git checkout b09f3a133d9fdc6f68df2135aac924b0328d7e5b
 # 1. Indexes (must precede or accompany Hosting)
 npx firebase deploy --only firestore:indexes --project eos-platform-sandbox
 
-# 2. Functions
-npx firebase deploy --only functions --project eos-platform-sandbox
+# 2. Functions -- IN DOMAIN BATCHES of 5-10, never the whole estate in one request.
+#    See docs/deployment/functions-and-hosting-deployment-guidance.md for the batch list.
+#    On a failed batch, retry THAT BATCH ONLY; verify the final inventory afterwards.
 
-# 3. Hosting -- ONE final build/release, after 1 and 2
-cd field-ops-app-vite && npm ci && npm run build && cd ..
-npx firebase deploy --only hosting --project eos-platform-sandbox
+# 3. Hosting -- the environment-aware path, which fails closed on identity mismatch.
+node scripts/deployHosting.mjs --environment platform-sandbox
 ```
 
 **Do NOT deploy `firestore:rules`.** The package changes none, and a Rules deployment is a separate
