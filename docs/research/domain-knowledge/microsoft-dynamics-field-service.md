@@ -1,66 +1,126 @@
 # Microsoft Dynamics 365 Field Service + Business Central
 
-**Last researched:** 2026-08-16 · **By:** Claude (seed entry — establishes the format)
+**Last researched:** 2026-08-16 · **By:** field-service-domain-researcher (round 1)
 
 **Why this product first:** it is what the first prospect actually runs. Field Service for
 service, Business Central for parts, inventory and financials.
 
-## Capability claims (what the vendor says it does)
+> ## ⚠ CORRECTION TO EARLIER STRATEGIC ADVICE
+>
+> An earlier draft of this project's positioning claimed that **no off-the-shelf product would
+> model two legal entities under one roof**, and treated that as the moat.
+>
+> **That claim is wrong.** Business Central genuinely supports multiple legal entities with
+> separate books — at the **Essentials** tier, not even Premium — with up to 300 companies per
+> environment at no extra per-company licence cost.
+>
+> The differentiator is real but **much narrower than claimed**. See §5.
 
-| Claim | Source | Notes |
-| --- | --- | --- |
-| A **native, bi-directional** integration exists between Field Service and Business Central | [Microsoft Learn — admin-integrate-field-service](https://learn.microsoft.com/en-us/dynamics365/business-central/admin-integrate-field-service) | First-party, not a third-party connector |
-| The integration *"eliminates duplicate data entry"* and updates in one system *"automatically reflect in the other"* | [Rand Group — FS + BC integration](https://www.randgroup.com/insights/microsoft/dynamics-365/customer-engagement/field-service/integrate-dynamics-365-field-service-and-business-central-to-streamline-operations/) | Partner marketing language; verify against primary docs |
-| Shipped/expanded across consecutive release waves | [2024 wave 1](https://learn.microsoft.com/en-us/dynamics365/release-plan/2024wave1/service/dynamics365-field-service/integrate-field-service-business-central) · [2025 wave 1](https://learn.microsoft.com/en-us/dynamics365/release-plan/2025wave1/smb/dynamics365-business-central/integrate-field-service-service-management) | Actively invested in, not legacy |
+---
 
-## Lived experience (what users say after buying)
+## 1. What the native FS ↔ BC integration actually syncs
 
-**Not yet researched.** The first search returned vendor and partner marketing only. This is
-the highest-value gap in this entry — see Next research below.
+Two tiers, and the entity list differs sharply
+([Microsoft Learn](https://learn.microsoft.com/en-us/dynamics365/business-central/admin-integrate-field-service)):
 
-## Positioning (how they sell, and what they pre-empt)
+**Project integration (default — works on BC Essentials):** work order products/services →
+project journal lines · projects/tasks → FS external projects · resources ↔ bookable resources ·
+locations → warehouses (one-way).
 
-The integration is positioned squarely at the *disconnected systems* problem. That it exists
-and is marketed this way is itself evidence that **disconnection is a widely felt pain** — you
-do not build and market a fix for a problem nobody has.
+**Project *and* Service integration (requires BC Premium):** service orders ↔ work orders incl.
+status · service item lines ↔ work order incidents · items ↔ work order products · resources ↔
+bookable resource bookings · service lines ↔ work order services · service order types ↔ work
+order types · service items ↔ customer assets. Item availability is exposed via a **separate
+virtual table**, not the sync mechanism.
 
-## Barriers (licence tier, pricing, configuration cost)
+## 2. What it does NOT sync — all quotable from Microsoft's own page
 
-**Not yet researched.** Requires both products licensed; exact tiers and cost unverified.
-This matters more than the capability itself — see below.
+- **Cancelled work orders are never synchronised.** Microsoft's own words: *"N/A — Not
+  synchronized. Manual alignment is needed for canceled work orders."*
+- **Item availability is a live virtual-table lookup**, not persisted synced data — and only
+  works if FS and BC are **in the same tenant**.
+- **Service sync requires BC Premium.** Essentials customers get no service-order sync at all.
+- **You cannot enable Service alone** — *"you can't enable only the service management
+  integration."* Project sync is a mandatory bundled dependency.
+- **Purchase orders, invoices, customers and price lists are not in the mapping table.** BC stays
+  system-of-record for financial documents; FS pushes usage, BC generates the invoice. Setup
+  explicitly instructs admins to disable FS price/cost calculation.
+- **Sync latency is configurable** — it can fire only on work-order completion. **Inventory drift
+  during an active job is a documented design choice, not a bug.**
+- **Not standalone**: requires an existing Dataverse connection *and* a Dynamics 365 Sales
+  integration configured first.
 
-## What this changes for us
+## 3. Maturity
 
-**This directly weakens a claim we were going to lead with.** "Your two systems don't talk"
-invites the answer *"there's a native integration for that"* — from Microsoft, from a partner,
-or from a competing vendor. That objection must not be met for the first time in the room.
+Base integration GA **April 2024**; dedicated AppSource app GA **July 2024**
+([azurecurve](https://www.azurecurve.co.uk/2024/07/new-functionality-in-microsoft-dynamics-365-business-central-2024-wave-1-install-field-service-integration-with-business-central-from-appsource/)).
+Under two years in market. Pre-GA Dynamics Community threads answered *"there is no standard
+solution as of now… it needs to be integrated using APIs or OData"* — true **until mid-2024**,
+and a trap to cite without the timeline.
 
-**What a native FS↔BC sync still does not give them** (each of these remains a real gap):
+**Little post-GA practitioner commentary exists** — mostly partner-blog marketing *about* the
+integration rather than operators reporting outcomes. That absence is itself a signal.
 
-- **Two legal entities under one roof**, correctly separated and combinable for reporting
-- **Intercompany transfer pricing** between those entities (our `G21`/`G22`)
-- **A CRM** — they still do not have one and still want one
-- **Excel out of the equipment lifecycle**
-- **True cost across both companies** — syncing two ledgers is not one cost model
+## 4. Licence prerequisites
 
-So the claim shifts from *"your systems don't talk"* to *"even with Microsoft's integration
-switched on, you still have two companies, no CRM, and Excel running your equipment
-lifecycle."* That is materially harder to wave away.
+Essentials **$80** / Premium **$110** per user/month — a **+$30/user/month** step purely to
+unlock service sync (~+$360/user/year). Premium is licensed per user **per environment**, not
+per company: one Premium user reaches up to **300 companies** in that environment at no extra
+per-company cost
+([Microsoft licensing](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/deployment/licensing)).
 
-## Next research (highest value first)
+## 5. Intercompany — the corrected verdict
 
-1. **Real-world limits of the integration** — forums and community boards, not marketing. What
-   syncs, what does not, what breaks. A documented capability that users complain about is the
-   wedge; a documented capability that works is a wall.
-2. **Licence tiers and cost.** "Exists" is not "affordable." The Owner's own instinct is that
-   firms this size cannot afford the full Microsoft stack — worth confirming with a pricing page.
-3. **Does the prospect already have it available?** A question for the Owner's contact, not the
-   web, and worth more than either of the above.
-4. **Whether Business Central models intercompany at all**, and at what tier. This is the
-   suspected moat and it is currently an assumption.
+**BC does support multiple legal entities with separate books, at Essentials tier.** Each entity
+is a separate *company* in a BC *environment*; intercompany document exchange runs through a
+native **IC Inbox/Outbox**
+([Microsoft Learn](https://learn.microsoft.com/en-ca/dynamics365/business-central/finance-consolidated-company-reporting)).
 
-## ASSUMPTIONS (unsourced — do not act on without verifying)
+**What "supports it" actually means in practice — this is the defensible narrower claim:**
 
-- That the prospect does not currently have the integration enabled. Inferred from their
-  reported double-entry pain, not confirmed.
-- That the required licence tier is beyond what they hold. The Owner's judgement, unverified.
+- **Manual chart-of-accounts mapping** — each company's COA must be mapped to a shared
+  intercompany COA, in both directions. Real setup effort, not automatic.
+- **Consolidation requires a separate dedicated consolidation company** that pulls in subsidiary
+  balances. It is a **batch run, not a live combined view.**
+- **Native reporting is company-scoped.** Cross-entity reporting needs the consolidation company
+  or Power BI — there is no built-in combined dashboard.
+- **Cross-environment companies** (e.g. different localizations) need the API method plus Azure
+  app registration.
+- **Transfer pricing is not native.** BC intercompany is document *replication* with mapped
+  accounts, not a pricing engine.
+
+**The strongest evidence for the gap is the market that exists to fill it:** Binary Stream's
+**Multi-Entity Management** add-on markets automated due-to/due-from allocation and AI-assisted
+balance matching *"before close"*
+([Binary Stream](https://binarystream.com/multi-entity-management-in-microsoft-dynamics-365-going-beyond-the-business-central-core/)).
+A mature paid add-on market is what basic native functionality looks like from the outside.
+
+## 6. What this changes for us
+
+**Stop saying** *"your two systems don't talk"* — the integration is real and reasonably deep.
+**Stop saying** *"BC can't do two companies"* — it can, at Essentials.
+
+**Start saying** — all citable from Microsoft's own documentation:
+
+1. **Service sync requires Premium**, at +$30/user/month, and forces Project sync along with it.
+2. **Cancelled work orders never sync.** Manual alignment, by Microsoft's own admission.
+3. **Inventory is not real-time by default** — sync can be deferred to job completion.
+4. **Intercompany is manual COA mapping, batch consolidation, no live combined view, and no
+   transfer pricing.** That — not "they can't do it" — is the honest wedge.
+5. **The integration is under two years old** with little independent production track record.
+
+## 7. ASSUMPTIONS (unsourced — verify before acting)
+
+- That the prospect does not currently have the integration enabled. Inferred from reported
+  double-entry pain, not confirmed.
+- That the prospect holds Essentials rather than Premium. Unconfirmed.
+- Partner-blog themes (data-cleanliness prerequisites, inventory drift) are directionally
+  consistent with Microsoft's documented sync options but were not pinned to a quotable URL.
+
+## 8. What could NOT be determined
+
+- No Reddit threads surfaced for this integration, positively or negatively. **Absence of
+  evidence, not evidence of absence.**
+- No Microsoft "known issues" page specific to the FS↔BC integration.
+- No post-GA practitioner case studies describing production experience at scale.
+- Administration cost specific to *this integration* versus BC/D365 administration generally.

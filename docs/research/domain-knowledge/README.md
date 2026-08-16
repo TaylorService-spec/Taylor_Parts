@@ -57,6 +57,9 @@ pushes back.
 | Topic | File | Last researched |
 | --- | --- | --- |
 | Microsoft Dynamics 365 Field Service + Business Central | [`microsoft-dynamics-field-service.md`](./microsoft-dynamics-field-service.md) | 2026-08-16 |
+| The job itself — how the work is done, what operators want | [`the-job-and-what-operators-want.md`](./the-job-and-what-operators-want.md) | 2026-08-16 |
+| Canonical CRM / field-service model (from vendor training) | [`crm-fsm-canonical-model.md`](./crm-fsm-canonical-model.md) | 2026-08-16 |
+| Davisware / ECI — the vertical incumbent | [`davisware-eci.md`](./davisware-eci.md) | 2026-08-16 |
 | Competitor pricing (Salesforce / Dynamics / Business Central) | [`competitor-pricing.md`](./competitor-pricing.md) | 2026-08-16 |
 
 ## Scope note
