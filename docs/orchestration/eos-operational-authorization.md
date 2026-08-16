@@ -209,8 +209,45 @@ nothing may block on it.**
   reviewer" actually means. It is `workflow_dispatch`-only today.
 
 **Not enabled without an Owner decision:** the automatic trigger and the API key. API review is
-**metered spend** per run, unlike the subscription-covered app. If enabled, gate it (label- or
-protected-path-triggered) rather than firing on every PR.
+**metered spend** per run, unlike the subscription-covered app.
+
+### 11.1 Trigger cost policy — minimise the cost to fire
+
+Owner direction 2026-08-16: **the cost to initiate a trigger must be as low as possible.** This
+is policy, not a preference, and lives here rather than in a chat log.
+
+**Fire only when review actually buys something:**
+
+| Fire | Do not fire |
+| --- | --- |
+| `firestore.rules` or `firestore.indexes.json` | docs-only changes |
+| capability registry / role definitions / grants | test-only changes |
+| `functions/src/access/**` and trusted-write paths | dependency bumps, lockfiles |
+| `.github/workflows/**` | formatting / comment-only diffs |
+| an explicit `needs-gpt-review` label | generated artifacts (e.g. `repo-graph.json`) |
+
+Anything not on the left is **Tier-1 repo work**, which `DelegationCharter.md` §8 already says
+proceeds without a review stop. Routing it to a paid reviewer buys nothing and spends money —
+that is the same over-routing that produced 463 relayed review verdicts in 32 days.
+
+**Then minimise the cost of each firing:**
+
+1. **One review per head SHA.** Dedupe on the exact commit; a re-push that changes nothing
+   material must not re-review. Re-review only on a **material** change — authority, security,
+   or behavior — per the `EVIDENCE_REQUIRED` policy.
+2. **Send the fact feed, never full context.** The live fact-feed path (#788) is roughly **85%
+   smaller** than the legacy full-context send, and token attribution reconciles against it.
+   Full-context sends are a defect, not a fallback.
+3. **Cheapest adequate model.** `OPENAI_REVIEW_MODEL` is a repo variable precisely so the tier
+   is a config decision. Escalate per-run only with a recorded reason.
+4. **Fail closed and cheap.** No key ⇒ refuse **before** provider invocation, as the workflow
+   already does. A misconfiguration must never become a paid call.
+5. **Cap and record.** Every firing records its token cost so the spend is measurable rather
+   than inferred. An unmeasured cost cannot be tuned.
+
+**Default posture: label-triggered.** Path-triggering is available but starts **off** — a label
+costs one deliberate action and makes every paid review an explicit choice, which is the lowest
+possible cost to initiate.
 
 ## 12. Handoff protocol
 
