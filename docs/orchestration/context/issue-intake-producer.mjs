@@ -160,4 +160,38 @@ function main() {
   process.stdout.write(`${JSON.stringify({ requestId: artifact.requestId, artifactLocation: artifact.artifactLocation, sha256: artifact.sha256 })}\n`);
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) main();
+// A rejected intake is a FIXABLE authoring problem, not a crash. Round 1 surfaced it as a raw
+// Node stack trace wrapped in a PowerShell exception, which reads as a broken system rather than
+// a missing heading -- three runs failed this way on 2026-08-13 and nobody could tell why at a
+// glance. Lead with what is wrong and how to fix it; keep the stack for genuine defects.
+function reportAndExit(err) {
+  const msg = String(err?.message || err);
+  const rejected = msg.startsWith("issue intake rejected:");
+  const lines = ["", "================ EOS INTAKE REJECTED ================", ""];
+  if (rejected) {
+    for (const reason of msg.replace("issue intake rejected: ", "").split("; ")) {
+      lines.push(`  - ${reason}`);
+    }
+    lines.push(
+      "",
+      "  The issue body must contain ALL of these headings, each non-empty:",
+      "    ## Purpose        why this work exists",
+      "    ## Scope          what is in bounds (one bullet per item)",
+      "    ## Required work  what must actually be done",
+      "    ## Completion     what PROVES it is done",
+      "",
+      "  Use the template at .github/ISSUE_TEMPLATE/eos-intake.md.",
+      "  Fix the issue body, then re-apply the eos-intake label. Nothing else needs to change.",
+    );
+  } else {
+    lines.push(`  ${msg}`, "", "  This is not an authoring problem -- see the stack below.");
+  }
+  lines.push("", "=====================================================", "");
+  process.stderr.write(lines.join("\n"));
+  if (!rejected && err?.stack) process.stderr.write(err.stack + "\n");
+  process.exit(1);
+}
+
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  try { main(); } catch (err) { reportAndExit(err); }
+}
