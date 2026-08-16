@@ -1,0 +1,70 @@
+name: Dispatch Scheduling Workspace Tests
+
+# Wave 7 completion, PART 1 -- CI coverage for the combined Dispatch/Scheduling operating workspace
+# (technician rows x horizontal time axis, drag-drop through the existing governed Schedule transition, a
+# single below-the-board Ready-for-Work queue). Mirrors wo-dispatch-attention-projection-tests.yml's own
+# shape (itself mirroring service-operations-risk-tests.yml): pure domain test (node:test), component render
+# test (vitest + jsdom), and lint over exactly the files this Part touches. A dedicated workflow rather than
+# an extension of wo-dispatch-attention-projection-tests.yml because this Part's surface (a new module +
+# nav/routing) is materially separate from that Part's panel, even though both compose
+# schedulingWorkspace.js. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/dispatchSchedulingBoard.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/coordinatedVisit.js"
+      - "field-ops-app-vite/src/domain/technicianStatusTone.js"
+      - "field-ops-app-vite/src/modules/dispatch/DispatchSchedulingWorkspace.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/dispatchSchedulingBoard.test.mjs"
+      - "field-ops-app-vite/test/dispatchSchedulingWorkspace.test.jsx"
+      - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
+      - ".github/workflows/dispatch-scheduling-workspace-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/dispatchSchedulingBoard.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/coordinatedVisit.js"
+      - "field-ops-app-vite/src/domain/technicianStatusTone.js"
+      - "field-ops-app-vite/src/modules/dispatch/DispatchSchedulingWorkspace.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/dispatchSchedulingBoard.test.mjs"
+      - "field-ops-app-vite/test/dispatchSchedulingWorkspace.test.jsx"
+      - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
+      - ".github/workflows/dispatch-scheduling-workspace-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-scheduling-workspace-tests:
+    name: Dispatch/Scheduling workspace (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Pure domain board tests (node:test)
+        run: node test/dispatchSchedulingBoard.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Nav grouping regression (node:test) -- new nav item stays correctly grouped/role-scoped
+        run: node test/serviceNavGroups.test.mjs
+        working-directory: field-ops-app-vite
+      - name: DispatchSchedulingWorkspace render tests (vitest + jsdom)
+        run: npx vitest run test/dispatchSchedulingWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/dispatchSchedulingBoard.js src/modules/dispatch/DispatchSchedulingWorkspace.jsx src/navigation/navConfig.js
+        working-directory: field-ops-app-vite

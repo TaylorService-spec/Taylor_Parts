@@ -32,6 +32,7 @@ import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
 import Warehouses from "./modules/inventory/Warehouses";
 import SchedulingWorkspace from "./modules/scheduling/SchedulingWorkspace";
+import DispatchSchedulingWorkspace from "./modules/dispatch/DispatchSchedulingWorkspace";
 import CoordinatedVisitsWorkspace from "./modules/service/CoordinatedVisitsWorkspace";
 import CoordinatedMissionView from "./modules/mobile/CoordinatedMissionView";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
@@ -240,6 +241,13 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // fieldops_wos write. The write re-authorizes server-side (Schedule = admin/dispatcher).
   if (domain.key === "service" && item.key === "scheduling") {
     return <SchedulingWorkspace />;
+  }
+  // Wave 7 completion, PART 1 -- the combined Dispatch/Scheduling operating workspace (technician rows x
+  // horizontal time axis, drag-drop through the SAME governed Schedule transition, one below-the-board
+  // Ready-for-Work queue). ADDITIVE: Dispatcher Board and Scheduling above are untouched. No legacyKey ->
+  // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES.
+  if (domain.key === "service" && item.key === "dispatchScheduling") {
+    return <DispatchSchedulingWorkspace />;
   }
   if (domain.key === "service" && item.key === "workOrders") {
     return <WorkOrdersList />;

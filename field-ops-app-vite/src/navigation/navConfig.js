@@ -177,6 +177,12 @@ export const NAV_DOMAINS = [
       // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
       { key: "scheduling", label: "Scheduling", path: "scheduling" },
+      // Wave 7 completion, PART 1 -- the combined Dispatch/Scheduling operating workspace (technician
+      // rows x horizontal time axis + a single below-the-board Ready-for-Work queue). ADDITIVE: it does
+      // NOT replace Dispatcher Board or Scheduling above (both keep their existing URLs/behavior); this
+      // is a new, third view over the SAME governed reads/writes those two already use. No legacyKey ->
+      // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES (matches every other item in this group).
+      { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling" },
       { key: "warranty", label: "Warranty", path: "warranty" },
     ],
   },
@@ -457,7 +463,7 @@ export function isDomainVisible(domain, role, allowedLegacyKeys, operationalCont
 // controlTower) renders as a standalone item, preserving its access + URL.
 export const SERVICE_NAV_GROUPS = [
   { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
-  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatch", "coordinatedVisits"] },
+  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"] },
   { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace", "coordinatedMission"] },
 ];
 
