@@ -8,7 +8,7 @@
   "currentWork": "runtime terminated abnormally (PROCESS_ERROR)",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-16T22:30:24.219Z",
+  "updatedAt": "2026-08-16T23:04:39.161Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-868.status.json",
-  "sha256": "df308bc616eaad2ab1eddf02b47d6ccc365d654461d6012ac9f320ba7c601068"
+  "sha256": "66a108853bc60093de22ced6e117d3dd1d11032a0c28b7643828cf1044bce9a7"
 }
