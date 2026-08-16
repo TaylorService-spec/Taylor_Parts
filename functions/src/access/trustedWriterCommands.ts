@@ -46,7 +46,15 @@ import { getAuth } from "firebase-admin/auth";
 import { getApp } from "firebase-admin/app";
 import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
-import { INVENTORY_CREATE_EXECUTOR_ROLE } from "./governedBusinessRoles";
+import {
+  INVENTORY_CREATE_EXECUTOR_ROLE,
+  INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
+  WORK_ORDER_PARTS_PLANNER_ROLE,
+  CRM_ACTIVITY_CONTRIBUTOR_ROLE,
+  INVENTORY_TRANSFER_OPERATOR_ROLE,
+  INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
+  INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+} from "./governedBusinessRoles";
 import {
   resolveEffectivePermission,
   type TargetContext,
@@ -114,9 +122,36 @@ const ACCESS_REQUESTS_COLLECTION = "accessRequests";
 // non-allowlisted roleId fails closed (UnknownRoleError) exactly as before,
 // and the privileged two-person rule is unaffected (compatibility Roles are
 // unchanged; the one governed entry is non-privileged).
+//
+// EXTENDED for the operational Roles built since. Each of the six below was declared in
+// governedBusinessRoles.ts to carry a specific capability family, and each was consequently
+// un-assignable by ANY path: the Role existed, the capability existed, the environment activated
+// it, and no principal could ever hold it. That is the same defect class as a capability carried by
+// no Role -- authority that exists on paper and cannot be conferred in practice.
+//
+// Every entry here is privileged:false. That is the gate's real load-bearing property: the
+// privileged two-person rule (self-approval ban + distinct approverUid) is untouched, because no
+// privileged Role is being made assignable. A test below asserts that property directly, so this
+// list cannot later acquire a privileged Role without failing CI.
+//
+// Adding a Role here still grants NOTHING. It only makes the Role reachable by grantRole/
+// assignApprovedRole, each of which remains a governed, audited, idempotent trusted-writer command.
 const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   inventoryCreateExecutor: INVENTORY_CREATE_EXECUTOR_ROLE,
+  inventoryCatalogAdministrator: INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
+  workOrderPartsPlanner: WORK_ORDER_PARTS_PLANNER_ROLE,
+  crmActivityContributor: CRM_ACTIVITY_CONTRIBUTOR_ROLE,
+  inventoryTransferOperator: INVENTORY_TRANSFER_OPERATOR_ROLE,
+  inventoryCycleCountCounter: INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
+  inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
 });
+
+// Exported for the invariant test: the allowlist above must never contain a privileged Role.
+export const GOVERNED_ASSIGNABLE_ROLE_IDS: readonly string[] = Object.freeze(
+  Object.keys(GOVERNED_ASSIGNABLE_ROLES),
+);
+export const __GOVERNED_ASSIGNABLE_ROLES_FOR_TEST: Readonly<Record<string, Role>> =
+  GOVERNED_ASSIGNABLE_ROLES;
 const ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   ...COMPATIBILITY_ROLES,
   ...GOVERNED_ASSIGNABLE_ROLES,
