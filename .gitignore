@@ -22,3 +22,10 @@ netwatch.pid
 netwatch.log
 **/netwatch-*.csv
 .mcp.json
+
+# Operator access-intent / result records written by
+# functions/scripts/operatorAccessCommand.js. These are deliberately LOCAL
+# operator-side evidence (mode 0600), never governed objects, and they carry
+# principal UIDs -- they must never be committed.
+functions/.operator-access-intents/
+.operator-access-intents/
