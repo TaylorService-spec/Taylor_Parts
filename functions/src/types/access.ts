@@ -302,7 +302,11 @@ export type AuditAction =
   // P1.1 (Sales->Cash fulfillment spine) -- the trusted transitionWorkOrder Complete-action write-back to
   // the linked Sales Order's `lines[].fulfilledQty`. Traceability only, NOT the idempotency gate (COMPLETED
   // is structurally once-per-Work-Order via canTransition, see transitionWorkOrder.ts's header comment).
-  | "salesOrderFulfillmentWriteBack";
+  | "salesOrderFulfillmentWriteBack"
+  // Wave 7 extension PART 1.4 -- the trusted createCrmActivity command's deterministic Audit Event marker
+  // (same idempotency-replay mechanism as createSalesOrder/createOpportunity above). Capability
+  // crm.activity.create registered active:false -- see permissionCatalog.ts.
+  | "createCrmActivity";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

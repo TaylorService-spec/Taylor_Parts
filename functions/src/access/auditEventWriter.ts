@@ -167,6 +167,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // P1.1 (Sales->Cash fulfillment spine): runtime mirror of the salesOrderFulfillmentWriteBack AuditAction
   // union member (WO-Complete -> SO fulfilledQty write-back traceability).
   "salesOrderFulfillmentWriteBack",
+  // Wave 7 extension PART 1.4: runtime mirror of the createCrmActivity AuditAction union member.
+  "createCrmActivity",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

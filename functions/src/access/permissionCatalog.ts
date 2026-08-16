@@ -901,6 +901,34 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "manage",
     active: false,
   }),
+  // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4) -- the SMALLEST domain-correct CRM
+  // interaction authority. Create a governed, immutable-identity account-scoped activity/note record
+  // (Sales Note / Call / Meeting / Relationship / General) via the trusted createCrmActivity command
+  // (functions/src/crmActivity/crmActivityCallables.ts). Registered active:false (fail-closed) and NOT
+  // granted to any Role -- hard DENY for everyone until a separate Owner grant AND per-environment
+  // activation. Does NOT expand account.notes (the existing single free-text blob); does NOT carry an
+  // assignee/due date/completion state (that is PART 1.5's separate, not-yet-authorized seam).
+  Object.freeze({
+    id: "crm.activity.create",
+    description:
+      "Create a governed CRM Activity/Note (Sales Note, Call, Meeting, Relationship, or General) scoped to an Account, optionally referencing a Contact/Opportunity/Sales Order by id. Immutable identity; no assignee, due date, or completion state.",
+    resource: "crm.activity",
+    action: "create",
+    active: false,
+  }),
+  // CRM Activity / Notes read -- the account-scoped timeline read for the ActivityAndNotesSection UX,
+  // mirroring the salesOrder.read / finance.read trusted-read precedent exactly: a minimal projection via
+  // the trusted getCrmActivities read service (functions/src/crmActivity/crmActivityReadService.ts), never
+  // a client-direct crm_activities Rules widening. Registered active:false (fail-closed) until a separate
+  // grant + per-environment activation.
+  Object.freeze({
+    id: "crm.activity.read",
+    description:
+      "Read the minimal governed CRM Activity projection (type, body, occurredAt/createdAt, actor, linked Account/Contact/Opportunity/Sales Order ids) for one Account via the trusted getCrmActivities read service. Backend-resolved scope; no client-direct crm_activities read.",
+    resource: "crm.activity",
+    action: "read",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {
