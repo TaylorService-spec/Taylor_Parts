@@ -6,11 +6,12 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
-import { buildOpportunityPipeline, channelLabel } from "../../domain/opportunityLifecycle.js";
+import { buildOpportunityPipeline, channelLabel, stageProgress } from "../../domain/opportunityLifecycle.js";
 import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "../../domain/opportunityFieldModel.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
+import StageProgressTrack from "../../shared/ui/StageProgressTrack.jsx";
 import NewOpportunityForm from "./NewOpportunityForm.jsx";
 
 // Sales — Opportunity OPERATING Workspace. The commercial pipeline is the entry point to Sales (ratified:
@@ -321,6 +322,7 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged }) {
 // One scannable pipeline row. Attention-bearing rows carry a left marker + an inline pill so the queue reads
 // at a glance; the stage pill uses the shared semantic tone so "attention looks like attention" everywhere.
 function PipelineRow({ row, selected, onSelect }) {
+  const progress = stageProgress(row);
   return (
     <tr
       className={`fo-sales-row ${selected ? "is-selected" : ""} ${row.attentionTone === "attention" ? "is-attention" : ""}`.trim()}
@@ -342,7 +344,16 @@ function PipelineRow({ row, selected, onSelect }) {
           columns are the lower-priority ones (Channel, Expected close) — deferred at constrained widths and
           still shown in the detail pane for the selected opportunity, so information is deferred not lost. */}
       <td className="fo-sales-row__customer" data-label="Customer">{row.customerName}</td>
-      <td data-label="Stage"><StatusPill tone={row.commercial.tone} label={row.commercial.label} /></td>
+      {/* Stage reads as PROGRESSION, not just a state. The pill alone answered "what state is this in"
+          but never "how far along is it", which is the question a pipeline is scanned for -- so the
+          same domain projection the detail chevrons use (stageProgress) also drives a compact track
+          here. Both surfaces therefore move together; neither has its own idea of the stage order. */}
+      <td data-label="Stage">
+        <div className="fo-sales-row__stage">
+          <StatusPill tone={row.commercial.tone} label={row.commercial.label} />
+          <StageProgressTrack steps={progress.stages} terminal={progress.terminal} />
+        </div>
+      </td>
       <td className="fo-sales-col--secondary" data-label="Channel">{channelLabel(row.channel)}</td>
       <td className="fo-sales-row__value" data-label="Est. value">{currency(row.expectedValue)}</td>
       <td className="fo-sales-col--secondary" data-label="Expected close">{shortDate(row.expectedCloseAt)}</td>

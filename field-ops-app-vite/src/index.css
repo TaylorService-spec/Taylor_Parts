@@ -2080,6 +2080,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* Generic lifecycle-chevron row (shared/ui/LifecycleChevrons.jsx) — reusable, business-rule-free. Steps
    recompose to a wrapped flex row rather than a rigid table so it holds up at phone widths. */
+/* Compact stage-progression track for queue/list rows (shared/ui/StageProgressTrack.jsx).
+   Deliberately quieter than .fo-chevrons: a table row is scanned, not read, so the progression is
+   carried by short bars plus ONE text label rather than four stage names competing with the
+   customer name and value. */
+.fo-sales-row__stage { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.fo-stagetrack { display: inline-flex; flex-direction: column; gap: 3px; }
+.fo-stagetrack__bars { display: inline-flex; gap: 2px; }
+.fo-stagetrack__bar { width: 14px; height: 3px; border-radius: 2px; background: var(--color-border); }
+.fo-stagetrack__bar.is-complete { background: var(--color-success); }
+.fo-stagetrack__bar.is-current { background: var(--color-brand-primary); }
+.fo-stagetrack__summary { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
+/* A closed Opportunity reads as its outcome: every bar takes the terminal tone so a scanning eye
+   sees "finished", not "still in Decision". */
+.fo-stagetrack--positive .fo-stagetrack__bar { background: var(--color-success); }
+.fo-stagetrack--positive .fo-stagetrack__summary { color: var(--color-success); font-weight: 600; }
+.fo-stagetrack--muted .fo-stagetrack__bar { background: var(--color-border); }
+
 .fo-chevrons { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
 .fo-chevrons__step { display: flex; align-items: center; }
 .fo-chevrons__step:not(:last-child)::after { content: "›"; margin: 0 4px; color: var(--color-text-muted); }
