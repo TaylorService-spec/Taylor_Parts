@@ -1,0 +1,60 @@
+name: WO Dispatch Attention Projection Tests
+
+# Wave 7 extension, PART 5 -- CI coverage for the WO/Dispatch Attention Projection (the second bounded
+# attention-projection slice, mirroring Wave 6's Parts Attention Projection and its
+# service-operations-risk-tests.yml gate shape). Runs the pure domain test (node:test), the panel render
+# test (vitest + jsdom), and lint over exactly the files this slice touches. Offline: no emulator, deploy,
+# or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/workOrderAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
+      - "field-ops-app-vite/src/modules/controlTower/panels/WorkOrderAttentionPanel.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/test/workOrderAttentionProjection.test.mjs"
+      - "field-ops-app-vite/test/workOrderAttentionPanel.test.jsx"
+      - ".github/workflows/wo-dispatch-attention-projection-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/workOrderAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
+      - "field-ops-app-vite/src/modules/controlTower/panels/WorkOrderAttentionPanel.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/test/workOrderAttentionProjection.test.mjs"
+      - "field-ops-app-vite/test/workOrderAttentionPanel.test.jsx"
+      - ".github/workflows/wo-dispatch-attention-projection-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wo-dispatch-attention-projection-tests:
+    name: WO/Dispatch attention projection (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Pure domain projection tests (node:test)
+        run: node test/workOrderAttentionProjection.test.mjs
+        working-directory: field-ops-app-vite
+      - name: WorkOrderAttentionPanel render tests (vitest + jsdom)
+        run: npx vitest run test/workOrderAttentionPanel.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/workOrderAttentionProjection.js src/modules/controlTower/panels/WorkOrderAttentionPanel.jsx src/modules/controlTower/ControlTower.jsx
+        working-directory: field-ops-app-vite
