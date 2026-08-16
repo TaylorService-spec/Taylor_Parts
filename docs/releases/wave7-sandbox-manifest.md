@@ -19,6 +19,7 @@ here. This manifest starts empty at the Wave 6 deployed baseline and accumulates
 | Environment | `platform-sandbox` → Firebase project `eos-platform-sandbox` |
 | Environment registry (authoritative) | [`config/environments.json`](../../config/environments.json) |
 | Deployed-vs-expected check | `node scripts/checkDeployedVersions.mjs` |
+| Deployed Functions verification check | `node scripts/verifySandboxFunctions.mjs --project eos-platform-sandbox <fn1> [fn2 ...]` — read-only; confirms each named Gen-2 callable EXISTS, is ACTIVE, and runs `nodejs22` (see [EOS-ISSUE-1062](../orchestration/work-intake/EOS-ISSUE-1062.work.json)) |
 
 `config/environments.json` remains the **single source of truth** for environment identity,
 readiness flags, and capability activation. This manifest references it; it never duplicates it.

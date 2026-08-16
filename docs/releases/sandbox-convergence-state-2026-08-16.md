@@ -28,6 +28,12 @@ Three callables exist in the repo and are absent from the live estate:
 Derived from compiled truth (`functions/lib/index.js` contains all three; `npm run build`
 clean) compared against `firebase functions:list --project eos-platform-sandbox`.
 
+Repeating this class of check no longer requires running `gcloud functions describe` by hand
+against each callable one at a time: `node scripts/verifySandboxFunctions.mjs --project
+eos-platform-sandbox <fn1> [fn2 ...]` queries the live Gen-2 estate once (`gcloud functions
+list --v2`) and reports PASS/FAIL per callable for existence, `ACTIVE` state, and `nodejs22`
+runtime. Read-only — see [EOS-ISSUE-1062](../orchestration/work-intake/EOS-ISSUE-1062.work.json).
+
 The 12 callables added by the consolidated promotion ARE live and on `nodejs22`:
 `listOpportunitiesForAccount`, `listSalesOrdersForAccount`, `listCoordinatedOperations`,
 `getLocationDisplay`, `createTransferOrder`, `dispatchTransferOrder`, `receiveTransferOrder`,
