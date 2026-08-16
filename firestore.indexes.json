@@ -101,6 +101,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "serialized_assets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "partId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "currentLocationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inventoryState",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

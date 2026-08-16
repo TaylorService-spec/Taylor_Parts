@@ -1209,6 +1209,16 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*). Admin-SDK-
+    // only, same posture as the ledger/warehouse/transfer collections above: the trusted cycleCount
+    // command family (createCycleCount/submitCycleCount/reconcileCycleCount/cancelCycleCount) is the
+    // only writer. ALL direct client read/write denied. Purely additive: this collection did not exist
+    // before, so this block establishes its deny explicitly rather than relying on the implicit
+    // no-match-no-access default -- it changes nothing for any existing collection or principal.
+    match /cycle_counts/{cycleCountId} {
+      allow read, write: if false;
+    }
+
     // EI-P1d-2-2b -- Truck Registry (ADR-010: trucks = MOBILE Inventory
     // Locations; the optional Vehicle business record links 1:1 but is
     // NOT custody authority). Same Admin-SDK-only write posture as the

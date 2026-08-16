@@ -199,6 +199,17 @@ export {
   cancelTransferOrderCallable as cancelTransferOrder,
 } from "./inventoryTransfer/transferCallables";
 
+// --- Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*) ---
+// Every inventory.cycleCount.* capability is registered `active: false` and granted to NO Role, so every
+// principal is denied `noQualifyingGrant` until a later, separately-authorized grant + activation gate.
+// Exporting a callable is not deployment authorization by itself -- see receiveInventoryStock above.
+export {
+  createCycleCountCallable as createCycleCount,
+  submitCycleCountCallable as submitCycleCount,
+  reconcileCycleCountCallable as reconcileCycleCount,
+  cancelCycleCountCallable as cancelCycleCount,
+} from "./cycleCount/cycleCountCallables";
+
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
 // "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them, NO App
 // Check requirement (matching every other callable here). Authorization is enforced INSIDE the command

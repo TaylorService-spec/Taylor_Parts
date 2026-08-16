@@ -20,6 +20,11 @@ export const WAREHOUSES_COLLECTION = "warehouses";
 export const STOCK_LOCATIONS_COLLECTION = "stock_locations";
 export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 
+// Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*). Admin-SDK-only,
+// same posture as transfer_orders/receiving_orders above -- the trusted cycleCount command family is the
+// only writer; no UI writes this collection directly.
+export const CYCLE_COUNTS_COLLECTION = "cycle_counts";
+
 // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-only
 // posture as the ledger/warehouse collections above -- fully internal,
 // no external vendor integration, no client writes.

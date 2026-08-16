@@ -70,6 +70,7 @@
     "test:inventoryReceiving": "npm run build && node test/inventoryReceivingFoundation.test.mjs",
     "test:receiveInventoryStock": "npm run build && node test/receiveInventoryStockCommand.test.mjs",
     "test:transferOrderCommand": "npm run build && node test/transferOrderCommand.test.mjs",
+    "test:cycleCountCommand": "npm run build && node test/cycleCountCommand.test.mjs",
     "test:receiveSerializedStock": "npm run build && node test/receiveSerializedStockCommand.test.mjs",
     "test:receivingLocationResolver": "npm run build && node test/receivingLocationResolver.test.mjs",
     "test:receivingResolverIntegration": "npm run build && node test/receiveInventoryStockResolverIntegration.test.mjs",

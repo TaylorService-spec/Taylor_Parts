@@ -175,6 +175,12 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "dispatchTransferOrder",
   "receiveTransferOrder",
   "cancelTransferOrder",
+  // Enterprise Inventory -- Cycle Count operating authority: runtime mirror of the cycle count command
+  // family's AuditAction union members.
+  "createCycleCount",
+  "submitCycleCount",
+  "reconcileCycleCount",
+  "cancelCycleCount",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
