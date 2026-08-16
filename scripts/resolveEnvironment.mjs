@@ -64,6 +64,19 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'workOrder.parts.plan',
   'crm.activity.create',
   'crm.activity.read',
+  // Consolidated sandbox promotion -- mirrors the same additions in
+  // functions/src/access/environmentCapabilityOverrides.ts; parity is test-asserted.
+  'fulfillment.coordinatedVisit.read',
+  'inventory.serializedAsset.read',
+  'inventory.location.display.read',
+  'inventory.transfer.create',
+  'inventory.transfer.dispatch',
+  'inventory.transfer.receive',
+  'inventory.transfer.cancel',
+  'inventory.cycleCount.create',
+  'inventory.cycleCount.submit',
+  'inventory.cycleCount.reconcile',
+  'inventory.cycleCount.cancel',
 ]);
 
 /**

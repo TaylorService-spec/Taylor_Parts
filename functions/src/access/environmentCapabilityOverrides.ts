@@ -63,6 +63,21 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "workOrder.parts.plan",
   "crm.activity.create",
   "crm.activity.read",
+  // Consolidated sandbox promotion: the read/command families the E2E matrix exercises. Same
+  // posture as every id above -- eligibility bounds what an environment MAY activate; the registry
+  // decides what it DOES; a principal still needs a qualifying Role grant. Production stays
+  // triple-blocked (role-keyed resolution, no override key on any production entry, asserted).
+  "fulfillment.coordinatedVisit.read",
+  "inventory.serializedAsset.read",
+  "inventory.location.display.read",
+  "inventory.transfer.create",
+  "inventory.transfer.dispatch",
+  "inventory.transfer.receive",
+  "inventory.transfer.cancel",
+  "inventory.cycleCount.create",
+  "inventory.cycleCount.submit",
+  "inventory.cycleCount.reconcile",
+  "inventory.cycleCount.cancel",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -154,6 +169,19 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "workOrder.parts.plan",
         "crm.activity.create",
         "crm.activity.read",
+        // Consolidated sandbox promotion. This snapshot ships in the Functions bundle
+        // (config/environments.json does not); a drift guard asserts it matches the registry.
+        "fulfillment.coordinatedVisit.read",
+        "inventory.serializedAsset.read",
+        "inventory.location.display.read",
+        "inventory.transfer.create",
+        "inventory.transfer.dispatch",
+        "inventory.transfer.receive",
+        "inventory.transfer.cancel",
+        "inventory.cycleCount.create",
+        "inventory.cycleCount.submit",
+        "inventory.cycleCount.reconcile",
+        "inventory.cycleCount.cancel",
       ]),
     }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),

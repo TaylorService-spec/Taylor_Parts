@@ -52,13 +52,24 @@ const SPINE_11 = [
   "workOrder.parts.plan",
   "crm.activity.create",
   "crm.activity.read",
+  "fulfillment.coordinatedVisit.read",
+  "inventory.serializedAsset.read",
+  "inventory.location.display.read",
+  "inventory.transfer.create",
+  "inventory.transfer.dispatch",
+  "inventory.transfer.receive",
+  "inventory.transfer.cancel",
+  "inventory.cycleCount.create",
+  "inventory.cycleCount.submit",
+  "inventory.cycleCount.reconcile",
+  "inventory.cycleCount.cancel",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 16 eligible capability ids", () => {
+test("eligible allow-list is exactly the 27 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 16);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 27);
 });
 
 test("sandbox project resolves the full spine override set", () => {
