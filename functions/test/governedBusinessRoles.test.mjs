@@ -29,6 +29,7 @@ import {
   CRM_ACTIVITY_CONTRIBUTOR_ROLE,
 } from "../lib/access/governedBusinessRoles.js";
 import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
+import { __GOVERNED_ASSIGNABLE_ROLES_FOR_TEST } from "../lib/access/trustedWriterCommands.js";
 
 let passed = 0;
 let failed = 0;
@@ -133,6 +134,44 @@ check("transfer operator carries exactly the four transfer ids and no adjacent i
 check("every governed business Role's own .id matches its map key", () => {
   for (const [key, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
     assert.equal(role.id, key);
+  }
+});
+
+// === Assignability gate (trustedWriterCommands.ts GOVERNED_ASSIGNABLE_ROLES) ===
+//
+// Declaring a Role does NOT make it assignable -- a second, deliberate allowlist controls which
+// governed Roles the trusted-writer grant path will accept. These tests pin the two properties that
+// gate actually exists to protect.
+
+// The load-bearing one. The privileged two-person rule (self-approval ban, distinct approverUid)
+// only means anything if no privileged Role can be quietly slipped into the assignable set.
+check("no privileged Role is assignable through the governed allowlist", () => {
+  for (const [id, role] of Object.entries(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST)) {
+    assert.equal(role.privileged, false, `${id} is privileged and must not be governed-assignable`);
+  }
+});
+
+// Every entry must be a real governed Role, identical to its catalog definition -- not a lookalike
+// object with a wider permission set that happens to share an id.
+check("every governed-assignable entry is the same object as its catalog Role", () => {
+  for (const [id, role] of Object.entries(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST)) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[id], `${id} is assignable but not a declared governed Role`);
+    assert.equal(role, GOVERNED_BUSINESS_ROLES[id], `${id} must BE the catalog Role, not a copy`);
+  }
+});
+
+// The six operational Roles are reachable by the grant path. Without this, each is authority that
+// exists on paper and can never be conferred -- the defect this allowlist extension fixed.
+check("the six operational Roles are governed-assignable", () => {
+  for (const id of [
+    "inventoryCatalogAdministrator",
+    "workOrderPartsPlanner",
+    "crmActivityContributor",
+    "inventoryTransferOperator",
+    "inventoryCycleCountCounter",
+    "inventoryCycleCountReconciler",
+  ]) {
+    assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
   }
 });
 
