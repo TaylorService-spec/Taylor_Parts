@@ -1,0 +1,54 @@
+name: Dispatch No Demo Contamination Tests
+
+# Sandbox-fidelity package, Part 2 -- CI coverage proving the legacy Dispatch Queue surface
+# (src/modules/dispatch/Dispatch.jsx) no longer references demo/heroConfig.js (pinned hero job,
+# hardcoded hero technician, "Active Demo Job" badge). Disposition: Dispatch.jsx remains a canonical,
+# still-uniquely-responsible surface -- it performs the SCHEDULED -> DISPATCHED governed transition,
+# which the newer combined Dispatch/Scheduling workspace (DispatchSchedulingWorkspace.jsx) does not --
+# so the fix strips the demo overlay rather than retiring the screen. Runs the render regression
+# (vitest + jsdom) that proves demo/heroConfig contamination cannot silently return, plus the existing
+# error-state coverage for the same file, plus lint. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/dispatch/Dispatch.jsx"
+      - "field-ops-app-vite/src/demo/heroConfig.js"
+      - "field-ops-app-vite/test/dispatchNoDemoContamination.test.jsx"
+      - "field-ops-app-vite/test/dispatchSurfacesErrorState.test.jsx"
+      - ".github/workflows/dispatch-no-demo-contamination-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/dispatch/Dispatch.jsx"
+      - "field-ops-app-vite/src/demo/heroConfig.js"
+      - "field-ops-app-vite/test/dispatchNoDemoContamination.test.jsx"
+      - "field-ops-app-vite/test/dispatchSurfacesErrorState.test.jsx"
+      - ".github/workflows/dispatch-no-demo-contamination-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-no-demo-contamination-tests:
+    name: Dispatch no demo contamination (vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Dispatch demo-contamination regression + error-state coverage (vitest + jsdom)
+        run: npx vitest run test/dispatchNoDemoContamination.test.jsx test/dispatchSurfacesErrorState.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surface (oxlint)
+        run: npx oxlint src/modules/dispatch/Dispatch.jsx
+        working-directory: field-ops-app-vite
