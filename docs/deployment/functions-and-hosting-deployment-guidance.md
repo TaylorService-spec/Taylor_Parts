@@ -123,3 +123,23 @@ curl -s https://<host>/version.json
 Confirm `commit` is the intended head **and** `environmentId` / `environmentRole` match the target.
 Both must be checked: a correct commit with the wrong environment identity is exactly the failure
 this guidance exists to prevent.
+
+---
+
+## C. Functions runtime
+
+The deployed runtime is set by `engines.node` in `functions/package.json`. It is **Node 22**.
+
+Node 20 was deprecated and scheduled for decommissioning, so the estate was moved to the current
+supported target. `firebase-functions@^5.1` (`node >=14.10.0`) and `firebase-admin@^12.7`
+(`node >=14`) both support it, so no dependency change was required — this is a runtime bump, not a
+library migration, and no behavior changed.
+
+CI jobs that build or test Functions pin Node 22 to match the deployed runtime. Frontend-only jobs
+were deliberately left alone: pinning them to the Functions runtime would couple two things that are
+not actually related. (One frontend job pins 22 for its own reason — it reads a `.ts` file and only
+Node 22 strips TypeScript.)
+
+**The runtime change takes effect only on the next Functions deploy.** Until then the live estate
+still runs the previously deployed runtime. Verify after deploying that the function inventory
+reports the expected runtime.

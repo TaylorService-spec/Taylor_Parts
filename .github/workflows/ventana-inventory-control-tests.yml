@@ -52,7 +52,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Run client inventory-control tests (dependency-free)
         run: >-
           node --test
@@ -70,7 +70,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: functions/package-lock.json
       - name: Install functions dependencies (reproducible)
@@ -89,7 +89,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: field-ops-app-vite/package-lock.json
       - name: Install client dependencies (reproducible)
