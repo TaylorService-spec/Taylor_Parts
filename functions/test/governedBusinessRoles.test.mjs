@@ -175,6 +175,36 @@ check("the six operational Roles are governed-assignable", () => {
   }
 });
 
+// Owner decision 2026-08-16: the catalog administrator gained inventory.catalog.read. Live E2E showed
+// it could reach the catalog surface and then be refused the manufacturer read it needs to curate
+// against -- correct enforcement of an operationally incomplete Role. These pin the new scope exactly.
+check("inventoryCatalogAdministrator carries catalog READ, manage and activate -- and nothing else", () => {
+  const role = GOVERNED_BUSINESS_ROLES.inventoryCatalogAdministrator;
+  assert.deepEqual([...role.permissions].sort(), [
+    "inventory.catalog.activate",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+  ]);
+});
+
+check("the catalog read did NOT drag in unrelated inventory authority", () => {
+  const role = GOVERNED_BUSINESS_ROLES.inventoryCatalogAdministrator;
+  for (const forbidden of [
+    "inventory.transaction.read", "inventory.stock.receive",
+    "inventory.transfer.create", "inventory.transfer.dispatch",
+    "inventory.cycleCount.create", "inventory.cycleCount.reconcile",
+    "inventory.serializedAsset.read", "inventory.location.display.read",
+  ]) {
+    assert.equal(role.permissions.includes(forbidden), false, `must not carry ${forbidden}`);
+  }
+  assert.equal(role.permissions.length, 3, "exactly three ids -- the read was an addition, not an opening");
+});
+
+check("the catalog administrator remains non-privileged after the addition", () => {
+  // A read widening must never quietly promote the Role into the two-person-rule class.
+  assert.equal(GOVERNED_BUSINESS_ROLES.inventoryCatalogAdministrator.privileged, false);
+});
+
 // === Shape / classification invariants (Spec §26.1) ===
 
 check("every governed business Role is systemSeed:true, compatibility:false", () => {
@@ -455,11 +485,18 @@ check("catalog write is confined to the two purpose-built catalog Roles -- no ti
 
 // === Catalog administrator (durable) -- Option A of the accepted role design ===
 
-check("Inventory Catalog Administrator: grants EXACTLY inventory.catalog.manage + .activate", () => {
+check("Inventory Catalog Administrator: grants EXACTLY catalog read + manage + activate", () => {
+  // UPDATED 2026-08-16 (Owner decision): inventory.catalog.read was added. Live E2E showed the Role
+  // could reach the catalog surface and was then refused getManufacturerCatalog -- correct
+  // enforcement of a Role whose scope was operationally incomplete. Curating a Part against a
+  // manufacturer list you cannot read is not a coherent authority.
   assert.deepEqual(
     [...INVENTORY_CATALOG_ADMINISTRATOR_ROLE.permissions].sort(),
-    ["inventory.catalog.activate", "inventory.catalog.manage"],
+    ["inventory.catalog.activate", "inventory.catalog.manage", "inventory.catalog.read"],
   );
+  // NOTE: inventory.catalog.read is registered active:false, so the resolver DENIES it without a
+  // per-environment activation override even though the Role now carries it. Grant is not
+  // activation -- asserted directly below rather than papered over.
   assert.equal(resolve("inventory.catalog.manage", "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
   assert.equal(resolve("inventory.catalog.activate", "inventoryCatalogAdministrator", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
 });
