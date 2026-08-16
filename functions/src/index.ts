@@ -184,6 +184,17 @@ export {
   listReceivingLocationOptionsCallable as listReceivingLocationOptions,
 } from "./inventoryReceiving/receivingCallables";
 
+// --- Enterprise Inventory Phase 4 -- Transfer operating authority (functions/src/inventoryTransfer/*) ---
+// Every inventory.transfer.* capability is registered `active: false` and granted to NO Role, so every
+// principal is denied `noQualifyingGrant` until a later, separately-authorized grant + activation gate.
+// Exporting a callable is not deployment authorization by itself -- see receiveInventoryStock above.
+export {
+  createTransferOrderCallable as createTransferOrder,
+  dispatchTransferOrderCallable as dispatchTransferOrder,
+  receiveTransferOrderCallable as receiveTransferOrder,
+  cancelTransferOrderCallable as cancelTransferOrder,
+} from "./inventoryTransfer/transferCallables";
+
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
 // "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them, NO App
 // Check requirement (matching every other callable here). Authorization is enforced INSIDE the command

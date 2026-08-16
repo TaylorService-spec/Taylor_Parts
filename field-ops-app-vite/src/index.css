@@ -1274,6 +1274,23 @@ button:hover {
 .fo-transfer-status--pending { background: var(--color-warning-surface); color: var(--color-warning); }
 .fo-transfer-status--done { background: var(--color-success-surface); color: var(--color-success); }
 .fo-transfer-status--muted { background: var(--color-surface-sunken); color: var(--color-text-muted); }
+/* Inventory > Transfers -- New Transfer form (Enterprise Inventory Phase 4). */
+.fo-transfer-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-sunken); }
+.fo-form-row { display: flex; flex-direction: column; gap: 4px; }
+.fo-form-row label { font-size: 13px; color: var(--color-text-secondary); }
+.fo-form-row input, .fo-form-row select, .fo-form-row textarea { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface); color: var(--color-text-primary); }
+.fo-form-row select { min-width: 180px; }
+.fo-form-row .fo-form-row { flex-direction: row; gap: 8px; }
+.fo-form-fieldset { border: 1px solid var(--color-border); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.fo-form-fieldset legend { padding: 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-secondary); }
+.fo-form-fieldset .fo-form-row { flex-direction: row; gap: 8px; }
+.fo-form-error { font-size: 12px; color: var(--color-danger, var(--color-warning)); }
+.fo-form-actions { display: flex; gap: 8px; }
+.fo-transfer-dismiss { background: none; border: none; padding: 0; color: var(--color-brand-primary); text-decoration: underline; cursor: pointer; font-size: inherit; }
+.fo-transfer-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.fo-transfer-action-btn { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--color-brand-primary); background: var(--color-brand-primary); color: var(--color-text-inverse); cursor: pointer; }
+.fo-transfer-action-btn:disabled { opacity: 0.6; cursor: default; }
+.fo-transfer-action-btn--muted { background: transparent; color: var(--color-text-secondary); border-color: var(--color-border); }
 /* Inventory > Warehouses workspace. */
 .fo-wh-status { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--color-surface-sunken); color: var(--color-text-secondary); }
 .fo-wh-status--done { background: var(--color-success-surface); color: var(--color-success); }
