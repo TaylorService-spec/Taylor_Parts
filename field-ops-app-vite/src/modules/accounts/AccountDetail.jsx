@@ -17,6 +17,7 @@ import ServiceActivitySection from "./ServiceActivitySection";
 import AccountFinancialsSection from "./AccountFinancialsSection";
 import AccountHealthStrip from "./AccountHealthStrip";
 import AccountAttentionSection from "./AccountAttentionSection";
+import ActivityAndNotesSection from "./ActivityAndNotesSection";
 import { useAccountAr } from "../../hooks/useAccountAr";
 import { accountArView } from "../../domain/accountArView";
 import { useAccountWorkOrderCount } from "../../hooks/useAccountServiceActivity";
@@ -359,6 +360,11 @@ export default function AccountDetail() {
               the real AR read prominent and collapses the unconfigured provider into one line. */}
           <AccountFinancialsSection accountId={account.id} />
 
+          {/* ACTIVITY & NOTES -- durable, attributed CRM interaction history. Lives in the
+              PRIMARY column: it is a record surface a salesperson works in, not sidebar
+              context. Deliberately not a single editable notes blob. */}
+          <ActivityAndNotesSection accountId={account.id} />
+
           {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
           <ServiceActivitySection accountId={account.id} />
 
@@ -480,6 +486,9 @@ export default function AccountDetail() {
               while no provider exists: an optional section with nothing to say should
               contribute nothing, not a permanent apology. */}
           <AccountAttentionSection accountId={account.id} />
+
+          {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
+              column: it is a record surface a salesperson works in, not sidebar context. */}
           {/* 6. Notes / Identifiers -- collapsed by default */}
           <details className="fo-account-collapsible">
             <summary>Notes &amp; Identifiers</summary>
