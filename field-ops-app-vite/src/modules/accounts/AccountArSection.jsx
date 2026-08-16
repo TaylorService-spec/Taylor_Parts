@@ -17,7 +17,11 @@ export default function AccountArSection({ accountId }) {
   const view = accountArView({ loading, errorStatus, result });
 
   return (
-    <section className="wo-history">
+    // Wave 7 extension, PART 1.6 (Account Attention) -- `id` gives the Account Attention
+    // projection a REAL anchor to deep-link to (`/customers/:accountId#account-ar-section`)
+    // instead of a fabricated route. AR resolution stays here, in this section, exactly where
+    // it already lived -- Account Attention never restates or re-renders AR data itself.
+    <section id="account-ar-section" className="wo-history">
       <h4>Accounts Receivable</h4>
       {view.kind === ACCOUNT_AR_STATE.LOADING && <p className="fo-muted">Loading AR…</p>}
       {view.kind === ACCOUNT_AR_STATE.DENIED && (
