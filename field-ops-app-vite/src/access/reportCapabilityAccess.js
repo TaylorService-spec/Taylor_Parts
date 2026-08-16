@@ -17,13 +17,20 @@
 // reads users/{uid}.role, never inspects Role names, and never builds a Role definition -- a raw
 // role can never confer a governed capability (the W1 correction; this keeps it true).
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
+import { GOVERNED_SURFACE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
 
 // The capabilities the trusted feed is asked to decide, in ONE consistent request (all resolved
 // against the same accessVersion): the four wave-1 Report Builder object-read ids, plus the five
 // per-action saved-definition ids the Saved Reports UI gates on. Never a broader or arbitrary set.
+// Extended (Owner decision 2026-08-16, #1065) with the governed SURFACE capabilities that now decide
+// route/nav visibility for capability-backed surfaces. Still one consistent request resolved against a
+// single accessVersion -- and still a closed, declared list, never a broader or arbitrary set. The name
+// stays REPORT_CAPABILITY_REQUEST because every consumer already imports it; what it means is "the
+// capabilities the shell must have a decision on to render navigation honestly".
 export const REPORT_CAPABILITY_REQUEST = Object.freeze([
   ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
   ...REPORT_DEFINITION_CAPABILITY_IDS,
+  ...GOVERNED_SURFACE_CAPABILITY_IDS,
 ]);
 
 // Observed-version subscription status. hasCapability requires `ready` with a valid version.
