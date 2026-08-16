@@ -16,6 +16,7 @@ import LocationCreateModal from "./LocationCreateModal";
 import ServiceActivitySection from "./ServiceActivitySection";
 import AccountFinancialsSection from "./AccountFinancialsSection";
 import AccountHealthStrip from "./AccountHealthStrip";
+import AccountAttentionSection from "./AccountAttentionSection";
 import { useAccountAr } from "../../hooks/useAccountAr";
 import { accountArView } from "../../domain/accountArView";
 import { useAccountWorkOrderCount } from "../../hooks/useAccountServiceActivity";
@@ -473,9 +474,12 @@ export default function AccountDetail() {
             directoryError={directoryError}
           />
 
-              {/* Account Attention and the Marketing seam mount here. Neither renders a
-                  placeholder while absent: an optional section that has nothing to say
-                  should contribute nothing, not a permanent apology. */}
+          {/* Account Attention -- bounded and account-scoped, composed from existing
+              authorities (AR overdue + Work Order past due). Renders nothing when there
+              is nothing to say. The Marketing seam mounts alongside and stays absent
+              while no provider exists: an optional section with nothing to say should
+              contribute nothing, not a permanent apology. */}
+          <AccountAttentionSection accountId={account.id} />
           {/* 6. Notes / Identifiers -- collapsed by default */}
           <details className="fo-account-collapsible">
             <summary>Notes &amp; Identifiers</summary>
