@@ -266,6 +266,54 @@ A merged PR that has not been deployed to sandbox is `SANDBOX BUILD`. It only be
 | Rollback notes | Frontend-only; revert the Hosting release. Read-only projection — nothing written. |
 | Deployment status | PENDING |
 
+### PR #1023 — Grantable Roles for the activated Wave 7 capabilities
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `87be91103b1d1e12fb10d45901f9ae2b4275ce37` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — inert Role definitions. Rides the delta Functions deploy so the definitions ship. |
+| Hosting impact | Rebuild (the mirrored catalog is in the client bundle). |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | **No grant is performed.** Defines `workOrderPartsPlanner` and `crmActivityContributor` so the Owner-gated grants become POSSIBLE. Both capabilities remain `active:false` outside platform-sandbox, so a holder is still denied everywhere activation is off. |
+| Smoke / E2E validation required | After granting, confirm the positive path opens for the granted persona and stays denied for a persona without the Role. Confirm no OTHER capability moved. |
+| Rollback notes | Revoke the roleAssignment (capability lost immediately on the accessVersion bump). Reverting the code removes the Role definitions; any live assignment must be revoked first or it references a Role that no longer exists. |
+| Deployment status | PENDING |
+
+### PR #1024 — Account-scoped Opportunity + Sales Order reads and sections
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `8cb9c0a94c46abb935e4e80dc0a737e8d3078d6e` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | **Deploy required:** `listOpportunitiesForAccount`, `listSalesOrdersForAccount` (sales/CRM batches). |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | **NONE — no new index.** Equality filter + limit with no `orderBy` is served by the automatic single-field index; this was deliberate to avoid an extra deploy step. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — reuses `opportunity.read` / `salesOrder.read`, already activated AND already granted to admin/dispatcher. |
+| Smoke / E2E validation required | On an Account with opportunities and sales orders: both sections populate; owner renders as a display NAME not an id; deep links resolve. On an account with none: empty state. Force a denied read: confirm it shows denied, NOT empty — empty vs failure is the property that matters most here. Exceed the page cap: confirm the truncation disclosure appears. |
+| Rollback notes | Frontend + two additive read callables; revert the Hosting release and redeploy the prior Functions batch. Read-only: nothing written. |
+| Deployment status | PENDING |
+
+### PR #1025 — Combined Dispatch / Scheduling operating workspace
+
+| Field | Value |
+| --- | --- |
+| Merge SHA | `ac7b104d9918d1b9020c31c508fe51fb605eed89` |
+| Lifecycle stage | SANDBOX BUILD |
+| Functions impact | NONE — reuses the deployed `transitionWorkOrder`. |
+| Hosting impact | **Rebuild + release required.** |
+| Rules impact | NONE. |
+| Indexes / config impact | NONE. |
+| Readiness flags required | NONE. |
+| Capability activation / grants | NONE — reuses existing work-order transition authority. |
+| Smoke / E2E validation required | Day runs left-to-right with technician rows. Ready for Work appears exactly ONCE (no side-rail duplicate). Drop a card: confirm it opens the confirm step and does NOT write silently, and that the suggested end time is labelled a suggestion. Submit: confirm it calls the governed Schedule transition and the board re-reads. Deny it: confirm the card returns to its prior position with honest feedback. Confirm no raw UID and that Ready work groups by PRIORITY (no duration field exists). |
+| Rollback notes | Frontend-only; revert the Hosting release. Any Work Order actually scheduled during validation is a real governed transition — and `SCHEDULED` cannot be re-timed by a deployed transition, so validate on throwaway records. |
+| Deployment status | PENDING |
+
 -->
 
 ## Consolidated deploy requirements
