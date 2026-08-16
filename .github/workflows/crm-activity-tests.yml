@@ -157,7 +157,9 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Permission catalog frontend/backend parity (crm.activity.* ids included)
-        run: node test/permissionCatalogRoleParity.test.mjs
+        # `node --test`, matching how sales-opportunity-tests.yml already runs this exact file.
+        # Plain `node test/...` fails with ERR_UNKNOWN_FILE_EXTENSION on the .ts catalog it reads.
+        run: node --test test/permissionCatalogRoleParity.test.mjs
         working-directory: field-ops-app-vite
 
       - name: CRM Activity component + hook tests

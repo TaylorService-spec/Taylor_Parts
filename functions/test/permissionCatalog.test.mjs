@@ -203,11 +203,23 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // command's capability, ungranted-by-design pending a separate Owner grant), same additive posture.
 // Serialized Asset registry, Spec phase M.1: inventory.serializedAsset.read is registered `active: false`,
 // same additive posture as the other inactive entries above.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset."];
+// CRM Activity (Wave 7 extension Part 1.4): crm.activity.create/.read are registered `active: false`,
+// ungranted-by-design pending a separate Owner grant -- the same additive posture. Adding the prefix
+// here WIDENS this guard, so it is paired with an explicit assertion below that both ids are
+// active:false and never true; the guard must not become a loophole for an active:true id.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
     assert.equal("active" in permission, false, `"${permission.id}" must not declare active -- would be a behavior change`);
+  }
+});
+check("every crm.activity.* entry is registered-but-not-grantable (active: false, never true)", () => {
+  const crm = PERMISSION_CATALOG.filter((p) => p.id.startsWith("crm.activity."));
+  assert.equal(crm.length, 2, "Part 1.4 registers exactly two CRM activity capabilities");
+  assert.deepEqual(crm.map((p) => p.id).sort(), ["crm.activity.create", "crm.activity.read"]);
+  for (const permission of crm) {
+    assert.equal(permission.active, false, `"${permission.id}" must be inactive (registered-but-ungranted)`);
   }
 });
 check("every equipment.* entry is registered-but-not-grantable (active: false, never true)", () => {
