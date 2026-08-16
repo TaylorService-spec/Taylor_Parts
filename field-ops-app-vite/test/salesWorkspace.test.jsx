@@ -47,6 +47,35 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     expect(row.querySelector(".fo-stagetrack")).toBeTruthy();
     expect(row.querySelector(".fo-status-pill, .fo-statuspill, [class*='pill']")).toBeTruthy();
   });
+
+  // The banner previously fired on `status === "ready"`, so a successfully-loaded GOVERNED pipeline told
+  // the user its real Opportunities were samples. An honesty banner that fires on real data is worse than
+  // none -- it teaches people to disbelieve true records. These pin it to the source's own flag.
+  it("does NOT claim synthetic data when the source reports real governed rows", async () => {
+    const governed = () => ({
+      status: "ready",
+      synthetic: false,
+      opportunities: [{ id: "opp-live-1", accountId: "acct-harbor", stage: "IDENTIFIED", channel: "RETAIL" }],
+      accountNameById: { "acct-harbor": "Harbor Foods" },
+      error: null,
+    });
+    render(<SalesWorkspace source={governed} />);
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+    expect(screen.queryByText(/synthetic sample opportunities/i)).toBeNull();
+  });
+
+  it("still says so when the source really is synthetic", async () => {
+    const fixture = () => ({
+      status: "ready",
+      synthetic: true,
+      opportunities: [{ id: "opp-fix-1", accountId: "acct-harbor", stage: "IDENTIFIED", channel: "RETAIL" }],
+      accountNameById: { "acct-harbor": "Harbor Foods" },
+      error: null,
+    });
+    render(<SalesWorkspace source={fixture} />);
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+    expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();
+  });
   it("shows an honest synthetic-data banner and an inert (disabled) create control", () => {
     render(<SalesWorkspace />);
     expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();

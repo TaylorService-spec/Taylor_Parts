@@ -374,7 +374,7 @@ function PipelineRow({ row, selected, onSelect }) {
 // the REAL trusted capability feed (access/useOpportunityCapabilities); a caller that passes neither (every
 // existing test here) still gets the seam's own fail-closed default.
 export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps } = {}) {
-  const { opportunities, accountNameById, status, refetch } = useOpportunities(source);
+  const { opportunities, accountNameById, status, synthetic, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
   // Write-readiness through the seam. Fail-closed by default (governed write built but inert unless a real
@@ -431,7 +431,12 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       </p>
     ) : null;
 
-  const isSynthetic = status === "ready";
+  // Whether these rows are sample fixtures is the SOURCE's fact, not a function of the source having
+  // loaded. This previously read `status === "ready"`, which labelled every successfully-loaded pipeline
+  // "synthetic" -- so the live governed pipeline told the user its real Opportunities were samples. An
+  // honesty banner that fires on real data is worse than no banner: it teaches people to disbelieve
+  // true records.
+  const isSynthetic = synthetic === true;
 
   return (
     <WorkspaceShell
