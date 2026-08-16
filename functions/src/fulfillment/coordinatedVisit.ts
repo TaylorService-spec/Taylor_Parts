@@ -22,9 +22,15 @@ export interface WorkOrderLike {
 
 // Work Order statuses that count as "done" for the coordinated-visit rollup. Kept small + explicit; unknown
 // statuses are treated as not-done (honest — we don't assume completion we can't read).
-const DONE_STATUSES = new Set(["COMPLETED", "CLOSED"]);
+// Exported (not just module-local) so tests can assert every status this projection references is a member
+// of the canonical WorkOrderStatus set -- see coordinatedVisit.test.mjs.
+export const DONE_STATUSES = new Set(["COMPLETED", "CLOSED"]);
 // Statuses that actively need attention (blockers). Others are simply "in progress".
-const BLOCKED_STATUSES = new Set(["BLOCKED", "ON_HOLD", "CANCELLED"]);
+// ONLY canonical WorkOrderStatus values (types/workOrder.ts) belong here -- "BLOCKED"/"ON_HOLD" are NOT real
+// lifecycle statuses (PR #1030 audit finding: they made this Set dead vocabulary that could never match a
+// real Work Order, so ATTENTION could only ever be reached via CANCELLED). Regression-tested in
+// coordinatedVisit.test.mjs against the canonical status set.
+export const BLOCKED_STATUSES = new Set(["CANCELLED"]);
 
 export type VisitReadiness = "READY" | "IN_PROGRESS" | "PARTIAL" | "ATTENTION";
 

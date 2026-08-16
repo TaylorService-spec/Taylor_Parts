@@ -5,7 +5,7 @@
 // already-built projections today, and to be the substrate for the sequential C713×5 journey rerun.
 //
 // The scenario deliberately encodes the HONEST truths the surfaces must show:
-//   • partial completion — 3 of 5 done, 1 in progress, 1 BLOCKED → the visit is NOT complete;
+//   • partial completion — 3 of 5 done, 1 in progress, 1 CANCELLED → the visit is NOT complete;
 //   • a material blocker on the blocked unit whose canonical replenishment/Purchasing truth is NOT connected
 //     (replenishmentConnected:false) → the resolution stays UNKNOWN and is ROUTED, never fabricated;
 //   • load verification present for the ready units, not-verified for the blocked unit, unknown where absent;
@@ -18,15 +18,15 @@ export const COORDINATED_WORK_ORDERS = [
   { id: "SBX-WO-5101", woNumber: "WO-5101", status: "COMPLETED", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 1" },
   { id: "SBX-WO-5102", woNumber: "WO-5102", status: "COMPLETED", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 2" },
   { id: "SBX-WO-5103", woNumber: "WO-5103", status: "COMPLETED", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 3" },
-  { id: "SBX-WO-5104", woNumber: "WO-5104", status: "IN_PROGRESS", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 4" },
-  { id: "SBX-WO-5105", woNumber: "WO-5105", status: "BLOCKED", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 5" },
+  { id: "SBX-WO-5104", woNumber: "WO-5104", status: "WORK_IN_PROGRESS", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 4" },
+  { id: "SBX-WO-5105", woNumber: "WO-5105", status: "CANCELLED", customerId: "SBX-ACCT-Metro", locationId: "SBX-LOC-Metro-Central", salesOrderId: "SBX-SO-4001", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C713 · unit 5" },
 
   // A second, smaller coordinated visit — all complete (a clean READY visit alongside the ATTENTION one).
   { id: "SBX-WO-5201", woNumber: "WO-5201", status: "COMPLETED", customerId: "SBX-ACCT-Harbor", locationId: "SBX-LOC-Harbor-Main", salesOrderId: "SBX-SO-4002", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C723 · unit 1" },
   { id: "SBX-WO-5202", woNumber: "WO-5202", status: "COMPLETED", customerId: "SBX-ACCT-Harbor", locationId: "SBX-LOC-Harbor-Main", salesOrderId: "SBX-SO-4002", salesOrderLineRefs: ["L1"], equipmentLabel: "Taylor C723 · unit 2" },
 
   // Standalone Work Order — NO salesOrderId. Must never appear in a coordinated visit (proves the grouping).
-  { id: "SBX-WO-9001", woNumber: "WO-9001", status: "IN_PROGRESS", customerId: "SBX-ACCT-Elm", locationId: "SBX-LOC-Elm-1", equipmentLabel: "Sterilizer service" },
+  { id: "SBX-WO-9001", woNumber: "WO-9001", status: "WORK_IN_PROGRESS", customerId: "SBX-ACCT-Elm", locationId: "SBX-LOC-Elm-1", equipmentLabel: "Sterilizer service" },
 ];
 
 // Injected per-Work-Order field signals (from the governed WO parts-readiness projection + truck load

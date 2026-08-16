@@ -45,6 +45,15 @@ export interface ManufacturerProjection {
   manufacturerId: string;
   name: string;
   status: ManufacturerStatus | null;
+  // Part 11 reconciliation (2026-08-15): the optimistic-concurrency token the trusted write
+  // commands (updateManufacturer/changeManufacturerStatus, manufacturerCommands.ts) require as
+  // `expectedVersion`. Added so this SAME governed read can also serve the Manufacturer admin
+  // workspace (field-ops-app-vite/src/modules/inventory/Manufacturers.jsx), which previously read
+  // the Rules-closed `manufacturers` collection directly (always permission-denied) because this
+  // projection was Parts-picker-only and didn't carry what a write-capable admin view needs.
+  // Still not a vendor/contract/financial field -- purely a concurrency primitive, already
+  // client-visible via the same doc's `version` field wherever a governed write already exists.
+  version: number;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
@@ -52,7 +61,9 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim().le
 // Pure projection of one canonical Manufacturer doc -> the minimal shape. Returns null if the doc
 // cannot yield a usable projection (missing id/name, or a status outside the governed enum -- an
 // unrecognized status is never trusted/guessed at, it is honestly reported as null rather than
-// fabricated).
+// fabricated). `version` defaults to 0 when absent/non-integer -- mirrors the client mirror's own
+// default (domain/manufacturersView.js's toManufacturerListView), not a fabricated value: a
+// freshly-created record with no writes yet genuinely has no version stamped.
 export function projectManufacturer(id: string, data: Record<string, unknown> | undefined): ManufacturerProjection | null {
   if (!id || !data || typeof data !== "object") return null;
   const name = str(data.name);
@@ -60,7 +71,8 @@ export function projectManufacturer(id: string, data: Record<string, unknown> | 
   const status = (MANUFACTURER_STATUSES as readonly string[]).includes(data.status as string)
     ? (data.status as ManufacturerStatus)
     : null;
-  return { manufacturerId: id, name, status };
+  const version = Number.isInteger(data.version) ? (data.version as number) : 0;
+  return { manufacturerId: id, name, status, version };
 }
 
 export type ManufacturerListReadStatus = "ready";

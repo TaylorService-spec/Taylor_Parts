@@ -17,6 +17,15 @@
 // additionally blocked until Issue #15's own Cloud Functions are
 // deployed and verified.
 //
+// SANDBOX IS DIFFERENT FROM PRODUCTION (recorded here so this claim is never
+// read as "undeployed everywhere"): all six adapters ARE deployed as live
+// Cloud Functions in eos-platform-sandbox (DECISIONS.md #90 finding F-2,
+// 2026-08-06). No client UI calls them there either, and no principal in any
+// environment yet holds the `roleAssignments` document every real call
+// authorizes against (see `bootstrapCompatibilityAdmin` below -- exists but is
+// not exported/callable) -- so every call still denies today, in every
+// environment, for a DIFFERENT reason than "not deployed."
+//
 // ZERO Rules/index changes: every collection this module writes
 // (roleAssignments, accessRequests, auditEvents) already has its Row 3
 // deny-all Rules (PR #276) -- irrelevant to Admin-SDK writes anyway,

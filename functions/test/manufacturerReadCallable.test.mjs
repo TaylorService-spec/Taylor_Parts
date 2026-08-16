@@ -102,7 +102,8 @@ await check("admin reads the real Manufacturer catalog once sandbox activation i
     assert.ok(found, "seeded manufacturer should be present");
     assert.equal(found.name, "Acme Valve Co");
     assert.equal(found.status, "ACTIVE");
-    assert.equal(Object.keys(found).sort().join(","), "manufacturerId,name,status");
+    assert.equal(found.version, 0); // no version field written -> honest default, never fabricated
+    assert.equal(Object.keys(found).sort().join(","), "manufacturerId,name,status,version");
   });
 });
 

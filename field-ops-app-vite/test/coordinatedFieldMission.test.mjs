@@ -8,13 +8,21 @@ import { buildCoordinatedVisit } from "../src/domain/coordinatedVisit.js";
 import {
   buildCoordinatedFieldMission, normalizeMaterialBlocker,
   missionReadinessTone, unitReadinessTone, loadVerifiedLabel, loadVerifiedTone,
+  DONE, BLOCKED,
 } from "../src/domain/coordinatedFieldMission.js";
+
+// The canonical WorkOrderStatus set (types/workOrder.ts has no runtime export) mirrored inline -- kept in
+// sync with functions/test/coordinatedFieldMission.test.mjs's TRANSITIONS-derived set.
+const CANONICAL_STATUSES = new Set([
+  "CREATED", "READY_TO_DISPATCH", "SCHEDULED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED",
+  "WORK_IN_PROGRESS", "COMPLETED", "CLOSED", "CANCELLED",
+]);
 
 const wo = (id, status) => ({ id, woNumber: id, status, salesOrderId: "SO1", customerId: "C1", locationId: "L1" });
 const visitOf = (...wos) => buildCoordinatedVisit("SO1", wos);
 
 test("done unit READY; blocked unit ATTENTION regardless of signals", () => {
-  const m = buildCoordinatedFieldMission(visitOf(wo("a", "COMPLETED"), wo("b", "BLOCKED")), {
+  const m = buildCoordinatedFieldMission(visitOf(wo("a", "COMPLETED"), wo("b", "CANCELLED")), {
     b: { partsReadiness: "READY", loadVerified: true },
   });
   assert.equal(m.units.find((u) => u.workOrderId === "a").unitReadiness, "READY");
@@ -22,14 +30,14 @@ test("done unit READY; blocked unit ATTENTION regardless of signals", () => {
 });
 
 test("missing parts/load evidence ⇒ UNKNOWN unit (never fake READY)", () => {
-  const m = buildCoordinatedFieldMission(visitOf(wo("a", "IN_PROGRESS")), {}); // no signals
+  const m = buildCoordinatedFieldMission(visitOf(wo("a", "WORK_IN_PROGRESS")), {}); // no signals
   assert.equal(m.units[0].partsReadiness, "UNKNOWN");
   assert.equal(m.units[0].loadVerified, null);
   assert.equal(m.units[0].unitReadiness, "UNKNOWN");
 });
 
 test("parts ATTENTION or load not-verified ⇒ ATTENTION unit", () => {
-  const m = buildCoordinatedFieldMission(visitOf(wo("a", "IN_PROGRESS"), wo("b", "IN_PROGRESS")), {
+  const m = buildCoordinatedFieldMission(visitOf(wo("a", "WORK_IN_PROGRESS"), wo("b", "WORK_IN_PROGRESS")), {
     a: { partsReadiness: "ATTENTION", loadVerified: true },
     b: { partsReadiness: "READY", loadVerified: false },
   });
@@ -39,7 +47,7 @@ test("parts ATTENTION or load not-verified ⇒ ATTENTION unit", () => {
 
 test("C713×5: 3 done + 1 in-progress-ready + 1 blocked ⇒ mission ATTENTION, honest progress", () => {
   const visit = visitOf(
-    wo("a", "COMPLETED"), wo("b", "COMPLETED"), wo("c", "COMPLETED"), wo("d", "IN_PROGRESS"), wo("e", "BLOCKED"),
+    wo("a", "COMPLETED"), wo("b", "COMPLETED"), wo("c", "COMPLETED"), wo("d", "WORK_IN_PROGRESS"), wo("e", "CANCELLED"),
   );
   const m = buildCoordinatedFieldMission(visit, {
     a: { partsReadiness: "READY", loadVerified: true }, b: { partsReadiness: "READY", loadVerified: true },
@@ -57,16 +65,16 @@ test("C713×5: 3 done + 1 in-progress-ready + 1 blocked ⇒ mission ATTENTION, h
 test("all done ⇒ mission READY; some done + rest READY ⇒ PARTIAL", () => {
   const allDone = buildCoordinatedFieldMission(visitOf(wo("a", "COMPLETED"), wo("b", "CLOSED")), {});
   assert.equal(allDone.missionReadiness, "READY");
-  const partial = buildCoordinatedFieldMission(visitOf(wo("a", "COMPLETED"), wo("b", "IN_PROGRESS")), {
+  const partial = buildCoordinatedFieldMission(visitOf(wo("a", "COMPLETED"), wo("b", "WORK_IN_PROGRESS")), {
     b: { partsReadiness: "READY", loadVerified: true },
   });
   assert.equal(partial.missionReadiness, "PARTIAL");
 });
 
 test("loadReadiness: any undetermined ⇒ UNKNOWN; any false ⇒ ATTENTION; all true ⇒ READY", () => {
-  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "IN_PROGRESS")), {}).loadReadiness, "UNKNOWN");
-  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "IN_PROGRESS")), { a: { loadVerified: false } }).loadReadiness, "ATTENTION");
-  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "IN_PROGRESS")), { a: { partsReadiness: "READY", loadVerified: true } }).loadReadiness, "READY");
+  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "WORK_IN_PROGRESS")), {}).loadReadiness, "UNKNOWN");
+  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "WORK_IN_PROGRESS")), { a: { loadVerified: false } }).loadReadiness, "ATTENTION");
+  assert.equal(buildCoordinatedFieldMission(visitOf(wo("a", "WORK_IN_PROGRESS")), { a: { partsReadiness: "READY", loadVerified: true } }).loadReadiness, "READY");
 });
 
 test("normalizeMaterialBlocker: no partRef ⇒ null; unconnected ⇒ UNKNOWN resolution", () => {
@@ -83,4 +91,18 @@ test("tone/label helpers honest", () => {
   assert.equal(unitReadinessTone("READY"), "positive");
   assert.equal(loadVerifiedLabel(null), "Load unknown");
   assert.equal(loadVerifiedTone(false), "attention");
+});
+
+// Regression for PR #1030's audit finding (mirrors functions/test/coordinatedFieldMission.test.mjs): BLOCKED
+// used to contain "BLOCKED" and "ON_HOLD", neither of which is a real WorkOrderStatus. Assert this projection
+// cannot depend on a nonexistent lifecycle state.
+test("regression: the projection cannot depend on a nonexistent lifecycle state", () => {
+  for (const status of DONE) {
+    assert.ok(CANONICAL_STATUSES.has(status), `DONE has non-canonical status "${status}"`);
+  }
+  for (const status of BLOCKED) {
+    assert.ok(CANONICAL_STATUSES.has(status), `BLOCKED has non-canonical status "${status}"`);
+  }
+  assert.equal(BLOCKED.has("BLOCKED"), false);
+  assert.equal(BLOCKED.has("ON_HOLD"), false);
 });

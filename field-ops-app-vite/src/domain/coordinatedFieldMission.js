@@ -9,8 +9,12 @@
 // them. A material blocker is surfaced where the substrate supports it; where canonical replenishment/
 // Purchasing truth is not connected, the resolution is left UNKNOWN and ROUTED, not invented.
 
-const DONE = new Set(["COMPLETED", "CLOSED"]);
-const BLOCKED = new Set(["BLOCKED", "ON_HOLD", "CANCELLED"]);
+// Exported so tests can assert every status this projection references is a member of the canonical
+// WorkOrderStatus set -- see test/coordinatedFieldMission.test.mjs.
+export const DONE = new Set(["COMPLETED", "CLOSED"]);
+// ONLY canonical WorkOrderStatus values belong here -- see domain/coordinatedVisit.js for the PR #1030 audit
+// finding this mirrors ("BLOCKED"/"ON_HOLD" are not real lifecycle statuses).
+export const BLOCKED = new Set(["CANCELLED"]);
 
 // Per-unit readiness: a done unit is READY; a blocked status is ATTENTION; unknown parts evidence OR an
 // undetermined load is UNKNOWN (never assume ready); parts ATTENTION or a verified-missing load is ATTENTION;

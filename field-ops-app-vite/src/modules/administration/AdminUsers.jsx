@@ -1,9 +1,25 @@
 // Issue #226 Row 12 -- Admin mutation UI (Task 17). Two governed surfaces:
 //
 // (1) Set user status (Enable/Disable) -> the trusted-writer `setUserStatus`
-//     command. Server-side only, not yet a deployed callable (blocked on Issue
-//     #15). Shown but genuinely disabled -- no path to any Auth/Firestore
-//     mutation today. Activation is a later Owner gate (Row 22).
+//     command (functions/src/access/trustedWriterCommands.ts). CURRENT REPO
+//     TRUTH as of the Part 9 reconciliation (2026-08-15): implemented, exported
+//     (functions/src/index.ts), and -- unlike the stale "blocked on Issue #15"
+//     claim this comment used to make -- ACTUALLY DEPLOYED as a live Cloud
+//     Function in eos-platform-sandbox (DECISIONS.md #90 finding F-2, 2026-08-06).
+//     It remains undeployed to production only (DECISIONS.md #97 line 562). Its
+//     Permission (`admin.userStatus.write`, permissionCatalog.ts) carries no
+//     `active:false` gate and IS granted to the `admin` compatibility Role
+//     (compatibilityRoles.ts) -- so the catalog/Role layers are real, not a
+//     preview. Still shown disabled here, for an HONEST, different reason: (a)
+//     no governed target-user directory read exists for this action (the only
+//     comparable read, `listResetEligibleUsers`, is scoped and audited for
+//     credential-reset eligibility specifically -- reusing it here would record
+//     a false action in the immutable Audit Event trail), and (b) no principal
+//     in any environment yet holds a `roleAssignments` document (the governed
+//     migration step, `bootstrapCompatibilityAdmin`, exists in
+//     trustedWriterCommands.ts but is not exported/callable), so every call
+//     would deny today regardless. Wiring a real target-selection UI is a
+//     separate, later gate; this preview must not claim more than that.
 //
 // (2) Password reset (AUTH-UI-3, DECISIONS #56) -> the governed admin-initiated
 //     reset. Wired to the trusted callable via the client SEAM
@@ -127,8 +143,10 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
       <h3>Set user status</h3>
       <p className="fo-muted">
         Enabling or disabling a user calls the trusted <code>setUserStatus</code> command. It is
-        implemented and tested but not deployed as a callable Cloud Function yet, so these actions
-        are shown to preview the intended surface and cannot be triggered.
+        implemented, tested, and deployed as a live Cloud Function in some environments (not yet in
+        production). These actions stay disabled here because no governed target-user directory
+        read exists yet for this action, and no principal currently holds the access-record grant
+        every real call requires -- not because the backend is unbuilt.
       </p>
       <button type="button" disabled aria-disabled="true">
         Enable user

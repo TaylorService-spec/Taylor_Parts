@@ -2,7 +2,10 @@
 // technician mission view: shared context, per-unit readiness, honest UNKNOWN, load readiness, overall rollup.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCoordinatedFieldMission } from "../lib/fulfillment/coordinatedFieldMission.js";
+import { buildCoordinatedFieldMission, DONE, BLOCKED } from "../lib/fulfillment/coordinatedFieldMission.js";
+import { TRANSITIONS } from "../lib/transitionEngine.js";
+
+const CANONICAL_STATUSES = new Set(Object.keys(TRANSITIONS));
 
 const visit = (workOrders, extra = {}) => ({
   salesOrderId: "SO-1", customerId: "ACCT-1", locationId: "LOC-1", contextConsistent: true, workOrders, ...extra,
@@ -35,7 +38,7 @@ test("parts ATTENTION or unverified load ⇒ unit ATTENTION; blocked status ⇒ 
   assert.equal(attnParts.units[0].unitReadiness, "ATTENTION");
   const attnLoad = buildCoordinatedFieldMission(visit([u("W1", "CREATED")]), { W1: { partsReadiness: "READY", loadVerified: false } });
   assert.equal(attnLoad.units[0].unitReadiness, "ATTENTION");
-  const blocked = buildCoordinatedFieldMission(visit([u("W1", "BLOCKED")]), { W1: { partsReadiness: "READY", loadVerified: true } });
+  const blocked = buildCoordinatedFieldMission(visit([u("W1", "CANCELLED")]), { W1: { partsReadiness: "READY", loadVerified: true } });
   assert.equal(blocked.units[0].unitReadiness, "ATTENTION");
 });
 
@@ -53,7 +56,21 @@ test("overall progress + PARTIAL: 4 of 5 done and remaining ready ⇒ PARTIAL; 1
   const partial = buildCoordinatedFieldMission(visit([u("A", "COMPLETED"), u("B", "COMPLETED"), u("C", "COMPLETED"), u("D", "COMPLETED"), u("E", "CREATED")]), sig);
   assert.deepEqual(partial.progress, { total: 5, completed: 4, blocked: 0 });
   assert.equal(partial.missionReadiness, "PARTIAL");
-  const attn = buildCoordinatedFieldMission(visit([u("A", "COMPLETED"), u("B", "COMPLETED"), u("C", "COMPLETED"), u("D", "COMPLETED"), u("E", "BLOCKED")]), sig);
+  const attn = buildCoordinatedFieldMission(visit([u("A", "COMPLETED"), u("B", "COMPLETED"), u("C", "COMPLETED"), u("D", "COMPLETED"), u("E", "CANCELLED")]), sig);
   assert.equal(attn.progress.blocked, 1);
   assert.equal(attn.missionReadiness, "ATTENTION");
+});
+
+// Regression for PR #1030's audit finding (mirrors coordinatedVisit.test.mjs): BLOCKED used to contain
+// "BLOCKED" and "ON_HOLD", neither of which is a real WorkOrderStatus (types/workOrder.ts). Assert this
+// projection cannot depend on a nonexistent lifecycle state.
+test("regression: the projection cannot depend on a nonexistent lifecycle state", () => {
+  for (const status of DONE) {
+    assert.ok(CANONICAL_STATUSES.has(status), `DONE has non-canonical status "${status}"`);
+  }
+  for (const status of BLOCKED) {
+    assert.ok(CANONICAL_STATUSES.has(status), `BLOCKED has non-canonical status "${status}"`);
+  }
+  assert.equal(BLOCKED.has("BLOCKED"), false);
+  assert.equal(BLOCKED.has("ON_HOLD"), false);
 });

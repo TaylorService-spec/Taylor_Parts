@@ -6,11 +6,23 @@ import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 // (functions/src/access/trustedWriterCommands.ts), which is deliberately
 // restricted to NON-PRIVILEGED Roles only (ADR-005 sec2.4) -- so the
 // selectable list here excludes any Role marked `privileged` (today, only
-// `admin`). Same "visible but inert" treatment as AdminUsers.jsx: the command
-// is server-side only and not yet a deployed, callable Cloud Function
-// (Enterprise Access activation gate, Issue #226 Row 22 -- NOT Issue #15, whose
-// Functions are deployed). Activation is a separate, later Owner-authorized
-// gate (Row 22), not this PR.
+// `admin`).
+//
+// CURRENT REPO TRUTH (Part 9 reconciliation, 2026-08-15): this comment
+// previously claimed the command was "not yet a deployed, callable Cloud
+// Function" -- stale. `assignApprovedRole` IS deployed as a live Cloud
+// Function in eos-platform-sandbox (DECISIONS.md #90 finding F-2, 2026-08-06);
+// it remains undeployed to production only (DECISIONS.md #97 line 562). Its
+// Permission (`admin.roleAssignment.write`) carries no `active:false` gate and
+// IS granted to the `admin` compatibility Role (compatibilityRoles.ts). Still
+// shown disabled here for an HONEST reason: this surface has no trusted READ
+// path to list real principals/roleAssignments to act on (Row 11's read path,
+// separately gated -- see AdministrationUnavailable.jsx), and no principal in
+// any environment yet holds the `roleAssignments` document every real call
+// requires (the governed bootstrap step, `bootstrapCompatibilityAdmin`, exists
+// in trustedWriterCommands.ts but is not exported/callable). Activation of a
+// real, usable surface is a separate, later Owner-authorized gate (Row 22),
+// not this reconciliation.
 const ASSIGNABLE_ROLES = Object.values(COMPATIBILITY_ROLES).filter((role) => !role.privileged);
 
 export default function AdminRolesPermissions() {
@@ -28,9 +40,11 @@ export default function AdminRolesPermissions() {
       <h3>Assign an already-approved Role</h3>
       <p className="fo-muted">
         Assigning a Role calls the trusted <code>assignApprovedRole</code> command, limited to
-        non-privileged Roles only. It is implemented and tested but not deployed as a callable
-        Cloud Function yet, so this form is shown to preview the intended surface and cannot be
-        submitted.
+        non-privileged Roles only. It is implemented, tested, and deployed as a live Cloud
+        Function in some environments (not yet in production). This form stays disabled because
+        no trusted read exists yet to list real principals to act on, and no principal currently
+        holds the access-record grant every real call requires -- not because the backend is
+        unbuilt.
       </p>
       <select disabled aria-disabled="true" defaultValue="">
         <option value="" disabled>
