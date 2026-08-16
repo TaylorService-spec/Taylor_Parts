@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classifyCredentialPath } from "./credentialPathAudit.mjs";
+import { classifyCredentialPath, hasNoOpenAIInvolvement } from "./credentialPathAudit.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -21,7 +21,10 @@ test("every executable credential/provider occurrence is explicitly classified; 
     const source = readFileSync(resolve(root, path), "utf8");
     return {
       path: normalizedPath,
-      classification: classifyCredentialPath(normalizedPath, { auditToolingVerified: !hasExecutableCredentialBehavior(source) }),
+      classification: classifyCredentialPath(normalizedPath, {
+        auditToolingVerified: !hasExecutableCredentialBehavior(source),
+        noOpenAIInvolvement: hasNoOpenAIInvolvement(source),
+      }),
     };
   });
   assert.deepEqual(classified.filter((item) => item.classification === "UNSAFE/BYPASS"), []);
@@ -55,4 +58,35 @@ test("governed EOS transport delegates credential resolution only to broker.with
   const source = readFileSync(resolve(root, "docs/orchestration/lib/openaiCredentialTransport.mjs"), "utf8");
   assert.match(source, /broker\.withCredential\("OPENAI_REVIEW"/);
   assert.doesNotMatch(source, /process\.env|OPENAI_API_KEY|Authorization:\s*`Bearer/);
+});
+
+test("DEFECT GUARD: NON-OPENAI AUTH PATH is conditional, not a filename exemption", () => {
+  const p = "functions/_e2e.mjs";
+  // Holds only while the source has no OpenAI involvement.
+  assert.equal(classifyCredentialPath(p, { noOpenAIInvolvement: true }), "NON-OPENAI AUTH PATH");
+  // Add OpenAI code to that file and it fails closed again — the allowlist must never be able to
+  // hide a real credential path just because the filename was blessed once.
+  assert.equal(classifyCredentialPath(p, { noOpenAIInvolvement: false }), "UNSAFE/BYPASS");
+  assert.equal(classifyCredentialPath(p), "UNSAFE/BYPASS", "defaults to fail-closed when unverified");
+});
+
+test("hasNoOpenAIInvolvement detects real OpenAI usage in its many forms", () => {
+  assert.equal(hasNoOpenAIInvolvement("const t = `Bearer ${idToken}`"), true, "a plain Bearer header is not OpenAI");
+  for (const src of [
+    "process.env.OPENAI_API_KEY",
+    "fetch('https://api.openai.com/v1/chat/completions')",
+    "new OpenAI({ apiKey })",
+    "createOpenAICredentialTransport()",
+    "await invokeOpenAI(payload)",
+  ]) {
+    assert.equal(hasNoOpenAIInvolvement(src), false, `should detect: ${src}`);
+  }
+});
+
+test("the real functions/_e2e.mjs genuinely has no OpenAI involvement", () => {
+  // Verifies the CLAIM behind the classification against the actual file, so the comment in the
+  // allowlist cannot quietly drift away from the source it describes.
+  const source = readFileSync(resolve(root, "functions/_e2e.mjs"), "utf8");
+  assert.equal(hasNoOpenAIInvolvement(source), true);
+  assert.match(source, /Authorization:\s*`Bearer/, "and it does construct a Bearer header — that is why it is scanned");
 });
