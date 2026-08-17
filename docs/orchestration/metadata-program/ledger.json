@@ -1309,13 +1309,17 @@
       "title": "Bring permissionCatalog.ts under generation",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Unblocked; the generator is on main at c01c0531",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
-      "notes": "parityFixtures.ts is DONE (PR #1110) via a declared PLATFORM_SUBSTITUTIONS rule - the firebase-admin vs firebase import is a real platform boundary, unlike the artificial pathname, so substitution is the honest representation rather than a workaround. REMAINING: permissionCatalog.ts, whose client copy carries independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants to arrive as its own reviewable change. LESSON RECORDED FROM #1110: a round-trip generator check verifies that generation is REPRODUCIBLE, never that it is CORRECT - the substitution table was wired in wrong and --check passed green while the client module imported firebase-admin. Outcome assertions against the real world are required alongside any generator.",
-      "dependsOn": []
+      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes.",
+      "dependsOn": [],
+      "pr": 1117,
+      "headSha": "3f777ce91d7c650fcecb5fc430b7ea3b0958fb3e",
+      "branch": "feat/permission-catalog-generation",
+      "checks": "9/9 mirror integrity; 15/15 role parity; 26/26 catalog; both packages typecheck"
     },
     {
       "id": "A-METADATA-SPEC",
