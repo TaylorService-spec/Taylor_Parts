@@ -23,6 +23,7 @@ on:
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
+      - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -37,6 +38,7 @@ on:
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
+      - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -88,6 +90,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Account definition tests (node:test)
+        run: node --test test/metadataAccountDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: List grid renderer tests (vitest, jsdom)
         run: npx vitest run test/metadataListGrid.test.jsx

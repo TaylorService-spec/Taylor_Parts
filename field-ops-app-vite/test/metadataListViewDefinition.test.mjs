@@ -10,7 +10,7 @@ import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition, 
 import {
   LIST_SURFACE, SORT_DIRECTION, MAX_PAGE_SIZE, MAX_RELATED_ROWS,
   makeColumn, makeFilter, makeSort, makeSavedView, makeListViewDefinition,
-  validateListViewDefinition, requiredIndexes, indexKey, missingIndexes,
+  validateListViewDefinition, requiredIndexes, indexKey, missingIndexes, firestoreOrder,
 } from "../src/metadata/listViewDefinition.js";
 
 const field = (id, extra = {}) =>
@@ -239,8 +239,25 @@ test("requiredIndexes derives what a definition demands, tiebreaker last", () =>
   const [idx] = requiredIndexes(def, account());
   assert.equal(idx.collectionGroup, "accounts");
   assert.deepEqual(idx.fields.map((f) => f.fieldPath), ["status", "updatedAt", "__name__"]);
-  assert.equal(idx.fields.find((f) => f.fieldPath === "updatedAt").order, "DESC");
+  // Firestore's vocabulary, not the metadata layer's. A required index is something a
+  // human pastes into firestore.indexes.json, where ASC/DESC is rejected -- so a demand
+  // spelled the metadata way read correctly, compared unequal against every existing
+  // declaration, and would have failed the deploy of the fix it asked for.
+  assert.equal(idx.fields.find((f) => f.fieldPath === "updatedAt").order, "DESCENDING");
   assert.equal(idx.requiredBy, "account.index");
+});
+
+test("a declaration written ASCENDING and a demand written ASC are ONE index, not two", () => {
+  const declared = { collectionGroup: "accounts", fields: [{ fieldPath: "status", order: "ASCENDING" }] };
+  const demanded = { collectionGroup: "accounts", fields: [{ fieldPath: "status", order: "ASC" }] };
+  assert.equal(indexKey(declared), indexKey(demanded));
+});
+
+test("firestoreOrder translates both spellings and defaults to ascending", () => {
+  assert.equal(firestoreOrder("DESC"), "DESCENDING");
+  assert.equal(firestoreOrder("DESCENDING"), "DESCENDING");
+  assert.equal(firestoreOrder("ASC"), "ASCENDING");
+  assert.equal(firestoreOrder(undefined), "ASCENDING");
 });
 
 test("range filters are ordered after equality filters, per Firestore's own constraint", () => {
