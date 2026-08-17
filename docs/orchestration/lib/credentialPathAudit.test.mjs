@@ -54,9 +54,13 @@ test("known broker/runtime paths retain explicit classification", () => {
   assert.equal(classifyCredentialPath("docs/orchestration/lib/openaiCredentialTransport.mjs"), "AUTHORIZED BROKER PATH");
 });
 
-test("governed EOS transport delegates credential resolution only to broker.withCredential", () => {
+test("governed EOS transport delegates credential resolution only to broker.withCredential, over a fixed capability allowlist", () => {
   const source = readFileSync(resolve(root, "docs/orchestration/lib/openaiCredentialTransport.mjs"), "utf8");
-  assert.match(source, /broker\.withCredential\("OPENAI_REVIEW"/);
+  // The capability passed to broker.withCredential is never a free-form/caller-influenced string — it is
+  // validated against a fixed, source-verified allowlist (KNOWN_TRANSPORT_CAPABILITIES) before use.
+  assert.match(source, /const KNOWN_TRANSPORT_CAPABILITIES = Object\.freeze\(\[\s*"OPENAI_REVIEW",\s*"OPENAI_PATCH_PRODUCER"\s*\]\)/);
+  assert.match(source, /if \(!KNOWN_TRANSPORT_CAPABILITIES\.includes\(capability\)\) throw/);
+  assert.match(source, /broker\.withCredential\(capability,/);
   assert.doesNotMatch(source, /process\.env|OPENAI_API_KEY|Authorization:\s*`Bearer/);
 });
 
