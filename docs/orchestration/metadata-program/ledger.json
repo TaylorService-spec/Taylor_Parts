@@ -606,10 +606,10 @@
       "title": "Entity List Metadata v1 runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1096,
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a79"
@@ -618,7 +618,8 @@
       "pr": 1115,
       "headSha": "bd7872117dde907eb2ec215a6abd2913b973a94d",
       "branch": "feat/entity-list-metadata-v1",
-      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test"
+      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test",
+      "mergeSha": "2c673e16"
     },
     {
       "id": "A-PAGE-RUNTIME",
@@ -632,7 +633,7 @@
       "dependsOn": [],
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "pr": 1118,
-      "headSha": "2151a2b4a31555d007a14c1565f0d867b395b604",
+      "headSha": "93f0d326ee40905ce61a0a0032448e1b3fa5d005",
       "branch": "feat/page-definition-contract",
       "checks": "21/21 tests incl. the conditional compositionMode rule; oxlint + tsc clean",
       "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'."
@@ -653,7 +654,7 @@
         "DECISIONS #102 \u00a78"
       ],
       "pr": 1116,
-      "headSha": "0a39f32f3340289b475c5e1dca931d1e803b4a9a",
+      "headSha": "1a73d99920560148ce19fa6f2c60543491760e90",
       "branch": "feat/metadata-registries",
       "checks": "15/15 tests; oxlint + tsc clean; registered in workflow and npm test",
       "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime."
@@ -666,10 +667,10 @@
       "title": "Gate A \u2014 metadata foundation review package",
       "domain": "program",
       "entity": "n/a",
-      "status": "REVIEW_QUEUED",
+      "status": "MERGED",
       "gate": "GATE_A",
       "dependsOn": [],
-      "nextAction": "Closing condition met: the ruling is recorded in the package",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "program ruling \u00a74"
       ],
@@ -677,7 +678,8 @@
       "headSha": "bad4c0b0627e02fc757a9a1b05a65d4978e85c90",
       "branch": "docs/gate-a-review-package",
       "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning. RULING RECORDED in section 6 of the package, which was Gate A's stated closing condition. The package also keeps its 'what Gate A does not settle' list unchanged, so closure is not read as broader approval - the index CI bridge in particular remains unwired.",
-      "checks": "docs only"
+      "checks": "docs only",
+      "mergeSha": "64736d50"
     },
     {
       "id": "G-GATE-B",
@@ -1328,12 +1330,12 @@
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
-      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes.",
+      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes. CI DIAGNOSIS: the Effective Access Feed failure was NOT a test failure. The job died in 'Set up job' with HTTP 429 downloading actions/setup-java after three retries - GitHub infrastructure rate-limiting, consistent with the sustained 503s on the API at the same time. The tests never ran. Confirmed by re-running the SAME head, which then passed, and by main being green on that workflow throughout. Worth remembering: an earlier head on this branch passed and a later one failed, which reads exactly like a regression and was not one - always read the log before believing the pattern.",
       "dependsOn": [],
       "pr": 1117,
-      "headSha": "6f5f1454883edad09c7d2d9f249745ec06f48bd6",
+      "headSha": "22f48184d135a5e099782c75b19bacaab1df19fd",
       "branch": "feat/permission-catalog-generation",
-      "checks": "9/9 mirror integrity; 15/15 role parity; 26/26 catalog; both packages typecheck"
+      "checks": "32 pass / 1 pending after rerun; Effective Access Feed green at the reconciled head"
     },
     {
       "id": "A-METADATA-SPEC",
@@ -1365,10 +1367,9 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1",
         "A-REGISTRIES"
       ],
-      "nextAction": "Build after the contract and registries are on main",
+      "nextAction": "List contract is on main (2c673e16); still needs the registries",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
     },
     {
@@ -1414,9 +1415,9 @@
       "title": "Opportunity human identity (name + immutable reference)",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 section 3 - both name and number"
       ],
@@ -1424,7 +1425,8 @@
       "pr": 1120,
       "headSha": "e6526d85634ff9d833b2c6489777164cbec51ac2",
       "branch": "feat/opportunity-identity",
-      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow"
+      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow",
+      "mergeSha": "3fdf1ccf"
     },
     {
       "id": "D-OPPORTUNITY-NAME-AND-WIRING",
