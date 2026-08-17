@@ -35,6 +35,15 @@ const account = () => makeEntityDefinition({
       fromEntityId: "account", toEntityId: "opportunity",
       viaField: "accountId", cardinality: "ONE_TO_MANY",
     }),
+    // Reaches ACCOUNT, so a RELATED list of accounts can honestly be scoped by it. The
+    // fixture previously scoped an account list by account.opportunities, which points at
+    // opportunities -- incoherent, and only accepted because the old rule checked that an
+    // id existed rather than that the edge arrived here.
+    makeRelationshipDefinition({
+      id: "parentAccount.children", label: "Child accounts",
+      fromEntityId: "account", toEntityId: "account",
+      viaField: "parentAccountId", cardinality: "ONE_TO_MANY",
+    }),
   ],
 });
 
@@ -147,27 +156,62 @@ test("a RELATED list without parentRelationshipId would render every record of t
   assert.ok(p.some((x) => /every record of the target entity/.test(x)));
 });
 
-test("a RELATED list's parent relationship must exist on the entity", () => {
+test("a RELATED list's parent relationship must REACH the entity it lists", () => {
   const def = makeListViewDefinition({
     id: "r", entityId: "account", label: "Things", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
     parentRelationshipId: "account.phantom", viewAllListId: "x.index",
   });
-  assert.ok(validateListViewDefinition(def, account()).some((x) => /is not a relationship on account/.test(x)));
+  assert.ok(validateListViewDefinition(def, account()).some((x) => /is not a relationship reaching account/.test(x)));
+});
+
+test("a relationship pointing AWAY from the listed entity is not a parent scope", () => {
+  // account.opportunities reaches opportunities, so it cannot scope a list OF accounts.
+  // The old rule accepted it because an id by that name existed — which is how a section
+  // could be declared scoped by an edge that goes somewhere else entirely.
+  const def = makeListViewDefinition({
+    id: "r", entityId: "account", label: "Things", surface: "RELATED",
+    columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
+    parentRelationshipId: "account.opportunities", viewAllListId: "x.index",
+  });
+  assert.ok(validateListViewDefinition(def, account()).some((x) => /is not a relationship reaching account/.test(x)));
+});
+
+test("a parent-side edge resolves when the declaring entity's relationships are supplied", () => {
+  // The real shape: account.contacts is declared on Account and scopes a list OF contacts.
+  // Searching only the child made every genuine related list unvalidatable.
+  const contact = makeEntityDefinition({
+    id: "contact", label: "Contact", collection: "contacts",
+    identity: makeIdentity({ nameField: "name" }),
+    fields: [makeFieldDefinition({ id: "name", entityId: "contact", label: "Name", type: "STRING" })],
+  });
+  const def = makeListViewDefinition({
+    id: "account.contacts", entityId: "contact", label: "Contacts", surface: "RELATED",
+    columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
+    parentRelationshipId: "account.contacts", viewAllListId: "contact.index",
+  });
+  const parentRelationships = [
+    makeRelationshipDefinition({
+      id: "account.contacts", label: "Contacts", fromEntityId: "account",
+      toEntityId: "contact", viaField: "accountId", cardinality: "ONE_TO_MANY",
+    }),
+  ];
+  assert.ok(validateListViewDefinition(def, contact).some((x) => /is not a relationship reaching contact/.test(x)));
+  assert.deepEqual(validateListViewDefinition(def, contact, parentRelationships), []);
 });
 
 test("a RELATED list must be able to hand off, and is capped", () => {
   const withoutHandoff = makeListViewDefinition({
     id: "r", entityId: "account", label: "Opportunities", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
-    parentRelationshipId: "account.opportunities",
+    parentRelationshipId: "parentAccount.children",
   });
   assert.ok(validateListViewDefinition(withoutHandoff, account()).some((x) => /requires viewAllListId/.test(x)));
 
   const tooMany = makeListViewDefinition({
     id: "r", entityId: "account", label: "Opportunities", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: MAX_RELATED_ROWS + 1,
-    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    parentRelationshipId: "parentAccount.children", viewAllListId: "opportunity.index",
   });
   assert.ok(validateListViewDefinition(tooMany, account()).some((x) => /at most 25 rows/.test(x)));
 });
@@ -176,20 +220,20 @@ test("one definition serves both surfaces — a RELATED section is a lighter con
   const related = makeListViewDefinition({
     id: "account.opportunities.related", entityId: "account", label: "Opportunities", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
-    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    parentRelationshipId: "parentAccount.children", viewAllListId: "opportunity.index",
   });
   assert.deepEqual(validateListViewDefinition(related, account()), []);
   assert.deepEqual(validateListViewDefinition(baseIndex(), account()), []);
 });
 
 test("surface-specific fields are rejected on the wrong surface", () => {
-  const idxWithParent = baseIndex({ parentRelationshipId: "account.opportunities" });
+  const idxWithParent = baseIndex({ parentRelationshipId: "parentAccount.children" });
   assert.ok(validateListViewDefinition(idxWithParent, account()).some((x) => /only on a RELATED list/.test(x)));
 
   const relWithViews = makeListViewDefinition({
     id: "r", entityId: "account", label: "Opps", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
-    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    parentRelationshipId: "parentAccount.children", viewAllListId: "opportunity.index",
     savedViews: [makeSavedView({ id: "v", label: "V" })],
   });
   assert.ok(validateListViewDefinition(relWithViews, account()).some((x) => /belong to INDEX surfaces/.test(x)));

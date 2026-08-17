@@ -2,6 +2,7 @@ import {
   makeEntityDefinition,
   makeFieldDefinition,
   makeIdentity,
+  makeRelationshipDefinition,
 } from "../entityDefinition.js";
 import {
   makeColumn,
@@ -109,6 +110,32 @@ export const accountEntity = makeEntityDefinition({
       label: "Tags",
       type: "STRING",
       description: "Free-form labels. Filtering is not claimed until the index exists.",
+    }),
+  ],
+  // Outbound relationships live on the OWNING entity, which is what stops one edge being
+  // declared twice with two different viaFields.
+  relationships: [
+    makeRelationshipDefinition({
+      id: "account.contacts",
+      label: "Contacts",
+      fromEntityId: "account",
+      toEntityId: "contact",
+      viaField: "accountId",
+      cardinality: "ONE_TO_MANY",
+      // No traversalCapability: nothing gates contacts by capability today. Rules admit
+      // admin and dispatcher by ROLE, and declaring an authority nothing enforces would be
+      // a false statement about the system rather than a stricter one.
+    }),
+    makeRelationshipDefinition({
+      id: "account.opportunities",
+      label: "Opportunities",
+      fromEntityId: "account",
+      toEntityId: "opportunity",
+      viaField: "accountId",
+      cardinality: "ONE_TO_MANY",
+      // Traversal carries the TARGET's authority. Reading an account does not entitle a
+      // viewer to its pipeline -- the disclosure a LOOKUP would launder, one level up.
+      traversalCapability: "opportunity.read",
     }),
   ],
 });

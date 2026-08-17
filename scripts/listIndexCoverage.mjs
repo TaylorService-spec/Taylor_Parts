@@ -155,6 +155,27 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "workOrder.index",
   }),
+  // contact.* and opportunity.* definitions.
+  Object.freeze({
+    collectionGroup: "contacts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "accountId", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "contact.index",
+  }),
+  Object.freeze({
+    collectionGroup: "opportunities",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "stage", order: "ASCENDING"},
+      {fieldPath: "expectedCloseAt", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "opportunity.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -216,6 +237,8 @@ export function findAuthoredDefinitions(root = FRONTEND_SRC) {
 export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/account.js",
   "field-ops-app-vite/src/metadata/definitions/workOrder.js",
+  "field-ops-app-vite/src/metadata/definitions/contact.js",
+  "field-ops-app-vite/src/metadata/definitions/opportunity.js",
 ]);
 
 export function findUnregisteredDefinitions(authored, registered = REGISTERED_DEFINITION_SOURCES) {

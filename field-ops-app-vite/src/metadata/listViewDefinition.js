@@ -127,7 +127,20 @@ export function makeListViewDefinition(input = {}) {
  * nobody checked exist is precisely the metadata-that-lies problem, and validating a
  * definition in isolation would give false confidence.
  */
-export function validateListViewDefinition(def, entity) {
+/**
+ * Find the relationship a RELATED list is scoped by.
+ *
+ * Looks in the supplied relationship set FIRST (the parent's), then the child's own, so a
+ * correctly-declared parent-side edge resolves and nothing that already worked breaks.
+ * A match must actually reach this entity — an edge pointing somewhere else is not a
+ * parent scope, it is a different relationship with a colliding id.
+ */
+export function findParentRelationship(def, entity, relationships = []) {
+  const candidates = [...relationships, ...(entity?.relationships ?? [])];
+  return candidates.find((r) => r.id === def.parentRelationshipId && r.toEntityId === entity?.id) ?? null;
+}
+
+export function validateListViewDefinition(def, entity, relationships = []) {
   const problems = [];
   const at = def?.id ? `list ${def.id}` : "list (no id)";
 
@@ -224,8 +237,15 @@ export function validateListViewDefinition(def, entity) {
         `${at}: a RELATED list requires parentRelationshipId — without it the section has no parent key and ` +
           `would render every record of the target entity`
       );
-    } else if (!(entity.relationships ?? []).some((r) => r.id === def.parentRelationshipId)) {
-      problems.push(`${at}: parentRelationshipId "${def.parentRelationshipId}" is not a relationship on ${entity.id}`);
+    } else if (!findParentRelationship(def, entity, relationships)) {
+      // Resolved from the PARENT's declarations, not the child's. An edge is declared on
+      // its owning entity — account.contacts lives on Account — while the list it scopes
+      // renders the child. Searching only the child made every real related list
+      // unvalidatable, which is why the first multi-entity definitions found it.
+      problems.push(
+        `${at}: parentRelationshipId "${def.parentRelationshipId}" is not a relationship reaching ${entity.id}. ` +
+          "Pass the declaring entity's relationships as the third argument."
+      );
     }
     if (!def.viewAllListId) {
       problems.push(`${at}: a RELATED list requires viewAllListId — a capped section must be able to hand off to the full list`);
