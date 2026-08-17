@@ -1980,15 +1980,15 @@
       "phase": "6",
       "wave": "3",
       "kind": "AUDIT",
-      "title": "An unpushed agent worktree does not survive a session boundary",
+      "title": "A background agent outlives its dispatching context; absence of a branch is not death",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Require push-before-handoff in the writer dispatch contract, and treat an unpushed lane as lost rather than resumable",
+      "status": "COMPLETE",
+      "nextAction": "Corrected. Check for running agents before concluding a lane is lost.",
       "governing": [
         "Owner agent isolation execution rule"
       ],
-      "notes": "Found at resumption. A writer lane dispatched near the end of a context had not pushed when the session ended; its isolated worktree went with the session and the work was unrecoverable. Nothing was corrupted - the isolation held - but the work simply did not exist anywhere durable. The isolation rule already says a worktree is removed only after its commits are PRESERVED; this is the same principle at the other end, at dispatch: a lane's output is durable only once pushed, so push-before-handoff belongs in the dispatch contract rather than in the writer's discretion. The cost of the failure is bounded and obvious - redo the lane - which is why this is an audit item rather than a protected one. Re-dispatched lanes should be told explicitly to push, as the second employee dispatch was."
+      "notes": "CORRECTED RECORD. This entry originally claimed a writer lane had been LOST because its worktree died with the session. That did not happen, and the claim was mine, not an agent's. At resumption I ran ls-remote for the lane's branch, saw nothing, and concluded the work was gone. The agent was simply still RUNNING in the background: it pushed 54cb84e9 minutes later, and its completion notification arrived after I had already re-dispatched a replacement. Nothing was lost; I checked too early and inferred death from a single point-in-time absence. The cost was a duplicated lane -- the replacement independently reached the same conclusions, found the pushed branch when its own push was rejected non-fast-forward, correctly refused to overwrite superior work, and reported instead. THE REAL LESSON: a background agent can outlive the context that dispatched it, so 'no branch on origin' is evidence of nothing on its own. Check whether the lane is still running before concluding loss, and prefer waiting to re-dispatching. The push-before-handoff practice recorded as rule 9a remains sound guidance on its own merits, but it was NOT earned by this incident, and the rule now says so."
     }
   ]
 }

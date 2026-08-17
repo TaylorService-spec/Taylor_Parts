@@ -122,18 +122,27 @@ A worker worktree is removed only once its useful commits are preserved, its PR/
 disposition is known, and uncommitted state is accounted for. Remote branches holding
 unmerged evidence are not deleted unless that is the intent.
 
-## 9a. Push before handoff
+## 9a. Push before handoff — and do not mistake a running lane for a dead one
 
-A lane's output is durable only once **pushed**. An isolated worktree lives with the
-session that created it, so a writer that finishes without pushing has produced nothing
-recoverable — the isolation held, and the work simply did not exist anywhere.
+A lane's output is durable only once **pushed**, so push-before-handoff belongs in the
+dispatch contract rather than in the writer's discretion. That guidance stands on its own
+merits.
 
-This is §9's principle at the other end of the lane. Cleanup waits until commits are
-preserved; dispatch must equally require that they *become* preserved. Push-before-handoff
-belongs in the dispatch contract, not in the writer's discretion.
+**It was not, however, earned by the incident originally recorded here, and that matters.**
+The controller concluded a lane had been lost because `ls-remote` showed no branch at
+resumption. The lane had not died with its session — it was still **running in the
+background**, and pushed minutes later. A replacement was dispatched in the meantime,
+independently reached the same conclusions, discovered the real branch when its own push
+was rejected non-fast-forward, and correctly refused to overwrite the earlier work.
 
-An unpushed lane is **lost, not resumable**. Re-dispatch it clean rather than trying to
-reconstruct it, and tell the replacement explicitly to push.
+Nothing was lost. The cost was a duplicated lane and a governance entry resting on an event
+that did not occur, which is why the record was corrected rather than quietly kept.
+
+**The real rule:** a background agent can outlive the context that dispatched it. The
+absence of a branch is evidence of nothing by itself. Before concluding a lane is lost,
+check whether it is still running — and prefer waiting to re-dispatching, because two
+writers converging on one task is the contention the lane model exists to prevent, arriving
+by a different route.
 
 ## 10. What the tooling cannot do
 
