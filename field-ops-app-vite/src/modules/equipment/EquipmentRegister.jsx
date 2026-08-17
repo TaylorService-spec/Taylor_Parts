@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
+import { useAccountPicker } from "../../hooks/useAccountPicker";
+import { EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
@@ -32,7 +32,12 @@ import { equipmentStatusTone } from "../../domain/equipment";
 // and ordering all run through the E1 domain helpers. No per-record query loop.
 
 export default function EquipmentRegister() {
-  const { data: accounts, loading: accountsLoading, error: accountsError } = useFirestoreCollection(ACCOUNTS_COLLECTION);
+  // BOUNDED (§9): capped read that discloses truncation rather than silently offering
+  // a subset the user would read as "all customers".
+  const accountPicker = useAccountPicker();
+  const accounts = accountPicker.options;
+  const accountsLoading = accountPicker.loading;
+  const accountsError = accountPicker.error;
   const [accountId, setAccountId] = useState("");
   const [term, setTerm] = useState("");
   const [locationId, setLocationId] = useState("");

@@ -89,11 +89,83 @@ export function reportCoverage({ demands = [], declared = [] } = {}) {
 // merely idle.
 export const REGISTERED_LIST_DEMANDS = Object.freeze([]);
 
+// ---------------------------------------------------------------------------
+// Registration completeness.
+//
+// The list above is explicit, which is honest but leaves one hole: a definition
+// somebody authors and forgets to register here is INVISIBLE to the coverage check,
+// and an invisible definition looks exactly like a covered one. That is the same
+// class of failure the coverage gate exists to prevent, one level up.
+//
+// So the gate also asks the inverse question -- is anything authored but unregistered?
+// -- by scanning source text rather than importing across the package boundary. Text
+// scanning is the weaker technique and it is chosen deliberately: importing frontend
+// modules from scripts/ would work today and become a build-tooling question the moment
+// the frontend moves, which is the trade the access-contract generator already declined.
+//
+// Tests and the contract module itself construct definitions for their own purposes and
+// are not surfaces, so they are excluded by path, not by guessing from content.
+
+const FRONTEND_SRC = path.join(REPO_ROOT, "field-ops-app-vite", "src");
+
+/** Paths that construct definitions without being a surface's definition. */
+const NOT_A_SURFACE = [
+  path.join("metadata", "listViewDefinition.js"),
+];
+
+/** Source files that author a ListViewDefinition, repo-relative. */
+export function findAuthoredDefinitions(root = FRONTEND_SRC) {
+  const found = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(js|jsx|ts|tsx)$/.test(entry.name)) continue;
+      if (NOT_A_SURFACE.some((suffix) => full.endsWith(suffix))) continue;
+      if (!fs.readFileSync(full, "utf8").includes("makeListViewDefinition(")) continue;
+      found.push(path.relative(REPO_ROOT, full).split(path.sep).join("/"));
+    }
+  };
+  walk(root);
+  return found.sort();
+}
+
+/**
+ * Source files whose definitions are accounted for in REGISTERED_LIST_DEMANDS.
+ *
+ * Kept as a separate list from the demands themselves so that registering a definition
+ * is a deliberate act with a name attached, rather than a side effect of adding a row.
+ */
+export const REGISTERED_DEFINITION_SOURCES = Object.freeze([]);
+
+export function findUnregisteredDefinitions(authored, registered = REGISTERED_DEFINITION_SOURCES) {
+  const known = new Set(registered);
+  return authored.filter((file) => !known.has(file));
+}
+
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
   const check = process.argv.includes("--check");
   const declared = readDeclaredIndexes();
   const report = reportCoverage({ demands: REGISTERED_LIST_DEMANDS, declared });
+
+  const unregistered = findUnregisteredDefinitions(findAuthoredDefinitions());
+  if (unregistered.length) {
+    console.error(`List definitions authored but not registered with this check (${unregistered.length}):`);
+    for (const file of unregistered) console.error(`  - ${file}`);
+    console.error("\nAdd each to REGISTERED_DEFINITION_SOURCES and its demands to REGISTERED_LIST_DEMANDS.");
+    console.error("An unregistered definition is invisible here, which looks identical to a covered one.");
+    if (check) process.exit(1);
+  }
 
   if (report.uncovered.length) {
     console.error(`Undeclared composite indexes required by list definitions (${report.uncovered.length}):`);

@@ -21,22 +21,26 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
   push:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
   workflow_dispatch:
 
@@ -63,6 +67,10 @@ jobs:
         run: node --test test/metadataEntityDefinition.test.mjs
         working-directory: field-ops-app-vite
 
+      - name: List presentation model tests (node:test)
+        run: node --test test/metadataListPresentation.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: List runtime query core tests (node:test)
         run: node --test test/metadataListRuntime.test.mjs
         working-directory: field-ops-app-vite
@@ -78,6 +86,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Record page renderer tests (vitest, jsdom)
+        run: npx vitest run test/metadataRecordPage.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata

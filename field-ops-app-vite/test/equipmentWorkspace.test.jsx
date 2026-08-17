@@ -32,6 +32,14 @@ vi.mock("../src/hooks/useAvailableEquipmentSource", () => ({
 // vi.mock pattern as dispatchSurfacesErrorState.test.jsx) so switching to the tab
 // never touches firebase; empty results are enough to prove the tab renders the
 // register's own account-first prompt rather than being unreachable/blank.
+// EquipmentRegister now reads accounts through the BOUNDED picker hook rather than the
+// unbounded collection hook (§9). The mock follows the component, returning the picker's
+// shape: options plus an interpreted state. Left as useFirestoreCollection, the component
+// would sit in LOADING forever and the test would fail for a reason unrelated to what it
+// asserts.
+vi.mock("../src/hooks/useAccountPicker", () => ({
+  useAccountPicker: () => ({ state: "EMPTY", options: [], truncated: false, message: null, loading: false, error: null }),
+}));
 vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentForAccount: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useLocationsForAccount", () => ({ useLocationsForAccount: () => ({ data: [], loading: false, error: null, retry: vi.fn() }) }));
