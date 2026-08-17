@@ -120,7 +120,16 @@ export function runIntakeExecution({
   // is the pre-execution-authorization ↔ post-execution-proof seam — classifyCompletion below still validates
   // the receipts AFTER the worker ran; it just validates the ones the grant could actually produce.
   // requestedContract/execContract were derived above the wake — the SAME contract the worker was handed.
-  const workerEvidence = (wake.result && typeof wake.result === "object" && wake.result.evidence && typeof wake.result.evidence === "object") ? wake.result.evidence : {};
+  // The wake parses the worker's structured evidence out of its result TEXT and hands it over directly.
+  // (The old shape read wake.result.evidence, but wake.result is a string — that check could never be true,
+  // so no worker could ever satisfy a receipts requirement. The object form is still honoured for any
+  // caller that injects an already-structured result.)
+  // Extracted evidence wins ONLY when the wake actually found a block; otherwise fall through to an
+  // already-structured result. The wake always sets `workerEvidence` (empty when nothing was found), so
+  // keying on `workerEvidenceFound` is what keeps the structured-result path alive instead of shadowing it.
+  const workerEvidence = wake.workerEvidenceFound === true && wake.workerEvidence && typeof wake.workerEvidence === "object"
+    ? wake.workerEvidence
+    : ((wake.result && typeof wake.result === "object" && wake.result.evidence && typeof wake.result.evidence === "object") ? wake.result.evidence : {});
   const completion = classifyCompletion({
     processSucceeded: wake.outcome === "SPAWNED_COMPLETED",
     runtimeTermination: wake.runtimeTermination || (wake.outcome === "SPAWNED_COMPLETED" ? "NORMAL" : "PROCESS_ERROR"),
