@@ -2088,13 +2088,14 @@
       "entity": "Account",
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
-      "status": "IMPLEMENTING",
-      "nextAction": "Wiring lane dispatched; may return a blocker if no client-side capability resolver exists.",
+      "status": "MERGED",
+      "nextAction": "Partial wiring merged. Related lists and field groups need renderer support first.",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "notes": "The definition exists and validates; AccountDetail.jsx is untouched. Wiring needs five component ids registered in componentRegistry - accountHealthStrip, accountFinancialsSection, accountActivityAndNotesSection, accountServiceActivity, accountAttentionSection - since a definition may only name a REGISTERED component id, never a function. The visibility path must keep failing closed: pageRuntime applies caller-supplied decisions and an empty map hides every gated section rather than revealing it. DISPATCHED at f18b0e83. The brief forbids inventing a resolver or passing a permissive default: an empty decision map HIDING sections is correct fail-closed behaviour, while an all-true map is a security defect. If no suitable client-side resolver exists the lane must STOP and report rather than substitute one. It may also choose partial wiring over a full swap - a partial honest wiring beats a full one that silently changes what a user sees.",
-      "branch": "feat/account-page-wiring"
+      "notes": "The definition exists and validates; AccountDetail.jsx is untouched. Wiring needs five component ids registered in componentRegistry - accountHealthStrip, accountFinancialsSection, accountActivityAndNotesSection, accountServiceActivity, accountAttentionSection - since a definition may only name a REGISTERED component id, never a function. The visibility path must keep failing closed: pageRuntime applies caller-supplied decisions and an empty map hides every gated section rather than revealing it. DISPATCHED at f18b0e83. The brief forbids inventing a resolver or passing a permissive default: an empty decision map HIDING sections is correct fail-closed behaviour, while an all-true map is a security defect. If no suitable client-side resolver exists the lane must STOP and report rather than substitute one. It may also choose partial wiring over a full swap - a partial honest wiring beats a full one that silently changes what a user sees. MERGED (#1191, ac1a979f) as a PARTIAL wiring, and the reason is the valuable part. All five component ids are registered; three are wired live. Account Attention was registered, tested, and then DELIBERATELY NOT WIRED: it is the only section in the SIDE region, so when finance.read denies, MetadataRecordPage's 'zero visible sections means DENIED' rule would replace the component's graceful per-source degradation with a page-level failure state. An existing fail-closed test caught that during wiring and the lane reverted rather than shipping it. The capability resolver composes the SANCTIONED primitives that useReportCapabilities and useOpportunityCapabilities already use, requesting exactly the ids declaredPageCapabilities returns rather than a hand-typed list, and denying everything while loading, signed out or erroring. One regression was found and fixed rather than shipped: metadata-rendered sections had lost their 16px gap because each region is now its own wrapper, so a metadata-rendered page would have been recognisable by its spacing.",
+      "pr": 1191,
+      "mergeSha": "ac1a979f"
     },
     {
       "id": "S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS",
@@ -2112,6 +2113,21 @@
         "Owner leaf-ownership addendum"
       ],
       "notes": "THE TWO ENTITIES TOOK OPPOSITE POSITIONS ON THE SAME QUESTION, correctly. Warehouse does NOT declare its governed provenance pack: the schema exists as a TypeScript type, but both producers describe themselves as production-inert with no caller and are not exported from the functions index, so declaring eight fields no live write path produces would describe an intention rather than the system. Supplier DOES declare its pack, because supplierMasterCommands is a real exported write path - the same posture part.js takes. Supplier is also the FIRST entity here whose provenance is genuine Firestore Timestamps rather than epoch millis, and it says so rather than quietly matching the others. Same question, different answers, because the evidence differs. TWO REFUSALS: warehouse.location stays a plain STRING and is explicitly NOT a REFERENCE to the registered `location` entity - it is free text about a building, and the shared word would have made a REFERENCE a plausible-looking lie. supplier.vendorNumber stays an ordinary optional STRING rather than a referenceField, since promoting an unenforced non-unique field licenses the document-id fallback #106 forbids. OPEN EDGES recorded rather than invented: warehouse has no outbound edges because stock_locations, transfer_orders and mobile_locations all carry a warehouseId but none has a registered entity to own the edge; supplier.partSupplierItems is a real edge waiting on a partSupplierItem entity that does not exist."
+    },
+    {
+      "id": "A-RECORD-PAGE-RENDERER-GAPS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Three renderer gaps the first real wiring exposed",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "notes": "Found by wiring a real page rather than by review. (1) No listResolver/listRenderer wiring exists, so RELATED_LIST sections cannot render through the metadata path yet - four Account sections wait on it. (2) There is no generic FIELD_GROUP renderer, so a componentId-less FIELD_GROUP renders EMPTY rather than failing loudly, which is the worse of the two failure modes. (3) The 'zero visible sections means DENIED' rule is right for a whole page but wrong for a REGION containing one gated section: it converts a component's graceful per-source degradation into a page-level denial. The Attention section is the concrete case and is why it stayed hand-rendered."
     }
   ]
 }
