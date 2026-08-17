@@ -2276,6 +2276,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    no separate mobile component, so there is one source of truth for the composition. */
 .fo-account-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 18px; align-items: start; }
 .fo-account-primary, .fo-account-secondary { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* Metadata record-page regions. MetadataRecordPage renders each region as its own
+   wrapper, so a region's sections are no longer direct children of .fo-account-primary
+   and stopped inheriting its 16px gap -- sections rendered through the metadata path
+   sat flush against each other while hand-rendered ones did not. Same value, so a
+   section looks identical whichever path renders it; a metadata-rendered page must not
+   be recognisable by its spacing. */
+.fo-record-header, .fo-record-highlights, .fo-record-main, .fo-record-footer {
+  min-width: 0; display: flex; flex-direction: column; gap: 16px;
+}
 .fo-account-health { margin: 12px 0 18px; }
 .fo-stat-label { font-size: 0.85em; }
 .fo-stat-value { font-size: 1.15em; font-weight: 600; }

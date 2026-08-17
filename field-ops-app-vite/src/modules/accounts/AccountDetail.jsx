@@ -13,13 +13,10 @@ import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
-import ServiceActivitySection from "./ServiceActivitySection";
 import AccountOpportunitiesSection from "./AccountOpportunitiesSection";
 import AccountSalesOrdersSection from "./AccountSalesOrdersSection";
-import AccountFinancialsSection from "./AccountFinancialsSection";
 import AccountHealthStrip from "./AccountHealthStrip";
 import AccountAttentionSection from "./AccountAttentionSection";
-import ActivityAndNotesSection from "./ActivityAndNotesSection";
 import { useAccountAr } from "../../hooks/useAccountAr";
 import { accountArView } from "../../domain/accountArView";
 import { useAccountWorkOrderCount } from "../../hooks/useAccountServiceActivity";
@@ -34,6 +31,22 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { useAuth } from "../../auth/AuthContext";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import {
+  accountRecordPageMainSubset,
+  useAccountPageCapabilityDecisions,
+} from "../../metadata/definitions/accountPageComponents.js";
+
+// X-ACCOUNT-PAGE-WIRING -- Financials / Activity & Notes / Service Activity (the MAIN-column
+// componentId sections, in accountPage.js's own order) now render through MetadataRecordPage
+// against the real accountRecordPage definition (definitions/accountPage.js), using a subset of
+// its sections -- see accountPageComponents.js's WIRING SCOPE note for exactly what remains
+// hand-rendered below and why (the header identity, health strip, Account Attention, the four
+// RELATED_LIST sections, and the two FIELD_GROUP sections). Capability decisions come from
+// useAccountPageCapabilityDecisions, the same trusted resolveEffectiveAccessCallable-backed,
+// fail-closed gate access/useReportCapabilities.js already uses, requesting exactly the ids
+// accountRecordPage declares.
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -174,10 +187,20 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
+  // Guarded rather than a bare destructure: production always renders inside AuthProvider (App.jsx),
+  // but several existing AccountDetail tests render this component with no AuthProvider ancestor --
+  // useAuth() (useContext(AuthContext), no default value) returns undefined there. Falling back to
+  // {} keeps `user` undefined/null in that case, which useAccountPageCapabilityDecisions already
+  // treats as signed-out (fail-closed, denies every capability) -- never a permissive default.
+  const { user } = useAuth() ?? {};
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
   const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
+  // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
+  // permissive default.
+  const capabilityDecisions = useAccountPageCapabilityDecisions(user);
   // Health-strip inputs. Both are EXISTING authoritative account-scoped reads.
   //
   // This comment used to claim the strip and the AR area "can never disagree" because they share
@@ -364,19 +387,22 @@ export default function AccountDetail() {
           <AccountOpportunitiesSection accountId={account.id} />
           <AccountSalesOrdersSection accountId={account.id} />
 
-          {/* Accounts Receivable + the provider-dependent financial surfaces, composed into ONE
-              area. Previously these were three separate blocks and the same "not connected"
-              sentence rendered four times on a single page load; AccountFinancialsSection keeps
-              the real AR read prominent and collapses the unconfigured provider into one line. */}
-          <AccountFinancialsSection accountId={account.id} />
-
-          {/* ACTIVITY & NOTES -- durable, attributed CRM interaction history. Lives in the
-              PRIMARY column: it is a record surface a salesperson works in, not sidebar
-              context. Deliberately not a single editable notes blob. */}
-          <ActivityAndNotesSection accountId={account.id} />
-
-          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
-          <ServiceActivitySection accountId={account.id} />
+          {/* Accounts Receivable + the provider-dependent financial surfaces, ACTIVITY & NOTES,
+              and Service Activity -- X-ACCOUNT-PAGE-WIRING: these three are exactly
+              accountRecordPage's MAIN-column componentId sections (financials, activityAndNotes,
+              serviceActivity), in the same order accountPage.js and this file already agreed on,
+              now rendered through MetadataRecordPage against the real definition + the real
+              capability decisions rather than called directly. Section-level behavior is
+              unchanged (same components, same accountId), and financials/activityAndNotes stay
+              gated on finance.read/crm.activity.read exactly as accountPage.js declares --
+              crm.activity.read is registered active:false catalog-wide, so Activity & Notes will
+              not render here until that capability is separately activated, which is the correct
+              fail-closed reading of accountPage.js's own declaration, not a regression. */}
+          <MetadataRecordPage
+            definition={accountRecordPageMainSubset}
+            record={account}
+            capabilityDecisions={capabilityDecisions}
+          />
 
           {/* 3. Contacts */}
           <section className="wo-history">
@@ -494,7 +520,19 @@ export default function AccountDetail() {
               authorities (AR overdue + Work Order past due). Renders nothing when there
               is nothing to say. The Marketing seam mounts alongside and stays absent
               while no provider exists: an optional section with nothing to say should
-              contribute nothing, not a permanent apology. */}
+              contribute nothing, not a permanent apology.
+              X-ACCOUNT-PAGE-WIRING: NOT routed through MetadataRecordPage, deliberately.
+              accountRecordPageSideSubset (accountPageComponents.js) names only this one
+              section, and it is the ONLY section in that subset; when finance.read denies,
+              MetadataRecordPage's own "a plan with zero visible sections is not empty, it
+              is DENIED" rule (see MetadataRecordPage.jsx) renders a page-level "Not
+              available to you" FailureState in its place -- correct for a page where that
+              is the whole story, wrong here where AccountAttentionSection already has its
+              own graceful per-source degrade (loading/denied/unavailable notes) and every
+              other section on this page keeps rendering. Hand-rendered to preserve that
+              existing, more accurate degrade; the SIDE subset stays defined and tested in
+              accountPageComponents.js for the day a SIDE region carries more than one
+              section. */}
           <AccountAttentionSection accountId={account.id} />
 
           {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
