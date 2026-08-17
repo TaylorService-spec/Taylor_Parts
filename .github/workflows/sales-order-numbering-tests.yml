@@ -1,0 +1,59 @@
+name: Sales Order Numbering Tests
+
+# Governed Sales Order reference numbering (SO-YYYY-######), mirroring opportunity-numbering-tests.yml.
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this repo runs
+# per-subsystem workflows on PRs, so a suite named in no workflow simply never runs.
+#
+# What this guards: a Sales Order's reference must be allocated transaction-safely (never reused,
+# never allocated without its record appearing), must never be derived from another entity's
+# identity (its own document id, the originating Opportunity's number, the Account, or a Work
+# Order), and must be immutable once set.
+#
+# Offline: the tests use a fake Firestore transaction, so no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/salesOrder/**"
+      - "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
+      - "functions/test/salesOrderNumbering.test.mjs"
+      - "functions/src/index.ts"
+      - ".github/workflows/sales-order-numbering-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/salesOrder/**"
+      - "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
+      - "functions/test/salesOrderNumbering.test.mjs"
+      - "functions/src/index.ts"
+      - ".github/workflows/sales-order-numbering-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-order-numbering-tests:
+    name: Sales Order numbering (build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      # The tests import the COMPILED output, the same pattern every other functions suite
+      # uses -- nothing here reads a .ts file directly.
+      - name: Build functions
+        run: npm run build
+        working-directory: functions
+      - name: Sales Order numbering tests (node:test)
+        run: node --test test/salesOrderNumbering.test.mjs
+        working-directory: functions
