@@ -87,3 +87,46 @@ separate places, they diverged silently and correct work blocked.
 `wakeSupervisor.*` and `wakeExecute.*` were in no workflow path filter and no test command — changes
 to them were CI-uncovered. Both are now added to `.github/workflows/eos-intake-ingest.yml`, in the
 trigger paths *and* in the `node --test` invocation.
+
+---
+
+# Part 2 — the receiving end (the half that actually unblocked it)
+
+Telling the worker what to emit was necessary but **not sufficient**. Nothing parsed it back.
+
+`executeWake` returns the worker's output as `result: parsed.result` — a **string** (the `claude -p`
+envelope's text). `runIntakeExecution` then tested `typeof wake.result === "object"` before reading
+`.evidence`. That condition can never be true for a string, so `workerEvidence` was **always `{}`**.
+
+Consequence: **no worker could ever complete a task that required receipts.** Proven by feeding the
+real path a worker emitting a perfect evidence block and still getting `BLOCKED_EXECUTION`.
+
+That also explains the long-standing oddity where `EOS-ISSUE-1062` completed while `EOS-ISSUE-842`
+blocked on an identical grant: completion was only ever reachable on paths that required nothing.
+EOS could finish work it was not really doing, and could not finish work it was.
+
+## The fix
+
+`lib/workerEvidence.mjs` — `extractWorkerEvidence(text)`, mirroring `findingSchema.extractFindings`
+rather than adding a second mechanism: one fenced block with a dedicated `eos-evidence` tag, total,
+fail-closed, with a `found` flag separating a trustworthy extraction from an extraction failure.
+
+The dedicated tag matters: a worker quoting an example JSON fence in its prose can never be mistaken
+for its real evidence.
+
+`executeWake` now parses it and passes it as `workerEvidence` alongside the unchanged string `result`
+(whose consumers hash it as durable content). `runIntakeExecution` prefers it **only when a block was
+actually found**, so an injected already-structured result still works.
+
+## Verified behavior
+
+| Worker behavior | Outcome |
+| --- | --- |
+| honest, with an eos-evidence block | COMPLETE |
+| silent (no block) | BLOCKED_EXECUTION |
+| malformed block | BLOCKED_EXECUTION |
+| prose-quoted json fence | BLOCKED_EXECUTION |
+| block claiming no tests receipt | BLOCKED_EXECUTION |
+
+Extraction can only ever ADD provable evidence. A failed extraction yields empty evidence, which the
+gate treats exactly as it treats a silent worker — so this can never loosen the gate.
