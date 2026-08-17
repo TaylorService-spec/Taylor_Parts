@@ -1614,13 +1614,15 @@
       "title": "Field Architecture v2",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition",
+      "status": "MERGED",
+      "nextAction": "Gate cleared. Mass entity definition may resume.",
       "governing": [
         "Owner Field Architecture v2 gate",
         "DECISIONS #102 sections 6 and 8"
       ],
-      "notes": "v1 is NOT superseded - it remains the read/query/render contract and every merged definition stays valid. What v1 must not be is final: it has one identity (id), no notion of a derived value, and a type list that treats every number alike. Scope: label vs systemName (immutable machine identity, NOT vendor 'API Name'); field classes STANDARD/SYSTEM/CUSTOM/DERIVED with DERIVED split into FORMULA/LOOKUP/ROLLUP/PROJECTION and NOT collapsed into one calculated-field concept; explicit numeric semantics incl. percentage storage and the rule that formatting never changes an authoritative value; a constrained validated expression vocabulary with no executable metadata; dependency graph by systemName with circular rejection and cross-entity authority that cannot become an authorization bypass; VIRTUAL/MATERIALIZED/AGGREGATE queryability where displayable does not imply filterable; the full behavior contract through deprecation; an EOS-native standard vocabulary that standardizes MEANING without forcing every entity to carry every field; storage separation so systemName is never assumed to be the Firestore path; and a custom-field SEAM, not the custom-field product. Specification merged as 98d15344 (docs/specifications/field-architecture-v2.md, DECISIONS #103). The GATE itself - the design work - is what remains READY."
+      "notes": "v1 is NOT superseded - it remains the read/query/render contract and every merged definition stays valid. What v1 must not be is final: it has one identity (id), no notion of a derived value, and a type list that treats every number alike. Scope: label vs systemName (immutable machine identity, NOT vendor 'API Name'); field classes STANDARD/SYSTEM/CUSTOM/DERIVED with DERIVED split into FORMULA/LOOKUP/ROLLUP/PROJECTION and NOT collapsed into one calculated-field concept; explicit numeric semantics incl. percentage storage and the rule that formatting never changes an authoritative value; a constrained validated expression vocabulary with no executable metadata; dependency graph by systemName with circular rejection and cross-entity authority that cannot become an authorization bypass; VIRTUAL/MATERIALIZED/AGGREGATE queryability where displayable does not imply filterable; the full behavior contract through deprecation; an EOS-native standard vocabulary that standardizes MEANING without forcing every entity to carry every field; storage separation so systemName is never assumed to be the Firestore path; and a custom-field SEAM, not the custom-field product. Specification merged as 98d15344 (docs/specifications/field-architecture-v2.md, DECISIONS #103). The GATE itself - the design work - is what remains READY. IMPLEMENTED ADDITIVELY (#1147, 379ef835) under src/metadata/v2/ - identity, numeric, formula and fieldDefinitionV2 modules with 32 invariant tests. All eleven clearing conditions are met: durable field identity, systemName semantics, field classes, derived-field types, numeric/rounding semantics, dependency rules, authority semantics, queryability distinctions, migration compatibility, the custom-field seam, and tests that enforce the architecture. The final condition - compatibility - is PROVEN against the two real merged definitions rather than fixtures: 18 tests assert Account and Work Order map into v2 with systemName, label, operators and enum vocabulary (including the NUMERIC one) surviving unchanged, and every field recording UNKNOWN_MUTABILITY and UNKNOWN_WRITE_CAPABILITY rather than inventing an answer.",
+      "pr": 1147,
+      "mergeSha": "379ef835"
     },
     {
       "id": "A-ENTITY-MASS-DEFINITION",
@@ -1630,15 +1632,13 @@
       "title": "Mass-definition of remaining business entities",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "G-FIELD-ARCH-V2"
-      ],
-      "nextAction": "Define remaining entities AFTER Field Architecture v2 lands",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2",
       "governing": [
         "Owner Field Architecture v2 gate, sequencing"
       ],
-      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue."
+      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue. UNBLOCKED 2026-08-17: the gate's clearing conditions are met and compatibility is proven against both existing definitions, so a further entity written today maps into v2 without a retrofit - which was the entire reason for the sequencing constraint."
     },
     {
       "id": "X-WORK-ORDER-BOARD-SCOPE",
