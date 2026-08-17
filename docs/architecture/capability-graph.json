@@ -1,0 +1,4229 @@
+{
+  "schema": "capability-graph/2",
+  "environmentEvaluated": null,
+  "generatedFrom": [
+    "functions/src/access/permissionCatalog.ts",
+    "field-ops-app-vite/src/access/permissionCatalog.ts",
+    "functions/src/index.ts",
+    "functions/src/access/environmentCapabilityOverrides.ts",
+    "config/environments.json",
+    "field-ops-app-vite/src/navigation/navConfig.js",
+    "docs/user-guide/README.md",
+    "docs/roadmaps/business-capability-register.md"
+  ],
+  "counts": {
+    "capabilities": 109,
+    "catalogActive": 36,
+    "catalogInactive": 73,
+    "eligibleForEnvironmentActivation": 27,
+    "activatedInSomeEnvironment": 27,
+    "callableExports": 30,
+    "destinations": 58,
+    "destinationsHidden": 20,
+    "guides": 42,
+    "registerEntries": 15,
+    "parityIssues": 0
+  },
+  "catalogCountCheck": {
+    "raw": 109,
+    "parsed": 109,
+    "ok": true
+  },
+  "implementationEvidence": {
+    "SERVER_REFERENCED": 54,
+    "EXPORTED": 19,
+    "CLIENT_ONLY": 5,
+    "NO_IMPLEMENTATION_EVIDENCE": 31
+  },
+  "guideStatuses": {
+    "live": 35,
+    "not-yet-available": 4,
+    "demo (except Receive)": 2,
+    "real, fail-closed until activated": 1
+  },
+  "flows": [
+    {
+      "id": "service-to-cash",
+      "name": "Service call → cash",
+      "source": "docs/PlatformCapabilityModel.md (Work Order lifecycle); docs/assessments/completion-to-finance-and-billing-ar-assessment.md",
+      "steps": [
+        {
+          "name": "Intake — customer reports a problem",
+          "match": [],
+          "coverage": "UNMAPPED",
+          "capabilities": [],
+          "enablement": null
+        },
+        {
+          "name": "Create work order",
+          "match": [
+            "workOrder.create"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "workOrder.create"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Plan parts",
+          "match": [
+            "workOrder.parts.plan"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "workOrder.parts.plan"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Schedule / dispatch",
+          "match": [],
+          "coverage": "UNMAPPED",
+          "capabilities": [],
+          "enablement": null
+        },
+        {
+          "name": "Field execution — parts and notes",
+          "match": [
+            "inventory.action.create"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.action.create"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Complete / transition",
+          "match": [
+            "workOrder.transition"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "workOrder.transition"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Invoice",
+          "match": [
+            "finance.invoice.issue"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "finance.invoice.issue"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Payment",
+          "match": [
+            "finance.payment.apply"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "finance.payment.apply"
+          ],
+          "enablement": null
+        }
+      ],
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
+      "evaluated": false
+    },
+    {
+      "id": "equipment-sale",
+      "name": "Equipment sale → serviceable asset",
+      "source": "docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md §1 (D2→D3→D4→invoice→asset→D1)",
+      "steps": [
+        {
+          "name": "Opportunity",
+          "match": [
+            "opportunity.write"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "opportunity.write"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Sales & Security Agreement (D2)",
+          "match": [],
+          "coverage": "UNMAPPED",
+          "capabilities": [],
+          "enablement": null
+        },
+        {
+          "name": "Convert to Sales Order (D3)",
+          "match": [
+            "opportunity.createSalesOrder",
+            "salesOrder.write"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "opportunity.createSalesOrder",
+            "salesOrder.write"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Allocate stock",
+          "match": [
+            "salesOrder.fulfill"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "salesOrder.fulfill"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Pick ticket (D4)",
+          "match": [],
+          "coverage": "UNMAPPED",
+          "capabilities": [],
+          "enablement": null
+        },
+        {
+          "name": "Deliver / install",
+          "match": [
+            "salesOrder.service"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "salesOrder.service"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Invoice",
+          "match": [
+            "finance.invoice.issue"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "finance.invoice.issue"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Becomes serviceable asset",
+          "match": [
+            "inventory.serializedAsset.read"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.serializedAsset.read"
+          ],
+          "enablement": null
+        }
+      ],
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
+      "evaluated": false
+    },
+    {
+      "id": "ventana-ice-machine",
+      "name": "Ventana ice machine — inventory control lifecycle",
+      "source": "docs/business-processes/ventana-ice-machine-commercial-inventory-lifecycle.md §3 (two-condition exit: install complete AND sale closed)",
+      "steps": [
+        {
+          "name": "Customer demand / sale",
+          "match": [
+            "opportunity.write",
+            "salesOrder.write"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "opportunity.write",
+            "salesOrder.write"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Taylor purchases from Ventana",
+          "match": [
+            "reorder.purchaseOrder.create"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "reorder.purchaseOrder.create"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Receive — inventory control BEGINS",
+          "match": [
+            "inventory.stock.receive"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.stock.receive"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Serialized identity & custody",
+          "match": [
+            "inventory.serializedAsset.read"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.serializedAsset.read"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Allocation / staging",
+          "match": [
+            "salesOrder.fulfill"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "salesOrder.fulfill"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Delivery / installation",
+          "match": [
+            "salesOrder.service"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "salesOrder.service"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Install complete AND sale closed — control ENDS",
+          "match": [
+            "inventory.serializedAsset.read"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.serializedAsset.read"
+          ],
+          "enablement": null
+        }
+      ],
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
+      "evaluated": false
+    },
+    {
+      "id": "parts-replenishment",
+      "name": "Parts reorder → stock on hand",
+      "source": "docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as live",
+      "steps": [
+        {
+          "name": "Request a reorder",
+          "match": [
+            "reorder.request.create.manual"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "reorder.request.create.manual"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Review / approve",
+          "match": [
+            "reorder.request.approve",
+            "reorder.request.reject"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "reorder.request.approve",
+            "reorder.request.reject"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Assign to Parts Associate",
+          "match": [
+            "reorder.request.assign"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "reorder.request.assign"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Place the order (PO)",
+          "match": [
+            "reorder.purchaseOrder.create",
+            "reorder.request.recordPurchaseOrder"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "reorder.purchaseOrder.create",
+            "reorder.request.recordPurchaseOrder"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Receive into warehouse",
+          "match": [
+            "inventory.stock.receive"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.stock.receive"
+          ],
+          "enablement": null
+        },
+        {
+          "name": "Stock on hand updated",
+          "match": [
+            "inventory.transaction.read"
+          ],
+          "coverage": "IMPLEMENTATION_EVIDENCE",
+          "capabilities": [
+            "inventory.transaction.read"
+          ],
+          "enablement": null
+        }
+      ],
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
+      "evaluated": false
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "account.record.read",
+      "resource": "account.record",
+      "action": "read",
+      "description": "Read a Customer/Account record.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "account.record.create",
+      "resource": "account.record",
+      "action": "create",
+      "description": "Create a Customer/Account record.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "account.record.update",
+      "resource": "account.record",
+      "action": "update",
+      "description": "Edit a Customer/Account record's non-governed fields.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "account.governedField.write",
+      "resource": "account.governedField",
+      "action": "write",
+      "description": "Edit an Account's governed commercial fields (paymentTerms/taxStatus) -- Issue #175, admin-only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.create",
+      "resource": "workOrder",
+      "action": "create",
+      "description": "Create a Work Order.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/App.jsx",
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.transition",
+      "resource": "workOrder",
+      "action": "transition",
+      "description": "Perform a Work Order lifecycle transition via the transitionWorkOrder authority (ADR-002).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.cancel",
+      "resource": "workOrder",
+      "action": "cancel",
+      "description": "Cancel a Work Order, subject to the dispatcher in-flight-technician narrowing preserved from today's behavior.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.parts.plan",
+      "resource": "workOrder.parts",
+      "action": "plan",
+      "description": "Author or change the planned parts (qtyPlanned) for a Work Order via the governed setWorkOrderPartsPlan producer. Does not reserve, consume, or procure.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "opportunity.write",
+      "resource": "opportunity",
+      "action": "write",
+      "description": "Create or advance a Sales Opportunity (lifecycle transition) via the governed opportunity command. Pre-commitment only; does not create Work Orders, inventory movement, or invoices.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createOpportunity",
+          "transitionOpportunity"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/opportunity/opportunityCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "opportunity.read",
+      "resource": "opportunity",
+      "action": "read",
+      "description": "Read the minimal Sales Opportunity projection via the trusted listOpportunityContext read service (backend-resolved scope; no client-direct collection read).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "listOpportunityContext",
+          "listOpportunitiesForAccount"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/opportunity/opportunityReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "opportunity.createSalesOrder",
+      "resource": "opportunity",
+      "action": "createSalesOrder",
+      "description": "Create a committed Sales Order from a WON Opportunity via the governed createSalesOrderFromOpportunity action. Human-invoked only (no trigger); account and lines are server-derived from the Opportunity, never client-supplied.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createSalesOrderFromOpportunity"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "salesOrder.read",
+      "resource": "salesOrder",
+      "action": "read",
+      "description": "Read the minimal governed Sales Order projection (identity, account, source Opportunity, lifecycle state, lines with the ordered/allocated/fulfilled/billed quantity model, service Work Order lineage) via the trusted getSalesOrderContext read service. Backend-resolved scope; no client-direct sales_orders read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "getSalesOrderContext",
+          "listSalesOrdersForAccount"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/salesOrder/salesOrderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "salesOrder.write",
+      "resource": "salesOrder",
+      "action": "write",
+      "description": "Create or advance a committed Sales Order (lifecycle transition) via the governed salesOrder command. Does not assign serialized assets, write Work Orders, or move inventory.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createSalesOrder",
+          "transitionSalesOrder"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/salesOrder/salesOrderCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "salesOrder.fulfill",
+      "resource": "salesOrder",
+      "action": "fulfill",
+      "description": "Allocate a committed Sales Order against authoritative inventory availability via the governed allocateSalesOrder command. Records allocation only on the Sales Order; does not write the inventory ledger or Equipment authority.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "allocateSalesOrder"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/fulfillment/allocateSalesOrder.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "salesOrder.service",
+      "resource": "salesOrder",
+      "action": "service",
+      "description": "Create governed Service demand (a Work Order via the governed Work Order authority) for a committed Sales Order, with demand lineage. Does not author Work Order state, assignment, or schedule directly.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createServiceForSalesOrder"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/salesOrder/createServiceForSalesOrder.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "finance.invoice.issue",
+      "resource": "finance.invoice",
+      "action": "issue",
+      "description": "Issue a governed invoice (per-company number, server-recomputed amounts, immutable ISSUED record + audit) for a committed Sales Order's billable lines via the trusted issueInvoice command. Does not compute tax authority, re-price, or write client-visible financial data.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "issueInvoice"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/finance/invoiceCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "finance.payment.apply",
+      "resource": "finance.payment",
+      "action": "apply",
+      "description": "Record a cash receipt and apply it to an invoice (maintaining the invoice's derived AR projection + audit) via the trusted applyPayment command. Does not expose client-direct financial writes or edit an outstanding balance independently of its facts.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "applyPayment"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/finance/paymentCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "finance.adjustment.record",
+      "resource": "finance.adjustment",
+      "action": "record",
+      "description": "Record an explicit linked invoice adjustment (credit memo / debit charge / write-off) and maintain the invoice's derived AR projection + audit via the trusted recordInvoiceAdjustment command. Does not rewrite the issued invoice or expose client-direct financial writes.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "recordInvoiceAdjustment"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/finance/adjustmentCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "finance.read",
+      "resource": "finance",
+      "action": "read",
+      "description": "Read the minimal Finance AR projection (invoice + derived AR position) for an account via the trusted listAccountInvoiceAr callable. Backend read only; the client never reads invoices/payments/adjustments directly.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "listAccountInvoiceAr"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/finance/financeReadCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "finance.refund.record",
+      "resource": "finance.refund",
+      "action": "record",
+      "description": "Record a refund (money returned after payment) and reverse the applied payment on the invoice via the trusted recordRefund command. Does not rewrite the issued invoice, collapse into a negative payment, or expose client-direct financial writes.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "recordRefund"
+        ],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/finance/refundCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "coverage.write",
+      "resource": "coverage",
+      "action": "write",
+      "description": "Create a Sales Territory or a Commercial Coverage Assignment via the governed coverage command. Records durable coverage facts only; does not resolve precedence, credit, or commission, and exposes no client-direct writes.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createSalesTerritory",
+          "createCoverageAssignment"
+        ],
+        "serverReferences": [
+          "functions/src/coverage/coverageCallables.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "coverage.read",
+      "resource": "coverage",
+      "action": "read",
+      "description": "Resolve the commercial coverage (all effective, matching coverage assignments) for a context via the trusted resolveCoverageForContext callable. Backend read only; returns every matching assignment (split coverage), never a single owner/credit/commission.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "resolveCoverageForContext"
+        ],
+        "serverReferences": [
+          "functions/src/coverage/coverageReadCallables.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.read.queue",
+      "resource": "reorder.request",
+      "action": "read.queue",
+      "description": "Read the Parts Manager queue/oversight/history views of reorder requests.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.read.own",
+      "resource": "reorder.request",
+      "action": "read.own",
+      "description": "Read only the reorder requests assigned to the caller's own identity.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.create.manual",
+      "resource": "reorder.request",
+      "action": "create.manual",
+      "description": "Submit a manual NEEDS_PLANNING reorder request via the zero-history quantity path.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.create.system",
+      "resource": "reorder.request",
+      "action": "create.system",
+      "description": "Create a system-originated (READY-path) reorder request -- admin/dispatcher only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.assign",
+      "resource": "reorder.request",
+      "action": "assign",
+      "description": "Assign a reorder request to a Parts Associate.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.startPurchasing",
+      "resource": "reorder.request",
+      "action": "startPurchasing",
+      "description": "Transition an assigned reorder request to Start Purchasing.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.postPurchasingUpdate",
+      "resource": "reorder.request",
+      "action": "postPurchasingUpdate",
+      "description": "Post a purchasing status update on an assigned reorder request.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.recordPurchaseOrder",
+      "resource": "reorder.request",
+      "action": "recordPurchaseOrder",
+      "description": "Record a Purchase Order against an assigned reorder request.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.markReceived",
+      "resource": "reorder.request",
+      "action": "markReceived",
+      "description": "Mark an assigned reorder request's Purchase Order as Received.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.approve",
+      "resource": "reorder.request",
+      "action": "approve",
+      "description": "Approve a reorder request -- admin/dispatcher only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.reject",
+      "resource": "reorder.request",
+      "action": "reject",
+      "description": "Reject a reorder request -- admin/dispatcher only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.cancel",
+      "resource": "reorder.request",
+      "action": "cancel",
+      "description": "Cancel a reorder request -- admin/dispatcher only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.purchaseOrder.read",
+      "resource": "reorder.purchaseOrder",
+      "action": "read",
+      "description": "Read reorder Purchase Orders / Purchase Order Voids.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.purchaseOrder.create",
+      "resource": "reorder.purchaseOrder",
+      "action": "create",
+      "description": "Create a reorder Purchase Order.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.purchaseOrder.void",
+      "resource": "reorder.purchaseOrder",
+      "action": "void",
+      "description": "Void a reorder Purchase Order -- admin/dispatcher, or the recorded assignee only.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.transaction.read",
+      "resource": "inventory.transaction",
+      "action": "read",
+      "description": "Read inventory_transactions records.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.action.read",
+      "resource": "inventory.action",
+      "action": "read",
+      "description": "Read inventory_actions records.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.action.create",
+      "resource": "inventory.action",
+      "action": "create",
+      "description": "Create an inventory_actions record -- admin/dispatcher only today.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/parityFixtures.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/parityFixtures.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.record.read",
+      "resource": "warehouse.record",
+      "action": "read",
+      "description": "Read a warehouses record (physical warehouse site).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.stockLocation.read",
+      "resource": "warehouse.stockLocation",
+      "action": "read",
+      "description": "Read a stock_locations record (bin-level quantity within a warehouse).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.transferOrder.read",
+      "resource": "warehouse.transferOrder",
+      "action": "read",
+      "description": "Read a transfer_orders record (inter-warehouse stock transfer).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.read",
+      "resource": "report.customer",
+      "action": "read",
+      "description": "Object-level read gate for reporting on Customer/Account records.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.name.read",
+      "resource": "report.customer.field.name",
+      "action": "read",
+      "description": "Report field-read: customer.name.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.status.read",
+      "resource": "report.customer.field.status",
+      "action": "read",
+      "description": "Report field-read: customer.status.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.relationshipTypes.read",
+      "resource": "report.customer.field.relationshipTypes",
+      "action": "read",
+      "description": "Report field-read: customer.relationshipTypes.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.billingAddress.read",
+      "resource": "report.customer.field.billingAddress",
+      "action": "read",
+      "description": "Report field-read: customer.billingAddress (street/city/state/zip -- one capability, grouped per Spec §5.1).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.tags.read",
+      "resource": "report.customer.field.tags",
+      "action": "read",
+      "description": "Report field-read: customer.tags.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.externalIds.read",
+      "resource": "report.customer.field.externalIds",
+      "action": "read",
+      "description": "Report field-read: customer.customerNumber/erpId/accountingId/legacyId (one capability, grouped per Spec §5.1).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.notes.read",
+      "resource": "report.customer.field.notes",
+      "action": "read",
+      "description": "Report field-read: customer.notes -- security-text, inactive pending the wave-1 review's explicit confirmation (Spec §5 sensitivity legend).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.createdAt.read",
+      "resource": "report.customer.field.createdAt",
+      "action": "read",
+      "description": "Report field-read: customer.createdAt.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.paymentTerms.read",
+      "resource": "report.customer.field.paymentTerms",
+      "action": "read",
+      "description": "Report field-read: customer.paymentTerms -- governed (Rules admin-only write, Issue #175).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.taxStatus.read",
+      "resource": "report.customer.field.taxStatus",
+      "action": "read",
+      "description": "Report field-read: customer.taxStatus -- governed (Rules admin-only write, Issue #175).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.commercialProfile.read",
+      "resource": "report.customer.field.commercialProfile",
+      "action": "read",
+      "description": "Report field-read: customer.defaultCurrency/purchaseOrderRequired/invoiceDeliveryMethod (one capability, grouped per Spec §5.1).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.billingContact.read",
+      "resource": "report.customer.field.billingContact",
+      "action": "read",
+      "description": "Report field-read: customer.billingContact (reference -> contact).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.customer.field.accountOwner.read",
+      "resource": "report.customer.field.accountOwner",
+      "action": "read",
+      "description": "Report field-read: customer.accountOwner (reference -> employee) -- employee-sensitivity, deferred to wave 4 despite sitting in the wave-1 object table (Spec §4).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.read",
+      "resource": "report.contact",
+      "action": "read",
+      "description": "Object-level read gate for reporting on Contact records.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.field.name.read",
+      "resource": "report.contact.field.name",
+      "action": "read",
+      "description": "Report field-read: contact.name.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.field.email.read",
+      "resource": "report.contact.field.email",
+      "action": "read",
+      "description": "Report field-read: contact.email.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.field.phone.read",
+      "resource": "report.contact.field.phone",
+      "action": "read",
+      "description": "Report field-read: contact.phone.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.field.role.read",
+      "resource": "report.contact.field.role",
+      "action": "read",
+      "description": "Report field-read: contact.role.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.contact.field.customer.read",
+      "resource": "report.contact.field.customer",
+      "action": "read",
+      "description": "Report field-read: contact.accountId (reference -> customer).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.location.read",
+      "resource": "report.location",
+      "action": "read",
+      "description": "Object-level read gate for reporting on Location records.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.location.field.name.read",
+      "resource": "report.location.field.name",
+      "action": "read",
+      "description": "Report field-read: location.name.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.location.field.address.read",
+      "resource": "report.location.field.address",
+      "action": "read",
+      "description": "Report field-read: location.address.street/city/state/zip (one capability, grouped per Spec §5.3).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.location.field.accessNotes.read",
+      "resource": "report.location.field.accessNotes",
+      "action": "read",
+      "description": "Report field-read: location.accessNotes -- security-text, inactive pending the wave-1 review's explicit confirmation (Spec §5 sensitivity legend).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.location.field.customer.read",
+      "resource": "report.location.field.customer",
+      "action": "read",
+      "description": "Report field-read: location.accountId (reference -> customer).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.read",
+      "resource": "report.equipment",
+      "action": "read",
+      "description": "Object-level read gate for reporting on Equipment records.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.name.read",
+      "resource": "report.equipment.field.name",
+      "action": "read",
+      "description": "Report field-read: equipment.name.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.status.read",
+      "resource": "report.equipment.field.status",
+      "action": "read",
+      "description": "Report field-read: equipment.status.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.identity.read",
+      "resource": "report.equipment.field.identity",
+      "action": "read",
+      "description": "Report field-read: equipment.manufacturer/model/serialNumber/assetTag (one capability, grouped per Spec §5.4).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.dates.read",
+      "resource": "report.equipment.field.dates",
+      "action": "read",
+      "description": "Report field-read: equipment.installedDate/warrantyExpiresDate (one capability, grouped per Spec §5.4).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.notes.read",
+      "resource": "report.equipment.field.notes",
+      "action": "read",
+      "description": "Report field-read: equipment.notes -- standard (not security-text; distinct from customer/location notes, Spec §5.4).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.customer.read",
+      "resource": "report.equipment.field.customer",
+      "action": "read",
+      "description": "Report field-read: equipment.accountId (reference -> customer).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.location.read",
+      "resource": "report.equipment.field.location",
+      "action": "read",
+      "description": "Report field-read: equipment.locationId (reference -> location).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.equipment.field.createdAt.read",
+      "resource": "report.equipment.field.createdAt",
+      "action": "read",
+      "description": "Report field-read: equipment.createdAt.",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.definition.create",
+      "resource": "report.definition",
+      "action": "create",
+      "description": "Create a saved report definition (trusted saved-definition service).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/reporting/savedDefinitionCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.definition.read",
+      "resource": "report.definition",
+      "action": "read",
+      "description": "Read (get one or list one's own) saved report definitions (trusted saved-definition service).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/reporting/savedDefinitionCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.definition.rename",
+      "resource": "report.definition",
+      "action": "rename",
+      "description": "Rename one's own saved report definition (trusted saved-definition service).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/reporting/savedDefinitionCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.definition.duplicate",
+      "resource": "report.definition",
+      "action": "duplicate",
+      "description": "Duplicate one's own saved report definition (trusted saved-definition service).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/reporting/savedDefinitionCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "report.definition.delete",
+      "resource": "report.definition",
+      "action": "delete",
+      "description": "Delete one's own saved report definition (trusted saved-definition service).",
+      "catalogActive": true,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/reporting/savedDefinitionCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/reportAccess.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.userStatus.write",
+      "resource": "admin.userStatus",
+      "action": "write",
+      "description": "Enable/disable a principal's account status.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/trustedWriterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.roleAssignment.write",
+      "resource": "admin.roleAssignment",
+      "action": "write",
+      "description": "Assign or revoke an already-approved Role.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/trustedWriterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.accessRequest.decide",
+      "resource": "admin.accessRequest",
+      "action": "decide",
+      "description": "Approve or reject a pending Access Request.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/trustedWriterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.credentialReset.initiate",
+      "resource": "admin.credentialReset",
+      "action": "initiate",
+      "description": "Initiate an admin-initiated password reset for another eligible user (inactive pending a separate production/security gate).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/domain/adminPasswordReset.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "audit.event.read",
+      "resource": "audit.event",
+      "action": "read",
+      "description": "Read the immutable Audit Event history.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.catalog.manage",
+      "resource": "inventory.catalog",
+      "action": "manage",
+      "description": "Create and edit canonical Part and Manufacturer descriptive records (trusted Part Master service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/partMaster/partMasterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.catalog.activate",
+      "resource": "inventory.catalog",
+      "action": "activate",
+      "description": "Change Part or Manufacturer lifecycle status (trusted Part Master service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/partMaster/partMasterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.catalog.read",
+      "resource": "inventory.catalog",
+      "action": "read",
+      "description": "Read the minimal governed catalog/reference projection (Manufacturer identity/status) via the trusted getManufacturerCatalog read service. Backend-resolved scope; no client-direct manufacturers read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/partMaster/manufacturerReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.serializedAsset.read",
+      "resource": "inventory.serializedAsset",
+      "action": "read",
+      "description": "Read the minimal governed Available Equipment projection (serialNo, partId, currentLocationId, inventoryState, currentEquipmentId, ownership) via the trusted getAvailableEquipment read service. Backend-resolved scope; no client-direct serialized_assets read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "getAvailableEquipment"
+        ],
+        "serverReferences": [
+          "functions/src/serializedAsset/serializedAssetReadService.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.stock.receive",
+      "resource": "inventory.stock",
+      "action": "receive",
+      "description": "Receive inbound stock into an inventory location against a reorder purchase order (trusted Receiving service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts",
+          "functions/src/inventoryReceiving/receivingCallableWiring.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "inventory.transfer.create",
+      "resource": "inventory.transfer",
+      "action": "create",
+      "description": "Create a governed Transfer Order between two active WAREHOUSE/MOBILE(truck) inventory locations (trusted Transfer service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inventoryTransfer/transferCallables.ts",
+          "functions/src/inventoryTransfer/transferOrderCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.transfer.dispatch",
+      "resource": "inventory.transfer",
+      "action": "dispatch",
+      "description": "Dispatch a REQUESTED Transfer Order (stage TRANSFER_OUT ledger effect(s), REQUESTED -> IN_TRANSIT).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inventoryTransfer/transferCallables.ts",
+          "functions/src/inventoryTransfer/transferOrderCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.transfer.receive",
+      "resource": "inventory.transfer",
+      "action": "receive",
+      "description": "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inventoryTransfer/transferCallables.ts",
+          "functions/src/inventoryTransfer/transferOrderCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.transfer.cancel",
+      "resource": "inventory.transfer",
+      "action": "cancel",
+      "description": "Cancel a REQUESTED Transfer Order before any movement has been dispatched (REQUESTED -> CANCELLED).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inventoryTransfer/transferCallables.ts",
+          "functions/src/inventoryTransfer/transferOrderCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.cycleCount.create",
+      "resource": "inventory.cycleCount",
+      "action": "create",
+      "description": "Create a governed Cycle Count at an active WAREHOUSE/MOBILE(truck) inventory location, snapshotting expected quantity/serials from the ledger/registry authority (trusted Cycle Count service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/cycleCount/cycleCountCallables.ts",
+          "functions/src/cycleCount/cycleCountCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.cycleCount.submit",
+      "resource": "inventory.cycleCount",
+      "action": "submit",
+      "description": "Record the counted quantity/serials for an OPEN Cycle Count and compute variance evidence (OPEN -> COUNTED).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/cycleCount/cycleCountCallables.ts",
+          "functions/src/cycleCount/cycleCountCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.cycleCount.reconcile",
+      "resource": "inventory.cycleCount",
+      "action": "reconcile",
+      "description": "Reconcile a COUNTED Cycle Count's variance by staging ADJUSTED ledger evidence (COUNTED -> RECONCILED); requires a reason on non-zero variance.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/cycleCount/cycleCountCallables.ts",
+          "functions/src/cycleCount/cycleCountCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.cycleCount.cancel",
+      "resource": "inventory.cycleCount",
+      "action": "cancel",
+      "description": "Cancel an OPEN Cycle Count before any count has been submitted (OPEN -> CANCELLED).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/cycleCount/cycleCountCallables.ts",
+          "functions/src/cycleCount/cycleCountCommand.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "equipment.compatibility.view",
+      "resource": "equipment.compatibility",
+      "action": "view",
+      "description": "Read Part-Equipment compatibility relationships (future read service; no client read exists in D4).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/equipmentCompatibility/readService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/domain/equipmentCompatibilitySection.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "equipment.compatibility.import",
+      "resource": "equipment.compatibility",
+      "action": "import",
+      "description": "Import Part-Equipment compatibility relationships and evidence (trusted Equipment command service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/equipmentCompatibility/commands.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "equipment.compatibility.verify",
+      "resource": "equipment.compatibility",
+      "action": "verify",
+      "description": "Change the verification status of a Part-Equipment compatibility relationship (trusted Equipment command service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/equipmentCompatibility/commands.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "equipment.compatibility.correct",
+      "resource": "equipment.compatibility",
+      "action": "correct",
+      "description": "Correct a governed Part-Equipment compatibility relationship (trusted Equipment command service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/equipmentCompatibility/commands.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "equipment.model.manage",
+      "resource": "equipment.model",
+      "action": "manage",
+      "description": "Create and edit canonical Equipment Model records and their aliases (trusted Equipment command service).",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/equipmentCompatibility/commands.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.activity.create",
+      "resource": "crm.activity",
+      "action": "create",
+      "description": "Create a governed CRM Activity/Note (Sales Note, Call, Meeting, Relationship, or General) scoped to an Account, optionally referencing a Contact/Opportunity/Sales Order by id. Immutable identity; no assignee, due date, or completion state.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createCrmActivity"
+        ],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/crmActivity/crmActivityCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "crm.activity.read",
+      "resource": "crm.activity",
+      "action": "read",
+      "description": "Read the minimal governed CRM Activity projection (type, body, occurredAt/createdAt, actor, linked Account/Contact/Opportunity/Sales Order ids) for one Account via the trusted getCrmActivities read service. Backend-resolved scope; no client-direct crm_activities read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "createCrmActivity"
+        ],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/crmActivity/crmActivityReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "fulfillment.coordinatedVisit.read",
+      "resource": "fulfillment.coordinatedVisit",
+      "action": "read",
+      "description": "Read the minimal governed coordinated-Work-Order projection (id, woNumber, status, customerId, locationId, salesOrderId, salesOrderLineRefs) for active Work Orders that carry a salesOrderId, via the trusted listCoordinatedOperations read service. Backend-resolved scope; no client-direct fieldops_wos read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "listCoordinatedOperations"
+        ],
+        "serverReferences": [
+          "functions/src/fulfillment/coordinatedVisitReadService.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "inventory.location.display.read",
+      "resource": null,
+      "action": null,
+      "description": null,
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [
+          "getLocationDisplay"
+        ],
+        "serverReferences": [
+          "functions/src/inventoryLocation/locationDisplayReadService.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    }
+  ],
+  "callables": [
+    {
+      "names": [
+        "createWorkOrder"
+      ],
+      "module": "./createWorkOrder",
+      "capabilityHints": [],
+      "comment": "--- Issue #15 surface: Work Order Engine v1.2 ---"
+    },
+    {
+      "names": [
+        "transitionWorkOrder"
+      ],
+      "module": "./transitionWorkOrder",
+      "capabilityHints": [],
+      "comment": null
+    },
+    {
+      "names": [
+        "updateWorkOrderExecutionData"
+      ],
+      "module": "./updateWorkOrderExecutionData",
+      "capabilityHints": [],
+      "comment": null
+    },
+    {
+      "names": [
+        "detectInventoryEffects"
+      ],
+      "module": "./inventoryEffectCallables",
+      "capabilityHints": [],
+      "comment": null
+    },
+    {
+      "names": [
+        "getInventoryAnalytics"
+      ],
+      "module": "./inventoryAnalyticsCallables",
+      "capabilityHints": [],
+      "comment": null
+    },
+    {
+      "names": [
+        "setWorkOrderPartsPlan"
+      ],
+      "module": "./workOrderPartsPlan/setWorkOrderPartsPlan",
+      "capabilityHints": [],
+      "comment": "WO Parts Planning Phase 2 -- the governed PLANNED producer. \"export is not deployment\": not deployed to the live project and no client calls it, and its capability (workOrder.parts.plan) is registered active:false (fail-closed for everyone) until a separate Owner deploy + grant gate."
+    },
+    {
+      "names": [
+        "createOpportunity",
+        "transitionOpportunity"
+      ],
+      "module": "./opportunity/opportunityCallables",
+      "capabilityHints": [
+        "opportunity.write"
+      ],
+      "comment": "Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing runs in production until a separate deploy + Owner grant."
+    },
+    {
+      "names": [
+        "listOpportunityContext",
+        "listOpportunitiesForAccount"
+      ],
+      "module": "./opportunity/opportunityReadService",
+      "capabilityHints": [
+        "opportunity.read"
+      ],
+      "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT)."
+    },
+    {
+      "names": [
+        "createSalesOrderFromOpportunity"
+      ],
+      "module": "./opportunity/createSalesOrderFromOpportunity",
+      "capabilityHints": [
+        "opportunity.createSalesOrder"
+      ],
+      "comment": "P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger). EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT)."
+    },
+    {
+      "names": [
+        "getSalesOrderContext",
+        "listSalesOrdersForAccount"
+      ],
+      "module": "./salesOrder/salesOrderReadService",
+      "capabilityHints": [
+        "salesOrder.read"
+      ],
+      "comment": "Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry)."
+    },
+    {
+      "names": [
+        "getManufacturerCatalog"
+      ],
+      "module": "./partMaster/manufacturerReadService",
+      "capabilityHints": [],
+      "comment": null
+    },
+    {
+      "names": [
+        "getAvailableEquipment"
+      ],
+      "module": "./serializedAsset/serializedAssetReadService",
+      "capabilityHints": [
+        "inventory.serializedAsset.read"
+      ],
+      "comment": "Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role."
+    },
+    {
+      "names": [
+        "listCoordinatedOperations"
+      ],
+      "module": "./fulfillment/coordinatedVisitReadService",
+      "capabilityHints": [
+        "fulfillment.coordinatedVisit.read"
+      ],
+      "comment": "Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/ coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Ro"
+    },
+    {
+      "names": [
+        "getLocationDisplay"
+      ],
+      "module": "./inventoryLocation/locationDisplayReadService",
+      "capabilityHints": [
+        "inventory.location.display.read"
+      ],
+      "comment": "Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role."
+    },
+    {
+      "names": [
+        "createSalesOrder",
+        "transitionSalesOrder"
+      ],
+      "module": "./salesOrder/salesOrderCallables",
+      "capabilityHints": [
+        "salesOrder.write"
+      ],
+      "comment": "Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered active:false (REGISTER != GRANT)."
+    },
+    {
+      "names": [
+        "allocateSalesOrder"
+      ],
+      "module": "./fulfillment/allocateSalesOrder",
+      "capabilityHints": [
+        "salesOrder.fulfill"
+      ],
+      "comment": "Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `salesOrder.fulfill` active:false."
+    },
+    {
+      "names": [
+        "createServiceForSalesOrder"
+      ],
+      "module": "./salesOrder/createServiceForSalesOrder",
+      "capabilityHints": [
+        "salesOrder.service"
+      ],
+      "comment": "Sales Order → Service seam (Cycle 7). EXPORT != DEPLOY; capability `salesOrder.service` active:false."
+    },
+    {
+      "names": [
+        "issueInvoice"
+      ],
+      "module": "./finance/invoiceCallables",
+      "capabilityHints": [
+        "finance.invoice.issue"
+      ],
+      "comment": "Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue` active:false (ungranted); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited."
+    },
+    {
+      "names": [
+        "applyPayment"
+      ],
+      "module": "./finance/paymentCallables",
+      "capabilityHints": [
+        "finance.payment.apply"
+      ],
+      "comment": "Finance (Billing/AR) — governed payment application. EXPORT != DEPLOY; capability `finance.payment.apply` active:false; `payments`/`payment_applications` are Admin-SDK-only (deny-all client Rules). Sensitive/audited."
+    },
+    {
+      "names": [
+        "recordInvoiceAdjustment"
+      ],
+      "module": "./finance/adjustmentCallables",
+      "capabilityHints": [
+        "finance.adjustment.record"
+      ],
+      "comment": "Finance (Billing/AR) — governed invoice adjustments (credit/charge/write-off). EXPORT != DEPLOY; capability `finance.adjustment.record` active:false; `invoice_adjustments` is Admin-SDK-only (deny-all client Rules)."
+    },
+    {
+      "names": [
+        "listAccountInvoiceAr"
+      ],
+      "module": "./finance/financeReadCallables",
+      "capabilityHints": [
+        "finance.read"
+      ],
+      "comment": "Finance (Billing/AR) — trusted AR read projection. EXPORT != DEPLOY; capability `finance.read` active:false; backend read only (invoices stay Admin-SDK-only / deny-all client Rules)."
+    },
+    {
+      "names": [
+        "createSalesTerritory",
+        "createCoverageAssignment"
+      ],
+      "module": "./coverage/coverageCallables",
+      "capabilityHints": [
+        "coverage.write"
+      ],
+      "comment": "Commercial Coverage & Territory (#15) — governed coverage writes. EXPORT != DEPLOY; capability `coverage.write` active:false; sales_territories / commercial_coverage_assignments are Admin-SDK-only."
+    },
+    {
+      "names": [
+        "resolveCoverageForContext"
+      ],
+      "module": "./coverage/coverageReadCallables",
+      "capabilityHints": [
+        "coverage.read"
+      ],
+      "comment": "Commercial Coverage & Territory (#15) — trusted coverage resolve (read). EXPORT != DEPLOY; capability `coverage.read` active:false; backend read only (coverage collections stay Admin-SDK-only / deny-all)."
+    },
+    {
+      "names": [
+        "recordRefund"
+      ],
+      "module": "./finance/refundCallables",
+      "capabilityHints": [
+        "finance.refund.record"
+      ],
+      "comment": "Finance (Billing/AR) — governed refund. EXPORT != DEPLOY; capability `finance.refund.record` active:false; `refunds` is Admin-SDK-only (deny-all client Rules). Sensitive/audited."
+    },
+    {
+      "names": [
+        "getWorkOrderFieldContext"
+      ],
+      "module": "./getWorkOrderFieldContext",
+      "capabilityHints": [],
+      "comment": "--- F1 surface: trusted minimal field-context display projection --- Answers \"who is the customer / which site am I going to?\" for the CALLER'S OWN assigned Work Order. Not a customer-lookup API: the request carries workOrderId only, and every id read comes from the governed Work Order itself. No Fi"
+    },
+    {
+      "names": [
+        "completeAssignedJob"
+      ],
+      "module": "./completeAssignedJob",
+      "capabilityHints": [],
+      "comment": "--- F-RULES-1 surface: trusted technician job completion (Decision #39) --- Same \"export is not deployment\" posture as the surfaces below: not deployed to the live project, and no client calls it (Field Mode's integration is PR-B, a separate Owner gate) until Gate D1's Owner production authorization"
+    },
+    {
+      "names": [
+        "runReportDefinitionCallable"
+      ],
+      "module": "./reporting/runReportDefinitionCallable",
+      "capabilityHints": [],
+      "comment": "--- Issue #325 / ADR-007 D-FN surface: trusted report execution --- Same \"export is not deployment\" posture as the six commands above: not deployed to the live project, and no client calls it (the client run seam, field-ops-app-vite/src/domain/reporting/ reportExecutionSeam.js, is unchanged and stil"
+    },
+    {
+      "names": [
+        "resolveEffectiveAccessCallable"
+      ],
+      "module": "./access/effectiveAccessFeedCallable",
+      "capabilityHints": [],
+      "comment": "--- Issue #226 surface: trusted effective-access feed --- Same \"export is not deployment\" posture as the surfaces above: not deployed to the live project, and no client calls it (Customer's own W1 UI integration is a separate, later, explicitly out-of-scope step for this PR) until a separate, later "
+    },
+    {
+      "names": [
+        "createCrmActivity"
+      ],
+      "module": "./crmActivity/crmActivityCallables",
+      "capabilityHints": [
+        "crm.activity.create",
+        "crm.activity.read"
+      ],
+      "comment": "CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered active:false and granted to NO Role -- nothing runs in production until a separate deploy + Owner grant + p"
+    },
+    {
+      "names": [
+        "getCrmActivities"
+      ],
+      "module": "./crmActivity/crmActivityReadService",
+      "capabilityHints": [],
+      "comment": null
+    }
+  ],
+  "destinations": [
+    {
+      "key": "my",
+      "label": "My Dashboard",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "operationsDashboard",
+      "label": "Inventory & Supply Overview",
+      "path": "operations",
+      "legacyKey": "operations",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "notifications",
+      "label": "Notifications",
+      "path": "notifications",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet."
+    },
+    {
+      "key": "customers",
+      "label": "Customers",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "opportunities",
+      "label": "Opportunities",
+      "path": "opportunities",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "equipment",
+      "label": "Equipment",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "workOrders",
+      "label": "Work Orders",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "jobAssignments",
+      "label": "Job Assignments",
+      "path": "job-assignments",
+      "legacyKey": "jobs",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "dispatch",
+      "label": "Dispatch Queue",
+      "path": "dispatch",
+      "legacyKey": "dispatch",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "coordinatedVisits",
+      "label": "Coordinated Visits",
+      "path": "coordinated-visits",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "coordinatedMission",
+      "label": "Coordinated Mission",
+      "path": "coordinated-mission",
+      "legacyKey": "fieldMode",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "technicianWorkspace",
+      "label": "Technician Workspace",
+      "path": "technician-workspace",
+      "legacyKey": "fieldMode",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "dispatcherBoard",
+      "label": "Dispatcher Board",
+      "path": "dispatcher-board",
+      "legacyKey": "dispatcherBoard",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "scheduling",
+      "label": "Scheduling",
+      "path": "scheduling",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "dispatchScheduling",
+      "label": "Dispatch Board",
+      "path": "dispatch-scheduling",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "warranty",
+      "label": "Warranty",
+      "path": "warranty",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "serviceOperations",
+      "label": "Service Operations",
+      "path": "",
+      "legacyKey": "controlTower",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "parts",
+      "label": "Parts",
+      "path": "",
+      "legacyKey": "inventory",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "partMaster",
+      "label": "Part Master",
+      "path": "part-master",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "manufacturers",
+      "label": "Manufacturers",
+      "path": "manufacturers",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "warehouses",
+      "label": "Warehouses",
+      "path": "warehouses",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "truckInventory",
+      "label": "Truck Inventory",
+      "path": "truck-inventory",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "transfers",
+      "label": "Transfers",
+      "path": "transfers",
+      "legacyKey": "inventory",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "receiving",
+      "label": "Receiving",
+      "path": "receiving",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "cycleCounts",
+      "label": "Cycle Counts",
+      "path": "cycle-counts",
+      "legacyKey": "inventory",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "backOrders",
+      "label": "Back Orders",
+      "path": "back-orders",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "manager",
+      "label": "Parts Manager",
+      "path": "manager",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "warehouse",
+      "label": "Warehouse Manager",
+      "path": "warehouse",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "mine",
+      "label": "My Purchasing",
+      "path": "mine",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "purchaseOrders",
+      "label": "Purchase Orders",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "suppliers",
+      "label": "Suppliers",
+      "path": "suppliers",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "quotes",
+      "label": "Quotes",
+      "path": "quotes",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "receipts",
+      "label": "Receipts",
+      "path": "receipts",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "demandPlanning",
+      "label": "Demand Planning",
+      "path": "demand-planning",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "builder",
+      "label": "Report Builder",
+      "path": "builder",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "savedReports",
+      "label": "Saved Reports",
+      "path": "saved",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "executive",
+      "label": "Executive",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "service",
+      "label": "Service",
+      "path": "service",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "inventory",
+      "label": "Inventory",
+      "path": "inventory",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "purchasing",
+      "label": "Purchasing",
+      "path": "purchasing",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "warehouse",
+      "label": "Warehouse",
+      "path": "warehouse",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "employees",
+      "label": "Employees",
+      "path": "employees",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "customers",
+      "label": "Customers",
+      "path": "customers",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "financial",
+      "label": "Financial",
+      "path": "financial",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": "Reporting is built — this domain has no report definitions yet. Build one in Report Builder, or open Saved Reports, if your role includes reporting."
+    },
+    {
+      "key": "overview",
+      "label": "Overview",
+      "path": "overview",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "employees",
+      "label": "Employees",
+      "path": "",
+      "legacyKey": "technicians",
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "users",
+      "label": "Users",
+      "path": "users",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "rolesPermissions",
+      "label": "Roles & Permissions",
+      "path": "roles-permissions",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "permissionPreview",
+      "label": "Permission Preview",
+      "path": "permission-preview",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "vehicles",
+      "label": "Vehicles",
+      "path": "vehicles",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "regions",
+      "label": "Regions",
+      "path": "regions",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "companySettings",
+      "label": "Company Settings",
+      "path": "company-settings",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "integrations",
+      "label": "Integrations",
+      "path": "integrations",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "auditLogs",
+      "label": "Audit Logs",
+      "path": "audit-logs",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "financials",
+      "label": "Financials",
+      "path": "financials",
+      "legacyKey": null,
+      "navHidden": true,
+      "future": true,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "workManagement",
+      "label": "Work Management",
+      "path": null,
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "dispatch",
+      "label": "Dispatch",
+      "path": null,
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "technicianWorkspace",
+      "label": "Technician Workspace",
+      "path": null,
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    }
+  ],
+  "guides": [
+    {
+      "title": "Sign in to Field Ops",
+      "path": "docs/user-guide/getting-started/sign-in.md",
+      "status": "live",
+      "section": null,
+      "summary": "Sign in with your work email and password; covers the login form, error message, No access state, and demo banner."
+    },
+    {
+      "title": "Understand your landing screen",
+      "path": "docs/user-guide/getting-started/your-landing-screen.md",
+      "status": "live",
+      "section": null,
+      "summary": "What you see after sign-in: the app frame plus the role-specific My Dashboard (live technician dashboard; placeholder for admin/dispatcher, who use Operations Dashboard)."
+    },
+    {
+      "title": "Move around the app",
+      "path": "docs/user-guide/getting-started/navigating-field-ops.md",
+      "status": "live",
+      "section": null,
+      "summary": "Using the top area tabs and sub-tabs, what each role sees, and an honest note that many sub-sections are not-yet-built placeholders."
+    },
+    {
+      "title": "Sign out of Field Ops",
+      "path": "docs/user-guide/getting-started/sign-out.md",
+      "status": "live",
+      "section": null,
+      "summary": "Use the Logout button in the top-right to end your session, especially on shared devices."
+    },
+    {
+      "title": "Browse and find work orders",
+      "path": "docs/user-guide/work-orders/browse-work-orders.md",
+      "status": "live",
+      "section": null,
+      "summary": "Filter the work order list by lifecycle group and search for a specific one (admin/dispatcher)."
+    },
+    {
+      "title": "View a work order's details",
+      "path": "docs/user-guide/work-orders/view-work-order-details.md",
+      "status": "live",
+      "section": null,
+      "summary": "Open one work order to see customer, location, timestamps, parts, and history (admin/dispatcher)."
+    },
+    {
+      "title": "Create a work order",
+      "path": "docs/user-guide/work-orders/create-work-order.md",
+      "status": "not-yet-available",
+      "section": null,
+      "summary": "Four-step wizard that fills in fine but can't save yet — the createWorkOrder Cloud Function is undeployed."
+    },
+    {
+      "title": "Move a work order through its lifecycle (dispatcher)",
+      "path": "docs/user-guide/work-orders/move-work-order-through-lifecycle-dispatcher.md",
+      "status": "not-yet-available",
+      "section": null,
+      "summary": "Mark Ready/Schedule/Dispatch/Close/Cancel buttons exist but transitionWorkOrder is undeployed, so status changes can't record."
+    },
+    {
+      "title": "Progress your assigned work order (technician)",
+      "path": "docs/user-guide/work-orders/progress-assigned-work-order-technician.md",
+      "status": "not-yet-available",
+      "section": null,
+      "summary": "Accept/Travel/Arrive/Start Work/Complete on My Dashboard; same undeployed transitionWorkOrder callable, so steps can't record."
+    },
+    {
+      "title": "Schedule work orders (weekly workspace)",
+      "path": "docs/user-guide/dispatch/schedule-work-orders.md",
+      "status": "live",
+      "section": null,
+      "summary": "See the week ahead across every technician and put a date, time, and technician on Work Orders that are ready to schedule, at Service > Scheduling (admin/dispatcher)."
+    },
+    {
+      "title": "Assign a job to a technician (Dispatch screen)",
+      "path": "docs/user-guide/dispatch/assign-a-job-on-the-dispatch-screen.md",
+      "status": "live",
+      "section": null,
+      "summary": "One-click assign an unassigned job to an available technician from the Service > Dispatch cards."
+    },
+    {
+      "title": "Dispatch a Work Order (Dispatcher Board)",
+      "path": "docs/user-guide/dispatch/dispatch-a-work-order-on-the-dispatcher-board.md",
+      "status": "live",
+      "section": null,
+      "summary": "Review the Work Order queue with technician recommendations and dispatch a SCHEDULED Work Order by picker or drag-and-drop."
+    },
+    {
+      "title": "Monitor operations (Control Tower)",
+      "path": "docs/user-guide/dispatch/monitor-operations-in-control-tower.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only operational overview: live counters, technician load, at-risk items, and a recommended dispatch queue."
+    },
+    {
+      "title": "See my assigned work orders",
+      "path": "docs/user-guide/technician-field/see-my-work-orders.md",
+      "status": "live",
+      "section": null,
+      "summary": "Technician home dashboard: assigned work orders grouped by stage (Ready to Start / In Progress / Waiting / Completed Today) plus a performance snapshot."
+    },
+    {
+      "title": "Update a work order's status",
+      "path": "docs/user-guide/technician-field/update-work-order-status.md",
+      "status": "live",
+      "section": null,
+      "summary": "Move an assigned work order through its lifecycle (Accept, Start Travel, Arrived, Start Work, Complete) from the work order detail view."
+    },
+    {
+      "title": "Record parts used and work notes",
+      "path": "docs/user-guide/technician-field/record-parts-and-notes.md",
+      "status": "live",
+      "section": null,
+      "summary": "Adjust used quantities on planned parts and add append-only work notes via Execution Capture on an assigned work order."
+    },
+    {
+      "title": "Parts Scanner (Technician Workspace)",
+      "path": "docs/user-guide/technician-field/parts-scanner.md",
+      "status": "demo (except Receive)",
+      "section": null,
+      "summary": "Field part scan/lookup at Service > Technician Workspace; in-memory demo except the real governed **Receive a purchase order** action — see [Receive a purchase order](inventory/receive-a-purchase-order.md)."
+    },
+    {
+      "title": "Find a part and check its stock",
+      "path": "docs/user-guide/inventory/find-a-part.md",
+      "status": "live",
+      "section": null,
+      "summary": "Look up a part in the Parts catalog and read its stock position and reorder status (read-only)."
+    },
+    {
+      "title": "Request a reorder for a part",
+      "path": "docs/user-guide/inventory/request-a-reorder.md",
+      "status": "live",
+      "section": null,
+      "summary": "Flag a low part into the reorder queue via the Request Reorder control (one-click for forecastable parts; eligibility-gated manual qty for Needs Planning)."
+    },
+    {
+      "title": "Review a reorder request (approve or reject)",
+      "path": "docs/user-guide/inventory/review-a-reorder-request.md",
+      "status": "live",
+      "section": null,
+      "summary": "Approve a pending request to hand it to the Parts Manager, or reject it with a required reason."
+    },
+    {
+      "title": "Assign a reorder request to a Parts Associate",
+      "path": "docs/user-guide/inventory/assign-a-reorder-request.md",
+      "status": "live",
+      "section": null,
+      "summary": "Assign an approved request to a Parts-Associate-role employee via the employee picker."
+    },
+    {
+      "title": "Place the order and track purchasing",
+      "path": "docs/user-guide/inventory/place-the-order.md",
+      "status": "live",
+      "section": null,
+      "summary": "Assignee-only: start purchasing, post progress updates, and record the purchase order (moves request to Ordered)."
+    },
+    {
+      "title": "Mark a reorder request received",
+      "path": "docs/user-guide/inventory/mark-reorder-received.md",
+      "status": "live",
+      "section": null,
+      "summary": "Assignee-only closeout of an Ordered request; explicitly marked as NOT updating stock counts."
+    },
+    {
+      "title": "View inventory transfers",
+      "path": "docs/user-guide/inventory/view-transfers.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only Inventory > Transfers workspace: part, From → To locations, and status, filterable by Active/In transit/Completed/Cancelled/All (admin/dispatcher)."
+    },
+    {
+      "title": "View warehouses",
+      "path": "docs/user-guide/inventory/view-warehouses.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only Inventory > Warehouses workspace: name, Active/Inactive status, and receiving eligibility, filterable by All/Active/Inactive, with a summary count (admin/dispatcher)."
+    },
+    {
+      "title": "Receive a purchase order",
+      "path": "docs/user-guide/inventory/receive-a-purchase-order.md",
+      "status": "real, fail-closed until activated",
+      "section": null,
+      "summary": "The governed receipt: receive an Ordered purchase order into a warehouse. One workflow, two launch points — the **Inventory > Receiving** workspace (Admin/Dispatcher) or the Parts Scanner's \"Receive a purchase order\" act"
+    },
+    {
+      "title": "Cancel or void a reorder request",
+      "path": "docs/user-guide/inventory/cancel-or-void-a-reorder.md",
+      "status": "live",
+      "section": null,
+      "summary": "Reason-then-confirm flow: cancel before ordering (admin/dispatcher) or void after ordering (assignee only); nothing deleted."
+    },
+    {
+      "title": "Log an inventory action (receive, adjust, or correct)",
+      "path": "docs/user-guide/inventory/log-an-inventory-action.md",
+      "status": "live",
+      "section": null,
+      "summary": "Record a Receive/Adjust/Correct audit note against a part; explicitly log-only and does not change stock."
+    },
+    {
+      "title": "Parts scanner (Technician Workspace)",
+      "path": "docs/user-guide/inventory/parts-scanner.md",
+      "status": "demo (except Receive)",
+      "section": null,
+      "summary": "Mobile scan-and-act preview (use/load/count/PO draft are in-memory demo); its **Receive a purchase order** action is the real governed receipt — see [Receive a purchase order](inventory/receive-a-purchase-order.md)."
+    },
+    {
+      "title": "View purchase orders",
+      "path": "docs/user-guide/purchasing/view-purchase-orders.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only Purchasing > Purchase Orders list of orders placed against reorder requests, filterable by Open/Received/Voided/All (admin/dispatcher)."
+    },
+    {
+      "title": "View receipts",
+      "path": "docs/user-guide/purchasing/view-receipts.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only Purchasing > Receipts list of received purchase orders — the received-only view of Purchase Orders, with a link into Inventory > Receiving (admin/dispatcher)."
+    },
+    {
+      "title": "View suppliers",
+      "path": "docs/user-guide/purchasing/view-suppliers.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read-only Purchasing > Suppliers registry showing name, vendor number, contact, and status, filterable by All/Active/Inactive/Ungoverned (admin/dispatcher)."
+    },
+    {
+      "title": "Browse and search customers",
+      "path": "docs/user-guide/accounts-customers/browse-and-search-customers.md",
+      "status": "live",
+      "section": null,
+      "summary": "View the customer list, search by name, and open a record."
+    },
+    {
+      "title": "Add a new customer",
+      "path": "docs/user-guide/accounts-customers/add-a-new-customer.md",
+      "status": "live",
+      "section": null,
+      "summary": "Create a customer via the + New Customer form."
+    },
+    {
+      "title": "View a customer's record",
+      "path": "docs/user-guide/accounts-customers/view-a-customer-record.md",
+      "status": "live",
+      "section": null,
+      "summary": "Tour the six sections of a customer detail page."
+    },
+    {
+      "title": "Edit a customer",
+      "path": "docs/user-guide/accounts-customers/edit-a-customer.md",
+      "status": "live",
+      "section": null,
+      "summary": "Change name, status, address, notes, tags, or external IDs."
+    },
+    {
+      "title": "Add a contact to a customer",
+      "path": "docs/user-guide/accounts-customers/add-a-contact-to-a-customer.md",
+      "status": "live",
+      "section": null,
+      "summary": "Record a contact person with phone, email, and primary flag."
+    },
+    {
+      "title": "Add a location to a customer",
+      "path": "docs/user-guide/accounts-customers/add-a-location-to-a-customer.md",
+      "status": "live",
+      "section": null,
+      "summary": "Record a customer site with address and access notes."
+    },
+    {
+      "title": "See a customer's work orders and activity",
+      "path": "docs/user-guide/accounts-customers/see-customer-work-orders-and-activity.md",
+      "status": "live",
+      "section": null,
+      "summary": "Read Completed/Open counts and the Account Activity timeline."
+    },
+    {
+      "title": "Financial summary",
+      "path": "docs/user-guide/accounts-customers/financial-summary.md",
+      "status": "not-yet-available",
+      "section": null,
+      "summary": "Section exists but shows \"Sales data source not connected.\" — no provider wired."
+    },
+    {
+      "title": "Add and view employees",
+      "path": "docs/user-guide/administration/manage-employees.md",
+      "status": "live",
+      "section": null,
+      "summary": "List field technicians and add a new one (name + phone) on the Administration > Employees screen."
+    },
+    {
+      "title": "Read the integrations connection guide",
+      "path": "docs/user-guide/administration/integrations-guide.md",
+      "status": "live",
+      "section": null,
+      "summary": "Browse and search the Administration > Integrations FAQ and gather a readiness checklist before requesting a connection."
+    }
+  ],
+  "register": [
+    {
+      "number": 1,
+      "name": "Service Contracts / Preventive Maintenance"
+    },
+    {
+      "number": 2,
+      "name": "Warranty / Service Entitlement"
+    },
+    {
+      "number": 3,
+      "name": "Installed Base / Customer Equipment Lifecycle"
+    },
+    {
+      "number": 4,
+      "name": "Returns / RMA / Credits / Reverse Commerce"
+    },
+    {
+      "number": 5,
+      "name": "Purchasing Economics + Vendor Performance"
+    },
+    {
+      "number": 6,
+      "name": "Accounts Receivable / Collections"
+    },
+    {
+      "number": 7,
+      "name": "Sales Credit / Commissions"
+    },
+    {
+      "number": 8,
+      "name": "Technician Skills / Certifications / Work Eligibility"
+    },
+    {
+      "number": 9,
+      "name": "Capacity + Customer Promise"
+    },
+    {
+      "number": 10,
+      "name": "Exception Ownership / Operational Accountability"
+    },
+    {
+      "number": 11,
+      "name": "Operational Commitment — **WATCH ITEM (not yet a capability)**"
+    },
+    {
+      "number": 12,
+      "name": "Temporary Equipment Placement / Custody Relationship (`SERVICE_LOANER`, `SALES_EVALUATION`)"
+    },
+    {
+      "number": 13,
+      "name": "Technician Labor + Cost Accounting"
+    },
+    {
+      "number": 14,
+      "name": "Multi-Equipment Fulfillment / Coordinated Field Execution"
+    },
+    {
+      "number": 15,
+      "name": "Commercial Coverage & Territory Management"
+    }
+  ],
+  "eligibleIds": [
+    "opportunity.write",
+    "opportunity.read",
+    "opportunity.createSalesOrder",
+    "salesOrder.read",
+    "salesOrder.write",
+    "salesOrder.fulfill",
+    "salesOrder.service",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.adjustment.record",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.catalog.read",
+    "workOrder.parts.plan",
+    "crm.activity.create",
+    "crm.activity.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.serializedAsset.read",
+    "inventory.location.display.read",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "inventory.transfer.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.submit",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.cancel"
+  ],
+  "parityIssues": []
+}
