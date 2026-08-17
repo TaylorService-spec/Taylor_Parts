@@ -1571,12 +1571,14 @@
       "title": "Index derivation across filter COMBINATIONS",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Model per-combination indexes, including arrayConfig for array-contains",
+      "status": "MERGED",
+      "nextAction": "Merged; three accounts composites declared and pending deploy",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() emits ONE combined index for all declared filters plus the sort. Firestore does not serve a query filtering on a subset from that index, so a list declaring two independent filters really demands several indexes. It also emits `order` for every filter field, which is wrong for array-contains - that needs arrayConfig CONTAINS. This is why the Customers relationship facet is deferred: its honest query is array-contains beside an ordering, and the derivation cannot yet state the index it needs. Until this exists, a definition may declare at most one filter without the gate understating what the backend must provide."
+      "notes": "requiredIndexes() emits ONE combined index for all declared filters plus the sort. Firestore does not serve a query filtering on a subset from that index, so a list declaring two independent filters really demands several indexes. It also emits `order` for every filter field, which is wrong for array-contains - that needs arrayConfig CONTAINS. This is why the Customers relationship facet is deferred: its honest query is array-contains beside an ordering, and the derivation cannot yet state the index it needs. Until this exists, a definition may declare at most one filter without the gate understating what the backend must provide. DELIVERED (#1139): one index per combination, arrayConfig for array operators, no composite demanded for the unfiltered single-field-ordered query (Firestore's automatic index serves it), and MAX_DECLARED_FILTERS=4 as a validation failure since the set is exponential in the optional filters. The Customers relationship facet was restored in the same PR - it had been deferred precisely because this derivation could not state the index it needed. Single-select, not the old multi-select: Firestore permits one array filter per query, so an intersection would promise a query no declared index serves.",
+      "pr": 1139,
+      "mergeSha": "04567b43"
     },
     {
       "id": "X-ACCOUNT-SEARCH",

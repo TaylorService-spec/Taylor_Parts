@@ -38,14 +38,12 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-INDEX-FILTER-COMBINATIONS** (phase 6) — Index derivation across filter COMBINATIONS → Model per-combination indexes, including arrayConfig for array-contains
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-INDEX-FILTER-COMBINATIONS | 6 | Index derivation across filter COMBINATIONS | — | — | — | — | — | NOT_APPLICABLE | Model per-combination indexes, including arrayConfig for array-contains |
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 
 ## MERGED
@@ -80,6 +78,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | #1135 | — | 774ea795 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | #1136 | — | 2fff78b1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | — | 2a7847d1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| A-INDEX-FILTER-COMBINATIONS | 6 | Index derivation across filter COMBINATIONS | — | — | #1139 | — | 04567b43 | NOT_APPLICABLE | Merged; three accounts composites declared and pending deploy |
 
 ## BLOCKED_PROTECTED
 
