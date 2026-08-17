@@ -50,7 +50,7 @@ const refuse = (outcome, reason, extra = {}) => Object.freeze({ outcome, spawned
  * @param {string|null} [o.sourceCommit]
  * @param {string|null} [o.sourceFreshness]  reviewProvenance state; must be "CURRENT" to run live
  */
-export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null, executionProfile = "READ_ONLY_ANALYSIS" } = {}) {
+export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null, executionProfile = "READ_ONLY_ANALYSIS", executionContract = null } = {}) {
   if (typeof contextPackageFn !== "function") throw new Error("executeWake: contextPackageFn (shared C-7 builder) is required");
   if (!processRunner || typeof processRunner.run !== "function") throw new Error("executeWake: processRunner must be injected");
   if (!lease || typeof lease.acquire !== "function") throw new Error("executeWake: lease must be injected");
@@ -88,7 +88,10 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
   // The capability profile is GOVERNED and resolved by the caller (runIntakeExecution) — least-privilege
   // READ_ONLY_ANALYSIS unless a governed authorization granted more. It is never taken from worker/request
   // self-declaration here, so a worker cannot widen its own authority.
-  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }), profile: executionProfile || "READ_ONLY_ANALYSIS" });
+  // The governed output contract rides WITH the invocation so the worker is told, deterministically, which
+  // structured receipts classifyCompletion will judge it on. It conveys no authority — the profile above
+  // remains the sole source of the capability envelope.
+  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }), profile: executionProfile || "READ_ONLY_ANALYSIS", executionContract });
   let leaseReleased = false;
   const releaseLease = () => { if (leaseReleased) return true; try { lease.release(); leaseReleased = true; return true; } catch { return false; } };
 
