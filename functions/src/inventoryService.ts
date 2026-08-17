@@ -59,13 +59,29 @@ async function getAvailableQuantity(tx: Transaction, partId: string): Promise<nu
   const snap = await tx.get(db().collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let grossReserved = 0;
   let released = 0;
+  // GOVERNED MOVEMENT. Receiving, Transfer and reconciled Cycle Counts write to this SAME
+  // append-only ledger, and this function used to ignore all of them -- it read only the legacy
+  // Work-Order reservation types on top of the STATIC catalog baseline. A governed Part has no
+  // static row, so its baseline is 0 and its real stock was invisible: PRT-1001 held 3 units across
+  // two warehouses and a truck and reserveParts() saw 0, refusing the reservation as
+  // "Insufficient stock". Governed stock could be received but never planned against.
+  //
+  // Summed across ALL locations, matching this function's warehouse-wide contract (a transfer
+  // between two locations nets to zero here, which is correct -- it moved stock, it did not
+  // create or destroy it). ADJUSTED already carries its sign.
+  let governed = 0;
   snap.forEach((doc) => {
     const t = doc.data() as InventoryTransaction;
     if (t.type === "RESERVED") grossReserved += t.quantity;
     else if (t.type === "RELEASED") released += t.quantity;
+    else if (t.type === "RECEIVED" || t.type === "TRANSFER_IN") governed += t.quantity;
+    else if (t.type === "TRANSFER_OUT") governed -= t.quantity;
+    else if (t.type === "ADJUSTED") governed += t.quantity;
   });
 
-  return warehouseQty - (grossReserved - released);
+  // CONSUMED remains deliberately absent, exactly as before: consuming converts an existing
+  // reservation into a permanent removal, and that quantity left availability when it was RESERVED.
+  return warehouseQty + governed - (grossReserved - released);
 }
 
 // Outstanding (still-active) reservation for one Work Order + part --
