@@ -60,6 +60,9 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     id: so.id,
     accountId: so.accountId,
     sourceOpportunityId: so.sourceOpportunityId,
+    // Carried through so the detail page can label the lineage link with a reference
+    // rather than a document id. Null on Sales Orders predating Opportunity identity.
+    sourceOpportunityNumber: so.sourceOpportunityNumber ?? null,
     ownerEmployeeId: so.ownerEmployeeId,
     salesChannel: so.salesChannel,
     state: so.state,
