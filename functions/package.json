@@ -12,7 +12,7 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "test:rules": "node scripts/rulesRegressionRunner.mjs",
     "test:runner": "node test/rulesRegressionRunner.test.mjs",
-    "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node --test test/environmentCapabilityOverrides.test.mjs && node test/governedBusinessRoles.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs && node --test test/activationOverridesWiring.test.mjs",
+    "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node --test test/environmentCapabilityOverrides.test.mjs && node test/governedBusinessRoles.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs && node --test test/activationOverridesWiring.test.mjs && node --test test/sandboxBaselinePartFixtures.test.mjs",
     "test:audit": "npm run build && node test/auditEventWriter.test.mjs",
     "test:equipmentCompatibilityParity": "npm run build && node test/equipmentCompatibilityDomainParity.test.mjs",
     "test:equipmentCompatibilityUnit": "npm run build && node test/equipmentCompatibilityDomainParity.test.mjs && node test/equipmentCompatibilityOperations.test.mjs && node test/equipmentCompatibilityRepositories.test.mjs && node test/equipmentCompatibilityFingerprint.test.mjs && node test/equipmentCompatibilityCommands.test.mjs && node test/equipmentCompatibilityRegistry.test.mjs && node test/equipmentCompatibilityReadCursor.test.mjs",
@@ -119,7 +119,7 @@
     "test:coordinatedVisitReadEmulator": "npm run build && node --test test/coordinatedVisitReadCallable.test.mjs",
     "test:locationDisplayRead": "npm run build && node --test test/locationDisplayReadService.test.mjs",
     "test:locationDisplayReadEmulator": "npm run build && node --test test/locationDisplayReadCallable.test.mjs",
-    "test:activationOverridesWiring": "npm run build && node --test test/activationOverridesWiring.test.mjs"
+    "test:activationOverridesWiring": "npm run build && node --test test/activationOverridesWiring.test.mjs && node --test test/sandboxBaselinePartFixtures.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
