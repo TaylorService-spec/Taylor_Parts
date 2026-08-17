@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main d90db46e (governance boundary merged, PR #1092)",
+  "baseline": "origin/main abedeff5 (Gate A contracts, bounded reads, access generator, analytics capability, metadata spec all merged)",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -17,8 +17,8 @@
       "title": "Program execution ledger + resumption model",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "branch": "feat/metadata-program-ledger",
       "checks": "build x2 + gitleaks green; 25/25 model tests",
       "governing": [
@@ -27,7 +27,8 @@
       "lane": "controller",
       "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does.",
       "pr": 1101,
-      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15"
+      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15",
+      "mergeSha": "dbb51c338309653f671d2c83fc7087ec7e2c0665"
     },
     {
       "id": "P0-INV-CRM",
@@ -182,9 +183,10 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1099,
       "dependsOn": [
+        "D-OPPORTUNITY-IDENTITY",
         "A-LIST-METADATA-V1"
       ],
-      "nextAction": "Needs Opportunity identity before a record page is meaningful",
+      "nextAction": "Blocked on identity (now its own item) and the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
     },
     {
@@ -283,9 +285,12 @@
       "route": "/service/dispatch",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Classify: queue with governed transition writes, not a list",
-      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime."
+      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-DISPATCHER-BOARD",
@@ -353,9 +358,12 @@
       "route": "/service/coordinated-visits",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Confirm synthetic-source status before migrating anything",
-      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing."
+      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-COORDINATED-MISSION",
@@ -367,9 +375,12 @@
       "route": "/service/coordinated-mission",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Same synthetic-source caveat as coordinated visits",
-      "notes": "Synthetic source."
+      "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-CONTROL-TOWER",
@@ -381,9 +392,12 @@
       "route": "/service-operations",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
-      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels."
+      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-SVC-WARRANTY",
@@ -409,9 +423,12 @@
       "route": "/service/work-orders/new",
       "classification": "F_UTILITY_EXEMPT",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
-      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers."
+      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-ADM-EMPLOYEES",
@@ -485,9 +502,12 @@
       "route": "/administration/users",
       "classification": "E_ADMIN_CONFIG",
       "entity": "User",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only; no governed directory read exists to migrate",
-      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does."
+      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-ADM-ROLES",
@@ -499,9 +519,12 @@
       "route": "/administration/roles-permissions",
       "classification": "E_ADMIN_CONFIG",
       "entity": "RoleAssignment",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only; form is unconditionally disabled",
-      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100."
+      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-ADM-PLACEHOLDERS",
@@ -527,9 +550,12 @@
       "route": "/dashboard",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "n/a",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Later phase; dashboard composition is not list/record metadata",
-      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read)."
+      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-DASH-OPERATIONS",
@@ -541,9 +567,12 @@
       "route": "/dashboard/operations",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Bounded-read remediation",
-      "notes": "Ten parallel reads in one Promise.all including a full technicians collection read (Operations.jsx:103)."
+      "status": "BLOCKED_DEPENDENCY",
+      "nextAction": "Needs an authoritative aggregate before its reads can be bounded",
+      "notes": "Ten parallel reads in one Promise.all including a full technicians collection read (Operations.jsx:103). Owner ruling section 4 applies here too, and re-classifies this from a mechanical fix. This surface computes NETTED AGGREGATES client-side (availableStock as bin totals minus outstanding RESERVED/RELEASED, plus consumption and technician-volume rollups over the whole work-order collection). Adding limit() to those reads would produce an arithmetically false total under a name implying a complete business figure - the same defect the ruling forbids on the server, arriving through the client instead. Bounding is necessary but NOT sufficient: these figures need an authoritative aggregate, not a page.",
+      "dependsOn": [
+        "X-INVENTORY-ANALYTICS-AGGREGATE"
+      ]
     },
     {
       "id": "A-CONTRACT-CORE",
@@ -553,18 +582,21 @@
       "title": "Entity/Field/Relationship definition contracts",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "P0-LEDGER"
-      ],
-      "nextAction": "Derive from reportCatalog.js prior art; Gate A package",
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "gate": "NOT_APPLICABLE",
       "governing": [
         "DECISIONS #102 \u00a71",
         "DECISIONS #102 \u00a77",
         "DECISIONS #102 \u00a714"
       ],
-      "notes": "EOS-native derivation available in-repo: reportCatalog.js already models objects/fields/relationships as validated pure data with per-field capability ids. Provenance trace is EOS requirement -> EOS abstraction, not vendor -> equivalent."
+      "notes": "EOS-native derivation available in-repo: reportCatalog.js already models objects/fields/relationships as validated pure data with per-field capability ids. Provenance trace is EOS requirement -> EOS abstraction, not vendor -> equivalent. LEDGER MODELLING ERROR CORRECTED: this entry previously declared dependsOn P0-LEDGER. That was never a real dependency - the ledger is a docs artifact and the contracts are code on disjoint paths - and it manufactured a false program-wide block. Dependencies must model what the code actually needs, not what happened to be built first.",
+      "pr": 1106,
+      "headSha": "283387382eba041b2224385a4e5f56fbb9cb49e4",
+      "branch": "feat/metadata-entity-contracts",
+      "checks": "24/24 contract tests pass; oxlint clean; dedicated workflow added",
+      "mergeSha": "3a07e4d8"
     },
     {
       "id": "A-LIST-METADATA-V1",
@@ -574,31 +606,36 @@
       "title": "Entity List Metadata v1 runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGE_QUEUED",
       "issue": 1096,
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "Build after Gate A contracts land",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a79"
       ],
-      "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration."
+      "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration. CONTRACT LANDED as ListViewDefinition. Total sort order is guaranteed twice on purpose: the factory defaults the tiebreaker to documentId() (writing the test revealed the validator rule could never fire through the factory), and the validator keeps its rule for definitions arriving as plain data that never pass through it. There is deliberately NO offset or page-number concept in the vocabulary, and a test asserts that absence. RUNTIME (the component consuming this) is still to build.",
+      "pr": 1115,
+      "headSha": "87dcaa49ebd876c24e54d954f23effe5a01d695d",
+      "branch": "feat/entity-list-metadata-v1",
+      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test"
     },
     {
       "id": "A-PAGE-RUNTIME",
       "phase": "5",
       "wave": "2",
       "kind": "ARCHITECTURE",
-      "title": "Page definition runtime",
+      "title": "Page definition contract (PageDefinition/PageRegion)",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "After list runtime proves the contract shape"
+      "status": "MERGE_QUEUED",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "pr": 1118,
+      "headSha": "6d2d80e0925a95eb9f8da9adba8651e438c9c48b",
+      "branch": "feat/page-definition-contract",
+      "checks": "17/17 tests; oxlint + tsc clean",
+      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item."
     },
     {
       "id": "A-REGISTRIES",
@@ -608,15 +645,18 @@
       "title": "Component and action registries",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "Action definitions reference governed command paths only",
+      "status": "MERGE_QUEUED",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a78"
-      ]
+      ],
+      "pr": 1116,
+      "headSha": "d750b01850246f62560f238a759cedd7c6447183",
+      "branch": "feat/metadata-registries",
+      "checks": "15/15 tests; oxlint + tsc clean; registered in workflow and npm test",
+      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime."
     },
     {
       "id": "G-GATE-A",
@@ -626,17 +666,17 @@
       "title": "Gate A \u2014 metadata foundation review package",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "REVIEW_QUEUED",
       "gate": "GATE_A",
-      "dependsOn": [
-        "A-CONTRACT-CORE",
-        "A-REGISTRIES",
-        "A-LIST-METADATA-V1"
-      ],
-      "nextAction": "Assemble package, mark REVIEW_QUEUED, do NOT wait",
+      "dependsOn": [],
+      "nextAction": "Review owed, NOT waited on; program continues",
       "governing": [
         "program ruling \u00a74"
-      ]
+      ],
+      "pr": 1119,
+      "headSha": "140bd1f7aee39db755942c18876489009c5971cd",
+      "branch": "docs/gate-a-review-package",
+      "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning."
     },
     {
       "id": "G-GATE-B",
@@ -666,9 +706,9 @@
       "title": "Canonical ACCOUNT_STATUS machine values + display labels",
       "domain": "crm",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1093,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 \u00a71"
       ],
@@ -676,7 +716,8 @@
       "pr": 1103,
       "headSha": "f41045b8dc2f61193ec64c6db725cc9cc7c85702",
       "branch": "fix/account-status-canonical-values",
-      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests"
+      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests",
+      "mergeSha": "bb72103e65eec55aa95013fd87c455d331371fa6"
     },
     {
       "id": "D-BUG-AR-CONTRACT",
@@ -686,9 +727,9 @@
       "title": "Shared AR view-state contract",
       "domain": "crm",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1094,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 \u00a72"
       ],
@@ -696,7 +737,8 @@
       "pr": 1102,
       "headSha": "7b87a025ab7d28ab0907cc2f20fafc3bc98800dd",
       "branch": "fix/account-ar-view-state-contract",
-      "checks": "16/16 offline accountHealthStrip tests pass"
+      "checks": "16/16 offline accountHealthStrip tests pass",
+      "mergeSha": "b65066ffecd40848e433915a0618887740bf3e34"
     },
     {
       "id": "D-BUG-AR-OWNERSHIP",
@@ -706,13 +748,15 @@
       "title": "One authoritative Account AR read owner",
       "domain": "crm",
       "entity": "Account",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGE_QUEUED",
       "issue": 1095,
-      "dependsOn": [
-        "D-BUG-AR-CONTRACT"
-      ],
-      "nextAction": "After the contract fix lands",
-      "notes": "Three independent consumers issue the same callable read per page load."
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Three independent consumers issue the same callable read per page load. FIXED in the hook via in-flight request sharing rather than by hoisting the read into AccountDetail - hoisting would have fixed the request count by destroying the sections' independent mountability, which the page was built for. Deduplication, NOT caching: the entry clears on settle, so a later mount re-reads. Retaining a settled AR balance would be a worse defect than the duplicate requests.",
+      "pr": 1114,
+      "headSha": "7824cf4f0ae16fd2a3ecadde02a8da41b549538d",
+      "branch": "refactor/account-ar-single-read",
+      "checks": "5/5 offline sharing tests; oxlint clean; NOT verified live"
     },
     {
       "id": "X-ADMIN-CRM-AUTHORITY",
@@ -852,9 +896,15 @@
       "route": "/inventory/truck-inventory",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "Truck",
-      "status": "READY",
-      "nextAction": "Resolve the deployment-status contradiction before touching this surface",
-      "notes": "CONTRADICTION: functions/src/index.ts comments say the truck callables are NOT deployed, while config/truckManagementReadiness.js and TRUCK_MANAGEMENT_WRITE_READY true in production say deployed and production-verified. Recorded, not resolved - the repo disagrees with itself and one of the two is stale."
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "Repository declaration now fails closed for taylor-parts-production only. Sandbox and integration untouched: missing production evidence is not evidence about sandbox. Deliberately does NOT claim the callables are absent - only that their presence is unverified. The live exposure is a SEPARATE item (X-TRUCK-PROD-LIVE-RISK); a repo flag change cannot close it.",
+      "blockers": [],
+      "pr": 1109,
+      "headSha": "b7d8d2e87a4a652100a5a6ae5dfdf98bdde18434",
+      "branch": "fix/truck-production-readiness-fail-closed",
+      "checks": "23/23 environment architecture tests; truck management suites pass",
+      "mergeSha": "39524862"
     },
     {
       "id": "S-INV-TRANSFERS",
@@ -866,9 +916,12 @@
       "route": "/inventory/transfers",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "TransferOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
-      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded."
+      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-INV-RECEIVING",
@@ -908,9 +961,12 @@
       "route": "/inventory/manufacturers",
       "classification": "E_ADMIN_CONFIG",
       "entity": "Manufacturer",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
-      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere."
+      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-INV-ROLE-HOMES",
@@ -1015,12 +1071,17 @@
       "title": "Shared contract source of truth",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner ruling section 10"
       ],
-      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all."
+      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all. DESIGN FINDING (2026-08-17): diffing the mirror pairs shows the ONLY difference is the self-referential cross-reference line - each copy names the OTHER copy's path - plus the wrap point of the sentence containing it, since the two paths differ in length. That yields two candidate designs, and the choice should be made deliberately rather than by whichever is easier to script. (A) Make the cross-reference path-independent, e.g. 'mirrored at the peer access/ module of the same name'. The pairs then become byte-identical, the generator collapses to a plain copy, the parity check collapses to byte equality, and the existing comment-paragraph/CRLF normalization stops being load-bearing. Touches the header of every mirrored module, comments only. (B) Keep the paths and have the generator substitute and re-wrap. Preserves existing text but makes the generator responsible for comment reflow, which is fragile and is exactly what the current normalization exists to tolerate. (A) removes the difference; (B) automates around it. Recommend (A), but it edits several headers and should be a deliberate call, not a side effect of building a script. RESOLVED via design (A): the self-referential pathname was REMOVED from the canonical bodies rather than automated around, so the bodies are byte-identical, generation is a copy and verification is byte equality. Six pairs synced. permissionCatalog.ts excluded (client copy carries ~30 lines of independently abbreviated comments; regenerating is behavior-neutral but deserves its own review in the most authorization-sensitive file) and parityFixtures.ts excluded (genuine firebase-admin vs firebase SDK import difference, not an artificial one).",
+      "pr": 1110,
+      "headSha": "a9ed84c9dd1cde09a3a72f975f55ba08ac2254c5",
+      "branch": "feat/access-contract-generator",
+      "checks": "9/9 mirror integrity; both packages typecheck; shadow + catalog parity pass",
+      "mergeSha": "c01c0531"
     },
     {
       "id": "A-BOUNDED-READS",
@@ -1038,7 +1099,7 @@
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100)."
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE."
     },
     {
       "id": "A-INDEX-VALIDATOR",
@@ -1066,12 +1127,17 @@
       "title": "Unbounded trusted-callable reads",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "The scale rule is not only a client concern. listOpportunityContext does an unfiltered collection get; getAvailableEquipment filters but never limits; getInventoryAnalytics reads two whole collections AND is gated by a direct role check rather than the capability catalog every sibling read uses. Sibling callables already demonstrate the fix (limit+1, then report truncated or downgrade to unavailable rather than mislabel a partial page ready)."
+      "notes": "Two of three done. Which truncation variant applies is decided by the callable's own status vocabulary, not by preference: where status has no 'unavailable' payload value, truncation is a separate flag; where it does AND the payload carries a derived aggregate, the whole response downgrades. getInventoryAnalytics is the third and is deliberately excluded - see X-INVENTORY-ANALYTICS-CAPABILITY.",
+      "pr": 1107,
+      "headSha": "fb5f933ac896591aefa7b56d50c0abc0af480112",
+      "branch": "fix/bounded-callable-reads",
+      "checks": "tsc --noEmit clean; functions build clean",
+      "mergeSha": "12e64a89"
     },
     {
       "id": "X-RULES-DISCREPANCY",
@@ -1081,9 +1147,14 @@
       "title": "mobile_locations read path disagrees with Rules",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Confirm directly against firestore.rules before trusting either source",
-      "notes": "truckRegistryQueries.js does a client-direct unbounded getDocs on mobile_locations and its header claims governed admin/dispatcher read access, while two read-service headers describe mobile_locations as having no Rules match block (default deny). One of the two is stale. Read-only confirmation needed; no Rules change is proposed or authorized here."
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "RESOLVED. firestore.rules:1235-1238 DOES grant admin/dispatcher read on mobile_locations and denies all client writes; both rules copies are byte-identical. The client read path was correct and two functions/src comments were stale. Corrected in both mirror copies.",
+      "pr": 1108,
+      "headSha": "820171100485d5025037d167584354b9ea6ba5c2",
+      "branch": "fix/stale-mobile-locations-rules-comments",
+      "checks": "tsc clean; catalog parity + mirror integrity pass",
+      "mergeSha": "5b72c837"
     },
     {
       "id": "X-WRITE-ONLY-COLLECTIONS",
@@ -1093,9 +1164,9 @@
       "title": "Deny-all collections with no governed read path",
       "domain": "commercial",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Record as a capability gap; not a metadata-program blocker",
-      "notes": "payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are deny-all to clients and have no read callable of any kind - written by trusted writers, readable by nobody. Relevant because a metadata surface over any of them is impossible until a governed read exists."
+      "status": "COMPLETE",
+      "nextAction": "None - recorded as a durable capability gap",
+      "notes": "CONFIRMED EXHAUSTIVELY. payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false, and no exported callable in functions/src reads any of them - only writers exist. part_supplier_items has a pure projection contract that is explicitly NOT activated. A metadata surface over any of these six is impossible until a governed read service is built and activated; that is a capability decision, not a metadata one."
     },
     {
       "id": "S-DASH-OPERATIONS-SCALE",
@@ -1105,9 +1176,12 @@
       "title": "Operations dashboard loads the operational database client-side",
       "domain": "dashboard",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Sequence with A-BOUNDED-READS",
-      "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component."
+      "status": "BLOCKED_DEPENDENCY",
+      "nextAction": "Same authoritative-aggregate dependency as S-DASH-OPERATIONS",
+      "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component. Owner ruling section 4 applies here too, and re-classifies this from a mechanical fix. This surface computes NETTED AGGREGATES client-side (availableStock as bin totals minus outstanding RESERVED/RELEASED, plus consumption and technician-volume rollups over the whole work-order collection). Adding limit() to those reads would produce an arithmetically false total under a name implying a complete business figure - the same defect the ruling forbids on the server, arriving through the client instead. Bounding is necessary but NOT sufficient: these figures need an authoritative aggregate, not a page.",
+      "dependsOn": [
+        "X-INVENTORY-ANALYTICS-AGGREGATE"
+      ]
     },
     {
       "id": "X-STATUS-DATA-AUDIT",
@@ -1138,16 +1212,233 @@
       "title": "Mirror parity enforcement for governedBusinessRoles + shadowParityHarness",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "EXEMPT",
       "pr": 1104,
-      "headSha": "5971d37efe194d30f4771f33f6f105e970d1c1bd",
+      "headSha": null,
       "branch": "test/governed-business-roles-mirror-parity",
       "checks": "3/3 mirror pairs pass",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "None - superseded",
       "governing": [
         "Owner ruling section 10"
       ],
-      "notes": "Two gaps: a generic helper called only once, and a CI path filter that omitted the client half of every mirrored module - so the change most likely to cause drift was the one the guard could not see. Directly de-risks PR #1100, which must edit governedBusinessRoles.ts in both copies."
+      "notes": "CLOSED UNMERGED, deliberately, as superseded by PR #1110. Its normalization-based mirror check was replaced by the generator's byte-equality check, which is strictly stronger. Recorded EXEMPT rather than deleted so the coverage question it raised - governedBusinessRoles.ts mirrored with nothing enforcing it - stays visible as ANSWERED rather than looking like it was dropped.",
+      "mergeSha": null
+    },
+    {
+      "id": "X-INVENTORY-ANALYTICS-CAPABILITY",
+      "phase": "3",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "getInventoryAnalytics: bounded read + capability-catalog authorization",
+      "domain": "inventory",
+      "entity": "n/a",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "blockers": [],
+      "governing": [
+        "DECISIONS #102 section 9",
+        "boundary section 12 G - authorization model change"
+      ],
+      "notes": "APPROVED (Owner ruling section 3): mint a dedicated inventory.analytics.read rather than preserve a one-off direct-role check or invent a requires-A-AND-B pattern. This is authority NORMALIZATION, not permission expansion - grant it to exactly the audience the current direct role check authorizes (admin and dispatcher via getCallerContext), neither broadening nor narrowing. Add mirror/parity coverage through the established access-contract mechanism. If the exact current effective audience cannot be determined, stop ONLY the authority migration and record the ambiguity. IMPLEMENTED. Effective audience preserved exactly via SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS. The `active` flag is OMITTED, not false: the resolver denies an explicitly-inactive capability ahead of any Role grant, so the usual REGISTER != GRANT posture would have removed access from today's admins and dispatchers - a permission removal disguised as a refactor. That is the specific trap when normalizing an already-live surface.",
+      "pr": 1111,
+      "headSha": "888ca6fcbef2cfb91b721e96a0b7af77312bd30e",
+      "branch": "feat/inventory-analytics-capability",
+      "checks": "tsc + build clean; catalog, role-parity, governed-roles suites pass; emulator test NOT run locally",
+      "mergeSha": "6896888b"
+    },
+    {
+      "id": "X-TRUCK-PROD-LIVE-RISK",
+      "phase": "0",
+      "wave": "0",
+      "kind": "PROTECTED_ACTION",
+      "title": "URGENT: production may already expose truck write controls",
+      "domain": "inventory",
+      "entity": "Truck",
+      "status": "BLOCKED_PROTECTED",
+      "deploy": "UNKNOWN",
+      "nextAction": "Authorized operator verifies the live production bundle and the deployed callable set",
+      "blockers": [
+        {
+          "reason": "Truck write readiness is a COMPILE-TIME constant baked into a Hosting bundle. PR #1109 fails the repository declaration closed, but if a previously released production bundle carries the old true, production users may see enabled truck-management write controls right now. Only a Hosting release built from the corrected config changes what is live. Separately, whether the eight callables are actually deployed to taylor-parts is unverified in either direction.",
+          "requiredDecision": "Owner authorizes a live production check of (a) the served bundle's readiness value and (b) the deployed Functions set, then decides whether a Hosting release is required"
+        }
+      ],
+      "governing": [
+        "Owner ruling 2026-08-17 section 2C and 2F"
+      ],
+      "notes": "Recorded as URGENT and deliberately NOT marked resolved by #1109. Claiming a repo-only correction fixed a live risk is exactly the false-completion this ledger exists to prevent."
+    },
+    {
+      "id": "X-INVENTORY-ANALYTICS-AGGREGATE",
+      "phase": "3",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Authoritative aggregation for netted inventory figures (server and client)",
+      "domain": "inventory",
+      "entity": "n/a",
+      "status": "BLOCKED_PROTECTED",
+      "dependsOn": [],
+      "nextAction": "Owner decision on a governed per-part availability projection",
+      "governing": [
+        "Owner ruling 2026-08-17 section 4",
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection.",
+      "blockers": [
+        {
+          "reason": "INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment.",
+          "requiredDecision": "Owner authorizes a governed per-part availability projection (schema + maintenance + deploy), or accepts an explicitly scoped analytic surface instead of a whole-catalog dashboard"
+        }
+      ]
+    },
+    {
+      "id": "X-NO-GOVERNED-READ-COLLECTIONS",
+      "phase": "9",
+      "wave": "6",
+      "kind": "AUDIT",
+      "title": "BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all",
+      "domain": "commercial",
+      "entity": "n/a",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "No metadata work possible; each needs a governed read service under normal capability governance",
+      "blockers": [
+        {
+          "reason": "payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false in firestore.rules, and exhaustive search of functions/src found NO exported callable that reads any of them - only writers. part_supplier_items has a pure projection contract explicitly not activated. Metadata is presentation and composition, not authority, so it cannot make an unreadable collection readable.",
+          "requiredDecision": "Owner authorizes building and activating a governed read service per collection, when the business capability requires it"
+        }
+      ],
+      "governing": [
+        "Owner ruling 2026-08-17 section 5",
+        "DECISIONS #102 section 6"
+      ],
+      "notes": "Required read authority per collection: payments and payment_applications -> a finance payment read capability; invoice_adjustments and refunds -> finance adjustment/refund read; part_supplier_items -> the already-drafted inventory.catalog.read / .cost.read projection, which exists as a pure contract but is not wired to a callable; part_aliases -> an inventory catalog alias read. Explicitly NOT permitted as workarounds: client-direct reads, Rules weakening, or placeholder access."
+    },
+    {
+      "id": "A-PERMISSION-CATALOG-GENERATION",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Bring permissionCatalog.ts under generation",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner ruling 2026-08-17 section 6"
+      ],
+      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes.",
+      "dependsOn": [],
+      "pr": 1117,
+      "headSha": "3f777ce91d7c650fcecb5fc430b7ea3b0958fb3e",
+      "branch": "feat/permission-catalog-generation",
+      "checks": "9/9 mirror integrity; 15/15 role parity; 26/26 catalog; both packages typecheck"
+    },
+    {
+      "id": "A-METADATA-SPEC",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Metadata Architecture specification",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "governing": [
+        "DECISIONS #102 section 13"
+      ],
+      "notes": "Not optional and not merely documentation: the governance boundary records its own back-reference from this spec as an ACCEPTANCE CONDITION of the spec. Until it exists, that requirement is a promise with no artifact behind it. Independent of every queued PR - a specification depends on decisions, not on merged code. WRITTEN. The boundary's own section 13 note is updated from 'does not exist yet' to the artifact, so the requirement is discharged by a document rather than by a promise.",
+      "pr": 1112,
+      "headSha": "a458d881c9b2759a0d80f292dadaeda95e09bae2",
+      "branch": "docs/metadata-architecture-specification",
+      "checks": "docs only",
+      "mergeSha": "abedeff5"
+    },
+    {
+      "id": "A-LIST-RUNTIME",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "List runtime component consuming ListViewDefinition",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1",
+        "A-REGISTRIES"
+      ],
+      "nextAction": "Build after the contract and registries are on main",
+      "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
+    },
+    {
+      "id": "A-INDEX-CI-BRIDGE",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "CI gate: declared list filters must have declared indexes",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
+      "governing": [
+        "Owner ruling on index governance",
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
+    },
+    {
+      "id": "A-PAGE-RENDERER",
+      "phase": "5",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Record page renderer consuming PageDefinition",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME",
+        "A-REGISTRIES"
+      ],
+      "nextAction": "Build after the page contract and registries are on main",
+      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
+    },
+    {
+      "id": "D-OPPORTUNITY-IDENTITY",
+      "phase": "9",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Opportunity human identity (name + immutable reference)",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "MERGE_QUEUED",
+      "issue": 1099,
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner disposition 2026-08-17 section 3 - both name and number"
+      ],
+      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable. REFERENCE HALF BUILT and deliberately NOT wired - keeping it a pure module means the format stays a one-line change while no data carries it. FORMAT DEVIATION FLAGGED: implemented OPP-YYYY-###### to match WO-YYYY-###### rather than the ruling's illustrative OPP-000123, because the two references sit side by side in the same lineage on Sales Order detail. Cheap to correct now, a migration later.",
+      "pr": 1120,
+      "headSha": "78720b2032a12868bb45ac6635f5d7da8091203a",
+      "branch": "feat/opportunity-identity",
+      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow"
+    },
+    {
+      "id": "D-OPPORTUNITY-NAME-AND-WIRING",
+      "phase": "9",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Wire Opportunity identity into the governed create path and surfaces",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1099,
+      "dependsOn": [
+        "D-OPPORTUNITY-IDENTITY"
+      ],
+      "nextAction": "After the format is confirmed: allocate on create, project name+reference, render them instead of doc ids",
+      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive."
     }
   ]
 }
