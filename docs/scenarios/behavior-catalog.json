@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "behaviors": [
+    {"id":"NORMAL","intent":"Expected single-user interaction with fresh state."},
+    {"id":"DOUBLE_SUBMIT","intent":"User submits the same governed action twice before the first response is visible.","invariants":["No duplicate durable business effect","Idempotency/audit remains truthful"]},
+    {"id":"RAPID_REPEAT","intent":"User repeatedly invokes the same control/action because the UI appears slow.","invariants":["No multiplied business effect beyond command semantics"]},
+    {"id":"STALE_PAGE","intent":"User acts from record state loaded before a conflicting update.","invariants":["Stale state cannot silently overwrite newer authoritative state"]},
+    {"id":"TWO_TABS","intent":"Same actor edits/acts on the same record from two browser tabs.","invariants":["Later action is validated against current authoritative state"]},
+    {"id":"CONCURRENT_USERS","intent":"Two authorized actors perform conflicting operations concurrently.","invariants":["Business invariants survive race","Audit identifies both attempts"]},
+    {"id":"BACK_BUTTON","intent":"User navigates backward after a completed mutation and returns to stale UI state.","invariants":["Navigation cannot replay a mutation"]},
+    {"id":"REFRESH_DURING_ACTION","intent":"Browser refreshes after submit but before completion is displayed.","invariants":["Retry/reload does not duplicate committed effect"]},
+    {"id":"NETWORK_DROP_AFTER_SUBMIT","intent":"Request may have reached server but response is lost.","invariants":["Safe retry behavior","No false assumption that timeout means no commit"]},
+    {"id":"RETRY_AFTER_TIMEOUT","intent":"User retries a timed-out governed command.","invariants":["Idempotency where command contract requires it"]},
+    {"id":"OUT_OF_ORDER_ACTION","intent":"Actor attempts lifecycle/business actions in an invalid sequence.","invariants":["Command refuses invalid transition","No partial side effects"]},
+    {"id":"UNAUTHORIZED_ACTION","intent":"Actor invokes a governed action directly without required authority.","invariants":["Denied server-side","UI visibility is irrelevant to security"]},
+    {"id":"SESSION_EXPIRES","intent":"Authentication/session expires between read and mutation.","invariants":["Mutation fails closed"]},
+    {"id":"EXTREME_INPUT","intent":"Very long but syntactically valid text/numeric boundary values are submitted.","invariants":["Validation remains deterministic","No truncation that changes business meaning without disclosure"]},
+    {"id":"EMPTY_OPTIONAL_DATA","intent":"Optional fields/relationships are absent.","invariants":["No recordId or fabricated value used as human fallback"]},
+    {"id":"DUPLICATE_RECORD_ATTEMPT","intent":"User attempts to create a business duplicate using an identity/alternate-key collision.","invariants":["Uniqueness semantics are enforced where declared"]},
+    {"id":"CHANGE_PARENT_AFTER_CHILD_EXISTS","intent":"User changes a parent relationship after dependent records already exist.","invariants":["Relationship/lifecycle rules are enforced","No orphaned child state"]},
+    {"id":"DELETE_REFERENCED_RECORD","intent":"User attempts deletion/removal of a record still referenced by durable business records.","invariants":["Referential/business integrity is preserved"]},
+    {"id":"BULK_ACTION","intent":"A governed action is applied to many records.","invariants":["Bulk changes scale not authority","Per-record failures remain attributable"]},
+    {"id":"RAPID_FILTER_CHANGES","intent":"User changes list filters/sorts faster than responses return.","invariants":["Older response cannot overwrite newer query state"]},
+    {"id":"DIRECT_READ_BYPASS","intent":"Actor attempts direct data access instead of approved governed read path.","invariants":["Rules/capability boundary remains authoritative"]},
+    {"id":"LAST_UNIT_RACE","intent":"Two consumers compete for the final available inventory quantity.","invariants":["Stock cannot be allocated/consumed twice"]},
+    {"id":"DUPLICATE_SERIAL","intent":"Two receiving/intake operations attempt the same serial identity.","invariants":["Serialized identity remains unique","No duplicate asset activation"]},
+    {"id":"CONCURRENT_ASSIGNMENT","intent":"Two dispatchers assign different technicians to the same work concurrently.","invariants":["Final assignment is deterministic/current-state validated","No duplicate active assignment"]},
+    {"id":"CROSS_TENANT_ATTEMPT","intent":"Actor attempts to read or mutate another tenant's record.","invariants":["Tenant isolation fails closed"]}
+  ]
+}
