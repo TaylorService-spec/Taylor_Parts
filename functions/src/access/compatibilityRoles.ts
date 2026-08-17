@@ -67,6 +67,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "reorder.purchaseOrder.read",
   "reorder.purchaseOrder.create",
   "reorder.purchaseOrder.void",
+  "inventory.analytics.read",
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",

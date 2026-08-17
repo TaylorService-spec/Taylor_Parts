@@ -386,6 +386,30 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "reorder.purchaseOrder",
     action: "void",
   }),
+  // Inventory analytics -- the trusted getInventoryAnalytics read (inventory health
+  // dashboard over inventory_transactions + stock_locations).
+  //
+  // AUTHORITY NORMALIZATION, NOT A PERMISSION CHANGE. This callable previously
+  // authorized with a direct `caller.role === "admin" || "dispatcher"` check, the only
+  // read service in the repo bypassing the capability catalog. Registering it here and
+  // granting it through SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS reproduces that exact
+  // audience -- admin and dispatcher, no one else, nothing removed.
+  //
+  // Deliberately ONE capability rather than requiring inventory.transaction.read AND
+  // warehouse.stockLocation.read together. Those two each cover one of the collections
+  // it reads, but no callable in this repo requires two capabilities, and inventing that
+  // pattern for a single case would be a worse precedent than a composite id.
+  //
+  // `active` is omitted (undefined !== false), so it resolves like every other
+  // pre-existing capability. Registering it active:false would have DENIED today's
+  // admins and dispatchers, which is a permission removal disguised as a refactor.
+  Object.freeze({
+    id: "inventory.analytics.read",
+    description:
+      "Read the trusted inventory health analytics projection (getInventoryAnalytics) computed over inventory_transactions and stock_locations. Backend-resolved; no client-direct read of either collection.",
+    resource: "inventory.analytics",
+    action: "read",
+  }),
   Object.freeze({
     id: "inventory.transaction.read",
     description: "Read inventory_transactions records.",
