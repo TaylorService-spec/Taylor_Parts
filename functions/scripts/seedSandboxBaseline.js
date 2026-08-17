@@ -158,8 +158,18 @@ async function main() {
     // authority (I-LA C2), so it is set explicitly, never left to inference.
     await upsert(db, "warehouses", w.id, {
       id: w.id, name: w.name, location: w.location, status: w.status,
-      version: 1, provenance: "SEEDED", createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
-      governanceInitializedAt: now, governanceInitializedBy: by,
+      // provenance must be a WAREHOUSE_PROVENANCES member ("NATIVE" | "MIGRATED"). It was "SEEDED",
+      // which is not one, so validateGovernedWarehouse() rejected EVERY seeded warehouse with
+      // provenance_invalid -- and Receiving/Transfer both resolve their destination through that
+      // validator, so no seeded warehouse was ever a usable governed location. These records are
+      // created natively in the sandbox rather than migrated from a legacy store, so NATIVE is the
+      // accurate value, not merely the passing one.
+      version: 1, provenance: "NATIVE", createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
+      // NO governanceInitializedAt/By. The validator's provenance model (§3A.1) is exclusive: NATIVE
+      // REQUIRES the created pair and FORBIDS the governance-initialization pair, which exists to
+      // record when a MIGRATED legacy record was brought under governance. A natively-created
+      // warehouse was never ungoverned, so carrying that pair is a contradiction, not extra detail --
+      // and it failed validation as native_forbids_governance_init.
     });
     bump("warehouses");
   }
