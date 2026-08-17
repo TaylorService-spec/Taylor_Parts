@@ -1632,13 +1632,13 @@
       "title": "Mass-definition of remaining business entities",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "IMPLEMENTING",
       "dependsOn": [],
-      "nextAction": "Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2",
+      "nextAction": "Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.",
       "governing": [
         "Owner Field Architecture v2 gate, sequencing"
       ],
-      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue. UNBLOCKED 2026-08-17: the gate's clearing conditions are met and compatibility is proven against both existing definitions, so a further entity written today maps into v2 without a retrofit - which was the entire reason for the sequencing constraint."
+      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue. UNBLOCKED 2026-08-17: the gate's clearing conditions are met and compatibility is proven against both existing definitions, so a further entity written today maps into v2 without a retrofit - which was the entire reason for the sequencing constraint. STARTED (#1154, b4d7518b): Contact and Opportunity, the two entities the Account record page's related lists depend on. Authored from repository investigation rather than an idealized schema, which is why several assertions pin ABSENCE. Contact declares NO capability (Rules gate it by role; no contact.read exists) and NO provenance (three write paths disagree - single-add writes neither timestamp, import writes both and no actor, only the sandbox seed writes createdBy). Opportunity is the first CALLABLE-read entity and therefore demands no composite index of its own; its identity is the reference number because `name` is READ by the projection and written by nothing. expectedValue is NUMBER not currency, because no currency field is stored. FOUND AND FIXED A CONTRACT DEFECT: validateEntityDefinition requires an edge on its OWNING entity while the list validator and query builder looked for it on the LIST's entity, so every genuine parent-child related list was unvalidatable and only lists scoped by an edge pointing elsewhere passed. Three existing tests had encoded that defect and were corrected rather than the implementation weakened."
     },
     {
       "id": "X-WORK-ORDER-BOARD-SCOPE",
@@ -1771,6 +1771,43 @@
         "Owner architecture addendum sections 4-9"
       ],
       "notes": "Admins configure through BUSINESS concepts, not Firestore/React/JSON/source. Field creation exposes friendly choices that EOS translates into the governed contract; systemName is proposed from the label, correctable before creation, stable after. Semantic documentation (purpose, businessMeaning, ownerDomain, sourceOfTruth) is OPTIONAL - requiring it to create a simple field produces documentation written to satisfy a validator. Page metadata REQUESTS presentation and never grants authority: editable applies only if the field is updateable AND the viewer holds write authority AND the command permits it AND lifecycle state allows it. OPERATIONAL pages are protected - layout flexibility may not remove Lifecycle/Readiness/Blockers/Next Actions, because placement flexibility and composition invariants are separate concerns and only one is negotiable. Preview must evaluate REAL governed authority; a preview with its own permission model reports what the builder thinks rather than what the platform will do. Publication must fail where the backend cannot honestly support the declared behavior."
+    },
+    {
+      "id": "X-CONTACT-PROVENANCE-GAP",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Contact write paths do not agree on provenance",
+      "domain": "crm",
+      "entity": "Contact",
+      "status": "READY",
+      "nextAction": "Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy",
+      "governing": [
+        "Owner architecture addendum section 1"
+      ],
+      "notes": "Found while defining the Contact entity. createContact writes NEITHER timestamp; the CSV importer writes createdAt/updatedAt and no actor; only the sandbox seed writes createdBy/updatedBy. The provenance invariant says every durable business record carries createdAt/createdBy, and contacts are durable business records. The metadata definition deliberately does NOT declare the fields, because declaring them would assert data absent from most existing documents - the remediation is a write-path change plus a backfill decision, not a metadata claim. Backfilling historical documents is a data question and may be protected."
+    },
+    {
+      "id": "X-SALES-ORDER-NO-REFERENCE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Sales Order has no business reference; its header renders a document id",
+      "domain": "sales",
+      "entity": "SalesOrder",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Needs a decision on whether Sales Orders get a reference number",
+      "blockers": [
+        {
+          "reason": "Sales Orders have no reference number field at all, and SalesOrderDetail renders `Sales Order ${id}` as its page header",
+          "requiredDecision": "Either mint a governed SO-YYYY-###### reference the way Work Orders and Opportunities already have - which is a numbering and migration decision for existing records - or accept a document id in the page header. #1124 corrected the LINEAGE LINK to show a reference instead of an id; the header itself was not in that PR's scope and still shows the raw id. This is the fourth appearance of the id-as-label pattern (#1094, #1099, #1124)."
+        }
+      ],
+      "governing": [
+        "DECISIONS #102",
+        "Owner architecture addendum section 3"
+      ],
+      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id."
     }
   ]
 }
