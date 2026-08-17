@@ -1340,3 +1340,52 @@ a custom-field **seam** — not the custom-field administration product.
 Specification: `specifications/field-architecture-v2.md`. Ledger: `G-FIELD-ARCH-V2` (the gate) and
 `A-ENTITY-MASS-DEFINITION` (the sequencing constraint, recorded as an entry so it cannot be lost
 between one migration and the next). Surfaces consuming already-defined entities are not blocked.
+
+## 104. Field Architecture v2 is implemented additively; v1 stays the contract until compatibility is proven
+
+**Owner ruling, 2026-08-17, implemented.** The durable field architecture lands under
+`field-ops-app-vite/src/metadata/v2/` **beside** v1 rather than replacing it. v1 remains the current
+read/query/render contract and every merged definition stays valid.
+
+**Identity is four concepts, not one.** Internal record id (opaque, immutable, never rendered as a
+label) · entity `systemName` (`account`, `workOrder`) · business reference (`WO-2026-000127`, and not
+every entity has one) · human name (mutable). `recordIdentity()` resolves display as human name then
+business reference then **null**; the recordId is present for routing and deliberately absent from
+the display chain, because that fallback is the defect corrected on Opportunity (#1099) and Sales
+Order (#1124). `systemName` is the EOS term — not "API Name" — and validation rejects vendor suffixes
+and prefixes outright. `storagePath` stays separate from `systemName` even where they match, so a
+later remap to a legacy path cannot break formulas, reports or integrations, and Firestore layout
+never becomes platform contract.
+
+**Field classes** STANDARD / SYSTEM / CUSTOM / DERIVED, with DERIVED split FORMULA / LOOKUP / ROLLUP /
+PROJECTION and not collapsed. **A LOOKUP or ROLLUP must declare `sourceAuthority`** — validation fails
+without it — because a derived value cannot launder the authority of the data it reads. **A ROLLUP
+must declare `queryability: AGGREGATE`**: calling it VIRTUAL invites computing a complete-looking
+total over whatever rows happened to load.
+
+**Numeric semantics** carry storage, calculation and display scales separately. **Percentage storage
+mode is required, never inferred** — 0.15 and 15 both mean fifteen percent, and guessing wrongly is a
+100x error that still looks plausible. Display formatting returns a **string**, so a rounded figure
+cannot re-enter arithmetic and become the authoritative value. `displayScale` may be coarser than
+storage, never finer.
+
+**Formulas are data, not code.** A closed operator vocabulary over an AST of operators, field
+references and literals; a function anywhere in a definition is rejected with its own message rather
+than as a type error. A field reference may not contain a dot — a dotted path is arbitrary traversal
+crossing an entity boundary that LOOKUP exists to make explicit. Dependency cycles are rejected at
+definition time, where the message names the fields, rather than at evaluation time, where the
+symptom is a stack overflow in front of a user.
+
+**`alternateKey` requires `unique`** — matching on a non-unique field approves a guaranteed ">1 match"
+integrity failure — and `unique` alone does not imply `alternateKey`: one is a data property, the
+other a governance decision.
+
+**`fromV1()` records gaps rather than filling them**: UNKNOWN_MUTABILITY, UNKNOWN_WRITE_CAPABILITY,
+UNKNOWN_ROUNDING_POLICY. Defaulting mutability because most fields are mutable would convert a
+missing decision into a stated one nobody revisits.
+
+**Not built:** the bulk-import product, custom-field administration, a unit-conversion engine, and any
+rewrite of the approved WO-YYYY-###### / OPP-YYYY-###### numbering. Seams only.
+
+`A-ENTITY-MASS-DEFINITION` stays blocked until compatibility is proven against the two existing
+definitions — migration work, not architecture work.
