@@ -259,6 +259,55 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
     expect(secondKey).toBe(firstKey);
   });
 
+  // DECISIONS #106 -- a missing business reference is NOT permission to display a record id.
+  // This is the fifth instance of this defect class (#1094, #1099, #1124, #1162): the action
+  // dialogs interpolated the raw Firestore document id into consequence copy.
+  it("action dialog consequence copy shows the governed salesOrderNumber and never the document id", async () => {
+    useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-abc123", salesOrderNumber: "SO-2026-000042" } }));
+    const client = mockCommandClient();
+    const { container } = renderAt("doc-abc123", { actionDeps: { client } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Move to In Fulfillment/i }));
+    expect(await screen.findByText(/This moves Sales Order SO-2026-000042 from CONFIRMED to IN_FULFILLMENT/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Cancel order/i }));
+    expect(await screen.findByText(/This cancels Sales Order SO-2026-000042\. It cannot be resumed from here\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Keep order/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /^Allocate$/i }));
+    expect(await screen.findByText(/This computes and records current availability against Sales Order SO-2026-000042's lines\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Create Service/i }));
+    expect(await screen.findByText(/This creates a Work Order to fulfill Sales Order SO-2026-000042/)).toBeTruthy();
+
+    expect(container.textContent).not.toContain("doc-abc123");
+  });
+
+  it("action dialog consequence copy shows the honest unavailable fallback for a legacy Sales Order with no salesOrderNumber -- never the document id", async () => {
+    useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-legacy-xyz", salesOrderNumber: null } }));
+    const client = mockCommandClient();
+    const { container } = renderAt("doc-legacy-xyz", { actionDeps: { client } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Move to In Fulfillment/i }));
+    expect(await screen.findByText(/This moves Sales Order — Reference unavailable from CONFIRMED to IN_FULFILLMENT/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Cancel order/i }));
+    expect(await screen.findByText(/This cancels Sales Order — Reference unavailable\. It cannot be resumed from here\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Keep order/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /^Allocate$/i }));
+    expect(await screen.findByText(/This computes and records current availability against Sales Order — Reference unavailable's lines\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Create Service/i }));
+    expect(await screen.findByText(/This creates a Work Order to fulfill Sales Order — Reference unavailable/)).toBeTruthy();
+
+    expect(container.textContent).not.toContain("doc-legacy-xyz");
+  });
+
   it("a denied action surfaces a safe error in the dialog and does NOT call refetch", async () => {
     const state = readySalesOrder();
     useSalesOrder.mockReturnValue(state);
