@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
-import { ACCOUNTS_COLLECTION } from "../../domain/constants";
 import { createWorkOrder } from "../../services/workOrderService";
 import {
   WIZARD_STEPS,
@@ -83,7 +82,12 @@ function StepHint({ reason }) {
 
 export default function WorkOrderWizard() {
   const navigate = useNavigate();
-  const { data: accounts } = useFirestoreCollection(ACCOUNTS_COLLECTION);
+  // BOUNDED (§9). This previously read the ENTIRE accounts collection to populate a
+  // customer picker. The picker read is capped and discloses truncation; see
+  // hooks/useAccountPicker.js for why bounding without disclosing would have been worse
+  // than the original defect.
+  const accountPicker = useAccountPicker();
+  const accounts = accountPicker.options;
 
   const [step, setStep] = useState(1);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -158,6 +162,7 @@ export default function WorkOrderWizard() {
           <div className="fo-wizard-field">
             <label className="fo-wizard-field-label" htmlFor="wo-customer-search">Customer</label>
             <CustomerPicker inputId="wo-customer-search" accounts={accounts} onSelect={handleAccountSelect} />
+            {accountPicker.message && <p className="fo-muted">{accountPicker.message}</p>}
           </div>
           <StepHint reason={stepBlockedReason(1, { selectedAccountId: selectedAccount?.id })} />
         </div>
