@@ -300,6 +300,27 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "location.index",
   }),
+  // warehouse.index and supplier.index (leaf definitions, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "warehouses",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "warehouse.index",
+  }),
+  Object.freeze({
+    collectionGroup: "suppliers",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "supplier.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -368,6 +389,8 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/employee.js",
   "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js",
   "field-ops-app-vite/src/metadata/definitions/location.js",
+  "field-ops-app-vite/src/metadata/definitions/warehouse.js",
+  "field-ops-app-vite/src/metadata/definitions/supplier.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
 
