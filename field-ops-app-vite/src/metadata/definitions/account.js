@@ -137,6 +137,17 @@ export const accountEntity = makeEntityDefinition({
       // viewer to its pipeline -- the disclosure a LOOKUP would launder, one level up.
       traversalCapability: "opportunity.read",
     }),
+    makeRelationshipDefinition({
+      id: "account.salesOrders",
+      label: "Sales Orders",
+      fromEntityId: "account",
+      toEntityId: "salesOrder",
+      viaField: "accountId",
+      cardinality: "ONE_TO_MANY",
+      // Same rule as account.opportunities: traversal carries the TARGET's authority, not
+      // the Account's. Reading an account does not entitle a viewer to its committed orders.
+      traversalCapability: "salesOrder.read",
+    }),
   ],
 });
 

@@ -26,7 +26,9 @@ on:
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/salesOrderStatus.js"
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
       - "field-ops-app-vite/test/recordProvenance.test.mjs"
@@ -57,7 +59,9 @@ on:
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/salesOrderStatus.js"
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
       - "field-ops-app-vite/test/recordProvenance.test.mjs"
@@ -131,6 +135,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: CRM definition tests — Contact + Opportunity (node:test)
         run: node --test test/metadataCrmDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Sales Order definition tests (node:test)
+        run: node --test test/metadataSalesOrderDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: Account definition tests (node:test)
         run: node --test test/metadataAccountDefinition.test.mjs

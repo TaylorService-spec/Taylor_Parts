@@ -106,6 +106,10 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // dependencies). Opportunities are CALLABLE-read, so this serves the server's own query.
   'contacts|COLLECTION|accountId:ASCENDING,name:ASCENDING',
   'opportunities|COLLECTION|stage:ASCENDING,expectedCloseAt:ASCENDING',
+  // Declared by the Sales Order definition (S-CRM-SALES-ORDER-DEFINITION). Sales Orders are
+  // CALLABLE-read like Opportunities, so this serves the server's own listSalesOrdersForAccount
+  // query shape, not a client-direct read.
+  'sales_orders|COLLECTION|state:ASCENDING,salesOrderNumber:DESCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That

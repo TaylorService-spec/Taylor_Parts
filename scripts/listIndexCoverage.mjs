@@ -176,6 +176,24 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "opportunity.index",
   }),
+  // salesOrder.index (field-ops-app-vite/src/metadata/definitions/salesOrder.js). Sales Order
+  // is CALLABLE-read like Opportunity, and the requiredIndexes() derivation does not special-
+  // case readVia -- it looks only at entity.collection and the list's declared filters/sort, so
+  // an INDEX surface with a declared filter still demands a composite the same way a
+  // CLIENT_DIRECT list would.
+  //
+  // Regenerate with:
+  //   node -e "import('./field-ops-app-vite/src/metadata/definitions/salesOrder.js').then(async m => { const lv = await import('./field-ops-app-vite/src/metadata/listViewDefinition.js'); console.log(JSON.stringify(lv.requiredIndexes(m.salesOrderIndexList, m.salesOrderEntity), null, 2)); })"
+  Object.freeze({
+    collectionGroup: "sales_orders",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "state", order: "ASCENDING"},
+      {fieldPath: "salesOrderNumber", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "salesOrder.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -239,6 +257,7 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/workOrder.js",
   "field-ops-app-vite/src/metadata/definitions/contact.js",
   "field-ops-app-vite/src/metadata/definitions/opportunity.js",
+  "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
 
 export function findUnregisteredDefinitions(authored, registered = REGISTERED_DEFINITION_SOURCES) {
