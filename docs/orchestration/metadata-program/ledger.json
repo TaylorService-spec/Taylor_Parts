@@ -629,14 +629,15 @@
       "title": "Page definition contract (PageDefinition/PageRegion)",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "pr": 1118,
-      "headSha": "b77e0820eb291e6bfdb8a9aa4587754e48833935",
+      "headSha": "656023c80222409b5259cb3cb3dd691f72b46e13",
       "branch": "feat/page-definition-contract",
-      "checks": "6/6 checks green",
-      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'."
+      "checks": "4/4 metadata suites green locally after the third reconcile",
+      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'.",
+      "mergeSha": "9d10440e"
     },
     {
       "id": "A-REGISTRIES",
@@ -646,9 +647,9 @@
       "title": "Component and action registries",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a78"
@@ -657,7 +658,8 @@
       "headSha": "ead08eeb1787bccfc63a186ed82b13dc143b2118",
       "branch": "feat/metadata-registries",
       "checks": "6/6 checks green",
-      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime. CI REPAIR: the Metadata Contracts failure was MY conflict resolution. The two step blocks shared one trailing 'working-directory' line, so merging both left a step without it and that step ran from the repo root, where its test file does not exist. The resolver's guard missed it because it checked each suite was NAMED, not that it was RUNNABLE - the same blind spot as the access generator's round-trip check. The resolver now parses the YAML and rejects any test step lacking a working-directory."
+      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime. CI REPAIR: the Metadata Contracts failure was MY conflict resolution. The two step blocks shared one trailing 'working-directory' line, so merging both left a step without it and that step ran from the repo root, where its test file does not exist. The resolver's guard missed it because it checked each suite was NAMED, not that it was RUNNABLE - the same blind spot as the access generator's round-trip check. The resolver now parses the YAML and rejects any test step lacking a working-directory.",
+      "mergeSha": "fb4257a0"
     },
     {
       "id": "G-GATE-A",
@@ -1366,12 +1368,14 @@
       "title": "List runtime component consuming ListViewDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-REGISTRIES"
-      ],
-      "nextAction": "List contract is on main (2c673e16); still needs the registries",
-      "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
+      "status": "MERGE_QUEUED",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer. QUERY CORE BUILT as a pure module: it produces a bounded query DESCRIPTOR and executes nothing, which is what makes section 9 assertable offline rather than hoped for. The guarantees are absences - no offset/page/skip key exists at all, no argument removes the limit - and are tested as absences, because an absence nobody checks becomes an addition. The GRID COMPONENT is still to build; this is the half that carries the governance properties.",
+      "pr": 1126,
+      "headSha": "1121e888ad03e5b1368ac143b67168cd7f62a2c3",
+      "branch": "feat/list-runtime",
+      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run"
     },
     {
       "id": "A-INDEX-CI-BRIDGE",
@@ -1400,13 +1404,14 @@
       "title": "Record page renderer consuming PageDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-PAGE-RUNTIME",
-        "A-REGISTRIES"
-      ],
-      "nextAction": "Build after the page contract and registries are on main",
-      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
+      "status": "MERGE_QUEUED",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior. BUILT as a pure composition planner: it resolves which sections render where and carries each section's capability outward UNEVALUATED. applyVisibility() takes the caller's decision map and there is deliberately no argument by which a decision could be passed in - a runtime accepting {allowed:true} would become where authorization is decided. Fails closed at presentation level, which is defence in depth and NOT the boundary. Also reports when exclusions drop an OPERATIONAL page below its own bar, since rendering a diminished page silently is how an operations platform degrades into a form without anyone deciding to.",
+      "pr": 1128,
+      "headSha": "417aba5dbacaf6fe2966fc8d9addc70e2af949cb",
+      "branch": "feat/page-renderer",
+      "checks": "14/14 page runtime tests; oxlint + tsc clean"
     },
     {
       "id": "D-OPPORTUNITY-IDENTITY",
@@ -1437,15 +1442,16 @@
       "title": "Wire Opportunity identity into the governed create path and surfaces",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive. PROMOTED from a stale block. Its dependency merged and the format was approved, but nothing re-opened it - the ledger does not auto-promote, so it sat blocked with nothing blocking it while the scheduler reported nothing executable. Found by the new staleBlocks() check, which is exactly the false terminal state that check exists to prevent. WIRED. The document id is out of the identity chain entirely: name, then descriptor, then reference, then 'Unnamed opportunity' - which states something true instead of showing a key. The existing view test had ASSERTED the doc-id fallback, so the forbidden behaviour was pinned as correct and fixing it failed CI first; same shape as #1094.",
       "pr": 1123,
       "headSha": "58f269e262c800fe1d641ca48c2621a99afe18ed",
       "branch": "feat/opportunity-identity-wiring",
-      "checks": "9/9 checks green"
+      "checks": "9/9 checks green",
+      "mergeSha": "f7c1df5b"
     },
     {
       "id": "D-SALES-ORDER-OPP-IDENTITY",
@@ -1455,14 +1461,45 @@
       "title": "Sales Order detail still renders sourceOpportunityId raw",
       "domain": "crm",
       "entity": "SalesOrder",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "Recorded rather than half-done. Sales Order detail reads getSalesOrderContext, a DIFFERENT projection that does not carry Opportunity name or reference, so it still shows the raw document id as the Originating Opportunity link text. Fixing it means the sales-order read joining or denormalizing Opportunity identity - a real design choice, not a rename, which is why it is its own slice. RESOLVED, and the shape is an AUTHORIZATION decision worth remembering: joining the Opportunity into getSalesOrderContext would have returned opportunity.read-governed data through a salesOrder.read-gated callable - a read becoming a side door around the capability guarding it. The reference is instead copied at creation by the command already authorized to read it. Denormalizing is safe ONLY because the reference is immutable; the Opportunity NAME is deliberately not copied, because it is editable and a copy would drift. CI REPAIR: two shape guards plus a render assertion. The render test had ASSERTED the raw document id appears on screen, so the forbidden behaviour was pinned as correct and the fix failed CI. Third instance of that pattern in this program after #1094 and the opportunity view - a test asserting CURRENT rather than INTENDED behaviour converts a defect into a requirement.",
       "pr": 1124,
       "headSha": "ce827015881ee62c206934c2bf1f959bc71a7865",
       "branch": "feat/sales-order-opportunity-identity",
-      "checks": "11/11 checks green"
+      "checks": "11/11 checks green",
+      "mergeSha": "a9c48a1d"
+    },
+    {
+      "id": "A-LIST-GRID",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "List grid component consuming the query core",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-RUNTIME"
+      ],
+      "nextAction": "Build after the query core is on main",
+      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
+    },
+    {
+      "id": "A-PAGE-COMPONENT",
+      "phase": "5",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Record page React component consuming the composition plan",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RENDERER"
+      ],
+      "nextAction": "Build after the composition planner is on main",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
     }
   ]
 }
