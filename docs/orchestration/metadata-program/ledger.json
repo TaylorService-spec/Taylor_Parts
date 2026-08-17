@@ -2052,12 +2052,13 @@
       "entity": "Account",
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
-      "status": "READY",
-      "nextAction": "Add the account.locations edge and the commercial-profile fields to accountEntity, then extend the page",
+      "status": "IMPLEMENTING",
+      "nextAction": "Entity half merged (c6bfb148); page half dispatched.",
       "governing": [
         "Owner leaf-ownership addendum"
       ],
-      "notes": "Recorded rather than filled by the page lane, because declaring either would have been a page promising data the entity cannot supply. Locations needs an account.locations relationship on account.js plus a RELATED list - the Location leaf could not add the edge and said so. Commercial Profile and Notes/Identifiers render real fields (owner, currency, payment terms, tax status, customerNumber, erpId) that accountEntity does not declare at all: it carries only name, status, relationshipTypes, updatedAt and tags. Both are entity work first, page work second."
+      "notes": "Recorded rather than filled by the page lane, because declaring either would have been a page promising data the entity cannot supply. Locations needs an account.locations relationship on account.js plus a RELATED list - the Location leaf could not add the edge and said so. Commercial Profile and Notes/Identifiers render real fields (owner, currency, payment terms, tax status, customerNumber, erpId) that accountEntity does not declare at all: it carries only name, status, relationshipTypes, updatedAt and tags. Both are entity work first, page work second. ENTITY HALF MERGED (#1185, c6bfb148): twelve fields plus the account.locations edge. THE GOVERNED-FIELD FINDING is the part to remember - account.governedField.write gates WRITE for paymentTerms and taxStatus, while the account document's READ gate is uniformly isAdminOrDispatcher() for the whole record. v1's readCapability models READ authority and has NO writeCapability concept, so declaring the governed id as a readCapability would have asserted a read restriction that does not exist. Neither field declares one, and the gap is pinned by a comment AND a test rather than guessed either way - Field Architecture v2 defines writeCapability, and this is exactly the seam it exists for. Six accountOwner sub-fields were deliberately left undeclared: they are stored, but resolveOwnerIdentity re-resolves the CURRENT name live rather than reading the snapshot, so declaring them would describe the schema rather than the system.",
+      "branch": "feat/account-page-sections"
     },
     {
       "id": "X-LOCATION-REFERENCE-UPGRADE",
