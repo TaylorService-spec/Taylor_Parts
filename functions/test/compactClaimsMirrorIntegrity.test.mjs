@@ -24,6 +24,7 @@ import { dirname, join } from "node:path";
 import {
   SYNCED_MODULES,
   GENERATED_BANNER,
+  PLATFORM_SUBSTITUTIONS,
   generate,
   syncAll,
 } from "../../scripts/syncAccessContracts.mjs";
@@ -63,8 +64,75 @@ check("the generated copy is exactly the banner plus the canonical body, byte fo
       join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile),
       "utf8",
     ).replace(/\r\n/g, "\n");
-    assert.equal(generated, generate(canonical), `${moduleFile}: generated copy is not banner + canonical body`);
+    assert.equal(
+      generated,
+      generate(canonical, moduleFile),
+      `${moduleFile}: generated copy is not banner + canonical body (with declared substitutions)`,
+    );
   }
+});
+
+// --- declared platform substitutions ---------------------------------------
+//
+// These exist because of a real bug caught while writing them: the substitution table
+// was added to the generator but never wired into generate(), and `--check` PASSED
+// anyway. It compares the generated file against what the generator would produce, so
+// a silently-skipped substitution is perfectly self-consistent and completely
+// invisible to it. A round-trip check can verify "generation is reproducible"; it can
+// never verify "generation is correct".
+//
+// So these assert the OUTCOME against the real world — the client module must import
+// the client SDK — rather than against the generator's own opinion of itself.
+
+check("a declared substitution's canonical text still exists, or the rule is stale", () => {
+  for (const [moduleFile, rules] of Object.entries(PLATFORM_SUBSTITUTIONS)) {
+    const canonical = readFileSync(join(REPO_ROOT, "functions", "src", "access", moduleFile), "utf8");
+    for (const rule of rules) {
+      assert.ok(
+        canonical.includes(rule.canonical),
+        `${moduleFile}: substitution is stale — canonical no longer contains ${rule.canonical}`,
+      );
+    }
+  }
+});
+
+check("a declared substitution is actually APPLIED in the generated copy", () => {
+  // The assertion that would have caught the wiring bug: it reads the shipped file
+  // rather than trusting the generator's report about it.
+  for (const [moduleFile, rules] of Object.entries(PLATFORM_SUBSTITUTIONS)) {
+    const generated = readFileSync(
+      join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile),
+      "utf8",
+    ).replace(/\r\n/g, "\n");
+    for (const rule of rules) {
+      assert.ok(generated.includes(rule.generated), `${moduleFile}: substitution not applied (${rule.why})`);
+      assert.ok(
+        !generated.includes(rule.canonical),
+        `${moduleFile}: generated copy still carries the canonical text — the substitution was skipped`,
+      );
+    }
+  }
+});
+
+check("no generated client access contract imports a server-only SDK", () => {
+  // Mechanism-independent backstop: whatever the generator believes, a module shipped
+  // to a browser must never import firebase-admin.
+  for (const moduleFile of SYNCED_MODULES) {
+    const generated = readFileSync(join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile), "utf8");
+    assert.ok(
+      !/from\s+["']firebase-admin/.test(generated),
+      `${moduleFile}: generated client copy imports firebase-admin, which cannot run in a browser`,
+    );
+  }
+});
+
+check("generate() throws on a stale substitution rather than silently skipping it", () => {
+  const [moduleFile] = Object.keys(PLATFORM_SUBSTITUTIONS);
+  assert.throws(
+    () => generate("// a canonical file that no longer contains the expected import\n", moduleFile),
+    /stale substitution/,
+    "a substitution whose canonical text vanished must fail loudly, not emit a broken client module",
+  );
 });
 
 check("generation is deterministic — the same input yields the same bytes", () => {

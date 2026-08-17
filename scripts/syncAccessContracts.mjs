@@ -50,11 +50,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  *     the most authorization-sensitive file in the repo, and it deserves its own review
  *     rather than arriving as a side effect of introducing a generator.
  *
- *   parityFixtures.ts — genuinely platform-divergent: it imports `Timestamp` from
- *     "firebase-admin/firestore" on the server and "firebase/firestore" on the client.
- *     That is a real SDK difference, not an artificial one, so byte-identical generation
- *     cannot express it. Supporting it would need a declared substitution mechanism,
- *     which is exactly the special-case rewriting this design exists to avoid.
+ * parityFixtures.ts IS synced, but through a declared substitution — see
+ * PLATFORM_SUBSTITUTIONS. It is the one legitimate case: the difference is a real SDK
+ * boundary (firebase-admin vs firebase), not an artificial one invented by the text
+ * itself, so removing it is not an option the way removing a pathname was.
  */
 export const SYNCED_MODULES = Object.freeze([
   "compactClaims.ts",
@@ -63,6 +62,7 @@ export const SYNCED_MODULES = Object.freeze([
   "governedBusinessRoles.ts",
   "shadowParityHarness.ts",
   "legacyAuthorizationSurface.ts",
+  "parityFixtures.ts",
 ]);
 
 const CANONICAL_DIR = path.join("functions", "src", "access");
@@ -82,9 +82,43 @@ export const GENERATED_BANNER = [
   "",
 ].join("\n");
 
-/** Deterministic: banner + canonical body, normalized to LF. */
-export function generate(canonicalSource) {
-  return GENERATED_BANNER + canonicalSource.replace(/\r\n/g, "\n");
+/**
+ * Declared platform substitutions, applied to the GENERATED copy only.
+ *
+ * The bar for adding an entry here is deliberately narrower than "the two copies
+ * differ": a substitution is legitimate only when the difference is a real platform
+ * boundary that cannot be removed. The self-referential pathnames this generator
+ * replaced were NOT that — they differed only because the prose named a location, so
+ * the fix was to stop naming it. A firebase-admin vs firebase import is different in
+ * kind: the server genuinely cannot import the web SDK's type.
+ *
+ * Every rule must actually apply. A rule whose `canonical` string is absent means the
+ * canonical file moved on and the rule is stale — and a silently-skipped substitution
+ * emits a client module importing firebase-admin, which fails at build time far from
+ * its cause. `generate` throws instead of quietly producing that.
+ */
+export const PLATFORM_SUBSTITUTIONS = Object.freeze({
+  "parityFixtures.ts": Object.freeze([
+    Object.freeze({
+      canonical: 'import type { Timestamp } from "firebase-admin/firestore";',
+      generated: 'import type { Timestamp } from "firebase/firestore";',
+      why: "the server uses the Admin SDK's Timestamp type; the client uses the web SDK's",
+    }),
+  ]),
+});
+
+/** Deterministic: banner + canonical body (with any declared substitutions), LF-normalized. */
+export function generate(canonicalSource, moduleFile = null) {
+  let body = canonicalSource.replace(/\r\n/g, "\n");
+  for (const rule of PLATFORM_SUBSTITUTIONS[moduleFile] ?? []) {
+    if (!body.includes(rule.canonical)) {
+      throw new Error(
+        `syncAccessContracts: stale substitution for ${moduleFile} — canonical text not found: ${rule.canonical}`,
+      );
+    }
+    body = body.split(rule.canonical).join(rule.generated);
+  }
+  return GENERATED_BANNER + body;
 }
 
 function readIfExists(p) {
@@ -109,7 +143,7 @@ export function syncAll({ check = false, root = REPO_ROOT } = {}) {
       continue;
     }
 
-    const expected = generate(canonical);
+    const expected = generate(canonical, moduleFile);
     const actual = readIfExists(generatedPath);
     const actualNormalized = actual === null ? null : actual.replace(/\r\n/g, "\n");
 
