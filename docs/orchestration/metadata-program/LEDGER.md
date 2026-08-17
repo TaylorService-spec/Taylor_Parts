@@ -38,15 +38,15 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **G-FIELD-ARCH-V2** (phase 6) — Field Architecture v2 → Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
+- **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
-| G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | — | — | — | NOT_APPLICABLE | Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition |
+| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2 |
 
 ## MERGED
 
@@ -82,6 +82,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | #1136 | — | 2fff78b1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | — | 2a7847d1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-INDEX-FILTER-COMBINATIONS | 6 | Index derivation across filter COMBINATIONS | — | — | #1139 | — | 04567b43 | NOT_APPLICABLE | Merged; three accounts composites declared and pending deploy |
+| G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | #1147 | — | 379ef835 | NOT_APPLICABLE | Gate cleared. Mass entity definition may resume. |
 
 ## BLOCKED_PROTECTED
 
@@ -136,7 +137,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
-| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Define remaining entities AFTER Field Architecture v2 lands |
 
 ## EXEMPT
 

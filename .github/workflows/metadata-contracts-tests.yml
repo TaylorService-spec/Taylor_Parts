@@ -26,6 +26,8 @@ on:
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
+      - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
+      - "field-ops-app-vite/src/metadata/definitions/**"
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
@@ -51,6 +53,8 @@ on:
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
+      - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
+      - "field-ops-app-vite/src/metadata/definitions/**"
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
@@ -134,6 +138,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Field Architecture v2 contract tests (node:test)
         run: node --test test/fieldArchitectureV2.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Field Architecture v2 compatibility with existing definitions (node:test)
+        run: node --test test/fieldArchitectureV2Compatibility.test.mjs
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata
