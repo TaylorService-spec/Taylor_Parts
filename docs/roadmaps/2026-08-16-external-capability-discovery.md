@@ -7,8 +7,9 @@
 > This document uses **`BUILT_INERT`** to mean "built and hard-denied everywhere". **That reading is
 > wrong**, and it is the same class of error the document elsewhere records itself making.
 > `functions/src/access/environmentCapabilityOverrides.ts` activates **27** catalog-inactive
-> capabilities in `eos-platform-sandbox`. A capability can be `active:false` in the catalog **and
-> genuinely authorized in sandbox at the same time**.
+> capabilities in `eos-platform-sandbox`. A capability can be `active:false` in the catalog **and have
+> its capability-level activation gate enabled in sandbox at the same time**. Activation is a gate, not a
+> grant — a principal still needs the applicable Role grant, which nothing here evaluates.
 >
 > Concretely: `salesOrder.fulfill`, `finance.invoice.issue`, `opportunity.write`, and the transfer and
 > cycle-count families are described below as gated or fail-closed. In the **catalog baseline** they
