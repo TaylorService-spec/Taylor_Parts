@@ -363,9 +363,10 @@ governance system.
 > for continuing governance rules), indexed by `docs/DECISIONS.md` #102 and by
 > the Product Authority table in
 > `docs/architecture/SYSTEM_AUTHORITIES.md`. No competing governance system was
-> created. The Metadata Architecture specification does not exist yet; the
-> back-reference required by this section is an acceptance condition of that
-> specification when it is written.
+> created. The Metadata Architecture specification now exists at
+> `docs/specifications/metadata-architecture.md` and carries the back-reference this
+> section requires, as its own stated acceptance condition — so the requirement is
+> discharged by an artifact rather than left as a promise.
 
 ## 14. Initial architecture direction
 
