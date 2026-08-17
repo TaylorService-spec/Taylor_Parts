@@ -553,18 +553,20 @@
       "title": "Entity/Field/Relationship definition contracts",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "P0-LEDGER"
-      ],
-      "nextAction": "Derive from reportCatalog.js prior art; Gate A package",
+      "status": "MERGE_QUEUED",
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "gate": "NOT_APPLICABLE",
       "governing": [
         "DECISIONS #102 \u00a71",
         "DECISIONS #102 \u00a77",
         "DECISIONS #102 \u00a714"
       ],
-      "notes": "EOS-native derivation available in-repo: reportCatalog.js already models objects/fields/relationships as validated pure data with per-field capability ids. Provenance trace is EOS requirement -> EOS abstraction, not vendor -> equivalent."
+      "notes": "EOS-native derivation available in-repo: reportCatalog.js already models objects/fields/relationships as validated pure data with per-field capability ids. Provenance trace is EOS requirement -> EOS abstraction, not vendor -> equivalent. LEDGER MODELLING ERROR CORRECTED: this entry previously declared dependsOn P0-LEDGER. That was never a real dependency - the ledger is a docs artifact and the contracts are code on disjoint paths - and it manufactured a false program-wide block. Dependencies must model what the code actually needs, not what happened to be built first.",
+      "pr": 1106,
+      "headSha": "283387382eba041b2224385a4e5f56fbb9cb49e4",
+      "branch": "feat/metadata-entity-contracts",
+      "checks": "24/24 contract tests pass; oxlint clean; dedicated workflow added"
     },
     {
       "id": "A-LIST-METADATA-V1",

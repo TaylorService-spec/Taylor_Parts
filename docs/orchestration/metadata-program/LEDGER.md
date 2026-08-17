@@ -55,6 +55,7 @@ continues from the next executable item — without asking what happened.
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work |
+| A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
@@ -84,7 +85,6 @@ continues from the next executable item — without asking what happened.
 | S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |
 | S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
-| A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | — | — | — | NOT_APPLICABLE | Derive from reportCatalog.js prior art; Gate A package |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | — | — | — | NOT_APPLICABLE | Build after Gate A contracts land |
 | A-PAGE-RUNTIME | 5 | Page definition runtime | — | — | — | — | — | NOT_APPLICABLE | After list runtime proves the contract shape |
 | A-REGISTRIES | 2 | Component and action registries | — | — | — | — | — | NOT_APPLICABLE | Action definitions reference governed command paths only |
