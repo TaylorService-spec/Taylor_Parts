@@ -93,7 +93,7 @@ program is most likely to suffer is not a security lapse — it is arriving at a
 record page that turned an operations platform into CRUD screens, and passing every check
 on the way.** Naming the kinds is what makes that detectable.
 
-**This was the question Gate A raised, and it has been answered — see §7.** Naming the
+**This was the question Gate A raised, and it has been answered — see §6.** Naming the
 kinds proved insufficient on its own: a Work Order page of fields and related lists still
 validated. The resolution is a declared `compositionMode` with a conditional rule, not a
 universal one.
@@ -116,18 +116,7 @@ requirement met before this program began.
 Consequence worth noting: the report builder is recorded **exempt from migration**. It is
 ahead of the runtime, not behind it.
 
-## 5. What Gate A does NOT settle
-
-Stated so review is not mistaken for broader approval:
-
-- **No runtime exists.** No list renders, no page composes. Contracts only.
-- **The index CI bridge is not wired** (§2.3).
-- **Nothing populates the registries.**
-- **Gate B has not run.** The framework is unproven against a non-CRM entity, which is
-  the standard boundary §14 sets: *if the architecture only works well for CRM records,
-  it is not yet an EOS metadata architecture.*
-
-## 6. What Gate A does not settle — still true
+## 5. What Gate A does not settle
 
 Unchanged by the ruling, and stated so closure is not read as broader approval:
 
@@ -137,13 +126,13 @@ Unchanged by the ruling, and stated so closure is not read as broader approval:
 - **Nothing populates the registries.**
 - **Gate B has not run.**
 
-## 7. RULING — page composition classification (Owner, 2026-08-17 §3–§7)
+## 6. RULING — page composition classification (Owner, 2026-08-17 §3–§7)
 
 Gate A asked whether naming operational section kinds was a sufficient defense against
 the CRUD-screens failure, or whether it needed to be a validation rule. The answer was
 **neither, as posed**: naming is insufficient, and a universal rule is wrong.
 
-### 7.1 What was adopted
+### 6.1 What was adopted
 
 A page **declares** what it is, and validation enforces that declaration:
 
@@ -158,7 +147,7 @@ the governed set (`LIFECYCLE`, `READINESS`, `BLOCKERS`, `NEXT_ACTIONS`, `ATTENTI
 
 The CRUD failure is now a build error rather than a judgement call.
 
-### 7.2 Why conditional and not universal
+### 6.2 Why conditional and not universal
 
 Because a universal rule would have produced the failure it was meant to prevent. An
 Account is genuinely record-shaped; requiring it to carry a `LIFECYCLE` section to pass
@@ -168,7 +157,7 @@ validator rather than because they mean anything.
 **The validator enforces the contract a page declares. It does not decide that every
 entity in EOS is operational.**
 
-### 7.3 The three levels, which are easy to conflate
+### 6.3 The three levels, which are easy to conflate
 
 | Level | Answers | Can it be automated? |
 |---|---|---|
@@ -180,7 +169,7 @@ entity in EOS is operational.**
 enforcement. Per §6 of the ruling, no attempt is made to encode UX quality into
 validation — such rules end up either trivially satisfiable or simply wrong.
 
-### 7.4 What this deliberately does not prove
+### 6.4 What this deliberately does not prove
 
 **Passing validation does not mean a Work Order page is good.** Two operational sections
 can be two bad ones. Validation prevents architectural regression; **Gate B judges product
