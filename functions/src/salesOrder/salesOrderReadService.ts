@@ -43,6 +43,11 @@ export interface SalesOrderLineProjection {
 // projection's own rule).
 export interface SalesOrderProjection {
   id: string;
+  // The governed business reference (format SO-YYYY-######), allocated server-side at creation
+  // (salesOrderNumbering.ts). Null on Sales Orders created before numbering existed -- honestly
+  // null, never backfilled with a guess and never the document id (`id` above is for routing only,
+  // not for display as identity; DECISIONS #106).
+  salesOrderNumber: string | null;
   accountId: string | null;
   ownerEmployeeId: string | null;
   salesChannel: string | null;
@@ -100,6 +105,7 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
   const serviceWorkOrderIds = rawServiceWoIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
   return {
     id,
+    salesOrderNumber: str(data.salesOrderNumber),
     accountId: str(data.accountId),
     ownerEmployeeId: str(data.ownerEmployeeId),
     salesChannel: str(data.salesChannel),
