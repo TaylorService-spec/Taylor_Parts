@@ -18,7 +18,6 @@ continues from the next executable item — without asking what happened.
 ## Next executable
 
 - **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts and parityFixtures.ts under generation → Two separate follow-ups; neither is mechanical
-- **X-INVENTORY-ANALYTICS-CAPABILITY** (phase 3) — getInventoryAnalytics: bounded read + capability-catalog authorization → Determine the exact current effective audience, then mint inventory.analytics.read and route the callable through it
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
@@ -27,6 +26,7 @@ continues from the next executable item — without asking what happened.
 - **S-INV-MANUFACTURERS** (phase 9) — Manufacturers → Inventory only - writes are closed in every environment including sandbox
 - **S-INV-TRANSFERS** (phase 9) — Transfers → Bounded-read remediation; lifecycle composite, not a list
 - **S-SVC-CONTROL-TOWER** (phase 9) — Service Operations (Control Tower) → Bounded-read remediation; dashboard composition is a later phase
+- **S-SVC-COORDINATED-MISSION** (phase 9) — Coordinated mission → Same synthetic-source caveat as coordinated visits
 
 ## READY
 
@@ -44,7 +44,6 @@ continues from the next executable item — without asking what happened.
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
-| X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | — | — | — | NOT_APPLICABLE | Determine the exact current effective audience, then mint inventory.analytics.read and route the callable through it |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts and parityFixtures.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Two separate follow-ups; neither is mechanical |
 
 ## MERGE_QUEUED
@@ -60,6 +59,7 @@ continues from the next executable item — without asking what happened.
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | #1108 | 82017110 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | #1111 | 888ca6fc | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## BLOCKED_PROTECTED
 

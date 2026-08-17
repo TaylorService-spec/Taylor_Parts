@@ -1172,18 +1172,22 @@
       "id": "X-INVENTORY-ANALYTICS-CAPABILITY",
       "phase": "3",
       "wave": "2",
-      "kind": "PROTECTED_ACTION",
+      "kind": "ARCHITECTURE",
       "title": "getInventoryAnalytics: bounded read + capability-catalog authorization",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Determine the exact current effective audience, then mint inventory.analytics.read and route the callable through it",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "blockers": [],
       "governing": [
         "DECISIONS #102 section 9",
         "boundary section 12 G - authorization model change"
       ],
-      "notes": "APPROVED (Owner ruling section 3): mint a dedicated inventory.analytics.read rather than preserve a one-off direct-role check or invent a requires-A-AND-B pattern. This is authority NORMALIZATION, not permission expansion - grant it to exactly the audience the current direct role check authorizes (admin and dispatcher via getCallerContext), neither broadening nor narrowing. Add mirror/parity coverage through the established access-contract mechanism. If the exact current effective audience cannot be determined, stop ONLY the authority migration and record the ambiguity."
+      "notes": "APPROVED (Owner ruling section 3): mint a dedicated inventory.analytics.read rather than preserve a one-off direct-role check or invent a requires-A-AND-B pattern. This is authority NORMALIZATION, not permission expansion - grant it to exactly the audience the current direct role check authorizes (admin and dispatcher via getCallerContext), neither broadening nor narrowing. Add mirror/parity coverage through the established access-contract mechanism. If the exact current effective audience cannot be determined, stop ONLY the authority migration and record the ambiguity. IMPLEMENTED. Effective audience preserved exactly via SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS. The `active` flag is OMITTED, not false: the resolver denies an explicitly-inactive capability ahead of any Role grant, so the usual REGISTER != GRANT posture would have removed access from today's admins and dispatchers - a permission removal disguised as a refactor. That is the specific trap when normalizing an already-live surface.",
+      "pr": 1111,
+      "headSha": "888ca6fcbef2cfb91b721e96a0b7af77312bd30e",
+      "branch": "feat/inventory-analytics-capability",
+      "checks": "tsc + build clean; catalog, role-parity, governed-roles suites pass; emulator test NOT run locally"
     },
     {
       "id": "X-TRUCK-PROD-LIVE-RISK",
