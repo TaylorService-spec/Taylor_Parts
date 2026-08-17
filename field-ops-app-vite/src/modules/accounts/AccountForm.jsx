@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
+import { ACCOUNT_STATUS, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
@@ -270,7 +270,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         <select id="account-status" className="fo-wizard-control" value={status} onChange={(e) => setStatus(e.target.value)}>
           {Object.values(ACCOUNT_STATUS).map((s) => (
             <option key={s} value={s}>
-              {s}
+              {accountStatusLabel(s)}
             </option>
           ))}
         </select>

@@ -17,12 +17,12 @@ let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 
 const accounts = [
-  { id: "a-substr", name: "Best Test Services", status: "Active" },
-  { id: "a-prefix", name: "Test Plumbing Co", status: "Active", billingAddress: { city: "Denver", state: "CO" } },
-  { id: "b-prefix", name: "Test Plumbing Co", status: "Prospect", billingAddress: { city: "Austin", state: "TX" } }, // duplicate name
-  { id: "a-exact", name: "Test", status: "Inactive" },
-  { id: "a-cnum", name: "Riverside HVAC", status: "Active", customerNumber: "TEST-9001" },
-  { id: "a-none", name: "Unrelated Co", status: "Active" },
+  { id: "a-substr", name: "Best Test Services", status: "ACTIVE" },
+  { id: "a-prefix", name: "Test Plumbing Co", status: "ACTIVE", billingAddress: { city: "Denver", state: "CO" } },
+  { id: "b-prefix", name: "Test Plumbing Co", status: "PROSPECT", billingAddress: { city: "Austin", state: "TX" } }, // duplicate name
+  { id: "a-exact", name: "Test", status: "INACTIVE" },
+  { id: "a-cnum", name: "Riverside HVAC", status: "ACTIVE", customerNumber: "TEST-9001" },
+  { id: "a-none", name: "Unrelated Co", status: "ACTIVE" },
 ];
 
 // ===== rankCustomerMatches: match classes + ordering =====

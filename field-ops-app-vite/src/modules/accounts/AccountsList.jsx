@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { ACCOUNTS_COLLECTION, ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
+import { ACCOUNTS_COLLECTION, ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, accountStatusLabel } from "../../domain/constants";
 import { createAccount } from "../../domain/accounts";
 import {
   summarizeAccounts,
@@ -39,10 +39,10 @@ import AccountForm from "./AccountForm";
 
 const STATUS_CARDS = [
   { key: "total", label: "Total", status: null },
-  { key: "active", label: "Active", status: ACCOUNT_STATUS.ACTIVE },
-  { key: "prospect", label: "Prospect", status: ACCOUNT_STATUS.PROSPECT },
-  { key: "inactive", label: "Inactive", status: ACCOUNT_STATUS.INACTIVE },
-  { key: "archived", label: "Archived", status: ACCOUNT_STATUS.ARCHIVED },
+  { key: "active", label: accountStatusLabel(ACCOUNT_STATUS.ACTIVE), status: ACCOUNT_STATUS.ACTIVE },
+  { key: "prospect", label: accountStatusLabel(ACCOUNT_STATUS.PROSPECT), status: ACCOUNT_STATUS.PROSPECT },
+  { key: "inactive", label: accountStatusLabel(ACCOUNT_STATUS.INACTIVE), status: ACCOUNT_STATUS.INACTIVE },
+  { key: "archived", label: accountStatusLabel(ACCOUNT_STATUS.ARCHIVED), status: ACCOUNT_STATUS.ARCHIVED },
 ];
 
 const RELATIONSHIP_LABEL = {
@@ -281,7 +281,7 @@ export default function AccountsList() {
                         </td>
                         <td>
                           {account.status && (
-                            <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
+                            <StatusPill tone={accountStatusTone(account.status)} label={accountStatusLabel(account.status)} />
                           )}
                         </td>
                         <td>

@@ -8,7 +8,7 @@ import { accountStatusTone, accountRelationshipTone, accountLineOfBusinessTone }
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
-import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS } from "../../domain/constants";
+import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, accountStatusLabel } from "../../domain/constants";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
@@ -331,7 +331,7 @@ export default function AccountDetail() {
           <section className="fo-account-summary">
             <div className="fo-pill-row">
               {account.status && (
-                <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
+                <StatusPill tone={accountStatusTone(account.status)} label={accountStatusLabel(account.status)} />
               )}
               <RelationshipBadges relationshipTypes={account.relationshipTypes} />
               <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
