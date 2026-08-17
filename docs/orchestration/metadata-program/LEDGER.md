@@ -17,13 +17,8 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-METADATA-SPEC** (phase 1) — Metadata Architecture specification → Write it; DECISIONS #102 section 13 requires it to reference the IP boundary
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | — | — | — | NOT_APPLICABLE | Write it; DECISIONS #102 section 13 requires it to reference the IP boundary |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGE_QUEUED
 
@@ -39,6 +34,7 @@ continues from the next executable item — without asking what happened.
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | #1108 | 82017110 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | #1111 | 888ca6fc | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | #1112 | a458d881 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## BLOCKED_PROTECTED
 

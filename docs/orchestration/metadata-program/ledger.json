@@ -1314,12 +1314,16 @@
       "title": "Metadata Architecture specification",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Write it; DECISIONS #102 section 13 requires it to reference the IP boundary",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 section 13"
       ],
-      "notes": "Not optional and not merely documentation: the governance boundary records its own back-reference from this spec as an ACCEPTANCE CONDITION of the spec. Until it exists, that requirement is a promise with no artifact behind it. Independent of every queued PR - a specification depends on decisions, not on merged code."
+      "notes": "Not optional and not merely documentation: the governance boundary records its own back-reference from this spec as an ACCEPTANCE CONDITION of the spec. Until it exists, that requirement is a promise with no artifact behind it. Independent of every queued PR - a specification depends on decisions, not on merged code. WRITTEN. The boundary's own section 13 note is updated from 'does not exist yet' to the artifact, so the requirement is discharged by a document rather than by a promise.",
+      "pr": 1112,
+      "headSha": "a458d881c9b2759a0d80f292dadaeda95e09bae2",
+      "branch": "docs/metadata-architecture-specification",
+      "checks": "docs only"
     }
   ]
 }
