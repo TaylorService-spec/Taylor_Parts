@@ -26,6 +26,7 @@ on:
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
   push:
     branches: [main]
@@ -37,6 +38,7 @@ on:
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
   workflow_dispatch:
 
@@ -78,6 +80,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Record page renderer tests (vitest, jsdom)
+        run: npx vitest run test/metadataRecordPage.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata
