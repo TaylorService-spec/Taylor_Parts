@@ -10,6 +10,11 @@ things and this document never fuses them into one verdict.
 > activates selected catalog-inactive capabilities in configured non-production environments. The
 > repo's rule holds throughout: **eligibility != activation != authorization**.
 
+> **Nothing in this document is authorization.** Enablement means the capability-level activation
+> gate permits the capability to be considered in that environment. A principal still needs the
+> applicable Role grant, which this graph never evaluates. Read every count below as a statement
+> about gates, never about what any person can do.
+
 ## Dimensions reported
 
 | Dimension | Source | What it does NOT tell you |
@@ -17,7 +22,7 @@ things and this document never fuses them into one verdict.
 | Catalog declaration + `active` flag | `permissionCatalog.ts` | Whether any environment activates it |
 | Implementation evidence | literal id references; callables from `index.ts` | Whether it is deployed or reachable |
 | Environment activation | `environmentCapabilityOverrides.ts` + `config/environments.json` | Whether a principal holds a qualifying grant |
-| Effective state | computed **only** with `--environment` | Anything, unless an environment was named |
+| Capability enablement | computed **only** with `--environment` | **Whether any principal is granted it** |
 
 ## Counts
 
@@ -53,22 +58,23 @@ Activated by at least one environment: **27**.
 
 Production is hard-blocked by role in the resolver and carries no override declaration.
 
-## Effective state
+## Capability enablement
 
-**Not computed.** No environment was named, and effective authorization is not a fact that
-exists environment-free. Run with `--environment <id|projectId>` to evaluate one.
+**Not computed.** No environment was named, and enablement is not a fact that exists
+environment-free. Run with `--environment <id|projectId>` to evaluate one.
 
 ## Flows — governance coverage per business chain
 
 Chains transcribed from our own process docs. A step with no mapped capability is `UNMAPPED` and
-**does not stop a flow** — it may be ordinary UI, legacy role-gated authorization, non-capability
-logic, or genuinely absent, and this evidence cannot distinguish those.
+**never closes a chain** — it may be ordinary UI, legacy role-gated authorization, non-capability
+logic, or genuinely absent, and this evidence cannot distinguish those. Step enablement reports the
+capability activation gate only; principal Role grants are not evaluated anywhere in this document.
 
 ### Service call → cash
 
 Source: `docs/PlatformCapabilityModel.md (Work Order lifecycle); docs/assessments/completion-to-finance-and-billing-ar-assessment.md`
 
-_Governance coverage only — no stopping point computed without an environment._
+_Governance coverage only — no enablement computed without an environment._
 
 | # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
@@ -85,7 +91,7 @@ _Governance coverage only — no stopping point computed without an environment.
 
 Source: `docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md §1 (D2→D3→D4→invoice→asset→D1)`
 
-_Governance coverage only — no stopping point computed without an environment._
+_Governance coverage only — no enablement computed without an environment._
 
 | # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
@@ -102,7 +108,7 @@ _Governance coverage only — no stopping point computed without an environment.
 
 Source: `docs/business-processes/ventana-ice-machine-commercial-inventory-lifecycle.md §3 (two-condition exit: install complete AND sale closed)`
 
-_Governance coverage only — no stopping point computed without an environment._
+_Governance coverage only — no enablement computed without an environment._
 
 | # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
@@ -118,7 +124,7 @@ _Governance coverage only — no stopping point computed without an environment.
 
 Source: `docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as live`
 
-_Governance coverage only — no stopping point computed without an environment._
+_Governance coverage only — no enablement computed without an environment._
 
 | # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
@@ -139,8 +145,9 @@ Before claiming a capability is missing:
 
 1. Find it in `capabilities[]`. Read `catalogActive`, `implementation.evidence`, and
    `environmentActivation` as **three separate facts**.
-2. `catalogActive: false` with a non-empty `environmentActivation.environments` means it is
-   **live in those environments** — not missing, and not inert.
+2. `catalogActive: false` with a non-empty `environmentActivation.environments` means the activation
+   gate is **open in those environments** — not missing, and not inert. It does not mean any
+   principal holds a grant for it.
 3. `NO_IMPLEMENTATION_EVIDENCE` is a lead, not a verdict — indirect references are invisible here.
 4. Check `destinations[]` for a `navHidden` entry whose `placeholderExplanation` states, in its own
    words, why it is unreachable; and `guides[]` for a status tag naming what is missing beneath a

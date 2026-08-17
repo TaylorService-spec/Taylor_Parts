@@ -52,7 +52,7 @@
           "match": [],
           "coverage": "UNMAPPED",
           "capabilities": [],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Create work order",
@@ -63,7 +63,7 @@
           "capabilities": [
             "workOrder.create"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Plan parts",
@@ -74,14 +74,14 @@
           "capabilities": [
             "workOrder.parts.plan"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Schedule / dispatch",
           "match": [],
           "coverage": "UNMAPPED",
           "capabilities": [],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Field execution — parts and notes",
@@ -92,7 +92,7 @@
           "capabilities": [
             "inventory.action.create"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Complete / transition",
@@ -103,7 +103,7 @@
           "capabilities": [
             "workOrder.transition"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Invoice",
@@ -114,7 +114,7 @@
           "capabilities": [
             "finance.invoice.issue"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Payment",
@@ -125,11 +125,11 @@
           "capabilities": [
             "finance.payment.apply"
           ],
-          "authorized": null
+          "enablement": null
         }
       ],
-      "stopsAt": null,
-      "stopsAtIndex": -1,
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
       "evaluated": false
     },
     {
@@ -146,14 +146,14 @@
           "capabilities": [
             "opportunity.write"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Sales & Security Agreement (D2)",
           "match": [],
           "coverage": "UNMAPPED",
           "capabilities": [],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Convert to Sales Order (D3)",
@@ -166,7 +166,7 @@
             "opportunity.createSalesOrder",
             "salesOrder.write"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Allocate stock",
@@ -177,14 +177,14 @@
           "capabilities": [
             "salesOrder.fulfill"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Pick ticket (D4)",
           "match": [],
           "coverage": "UNMAPPED",
           "capabilities": [],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Deliver / install",
@@ -195,7 +195,7 @@
           "capabilities": [
             "salesOrder.service"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Invoice",
@@ -206,7 +206,7 @@
           "capabilities": [
             "finance.invoice.issue"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Becomes serviceable asset",
@@ -217,11 +217,11 @@
           "capabilities": [
             "inventory.serializedAsset.read"
           ],
-          "authorized": null
+          "enablement": null
         }
       ],
-      "stopsAt": null,
-      "stopsAtIndex": -1,
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
       "evaluated": false
     },
     {
@@ -240,7 +240,7 @@
             "opportunity.write",
             "salesOrder.write"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Taylor purchases from Ventana",
@@ -251,7 +251,7 @@
           "capabilities": [
             "reorder.purchaseOrder.create"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Receive — inventory control BEGINS",
@@ -262,7 +262,7 @@
           "capabilities": [
             "inventory.stock.receive"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Serialized identity & custody",
@@ -273,7 +273,7 @@
           "capabilities": [
             "inventory.serializedAsset.read"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Allocation / staging",
@@ -284,7 +284,7 @@
           "capabilities": [
             "salesOrder.fulfill"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Delivery / installation",
@@ -295,7 +295,7 @@
           "capabilities": [
             "salesOrder.service"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Install complete AND sale closed — control ENDS",
@@ -306,11 +306,11 @@
           "capabilities": [
             "inventory.serializedAsset.read"
           ],
-          "authorized": null
+          "enablement": null
         }
       ],
-      "stopsAt": null,
-      "stopsAtIndex": -1,
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
       "evaluated": false
     },
     {
@@ -327,7 +327,7 @@
           "capabilities": [
             "reorder.request.create.manual"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Review / approve",
@@ -340,7 +340,7 @@
             "reorder.request.approve",
             "reorder.request.reject"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Assign to Parts Associate",
@@ -351,7 +351,7 @@
           "capabilities": [
             "reorder.request.assign"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Place the order (PO)",
@@ -364,7 +364,7 @@
             "reorder.purchaseOrder.create",
             "reorder.request.recordPurchaseOrder"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Receive into warehouse",
@@ -375,7 +375,7 @@
           "capabilities": [
             "inventory.stock.receive"
           ],
-          "authorized": null
+          "enablement": null
         },
         {
           "name": "Stock on hand updated",
@@ -386,11 +386,11 @@
           "capabilities": [
             "inventory.transaction.read"
           ],
-          "authorized": null
+          "enablement": null
         }
       ],
-      "stopsAt": null,
-      "stopsAtIndex": -1,
+      "firstNotEnabledAt": null,
+      "firstNotEnabledIndex": -1,
       "evaluated": false
     }
   ],
