@@ -43,12 +43,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  * DELIBERATELY EXCLUDED, with reasons, because a silent omission here looks identical
  * to an oversight and this list is the thing a reviewer checks:
  *
- *   permissionCatalog.ts — the client copy carries independently abbreviated comment
- *     wording (roughly 30 lines' worth). The existing parity test strips comments, so
- *     the divergence is real but invisible to it. Generating would rewrite those
- *     comments to the server's fuller text: behavior-neutral, but a substantial diff in
- *     the most authorization-sensitive file in the repo, and it deserves its own review
- *     rather than arriving as a side effect of introducing a generator.
+ * permissionCatalog.ts IS synced as of its own PR. Its client copy had carried
+ * independently abbreviated comment wording — 32 differing lines, ALL of them comments
+ * and none of them code, which is what made adopting the canonical text provably
+ * behavior-neutral rather than merely believed to be.
  *
  * parityFixtures.ts IS synced, but through a declared substitution — see
  * PLATFORM_SUBSTITUTIONS. It is the one legitimate case: the difference is a real SDK
@@ -63,6 +61,7 @@ export const SYNCED_MODULES = Object.freeze([
   "shadowParityHarness.ts",
   "legacyAuthorizationSurface.ts",
   "parityFixtures.ts",
+  "permissionCatalog.ts",
 ]);
 
 const CANONICAL_DIR = path.join("functions", "src", "access");

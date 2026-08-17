@@ -10,9 +10,10 @@
 // anyone; Role->Permission mapping is Row 2 (Task 7)'s compatibility
 // resolver, not this file. No runtime authorization behavior changes.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at field-ops-app-vite/src/access/permissionCatalog.ts. If
-// either file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Permission } from "../types/access";
 
 // Spec §6: PermissionId = "<domain>.<resource>.<action>", lower-camel
