@@ -39,6 +39,57 @@ export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?:
   return sawEligible ? onHand : 0;
 }
 
+// Ledger-derived eligible physical ON_HAND for a part (Owner-ratified 2026-08-17, superseding the
+// stock_locations rule).
+//
+// WHY THIS REPLACED stock_locations. Nothing in the codebase ever WRITES stock_locations -- it is a seeded
+// legacy projection -- while Receiving, Transfer and reconciled Cycle Counts all write the append-only
+// inventory_transactions ledger. The two could therefore only diverge, and in the sandbox they did, in both
+// directions: PRT-1001 held 3 genuinely received units and stock_locations said 0 (a real order was
+// BACKORDERED), while PRT-1005 said 40 with nothing ever received (36 units were committed that do not
+// exist). An availability source that can both refuse real stock and promise imaginary stock is not an
+// authority. Physical stock now comes from the same ledger every other inventory surface already uses.
+//
+// PHYSICAL ONLY. RESERVED / RELEASED / CONSUMED are LOGICAL commitment events and are deliberately NOT
+// counted here -- they are subtracted separately by openWorkOrderReserved(). Counting them here would both
+// double-count demand and, worse, treat a commitment as a physical receipt.
+//
+// WAREHOUSE ELIGIBILITY PRESERVED. Only movements at an eligible (status==ACTIVE) WAREHOUSE location count.
+// MOBILE/truck stock is deliberately excluded: it is real inventory, but it is not sellable warehouse stock.
+//
+// Returns null (UNKNOWN) when the part has no physical movement evidence at all -- never treated as 0, matching
+// the previous contract. Floored at 0 so a malformed ledger can never produce negative sellable stock.
+export function sumLedgerEligibleOnHand(
+  rows: Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string } }>,
+  eligibleWarehouseIds: Set<string>
+): number | null {
+  // Two distinct facts, exactly as the previous stock_locations contract drew them:
+  //   sawAnyPhysical    -- the part has physical movement evidence SOMEWHERE (so 0 is a real answer)
+  //   sawEligible       -- some of that movement is at a sellable warehouse
+  // No evidence at all => UNKNOWN. Evidence, but none of it sellable => a known 0 (a real backorder).
+  let sawAnyPhysical = false;
+  let sawEligible = false;
+  let onHand = 0;
+  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED"]);
+  for (const r of rows) {
+    if (PHYSICAL.has(r.type)) sawAnyPhysical = true;
+    const loc = r.location;
+    if (!loc || loc.type !== "WAREHOUSE" || typeof loc.locationId !== "string") continue;
+    if (!eligibleWarehouseIds.has(loc.locationId)) continue;
+    const q = num0(r.quantity);
+    if (r.type === "RECEIVED" || r.type === "TRANSFER_IN") { sawEligible = true; onHand += q; }
+    else if (r.type === "TRANSFER_OUT") { sawEligible = true; onHand -= q; }
+    else if (r.type === "ADJUSTED") {
+      // ADJUSTED carries its own sign (negative when a reconciled Cycle Count came up short), so num0()'s
+      // positive-only guard would silently drop the shortage. Read the raw value.
+      const signed = typeof r.quantity === "number" && Number.isFinite(r.quantity) ? r.quantity : 0;
+      sawEligible = true; onHand += signed;
+    }
+  }
+  if (!sawAnyPhysical) return null;
+  return sawEligible ? Math.max(0, onHand) : 0;
+}
+
 // Net open Work-Order reservations for a part from the append-only ledger rows: RESERVED − RELEASED −
 // CONSUMED, floored at 0. `rows` are the inventory_transactions for the part (already filtered by partId).
 //
