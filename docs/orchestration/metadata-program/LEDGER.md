@@ -40,6 +40,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2
+- **A-QUERY-MODEL-UNIFIED** (phase 7) — Unified EOS query model (shared dependency) → Define the shared query AST + validation pipeline before any consumer builds its own
 
 ## READY
 
@@ -47,6 +48,13 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2 |
+| A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | — | — | — | NOT_APPLICABLE | Define the shared query AST + validation pipeline before any consumer builds its own |
+
+## MERGE_QUEUED
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| A-RECORD-PROVENANCE | 6 | Record provenance platform invariant | — | — | #1149 | 19d4172b | — | NOT_APPLICABLE | Open: createdAt/createdBy/updatedAt/updatedBy as SYSTEM fields with exemption discipline |
 
 ## MERGED
 
@@ -137,6 +145,10 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
+| A-AUTOMATION-V1 | 7 | Automation Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design after the unified query model - automation CONDITIONS are queries |
+| A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
+| A-BULK-DATA-V1 | 7 | Bulk Data Architecture v1 (import + export) | — | — | — | — | — | NOT_APPLICABLE | Design after the query model - an export IS a governed query with a different sink |
+| A-ADMIN-METADATA-CONFIG | 7 | Admin metadata configuration / page designer | — | — | — | — | — | NOT_APPLICABLE | Design after entities are defined - there is nothing to configure until there is metadata to configure |
 
 ## EXEMPT
 

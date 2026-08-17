@@ -1678,7 +1678,9 @@
         "Owner architecture addendum section 1",
         "DECISIONS #102 section 6"
       ],
-      "notes": "Server-authoritative: no writeCapability, because a client-supplied timestamp or actor is a CLAIM - any caller who can write the record can write the claim. Append-only records get two fields, not four: emitting updatedAt on an issued invoice implies a mutation path that must not exist. Synonyms (creationDate, lastModified) are REJECTED - legacy storage is handled with storagePath, never a second name in the standard vocabulary. Exemptions for caches/locks/transient state require a stated reason, so an exemption is a decision rather than a gap. Deliberately does NOT duplicate the audit event architecture: provenance is current state, audit is each material mutation, and reconstructing history from updatedBy makes the last writer look like the only writer."
+      "notes": "Server-authoritative: no writeCapability, because a client-supplied timestamp or actor is a CLAIM - any caller who can write the record can write the claim. Append-only records get two fields, not four: emitting updatedAt on an issued invoice implies a mutation path that must not exist. Synonyms (creationDate, lastModified) are REJECTED - legacy storage is handled with storagePath, never a second name in the standard vocabulary. Exemptions for caches/locks/transient state require a stated reason, so an exemption is a decision rather than a gap. Deliberately does NOT duplicate the audit event architecture: provenance is current state, audit is each material mutation, and reconstructing history from updatedBy makes the last writer look like the only writer.",
+      "headSha": "19d4172b365281c740841831f4e57fe9144ccbf4",
+      "pr": 1149
     },
     {
       "id": "A-QUERY-MODEL-UNIFIED",
