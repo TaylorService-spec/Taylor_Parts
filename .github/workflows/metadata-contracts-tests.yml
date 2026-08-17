@@ -45,6 +45,9 @@ on:
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
       - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/test/accountSearch.test.mjs"
+      - "field-ops-app-vite/src/domain/accountSearch.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/hooks/useMetadataList.js"
       - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
@@ -84,6 +87,9 @@ on:
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
       - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/test/accountSearch.test.mjs"
+      - "field-ops-app-vite/src/domain/accountSearch.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/hooks/useMetadataList.js"
       - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
@@ -174,6 +180,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Customers surface tests (vitest, jsdom)
         run: npx vitest run test/customersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Account search contract tests (node:test)
+        run: node --test test/accountSearch.test.mjs
         working-directory: field-ops-app-vite
       - name: Field Architecture v2 contract tests (node:test)
         run: node --test test/fieldArchitectureV2.test.mjs
