@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { OPPORTUNITIES_COLLECTION } from "../constants/collections";
+import { allocateOpportunityNumber } from "./opportunityNumbering";
 import {
   buildCreateOpportunity,
   buildTransitionPatch,
@@ -63,7 +64,23 @@ export async function persistCreatedOpportunity(
     if (prior.exists) return { success: true as const, replayed: true as const, opportunityId: ((prior.data() ?? {}).targetId as string) ?? null, stage: built.stage };
   }
   const ref = db.collection(OPPORTUNITIES_COLLECTION).doc();
-  tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+
+  // HUMAN IDENTITY. Allocated inside the caller's transaction, alongside the document
+  // write, so a reference is never issued without its Opportunity appearing and an
+  // Opportunity never appears without one. Same contract as WO numbering, which owns the
+  // identical problem.
+  //
+  // Immutable by construction: it is set here at creation and no transition path writes
+  // it. That is the whole point of a reference — a value that changes is a label, not an
+  // identifier, and the lineage links on Sales Order detail depend on it not moving.
+  const { opportunityNumber } = await allocateOpportunityNumber(tx, new Date().getUTCFullYear());
+
+  tx.set(ref, {
+    ...fields,
+    opportunityNumber,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createOpportunity", targetType: "opportunity", targetId: ref.id, outcome: "applied", summary: `created opportunity for account ${built.accountId}` });
   return { success: true as const, replayed: false as const, opportunityId: ref.id, stage: built.stage };
 }
