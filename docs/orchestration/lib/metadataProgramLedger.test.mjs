@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   STATUS, KIND, CLASSIFICATION, DEPLOY, GATE,
-  makeEntry, validateEntry, validateLedger, selectExecutable, reconcile, conformance, renderMarkdown,
+  makeEntry, validateEntry, validateLedger, selectExecutable, reconcile, conformance, renderMarkdown, staleBlocks,
 } from "./metadataProgramLedger.mjs";
 
 const base = {
@@ -302,4 +302,61 @@ test("§1 — the shipped ledger declares no dependency on the ledger's own docs
       `${e.id} depends on P0-LEDGER — the ledger is a docs artifact and cannot technically block code`
     );
   }
+});
+
+// --- stale blocks: not promoting must never mean hiding ---------------------
+//
+// The real incident: 23 items sat in BLOCKED_DEPENDENCY with every dependency already
+// merged, while the scheduler reported "nothing executable". A false terminal state,
+// which is precisely what the global executability rule exists to prevent — and it was
+// invisible because selectExecutable only ever considers READY/IMPLEMENTING.
+
+test("staleBlocks finds an item whose dependencies are all satisfied", () => {
+  const ledger = {
+    entries: [
+      makeEntry({ ...base, id: "DEP", status: "MERGED", mergeSha: "abc" }),
+      makeEntry({ ...base, id: "WAITING", status: "BLOCKED_DEPENDENCY", dependsOn: ["DEP"] }),
+    ],
+  };
+  assert.deepEqual(staleBlocks(ledger).map((e) => e.id), ["WAITING"]);
+  assert.deepEqual(selectExecutable(ledger).map((e) => e.id), [], "and selectExecutable still does not promote it");
+});
+
+test("a block with ANY unsatisfied dependency is not stale", () => {
+  const ledger = {
+    entries: [
+      makeEntry({ ...base, id: "DONE", status: "MERGED", mergeSha: "abc" }),
+      makeEntry({ ...base, id: "PENDING", status: "MERGE_QUEUED", pr: 1, headSha: "aaa" }),
+      makeEntry({ ...base, id: "WAITING", status: "BLOCKED_DEPENDENCY", dependsOn: ["DONE", "PENDING"] }),
+    ],
+  };
+  assert.deepEqual(staleBlocks(ledger), []);
+});
+
+test("staleBlocks does NOT auto-promote — the two are different questions", () => {
+  // A satisfied dependency means someone should LOOK, not that the item is ready. 22 of
+  // those 23 surfaces declared a dependency on the list CONTRACT when they actually
+  // needed the list RUNTIME; auto-promoting would have reported two dozen items
+  // executable that were not — the optimistic error, and the harder one to notice.
+  const ledger = {
+    entries: [
+      makeEntry({ ...base, id: "CONTRACT", status: "MERGED", mergeSha: "abc" }),
+      makeEntry({ ...base, id: "SURFACE", status: "BLOCKED_DEPENDENCY", dependsOn: ["CONTRACT"] }),
+    ],
+  };
+  assert.equal(staleBlocks(ledger).length, 1, "surfaced");
+  assert.equal(selectExecutable(ledger).length, 0, "but not silently promoted");
+});
+
+test("the render surfaces stale blocks above 'next executable', where the wrong answer gets read", () => {
+  const md = renderMarkdown({
+    baseline: "x",
+    entries: [
+      makeEntry({ ...base, id: "DEP", status: "MERGED", mergeSha: "abc" }),
+      makeEntry({ ...base, id: "WAITING", status: "BLOCKED_DEPENDENCY", dependsOn: ["DEP"] }),
+    ],
+  });
+  assert.match(md, /Stale blocks/);
+  assert.ok(md.indexOf("Stale blocks") < md.indexOf("## Next executable"),
+    "a reader must see the caveat before the conclusion it undermines");
 });
