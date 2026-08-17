@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 48 | 41 | 7 |
+| 50 | 41 | 9 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,19 +38,24 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **S-COM-PURCHASE-ORDER-DEFINITION** (phase 6) — Purchase Order entity + list definitions (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING
-- **S-CRM-ACCOUNT-RECORD** (phase 6) — Customer/Account detail → Unblocked and dispatched: all three related lists now exist.
-- **S-CRM-LOCATION-DEFINITION** (phase 6) — Location entity + list definition (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING including a possible REFERENCE upgrade for two entities
+- **X-ACCOUNT-PAGE-GAPS** (phase 6) — Account page: Locations section and Commercial Profile fields → Add the account.locations edge and the commercial-profile fields to accountEntity, then extend the page
+- **X-ACCOUNT-PAGE-WIRING** (phase 6) — Wire AccountDetail onto the Account record PageDefinition → Register the five component ids, then render through buildCompositionPlan + MetadataRecordPage
+- **X-LOCATION-REFERENCE-UPGRADE** (phase 6) — Upgrade locationId from STRING to REFERENCE on equipment and salesOrder → Focused correction lane over equipment.js and salesOrder.js, now that the location entity exists
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Unblocked and dispatched: all three related lists now exist. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| S-COM-PURCHASE-ORDER-DEFINITION | 6 | Purchase Order entity + list definitions (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING |
-| S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING including a possible REFERENCE upgrade for two entities |
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| X-ACCOUNT-PAGE-GAPS | 6 | Account page: Locations section and Commercial Profile fields | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Add the account.locations edge and the commercial-profile fields to accountEntity, then extend the page |
+| X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | — | — | — | NOT_APPLICABLE | Focused correction lane over equipment.js and salesOrder.js, now that the location entity exists |
+| X-ACCOUNT-PAGE-WIRING | 6 | Wire AccountDetail onto the Account record PageDefinition | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Register the five component ids, then render through buildCompositionPlan + MetadataRecordPage |
 
 ## MERGED
 
@@ -58,6 +63,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1113 | 3dce271a | 1f1f1a4d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1138 | — | abfd3ee7 | NOT_APPLICABLE | Merged. The accounts composite index is declared and pending deploy. |
+| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Definition merged. Wiring AccountDetail onto it, and the two recorded page gaps, are separate lanes. |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | bd787211 | 2c673e16 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -100,6 +106,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-EQUIPMENT-DEFINITION | 6 | Equipment entity + list definitions (leaf lane) | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Leaf merged and registered via the integration lane. |
 | A-METADATA-INTEGRATION-LANE | 6 | Integration lane for Part + Equipment shared registration | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Batch integrated. Reusable pattern for the next leaf batch. |
 | S-ADM-EMPLOYEES-DEFINITION | 6 | Employee entity + list definition | — | — | #1176 | — | 42db3840 | NOT_APPLICABLE | Merged and registered. Three composites declared and pending deploy. |
+| S-COM-PURCHASE-ORDER-DEFINITION | 6 | Purchase Order entity + list definitions (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
+| S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
 
 ## BLOCKED_PROTECTED
 
