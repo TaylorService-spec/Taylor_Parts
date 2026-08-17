@@ -21,7 +21,7 @@
  *   node scripts/seedSandboxBaseline.js --projectId eos-platform-sandbox
  */
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -165,6 +165,12 @@ async function main() {
       // created natively in the sandbox rather than migrated from a legacy store, so NATIVE is the
       // accurate value, not merely the passing one.
       version: 1, provenance: "NATIVE", createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
+      // Actively REMOVE the forbidden pair rather than merely stopping writing it. Every upsert here
+      // is a merge, so a sandbox seeded before this correction would keep its old
+      // governanceInitializedAt/By fields forever and stay invalid no matter how often the seed ran.
+      // Deleting them is what makes the fixture reproducible against an EXISTING sandbox, not just a
+      // freshly created one.
+      governanceInitializedAt: FieldValue.delete(), governanceInitializedBy: FieldValue.delete(),
       // NO governanceInitializedAt/By. The validator's provenance model (§3A.1) is exclusive: NATIVE
       // REQUIRES the created pair and FORBIDS the governance-initialization pair, which exists to
       // record when a MIGRATED legacy record was brought under governance. A natively-created
