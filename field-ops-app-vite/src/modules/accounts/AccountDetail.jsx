@@ -178,8 +178,15 @@ export default function AccountDetail() {
   const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
-  // Health-strip inputs. Both are EXISTING authoritative account-scoped reads; the AR read is the
-  // SAME one AccountFinancialsSection renders, so the strip and the AR area can never disagree.
+  // Health-strip inputs. Both are EXISTING authoritative account-scoped reads.
+  //
+  // This comment used to claim the strip and the AR area "can never disagree" because they share
+  // the AR read. They share the read FUNCTION, not the read: AccountArSection and
+  // AccountAttentionSection each call useAccountAr(accountId) independently, so one page load
+  // issues three separate listAccountInvoiceAr requests. They can disagree, and they did -- see
+  // issue #1094, where the strip reported Unavailable beside a section showing a real balance.
+  // Single-read ownership is tracked separately as #1095; do not restore the invariant claim
+  // until one owner actually holds the read.
   const arState = useAccountAr(accountId);
   // fetchFn must be a stable module-level reference (the hook keys its effect on it).
   const workOrderCount = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
