@@ -1815,7 +1815,7 @@
       "domain": "sales",
       "entity": "SalesOrder",
       "status": "BLOCKED_PROTECTED",
-      "nextAction": "Tooling repo-complete and INERT; production execution requires the established protected authorization",
+      "nextAction": "Tooling merged and inert. Production execution awaits the established protected authorization.",
       "blockers": [
         {
           "reason": "Assigning business references to existing production Sales Orders mutates production data",
@@ -1825,7 +1825,7 @@
       "governing": [
         "Owner Sales Order identity ruling sections 5-7"
       ],
-      "notes": "Deliberately SEPARATE from the creation path, so future correctness does not wait on historical cleanup: new Sales Orders get numbered the moment the code activates. Tooling requirements are deterministic, idempotent, dry-run capable, collision-detecting, preserving recordId and existing relationships, emitting auditable evidence, and safe under rerun. Where historical creation timestamps are authoritative they may set the year; where ordering CANNOT be established reliably, references are assigned by an explicitly documented deterministic policy rather than pretending to reflect a historical sequence that no evidence supports."
+      "notes": "Deliberately SEPARATE from the creation path, so future correctness does not wait on historical cleanup: new Sales Orders get numbered the moment the code activates. Tooling requirements are deterministic, idempotent, dry-run capable, collision-detecting, preserving recordId and existing relationships, emitting auditable evidence, and safe under rerun. Where historical creation timestamps are authoritative they may set the year; where ordering CANNOT be established reliably, references are assigned by an explicitly documented deterministic policy rather than pretending to reflect a historical sequence that no evidence supports. TOOLING MERGED, REPO-COMPLETE AND INERT (#1171, a89460de). Dry-run is the DEFAULT so mutation cannot happen by forgetting a flag. Execute is pinned to a specific dry-run plan by full-file hash, revalidates counter and record fingerprints inside one transaction, and refuses the WHOLE batch on drift; a collision blocks only the remainder of that year, since the sequence past it is undecidable. YEAR POLICY REFUSES TO INVENT CHRONOLOGY: an authoritative createdAt sets the year, and a missing or invalid one yields sentinel SO-0000-###### documented as 'creation time unknown' rather than a plausible guess about when the record was created. Known gaps are in the runbook: the 500-write transaction limit with no chunking, and safe refusals if Sales Orders are created during the dry-run-to-execute window. EXECUTION REMAINS PROTECTED - this changes nothing about that."
     },
     {
       "id": "X-EQUIPMENT-PROVENANCE-GAP",
@@ -1890,12 +1890,14 @@
       "entity": "SalesOrder",
       "route": "/customers/opportunities/sales-order/:salesOrderId",
       "classification": "B_ENTITY_RECORD",
-      "status": "READY",
-      "nextAction": "Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header",
+      "status": "MERGED",
+      "nextAction": "Merged. The id-as-label class now has five corrected instances and no known open ones.",
       "governing": [
         "DECISIONS #106"
       ],
-      "notes": "FIFTH instance of the id-as-label class, found by the header lane and deliberately NOT pulled into it - the file was outside that lane's declared scope, and scope leakage is what the isolation rule exists to prevent. The confirmation dialog interpolates view.id into consequence text (\"This moves Sales Order {id} from...\"), visible once a user opens an action. The header fix already supplies salesOrderNumber through the view model, so this is a copy change plus the same reference-unavailable fallback."
+      "notes": "FIFTH instance of the id-as-label class, found by the header lane and deliberately NOT pulled into it - the file was outside that lane's declared scope, and scope leakage is what the isolation rule exists to prevent. The confirmation dialog interpolates view.id into consequence text (\"This moves Sales Order {id} from...\"), visible once a user opens an action. The header fix already supplies salesOrderNumber through the view model, so this is a copy change plus the same reference-unavailable fallback. MERGED (#1170): four confirmation dialogs -- Advance, Cancel, Allocate, Create Service -- rendered the governed reference instead of the document id, reusing the EXACT fallback wording the page header already established rather than inventing a second sentence for the same condition. Found by the header lane and left alone there because the file was out of scope: find, record, continue owned scope.",
+      "pr": 1170,
+      "mergeSha": "dd325ac9"
     },
     {
       "id": "A-SHARED-RESOURCE-SERIALIZATION",
@@ -1905,12 +1907,14 @@
       "title": "Shared-resource ownership in the writer-lane model",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock",
+      "status": "MERGED",
+      "nextAction": "Merged: canDispatch fails closed on contention; registrationGaps checks both directions.",
       "governing": [
         "Owner shared-file serialization addendum"
       ],
-      "notes": "PRINCIPLE RECORDED in agent-isolation-execution-rule.md: parallelize disjoint implementation, serialize shared registration and integration. A central registry edited by five agents is not five-way parallelism - it is five writers contending on one resource. The CODE half remains: lanes declare sharedResources beside writeScope; a shared resource has at most one active owner; dispatch fails closed on collision; logical resources (METADATA_REGISTRATION, INDEX_DECLARATIONS, WORKFLOW_METADATA_TESTS) cover families spanning several files; and a lock is released only after useful work is preserved, never because an agent says it finished. Registration-completeness checks should prefer SET EQUALITY over one-way containment, since an omitted or extra item is a coverage defect in both directions. Evidence it is needed: the Sales Order definition lane and the header lane were dispatched as disjoint and both were routed toward the same workflow and index registration files; they happened not to collide because the header lane needed no new test file."
+      "notes": "PRINCIPLE RECORDED in agent-isolation-execution-rule.md: parallelize disjoint implementation, serialize shared registration and integration. A central registry edited by five agents is not five-way parallelism - it is five writers contending on one resource. The CODE half remains: lanes declare sharedResources beside writeScope; a shared resource has at most one active owner; dispatch fails closed on collision; logical resources (METADATA_REGISTRATION, INDEX_DECLARATIONS, WORKFLOW_METADATA_TESTS) cover families spanning several files; and a lock is released only after useful work is preserved, never because an agent says it finished. Registration-completeness checks should prefer SET EQUALITY over one-way containment, since an omitted or extra item is a coverage defect in both directions. Evidence it is needed: the Sales Order definition lane and the header lane were dispatched as disjoint and both were routed toward the same workflow and index registration files; they happened not to collide because the header lane needed no new test file. MERGED (#1165): lanes declare writeScope and sharedResources, canDispatch FAILS CLOSED when a resource is owned, a MERGED lane releases its claims, undeclaredSharedEdits and outOfScopeFiles detect what isolation cannot prevent, and registrationGaps reports missing AND orphaned because a one-way check would pass while half a batch was invisible. 27 tests.",
+      "pr": 1165,
+      "mergeSha": "94040c1e"
     },
     {
       "id": "S-INV-PART-DEFINITION",

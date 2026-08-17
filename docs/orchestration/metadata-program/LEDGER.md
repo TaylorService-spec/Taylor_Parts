@@ -38,10 +38,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-SHARED-RESOURCE-SERIALIZATION** (phase 6) — Shared-resource ownership in the writer-lane model → Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
-- **X-SALES-ORDER-ACTION-COPY** (phase 6) — SalesOrderActions renders a document id in confirmation copy → Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -56,8 +54,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 | X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Determine the actual stored semantics first, then converge future governed writes |
-| X-SALES-ORDER-ACTION-COPY | 6 | SalesOrderActions renders a document id in confirmation copy | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header |
-| A-SHARED-RESOURCE-SERIALIZATION | 6 | Shared-resource ownership in the writer-lane model | — | — | — | — | — | NOT_APPLICABLE | Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock |
 
 ## MERGED
 
@@ -100,6 +96,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | 7b200b34 | NOT_APPLICABLE | Creation, header and definition all merged. Backfill remains protected under X-SALES-ORDER-NUMBER-BACKFILL. |
 | X-SALES-ORDER-HEADER | 6 | SalesOrderDetail header renders a document id | /customers/opportunities/sales-order/:salesOrderId | — | #1162 | — | 7b200b34 | NOT_APPLICABLE | Merged. SalesOrderActions.jsx still interpolates a document id into dialog copy - see X-SALES-ORDER-ACTION-COPY. |
 | S-CRM-SALES-ORDER-DEFINITION | 6 | Sales Order entity + list definitions | — | — | #1161 | — | 5568028d | NOT_APPLICABLE | Merged. Two projection gaps documented rather than silently fixed. |
+| X-SALES-ORDER-ACTION-COPY | 6 | SalesOrderActions renders a document id in confirmation copy | /customers/opportunities/sales-order/:salesOrderId | — | #1170 | — | dd325ac9 | NOT_APPLICABLE | Merged. The id-as-label class now has five corrected instances and no known open ones. |
+| A-SHARED-RESOURCE-SERIALIZATION | 6 | Shared-resource ownership in the writer-lane model | — | — | #1165 | — | 94040c1e | NOT_APPLICABLE | Merged: canDispatch fails closed on contention; registrationGaps checks both directions. |
 | S-INV-PART-DEFINITION | 6 | Part entity + list definitions (leaf lane) | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Leaf merged and registered via the integration lane. |
 | S-INV-EQUIPMENT-DEFINITION | 6 | Equipment entity + list definitions (leaf lane) | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Leaf merged and registered via the integration lane. |
 | A-METADATA-INTEGRATION-LANE | 6 | Integration lane for Part + Equipment shared registration | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Batch integrated. Reusable pattern for the next leaf batch. |
@@ -115,7 +113,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-NO-GOVERNED-READ-COLLECTIONS | 9 | BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all | — | — | — | — | — | NOT_APPLICABLE | No metadata work possible; each needs a governed read service under normal capability governance |
 | X-ACCOUNT-TAG-CATALOG | 6 | Governed Account tag facet / catalog projection | /customers | — | — | — | — | NOT_APPLICABLE | Needs an authoritative tag source before a facet can be honest |
 | X-WORK-ORDER-BOARD-SCOPE | 6 | Work Order boards: bounded queue or complete queue? | /dispatch | — | — | — | — | NOT_APPLICABLE | Needs a decision on what a dispatch board is allowed to show before it can be bounded |
-| X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling repo-complete and INERT; production execution requires the established protected authorization |
+| X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling merged and inert. Production execution awaits the established protected authorization. |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
