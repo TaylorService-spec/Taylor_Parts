@@ -38,6 +38,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
+- **G-FIELD-ARCH-V2** (phase 6) — Field Architecture v2 → Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 
 ## READY
@@ -45,6 +46,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
+| G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | — | — | — | NOT_APPLICABLE | Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition |
 
 ## MERGED
 
@@ -132,6 +134,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
+| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Define remaining entities AFTER Field Architecture v2 lands |
 
 ## EXEMPT
 
