@@ -18,7 +18,6 @@ continues from the next executable item — without asking what happened.
 ## Next executable
 
 - **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts under generation → Unblocked; the generator is on main at c01c0531
-- **A-REGISTRIES** (phase 2) — Component and action registries → Unblocked; A-CONTRACT-CORE is on main
 - **X-INVENTORY-ANALYTICS-AGGREGATE** (phase 3) — Authoritative aggregation for netted inventory figures (server and client) → Unblocked; the capability is on main at 6896888b
 - **A-PAGE-RUNTIME** (phase 5) — Page definition runtime → Unblocked; A-CONTRACT-CORE is on main
 
@@ -27,7 +26,6 @@ continues from the next executable item — without asking what happened.
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-PAGE-RUNTIME | 5 | Page definition runtime | — | — | — | — | — | NOT_APPLICABLE | Unblocked; A-CONTRACT-CORE is on main |
-| A-REGISTRIES | 2 | Component and action registries | — | — | — | — | — | NOT_APPLICABLE | Unblocked; A-CONTRACT-CORE is on main |
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Unblocked; the capability is on main at 6896888b |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Unblocked; the generator is on main at c01c0531 |
 
@@ -36,6 +34,7 @@ continues from the next executable item — without asking what happened.
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | 87dcaa49 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | d750b018 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED

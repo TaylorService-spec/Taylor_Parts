@@ -639,13 +639,18 @@
       "title": "Component and action registries",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Unblocked; A-CONTRACT-CORE is on main",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a78"
-      ]
+      ],
+      "pr": 1116,
+      "headSha": "d750b01850246f62560f238a759cedd7c6447183",
+      "branch": "feat/metadata-registries",
+      "checks": "15/15 tests; oxlint + tsc clean; registered in workflow and npm test",
+      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime."
     },
     {
       "id": "G-GATE-A",
