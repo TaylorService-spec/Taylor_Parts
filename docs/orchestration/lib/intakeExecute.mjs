@@ -82,6 +82,14 @@ export function runIntakeExecution({
     authorizedProfile: artifact.authority?.authorizationState === "AUTHORIZED" ? (artifact.authority.authorizedExecutionProfile ?? null) : null,
   });
 
+  // The effective completion contract is derived ONCE, BEFORE the wake, and is the single source of truth for
+  // both halves of the seam: it tells the worker which structured receipts to return, and it is the same object
+  // classifyCompletion judges the returned evidence against below. Deriving it once is the point — when the
+  // worker's instructions and the gate's expectations came from separate places, they silently diverged and
+  // correct work blocked as "required execution receipts missing".
+  const requestedContract = normalizeExecutionContract(artifact.execution);
+  const execContract = deriveEffectiveContract({ requested: requestedContract, resolvedProfile: profileDecision.profile });
+
   // 3. WAKE — the EXISTING Wake Supervisor. Injected runner/lease. Spawns zero on any refusal.
   const wake = executeWake({
     item: { ...item, purpose: item.purpose, scope: item.scope, modelTier: item.modelTier, workstream: item.workstream },
@@ -89,6 +97,7 @@ export function runIntakeExecution({
     contextPackageFn, processRunner, lease, resolveModel,
     sourceCommit, sourceFreshness: wakeCtx.sourceFreshness ?? "CURRENT",
     executionProfile: profileDecision.profile,
+    executionContract: execContract,
   });
 
   const heldTelemetry = () => createCostCapacityTelemetry({ providerCapacityUsage: wakeCtx.providerCapacityUsage || {}, budgetStopReason: wake.budgetStopReason || null });
@@ -110,8 +119,7 @@ export function runIntakeExecution({
   // granted profile has no capability to produce, and a downgraded MUTATING task still fails closed (#840). This
   // is the pre-execution-authorization ↔ post-execution-proof seam — classifyCompletion below still validates
   // the receipts AFTER the worker ran; it just validates the ones the grant could actually produce.
-  const requestedContract = normalizeExecutionContract(artifact.execution);
-  const execContract = deriveEffectiveContract({ requested: requestedContract, resolvedProfile: profileDecision.profile });
+  // requestedContract/execContract were derived above the wake — the SAME contract the worker was handed.
   const workerEvidence = (wake.result && typeof wake.result === "object" && wake.result.evidence && typeof wake.result.evidence === "object") ? wake.result.evidence : {};
   const completion = classifyCompletion({
     processSucceeded: wake.outcome === "SPAWNED_COMPLETED",
@@ -138,7 +146,7 @@ export function runIntakeExecution({
     const disposition = hardFailure ? "FAILED" : completion.state;
     const state = hardFailure ? "FAILED" : completionStateToStatus(completion.state);
     return Object.freeze({
-      disposition, executed: true, gate, item, capabilities, wake, completion, profileDecision,
+      disposition, executed: true, gate, item, capabilities, wake, completion, profileDecision, execContract,
       status: statusFor({ artifact, state, currentWork: completion.reason || wake.failureDetail || wake.failureKind || "not completed", costCapacity: heldTelemetry(), now }),
     });
   }
@@ -155,5 +163,5 @@ export function runIntakeExecution({
   // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to
   // the default-branch HEAD; a curated/pre-committed artifact can carry an explicit commit when emitted.
   const reviewReady = buildReviewReady({ requestId: artifact.requestId, artifact: result.contentLocation, commit: null });
-  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, completion, profileDecision, status, result: Object.freeze({ ...result, index }), reviewReady });
+  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, completion, profileDecision, execContract, status, result: Object.freeze({ ...result, index }), reviewReady });
 }
