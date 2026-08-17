@@ -17,7 +17,7 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains
+- **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Decide between two designs before writing the generator (see notes)
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
@@ -43,7 +43,7 @@ continues from the next executable item — without asking what happened.
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
-| A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains |
+| A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Decide between two designs before writing the generator (see notes) |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
 
 ## MERGE_QUEUED
