@@ -1,7 +1,13 @@
 // Epic 2D Inventory Trigger System (see docs/architecture/ADR-003).
 import type { Timestamp } from "firebase-admin/firestore";
 
-export type InventoryTransactionType = "RESERVED" | "RELEASED" | "CONSUMED";
+// The legacy Work-Order reservation vocabulary PLUS the governed operational movement types that
+// Receiving, Transfer and Cycle Count reconciliation write to this SAME append-only ledger. They were
+// always being written; this type simply did not name them, so every consumer that switched on it
+// silently treated real stock movement as nothing at all.
+export type InventoryTransactionType =
+  | "RESERVED" | "RELEASED" | "CONSUMED"
+  | "RECEIVED" | "TRANSFER_IN" | "TRANSFER_OUT" | "ADJUSTED";
 
 // Append-only ledger entry -- never updated or deleted once written
 // (see inventoryService.ts: every write here is tx.set() on a brand
