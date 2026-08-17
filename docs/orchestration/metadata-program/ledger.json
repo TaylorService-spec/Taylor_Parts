@@ -1454,10 +1454,14 @@
       "title": "Sales Order detail still renders sourceOpportunityId raw",
       "domain": "crm",
       "entity": "SalesOrder",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1099,
-      "nextAction": "Thread Opportunity identity through getSalesOrderContext",
-      "notes": "Recorded rather than half-done. Sales Order detail reads getSalesOrderContext, a DIFFERENT projection that does not carry Opportunity name or reference, so it still shows the raw document id as the Originating Opportunity link text. Fixing it means the sales-order read joining or denormalizing Opportunity identity - a real design choice, not a rename, which is why it is its own slice."
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Recorded rather than half-done. Sales Order detail reads getSalesOrderContext, a DIFFERENT projection that does not carry Opportunity name or reference, so it still shows the raw document id as the Originating Opportunity link text. Fixing it means the sales-order read joining or denormalizing Opportunity identity - a real design choice, not a rename, which is why it is its own slice. RESOLVED, and the shape is an AUTHORIZATION decision worth remembering: joining the Opportunity into getSalesOrderContext would have returned opportunity.read-governed data through a salesOrder.read-gated callable - a read becoming a side door around the capability guarding it. The reference is instead copied at creation by the command already authorized to read it. Denormalizing is safe ONLY because the reference is immutable; the Opportunity NAME is deliberately not copied, because it is editable and a copy would drift.",
+      "pr": 1124,
+      "headSha": "64e476a18582e1c1bb72c85a652388607b0d540f",
+      "branch": "feat/sales-order-opportunity-identity",
+      "checks": "9/9 sales order view tests; tsc + build + oxlint clean"
     }
   ]
 }

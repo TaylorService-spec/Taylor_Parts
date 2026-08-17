@@ -17,13 +17,8 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **D-SALES-ORDER-OPP-IDENTITY** (phase 9) — Sales Order detail still renders sourceOpportunityId raw → Thread Opportunity identity through getSalesOrderContext
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | — | — | — | NOT_APPLICABLE | Thread Opportunity identity through getSalesOrderContext |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGE_QUEUED
 
@@ -33,6 +28,7 @@ continues from the next executable item — without asking what happened.
 | A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | 1a73d999 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 1df0c171 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | #1124 | 64e476a1 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
