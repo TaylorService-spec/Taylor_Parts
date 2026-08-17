@@ -624,12 +624,17 @@
       "phase": "5",
       "wave": "2",
       "kind": "ARCHITECTURE",
-      "title": "Page definition runtime",
+      "title": "Page definition contract (PageDefinition/PageRegion)",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Unblocked; A-CONTRACT-CORE is on main"
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "pr": 1118,
+      "headSha": "6d2d80e0925a95eb9f8da9adba8651e438c9c48b",
+      "branch": "feat/page-definition-contract",
+      "checks": "17/17 tests; oxlint + tsc clean",
+      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item."
     },
     {
       "id": "A-REGISTRIES",
@@ -1375,6 +1380,22 @@
         "DECISIONS #102 section 9"
       ],
       "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
+    },
+    {
+      "id": "A-PAGE-RENDERER",
+      "phase": "5",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Record page renderer consuming PageDefinition",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME",
+        "A-REGISTRIES"
+      ],
+      "nextAction": "Build after the page contract and registries are on main",
+      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
     }
   ]
 }
