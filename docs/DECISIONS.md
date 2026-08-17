@@ -1271,3 +1271,37 @@ Integration is a separate, manually dispatched, same-target-serialized workflow 
 hash and `APPROVE`. It fails closed on dirty state, hash/scope/base mismatch, conflict, stale `main`, focused
 test failure, or replay, and never stashes unknown files, broadens permissions, bypasses the artifact guard,
 or force-pushes. This resolves the #818/#819 contract mismatch without weakening PR #814.
+
+## 102. Metadata-driven EOS is built independently; "Salesforce-style" is not permission to clone Salesforce
+
+**Date:** 2026-08-17
+**Decision:** EOS moves toward a metadata-driven enterprise application architecture, targeting
+Salesforce-class configurability with EOS-native operational UX and EOS-native governed
+command/capability architecture. Salesforce and comparable platforms may be studied as examples of
+mature metadata-driven systems via public documentation only; every major abstraction must be
+defensible from an EOS requirement rather than from vendor parity. Copying vendor source, assets,
+schemas, Metadata API structures, trademarks, or pixel-for-pixel UI is prohibited, as is reverse
+engineering or depending on Salesforce services for EOS core metadata operation.
+
+Two boundaries are load-bearing. **Authorization:** page/list metadata may decide what renders and
+which affordances appear, but never grants authority — the governed trusted-command and capability
+architecture remains the authorization authority, and metadata must never enable client writes that
+bypass it. **Scale:** metadata-driven surfaces must not imply client-side dataset ownership; lists
+use cursor pagination, bounded reads, stable sorting, server-shaped indexed queries and
+URL-persisted filters. External full-text search is deferred until data volume justifies it.
+
+EOS remains operation-centric, not record-centric: metadata must carry lifecycle state, readiness,
+blockers, next actions, approvals, work queues, custody, attention projections and governed actions,
+and the migration must not reduce EOS to generic CRUD screens. Entity / field / relationship / page /
+list / action / capability / workflow / tenant metadata stay separate layers rather than one page
+schema.
+
+v1 builds the minimum reusable foundation (EntityDefinition, FieldDefinition, RelationshipDefinition,
+PageDefinition, PageRegion, ComponentDefinition, ListViewDefinition, ActionDefinition,
+VisibilityRule/CapabilityRequirement) proven through real consumers — Accounts list, Account record,
+Contacts — then validated against Work Orders. If it only works for CRM records it is not yet an EOS
+metadata architecture.
+
+Full continuing rule, including the ten stop-and-escalate conditions and the required stop report
+format: `governance/metadata-architecture-ip-boundary.md`. The Metadata Architecture specification,
+when written, must reference it.
