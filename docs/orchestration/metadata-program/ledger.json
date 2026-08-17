@@ -2095,6 +2095,23 @@
       ],
       "notes": "The definition exists and validates; AccountDetail.jsx is untouched. Wiring needs five component ids registered in componentRegistry - accountHealthStrip, accountFinancialsSection, accountActivityAndNotesSection, accountServiceActivity, accountAttentionSection - since a definition may only name a REGISTERED component id, never a function. The visibility path must keep failing closed: pageRuntime applies caller-supplied decisions and an empty map hides every gated section rather than revealing it. DISPATCHED at f18b0e83. The brief forbids inventing a resolver or passing a permissive default: an empty decision map HIDING sections is correct fail-closed behaviour, while an all-true map is a security defect. If no suitable client-side resolver exists the lane must STOP and report rather than substitute one. It may also choose partial wiring over a full swap - a partial honest wiring beats a full one that silently changes what a user sees.",
       "branch": "feat/account-page-wiring"
+    },
+    {
+      "id": "S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Warehouse + Supplier entity definitions",
+      "domain": "inventory",
+      "entity": "Warehouse/Supplier",
+      "status": "MERGED",
+      "pr": 1189,
+      "mergeSha": "63b5059e",
+      "nextAction": "Merged and registered. Two composites declared and pending deploy.",
+      "governing": [
+        "Owner leaf-ownership addendum"
+      ],
+      "notes": "THE TWO ENTITIES TOOK OPPOSITE POSITIONS ON THE SAME QUESTION, correctly. Warehouse does NOT declare its governed provenance pack: the schema exists as a TypeScript type, but both producers describe themselves as production-inert with no caller and are not exported from the functions index, so declaring eight fields no live write path produces would describe an intention rather than the system. Supplier DOES declare its pack, because supplierMasterCommands is a real exported write path - the same posture part.js takes. Supplier is also the FIRST entity here whose provenance is genuine Firestore Timestamps rather than epoch millis, and it says so rather than quietly matching the others. Same question, different answers, because the evidence differs. TWO REFUSALS: warehouse.location stays a plain STRING and is explicitly NOT a REFERENCE to the registered `location` entity - it is free text about a building, and the shared word would have made a REFERENCE a plausible-looking lie. supplier.vendorNumber stays an ordinary optional STRING rather than a referenceField, since promoting an unenforced non-unique field licenses the document-id fallback #106 forbids. OPEN EDGES recorded rather than invented: warehouse has no outbound edges because stock_locations, transfer_orders and mobile_locations all carry a warehouseId but none has a registered entity to own the edge; supplier.partSupplierItems is a real edge waiting on a partSupplierItem entity that does not exist."
     }
   ]
 }
