@@ -1097,13 +1097,17 @@
       "title": "Bounded-read remediation across list-exempt surfaces",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Apply buildQueryDescriptor to the pure-list unbounded reads; aggregates stay blocked",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE. APPROACH DECIDED, recorded before execution because the obvious reading is wrong. 'Generalize the cursor prior art' does NOT mean writing a second paging helper: the list query core already IS that generalization, and a board needs a BOUNDED READ without needing a GRID. So the list-exempt surfaces consume buildQueryDescriptor and interpretPage directly, and simply never touch listPresentation. Two implementations of cursor paging would drift, and the second would be the one without the tests. SCOPE, which is not uniform: the pure-list reads are fixable now - the work-order wizard's account picker, technicians, warehouses, suppliers, transfer orders. The AGGREGATE reads are NOT, and must not be bounded as if they were: netting a total over a page produces an arithmetically false figure under a name implying a complete one, which is worse than an honest failure. Those stay blocked on X-INVENTORY-ANALYTICS-AGGREGATE. Anyone executing this should split the item rather than sweep the whole list of unbounded reads."
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE. APPROACH DECIDED, recorded before execution because the obvious reading is wrong. 'Generalize the cursor prior art' does NOT mean writing a second paging helper: the list query core already IS that generalization, and a board needs a BOUNDED READ without needing a GRID. So the list-exempt surfaces consume buildQueryDescriptor and interpretPage directly, and simply never touch listPresentation. Two implementations of cursor paging would drift, and the second would be the one without the tests. SCOPE, which is not uniform: the pure-list reads are fixable now - the work-order wizard's account picker, technicians, warehouses, suppliers, transfer orders. The AGGREGATE reads are NOT, and must not be bounded as if they were: netting a total over a page produces an arithmetically false figure under a name implying a complete one, which is worse than an honest failure. Those stay blocked on X-INVENTORY-ANALYTICS-AGGREGATE. Anyone executing this should split the item rather than sweep the whole list of unbounded reads. FIRST SLICE DONE: three unbounded accounts-collection picker reads bounded and DISCLOSING truncation. The disclosure is the substance - a dropdown silently showing the first N of 250k is visually identical to one showing all, so a user searching for a customer that exists concludes it does not, turning a performance defect into a correctness one. Scope held to the mandated part: a search-first picker is the enterprise answer but removes browsing, which is a PRODUCT decision a read-shape rule does not authorize.",
+      "pr": 1132,
+      "headSha": "a6e3f6acff8461adfe8369b9326382d85d5783a0",
+      "branch": "feat/bounded-account-picker",
+      "checks": "875/875 component; 15/15 picker; 32/32 wizard; tsc + oxlint clean"
     },
     {
       "id": "A-INDEX-VALIDATOR",
@@ -1485,9 +1489,9 @@
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120. PRESENTATION MODEL BUILT as a pure module; the React component maps it to markup and is a separate slice. Carries FOUR distinct empty states - EMPTY, FILTERED, DENIED, UNAVAILABLE - because 'no customers found' shown to someone who lacks a capability is a lie that sends people hunting for missing data instead of missing access. TANSTACK DEFERRED: approved, but v1 needs render-from-definition rather than column reordering, and adding it now is a package.json change pulling in frontend workflows for a dependency earning nothing yet.",
       "pr": 1130,
-      "headSha": "7a66e0cdba20a27c1c8bafa6f3f2c5ffe849fba5",
+      "headSha": "9e1c03415c391a2348ea80771785e0466ca6fec7",
       "branch": "feat/list-grid",
-      "checks": "19/19 presentation tests; oxlint + tsc clean; six metadata suites run==filtered"
+      "checks": "19/19 presentation tests; seven metadata suites run==filtered; reconciled onto main"
     },
     {
       "id": "A-PAGE-COMPONENT",
@@ -1516,6 +1520,18 @@
       ],
       "nextAction": "Build after the presentation model is on main",
       "notes": "Thin mapping from the presentation model to EOS markup (fo-table and the shared state primitives). All four empty states must render distinctly - collapsing them in the component would undo the model's whole point."
+    },
+    {
+      "id": "A-BOUNDED-READS-REMAINING",
+      "phase": "3",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Remaining unbounded PURE LIST reads",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Bound-and-disclose technicians, warehouses, suppliers, transfer orders",
+      "notes": "Split from A-BOUNDED-READS once the picker slice landed, so 'bounded reads done' cannot imply more than the pickers. These are pure list reads and safe to bound. The AGGREGATE reads - Operations dashboard netting, availableStock, consumption and technician-volume rollups - are explicitly NOT in this item and must not be swept into it: bounding the inputs to a total produces a mathematically false figure presented as complete, which is worse than an honest failure."
     }
   ]
 }
