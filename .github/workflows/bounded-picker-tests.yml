@@ -17,6 +17,8 @@ on:
       - "field-ops-app-vite/src/domain/pickerSource.js"
       - "field-ops-app-vite/src/hooks/useAccountPicker.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx"
+      - "field-ops-app-vite/src/modules/sales/NewOpportunityForm.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentRegister.jsx"
       - "field-ops-app-vite/test/pickerSource.test.mjs"
       - ".github/workflows/bounded-picker-tests.yml"
   push:
@@ -25,6 +27,8 @@ on:
       - "field-ops-app-vite/src/domain/pickerSource.js"
       - "field-ops-app-vite/src/hooks/useAccountPicker.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx"
+      - "field-ops-app-vite/src/modules/sales/NewOpportunityForm.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentRegister.jsx"
       - "field-ops-app-vite/test/pickerSource.test.mjs"
       - ".github/workflows/bounded-picker-tests.yml"
   workflow_dispatch:
@@ -54,6 +58,10 @@ jobs:
       - name: Work Order wizard tests
         run: node test/workOrderWizard.test.mjs
         working-directory: field-ops-app-vite
+      - name: Equipment workspace + opportunity form component tests (vitest)
+        run: npx vitest run test/equipmentWorkspace.test.jsx test/newOpportunityForm.test.jsx
+        working-directory: field-ops-app-vite
+
       - name: Lint the touched surfaces (oxlint)
-        run: npx oxlint src/domain/pickerSource.js src/hooks/useAccountPicker.js src/modules/workOrders/WorkOrderWizard.jsx
+        run: npx oxlint src/domain/pickerSource.js src/hooks/useAccountPicker.js src/modules/workOrders/WorkOrderWizard.jsx src/modules/sales/NewOpportunityForm.jsx src/modules/equipment/EquipmentRegister.jsx
         working-directory: field-ops-app-vite

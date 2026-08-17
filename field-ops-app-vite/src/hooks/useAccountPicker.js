@@ -56,5 +56,12 @@ export function useAccountPicker({ cap = PICKER_READ_CAP } = {}) {
     };
   }, [cap]);
 
-  return interpretPickerRead({ ...raw, cap });
+  const picker = interpretPickerRead({ ...raw, cap });
+
+  // The RAW error is passed through alongside the interpreted state. Consumers here
+  // hand it to loadErrorMessage(), which categorizes a Firebase error code into safe
+  // copy -- collapsing it to a string in this hook would have silently downgraded
+  // every existing failure message to a generic one, which is the kind of regression
+  // a "pure refactor" hides well.
+  return { ...picker, error: raw.error, loading: raw.loading };
 }
