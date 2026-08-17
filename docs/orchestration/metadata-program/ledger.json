@@ -2052,13 +2052,14 @@
       "entity": "Account",
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
-      "status": "IMPLEMENTING",
-      "nextAction": "Entity half merged (c6bfb148); page half dispatched.",
+      "status": "MERGED",
+      "nextAction": "Both gaps closed. Wiring is the remaining lane.",
       "governing": [
         "Owner leaf-ownership addendum"
       ],
-      "notes": "Recorded rather than filled by the page lane, because declaring either would have been a page promising data the entity cannot supply. Locations needs an account.locations relationship on account.js plus a RELATED list - the Location leaf could not add the edge and said so. Commercial Profile and Notes/Identifiers render real fields (owner, currency, payment terms, tax status, customerNumber, erpId) that accountEntity does not declare at all: it carries only name, status, relationshipTypes, updatedAt and tags. Both are entity work first, page work second. ENTITY HALF MERGED (#1185, c6bfb148): twelve fields plus the account.locations edge. THE GOVERNED-FIELD FINDING is the part to remember - account.governedField.write gates WRITE for paymentTerms and taxStatus, while the account document's READ gate is uniformly isAdminOrDispatcher() for the whole record. v1's readCapability models READ authority and has NO writeCapability concept, so declaring the governed id as a readCapability would have asserted a read restriction that does not exist. Neither field declares one, and the gap is pinned by a comment AND a test rather than guessed either way - Field Architecture v2 defines writeCapability, and this is exactly the seam it exists for. Six accountOwner sub-fields were deliberately left undeclared: they are stored, but resolveOwnerIdentity re-resolves the CURRENT name live rather than reading the snapshot, so declaring them would describe the schema rather than the system.",
-      "branch": "feat/account-page-sections"
+      "notes": "Recorded rather than filled by the page lane, because declaring either would have been a page promising data the entity cannot supply. Locations needs an account.locations relationship on account.js plus a RELATED list - the Location leaf could not add the edge and said so. Commercial Profile and Notes/Identifiers render real fields (owner, currency, payment terms, tax status, customerNumber, erpId) that accountEntity does not declare at all: it carries only name, status, relationshipTypes, updatedAt and tags. Both are entity work first, page work second. ENTITY HALF MERGED (#1185, c6bfb148): twelve fields plus the account.locations edge. THE GOVERNED-FIELD FINDING is the part to remember - account.governedField.write gates WRITE for paymentTerms and taxStatus, while the account document's READ gate is uniformly isAdminOrDispatcher() for the whole record. v1's readCapability models READ authority and has NO writeCapability concept, so declaring the governed id as a readCapability would have asserted a read restriction that does not exist. Neither field declares one, and the gap is pinned by a comment AND a test rather than guessed either way - Field Architecture v2 defines writeCapability, and this is exactly the seam it exists for. Six accountOwner sub-fields were deliberately left undeclared: they are stored, but resolveOwnerIdentity re-resolves the CURRENT name live rather than reading the snapshot, so declaring them would describe the schema rather than the system. PAGE HALF MERGED (#1187, f18b0e83). The RELATED locations list became declarable only because the account.locations edge landed first - a RELATED list's parent relationship must REACH the listed entity, which is why location.js had shipped INDEX-only. Sections were matched against AccountDetail field by field IN RENDER ORDER rather than grouped by judgement, and the SIDE ordering was confirmed against the JSX. TWO DELIBERATE CAPABILITY ABSENCES, both cited: locations declares none because locationEntity.readCapability is null, and Commercial Profile declares none because account.governedField.write gates WRITE only - a section-level READ capability would have contradicted the entity it renders. Declaring a stricter-looking gate would have been the easy move and the wrong one.",
+      "pr": 1187,
+      "mergeSha": "f18b0e83"
     },
     {
       "id": "X-LOCATION-REFERENCE-UPGRADE",
@@ -2087,12 +2088,13 @@
       "entity": "Account",
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
-      "status": "READY",
-      "nextAction": "Register the five component ids, then render through buildCompositionPlan + MetadataRecordPage",
+      "status": "IMPLEMENTING",
+      "nextAction": "Wiring lane dispatched; may return a blocker if no client-side capability resolver exists.",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "notes": "The definition exists and validates; AccountDetail.jsx is untouched. Wiring needs five component ids registered in componentRegistry - accountHealthStrip, accountFinancialsSection, accountActivityAndNotesSection, accountServiceActivity, accountAttentionSection - since a definition may only name a REGISTERED component id, never a function. The visibility path must keep failing closed: pageRuntime applies caller-supplied decisions and an empty map hides every gated section rather than revealing it."
+      "notes": "The definition exists and validates; AccountDetail.jsx is untouched. Wiring needs five component ids registered in componentRegistry - accountHealthStrip, accountFinancialsSection, accountActivityAndNotesSection, accountServiceActivity, accountAttentionSection - since a definition may only name a REGISTERED component id, never a function. The visibility path must keep failing closed: pageRuntime applies caller-supplied decisions and an empty map hides every gated section rather than revealing it. DISPATCHED at f18b0e83. The brief forbids inventing a resolver or passing a permissive default: an empty decision map HIDING sections is correct fail-closed behaviour, while an all-true map is a security defect. If no suitable client-side resolver exists the lane must STOP and report rather than substitute one. It may also choose partial wiring over a full swap - a partial honest wiring beats a full one that silently changes what a user sees.",
+      "branch": "feat/account-page-wiring"
     }
   ]
 }
