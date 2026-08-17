@@ -2067,12 +2067,14 @@
       "title": "Upgrade locationId from STRING to REFERENCE on equipment and salesOrder",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Focused correction lane over equipment.js and salesOrder.js, now that the location entity exists",
+      "status": "MERGED",
+      "nextAction": "Merged. Index demands verified unchanged and pinned by test.",
       "governing": [
         "Owner leaf-ownership addendum sections 4 and 6"
       ],
-      "notes": "Both files declared locationId as a plain STRING because no location entity was registered, and both said so in comments. That entity now exists. Deliberately NOT done in the integration lane: changing a field's TYPE is on the integrator's forbidden list, and a file comment inviting the change does not convert a semantic edit into a mechanical one. It belongs to a focused lane over those two files."
+      "notes": "Both files declared locationId as a plain STRING because no location entity was registered, and both said so in comments. That entity now exists. Deliberately NOT done in the integration lane: changing a field's TYPE is on the integrator's forbidden list, and a file comment inviting the change does not convert a semantic edit into a mechanical one. It belongs to a focused lane over those two files. MERGED (#1183, d6e29a5d). The index-demand check was the real safeguard rather than the type change itself: a REFERENCE stays display-only unless someone declares it filterable, so the risk is a LATER edit quietly turning a display reference into a queryable one and adding index cost nobody reviewed. requiredIndexes() was compared before and after, found byte-identical, and pinned by a test asserting no index field path names locationId - verified independently at the controller before acceptance. Rules behaviour was described accurately rather than assumed symmetrical: equipment has a real enforced ownership check, salesOrder has NO equivalent cross-check and stores locationId as string|null.",
+      "pr": 1183,
+      "mergeSha": "d6e29a5d"
     },
     {
       "id": "X-ACCOUNT-PAGE-WIRING",
