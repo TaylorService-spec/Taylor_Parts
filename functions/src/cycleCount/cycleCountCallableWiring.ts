@@ -5,6 +5,7 @@
 
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission.js";
+import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides.js";
 import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles.js";
 import { isValidAccessVersionValue } from "../access/compactClaims.js";
 import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles.js";
@@ -41,6 +42,15 @@ export function makeResolveCycleCountPermissionThroughTxn(capability: string) {
       roles: CYCLE_COUNT_ROLE_CATALOG,
       currentAccessVersion: accessVersion,
       target: GLOBAL_TARGET,
+      // PER-ENVIRONMENT ACTIVATION. Every inventory.cycleCount.* id is registered active:false, which the
+      // resolver treats as an unconditional DENY *ahead of* any Role grant. Without this argument the
+      // whole command family was permanently unreachable: a principal could hold the governed Role,
+      // the environment could activate the capability, and the resolver would still answer
+      // inactivePermission -- authority that could never be exercised by anyone, anywhere.
+      //
+      // Derived from the runtime's own trusted project identity (GCLOUD_PROJECT), never from client
+      // input, and production remains triple-hard-blocked inside resolveCapabilityOverrides().
+      activationOverrides: resolveRuntimeCapabilityOverrides(),
     });
     return result.decision === "ALLOW";
   };
