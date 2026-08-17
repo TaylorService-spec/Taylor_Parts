@@ -1662,6 +1662,110 @@
         "DECISIONS #102 section 9"
       ],
       "notes": "Recorded on discovering that workOrder.index has no consuming surface. The definitions are merged and correct; what is missing is the answer to which surface should consume them."
+    },
+    {
+      "id": "A-RECORD-PROVENANCE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Record provenance platform invariant",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGE_QUEUED",
+      "branch": "feat/record-provenance",
+      "nextAction": "Open: createdAt/createdBy/updatedAt/updatedBy as SYSTEM fields with exemption discipline",
+      "governing": [
+        "Owner architecture addendum section 1",
+        "DECISIONS #102 section 6"
+      ],
+      "notes": "Server-authoritative: no writeCapability, because a client-supplied timestamp or actor is a CLAIM - any caller who can write the record can write the claim. Append-only records get two fields, not four: emitting updatedAt on an issued invoice implies a mutation path that must not exist. Synonyms (creationDate, lastModified) are REJECTED - legacy storage is handled with storagePath, never a second name in the standard vocabulary. Exemptions for caches/locks/transient state require a stated reason, so an exemption is a decision rather than a gap. Deliberately does NOT duplicate the audit event architecture: provenance is current state, audit is each material mutation, and reconstructing history from updatedBy makes the last writer look like the only writer."
+    },
+    {
+      "id": "A-QUERY-MODEL-UNIFIED",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Unified EOS query model (shared dependency)",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Define the shared query AST + validation pipeline before any consumer builds its own",
+      "governing": [
+        "Owner architecture addendum section 16"
+      ],
+      "notes": "RECORDED AS A SHARED DEPENDENCY so it is not rediscovered independently by Lists, Reports, Automation, EQL and AI. List filters, saved views, the report builder, automation conditions, EQL, AI-generated queries and the admin visual builder converge on ONE governed query AST, then one pipeline: metadata validation, authority validation, queryability validation, index validation, planner, governed execution. Independent query semantics per feature is how six subsystems end up disagreeing about what a filter means. Must ABSORB the existing governed report creator rather than run beside it, and must NOT collapse the board-scope contract into list pagination - a board returns a complete working set or admits it cannot, which is a different promise from a page."
+    },
+    {
+      "id": "A-AUTOMATION-V1",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Automation Architecture v1",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-QUERY-MODEL-UNIFIED"
+      ],
+      "nextAction": "Design after the unified query model - automation CONDITIONS are queries",
+      "governing": [
+        "Owner architecture addendum sections 11-13"
+      ],
+      "notes": "Visual flow builder to declarative model to governed execution engine. WHEN/IF/THEN over REGISTERED actions only. Core invariant: admins may COMPOSE approved business capabilities; automation may not INVENT executable authority - an engine that could write arbitrary fields is a database backdoor with a friendly interface. No JavaScript, Python, SQL writes, eval or executable metadata reaches an administrator. Operability is part of v1 rather than a later hardening pass: dry-run, execution audit, correlation identity, loop and recursion prevention, retry/idempotency, draft/active lifecycle, versioning. The canonical incident is A changes status triggering B changing status triggering A, and causality is cheaper to design than to diagnose."
+    },
+    {
+      "id": "A-EQL-V1",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "EQL / Governed Query Architecture v1",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-QUERY-MODEL-UNIFIED"
+      ],
+      "nextAction": "Design the surface syntax AFTER the shared query model it compiles into",
+      "governing": [
+        "Owner architecture addendum sections 14-18"
+      ],
+      "notes": "SQL-INSPIRED because those concepts are already understood by developers, analysts, admins, BI users and AI - but claiming NO ANSI compatibility, exposing no Firestore, and never implying relational joins EOS cannot execute honestly. References stable systemNames so a label change cannot break a query. Relationships traversed by registered name, never by reconstructing storage join predicates. READ-ORIENTED: no UPDATE/DELETE/INSERT/DROP/ALTER - bulk modification is query, preview scope, choose a registered governed action, validate authority, execute, audit. AI gets no bypass: AI-generated queries pass the same validation as human-authored ones, which is the point of having one contract."
+    },
+    {
+      "id": "A-BULK-DATA-V1",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Bulk Data Architecture v1 (import + export)",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-QUERY-MODEL-UNIFIED"
+      ],
+      "nextAction": "Design after the query model - an export IS a governed query with a different sink",
+      "governing": [
+        "Owner architecture addendum sections 19-29"
+      ],
+      "notes": "Core invariant: BULK CHANGES SCALE, NOT AUTHORITY - a bulk operation cannot do what its initiating actor could not do one record at a time. Identity uses recordId, business reference or approved alternateKey; NEVER a mutable human label. 0 matches create-if-permitted, 1 match update, more than 1 is an INTEGRITY FAILURE and never a guess. Dry run mutates nothing. EXPORT AUTHORITY IS A HARD BOUNDARY: if a user may read 4,200 records and 8 fields, Export All means all within THEIR authorized scope - not 4,201 records, not a ninth field - and the server-side job enforces it, because UI hiding is not enforcement. Export modes are distinct (human/update/integration/template/audit) and display values are not machine values, so a round-trip cannot corrupt an authoritative value. Every export produces an immutable audit record including the EFFECTIVE authorized scope, and export authority may never exceed read authority though policy may later make it stricter."
+    },
+    {
+      "id": "A-ADMIN-METADATA-CONFIG",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Admin metadata configuration / page designer",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION"
+      ],
+      "nextAction": "Design after entities are defined - there is nothing to configure until there is metadata to configure",
+      "governing": [
+        "Owner architecture addendum sections 4-9"
+      ],
+      "notes": "Admins configure through BUSINESS concepts, not Firestore/React/JSON/source. Field creation exposes friendly choices that EOS translates into the governed contract; systemName is proposed from the label, correctable before creation, stable after. Semantic documentation (purpose, businessMeaning, ownerDomain, sourceOfTruth) is OPTIONAL - requiring it to create a simple field produces documentation written to satisfy a validator. Page metadata REQUESTS presentation and never grants authority: editable applies only if the field is updateable AND the viewer holds write authority AND the command permits it AND lifecycle state allows it. OPERATIONAL pages are protected - layout flexibility may not remove Lifecycle/Readiness/Blockers/Next Actions, because placement flexibility and composition invariants are separate concerns and only one is negotiable. Preview must evaluate REAL governed authority; a preview with its own permission model reports what the builder thinks rather than what the platform will do. Publication must fail where the backend cannot honestly support the declared behavior."
     }
   ]
 }

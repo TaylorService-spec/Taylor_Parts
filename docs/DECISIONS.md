@@ -1389,3 +1389,56 @@ rewrite of the approved WO-YYYY-###### / OPP-YYYY-###### numbering. Seams only.
 
 `A-ENTITY-MASS-DEFINITION` stays blocked until compatibility is proven against the two existing
 definitions — migration work, not architecture work.
+
+## 105. Record provenance is a platform invariant; four architecture workstreams recorded behind one shared query model
+
+**Owner architecture addendum, 2026-08-17.** Capture and sequencing. Specification:
+`specifications/eos-platform-architecture-addendum.md`, which reconciles against what already exists
+rather than duplicating it — the audit event architecture keeps mutation history, the governed report
+creator becomes a convergence target, and Field Architecture v2 remains the base contract every
+workstream consumes.
+
+**RECORD PROVENANCE (implemented).** Every durable EOS business record carries `createdAt` /
+`createdBy`; every mutable one additionally carries `updatedAt` / `updatedBy`. These are SYSTEM
+fields — exposable on pages, lists, reports and exports where authorized, never redefinable and never
+directly writable. They carry **no writeCapability**, because a client-supplied timestamp or actor is
+a *claim* rather than provenance: any caller who can write the record can write the claim, so a
+trusted command writes these or they are not provenance.
+
+An **append-only** record gets two fields, not four — emitting `updatedAt` on an issued invoice
+implies a mutation path that must not exist. **Synonyms are rejected**: `creationDate` beside
+`createdAt` is two answers to one question, and legacy storage is handled with `storagePath`, never a
+second name in the standard vocabulary. **Exemptions require a stated reason**, so an exemption for a
+cache or a lock stays a decision somebody made rather than a gap somebody left.
+
+**Provenance is not audit history.** It describes current state and cannot answer "what changed on
+the fourteenth"; reconstructing history from `updatedBy` makes the last writer look like the only
+writer. Material mutation history remains the existing audit event architecture's, and the origin
+seam (`createdVia`, `initiatedBy`, `sourceExecutionId`, `correlationId`) must be reconciled against it
+before anything writes those fields — a parallel actor vocabulary is exactly what this addendum
+forbids.
+
+**THE UNIFIED QUERY MODEL IS A SHARED DEPENDENCY**, recorded as `A-QUERY-MODEL-UNIFIED` so it is not
+rediscovered five times. List filters, saved views, the report builder, automation conditions, EQL,
+AI-generated queries and the admin visual builder converge on one governed query AST and one
+validation pipeline. Independent query semantics per feature is how six subsystems end up disagreeing
+about what a filter means. It must absorb the existing report creator rather than run beside it, and
+must not collapse the board-scope contract into list pagination — a board returns a complete working
+set or admits it cannot, which is a different promise from a page.
+
+**Automation v1**, **EQL v1** and **Bulk Data v1** are recorded blocked on it, because automation
+conditions are queries, EQL compiles into the model, and an export is a governed query with a
+different sink. **Admin metadata configuration / page designer** is blocked on entity definition —
+there is nothing to configure until there is metadata to configure.
+
+Invariants carried into those entries so they survive the gap between recording and building:
+automation may **compose** approved capabilities but never **invent** executable authority; EQL is
+read-oriented and AI receives no bypass; bulk changes scale but authority does not, matching is by
+recordId / business reference / approved alternateKey and never a mutable label, `>1 match` is an
+integrity failure rather than a guess; **export authority may never exceed the initiating user's read
+scope**, "Export All" means all within *their* authorized scope, and the server-side job enforces it
+because UI hiding is not enforcement; page metadata requests presentation and never grants authority;
+operational pages keep their protected sections because placement flexibility and composition
+invariants are separate concerns and only one is negotiable.
+
+None of this blocks current executable migration work.
