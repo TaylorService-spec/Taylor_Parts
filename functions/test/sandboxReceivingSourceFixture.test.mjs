@@ -212,3 +212,13 @@ test("no serialized asset is ever seeded -- only the governed receipt may create
   assert.equal(TRANSACTIONAL.includes('serialized_assets'), false);
   assert.equal(BASELINE.includes('serialized_assets'), false);
 });
+
+// ---- dispatch capacity -------------------------------------------------------------------------
+test("the scenario seeds more than one technician", () => {
+  // The Work Order engine refuses to double-book a technician across two active WOs. With a single
+  // seeded technician that correct rule made every other seeded Work Order un-dispatchable, so the
+  // dispatch path could not be exercised at all once the first WO was active.
+  const ids = [...TRANSACTIONAL.matchAll(/set\("fieldops_technicians",\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(ids.length >= 2, `expected at least two technicians, found ${ids.join(", ") || "none"}`);
+  assert.equal(new Set(ids).size, ids.length, "technician ids must be distinct");
+});
