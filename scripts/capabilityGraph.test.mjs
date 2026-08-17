@@ -173,20 +173,30 @@ const capWith = (over = {}) => ({
   ...over,
 });
 
-test("catalog-inactive but environment-activated is AUTHORIZED, not inert", () => {
+test("catalog-inactive but environment-activated is ENABLED, not inert", () => {
   const s = effectiveState(capWith(), new Set(["beta.thing.write"]));
   assert.equal(s.basis, "ENVIRONMENT_ACTIVATED");
-  assert.equal(s.authorized, true);
+  assert.equal(s.enabled, true);
   assert.equal(s.builtInert, false, "this is the exact error the rewrite exists to prevent");
 });
 
-test("catalog-active is AUTHORIZED regardless of environment overrides", () => {
+test("catalog-active is ENABLED regardless of environment overrides", () => {
   const s = effectiveState(capWith({ catalogActive: true }), new Set());
   assert.equal(s.basis, "CATALOG_ACTIVE");
-  assert.equal(s.authorized, true);
+  assert.equal(s.enabled, true);
 });
 
-test("BUILT_INERT requires implementation evidence AND non-authorization in the evaluated environment", () => {
+// The distinction the second review round required: activation is a GATE, not a GRANT. This graph
+// answers the middle term of `eligibility != activation != authorization` and must never report the
+// third. If a future change reintroduces an `authorized` field, this test fails.
+test("enablement is activation only — the graph never asserts principal authorization", () => {
+  const s = effectiveState(capWith(), new Set(["beta.thing.write"]));
+  assert.equal(s.enabled, true, "the activation gate is open");
+  assert.equal("authorized" in s, false, "no authorization claim may be emitted");
+  assert.deepEqual(Object.keys(s).sort(), ["basis", "builtInert", "enabled"]);
+});
+
+test("BUILT_INERT requires implementation evidence AND the activation gate closed in this environment", () => {
   const withImpl = effectiveState(capWith(), new Set());
   assert.equal(withImpl.builtInert, true);
   const withoutImpl = effectiveState(
@@ -215,26 +225,32 @@ const FLOW_CAPS = [
   { id: "gamma.thing.list", catalogActive: false, implementation: { evidence: "SERVER_REFERENCED" } },
 ];
 
-test("an UNMAPPED step never stops a flow", () => {
+test("an UNMAPPED step never closes a chain", () => {
   const [f] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set(["alpha.thing.read"]));
   assert.equal(f.steps[0].coverage, "UNMAPPED");
-  assert.equal(f.steps[0].authorized, null);
-  assert.equal(f.stopsAtIndex, 2, "the stop is the unauthorized mapped step, not the unmapped one");
-  assert.equal(f.stopsAt, "unauthorized step");
+  assert.equal(f.steps[0].enablement, null);
+  assert.equal(f.firstNotEnabledIndex, 2, "the closed gate is the mapped step, not the unmapped one");
+  assert.equal(f.firstNotEnabledAt, "unauthorized step");
 });
 
-test("no stopping point is computed without an environment", () => {
+test("flow steps report enablement, never authorization", () => {
+  const [f] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set(["alpha.thing.read"]));
+  assert.deepEqual(f.steps.map((s) => s.enablement), [null, "ENABLED", "NOT_ENABLED"]);
+  for (const s of f.steps) assert.equal("authorized" in s, false);
+});
+
+test("no enablement is computed without an environment", () => {
   const [f] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, null);
   assert.equal(f.evaluated, false);
-  assert.equal(f.stopsAt, null);
-  for (const s of f.steps) assert.equal(s.authorized, null);
+  assert.equal(f.firstNotEnabledAt, null);
+  for (const s of f.steps) assert.equal(s.enablement, null);
 });
 
-test("environment activation can unblock a flow step that the catalog denies", () => {
-  const [blocked] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set());
-  assert.equal(blocked.stopsAt, "unauthorized step");
-  const [unblocked] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set(["gamma.thing.list"]));
-  assert.equal(unblocked.stopsAt, null, "activation is what makes the chain traversable");
+test("environment activation can open a gate the catalog leaves closed", () => {
+  const [closed] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set());
+  assert.equal(closed.firstNotEnabledAt, "unauthorized step");
+  const [open] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set(["gamma.thing.list"]));
+  assert.equal(open.firstNotEnabledAt, null, "activation is what opens the gate");
 });
 
 test("a flow step naming an id absent from the catalog is reported, not silently skipped", () => {
@@ -259,7 +275,7 @@ test("the environment-neutral graph asserts no effective state at all", () => {
   const g = buildGraph({});
   assert.equal(g.environmentEvaluated, null);
   for (const c of g.capabilities) assert.equal(c.effective, undefined);
-  for (const f of g.flows) assert.equal(f.stopsAt, null);
+  for (const f of g.flows) assert.equal(f.firstNotEnabledAt, null);
 });
 
 test("live production environment is fail-closed", () => {
@@ -270,13 +286,18 @@ test("live production environment is fail-closed", () => {
   assert.deepEqual(activatedHere, [], "no capability may be environment-activated in production");
 });
 
-test("live sandbox authorizes strictly more than the catalog baseline", () => {
+test("live sandbox enables strictly more than the catalog baseline", () => {
   const neutral = buildGraph({});
   const sandbox = buildGraph({ environment: "eos-platform-sandbox" });
   assert.equal(sandbox.environmentEvaluated.found, true);
   assert.ok(
-    sandbox.counts.effectiveAuthorized > neutral.counts.catalogActive,
+    sandbox.counts.effectiveEnabled > neutral.counts.catalogActive,
     "sandbox activation must lift catalog-inactive capabilities",
+  );
+  assert.equal(
+    sandbox.counts.effectiveEnabled,
+    sandbox.counts.effectiveEnabledByCatalog + sandbox.counts.effectiveEnabledByEnvironment,
+    "enabled must decompose into its two bases, so neither is ever implied by the other",
   );
   const activated = sandbox.capabilities.filter((c) => c.effective?.basis === "ENVIRONMENT_ACTIVATED");
   assert.ok(activated.length > 0);

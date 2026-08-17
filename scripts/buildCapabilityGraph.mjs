@@ -26,10 +26,14 @@
 //   catalogActive          the catalog's `active` flag, nothing more
 //   implementation         where the id is referenced, and whether a callable was actually matched
 //   environmentActivation  which environments declare it, and whether it is even eligible
-//   effective              computed ONLY when an environment is named on the command line
+//   effective              capability-level ENABLEMENT, computed ONLY when an environment is named
 //
-// The default run is environment-neutral and reports no effective authorization at all, because
-// without an environment there is no such fact. Sandbox is not the implicit universal truth.
+// The default run is environment-neutral and reports no enablement at all, because without an
+// environment there is no such fact. Sandbox is not the implicit universal truth.
+//
+// AND NOTHING HERE IS AUTHORIZATION. Activation is a gate that lets a capability be considered; a
+// principal still needs the applicable Role grant. This graph never evaluates principal grants, so
+// "enabled" must never be read as "someone can do this".
 //
 // SOURCES (each already authoritative for its own layer; none invented here)
 //   functions/src/access/permissionCatalog.ts             capability ids + active flags
@@ -253,16 +257,23 @@ export function classifyImplementation({ exportedCallables, serverReferences, cl
 }
 
 /**
- * Effective authorization for ONE named environment. Requires an environment; there is no
- * environment-free answer, and the caller must not invent one.
+ * Capability-level ACTIVATION state for ONE named environment. Requires an environment; there is no
+ * environment-free answer and the caller must not invent one.
  *
  *   CATALOG_ACTIVE          active in the catalog baseline
  *   ENVIRONMENT_ACTIVATED   catalog-inactive, activated by this environment's overrides
  *   NOT_ACTIVATED           neither
  *
- * `BUILT_INERT` is derived and returned separately: implementation evidence exists AND the capability
- * is not authorized in the evaluated environment. It is never the default state of an `active:false`
- * capability, because that capability may be activated somewhere.
+ * ⚠️ `enabled` IS NOT AUTHORIZATION. It means only that the capability-level activation gate permits
+ * the capability to be *considered* in this environment. A principal still needs the applicable Role
+ * grant before anything is permitted. Nothing in this graph evaluates principal grants, so no output
+ * here may be read as "someone can do this" — the repo's rule is
+ * `eligibility != activation != authorization`, and this function answers the middle term only.
+ *
+ * `builtInert` is derived and returned separately: implementation evidence exists AND the capability is
+ * not enabled in the evaluated environment. It is never the default state of an `active:false`
+ * capability, because that capability may be activated elsewhere — and it likewise says nothing about
+ * whether any principal is granted the capability.
  */
 export function effectiveState(cap, activatedIds) {
   const basis = cap.catalogActive
@@ -270,9 +281,9 @@ export function effectiveState(cap, activatedIds) {
     : activatedIds.has(cap.id)
       ? "ENVIRONMENT_ACTIVATED"
       : "NOT_ACTIVATED";
-  const authorized = basis !== "NOT_ACTIVATED";
+  const enabled = basis !== "NOT_ACTIVATED";
   const hasImplementation = cap.implementation.evidence !== "NO_IMPLEMENTATION_EVIDENCE";
-  return { basis, authorized, builtInert: hasImplementation && !authorized };
+  return { basis, enabled, builtInert: hasImplementation && !enabled };
 }
 
 // ------------------------------------------------------------------ flows
@@ -343,10 +354,19 @@ export const FLOWS = [
 
 /**
  * Resolve flows. Without an environment (`activatedIds === null`) this reports governance coverage only
- * and deliberately computes NO stopping point, because effective authorization is not a fact that
- * exists environment-free. With an environment, a stop is computed only where the evidence is
- * deterministic: the first step that has mapped capabilities AND none of them authorized. UNMAPPED
- * steps never stop a flow.
+ * and deliberately computes NO stopping point, because capability enablement is not a fact that exists
+ * environment-free. With an environment, a step's `enablement` is one of:
+ *
+ *   ENABLED                  at least one mapped capability is catalog-active or environment-activated
+ *   NOT_ENABLED              mapped capabilities exist and none are enabled here
+ *   null                     UNMAPPED or MAPPED_ID_NOT_IN_CATALOG — not evaluable
+ *
+ * ⚠️ ENABLED DOES NOT MEAN EXECUTABLE. It reports the capability-level activation gate only; a
+ * principal still needs the applicable Role grant, which this graph never evaluates. `firstNotEnabledAt`
+ * is therefore "the first step the activation gate closes", not "where a user gets stuck".
+ *
+ * UNMAPPED steps never close a chain: an unmapped step may be ordinary UI, legacy role-gated
+ * authorization, non-capability logic, or genuinely absent, and this evidence cannot distinguish them.
  */
 export function resolveFlows(flows, capabilities, activatedIds) {
   const byId = new Map(capabilities.map((c) => [c.id, c]));
@@ -354,29 +374,31 @@ export function resolveFlows(flows, capabilities, activatedIds) {
     const steps = f.steps.map((s) => {
       const mapped = s.match.map((id) => byId.get(id)).filter(Boolean);
       const missingIds = s.match.filter((id) => !byId.has(id));
-      if (!s.match.length) return { ...s, coverage: "UNMAPPED", capabilities: [], authorized: null };
+      if (!s.match.length) return { ...s, coverage: "UNMAPPED", capabilities: [], enablement: null };
       if (!mapped.length)
-        return { ...s, coverage: "MAPPED_ID_NOT_IN_CATALOG", capabilities: [], missingIds, authorized: null };
+        return { ...s, coverage: "MAPPED_ID_NOT_IN_CATALOG", capabilities: [], missingIds, enablement: null };
       const coverage = mapped.some((c) => c.implementation.evidence !== "NO_IMPLEMENTATION_EVIDENCE")
         ? "IMPLEMENTATION_EVIDENCE"
         : "DECLARED_ONLY";
-      const authorized =
+      const enablement =
         activatedIds === null
           ? null
-          : mapped.some((c) => c.catalogActive || activatedIds.has(c.id));
-      return { ...s, coverage, capabilities: mapped.map((c) => c.id), authorized };
+          : mapped.some((c) => c.catalogActive || activatedIds.has(c.id))
+            ? "ENABLED"
+            : "NOT_ENABLED";
+      return { ...s, coverage, capabilities: mapped.map((c) => c.id), enablement };
     });
     if (activatedIds === null)
-      return { ...f, steps, stopsAt: null, stopsAtIndex: -1, evaluated: false };
-    const stopIndex = steps.findIndex((s) => s.authorized === false);
+      return { ...f, steps, firstNotEnabledAt: null, firstNotEnabledIndex: -1, evaluated: false };
+    const stopIndex = steps.findIndex((s) => s.enablement === "NOT_ENABLED");
     return {
       ...f,
       steps,
       evaluated: true,
-      stopsAt: stopIndex === -1 ? null : steps[stopIndex].name,
-      stopsAtIndex: stopIndex,
-      authorizedSteps: steps.filter((s) => s.authorized === true).length,
-      unmappedSteps: steps.filter((s) => s.authorized === null).length,
+      firstNotEnabledAt: stopIndex === -1 ? null : steps[stopIndex].name,
+      firstNotEnabledIndex: stopIndex,
+      enabledSteps: steps.filter((s) => s.enablement === "ENABLED").length,
+      unmappedSteps: steps.filter((s) => s.enablement === null).length,
       totalSteps: steps.length,
     };
   });
@@ -524,7 +546,11 @@ export function buildGraph({ root = ROOT, environment = null, gitFiles = null } 
       parityIssues: parityIssues.length,
       ...(evaluated
         ? {
-            effectiveAuthorized: capabilities.filter((c) => c.effective?.authorized).length,
+            effectiveEnabled: capabilities.filter((c) => c.effective?.enabled).length,
+            effectiveEnabledByCatalog: capabilities.filter((c) => c.effective?.basis === "CATALOG_ACTIVE").length,
+            effectiveEnabledByEnvironment: capabilities.filter(
+              (c) => c.effective?.basis === "ENVIRONMENT_ACTIVATED",
+            ).length,
             effectiveBuiltInert: capabilities.filter((c) => c.effective?.builtInert).length,
           }
         : {}),
@@ -560,6 +586,11 @@ export function renderMarkdown(g) {
     "> activates selected catalog-inactive capabilities in configured non-production environments. The",
     "> repo's rule holds throughout: **eligibility != activation != authorization**.",
     "",
+    "> **Nothing in this document is authorization.** Enablement means the capability-level activation",
+    "> gate permits the capability to be considered in that environment. A principal still needs the",
+    "> applicable Role grant, which this graph never evaluates. Read every count below as a statement",
+    "> about gates, never about what any person can do.",
+    "",
     "## Dimensions reported",
     "",
     "| Dimension | Source | What it does NOT tell you |",
@@ -567,7 +598,7 @@ export function renderMarkdown(g) {
     "| Catalog declaration + `active` flag | `permissionCatalog.ts` | Whether any environment activates it |",
     "| Implementation evidence | literal id references; callables from `index.ts` | Whether it is deployed or reachable |",
     "| Environment activation | `environmentCapabilityOverrides.ts` + `config/environments.json` | Whether a principal holds a qualifying grant |",
-    "| Effective state | computed **only** with `--environment` | Anything, unless an environment was named |",
+    "| Capability enablement | computed **only** with `--environment` | **Whether any principal is granted it** |",
     "",
     "## Counts",
     "",
@@ -595,7 +626,7 @@ export function renderMarkdown(g) {
     "",
     ev
       ? [
-          `## Effective state — \`${ev.requested}\``,
+          `## Capability enablement — \`${ev.requested}\``,
           "",
           ev.found
             ? `Environment \`${ev.environment.id}\` (role \`${ev.environment.role}\`, project \`${ev.environment.projectId}\`).` +
@@ -604,22 +635,25 @@ export function renderMarkdown(g) {
                 : ` Activates ${ev.activatedCount} capabilities.`)
             : "**Environment not found in the registry — treated as activating nothing (fail-closed).**",
           "",
-          `- Authorized (catalog-active or environment-activated): **${g.counts.effectiveAuthorized}**`,
-          `- Built but not authorized here (\`BUILT_INERT\`): **${g.counts.effectiveBuiltInert}**`,
+          `- **Enabled: ${g.counts.effectiveEnabled}** — ${g.counts.effectiveEnabledByCatalog} catalog-active, ${g.counts.effectiveEnabledByEnvironment} environment-activated`,
+          `- Built but not enabled here (\`BUILT_INERT\`): **${g.counts.effectiveBuiltInert}** — implementation evidence exists and the activation gate is closed. Says nothing about principal grants.`,
+          "",
+          "_Enabled is a gate, not a grant._",
           "",
         ].join("\n")
       : [
-          "## Effective state",
+          "## Capability enablement",
           "",
-          "**Not computed.** No environment was named, and effective authorization is not a fact that",
-          "exists environment-free. Run with `--environment <id|projectId>` to evaluate one.",
+          "**Not computed.** No environment was named, and enablement is not a fact that exists",
+          "environment-free. Run with `--environment <id|projectId>` to evaluate one.",
           "",
         ].join("\n"),
     "## Flows — governance coverage per business chain",
     "",
     "Chains transcribed from our own process docs. A step with no mapped capability is `UNMAPPED` and",
-    "**does not stop a flow** — it may be ordinary UI, legacy role-gated authorization, non-capability",
-    "logic, or genuinely absent, and this evidence cannot distinguish those.",
+    "**never closes a chain** — it may be ordinary UI, legacy role-gated authorization, non-capability",
+    "logic, or genuinely absent, and this evidence cannot distinguish those. Step enablement reports the",
+    "capability activation gate only; principal Role grants are not evaluated anywhere in this document.",
     "",
     ...g.flows.flatMap((f) => [
       `### ${f.name}`,
@@ -627,17 +661,17 @@ export function renderMarkdown(g) {
       `Source: \`${f.source}\``,
       "",
       f.evaluated
-        ? f.stopsAt
-          ? `**Under \`${ev.requested}\`: stops at step ${f.stopsAtIndex + 1} of ${f.totalSteps} — ${f.stopsAt}.** ${f.unmappedSteps} step(s) unmapped and not evaluated.`
-          : `**Under \`${ev.requested}\`: no mapped step is unauthorized.** ${f.unmappedSteps} step(s) unmapped and not evaluated.`
-        : "_Governance coverage only — no stopping point computed without an environment._",
+        ? f.firstNotEnabledAt
+          ? `**Under \`${ev.requested}\`, the activation gate first closes at step ${f.firstNotEnabledIndex + 1} of ${f.totalSteps} — ${f.firstNotEnabledAt}.** ${f.unmappedSteps} step(s) unmapped and not evaluated. This is a gate, not a statement that a user gets stuck here.`
+          : `**Under \`${ev.requested}\`, no mapped step has its activation gate closed.** ${f.unmappedSteps} step(s) unmapped and not evaluated. Principal grants are not evaluated.`
+        : "_Governance coverage only — no enablement computed without an environment._",
       "",
-      "| # | Step | Coverage | " + (f.evaluated ? "Authorized | " : "") + "Capabilities |",
+      "| # | Step | Coverage | " + (f.evaluated ? "Enablement | " : "") + "Capabilities |",
       "| ---: | --- | --- | " + (f.evaluated ? "--- | " : "") + "--- |",
       ...f.steps.map(
         (s, i) =>
           `| ${i + 1} | ${s.name} | ${s.coverage} | ` +
-          (f.evaluated ? `${s.authorized === null ? "n/a" : s.authorized ? "yes" : "no"} | ` : "") +
+          (f.evaluated ? `${s.enablement ?? "n/a"} | ` : "") +
           `${s.capabilities.length ? s.capabilities.map((c) => "`" + c + "`").join(", ") : "—"} |`,
       ),
       "",
@@ -656,8 +690,9 @@ export function renderMarkdown(g) {
     "",
     "1. Find it in `capabilities[]`. Read `catalogActive`, `implementation.evidence`, and",
     "   `environmentActivation` as **three separate facts**.",
-    "2. `catalogActive: false` with a non-empty `environmentActivation.environments` means it is",
-    "   **live in those environments** — not missing, and not inert.",
+    "2. `catalogActive: false` with a non-empty `environmentActivation.environments` means the activation",
+    "   gate is **open in those environments** — not missing, and not inert. It does not mean any",
+    "   principal holds a grant for it.",
     "3. `NO_IMPLEMENTATION_EVIDENCE` is a lead, not a verdict — indirect references are invisible here.",
     "4. Check `destinations[]` for a `navHidden` entry whose `placeholderExplanation` states, in its own",
     "   words, why it is unreachable; and `guides[]` for a status tag naming what is missing beneath a",
