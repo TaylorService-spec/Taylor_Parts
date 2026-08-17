@@ -39,19 +39,21 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
-- **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
+- **X-LANE-DURABILITY** (phase 6) — An unpushed agent worktree does not survive a session boundary → Require push-before-handoff in the writer dispatch contract, and treat an unpushed lane as lost rather than resumable
+- **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
+| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
+| X-LANE-DURABILITY | 6 | An unpushed agent worktree does not survive a session boundary | — | — | — | — | — | NOT_APPLICABLE | Require push-before-handoff in the writer dispatch contract, and treat an unpushed lane as lost rather than resumable |
 
 ## MERGED
 
