@@ -1797,13 +1797,14 @@
       "title": "Sales Order has no business reference; its header renders a document id",
       "domain": "sales",
       "entity": "SalesOrder",
-      "status": "IMPLEMENTING",
-      "nextAction": "Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling.",
+      "status": "MERGED",
+      "nextAction": "Creation, header and definition all merged. Backfill remains protected under X-SALES-ORDER-NUMBER-BACKFILL.",
       "governing": [
         "DECISIONS #102",
         "Owner architecture addendum section 3"
       ],
-      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id. RESOLVED AT PRODUCT LEVEL (Owner ruling 2026-08-17): the document-id-as-label pattern is NOT accepted. Sales Order gets a real immutable business reference, SO-YYYY-######, joining the approved family beside WO- and OPP-. salesOrderNumber is STANDARD/STRING/immutable/unique; alternateKey is evaluated separately rather than assumed from uniqueness. Generation is server-authoritative and concurrency-safe, never derived from the document id and never inferred from the Opportunity, Account or Work Order - the Sales Order has its own identity. LEGACY RECORDS FAIL HONESTLY: a record without a number renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. NUMBERING MERGED (#1156, 0f797a01): salesOrderNumber is allocated inside the caller's transaction on BOTH creation paths, from a per-year counter distinct from the opportunity and work-order counters so the sequences never interact. Server-authoritative by construction - the pure builder never carries the field, so there is nothing for a client value to override - and immutable by construction rather than by a runtime guard, verified by confirming no transition or update path writes it. Deliberately mirrors opportunityNumbering.ts rather than reinventing the concurrency story."
+      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id. RESOLVED AT PRODUCT LEVEL (Owner ruling 2026-08-17): the document-id-as-label pattern is NOT accepted. Sales Order gets a real immutable business reference, SO-YYYY-######, joining the approved family beside WO- and OPP-. salesOrderNumber is STANDARD/STRING/immutable/unique; alternateKey is evaluated separately rather than assumed from uniqueness. Generation is server-authoritative and concurrency-safe, never derived from the document id and never inferred from the Opportunity, Account or Work Order - the Sales Order has its own identity. LEGACY RECORDS FAIL HONESTLY: a record without a number renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. NUMBERING MERGED (#1156, 0f797a01): salesOrderNumber is allocated inside the caller's transaction on BOTH creation paths, from a per-year counter distinct from the opportunity and work-order counters so the sequences never interact. Server-authoritative by construction - the pure builder never carries the field, so there is nothing for a client value to override - and immutable by construction rather than by a runtime guard, verified by confirming no transition or update path writes it. Deliberately mirrors opportunityNumbering.ts rather than reinventing the concurrency story.",
+      "mergeSha": "7b200b34"
     },
     {
       "id": "X-SALES-ORDER-NUMBER-BACKFILL",
@@ -1852,13 +1853,15 @@
       "entity": "SalesOrder",
       "route": "/customers/opportunities/sales-order/:salesOrderId",
       "classification": "B_ENTITY_RECORD",
-      "status": "READY",
-      "nextAction": "Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state",
+      "status": "MERGED",
+      "nextAction": "Merged. SalesOrderActions.jsx still interpolates a document id into dialog copy - see X-SALES-ORDER-ACTION-COPY.",
       "governing": [
         "Owner Sales Order identity ruling sections 4-5",
         "DECISIONS #106"
       ],
-      "notes": "The numbering exists on main now, so this is unblocked. A record WITHOUT a number must not fabricate one client-side and must not fall back to the document id - it renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. The internal recordId stays available for routing and authorized admin/bulk identity; it is simply not ordinary user-facing identity."
+      "notes": "The numbering exists on main now, so this is unblocked. A record WITHOUT a number must not fabricate one client-side and must not fall back to the document id - it renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. The internal recordId stays available for routing and authorized admin/bulk identity; it is simply not ordinary user-facing identity. MERGED (#1162, 7b200b34): the header renders the governed reference, and a legacy record without one shows an honest reference-unavailable state rather than fabricating a number or falling back to the id. The read projection's explicit allow-list had to grow by exactly one field - salesOrderNumber was written at creation and never returned, so the identity could not resolve end to end - and the exhaustive assertion grew with it. view.id is untouched and still routes; it simply stopped being user-facing identity.",
+      "pr": 1162,
+      "mergeSha": "7b200b34"
     },
     {
       "id": "S-CRM-SALES-ORDER-DEFINITION",
@@ -1868,12 +1871,46 @@
       "title": "Sales Order entity + list definitions",
       "domain": "sales",
       "entity": "SalesOrder",
-      "status": "READY",
-      "nextAction": "Author with identity.referenceField = salesOrderNumber; declare NO nameField",
+      "status": "MERGED",
+      "nextAction": "Merged. Two projection gaps documented rather than silently fixed.",
       "governing": [
         "Owner Sales Order identity ruling section 8"
       ],
-      "notes": "Unblocked by the numbering. The entity declares referenceField salesOrderNumber and NO nameField - a Sales Order does not need a human-entered name when its business reference is legitimate identity, and adding a fake nameField purely to satisfy a validator would be defeating the check rather than satisfying it. Scouted facts to describe rather than idealize: sales_orders is deny-all in Rules and read only through governed callables (salesOrder.read, registered active:false); lines are an EMBEDDED array, not a subcollection; currency is a free-form string hardcoded to USD with no minor-unit amount stored anywhere; line unitPrice is an optional float DELIBERATELY excluded from the read projection (#991 - no pricing policy on this surface), so the definition must not declare a column the projection refuses to return."
+      "notes": "Unblocked by the numbering. The entity declares referenceField salesOrderNumber and NO nameField - a Sales Order does not need a human-entered name when its business reference is legitimate identity, and adding a fake nameField purely to satisfy a validator would be defeating the check rather than satisfying it. Scouted facts to describe rather than idealize: sales_orders is deny-all in Rules and read only through governed callables (salesOrder.read, registered active:false); lines are an EMBEDDED array, not a subcollection; currency is a free-form string hardcoded to USD with no minor-unit amount stored anywhere; line unitPrice is an optional float DELIBERATELY excluded from the read projection (#991 - no pricing policy on this surface), so the definition must not declare a column the projection refuses to return. MERGED (#1161, 5568028d). Found two gaps and described them rather than papering over them: the projection reads createdAtMillis/updatedAtMillis, which NOTHING writes (the write path stores Firestore Timestamps), so no timestamp field is declared and the sort uses salesOrderNumber instead. Same discipline Opportunity applied to name and nextAction. Also added domain/salesOrderStatus.js as the canonical state vocabulary - previously only a tone map existed and the raw state string was the display label.",
+      "pr": 1161,
+      "mergeSha": "5568028d"
+    },
+    {
+      "id": "X-SALES-ORDER-ACTION-COPY",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "SalesOrderActions renders a document id in confirmation copy",
+      "domain": "sales",
+      "entity": "SalesOrder",
+      "route": "/customers/opportunities/sales-order/:salesOrderId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "READY",
+      "nextAction": "Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "notes": "FIFTH instance of the id-as-label class, found by the header lane and deliberately NOT pulled into it - the file was outside that lane's declared scope, and scope leakage is what the isolation rule exists to prevent. The confirmation dialog interpolates view.id into consequence text (\"This moves Sales Order {id} from...\"), visible once a user opens an action. The header fix already supplies salesOrderNumber through the view model, so this is a copy change plus the same reference-unavailable fallback."
+    },
+    {
+      "id": "A-SHARED-RESOURCE-SERIALIZATION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Shared-resource ownership in the writer-lane model",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock",
+      "governing": [
+        "Owner shared-file serialization addendum"
+      ],
+      "notes": "PRINCIPLE RECORDED in agent-isolation-execution-rule.md: parallelize disjoint implementation, serialize shared registration and integration. A central registry edited by five agents is not five-way parallelism - it is five writers contending on one resource. The CODE half remains: lanes declare sharedResources beside writeScope; a shared resource has at most one active owner; dispatch fails closed on collision; logical resources (METADATA_REGISTRATION, INDEX_DECLARATIONS, WORKFLOW_METADATA_TESTS) cover families spanning several files; and a lock is released only after useful work is preserved, never because an agent says it finished. Registration-completeness checks should prefer SET EQUALITY over one-way containment, since an omitted or extra item is a coverage defect in both directions. Evidence it is needed: the Sales Order definition lane and the header lane were dispatched as disjoint and both were routed toward the same workflow and index registration files; they happened not to collide because the header lane needed no new test file."
     }
   ]
 }
