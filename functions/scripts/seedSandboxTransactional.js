@@ -318,6 +318,23 @@ async function main() {
     reviewNotes: "Sufficient stock already on hand at wh-main.",
   }));
 
+  // ORDERED, SERIALIZED — the receiving candidate for the serial path. PRT-2001 is the deliberate
+  // SERIALIZED fixture, so receiving it exercises serial capture and governed serialized-asset
+  // activation rather than a plain quantity receipt. The serialized assets themselves are NEVER
+  // seeded: the governed Receiving command creates them, which is the whole point of this record.
+  await set("reorder_requests", "ro-sbx-006", reorderRequest({
+    partId: "PRT-2001", recommendedQty: 2, requestedQty: 2, status: "ORDERED",
+    currentOwner: uidPartsAssoc, requestedBy: uidTech || by, createdAt: now,
+    reviewedBy: uidPartsMgr, reviewedAt: now, reviewDecision: "APPROVED",
+    reviewNotes: "Two compressor units required for scheduled ice-machine replacements.",
+    assignedToUserId: uidPartsAssoc, assignedBy: uidPartsMgr, assignedAt: now,
+    purchasingStartedAt: now, purchasingStartedBy: uidPartsAssoc,
+    purchasingNotes: "ColdChain Components confirmed serial-tracked units.", vendorContacted: true,
+    // Equals the reorder request id -- the governed Receiving coherence rule, same as ro-sbx-001.
+    purchaseOrderId: "ro-sbx-006", orderedBy: uidPartsAssoc, orderedAt: now,
+    lastPurchasingUpdateAt: now, lastPurchasingUpdateBy: uidPartsAssoc,
+  }));
+
   // --- Purchase orders (the GOVERNED reorder PO model, Decision B) -------
   // DOCUMENT KEY = the REORDER REQUEST id, not the human PO number.
   //
@@ -347,6 +364,17 @@ async function main() {
     createdAt: now, updatedAt: now,
   });
 
+  // The SERIALIZED receiving candidate's purchase order. Keyed by the reorder request id, exactly
+  // like ro-sbx-001; orderedQuantity 2 is what the governed command binds the serial count to, so a
+  // receipt must supply exactly two distinct serial numbers.
+  await set("reorder_purchase_orders", "ro-sbx-006", {
+    reorderRequestId: "ro-sbx-006", externalPoNumber: "po-sbx-003",
+    purchaseOrderId: "ro-sbx-006",
+    partId: "PRT-2001", supplierId: "sup-coldchain", orderedQuantity: 2,
+    status: "ORDERED", scenarioId: SCENARIO_ID,
+    recordedBy: uidPartsAssoc, recordedAt: now, createdAt: now, updatedAt: now,
+  });
+
   // The mis-keyed documents this scenario used to emit. Removed so a re-seeded sandbox converges on
   // the governed shape instead of carrying an unreachable duplicate of the same order forever.
   for (const staleId of ["po-sbx-001", "po-sbx-002"]) {
@@ -355,7 +383,7 @@ async function main() {
 
   console.log("Seeded:", JSON.stringify(counts));
   console.log(`Scenario ${SCENARIO_ID} v${SCENARIO_VERSION} ready.`);
-  console.log("Receiving-ready candidate: reorder ro-sbx-001 + PO doc ro-sbx-001 (externalPoNumber po-sbx-001, both ORDERED).");
+  console.log("Receiving-ready candidates: ro-sbx-001 (PRT-1001, STANDARD) and ro-sbx-006 (PRT-2001, SERIALIZED).");
   console.log("The receipt itself is NOT seeded — it is the governed write the scenario exists to exercise.");
 }
 
