@@ -17,6 +17,7 @@ import {
   buildDropDefaults,
 } from "../../domain/dispatchSchedulingBoard";
 import { buildScheduleInput } from "../../domain/schedulingWorkspace";
+import { WORK_ORDER_STATUS_LABEL } from "../../domain/workOrderStatus";
 
 // Wave 7 completion, PART 1 -- the combined Dispatch / Scheduling operating workspace.
 //
@@ -71,19 +72,7 @@ function startOfTodayMillis(ms) {
   return d.getTime();
 }
 
-const WO_STATUS_LABEL = {
-  CREATED: "Created",
-  READY_TO_DISPATCH: "Ready to Dispatch",
-  SCHEDULED: "Scheduled",
-  DISPATCHED: "Dispatched",
-  ACCEPTED: "Accepted",
-  EN_ROUTE: "En Route",
-  ARRIVED: "Arrived",
-  WORK_IN_PROGRESS: "In Progress",
-  COMPLETED: "Completed",
-  CLOSED: "Closed",
-  CANCELLED: "Cancelled",
-};
+const WO_STATUS_LABEL = WORK_ORDER_STATUS_LABEL;
 
 // One WO status -> the SAME tone workOrderStatusTone (coordinatedVisit.js) already assigns elsewhere,
 // so a status never reads as one colour on this board and another colour on the Coordinated Visits rollup.

@@ -281,3 +281,38 @@ test("ENUM_SET without enumValues is rejected, same as ENUM", () => {
   });
   assert.ok(validateEntityDefinition(entity).some((p) => /ENUM_SET requires enumValues/.test(p)));
 });
+
+test("a NUMERIC enum value matches its own label entry", () => {
+  // Object keys are strings, so `enumLabels[1]` is looked up as "1". Comparing the raw
+  // number against the key reported every numeric enum as mislabelled — which is how
+  // Work Order priority, stored as 1..4, failed a contract it actually satisfied.
+  const entity = makeEntityDefinition({
+    id: "workOrder", label: "Work Order", collection: "fieldops_wos",
+    identity: makeIdentity({ referenceField: "woNumber" }),
+    fields: [
+      makeFieldDefinition({ id: "woNumber", entityId: "workOrder", label: "Work Order", type: "STRING" }),
+      makeFieldDefinition({
+        id: "priority", entityId: "workOrder", label: "Priority", type: "ENUM",
+        enumValues: [1, 2, 3, 4], enumLabels: { 1: "Emergency", 2: "High", 3: "Normal", 4: "Low" },
+      }),
+    ],
+  });
+  assert.deepEqual(validateEntityDefinition(entity), []);
+});
+
+test("a numeric enum whose label equals its own value is still rejected", () => {
+  // The #1093 rule survives the string normalization: "2" as the label for 2 has re-merged
+  // the stored value and the rendered one.
+  const entity = makeEntityDefinition({
+    id: "workOrder", label: "Work Order", collection: "fieldops_wos",
+    identity: makeIdentity({ referenceField: "woNumber" }),
+    fields: [
+      makeFieldDefinition({ id: "woNumber", entityId: "workOrder", label: "Work Order", type: "STRING" }),
+      makeFieldDefinition({
+        id: "priority", entityId: "workOrder", label: "Priority", type: "ENUM",
+        enumValues: [1, 2], enumLabels: { 1: "Emergency", 2: "2" },
+      }),
+    ],
+  });
+  assert.ok(validateEntityDefinition(entity).some((p) => /equals its machine value/.test(p)));
+});

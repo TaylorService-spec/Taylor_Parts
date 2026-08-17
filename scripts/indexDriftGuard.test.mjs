@@ -96,6 +96,9 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   'accounts|COLLECTION|status:ASCENDING,updatedAt:DESCENDING',
   'accounts|COLLECTION|relationshipTypes:CONTAINS,updatedAt:DESCENDING',
   'accounts|COLLECTION|status:ASCENDING,relationshipTypes:CONTAINS,updatedAt:DESCENDING',
+  // Declared by the Work Order metadata definition (Gate B). The other two shapes it
+  // demands were already live before the definition existed.
+  'fieldops_wos|COLLECTION|status:ASCENDING,customerId:ASCENDING,createdAt:DESCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That
