@@ -20,6 +20,12 @@ continues from the next executable item — without asking what happened.
 _Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
 table below before concluding the program is finished._
 
+## REVIEW_QUEUED
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | #1119 | 140bd1f7 | — | NOT_APPLICABLE | Review owed, NOT waited on; program continues |
+
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
@@ -85,7 +91,6 @@ table below before concluding the program is finished._
 | S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | — | — | — | NOT_APPLICABLE | Inventory only; form is unconditionally disabled |
 | S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
-| G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | — | — | — | NOT_APPLICABLE | Assemble package, mark REVIEW_QUEUED, do NOT wait |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
 | S-INV-PARTS | 9 | Parts catalog | /inventory | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |

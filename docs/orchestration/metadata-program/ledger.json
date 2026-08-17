@@ -665,17 +665,17 @@
       "title": "Gate A \u2014 metadata foundation review package",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "REVIEW_QUEUED",
       "gate": "GATE_A",
-      "dependsOn": [
-        "A-CONTRACT-CORE",
-        "A-REGISTRIES",
-        "A-LIST-METADATA-V1"
-      ],
-      "nextAction": "Assemble package, mark REVIEW_QUEUED, do NOT wait",
+      "dependsOn": [],
+      "nextAction": "Review owed, NOT waited on; program continues",
       "governing": [
         "program ruling \u00a74"
-      ]
+      ],
+      "pr": 1119,
+      "headSha": "140bd1f7aee39db755942c18876489009c5971cd",
+      "branch": "docs/gate-a-review-package",
+      "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning."
     },
     {
       "id": "G-GATE-B",
