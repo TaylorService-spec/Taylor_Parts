@@ -122,8 +122,7 @@
     "test:activationOverridesWiring": "npm run build && node --test test/activationOverridesWiring.test.mjs && node --test test/sandboxBaselinePartFixtures.test.mjs",
     "test:sandboxReceivingSource": "npm run build && node --test test/sandboxReceivingSourceFixture.test.mjs",
     "test:woAvailability": "npm run build && node --test test/woAvailabilityGovernedLedger.test.mjs",
-    "test:salesOrderLedgerAuthority": "npm run build && node --test test/salesOrderLedgerAuthority.test.mjs",
-    "test:opportunityNumbering": "node test/opportunityNumbering.test.mjs"
+    "test:salesOrderLedgerAuthority": "npm run build && node --test test/salesOrderLedgerAuthority.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
