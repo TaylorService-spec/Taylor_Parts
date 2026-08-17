@@ -131,3 +131,88 @@ test("recovery preserves before it cleans, and tries a fresh branch before any r
   assert.ok(order.indexOf("run-tests") < order.indexOf("abandon-contaminated-lane"));
   assert.equal(order[0], "inspect");
 });
+
+// --- shared-resource serialization -------------------------------------------
+//
+// Isolation is not enough: two lanes can own separate worktrees and still contend on the
+// registry, the workflow and the index file. That nearly happened — two lanes dispatched
+// as disjoint were both routed at the same registration files, and avoided colliding only
+// because one did not need a new test file.
+
+import {
+  canDispatch, sharedResourceOwners, undeclaredSharedEdits, outOfScopeFiles,
+  registrationGaps, LOGICAL_RESOURCES,
+} from "./writerLanes.mjs";
+
+const claiming = (taskId, resources, over = {}) => makeLane({
+  taskId, kind: "WRITER", branch: `feat/${taskId}`, worktree: `/wt/${taskId}`,
+  baseSha: "94040c1e", owner: `agent-${taskId}`, status: "WORKING",
+  sharedResources: resources, ...over,
+});
+
+test("dispatch FAILS CLOSED when a shared resource is already owned", () => {
+  // The check belongs at dispatch. Discovering contention after two agents have written
+  // is recovery, and recovery is the expensive path this model exists to avoid.
+  const active = [claiming("A", ["METADATA_REGISTRATION"])];
+  const problems = canDispatch(claiming("B", ["METADATA_REGISTRATION"]), active);
+  assert.ok(codes(problems).includes("RESOURCE_OWNED"));
+});
+
+test("dispatch succeeds when shared resources are disjoint", () => {
+  const active = [claiming("A", ["METADATA_REGISTRATION"])];
+  assert.deepEqual(canDispatch(claiming("B", ["INDEX_DECLARATIONS"]), active), []);
+});
+
+test("a lane does not block itself on redispatch", () => {
+  const lane = claiming("A", ["METADATA_REGISTRATION"]);
+  assert.deepEqual(canDispatch(lane, [lane]), []);
+});
+
+test("a MERGED lane releases its claims", () => {
+  // Keeping them would block every successor on work that has already landed.
+  const done = claiming("A", ["METADATA_REGISTRATION"], { status: "MERGED" });
+  assert.equal(sharedResourceOwners([done]).size, 0);
+  assert.deepEqual(canDispatch(claiming("B", ["METADATA_REGISTRATION"]), [done]), []);
+});
+
+test("editing a shared resource the lane never claimed is a handoff defect", () => {
+  const lane = claiming("A", ["METADATA_REGISTRATION"]);
+  const undeclared = undeclaredSharedEdits(lane, ["METADATA_REGISTRATION", "INDEX_DECLARATIONS"]);
+  assert.deepEqual(undeclared, ["INDEX_DECLARATIONS"]);
+});
+
+test("scope leakage is reported per file, not merely as a boolean", () => {
+  // The controller needs to see WHICH file left the lane.
+  const lane = claiming("A", [], { writeScope: ["src/metadata/definitions/part.js"] });
+  const out = outOfScopeFiles(lane, ["src/metadata/definitions/part.js", "package.json"]);
+  assert.deepEqual(out, ["package.json"]);
+});
+
+test("a directory in writeScope covers the files beneath it", () => {
+  const lane = claiming("A", [], { writeScope: ["functions/scripts"] });
+  assert.deepEqual(outOfScopeFiles(lane, ["functions/scripts/backfill.mjs"]), []);
+});
+
+test("registration completeness is checked in BOTH directions", () => {
+  // An omitted entry and an extra entry are both coverage defects. A one-way containment
+  // check would pass while half a batch was invisible.
+  const gaps = registrationGaps({ accepted: ["part", "equipment"], registered: ["part", "ghost"] });
+  assert.deepEqual(gaps.missing, ["equipment"]);
+  assert.deepEqual(gaps.orphaned, ["ghost"]);
+  assert.equal(gaps.complete, false);
+});
+
+test("a complete batch reports complete", () => {
+  const gaps = registrationGaps({ accepted: ["part", "equipment"], registered: ["equipment", "part"] });
+  assert.equal(gaps.complete, true);
+  assert.deepEqual(gaps.missing, []);
+  assert.deepEqual(gaps.orphaned, []);
+});
+
+test("logical resources stay a small named set rather than an open string space", () => {
+  // Over-generalizing locks before a real shared family exists produces ceremony, not
+  // safety.
+  assert.ok(LOGICAL_RESOURCES.includes("METADATA_REGISTRATION"));
+  assert.ok(LOGICAL_RESOURCES.includes("INDEX_DECLARATIONS"));
+  assert.ok(LOGICAL_RESOURCES.length <= 8);
+});

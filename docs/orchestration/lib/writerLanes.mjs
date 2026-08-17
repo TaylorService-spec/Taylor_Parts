@@ -43,7 +43,11 @@ export function makeLane(input = {}) {
     status: input.status ?? "ASSIGNED",
     pr: input.pr ?? null,
     headSha: input.headSha ?? null,
-    // Recovery is recorded, never hidden inside a normal completion summary (§8).
+    // What the lane may write, and which shared resources it claims. Declared at dispatch
+    // so leakage and contention are both detectable rather than discovered afterwards.
+    writeScope: Object.freeze([...(input.writeScope ?? [])]),
+    sharedResources: Object.freeze([...(input.sharedResources ?? [])]),
+    // Recovery is recorded, never hidden inside a normal completion summary.
     recoveryEvents: Object.freeze([...(input.recoveryEvents ?? [])]),
     abandonedReason: input.abandonedReason ?? null,
   });
@@ -198,3 +202,110 @@ export const RECOVERY_ORDER = Object.freeze([
   "run-tests",
   "abandon-contaminated-lane",
 ]);
+
+// --- shared-resource serialization -------------------------------------------
+//
+// Isolation alone is not enough. Two lanes can own separate worktrees and separate
+// branches and still contend: both need the registry, both need the workflow, both need
+// the index file. The Sales Order definition and header lanes were dispatched as disjoint
+// and were both routed at the same registration files — they avoided colliding only
+// because one of them happened not to need a new test file.
+//
+// PARALLELIZE DISJOINT IMPLEMENTATION. SERIALIZE SHARED REGISTRATION AND INTEGRATION.
+// A central registry edited by five agents is not five-way parallelism; it is five writers
+// contending on one resource.
+
+/**
+ * Shared concerns that span more than one file.
+ *
+ * A lane claiming METADATA_REGISTRATION owns the whole integration surface even though
+ * several files implement it. Kept deliberately small — over-generalizing locks before a
+ * real shared family exists produces ceremony rather than safety.
+ */
+export const LOGICAL_RESOURCES = Object.freeze([
+  "METADATA_REGISTRATION",
+  "INDEX_DECLARATIONS",
+  "WORKFLOW_METADATA_TESTS",
+  "PACKAGE_TEST_REGISTRATION",
+  "ACCESS_REGISTRATION",
+  "SANDBOX_PREP_MANIFEST",
+]);
+
+/**
+ * Which shared resources a lane holds.
+ *
+ * Returns a Map of resource -> owning taskId for ACTIVE lanes only. A merged or abandoned
+ * lane holds nothing: keeping its claims would block successors forever on work that has
+ * already landed.
+ */
+export function sharedResourceOwners(lanes = []) {
+  const owners = new Map();
+  for (const lane of lanes.filter(isActive)) {
+    for (const resource of lane.sharedResources ?? []) {
+      if (!owners.has(resource)) owners.set(resource, lane.taskId);
+    }
+  }
+  return owners;
+}
+
+/**
+ * Can this lane be dispatched right now?
+ *
+ * FAILS CLOSED on collision. The check belongs at dispatch, not at merge: discovering
+ * contention after two agents have written is recovery, and recovery is the expensive
+ * path the whole model exists to avoid.
+ */
+export function canDispatch(lane, activeLanes = []) {
+  const problems = [...validateLane(lane)];
+  const owners = sharedResourceOwners(activeLanes.filter((l) => l.taskId !== lane?.taskId));
+
+  for (const resource of lane?.sharedResources ?? []) {
+    const owner = owners.get(resource);
+    if (owner) {
+      problems.push(problem("RESOURCE_OWNED", `lane ${lane.taskId}: shared resource ${resource} is owned by active lane ${owner} — serialize, do not contend`));
+    }
+  }
+  return Object.freeze(problems);
+}
+
+/**
+ * Did a lane touch a shared resource it never claimed?
+ *
+ * `touched` is the set of paths/resources observed in the lane's diff. An undeclared
+ * shared-resource edit is a handoff defect, not ordinary completion — the controller
+ * reconciles that diff deliberately rather than accepting it.
+ */
+export function undeclaredSharedEdits(lane, touched = []) {
+  const claimed = new Set(lane?.sharedResources ?? []);
+  return Object.freeze(touched.filter((resource) => !claimed.has(resource)));
+}
+
+/**
+ * Is the lane's diff inside its declared write scope?
+ *
+ * Scope leakage is how one lane silently acquires another's work. Reported per-file so
+ * the controller can see WHICH file left the lane rather than only that something did.
+ */
+export function outOfScopeFiles(lane, changedFiles = []) {
+  const scope = lane?.writeScope ?? [];
+  if (!scope.length) return Object.freeze([]); // No declared scope means nothing to check against.
+  return Object.freeze(changedFiles.filter((file) => !scope.some((allowed) => file === allowed || file.startsWith(`${allowed}/`))));
+}
+
+/**
+ * Registration completeness, checked in BOTH directions.
+ *
+ * An omitted entry and an extra entry are both coverage defects, so this is set equality
+ * rather than containment: `missing` is an accepted leaf nobody registered, `orphaned` is
+ * a registration pointing at nothing accepted. A one-way check would pass while half the
+ * batch was invisible.
+ */
+export function registrationGaps({ accepted = [], registered = [] } = {}) {
+  const acceptedSet = new Set(accepted);
+  const registeredSet = new Set(registered);
+  return Object.freeze({
+    missing: Object.freeze(accepted.filter((id) => !registeredSet.has(id))),
+    orphaned: Object.freeze(registered.filter((id) => !acceptedSet.has(id))),
+    complete: accepted.every((id) => registeredSet.has(id)) && registered.every((id) => acceptedSet.has(id)),
+  });
+}
