@@ -160,13 +160,11 @@
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
       "entity": "Account",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-ENTITY-MASS-DEFINITION",
-        "A-PAGE-COMPONENT"
-      ],
-      "nextAction": "Blocked transitively on Field Architecture v2: its related lists need Opportunity/Sales Order/Contact definitions",
-      "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095. FINDING (attempted 2026-08-17): a PageDefinition for this page does not validate, and the reason is the contract working. Five of its nine sections are RELATED_LIST or FIELD_GROUP, and the contract requires a RELATED_LIST to NAME the ListViewDefinition it renders and a FIELD_GROUP to name its fieldIds. The Account record page embeds Opportunities, Sales Orders and Contacts - so defining it requires those three entities' list definitions, which is exactly the mass-definition the Field Architecture v2 gate now precedes. Modelling them as some other section kind to get a passing definition would be defeating the check rather than satisfying it: they ARE related lists. So record-page migration across the program is transitively gated on v2, which is worth knowing before nine record pages are attempted one at a time. The page's own composition was read successfully off the existing surface - RECORD mode, five regions, capability requirements declared per section - so the work is understood, not merely deferred."
+      "status": "IMPLEMENTING",
+      "dependsOn": [],
+      "nextAction": "Unblocked and dispatched: all three related lists now exist.",
+      "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095. FINDING (attempted 2026-08-17): a PageDefinition for this page does not validate, and the reason is the contract working. Five of its nine sections are RELATED_LIST or FIELD_GROUP, and the contract requires a RELATED_LIST to NAME the ListViewDefinition it renders and a FIELD_GROUP to name its fieldIds. The Account record page embeds Opportunities, Sales Orders and Contacts - so defining it requires those three entities' list definitions, which is exactly the mass-definition the Field Architecture v2 gate now precedes. Modelling them as some other section kind to get a passing definition would be defeating the check rather than satisfying it: they ARE related lists. So record-page migration across the program is transitively gated on v2, which is worth knowing before nine record pages are attempted one at a time. The page's own composition was read successfully off the existing surface - RECORD mode, five regions, capability requirements declared per section - so the work is understood, not merely deferred. UNBLOCKED 2026-08-17, and the block was REAL rather than chronological - it cleared only when the dependency actually landed. The PageDefinition contract requires a RELATED_LIST section to NAME the ListViewDefinition it renders; the earlier attempt failed validation because account.contacts, account.opportunities and account.salesOrders did not exist. All three now do, with their edges declared on the owning entity, so the page can be authored honestly rather than by weakening the rule. Verified by importing the three lists and confirming the ids match before dispatching.",
+      "branch": "feat/account-record-page"
     },
     {
       "id": "S-CRM-OPPORTUNITIES",
@@ -2008,6 +2006,38 @@
         "Owner leaf-ownership addendum"
       ],
       "notes": "Entity id is exactly `employee`, which salesOrder, opportunity and workOrder already referenced through referenceTo before any definition existed. Identity is displayName with NO referenceField - no employee number exists in the spec, the provisioning script or Rules. employeeId is declared as an ID field because the script writes it into the body as well as using it as the doc id, but UNLIKE Part nothing enforces the two agree, and the definition says so. Provenance is NUMBER because the script writes Date.now(); no actor fields exist and this schema never had them, unlike Contact whose write paths disagreed. TWO VOCABULARIES WERE INCOMPLETE rather than merely unlabelled: the client OPERATIONAL_ROLE carries three of the eight values the provisioning script accepts, so a definition built on the client copy would have silently excluded five real roles. Sorted by displayName, not userId - the two EXISTING employees composites are userId-ordered because they serve a != existence check rather than a UI sort, so all three demands are net-new."
+    },
+    {
+      "id": "S-COM-PURCHASE-ORDER-DEFINITION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Purchase Order entity + list definitions (leaf lane)",
+      "domain": "commercial",
+      "entity": "PurchaseOrder",
+      "status": "IMPLEMENTING",
+      "branch": "feat/purchase-order-definition",
+      "nextAction": "Leaf writer active; returns REGISTRATION_PENDING",
+      "governing": [
+        "Owner leaf-ownership addendum"
+      ],
+      "notes": "Leaf lane, no shared resources. Watch for a missing PO reference number: the program's family is WO-/OPP-/SO-YYYY-######, and if no PO- equivalent exists the lane must RECORD the gap rather than invent numbering, which would be a business decision outside a leaf's authority. Also watch the money shape - salesOrder and opportunity handled amounts differently BECAUSE their storage differs, so the lane must describe what is actually stored rather than assume minor units."
+    },
+    {
+      "id": "S-CRM-LOCATION-DEFINITION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Location entity + list definition (leaf lane)",
+      "domain": "crm",
+      "entity": "Location",
+      "status": "IMPLEMENTING",
+      "branch": "feat/location-definition",
+      "nextAction": "Leaf writer active; returns REGISTRATION_PENDING including a possible REFERENCE upgrade for two entities",
+      "governing": [
+        "Owner leaf-ownership addendum"
+      ],
+      "notes": "Creates what two existing definitions could not point at: equipment.js and salesOrder.js both had to declare locationId as a plain STRING because no location entity was registered, and both said so in comments. Those upgrades from STRING to REFERENCE become possible once this lands, but they are edits to OTHER lanes' files and belong to integration, not to this leaf. Rules already enforce that an equipment's location must belong to the same account, so the account-to-locations edge is real - but account.js is outside a leaf's scope, so declaring it is a registration item."
     }
   ]
 }

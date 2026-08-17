@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 48 | 42 | 6 |
+| 48 | 41 | 7 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,13 +38,19 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
+- **S-COM-PURCHASE-ORDER-DEFINITION** (phase 6) — Purchase Order entity + list definitions (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING
+- **S-CRM-ACCOUNT-RECORD** (phase 6) — Customer/Account detail → Unblocked and dispatched: all three related lists now exist.
+- **S-CRM-LOCATION-DEFINITION** (phase 6) — Location entity + list definition (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING including a possible REFERENCE upgrade for two entities
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Unblocked and dispatched: all three related lists now exist. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
+| S-COM-PURCHASE-ORDER-DEFINITION | 6 | Purchase Order entity + list definitions (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING |
+| S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING including a possible REFERENCE upgrade for two entities |
 
 ## MERGED
 
@@ -123,7 +129,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Blocked transitively on Field Architecture v2: its related lists need Opportunity/Sales Order/Contact definitions |
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
