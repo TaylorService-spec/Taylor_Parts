@@ -1016,11 +1016,11 @@
       "domain": "program",
       "entity": "n/a",
       "status": "READY",
-      "nextAction": "Implement generated mirror plus parity CI; close the two untested mirror pairs",
+      "nextAction": "Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains",
       "governing": [
         "Owner ruling section 10"
       ],
-      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep."
+      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all."
     },
     {
       "id": "A-BOUNDED-READS",
@@ -1129,6 +1129,25 @@
         "Owner disposition 2026-08-17 section 1 - audit persisted comparisons"
       ],
       "notes": "PR #1103 changes code only and migrates no data. Recorded so the open question survives the session that found it."
+    },
+    {
+      "id": "A-MIRROR-PARITY-COVERAGE",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Mirror parity enforcement for governedBusinessRoles + shadowParityHarness",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGE_QUEUED",
+      "pr": 1104,
+      "headSha": "5971d37efe194d30f4771f33f6f105e970d1c1bd",
+      "branch": "test/governed-business-roles-mirror-parity",
+      "checks": "3/3 mirror pairs pass",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner ruling section 10"
+      ],
+      "notes": "Two gaps: a generic helper called only once, and a CI path filter that omitted the client half of every mirrored module - so the change most likely to cause drift was the one the guard could not see. Directly de-risks PR #1100, which must edit governedBusinessRoles.ts in both copies."
     }
   ]
 }

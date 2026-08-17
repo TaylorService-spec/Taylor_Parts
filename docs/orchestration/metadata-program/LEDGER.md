@@ -19,7 +19,7 @@ continues from the next executable item — without asking what happened.
 
 - **X-RULES-DISCREPANCY** (phase 0) — mobile_locations read path disagrees with Rules → Confirm directly against firestore.rules before trusting either source
 - **X-WRITE-ONLY-COLLECTIONS** (phase 0) — Deny-all collections with no governed read path → Record as a capability gap; not a metadata-program blocker
-- **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Implement generated mirror plus parity CI; close the two untested mirror pairs
+- **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains
 - **A-CALLABLE-UNBOUNDED** (phase 3) — Unbounded trusted-callable reads → Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
@@ -44,7 +44,7 @@ continues from the next executable item — without asking what happened.
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | — | — | — | NOT_APPLICABLE | Resolve the deployment-status contradiction before touching this surface |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
-| A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Implement generated mirror plus parity CI; close the two untested mirror pairs |
+| A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | — | — | — | NOT_APPLICABLE | Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables |
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | — | — | — | NOT_APPLICABLE | Confirm directly against firestore.rules before trusting either source |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | Record as a capability gap; not a metadata-program blocker |
@@ -57,6 +57,7 @@ continues from the next executable item — without asking what happened.
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work |
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## BLOCKED_PROTECTED
 
