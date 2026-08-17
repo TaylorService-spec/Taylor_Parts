@@ -1442,3 +1442,48 @@ operational pages keep their protected sections because placement flexibility an
 invariants are separate concerns and only one is negotiable.
 
 None of this blocks current executable migration work.
+
+## 106. Sales Orders get a real business reference; a record id is never a substitute for missing identity
+
+**Owner ruling, 2026-08-17.** The document-id-as-label pattern is **not accepted**. Sales Order receives an
+immutable business reference, `SO-YYYY-######`, joining the approved EOS family beside `WO-YYYY-######` and
+`OPP-YYYY-######`.
+
+`salesOrderNumber` is STANDARD / STRING / immutable / unique, and becomes the Sales Order EntityDefinition's
+`referenceField`. `alternateKey` is **evaluated separately** rather than assumed from uniqueness — one is a data
+property, the other a governance decision, as Field Architecture v2 already enforces.
+
+**Generation is server-authoritative.** The client never chooses or asserts the sequence, allocation is
+deterministic and concurrency-safe, document ids are never sequence material, and the number is **never inferred
+from the Opportunity, Account or Work Order**. Lineage references may appear together — `OPP-…`, `SO-…`, `WO-…`
+— but they remain independent identities, and deriving one object's reference from another's sequence would make
+two records share a fate they do not share.
+
+**Immutability is the point of a reference.** Once assigned it survives every change to name, status,
+fulfillment, relationships and any other business state. A record that renumbers has no durable identity.
+
+**Legacy records fail honestly.** A Sales Order without a number renders a neutral *reference unavailable*
+state. It does **not** fabricate a number client-side and does **not** fall back to the document id. The
+governing invariant:
+
+> **A missing business reference is not permission to display a record id.**
+
+**Migration is separate from creation**, so future correctness never waits on historical cleanup: new Sales
+Orders are numbered the moment the code activates, while backfill proceeds under its own protected
+authorization. The tooling is repo-complete and inert — deterministic, idempotent, dry-run capable,
+collision-detecting, preserving `recordId` and existing relationships, emitting auditable evidence, safe under
+rerun. Where historical creation timestamps are authoritative they may set the year; where ordering cannot be
+established reliably, references are assigned by an explicitly documented deterministic policy rather than
+pretending to reflect a sequence no evidence supports.
+
+**The fourth confirmed instance of one defect class** (#1094, #1099, #1124, and now the Sales Order header).
+Recorded as a general invariant: no durable business entity may use its opaque internal recordId as its normal
+human-facing identity merely because a canonical name or reference is missing. When identity is missing —
+record the data-model gap, fix the identity model, and render the absence honestly. Do not normalize the
+database key into business identity.
+
+Related provenance convergence, continuing independently: `X-CONTACT-PROVENANCE-GAP` (three write paths onto the
+standard four fields, future writes separated from any historical backfill decision) and
+`X-EQUIPMENT-PROVENANCE-GAP` (epoch-number timestamps and no actor — determine the actual stored semantics
+first, use `systemName`/`storagePath` separation if legacy storage must stay compatible, and prefer UNKNOWN to
+an invented actor).

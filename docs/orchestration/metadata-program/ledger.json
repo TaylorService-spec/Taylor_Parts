@@ -1795,19 +1795,50 @@
       "title": "Sales Order has no business reference; its header renders a document id",
       "domain": "sales",
       "entity": "SalesOrder",
-      "status": "BLOCKED_PROTECTED",
-      "nextAction": "Needs a decision on whether Sales Orders get a reference number",
-      "blockers": [
-        {
-          "reason": "Sales Orders have no reference number field at all, and SalesOrderDetail renders `Sales Order ${id}` as its page header",
-          "requiredDecision": "Either mint a governed SO-YYYY-###### reference the way Work Orders and Opportunities already have - which is a numbering and migration decision for existing records - or accept a document id in the page header. #1124 corrected the LINEAGE LINK to show a reference instead of an id; the header itself was not in that PR's scope and still shows the raw id. This is the fourth appearance of the id-as-label pattern (#1094, #1099, #1124)."
-        }
-      ],
+      "status": "READY",
+      "nextAction": "Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling",
       "governing": [
         "DECISIONS #102",
         "Owner architecture addendum section 3"
       ],
-      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id."
+      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id. RESOLVED AT PRODUCT LEVEL (Owner ruling 2026-08-17): the document-id-as-label pattern is NOT accepted. Sales Order gets a real immutable business reference, SO-YYYY-######, joining the approved family beside WO- and OPP-. salesOrderNumber is STANDARD/STRING/immutable/unique; alternateKey is evaluated separately rather than assumed from uniqueness. Generation is server-authoritative and concurrency-safe, never derived from the document id and never inferred from the Opportunity, Account or Work Order - the Sales Order has its own identity. LEGACY RECORDS FAIL HONESTLY: a record without a number renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id."
+    },
+    {
+      "id": "X-SALES-ORDER-NUMBER-BACKFILL",
+      "phase": "6",
+      "wave": "3",
+      "kind": "PROTECTED_ACTION",
+      "title": "Backfill salesOrderNumber onto legacy Sales Orders",
+      "domain": "sales",
+      "entity": "SalesOrder",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Tooling repo-complete and INERT; production execution requires the established protected authorization",
+      "blockers": [
+        {
+          "reason": "Assigning business references to existing production Sales Orders mutates production data",
+          "requiredDecision": "Owner authorization to execute the migration against production, after a dry run reports the affected record count and any collisions."
+        }
+      ],
+      "governing": [
+        "Owner Sales Order identity ruling sections 5-7"
+      ],
+      "notes": "Deliberately SEPARATE from the creation path, so future correctness does not wait on historical cleanup: new Sales Orders get numbered the moment the code activates. Tooling requirements are deterministic, idempotent, dry-run capable, collision-detecting, preserving recordId and existing relationships, emitting auditable evidence, and safe under rerun. Where historical creation timestamps are authoritative they may set the year; where ordering CANNOT be established reliably, references are assigned by an explicitly documented deterministic policy rather than pretending to reflect a historical sequence that no evidence supports."
+    },
+    {
+      "id": "X-EQUIPMENT-PROVENANCE-GAP",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Equipment stores epoch-number timestamps and no actor",
+      "domain": "service",
+      "entity": "Equipment",
+      "status": "READY",
+      "nextAction": "Determine the actual stored semantics first, then converge future governed writes",
+      "governing": [
+        "Owner architecture addendum section 1",
+        "Owner Sales Order identity ruling section 12"
+      ],
+      "notes": "Found while scouting Equipment for definition. The equipment collection carries createdAt/updatedAt as NUMBERS (epoch millis, per the Rules type check) and has NO createdBy/updatedBy at all - unlike parts and equipment_models, which carry the full four as Firestore Timestamps. Two rules apply. First, determine the actual stored semantics before presenting anything: reinterpreting an epoch number as a Timestamp to match the standard presentation would misread the data rather than describe it. Second, if legacy storage must stay compatible, that is exactly what the systemName/storagePath separation is for - the standard vocabulary keeps its names and the mapping absorbs the difference. Historical actor backfill requires evidence; UNKNOWN is preferable to an invented actor."
     }
   ]
 }
