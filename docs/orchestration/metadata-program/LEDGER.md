@@ -18,22 +18,20 @@ continues from the next executable item — without asking what happened.
 ## Next executable
 
 - **A-BOUNDED-READS** (phase 3) — Bounded-read remediation across list-exempt surfaces → Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces
-- **A-INDEX-CI-BRIDGE** (phase 3) — CI gate: declared list filters must have declared indexes → Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry
-- **A-LIST-GRID** (phase 3) — List grid component consuming the query core → Executable: the query core is on main (dafa60df)
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces |
-| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry |
-| A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | — | — | NOT_APPLICABLE | Executable: the query core is on main (dafa60df) |
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | #1129 | 787b3e21 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | #1128 | 54dc7a47 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-LIST-GRID | 3 | List grid component consuming the query core | — | — | #1130 | 7a66e0cd | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
@@ -114,6 +112,7 @@ continues from the next executable item — without asking what happened.
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Build after the composition planner is on main |
+| A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | — | — | — | NOT_APPLICABLE | Build after the presentation model is on main |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

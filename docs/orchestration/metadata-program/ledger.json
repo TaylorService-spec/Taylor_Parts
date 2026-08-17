@@ -1382,16 +1382,16 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
       "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check. LEDGER CORRECTION: this was briefly recorded MERGE_QUEUED with pr 1129, but the gh pr create call had 503'd and no such PR existed. The false claim survived because the command was piped to tail, so the pipeline exit status was tail's success rather than gh's failure, and the chain continued past a failed step. Caught by verifying the claim against GitHub instead of trusting what had just been written - which is the reconcile discipline applied to my own write.",
-      "pr": null,
-      "headSha": null,
+      "pr": 1129,
+      "headSha": "787b3e214f34e55f51914f5b676778908f988178",
       "branch": "feat/index-ci-bridge",
       "checks": "9/9 coverage tests locally; wired into deployment-drift workflow"
     },
@@ -1478,10 +1478,14 @@
       "title": "List grid component consuming the query core",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Executable: the query core is on main (dafa60df)",
-      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120. PRESENTATION MODEL BUILT as a pure module; the React component maps it to markup and is a separate slice. Carries FOUR distinct empty states - EMPTY, FILTERED, DENIED, UNAVAILABLE - because 'no customers found' shown to someone who lacks a capability is a lie that sends people hunting for missing data instead of missing access. TANSTACK DEFERRED: approved, but v1 needs render-from-definition rather than column reordering, and adding it now is a package.json change pulling in frontend workflows for a dependency earning nothing yet.",
+      "pr": 1130,
+      "headSha": "7a66e0cdba20a27c1c8bafa6f3f2c5ffe849fba5",
+      "branch": "feat/list-grid",
+      "checks": "19/19 presentation tests; oxlint + tsc clean; six metadata suites run==filtered"
     },
     {
       "id": "A-PAGE-COMPONENT",
@@ -1497,6 +1501,21 @@
       ],
       "nextAction": "Build after the composition planner is on main",
       "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
+    },
+    {
+      "id": "A-LIST-COMPONENT",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "List React component rendering the presentation model",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-GRID"
+      ],
+      "nextAction": "Build after the presentation model is on main",
+      "notes": "Thin mapping from the presentation model to EOS markup (fo-table and the shared state primitives). All four empty states must render distinctly - collapsing them in the component would undo the model's whole point."
     }
   ]
 }
