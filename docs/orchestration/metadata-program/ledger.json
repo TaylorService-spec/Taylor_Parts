@@ -682,13 +682,17 @@
       "title": "Shared AR view-state contract",
       "domain": "crm",
       "entity": "Account",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1094,
-      "nextAction": "Single shared contract; remove hardcoded literals in accountHealthStrip.js",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner disposition 2026-08-17 \u00a72"
       ],
-      "notes": "Health strip is permanently Unavailable on every account. Do NOT uppercase accountArView discriminants \u2014 separate contract from ACCOUNT_STATUS."
+      "notes": "Health strip is permanently Unavailable on every account. Do NOT uppercase accountArView discriminants \u2014 separate contract from ACCOUNT_STATUS. ROOT CAUSE OF SURVIVAL: the existing tests encoded the bug - fixtures used uppercase kinds the producer never emits, so suite and implementation agreed with each other and both disagreed with production. Fixtures now reference ACCOUNT_AR_STATE so a fixture cannot describe an impossible state.",
+      "pr": 1102,
+      "headSha": "7b87a025ab7d28ab0907cc2f20fafc3bc98800dd",
+      "branch": "fix/account-ar-view-state-contract",
+      "checks": "16/16 offline accountHealthStrip tests pass"
     },
     {
       "id": "D-BUG-AR-OWNERSHIP",
