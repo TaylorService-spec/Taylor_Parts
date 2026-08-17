@@ -289,7 +289,10 @@ async function main() {
     assignedToUserId: uidPartsAssoc, assignedBy: uidPartsMgr, assignedAt: now,
     purchasingStartedAt: now, purchasingStartedBy: uidPartsAssoc,
     purchasingNotes: "Arctic Parts Supply confirmed availability.", vendorContacted: true,
-    purchaseOrderId: "po-sbx-001", orderedBy: uidPartsAssoc, orderedAt: now,
+    // Must equal the reorder request id: receiveInventoryStockCommand.ts rejects the source as
+    // incoherent when reorderRequest.purchaseOrderId is defined and differs. The readable order
+    // number is externalPoNumber on the purchase order itself.
+    purchaseOrderId: "ro-sbx-001", orderedBy: uidPartsAssoc, orderedAt: now,
     lastPurchasingUpdateAt: now, lastPurchasingUpdateBy: uidPartsAssoc,
   }));
   // PENDING_REVIEW — an unreviewed queue item.
@@ -316,23 +319,43 @@ async function main() {
   }));
 
   // --- Purchase orders (the GOVERNED reorder PO model, Decision B) -------
-  await set("reorder_purchase_orders", "po-sbx-001", {
-    purchaseOrderId: "po-sbx-001", reorderRequestId: "ro-sbx-001",
+  // DOCUMENT KEY = the REORDER REQUEST id, not the human PO number.
+  //
+  // This is the governed contract, not a convention: receiveInventoryStockCommand.ts reads
+  // `reorder_purchase_orders.doc(reorderRequestId)`, and the linked request must satisfy
+  // `reorderRequest.purchaseOrderId === reorderRequestId`. The fixtures previously keyed these
+  // documents by "po-sbx-001"/"po-sbx-002", so the content was correct and completely unreachable --
+  // Receiving answered NOT_FOUND for a source that visibly existed in Firestore.
+  //
+  // The human-facing order number lives in `externalPoNumber`, which is what the governed Receiving
+  // tests use and what keeps "po-sbx-001" visible to a reader without it pretending to be the key.
+  await set("reorder_purchase_orders", "ro-sbx-001", {
+    reorderRequestId: "ro-sbx-001", externalPoNumber: "po-sbx-001",
+    // Retained so existing read models that project purchaseOrderId keep working; it is the SAME
+    // identity as the document key, never the external number, so the coherence check holds.
+    purchaseOrderId: "ro-sbx-001",
     partId: "PRT-1001", supplierId: "sup-arcticparts", orderedQuantity: 4,
     status: "ORDERED", scenarioId: SCENARIO_ID,
     recordedBy: uidPartsAssoc, recordedAt: now, createdAt: now, updatedAt: now,
   });
-  await set("reorder_purchase_orders", "po-sbx-002", {
-    purchaseOrderId: "po-sbx-002", reorderRequestId: "ro-sbx-005",
+  await set("reorder_purchase_orders", "ro-sbx-005", {
+    reorderRequestId: "ro-sbx-005", externalPoNumber: "po-sbx-002",
+    purchaseOrderId: "ro-sbx-005",
     partId: "PRT-1002", supplierId: "sup-coldchain", orderedQuantity: 5,
     status: "VOIDED", voidReason: "Duplicate order raised in error.", scenarioId: SCENARIO_ID,
     recordedBy: uidPartsAssoc, recordedAt: now, voidedBy: uidPartsMgr, voidedAt: now,
     createdAt: now, updatedAt: now,
   });
 
+  // The mis-keyed documents this scenario used to emit. Removed so a re-seeded sandbox converges on
+  // the governed shape instead of carrying an unreachable duplicate of the same order forever.
+  for (const staleId of ["po-sbx-001", "po-sbx-002"]) {
+    await db.collection("reorder_purchase_orders").doc(staleId).delete();
+  }
+
   console.log("Seeded:", JSON.stringify(counts));
   console.log(`Scenario ${SCENARIO_ID} v${SCENARIO_VERSION} ready.`);
-  console.log("Receiving-ready candidate: reorder ro-sbx-001 + PO po-sbx-001 (both ORDERED).");
+  console.log("Receiving-ready candidate: reorder ro-sbx-001 + PO doc ro-sbx-001 (externalPoNumber po-sbx-001, both ORDERED).");
   console.log("The receipt itself is NOT seeded — it is the governed write the scenario exists to exercise.");
 }
 
