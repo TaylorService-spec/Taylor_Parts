@@ -1,0 +1,54 @@
+name: Sales Order Number Backfill Tests
+
+# Offline tests for the sales-order reference backfill tooling.
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this repo
+# runs per-subsystem workflows on PRs, so a suite named in no workflow never runs.
+#
+# The tool itself is repo-complete and INERT. Production execution is a protected action
+# under X-SALES-ORDER-NUMBER-BACKFILL and is authorized separately; nothing here runs it
+# against any project, and there is no emulator, no deploy and no secret.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/salesOrder/salesOrderNumberBackfill*.ts"
+      - "functions/scripts/salesOrderNumberBackfillCli.js"
+      - "functions/test/salesOrderNumberBackfill.test.mjs"
+      - ".github/workflows/sales-order-backfill-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/salesOrder/salesOrderNumberBackfill*.ts"
+      - "functions/scripts/salesOrderNumberBackfillCli.js"
+      - "functions/test/salesOrderNumberBackfill.test.mjs"
+      - ".github/workflows/sales-order-backfill-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-order-backfill-tests:
+    name: Sales Order number backfill (build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      # The tests import the COMPILED output, the same pattern every other functions suite
+      # uses -- nothing here reads a .ts file directly.
+      - name: Build functions
+        run: npm run build
+        working-directory: functions
+      - name: Backfill tooling tests (node:test)
+        run: node --test test/salesOrderNumberBackfill.test.mjs
+        working-directory: functions
