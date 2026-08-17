@@ -134,11 +134,17 @@ check("BLOCKED_INCOMPLETE_INPUT on an unexpected payload shape", () => {
   assert.equal(resultJson.status, "BLOCKED_INCOMPLETE_INPUT");
 });
 
-check("an EMPTY canonical capture BLOCKS -- it is never reported as a successful parity", () => {
+check("an EMPTY canonical capture FAILS the gate -- it is never reported as a successful parity", () => {
+  // UPDATED 2026-08-17 (Owner-ratified authority direction). The composition no longer blocks merely
+  // because the static mirror has rows the canonical read does not; an empty canonical capture is now
+  // caught one step later, as a parity FAILURE rather than a composition block.
+  //
+  // The property this gate exists for is unchanged and still asserted: it does NOT pass, and it exits
+  // nonzero, so an empty canonical capture can never be deployed over.
   const { code, resultJson } = run(write({ documents: [] }));
   assert.equal(code, 1);
   assert.notEqual(resultJson.status, "PASS");
-  assert.equal(resultJson.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(resultJson.status, "FAIL_PARITY");
 });
 
 check("omitting a single canonical Part BLOCKS the deploy (no silent partial cutover)", () => {

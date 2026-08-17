@@ -86,11 +86,16 @@ ok("malformed invalid metadata (not an array) BLOCKS; empty invalid array stays 
   assert.equal(buildWarehouseCatalog({ canonicalRead: { ...okRead, invalid: [] }, staticCatalog }).status, "READY");
 });
 
-ok("incomplete accounting (a static sku with no canonical match, not an approved exclusion) => BLOCKED, never a partial list", () => {
+ok("a static sku with no canonical match is EXCLUDED and surfaced -- never promoted, never an outage", () => {
+  // UPDATED 2026-08-17 (Owner-ratified authority direction). An orphan static sku is legacy data
+  // with no governed counterpart. It is still never promoted into the list -- that fail-closed
+  // direction is unchanged -- but it no longer blocks every other valid canonical Part, because one
+  // legacy mismatch must not become a whole-catalog outage.
   const extraStatic = staticCatalog.concat([{ sku: "TST-9999", name: "Orphan", category: "X", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }]);
   const c = buildWarehouseCatalog({ canonicalRead: okRead, staticCatalog: extraStatic });
-  assert.equal(c.status, "BLOCKED_INCOMPLETE_INPUT");
-  assert.deepEqual(c.rows, []);
+  assert.equal(c.status, "READY");
+  assert.equal(c.rows.some((r) => r.sku === "TST-9999" || r.partId === "TST-9999"), false, "orphan static data must not be promoted");
+  assert.equal(c.rows.length > 0, true, "the rest of the catalog must still render");
 });
 
 // ---- category + filter + name helpers ----

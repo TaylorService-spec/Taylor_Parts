@@ -176,13 +176,20 @@ check("BLOCKED_INCOMPLETE_INPUT on missing/unknown canonical status", () => {
     assert.equal(res.rows.length, 0);
   }
 });
-check("BLOCKED_INCOMPLETE_INPUT when canonical read omits a Part (never silently drops the 200th)", () => {
-  // Drop one canonical part that is NOT one of the approved ten -> its static sku
-  // becomes STATIC_WITHOUT_CANONICAL_UNAPPROVED -> not fully accounted -> BLOCK.
+check("a Part missing from the canonical read is EXCLUDED and surfaced -- never promoted, never an outage", () => {
+  // UPDATED 2026-08-17 (Owner-ratified authority direction). Dropping a canonical part leaves its
+  // static sku as STATIC_WITHOUT_CANONICAL_UNAPPROVED. That is still never promoted into a row --
+  // the fail-closed direction that matters is untouched -- but it no longer blocks the ENTIRE
+  // catalog, because one legacy mismatch must not suppress every other valid governed Part.
   const dropped = CANONICAL.filter((c) => c.partId !== "TST-1001");
   const res = buildPartsCatalogRows({ canonicalRead: { status: "OK", rows: dropped }, staticCatalog: STATIC });
-  assert.equal(res.status, "BLOCKED_INCOMPLETE_INPUT");
-  assert.equal(res.rows.length, 0);
+  assert.equal(res.status, "READY");
+  // The dropped id is NOT served from the static mirror...
+  assert.equal(res.rows.some((r) => r.key === "TST-1001"), false, "static-only data must not be promoted");
+  // ...the mismatch is surfaced as evidence...
+  assert.equal(res.meta.staticWithoutCanonicalCount >= 1, true);
+  // ...and every remaining canonical Part still renders.
+  assert.equal(res.rows.length > 0, true, "one mismatch must not empty the catalog");
 });
 // ---- fail-closed on INVALID canonical documents (fetchPartMasterList's `invalid`) -------------------
 check("BLOCKED when the canonical read reports non-empty invalid documents (never silently dropped)", () => {
