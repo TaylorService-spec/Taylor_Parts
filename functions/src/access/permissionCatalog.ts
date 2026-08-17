@@ -1024,7 +1024,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // and MOBILE (mobile_locations/{id}.displayLabel) ONLY -- CUSTOMER and any other category resolve to
   // UNRESOLVED (label null), never a fabricated type. Bounded point-reads only (getAll on the exact
   // requested ids, capped at 50) -- no collection scan, no new index, no client-direct warehouses
-  // widening, no client-direct mobile_locations read (unchanged: no Rules match block, default deny).
+  // widening, and no client-direct mobile_locations widening introduced here. (Corrected 2026-08-17:
+  // this previously said mobile_locations has no Rules match block and is default-deny.
+  // firestore.rules:1235-1238 grants admin/dispatcher read on it and denies all client writes.)
   // REGISTERED BUT UNGRANTED BY DESIGN: this phase grants the capability to NO compatibility Role and
   // adds NO per-environment activation override, so resolveEffectivePermission() denies for every
   // principal until a later, separately authorized grant + activation gate -- same posture as
