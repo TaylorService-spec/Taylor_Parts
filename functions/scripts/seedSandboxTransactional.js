@@ -154,6 +154,15 @@ async function main() {
     name: "Sandbox Technician", status: "available", skills: ["refrigeration", "ice-machines"],
     userId: uidTech, createdAt: now, updatedAt: now, updatedBy: by,
   });
+  // A SECOND technician. The engine refuses to double-book a technician onto two active Work
+  // Orders -- correct domain behaviour -- and with exactly one technician in the scenario, that rule
+  // made every seeded WO permanently un-dispatchable once the first one was active. A single
+  // technician cannot represent a dispatch queue. No userId: this is a dispatch TARGET, not a
+  // persona, and inventing a second identity would widen the auth surface for no reason.
+  await set("fieldops_technicians", "tech-sbx-02", {
+    name: "Sandbox Technician Two", status: "available", skills: ["refrigeration"],
+    userId: null, createdAt: now, updatedAt: now, updatedBy: by,
+  });
 
   // --- Work Orders across the GOVERNED lifecycle ------------------------
   // F0: seeded into fieldops_wos with the shape createWorkOrder() writes, and
