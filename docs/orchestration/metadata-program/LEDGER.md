@@ -13,11 +13,12 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 43 | 32 | 11 |
+| 43 | 31 | 12 |
 
 ## Next executable
 
 - **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Decide between two designs before writing the generator (see notes)
+- **X-INVENTORY-ANALYTICS-CAPABILITY** (phase 3) — getInventoryAnalytics: bounded read + capability-catalog authorization → Determine the exact current effective audience, then mint inventory.analytics.read and route the callable through it
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
@@ -26,7 +27,6 @@ continues from the next executable item — without asking what happened.
 - **S-INV-MANUFACTURERS** (phase 9) — Manufacturers → Inventory only - writes are closed in every environment including sandbox
 - **S-INV-TRANSFERS** (phase 9) — Transfers → Bounded-read remediation; lifecycle composite, not a list
 - **S-SVC-CONTROL-TOWER** (phase 9) — Service Operations (Control Tower) → Bounded-read remediation; dashboard composition is a later phase
-- **S-SVC-COORDINATED-MISSION** (phase 9) — Coordinated mission → Same synthetic-source caveat as coordinated visits
 
 ## READY
 
@@ -45,6 +45,7 @@ continues from the next executable item — without asking what happened.
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Decide between two designs before writing the generator (see notes) |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
+| X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | — | — | — | NOT_APPLICABLE | Determine the exact current effective audience, then mint inventory.analytics.read and route the callable through it |
 
 ## MERGE_QUEUED
 
@@ -54,6 +55,7 @@ continues from the next executable item — without asking what happened.
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | #1108 | 82017110 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
@@ -64,15 +66,15 @@ continues from the next executable item — without asking what happened.
 |---|---|---|---|---|---|---|---|---|---|
 | X-ADMIN-CRM-AUTHORITY | 0 | crm.activity.read via canonical admin authority | — | — | #1100 | — | — | NOT_APPLICABLE | Await Owner authorization; program proceeds around it |
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Mark PRs MERGE-QUEUED and continue independent work |
-| S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | — | — | — | NOT_APPLICABLE | Owner decision on the production readiness flag before any work on this surface |
 | X-STATUS-DATA-AUDIT | 6 | Account status persisted-data audit before production rollout | — | — | — | — | — | NOT_APPLICABLE | Audit production Account documents for title-case status values |
-| X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | — | — | — | NOT_APPLICABLE | Owner/catalog-owner decides the capability id, then implement Variant B bounding |
+| X-TRUCK-PROD-LIVE-RISK | 0 | URGENT: production may already expose truck write controls | — | — | — | — | — | UNKNOWN | Authorized operator verifies the live production bundle and the deployed callable set |
+| X-NO-GOVERNED-READ-COLLECTIONS | 9 | BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all | — | — | — | — | — | NOT_APPLICABLE | No metadata work possible; each needs a governed read service under normal capability governance |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
-> **S-INV-TRUCK** blocked — PRODUCTION RISK, not just a stale comment. functions/src/index.ts says the truck callables are NOT deployed to the live project, and it is the NEWER of the two sources. config/environments.json sets TRUCK_MANAGEMENT_WRITE_READY true for taylor-parts-production, and truckManagementReadiness.js claims Gate D production verification - but no production-scoped deployment record exists anywhere in docs/releases, the only closeout is explicitly scoped to eos-platform-sandbox and states production was never targeted, and 'Gate D' appears nowhere else in the repository. Net effect: the production UI write path may be enabled against callables that are not deployed there. · requires: Owner confirms whether the truck callables are deployed to taylor-parts, and authorizes correcting TRUCK_MANAGEMENT_WRITE_READY for production if they are not
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
-> **X-INVENTORY-ANALYTICS-CAPABILITY** blocked — Two coupled decisions. (1) It is the only one of the three unbounded callables needing Variant B, because its netted availableStock would be arithmetically wrong over a partial ledger - the same class of problem as a partial AR summary. (2) It authorizes via a direct role check rather than the capability catalog every sibling read uses, and NO capability id covers it: inventory.transaction.read and warehouse.stockLocation.read each cover one of its two collections. Minting inventory.analytics.read is a catalog registration; requiring two capabilities for one callable would be a new pattern with no precedent here. · requires: Owner authorizes minting inventory.analytics.read (registered active:false per REGISTER != GRANT), or chooses the two-capability alternative
+> **X-TRUCK-PROD-LIVE-RISK** blocked — Truck write readiness is a COMPILE-TIME constant baked into a Hosting bundle. PR #1109 fails the repository declaration closed, but if a previously released production bundle carries the old true, production users may see enabled truck-management write controls right now. Only a Hosting release built from the corrected config changes what is live. Separately, whether the eight callables are actually deployed to taylor-parts is unverified in either direction. · requires: Owner authorizes a live production check of (a) the served bundle's readiness value and (b) the deployed Functions set, then decides whether a Hosting release is required
+> **X-NO-GOVERNED-READ-COLLECTIONS** blocked — payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false in firestore.rules, and exhaustive search of functions/src found NO exported callable that reads any of them - only writers. part_supplier_items has a pure projection contract explicitly not activated. Metadata is presentation and composition, not authority, so it cannot make an unreadable collection readable. · requires: Owner authorizes building and activating a governed read service per collection, when the business capability requires it
 
 ## BLOCKED_DEPENDENCY
 
@@ -104,6 +106,7 @@ continues from the next executable item — without asking what happened.
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Generalize the existing cursor prior art rather than inventing a pattern |
 | A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
+| X-INVENTORY-ANALYTICS-AGGREGATE | 3 | getInventoryAnalytics needs authoritative aggregation, not pagination | — | — | — | — | — | NOT_APPLICABLE | Choose an authoritative-aggregate approach; do NOT page the ledger and compute from the page |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
