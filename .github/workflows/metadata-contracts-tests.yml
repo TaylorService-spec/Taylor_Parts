@@ -28,6 +28,7 @@ on:
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
       - "field-ops-app-vite/test/recordProvenance.test.mjs"
+      - "field-ops-app-vite/test/queryModel.test.mjs"
       - "field-ops-app-vite/src/metadata/definitions/**"
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
@@ -56,6 +57,7 @@ on:
       - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
       - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
       - "field-ops-app-vite/test/recordProvenance.test.mjs"
+      - "field-ops-app-vite/test/queryModel.test.mjs"
       - "field-ops-app-vite/src/metadata/definitions/**"
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
@@ -146,6 +148,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Record provenance invariant tests (node:test)
         run: node --test test/recordProvenance.test.mjs
+        working-directory: field-ops-app-vite
+      - name: EOS query model tests (node:test)
+        run: node --test test/queryModel.test.mjs
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata
