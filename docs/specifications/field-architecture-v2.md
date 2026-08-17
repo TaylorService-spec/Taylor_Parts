@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Architecture Gate
-status: Scheduled
+status: Implemented (additive)
 date: 2026-08-17
 owner: Claude Code
 related_adrs: []
@@ -25,8 +25,9 @@ target_release: Metadata-to-Platform Program, before broad entity mass-definitio
 > requirement below is `systemName`, deliberately not "API Name" — the concept of a
 > stable machine identity is universal; a particular platform's spelling of it is not.
 
-**This specification authorizes no implementation.** It records a scheduled architecture
-gate, its scope, and the sequencing constraint attached to it.
+**Sections 1-13 record the scheduled gate, its scope, and the sequencing constraint.**
+Section 14 records the durable architecture that has since been implemented additively
+under `src/metadata/v2/`, and what it deliberately did not build.
 
 ---
 
@@ -260,3 +261,74 @@ It does not choose an expression syntax, a precision default, a storage layout, 
 migration mechanism. Those are v2's design work. This records the required scope, the
 distinctions that must not be collapsed, and the point in the schedule before which the
 work has to happen.
+
+---
+
+## 14. Implementation — what landed, and what it deliberately did not
+
+The durable contract is implemented under `field-ops-app-vite/src/metadata/v2/`, **additive
+to v1**. v1 remains the current read/query/render contract; v2 becomes the contract when
+compatibility is proven, not when the modules merge.
+
+### 14.1 Modules
+
+| Module | Owns |
+|---|---|
+| `v2/identity.js` | `systemName` validity and derivation, protected names, the four-part record identity, reference-policy seam |
+| `v2/numeric.js` | numeric kinds, the three scales, rounding vocabulary and arithmetic, display formatting |
+| `v2/formula.js` | the closed operator vocabulary, AST validation, dependency extraction, static result typing |
+| `v2/fieldDefinitionV2.js` | field classes, derivation types, behavior contract, queryability, keys, dependency graph, `fromV1()` |
+
+### 14.2 Decisions taken during implementation
+
+**`display` never falls back to `recordId`.** `recordIdentity()` resolves human name, then
+business reference, then **null**. The document id is present on the object for routing and
+relating, and is deliberately absent from the display chain — that fallback is exactly the
+defect corrected on Opportunity (#1099) and Sales Order (#1124).
+
+**`alternateKey` requires `unique`.** Matching on a non-unique field produces ">1 match" on
+ordinary data, which the import contract must reject — so approving it as a key approves a
+guaranteed integrity failure. `unique` alone does **not** imply `alternateKey`: one is a
+data property, the other a governance decision.
+
+**A `ROLLUP` must declare `queryability: AGGREGATE`.** Calling it `VIRTUAL` would invite
+computing it over whatever rows happened to be loaded — the partial-total trap this program
+has now corrected on the Customers portfolio cards and named on inventory analytics.
+
+**A `LOOKUP` and a `ROLLUP` must declare `sourceAuthority`.** Validation fails without it.
+A derived value cannot launder the authority of the data it reads: a viewer who may read
+the Work Order but not the Account's financials must not receive `creditLimit` because the
+Work Order is readable — the same disclosure with one extra step.
+
+**A formula field reference may not contain a dot.** `account.owner.email` is arbitrary
+property traversal in disguise, silently crossing an entity boundary that `LOOKUP` exists
+to make explicit and authority-checked.
+
+**Display formatting returns a string.** `formatForDisplay()` cannot return a number,
+because a rounded figure that can re-enter arithmetic will eventually become the
+authoritative value. A percentage stored as a fraction is multiplied at that boundary and
+nowhere else.
+
+**`displayScale` may be coarser than storage, never finer.** Finer display shows precision
+that was never captured, which reads as accuracy nobody has.
+
+**`fromV1()` records gaps rather than filling them.** `UNKNOWN_MUTABILITY`,
+`UNKNOWN_WRITE_CAPABILITY`, `UNKNOWN_ROUNDING_POLICY` are explicit migration states.
+Defaulting `mutable: true` because most fields are mutable would convert a missing decision
+into a stated one that nobody revisits.
+
+### 14.3 Not built
+
+The bulk-import product, the custom-field administration experience, a unit-conversion
+engine, and any rewrite of the existing `WO-YYYY-######` / `OPP-YYYY-######` numbering.
+Each has its seam and none has its implementation — rewriting working numbering to prove a
+metadata point would risk live business references for no benefit.
+
+### 14.4 Gate status
+
+Of the eleven clearing conditions in §12, this package delivers durable field identity,
+`systemName` semantics, field classes, derived-field types, numeric and rounding semantics,
+dependency rules, authority semantics, queryability distinctions, migration compatibility,
+the custom-field seam, and tests that enforce the architecture. What remains before mass
+definition resumes is **proving compatibility against the two existing definitions** —
+Account and Work Order — which is migration work, not architecture work.
