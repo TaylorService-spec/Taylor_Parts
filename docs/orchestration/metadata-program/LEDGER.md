@@ -17,20 +17,17 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-PAGE-COMPONENT** (phase 5) — Record page React component consuming the composition plan → Executable: the composition planner is on main (cdf79f1b)
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Executable: the composition planner is on main (cdf79f1b) |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | #1132 | a6e3f6ac | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | #1134 | a251f850 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | #1130 | 9e1c0341 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | #1135 | 956d9c40 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | 7e7967fd | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
@@ -54,7 +51,6 @@ continues from the next executable item — without asking what happened.
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | 1cbd170e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | #1112 | a458d881 | abedeff5 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | #1126 | 1121e888 | dafa60df | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
-| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | #1129 | 787b3e21 | f06801f0 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | #1128 | 54dc7a47 | cdf79f1b | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | e6526d85 | 3fdf1ccf | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 58f269e2 | f7c1df5b | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |

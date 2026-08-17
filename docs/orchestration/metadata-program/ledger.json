@@ -1386,19 +1386,18 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGED",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check. LEDGER CORRECTION: this was briefly recorded MERGE_QUEUED with pr 1129, but the gh pr create call had 503'd and no such PR existed. The false claim survived because the command was piped to tail, so the pipeline exit status was tail's success rather than gh's failure, and the chain continued past a failed step. Caught by verifying the claim against GitHub instead of trusting what had just been written - which is the reconcile discipline applied to my own write.",
-      "pr": 1129,
-      "headSha": "787b3e214f34e55f51914f5b676778908f988178",
-      "branch": "feat/index-ci-bridge",
-      "checks": "9/9 coverage tests locally; wired into deployment-drift workflow",
-      "mergeSha": "f06801f0"
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check. LEDGER CORRECTION: this was briefly recorded MERGE_QUEUED with pr 1129, but the gh pr create call had 503'd and no such PR existed. The false claim survived because the command was piped to tail, so the pipeline exit status was tail's success rather than gh's failure, and the chain continued past a failed step. Caught by verifying the claim against GitHub instead of trusting what had just been written - which is the reconcile discipline applied to my own write. CORRECTION: recording this MERGED at f06801f0 was wrong. #1129 merged the TOOL and wired its UNIT TESTS into CI, which proves the tool works but never asks whether this repository's own definitions demand an undeclared index - and only the second check fails when someone adds a filter and forgets the index. #1134 wires the actual gate, and adds a registration-completeness check: a definition authored but never registered was invisible here, which looks identical to a covered one.",
+      "pr": 1134,
+      "headSha": "a251f850854126471da6564b1be8b69b0d7da72c",
+      "branch": "feat/index-coverage-gate",
+      "checks": "9/9 coverage tests locally; wired into deployment-drift workflow"
     },
     {
       "id": "A-PAGE-RENDERER",
@@ -1501,10 +1500,13 @@
       "title": "Record page React component consuming the composition plan",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Executable: the composition planner is on main (cdf79f1b)",
-      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan. BUILT (#1135): thin renderer over the composition plan. Section 6 decisions arrive resolved from the caller and a gated section is never rendered rather than rendered-and-hidden; section 8 components resolve from the registry by id. A page hidden entirely by access says so instead of 'nothing here', and an unregistered component leaves no titled empty shell - a heading over nothing reads as 'this exists and is empty', a different and false claim. Related lists are injected, not imported. 884/884 component tests.",
+      "pr": 1135,
+      "branch": "feat/page-component",
+      "headSha": "956d9c4025d8c65a4862faf9a85de814583efa35"
     },
     {
       "id": "A-LIST-COMPONENT",
