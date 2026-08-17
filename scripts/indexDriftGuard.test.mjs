@@ -93,7 +93,7 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // deployment is a separate authorized action, so account.index's declared filters are
   // a promise the repository keeps and the environment does not yet -- and listing the
   // key here states that gap rather than letting the guard read as drift.
-  'accounts|COLLECTION|status:ASCENDING,relationshipType:ASCENDING,updatedAt:DESCENDING',
+  'accounts|COLLECTION|status:ASCENDING,updatedAt:DESCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That
