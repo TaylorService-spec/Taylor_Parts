@@ -21,6 +21,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
@@ -29,6 +30,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
@@ -55,6 +57,10 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Entity/Field/Relationship contract tests (node:test)
         run: node --test test/metadataEntityDefinition.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: List runtime query core tests (node:test)
+        run: node --test test/metadataListRuntime.test.mjs
         working-directory: field-ops-app-vite
 
       - name: ListViewDefinition contract tests (node:test)
