@@ -72,6 +72,30 @@ test("salesOrderStateTone covers every lifecycle state and fails closed to unkno
   assert.equal(salesOrderStateTone(undefined), "unknown");
 });
 
+// The governed business reference must pass through, and the document id must never be used
+// as a stand-in when it is absent (DECISIONS #106).
+test("salesOrderNumber passes through when present", () => {
+  const view = salesOrderView({
+    result: {
+      status: "ready",
+      salesOrder: { id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [], salesOrderNumber: "SO-2026-000123" },
+    },
+  });
+  assert.equal(view.salesOrderNumber, "SO-2026-000123");
+});
+
+test("salesOrderNumber is honestly null on a legacy Sales Order predating numbering -- never the document id", () => {
+  const view = salesOrderView({
+    result: {
+      status: "ready",
+      salesOrder: { id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [] },
+    },
+  });
+  assert.equal(view.salesOrderNumber, null);
+  assert.notEqual(view.salesOrderNumber, view.id);
+  assert.equal(view.id, "so-doc-id", "the id is still available for routing, just never as a label");
+});
+
 test("an empty lines array yields allLinesFulfilled false, never a false-positive on zero lines", () => {
   const view = salesOrderView({ result: { status: "ready", salesOrder: { id: "SO-3", lines: [] } } });
   assert.equal(view.allLinesFulfilled, false);

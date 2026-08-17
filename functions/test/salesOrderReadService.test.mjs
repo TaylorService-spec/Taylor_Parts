@@ -8,6 +8,7 @@ import { projectSalesOrder } from "../lib/salesOrder/salesOrderReadService.js";
 
 function baseDoc(overrides = {}) {
   return {
+    salesOrderNumber: "SO-2026-000001",
     accountId: "ACCT-1",
     ownerEmployeeId: "EMP-9",
     salesChannel: "RETAIL",
@@ -45,13 +46,20 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
   // would return opportunity.read-governed data through a salesOrder.read-gated callable.
   // The field is identity, not commercial content, and it is what stops the lineage link
   // being labelled with a document id.
+  //
+  // salesOrderNumber grew the allow-list by one more (X-SALES-ORDER-HEADER, DECISIONS #106):
+  // the Sales Order's OWN governed business reference, allocated server-side at creation
+  // (salesOrderNumbering.ts). It is here so the detail page can render the reference instead
+  // of the Firestore document id -- the id (`p.id`) stays available for routing but is never
+  // this projection's stand-in for identity.
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "customerPO", "id", "lines", "locationId", "notes",
-    "ownerEmployeeId", "salesChannel", "serviceWorkOrderIds", "sourceOpportunityId",
+    "ownerEmployeeId", "salesChannel", "salesOrderNumber", "serviceWorkOrderIds", "sourceOpportunityId",
     "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
   ].sort());
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.sourceOpportunityId, "OPP-1");
+  assert.equal(p.salesOrderNumber, "SO-2026-000001");
   assert.equal("createdByUid" in p, false);
   assert.equal("customerName" in p, false);
   assert.equal("internalMargin" in p, false);
@@ -109,4 +117,14 @@ test("projectSalesOrder fails to null on missing id or data", () => {
 test("projectSalesOrder drops non-string entries from serviceWorkOrderIds rather than trusting them", () => {
   const p = projectSalesOrder("SO-7", baseDoc({ serviceWorkOrderIds: ["WO-1", 42, null, "WO-2", ""] }));
   assert.deepEqual(p.serviceWorkOrderIds, ["WO-1", "WO-2"]);
+});
+
+// A Sales Order created before numbering existed never had a salesOrderNumber allocated -- the
+// projection reports that honestly as null. It must never fabricate one and must never fall back
+// to the document id (DECISIONS #106); `p.id` is a separate field, unaffected by this one.
+test("projectSalesOrder reports salesOrderNumber as null for a legacy Sales Order, never falling back to the document id", () => {
+  const p = projectSalesOrder("SO-8", baseDoc({ salesOrderNumber: undefined }));
+  assert.equal(p.salesOrderNumber, null);
+  assert.notEqual(p.salesOrderNumber, p.id);
+  assert.equal(p.id, "SO-8");
 });

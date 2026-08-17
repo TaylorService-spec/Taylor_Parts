@@ -30,8 +30,20 @@ export default function SalesOrderDetail({ actionDeps } = {}) {
       ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} />
       : null;
 
+  // The page title is the governed business reference, never the Firestore document id
+  // (DECISIONS #106: a missing reference is not permission to display a record id). A Sales
+  // Order created before numbering existed has no salesOrderNumber -- that is rendered as an
+  // honest unavailable state, not a fabricated or id-derived one. `view.id` remains available
+  // to the rest of the tree for routing only.
+  const title =
+    view.kind === SALES_ORDER_VIEW_STATE.READY
+      ? view.salesOrderNumber
+        ? `Sales Order ${view.salesOrderNumber}`
+        : "Sales Order — Reference unavailable"
+      : "Sales Order";
+
   return (
-    <WorkspaceShell title={view.kind === SALES_ORDER_VIEW_STATE.READY ? `Sales Order ${view.id}` : "Sales Order"} actions={actions}>
+    <WorkspaceShell title={title} actions={actions}>
       {view.kind === SALES_ORDER_VIEW_STATE.LOADING && <p className="fo-muted">Loading Sales Order…</p>}
       {view.kind === SALES_ORDER_VIEW_STATE.DENIED && (
         <FailureState title="Sales Order unavailable" message="You are not authorized to view this Sales Order." />

@@ -58,6 +58,10 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
   return {
     kind: SALES_ORDER_VIEW_STATE.READY,
     id: so.id,
+    // The governed business reference (SO-YYYY-######), allocated server-side at creation. Null
+    // on Sales Orders that predate numbering -- honestly null. `id` remains available for routing
+    // only; it must never stand in for this as displayed identity (DECISIONS #106).
+    salesOrderNumber: so.salesOrderNumber ?? null,
     accountId: so.accountId,
     sourceOpportunityId: so.sourceOpportunityId,
     // Carried through so the detail page can label the lineage link with a reference

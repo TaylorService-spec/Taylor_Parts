@@ -27,6 +27,7 @@ function readySalesOrder(overrides = {}) {
       status: "ready",
       salesOrder: {
         id: "SO-42",
+        salesOrderNumber: "SO-2026-000042",
         accountId: "ACCT-1",
         sourceOpportunityId: "OPP-7",
         ownerEmployeeId: "EMP-1",
@@ -88,6 +89,7 @@ describe("SalesOrderDetail", () => {
         status: "ready",
         salesOrder: {
           id: "SO-42",
+          salesOrderNumber: "SO-2026-000042",
           accountId: "ACCT-1",
           sourceOpportunityId: "OPP-7",
           sourceOpportunityNumber: "OPP-2026-000007",
@@ -102,7 +104,7 @@ describe("SalesOrderDetail", () => {
       },
     });
     renderAt("SO-42");
-    expect(screen.getByText("Sales Order SO-42")).toBeTruthy();
+    expect(screen.getByText("Sales Order SO-2026-000042")).toBeTruthy();
     expect(screen.getByText("ACCT-1")).toBeTruthy();
     // CHANGED, and the old expectation was the defect (#1099). This asserted the raw
     // sourceOpportunityId was rendered — i.e. it pinned a Firestore document id as the
@@ -115,6 +117,23 @@ describe("SalesOrderDetail", () => {
     expect(screen.getByText("PRT-9")).toBeTruthy();
     expect(screen.getByText("WO-1")).toBeTruthy();
     expect(screen.getByText("WO-2")).toBeTruthy();
+  });
+
+  // DECISIONS #106 -- a missing business reference is NOT permission to display a record id.
+  it("renders the governed salesOrderNumber as the page identity and never the document id", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-abc123", salesOrderNumber: "SO-2026-000042" } }));
+    const client = mockCommandClient();
+    const { container } = renderAt("doc-abc123", { actionDeps: { client } });
+    expect(screen.getByText("Sales Order SO-2026-000042")).toBeTruthy();
+    expect(container.textContent).not.toContain("doc-abc123");
+  });
+
+  it("renders an honest unavailable state for a legacy Sales Order with no salesOrderNumber -- never falls back to the document id", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-legacy-xyz", salesOrderNumber: null } }));
+    const client = mockCommandClient();
+    const { container } = renderAt("doc-legacy-xyz", { actionDeps: { client } });
+    expect(screen.getByText("Sales Order — Reference unavailable")).toBeTruthy();
+    expect(container.textContent).not.toContain("doc-legacy-xyz");
   });
 
   it("labels the lineage link honestly when the Sales Order predates Opportunity identity", () => {
