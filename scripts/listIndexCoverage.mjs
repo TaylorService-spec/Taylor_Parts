@@ -87,7 +87,23 @@ export function reportCoverage({ demands = [], declared = [] } = {}) {
 // and it is still queued behind the grid. Reporting "0 demands, 0 uncovered" is true;
 // reporting nothing at all would let this script look like it was passing when it was
 // merely idle.
-export const REGISTERED_LIST_DEMANDS = Object.freeze([]);
+export const REGISTERED_LIST_DEMANDS = Object.freeze([
+  // account.index (field-ops-app-vite/src/metadata/definitions/account.js).
+  //
+  // Copied rather than imported, for the cross-package reason above. Regenerate with:
+  //   node -e "import('./field-ops-app-vite/src/metadata/definitions/account.js').then(async m => { const lv = await import('./field-ops-app-vite/src/metadata/listViewDefinition.js'); console.log(JSON.stringify(lv.requiredIndexes(m.accountIndexList, m.accountEntity), null, 2)); })"
+  Object.freeze({
+    collectionGroup: "accounts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "relationshipType", order: "ASCENDING" },
+      { fieldPath: "updatedAt", order: "DESCENDING" },
+      { fieldPath: "__name__", order: "ASCENDING" },
+    ]),
+    requiredBy: "account.index",
+  }),
+]);
 
 // ---------------------------------------------------------------------------
 // Registration completeness.
@@ -145,7 +161,9 @@ export function findAuthoredDefinitions(root = FRONTEND_SRC) {
  * Kept as a separate list from the demands themselves so that registering a definition
  * is a deliberate act with a name attached, rather than a side effect of adding a row.
  */
-export const REGISTERED_DEFINITION_SOURCES = Object.freeze([]);
+export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
+  "field-ops-app-vite/src/metadata/definitions/account.js",
+]);
 
 export function findUnregisteredDefinitions(authored, registered = REGISTERED_DEFINITION_SOURCES) {
   const known = new Set(registered);

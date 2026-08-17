@@ -249,6 +249,21 @@ export function validateListViewDefinition(def, entity) {
  * Range/inequality operators are reported alongside so the caller can apply
  * Firestore's own constraint (an inequality must be the first ordered field).
  */
+/**
+ * Sort direction in Firestore's own vocabulary.
+ *
+ * A sort clause says ASC/DESC because that is the metadata vocabulary. A required index
+ * is something a human PASTES INTO firestore.indexes.json, where Firestore accepts only
+ * ASCENDING/DESCENDING -- so emitting the metadata spelling produced a demand that read
+ * correctly, compared unequal against every existing declaration, and would have been
+ * rejected by the deploy if anyone had pasted it. Translating at this boundary keeps one
+ * vocabulary on each side of it.
+ */
+export function firestoreOrder(direction) {
+  if (direction === "DESC" || direction === "DESCENDING") return "DESCENDING";
+  return "ASCENDING";
+}
+
 export function requiredIndexes(def, entity) {
   if (!def || !entity) return [];
   const collection = entity.collection;
@@ -263,8 +278,8 @@ export function requiredIndexes(def, entity) {
   }
 
   const ordered = [
-    ...(def.defaultSort ?? []).map((s) => ({ fieldPath: s.fieldId, order: s.direction })),
-    { fieldPath: def.tiebreaker === "__name__" ? "__name__" : def.tiebreaker, order: "ASC" },
+    ...(def.defaultSort ?? []).map((s) => ({ fieldPath: s.fieldId, order: firestoreOrder(s.direction) })),
+    { fieldPath: def.tiebreaker === "__name__" ? "__name__" : def.tiebreaker, order: firestoreOrder("ASC") },
   ];
 
   // A single-field equality with no explicit ordering needs no composite index —
@@ -277,8 +292,8 @@ export function requiredIndexes(def, entity) {
       collectionGroup: collection,
       queryScope: "COLLECTION",
       fields: Object.freeze([
-        ...equalityFields.map((fieldPath) => ({ fieldPath, order: "ASC" })),
-        ...rangeFields.map((fieldPath) => ({ fieldPath, order: "ASC" })),
+        ...equalityFields.map((fieldPath) => ({ fieldPath, order: firestoreOrder("ASC") })),
+        ...rangeFields.map((fieldPath) => ({ fieldPath, order: firestoreOrder("ASC") })),
         ...ordered,
       ]),
       requiredBy: def.id,
@@ -290,7 +305,9 @@ export function requiredIndexes(def, entity) {
 export function indexKey(index) {
   const fields = (index.fields ?? [])
     .filter((f) => f.fieldPath !== "__name__") // Firestore appends this implicitly
-    .map((f) => `${f.fieldPath}:${f.order ?? f.arrayConfig ?? "ASC"}`)
+    // Normalized, so a declaration written ASCENDING and a demand written ASC are one
+    // index rather than two -- the difference is spelling, not identity.
+    .map((f) => `${f.fieldPath}:${f.arrayConfig ?? firestoreOrder(f.order)}`)
     .join(",");
   return `${index.collectionGroup}|${index.queryScope ?? "COLLECTION"}|${fields}`;
 }

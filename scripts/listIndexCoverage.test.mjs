@@ -15,6 +15,7 @@ import {
   reportCoverage,
   describeIndex,
   REGISTERED_LIST_DEMANDS,
+  readDeclaredIndexes,
   findAuthoredDefinitions,
   findUnregisteredDefinitions,
 } from "./listIndexCoverage.mjs";
@@ -91,16 +92,22 @@ test("reportCoverage separates covered from uncovered rather than returning a bo
   assert.equal(report.uncovered[0].requiredBy, "parts.index");
 });
 
-test("IDLE IS NOT PASSING — no registered definitions reports zero demands, not success", () => {
-  // The failure mode this guards: a check that reports green while checking nothing. The
-  // registry is empty today because no ListViewDefinition has been authored for a real
-  // surface yet, and the script says so explicitly rather than printing a clean result
-  // that reads as coverage.
-  assert.deepEqual(REGISTERED_LIST_DEMANDS, []);
-  const report = reportCoverage({ demands: REGISTERED_LIST_DEMANDS, declared: [declaredMatching] });
+test("IDLE IS NOT PASSING — an empty registry reports zero demands, not success", () => {
+  // The failure mode this guards: a check that reports green while checking nothing.
+  // Stated against an empty registry rather than against the real one, because the real
+  // one is no longer empty — account.index is registered — and a test that asserted
+  // emptiness would have to be deleted the moment the check started doing its job.
+  const report = reportCoverage({ demands: [], declared: [declaredMatching] });
   assert.equal(report.demandCount, 0);
   assert.equal(report.covered, 0, "zero covered, not 'all covered'");
   assert.deepEqual(report.uncovered, []);
+});
+
+test("every registered demand is declared in firestore.indexes.json", () => {
+  // Guards the real tree: this is the assertion that fires when someone adds a filter
+  // to a definition and forgets the index, which is the whole reason the tool exists.
+  const uncovered = findUncoveredDemands(REGISTERED_LIST_DEMANDS, readDeclaredIndexes());
+  assert.deepEqual(uncovered.map((d) => d.requiredBy), []);
 });
 
 test("describeIndex renders a shape a reader can act on without tooling", () => {
