@@ -179,6 +179,10 @@ async function main() {
       internalPartNumber: p.id, stockingUnit: p.stockingUnit,
       controlType: p.controlType, stockingClass: p.stockingClass,
       status: "ACTIVE",
+      // Optimistic-concurrency version. readMeta() REQUIRES an integer >= INITIAL_VERSION, so a
+      // fixture without it is rejected as malformed metadata even when every domain field is
+      // correct -- the second half of the same conformance gap, and just as invisible.
+      version: 1,
       // Legacy compatibility fields, retained deliberately: older read paths still project
       // unitOfMeasure/partTrackingMode, and removing them here would be an unrelated migration.
       // The GOVERNED fields above are authoritative; these are kept in step with them.
