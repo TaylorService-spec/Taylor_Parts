@@ -215,8 +215,8 @@ const FLOW_FIXTURE = [
     source: "test",
     steps: [
       { name: "unmapped step", match: [] },
-      { name: "authorized step", match: ["alpha.thing.read"] },
-      { name: "unauthorized step", match: ["gamma.thing.list"] },
+      { name: "enabled step", match: ["alpha.thing.read"] },
+      { name: "not-enabled step", match: ["gamma.thing.list"] },
     ],
   },
 ];
@@ -230,7 +230,7 @@ test("an UNMAPPED step never closes a chain", () => {
   assert.equal(f.steps[0].coverage, "UNMAPPED");
   assert.equal(f.steps[0].enablement, null);
   assert.equal(f.firstNotEnabledIndex, 2, "the closed gate is the mapped step, not the unmapped one");
-  assert.equal(f.firstNotEnabledAt, "unauthorized step");
+  assert.equal(f.firstNotEnabledAt, "not-enabled step");
 });
 
 test("flow steps report enablement, never authorization", () => {
@@ -248,7 +248,7 @@ test("no enablement is computed without an environment", () => {
 
 test("environment activation can open a gate the catalog leaves closed", () => {
   const [closed] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set());
-  assert.equal(closed.firstNotEnabledAt, "unauthorized step");
+  assert.equal(closed.firstNotEnabledAt, "not-enabled step");
   const [open] = resolveFlows(FLOW_FIXTURE, FLOW_CAPS, new Set(["gamma.thing.list"]));
   assert.equal(open.firstNotEnabledAt, null, "activation is what opens the gate");
 });
