@@ -206,3 +206,106 @@ The desired order is **prevent → detect before commit → reconcile safely →
 Repeated merge-conflict cleanup is not an operating model. If one shared file keeps
 conflicting across lanes, that is evidence it should become a serialized integration
 resource.
+
+---
+
+# Addendum — leaf ownership vs integration
+
+**Owner rule, 2026-08-17.** Governs what the single integration lane may and may not do
+when it consumes accepted leaf work.
+
+> **Leaf lanes own meaning. Integration lanes own convergence.**
+
+## The split
+
+A leaf writer owns the **semantic correctness** of its artifact — the entity's fields,
+identity, relationships, classes, types, authorities and queryability claims. The
+integration lane does **not** become the semantic owner merely because it holds the
+registry, workflow and index files open.
+
+Ownership does not drift to whoever happens to have the shared files checked out.
+
+## What the integrator may change
+
+Mechanical convergence only: add an accepted entity to the registry · register an accepted
+test in a workflow · add a missing `working-directory` · add a path filter · add npm test
+registration · translate an already-declared index demand into a shared declaration · sort
+entries · resolve an append-only conflict without dropping any · normalize syntax the
+shared file requires.
+
+**Every mechanical change preserves the accepted leaf meaning exactly.**
+
+## What the integrator may never change
+
+Field type · `fieldClass` · `systemName` · label semantics · identity/name/reference choice
+· enum vocabulary · numeric or percentage-storage semantics · mutability · provenance
+meaning · read/write authority · `sourceAuthority` · relationship cardinality or direction ·
+derivation type · queryability class · business-reference policy · storage meaning.
+
+**A shared-file conflict does not authorize semantic reinterpretation.**
+
+## When integration exposes a semantic defect
+
+Record the finding, identify the owning leaf, open a focused correction lane in its own
+worktree, preserve integration state, and continue integrating other independent leaves.
+
+**Do not turn the integration lane into a hidden semantic repair branch.** Only the
+affected lane reopens; accepted work elsewhere is never rebuilt.
+
+A narrow exception exists for a clerical error whose intent is already unambiguous from
+repo evidence, requires no business judgement, crosses no protected boundary, changes no
+product meaning, and is recorded in the integration summary with a test pinning the intent.
+A misspelled import path is mechanical. **Changing `NUMBER` to `CURRENCY` is not.** When
+uncertain, route it back.
+
+## Index cost is a product signal, not an integration problem
+
+The leaf declares filter and sort demand; the integrator derives the composite
+declarations, reconciles duplicates and checks Firestore spelling and shape.
+
+The integrator must **not** decide *"this filter is too expensive, remove it"*. Index
+explosion usually exposes a product or architecture question, and that routes back to the
+semantic lane or the controller.
+
+## Verification is two-directional
+
+After integration: every accepted active leaf **is** registered, and every registry entry
+resolves to a real accepted definition. Reject orphan definitions, entries pointing at
+missing files, duplicate systemNames or entity registrations, stale deleted definitions,
+and registration of a leaf still marked unaccepted.
+
+Prefer **set equality** where both sides should match — an omitted or an extra item is a
+defect in both directions.
+
+Conflict resolution on shared registration files is never wholesale *ours*/*theirs*:
+enumerate pre-existing entries, enumerate accepted new entries, produce the union
+deliberately, then assert nothing pre-existing was dropped and nothing accepted was omitted.
+**The resolver validates the outcome, not merely that the file parses.**
+
+## Tests prove the accepted state, not the edit
+
+- Not *"registry.js changed"* — but *"the accepted systemNames resolve through the registry"*.
+- Not *"the workflow mentions the path"* — but *"both suites are path-filtered **and** executed with correct working directories"*.
+- Not *"the indexes file parses"* — but *"every filter combination the accepted definitions demand is covered"*.
+
+## Status honesty
+
+A leaf file existing is not platform integration, and a changed registry file is not
+completed registration. Where the distinction is material, distinguish leaf-implemented,
+registration-pending, integrated and consumed — using existing ledger vocabulary rather
+than inventing states.
+
+## Adjacent defects
+
+Find, record, continue owned scope — never silently expand the branch. The
+`SalesOrderActions` id-as-label finding is the model: discovered by the header lane,
+recorded as its own item, and deliberately left untouched because it sat outside that
+lane's declared scope.
+
+## Legacy provenance is not an integration concern
+
+If leaf work reveals epoch timestamps, missing actor fields, client-claim provenance or
+unknown mutability, those are recorded as semantic and migration findings owned by focused
+lanes. The integration lane does **not** "standardize" legacy storage because Field
+Architecture v2 defines a target state. `systemName` vs `storagePath` exists precisely so
+integration never requires rewriting legacy storage shape.

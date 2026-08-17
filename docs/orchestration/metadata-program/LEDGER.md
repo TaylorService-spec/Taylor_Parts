@@ -39,6 +39,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **A-SHARED-RESOURCE-SERIALIZATION** (phase 6) — Shared-resource ownership in the writer-lane model → Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock
+- **S-INV-EQUIPMENT-DEFINITION** (phase 6) — Equipment entity + list definitions (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING for the integration lane
+- **S-INV-PART-DEFINITION** (phase 6) — Part entity + list definitions (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING for the integration lane
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
 - **X-SALES-ORDER-ACTION-COPY** (phase 6) — SalesOrderActions renders a document id in confirmation copy → Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header
@@ -49,6 +51,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
+| S-INV-PART-DEFINITION | 6 | Part entity + list definitions (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING for the integration lane |
+| S-INV-EQUIPMENT-DEFINITION | 6 | Equipment entity + list definitions (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING for the integration lane |
 
 ## READY
 
@@ -160,6 +164,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
 | A-BULK-DATA-V1 | 7 | Bulk Data Architecture v1 (import + export) | — | — | — | — | — | NOT_APPLICABLE | Design after the query model - an export IS a governed query with a different sink |
 | A-ADMIN-METADATA-CONFIG | 7 | Admin metadata configuration / page designer | — | — | — | — | — | NOT_APPLICABLE | Design after entities are defined - there is nothing to configure until there is metadata to configure |
+| A-METADATA-INTEGRATION-LANE | 6 | Integration lane for Part + Equipment shared registration | — | — | — | — | — | NOT_APPLICABLE | Claim METADATA_REGISTRATION / INDEX_DECLARATIONS / WORKFLOW_METADATA_TESTS and integrate both accepted leaves |
 
 ## EXEMPT
 
