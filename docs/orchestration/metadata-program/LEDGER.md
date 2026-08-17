@@ -24,11 +24,10 @@ table below before concluding the program is finished._
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | 93f0d326 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | 1a73d999 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 1df0c171 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | #1124 | 64e476a1 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | b77e0820 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | ead08eeb | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 58f269e2 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | #1124 | ce827015 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
@@ -46,6 +45,7 @@ table below before concluding the program is finished._
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | 12e64a89 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | #1108 | 82017110 | 5b72c837 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | #1111 | 888ca6fc | 6896888b | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | 1cbd170e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | #1112 | a458d881 | abedeff5 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | e6526d85 | 3fdf1ccf | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 
