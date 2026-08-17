@@ -39,7 +39,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
-- **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
+- **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Writer active. Step 5 of its brief may return a Rules-allowlist BLOCKER rather than a change.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -47,13 +47,13 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
+| X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Writer active. Step 5 of its brief may return a Rules-allowlist BLOCKER rather than a change. |
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
-| X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Determine the actual stored semantics first, then converge future governed writes |
 
 ## MERGED
 
