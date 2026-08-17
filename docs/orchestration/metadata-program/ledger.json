@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main abedeff5 (Gate A contracts, bounded reads, access generator, analytics capability, metadata spec all merged)",
+  "baseline": "origin/main 390d5149 (AR single-read + ledger reconciliation merged)",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -26,9 +26,9 @@
       ],
       "lane": "controller",
       "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does.",
-      "pr": 1101,
+      "pr": 1113,
       "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15",
-      "mergeSha": "dbb51c338309653f671d2c83fc7087ec7e2c0665"
+      "mergeSha": "1f1f1a4d"
     },
     {
       "id": "P0-INV-CRM",
@@ -616,7 +616,7 @@
       ],
       "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration. CONTRACT LANDED as ListViewDefinition. Total sort order is guaranteed twice on purpose: the factory defaults the tiebreaker to documentId() (writing the test revealed the validator rule could never fire through the factory), and the validator keeps its rule for definitions arriving as plain data that never pass through it. There is deliberately NO offset or page-number concept in the vocabulary, and a test asserts that absence. RUNTIME (the component consuming this) is still to build.",
       "pr": 1115,
-      "headSha": "87dcaa49ebd876c24e54d954f23effe5a01d695d",
+      "headSha": "bd7872117dde907eb2ec215a6abd2913b973a94d",
       "branch": "feat/entity-list-metadata-v1",
       "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test"
     },
@@ -632,10 +632,10 @@
       "dependsOn": [],
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "pr": 1118,
-      "headSha": "6d2d80e0925a95eb9f8da9adba8651e438c9c48b",
+      "headSha": "2151a2b4a31555d007a14c1565f0d867b395b604",
       "branch": "feat/page-definition-contract",
-      "checks": "17/17 tests; oxlint + tsc clean",
-      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item."
+      "checks": "21/21 tests incl. the conditional compositionMode rule; oxlint + tsc clean",
+      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'."
     },
     {
       "id": "A-REGISTRIES",
@@ -653,7 +653,7 @@
         "DECISIONS #102 \u00a78"
       ],
       "pr": 1116,
-      "headSha": "d750b01850246f62560f238a759cedd7c6447183",
+      "headSha": "0a39f32f3340289b475c5e1dca931d1e803b4a9a",
       "branch": "feat/metadata-registries",
       "checks": "15/15 tests; oxlint + tsc clean; registered in workflow and npm test",
       "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime."
@@ -669,14 +669,15 @@
       "status": "REVIEW_QUEUED",
       "gate": "GATE_A",
       "dependsOn": [],
-      "nextAction": "Review owed, NOT waited on; program continues",
+      "nextAction": "Closing condition met: the ruling is recorded in the package",
       "governing": [
         "program ruling \u00a74"
       ],
       "pr": 1119,
-      "headSha": "140bd1f7aee39db755942c18876489009c5971cd",
+      "headSha": "bad4c0b0627e02fc757a9a1b05a65d4978e85c90",
       "branch": "docs/gate-a-review-package",
-      "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning."
+      "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning. RULING RECORDED in section 6 of the package, which was Gate A's stated closing condition. The package also keeps its 'what Gate A does not settle' list unchanged, so closure is not read as broader approval - the index CI bridge in particular remains unwired.",
+      "checks": "docs only"
     },
     {
       "id": "G-GATE-B",
@@ -748,15 +749,16 @@
       "title": "One authoritative Account AR read owner",
       "domain": "crm",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1095,
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "Three independent consumers issue the same callable read per page load. FIXED in the hook via in-flight request sharing rather than by hoisting the read into AccountDetail - hoisting would have fixed the request count by destroying the sections' independent mountability, which the page was built for. Deduplication, NOT caching: the entry clears on settle, so a later mount re-reads. Retaining a settled AR balance would be a worse defect than the duplicate requests.",
       "pr": 1114,
       "headSha": "7824cf4f0ae16fd2a3ecadde02a8da41b549538d",
       "branch": "refactor/account-ar-single-read",
-      "checks": "5/5 offline sharing tests; oxlint clean; NOT verified live"
+      "checks": "5/5 offline sharing tests; oxlint clean; NOT verified live",
+      "mergeSha": "390d5149"
     },
     {
       "id": "X-ADMIN-CRM-AUTHORITY",
@@ -1329,7 +1331,7 @@
       "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes.",
       "dependsOn": [],
       "pr": 1117,
-      "headSha": "3f777ce91d7c650fcecb5fc430b7ea3b0958fb3e",
+      "headSha": "6f5f1454883edad09c7d2d9f249745ec06f48bd6",
       "branch": "feat/permission-catalog-generation",
       "checks": "9/9 mirror integrity; 15/15 role parity; 26/26 catalog; both packages typecheck"
     },
@@ -1418,9 +1420,9 @@
       "governing": [
         "Owner disposition 2026-08-17 section 3 - both name and number"
       ],
-      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable. REFERENCE HALF BUILT and deliberately NOT wired - keeping it a pure module means the format stays a one-line change while no data carries it. FORMAT DEVIATION FLAGGED: implemented OPP-YYYY-###### to match WO-YYYY-###### rather than the ruling's illustrative OPP-000123, because the two references sit side by side in the same lineage on Sales Order detail. Cheap to correct now, a migration later.",
+      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable. REFERENCE HALF BUILT and deliberately NOT wired - keeping it a pure module means the format stays a one-line change while no data carries it. FORMAT DEVIATION FLAGGED: implemented OPP-YYYY-###### to match WO-YYYY-###### rather than the ruling's illustrative OPP-000123, because the two references sit side by side in the same lineage on Sales Order detail. Cheap to correct now, a migration later. FORMAT APPROVED: OPP-YYYY-###### confirmed by Owner, consistency with WO-YYYY-###### preferred over two numbering grammars. CI FINDING: the Inventory Transfer Command suite ran on this PR only because the branch edited functions/package.json, which is in that workflow's path filter - not because anything here relates to transfers. The edit was a redundant convenience npm script (the dedicated workflow invokes the test file directly), so it was reverted and the PR no longer triggers four unrelated emulator suites. NOT ESTABLISHED: whether that suite is independently red on main; the GitHub API was returning sustained 503s.",
       "pr": 1120,
-      "headSha": "78720b2032a12868bb45ac6635f5d7da8091203a",
+      "headSha": "e6526d85634ff9d833b2c6489777164cbec51ac2",
       "branch": "feat/opportunity-identity",
       "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow"
     },
@@ -1437,7 +1439,7 @@
       "dependsOn": [
         "D-OPPORTUNITY-IDENTITY"
       ],
-      "nextAction": "After the format is confirmed: allocate on create, project name+reference, render them instead of doc ids",
+      "nextAction": "Format approved; wire once #1120 is merged",
       "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive."
     }
   ]
