@@ -194,6 +194,69 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "salesOrder.index",
   }),
+  // part.index and equipment.index (leaf definitions, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "parts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "internalPartNumber", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "part.index",
+  }),
+  Object.freeze({
+    collectionGroup: "parts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "stockingClass", order: "ASCENDING"},
+      {fieldPath: "internalPartNumber", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "part.index",
+  }),
+  Object.freeze({
+    collectionGroup: "parts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "stockingClass", order: "ASCENDING"},
+      {fieldPath: "internalPartNumber", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "part.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "accountId", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipment.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipment.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "accountId", order: "ASCENDING"},
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipment.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -257,6 +320,8 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/workOrder.js",
   "field-ops-app-vite/src/metadata/definitions/contact.js",
   "field-ops-app-vite/src/metadata/definitions/opportunity.js",
+  "field-ops-app-vite/src/metadata/definitions/part.js",
+  "field-ops-app-vite/src/metadata/definitions/equipment.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
 
