@@ -50,8 +50,16 @@ export default function SalesOrderDetail({ actionDeps } = {}) {
               {
                 key: "opportunity",
                 label: "Originating Opportunity",
+                // Label with the Opportunity's immutable reference, never its document id.
+                // Where a Sales Order predates Opportunity identity there is no reference to
+                // show, so the link reads "Originating opportunity" — a true statement that a
+                // link exists, rather than a database key presented as a name.
                 value: view.sourceOpportunityId
-                  ? <Link to="/customers/opportunities">{view.sourceOpportunityId}</Link>
+                  ? (
+                    <Link to="/customers/opportunities">
+                      {view.sourceOpportunityNumber || "Originating opportunity"}
+                    </Link>
+                  )
                   : "—",
               },
               { key: "state", label: "Lifecycle state", value: <StatusPill tone={view.tone} label={view.state} /> },

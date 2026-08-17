@@ -41,7 +41,7 @@ ok("genuinely succeeded read with zero rows -> kind=empty, distinct from every f
   assert.notEqual(view.kind, "unavailable");
 });
 
-ok("populated ready read -> kind=ready with mapped rows, label falls back to id when need is absent", () => {
+ok("populated ready read -> kind=ready with mapped rows, and identity never falls back to a document id", () => {
   const view = accountOpportunitiesView({
     result: {
       status: "ready",
@@ -56,7 +56,16 @@ ok("populated ready read -> kind=ready with mapped rows, label falls back to id 
   assert.equal(view.kind, ACCOUNT_OPPORTUNITIES_STATE.READY);
   assert.equal(view.rows.length, 2);
   assert.equal(view.rows[0].label, "Replace ice machine");
-  assert.equal(view.rows[1].label, "OPP-2"); // fallback to id, never a blank label
+  // CHANGED, and the old expectation was the defect. This asserted that a row with no
+  // descriptor falls back to its Firestore document id — which is exactly how
+  // `95kFz8WWgiSn2nU2O3Ml` reached a user-facing row label. A database key is not a name:
+  // it cannot be read aloud, searched for, or repeated on a phone call.
+  //
+  // "Unnamed opportunity" tells the reader something TRUE about the record instead of
+  // showing them a key. Where a reference exists it is carried separately and identifies
+  // the record precisely.
+  assert.equal(view.rows[1].label, "Unnamed opportunity");
+  assert.equal(view.rows[1].reference, null, "a legacy record has no reference, and none is invented");
   assert.equal(view.truncated, false);
 });
 
@@ -75,4 +84,45 @@ ok("skipped count is surfaced honestly (not hidden), even on a populated read", 
   assert.equal(view.skipped, 2);
 });
 
+
+ok("identity preference: name, then need, then reference — never the document id", () => {
+  const view = accountOpportunitiesView({
+    loading: false,
+    errorStatus: null,
+    result: {
+      status: "ready",
+      skipped: 0,
+      opportunities: [
+        { id: "docid-a", name: "Harbor Grill — 2 ice machines", need: "Replace ice machine", opportunityNumber: "OPP-2026-000042" },
+        { id: "docid-b", name: null, need: "Replace ice machine", opportunityNumber: "OPP-2026-000043" },
+        { id: "docid-c", name: null, need: null, opportunityNumber: "OPP-2026-000044" },
+        { id: "docid-d", name: null, need: null, opportunityNumber: null },
+      ],
+    },
+  });
+
+  assert.equal(view.rows[0].label, "Harbor Grill — 2 ice machines", "a human name wins");
+  assert.equal(view.rows[1].label, "Replace ice machine", "then the descriptor");
+  assert.equal(view.rows[2].label, "OPP-2026-000044", "then the reference");
+  assert.equal(view.rows[3].label, "Unnamed opportunity", "and never the document id");
+
+  // The guarantee, stated as a property rather than four cases: no document id reaches a label.
+  for (const row of view.rows) {
+    assert.ok(!/^docid-/.test(row.label), `document id leaked into a label: ${row.label}`);
+  }
+});
+
+ok("the reference is carried separately from the label, so a row can show both", () => {
+  const view = accountOpportunitiesView({
+    loading: false,
+    errorStatus: null,
+    result: {
+      status: "ready",
+      skipped: 0,
+      opportunities: [{ id: "docid-a", name: "Harbor Grill — 2 ice machines", opportunityNumber: "OPP-2026-000042" }],
+    },
+  });
+  assert.equal(view.rows[0].label, "Harbor Grill — 2 ice machines");
+  assert.equal(view.rows[0].reference, "OPP-2026-000042");
+});
 console.log(`\n${passed} passed, 0 failed`);

@@ -35,9 +35,20 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
     customerName: "Should Not Copy Co",
     internalMargin: 999,
   }));
+  // The allow-list grew by exactly one, deliberately (#1099), and this assertion failing on
+  // it is the guard WORKING: this projection is minimal by design -- it is the same test
+  // that keeps unitPrice out -- so an addition has to be argued for rather than slide in.
+  //
+  // sourceOpportunityNumber is the originating Opportunity's IMMUTABLE reference, copied
+  // onto the Sales Order at creation by the command that was already authorized to read it.
+  // It is here precisely so this read does NOT have to fetch the Opportunity: doing that
+  // would return opportunity.read-governed data through a salesOrder.read-gated callable.
+  // The field is identity, not commercial content, and it is what stops the lineage link
+  // being labelled with a document id.
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "customerPO", "id", "lines", "locationId", "notes",
-    "ownerEmployeeId", "salesChannel", "serviceWorkOrderIds", "sourceOpportunityId", "state", "updatedAtMillis", "currency",
+    "ownerEmployeeId", "salesChannel", "serviceWorkOrderIds", "sourceOpportunityId",
+    "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
   ].sort());
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.sourceOpportunityId, "OPP-1");
