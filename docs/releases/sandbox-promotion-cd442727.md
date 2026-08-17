@@ -93,3 +93,11 @@ READY proves the live function derives availability from the governed ledger.
 Current main is **DEPLOYED** to sandbox for Hosting/Rules/indexes/fixtures, and the allocation path is
 **USER-VISIBLE** on `cd442727`. Prior inventory E2E results remain bound to the commits they were
 tested against; redeployment alone does not re-verify them.
+
+---
+
+> **SUPERSEDED (2026-08-17):** the "Cloud Functions PARTIALLY PROMOTED" condition recorded above is
+> CLOSED. A subsequent operator deployment from `2ed157c8` (= current main) succeeded across all 14
+> batches, and live verification confirms 82/82 functions present, ACTIVE, v2 · nodejs22, in a single
+> deployment cluster. See
+> [sandbox-functions-promotion-closeout-2026-08-17.md](./sandbox-functions-promotion-closeout-2026-08-17.md).

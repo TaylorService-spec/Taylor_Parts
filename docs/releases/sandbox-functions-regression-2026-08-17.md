@@ -103,3 +103,10 @@ promoting `main` introduces nothing beyond the authorized package.
 
 The recovery command derives function names from `functions/src/index.ts` itself, deploys in batches
 of six with a pause between them, and hard-fails if the checkout is not the intended commit.
+
+---
+
+> **RESOLVED (2026-08-17):** both proven regressions are gone. `getManufacturerCatalog` answers 200 for
+> `partsManager` again, and the allocation probe returns UNKNOWN for a Part with `stock_locations`
+> stock but no governed ledger evidence — proving the ledger authority is restored. Evidence:
+> [sandbox-functions-promotion-closeout-2026-08-17.md](./sandbox-functions-promotion-closeout-2026-08-17.md).
