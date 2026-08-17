@@ -23,9 +23,10 @@
 // existing id, that is recorded as a catalog gap in Spec §26.4, not
 // granted here via a substitute id (see that section for the full list).
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at field-ops-app-vite/src/access/governedBusinessRoles.ts. If
-// either file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
 import { ADMIN_ROLE } from "./compatibilityRoles";
 import { PERMISSION_CATALOG } from "./permissionCatalog";

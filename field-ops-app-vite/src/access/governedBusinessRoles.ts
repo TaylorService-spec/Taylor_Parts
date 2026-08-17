@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- eight
 // governed business Role definitions, added per Owner direction on
 // Issue #226 (two comments dated 2026-07-16, main head
@@ -23,9 +29,10 @@
 // existing id, that is recorded as a catalog gap in Spec §26.4, not
 // granted here via a substitute id (see that section for the full list).
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/governedBusinessRoles.ts. If either
-// file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
 import { ADMIN_ROLE } from "./compatibilityRoles";
 import { PERMISSION_CATALOG } from "./permissionCatalog";

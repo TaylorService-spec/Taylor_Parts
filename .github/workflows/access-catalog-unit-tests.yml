@@ -13,6 +13,12 @@ on:
     paths:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
+      # The GENERATED client half. Without this the sync check does not run on a
+      # change that touches only the generated copy -- which is exactly the edit
+      # the generator exists to prevent, and the one case the guard could not see.
+      - "field-ops-app-vite/src/access/**"
+      - "scripts/syncAccessContracts.mjs"
+      - "functions/test/compactClaimsMirrorIntegrity.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/test/shadowParityHarness.test.mjs"
@@ -25,6 +31,12 @@ on:
     paths:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
+      # The GENERATED client half. Without this the sync check does not run on a
+      # change that touches only the generated copy -- which is exactly the edit
+      # the generator exists to prevent, and the one case the guard could not see.
+      - "field-ops-app-vite/src/access/**"
+      - "scripts/syncAccessContracts.mjs"
+      - "functions/test/compactClaimsMirrorIntegrity.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/test/shadowParityHarness.test.mjs"
@@ -51,6 +63,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: functions/package-lock.json
+
+      # Runs BEFORE the suite and from the repo root: it needs no dependencies, and a
+      # drift failure should be reported as drift rather than surfacing later as a
+      # confusing assertion inside the access tests.
+      - name: Access contract sync (generated copies match canonical)
+        run: node scripts/syncAccessContracts.mjs --check
 
       - name: Install functions dependencies (reproducible)
         run: npm ci

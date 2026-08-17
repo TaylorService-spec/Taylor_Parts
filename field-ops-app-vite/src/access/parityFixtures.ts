@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- parity
 // fixtures for the shadow-mode comparison harness. Fixed by docs/
 // specifications/enterprise-access-and-administration-platform.md §18/
@@ -17,9 +23,10 @@
 //
 // PURE, dependency-free data module.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/parityFixtures.ts. If either file
-// changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Timestamp } from "firebase/firestore";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import type { RoleAssignment } from "../types/access";

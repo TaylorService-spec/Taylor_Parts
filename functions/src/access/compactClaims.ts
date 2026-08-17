@@ -10,9 +10,10 @@
 // are NOT activated in production by this row -- see claimsWriter.ts's
 // own header for the #15-gating this Task explicitly preserves.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at field-ops-app-vite/src/access/compactClaims.ts. If either
-// file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { CompactClaims } from "../types/access";
 
 export class CompactClaimsValidationError extends Error {}
