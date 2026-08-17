@@ -854,9 +854,15 @@
       "route": "/inventory/truck-inventory",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "Truck",
-      "status": "READY",
-      "nextAction": "Resolve the deployment-status contradiction before touching this surface",
-      "notes": "CONTRADICTION: functions/src/index.ts comments say the truck callables are NOT deployed, while config/truckManagementReadiness.js and TRUCK_MANAGEMENT_WRITE_READY true in production say deployed and production-verified. Recorded, not resolved - the repo disagrees with itself and one of the two is stale."
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Owner decision on the production readiness flag before any work on this surface",
+      "notes": "Not flipped unilaterally: a production readiness flag is a protected boundary, and the evidence establishes the claim is unsubstantiated rather than establishing the opposite fact.",
+      "blockers": [
+        {
+          "reason": "PRODUCTION RISK, not just a stale comment. functions/src/index.ts says the truck callables are NOT deployed to the live project, and it is the NEWER of the two sources. config/environments.json sets TRUCK_MANAGEMENT_WRITE_READY true for taylor-parts-production, and truckManagementReadiness.js claims Gate D production verification - but no production-scoped deployment record exists anywhere in docs/releases, the only closeout is explicitly scoped to eos-platform-sandbox and states production was never targeted, and 'Gate D' appears nowhere else in the repository. Net effect: the production UI write path may be enabled against callables that are not deployed there.",
+          "requiredDecision": "Owner confirms whether the truck callables are deployed to taylor-parts, and authorizes correcting TRUCK_MANAGEMENT_WRITE_READY for production if they are not"
+        }
+      ]
     },
     {
       "id": "S-INV-TRANSFERS",
@@ -1068,12 +1074,16 @@
       "title": "Unbounded trusted-callable reads",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "The scale rule is not only a client concern. listOpportunityContext does an unfiltered collection get; getAvailableEquipment filters but never limits; getInventoryAnalytics reads two whole collections AND is gated by a direct role check rather than the capability catalog every sibling read uses. Sibling callables already demonstrate the fix (limit+1, then report truncated or downgrade to unavailable rather than mislabel a partial page ready)."
+      "notes": "Two of three done. Which truncation variant applies is decided by the callable's own status vocabulary, not by preference: where status has no 'unavailable' payload value, truncation is a separate flag; where it does AND the payload carries a derived aggregate, the whole response downgrades. getInventoryAnalytics is the third and is deliberately excluded - see X-INVENTORY-ANALYTICS-CAPABILITY.",
+      "pr": 1107,
+      "headSha": "fb5f933ac896591aefa7b56d50c0abc0af480112",
+      "branch": "fix/bounded-callable-reads",
+      "checks": "tsc --noEmit clean; functions build clean"
     },
     {
       "id": "X-RULES-DISCREPANCY",
@@ -1083,9 +1093,13 @@
       "title": "mobile_locations read path disagrees with Rules",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Confirm directly against firestore.rules before trusting either source",
-      "notes": "truckRegistryQueries.js does a client-direct unbounded getDocs on mobile_locations and its header claims governed admin/dispatcher read access, while two read-service headers describe mobile_locations as having no Rules match block (default deny). One of the two is stale. Read-only confirmation needed; no Rules change is proposed or authorized here."
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "RESOLVED. firestore.rules:1235-1238 DOES grant admin/dispatcher read on mobile_locations and denies all client writes; both rules copies are byte-identical. The client read path was correct and two functions/src comments were stale. Corrected in both mirror copies.",
+      "pr": 1108,
+      "headSha": "820171100485d5025037d167584354b9ea6ba5c2",
+      "branch": "fix/stale-mobile-locations-rules-comments",
+      "checks": "tsc clean; catalog parity + mirror integrity pass"
     },
     {
       "id": "X-WRITE-ONLY-COLLECTIONS",
@@ -1095,9 +1109,9 @@
       "title": "Deny-all collections with no governed read path",
       "domain": "commercial",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Record as a capability gap; not a metadata-program blocker",
-      "notes": "payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are deny-all to clients and have no read callable of any kind - written by trusted writers, readable by nobody. Relevant because a metadata surface over any of them is impossible until a governed read exists."
+      "status": "COMPLETE",
+      "nextAction": "None - recorded as a durable capability gap",
+      "notes": "CONFIRMED EXHAUSTIVELY. payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false, and no exported callable in functions/src reads any of them - only writers exist. part_supplier_items has a pure projection contract that is explicitly NOT activated. A metadata surface over any of these six is impossible until a governed read service is built and activated; that is a capability decision, not a metadata one."
     },
     {
       "id": "S-DASH-OPERATIONS-SCALE",
@@ -1150,6 +1164,28 @@
         "Owner ruling section 10"
       ],
       "notes": "Two gaps: a generic helper called only once, and a CI path filter that omitted the client half of every mirrored module - so the change most likely to cause drift was the one the guard could not see. Directly de-risks PR #1100, which must edit governedBusinessRoles.ts in both copies."
+    },
+    {
+      "id": "X-INVENTORY-ANALYTICS-CAPABILITY",
+      "phase": "3",
+      "wave": "2",
+      "kind": "PROTECTED_ACTION",
+      "title": "getInventoryAnalytics: bounded read + capability-catalog authorization",
+      "domain": "inventory",
+      "entity": "n/a",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Owner/catalog-owner decides the capability id, then implement Variant B bounding",
+      "blockers": [
+        {
+          "reason": "Two coupled decisions. (1) It is the only one of the three unbounded callables needing Variant B, because its netted availableStock would be arithmetically wrong over a partial ledger - the same class of problem as a partial AR summary. (2) It authorizes via a direct role check rather than the capability catalog every sibling read uses, and NO capability id covers it: inventory.transaction.read and warehouse.stockLocation.read each cover one of its two collections. Minting inventory.analytics.read is a catalog registration; requiring two capabilities for one callable would be a new pattern with no precedent here.",
+          "requiredDecision": "Owner authorizes minting inventory.analytics.read (registered active:false per REGISTER != GRANT), or chooses the two-capability alternative"
+        }
+      ],
+      "governing": [
+        "DECISIONS #102 section 9",
+        "boundary section 12 G - authorization model change"
+      ],
+      "notes": "Adopting the fail-closed capability pattern will intentionally deny today's admins and dispatchers until a grant, exactly like every other trusted-read introduction. That is expected, not a regression - but it is an Owner call, and it also means inventoryAnalyticsCallables.test.mjs seedAdmin() must seed a capability grant rather than a raw role. No frontend consumer exists today, so nothing user-facing breaks either way."
     }
   ]
 }
