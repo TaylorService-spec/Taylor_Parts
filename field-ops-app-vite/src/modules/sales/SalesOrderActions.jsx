@@ -30,6 +30,11 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
   const serviceAllowed = canCreateService(view.state, { serviceWorkOrderIds: view.serviceWorkOrderIds });
   const nextState = nextAdvanceState(view.state);
 
+  // Dialog copy must use the governed business reference, never the Firestore document id
+  // (DECISIONS #106: a missing reference is not permission to display a record id). This matches
+  // the honest-unavailable fallback SalesOrderDetail.jsx already uses for the page title.
+  const orderLabel = view.salesOrderNumber ? `Sales Order ${view.salesOrderNumber}` : "Sales Order — Reference unavailable";
+
   function closeDialog(transitionToDiscard) {
     if (transitionToDiscard) discardTransitionIntent(transitionToDiscard);
     setOpenDialog(null);
@@ -78,7 +83,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ADVANCE" && (
         <ConfirmDialog
           title="Advance Sales Order"
-          consequence={`This moves Sales Order ${view.id} from ${view.state} to ${nextState}.`}
+          consequence={`This moves ${orderLabel} from ${view.state} to ${nextState}.`}
           confirmLabel="Advance"
           onConfirm={async () => {
             await runTransition("ADVANCE");
@@ -92,7 +97,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "CANCEL" && (
         <ConfirmDialog
           title="Cancel Sales Order"
-          consequence={`This cancels Sales Order ${view.id}. It cannot be resumed from here.`}
+          consequence={`This cancels ${orderLabel}. It cannot be resumed from here.`}
           confirmLabel="Confirm cancel"
           cancelLabel="Keep order"
           onConfirm={async () => {
@@ -107,7 +112,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ALLOCATE" && (
         <ConfirmDialog
           title="Allocate Sales Order"
-          consequence={`This computes and records current availability against Sales Order ${view.id}'s lines. It does not change pricing or quote terms.`}
+          consequence={`This computes and records current availability against ${orderLabel}'s lines. It does not change pricing or quote terms.`}
           confirmLabel="Confirm allocate"
           onConfirm={async () => {
             await runAllocate();
@@ -121,7 +126,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "SERVICE" && (
         <ConfirmDialog
           title="Create Service"
-          consequence={`This creates a Work Order to fulfill Sales Order ${view.id}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
+          consequence={`This creates a Work Order to fulfill ${orderLabel}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
           confirmLabel="Confirm create Service"
           onConfirm={async () => {
             await runCreateService();
