@@ -1780,12 +1780,14 @@
       "title": "Contact write paths do not agree on provenance",
       "domain": "crm",
       "entity": "Contact",
-      "status": "READY",
-      "nextAction": "Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy",
+      "status": "MERGED",
+      "nextAction": "Future writes converged. Historical backfill remains a separate decision requiring evidence.",
       "governing": [
         "Owner architecture addendum section 1"
       ],
-      "notes": "Found while defining the Contact entity. createContact writes NEITHER timestamp; the CSV importer writes createdAt/updatedAt and no actor; only the sandbox seed writes createdBy/updatedBy. The provenance invariant says every durable business record carries createdAt/createdBy, and contacts are durable business records. The metadata definition deliberately does NOT declare the fields, because declaring them would assert data absent from most existing documents - the remediation is a write-path change plus a backfill decision, not a metadata claim. Backfilling historical documents is a data question and may be protected."
+      "notes": "Found while defining the Contact entity. createContact writes NEITHER timestamp; the CSV importer writes createdAt/updatedAt and no actor; only the sandbox seed writes createdBy/updatedBy. The provenance invariant says every durable business record carries createdAt/createdBy, and contacts are durable business records. The metadata definition deliberately does NOT declare the fields, because declaring them would assert data absent from most existing documents - the remediation is a write-path change plus a backfill decision, not a metadata claim. Backfilling historical documents is a data question and may be protected. FUTURE-WRITE CONVERGENCE MERGED (#1157, c97694a7): all three paths now write the four fields, and updateContact never rewrites createdAt/createdBy. Reuses the existing auth.currentUser actor pattern rather than inventing a resolution path. HONEST ABOUT WHAT IT IS NOT: Contact writes are client-direct, so these values are client-supplied CLAIMS rather than server-authoritative provenance - any caller able to write a Contact can write them. The change converges the SHAPE, not the trust model; making them authoritative means moving Contact writes behind a trusted command, which is a separate unauthorized decision. No historical rows were touched. Also closed a gap found in passing: contacts.js and contactImport.js had NO CI coverage at all.",
+      "pr": 1157,
+      "mergeSha": "c97694a7"
     },
     {
       "id": "X-SALES-ORDER-NO-REFERENCE",
@@ -1795,13 +1797,13 @@
       "title": "Sales Order has no business reference; its header renders a document id",
       "domain": "sales",
       "entity": "SalesOrder",
-      "status": "READY",
-      "nextAction": "Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling",
+      "status": "IMPLEMENTING",
+      "nextAction": "Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling.",
       "governing": [
         "DECISIONS #102",
         "Owner architecture addendum section 3"
       ],
-      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id. RESOLVED AT PRODUCT LEVEL (Owner ruling 2026-08-17): the document-id-as-label pattern is NOT accepted. Sales Order gets a real immutable business reference, SO-YYYY-######, joining the approved family beside WO- and OPP-. salesOrderNumber is STANDARD/STRING/immutable/unique; alternateKey is evaluated separately rather than assumed from uniqueness. Generation is server-authoritative and concurrency-safe, never derived from the document id and never inferred from the Opportunity, Account or Work Order - the Sales Order has its own identity. LEGACY RECORDS FAIL HONESTLY: a record without a number renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id."
+      "notes": "Found while scouting Sales Order for definition. The entity cannot declare a referenceField because none is stored, and declaring nameField would be worse - there is no name either. Until this is decided the Sales Order definition would have to declare an identity of NEITHER kind, which is exactly the condition that licenses a surface to fall back to the document id. RESOLVED AT PRODUCT LEVEL (Owner ruling 2026-08-17): the document-id-as-label pattern is NOT accepted. Sales Order gets a real immutable business reference, SO-YYYY-######, joining the approved family beside WO- and OPP-. salesOrderNumber is STANDARD/STRING/immutable/unique; alternateKey is evaluated separately rather than assumed from uniqueness. Generation is server-authoritative and concurrency-safe, never derived from the document id and never inferred from the Opportunity, Account or Work Order - the Sales Order has its own identity. LEGACY RECORDS FAIL HONESTLY: a record without a number renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. NUMBERING MERGED (#1156, 0f797a01): salesOrderNumber is allocated inside the caller's transaction on BOTH creation paths, from a per-year counter distinct from the opportunity and work-order counters so the sequences never interact. Server-authoritative by construction - the pure builder never carries the field, so there is nothing for a client value to override - and immutable by construction rather than by a runtime guard, verified by confirming no transition or update path writes it. Deliberately mirrors opportunityNumbering.ts rather than reinventing the concurrency story."
     },
     {
       "id": "X-SALES-ORDER-NUMBER-BACKFILL",
@@ -1839,6 +1841,39 @@
         "Owner Sales Order identity ruling section 12"
       ],
       "notes": "Found while scouting Equipment for definition. The equipment collection carries createdAt/updatedAt as NUMBERS (epoch millis, per the Rules type check) and has NO createdBy/updatedBy at all - unlike parts and equipment_models, which carry the full four as Firestore Timestamps. Two rules apply. First, determine the actual stored semantics before presenting anything: reinterpreting an epoch number as a Timestamp to match the standard presentation would misread the data rather than describe it. Second, if legacy storage must stay compatible, that is exactly what the systemName/storagePath separation is for - the standard vocabulary keeps its names and the mapping absorbs the difference. Historical actor backfill requires evidence; UNKNOWN is preferable to an invented actor."
+    },
+    {
+      "id": "X-SALES-ORDER-HEADER",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "SalesOrderDetail header renders a document id",
+      "domain": "sales",
+      "entity": "SalesOrder",
+      "route": "/customers/opportunities/sales-order/:salesOrderId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "READY",
+      "nextAction": "Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state",
+      "governing": [
+        "Owner Sales Order identity ruling sections 4-5",
+        "DECISIONS #106"
+      ],
+      "notes": "The numbering exists on main now, so this is unblocked. A record WITHOUT a number must not fabricate one client-side and must not fall back to the document id - it renders a neutral reference-unavailable state, because a missing business reference is not permission to display a record id. The internal recordId stays available for routing and authorized admin/bulk identity; it is simply not ordinary user-facing identity."
+    },
+    {
+      "id": "S-CRM-SALES-ORDER-DEFINITION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Sales Order entity + list definitions",
+      "domain": "sales",
+      "entity": "SalesOrder",
+      "status": "READY",
+      "nextAction": "Author with identity.referenceField = salesOrderNumber; declare NO nameField",
+      "governing": [
+        "Owner Sales Order identity ruling section 8"
+      ],
+      "notes": "Unblocked by the numbering. The entity declares referenceField salesOrderNumber and NO nameField - a Sales Order does not need a human-entered name when its business reference is legitimate identity, and adding a fake nameField purely to satisfy a validator would be defeating the check rather than satisfying it. Scouted facts to describe rather than idealize: sales_orders is deny-all in Rules and read only through governed callables (salesOrder.read, registered active:false); lines are an EMBEDDED array, not a subcollection; currency is a free-form string hardcoded to USD with no minor-unit amount stored anywhere; line unitPrice is an optional float DELIBERATELY excluded from the read projection (#991 - no pricing policy on this surface), so the definition must not declare a column the projection refuses to return."
     }
   ]
 }
