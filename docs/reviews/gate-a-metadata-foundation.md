@@ -1,7 +1,7 @@
 ---
 artifact_type: architecture-review
 gate: Gate A — Metadata Foundation
-status: REVIEW-QUEUED
+status: RULED — closing conditions applied
 date: 2026-08-17
 owner: Claude Code
 depends_on: [docs/governance/metadata-architecture-ip-boundary.md, docs/specifications/metadata-architecture.md]
@@ -10,9 +10,10 @@ related_issue: 1096
 
 # Gate A — Metadata Foundation Review Package
 
-**REVIEW-QUEUED, not waiting.** Per the Owner's continuous-execution ruling, a material
-architecture gate does not halt the program: the package is assembled, the decisions are
-recorded, and work continues. Nothing here asks for a reply before the next slice starts.
+**RULED.** This package was assembled REVIEW-QUEUED and the program continued past it, per
+the continuous-execution ruling. The Owner has since ruled on the question it raised
+(2026-08-17 §3–§7), and the resulting architecture is recorded in §7 below. Gate A's
+closing condition — that the ruling be reflected here — is met by this revision.
 
 **What review is actually for.** Everything below is repo-only and reversible. The
 question is not "may this merge" — it is **whether the spine is right before ~30 surfaces
@@ -92,10 +93,10 @@ program is most likely to suffer is not a security lapse — it is arriving at a
 record page that turned an operations platform into CRUD screens, and passing every check
 on the way.** Naming the kinds is what makes that detectable.
 
-`assessOperationalComposition()` is deliberately **not** a validation rule: an Account
-genuinely is record-shaped, and forcing `LIFECYCLE` onto it would be cargo-culting the
-check. It requires **two** operational sections, because one metric bolted onto a form is
-the shape that looks operational in a screenshot and is not.
+**This was the question Gate A raised, and it has been answered — see §7.** Naming the
+kinds proved insufficient on its own: a Work Order page of fields and related lists still
+validated. The resolution is a declared `compositionMode` with a conditional rule, not a
+universal one.
 
 ## 3. Where the boundary is enforced structurally
 
@@ -126,13 +127,68 @@ Stated so review is not mistaken for broader approval:
   the standard boundary §14 sets: *if the architecture only works well for CRM records,
   it is not yet an EOS metadata architecture.*
 
-## 6. The question for review
+## 6. What Gate A does not settle — still true
 
-Not "is this good code." It is:
+Unchanged by the ruling, and stated so closure is not read as broader approval:
 
-> **Is this spine right, before roughly thirty surfaces are built on it — and is §2.5 a
-> sufficient defense against the CRUD-screens failure, or does that need to be a
-> validation rule rather than an assessment?**
+- **No runtime exists.** No list renders, no page composes. Contracts only.
+- **The index CI bridge is not wired.** `requiredIndexes()` exists and is tested; nothing
+  calls it, so §2.3's rule is enforced today only for definitions someone checked by hand.
+- **Nothing populates the registries.**
+- **Gate B has not run.**
 
-The second half is the one I am least certain about, and it is the decision most expensive
-to reverse later.
+## 7. RULING — page composition classification (Owner, 2026-08-17 §3–§7)
+
+Gate A asked whether naming operational section kinds was a sufficient defense against
+the CRUD-screens failure, or whether it needed to be a validation rule. The answer was
+**neither, as posed**: naming is insufficient, and a universal rule is wrong.
+
+### 7.1 What was adopted
+
+A page **declares** what it is, and validation enforces that declaration:
+
+```
+compositionMode: RECORD | OPERATIONAL | ANALYTIC | CONFIGURATION
+```
+
+An `OPERATIONAL` page must carry at least **two distinct** operational section kinds from
+the governed set (`LIFECYCLE`, `READINESS`, `BLOCKERS`, `NEXT_ACTIONS`, `ATTENTION`,
+`CUSTODY`). A page of `FIELD_GROUP` and `RELATED_LIST` sections **cannot** validate as
+`OPERATIONAL`.
+
+The CRUD failure is now a build error rather than a judgement call.
+
+### 7.2 Why conditional and not universal
+
+Because a universal rule would have produced the failure it was meant to prevent. An
+Account is genuinely record-shaped; requiring it to carry a `LIFECYCLE` section to pass
+validation would yield hollow operational theatre — sections present to satisfy a
+validator rather than because they mean anything.
+
+**The validator enforces the contract a page declares. It does not decide that every
+entity in EOS is operational.**
+
+### 7.3 The three levels, which are easy to conflate
+
+| Level | Answers | Can it be automated? |
+|---|---|---|
+| Validation | Does this page meet the minimum for what it *claims to be*? | Yes — and now is |
+| Assessment | What operational quality does it exhibit beyond that minimum? | Partly — diagnostic only |
+| **Gate B** | Is the resulting Work Order experience genuinely operation-centric? | **No** |
+
+`assessOperationalComposition()` is retained with its role changed: diagnostics, not
+enforcement. Per §6 of the ruling, no attempt is made to encode UX quality into
+validation — such rules end up either trivially satisfiable or simply wrong.
+
+### 7.4 What this deliberately does not prove
+
+**Passing validation does not mean a Work Order page is good.** Two operational sections
+can be two bad ones. Validation prevents architectural regression; **Gate B judges product
+quality**, and remains the real semantic test of whether Work Order composition expresses
+lifecycle, readiness, blockers, next work, operational relationships and governed actions
+as a coherent operating experience.
+
+That distinction is the most important thing this ruling establishes, because a mechanical
+check that people mistake for a quality bar is worse than no check — it converts
+"is this good?" into "did it pass?", which is exactly how a platform becomes compliant and
+hollow.
