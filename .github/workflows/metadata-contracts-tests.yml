@@ -21,6 +21,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -32,6 +33,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -61,6 +63,10 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Entity/Field/Relationship contract tests (node:test)
         run: node --test test/metadataEntityDefinition.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: List presentation model tests (node:test)
+        run: node --test test/metadataListPresentation.test.mjs
         working-directory: field-ops-app-vite
 
       - name: List runtime query core tests (node:test)
