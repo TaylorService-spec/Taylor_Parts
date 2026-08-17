@@ -1494,12 +1494,14 @@
       "title": "Record page React component consuming the composition plan",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "IMPLEMENTING",
       "dependsOn": [
         "A-PAGE-RENDERER"
       ],
-      "nextAction": "Build after the composition planner is on main",
-      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
+      "nextAction": "Open the PR: work is committed and pushed, but the GitHub GraphQL API is returning 503 to every pr create. Retry; do NOT record a PR number until one exists.",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. Component + 9 vitest tests built and green (884/884 component suite, oxlint clean), registered in metadata-contracts-tests.yml. Deliberately NOT recorded as MERGE_QUEUED: that status asserts an open PR, and asserting one the API never created is exactly the false claim this ledger exists to prevent.",
+      "branch": "feat/page-component",
+      "headSha": "b49a7b8f"
     }
   ]
 }

@@ -20,6 +20,12 @@ continues from the next executable item — without asking what happened.
 _Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
 table below before concluding the program is finished._
 
+## IMPLEMENTING
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | b49a7b8f | — | NOT_APPLICABLE | Open the PR: work is committed and pushed, but the GitHub GraphQL API is returning 503 to every pr create. Retry; do NOT record a PR number until one exists. |
+
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
@@ -108,7 +114,6 @@ table below before concluding the program is finished._
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | — | — | NOT_APPLICABLE | Build after the query core is on main |
-| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Build after the composition planner is on main |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
