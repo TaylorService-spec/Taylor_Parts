@@ -17,15 +17,17 @@
       "title": "Program execution ledger + resumption model",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
-      "nextAction": "Open PR; ledger becomes the resumption authority",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work",
       "branch": "feat/metadata-program-ledger",
-      "checks": "25/25 model tests pass locally",
+      "checks": "build x2 + gitleaks green; 25/25 model tests",
       "governing": [
         "program ruling \u00a72 durable resumption"
       ],
       "lane": "controller",
-      "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does."
+      "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does.",
+      "pr": 1101,
+      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15"
     },
     {
       "id": "P0-INV-CRM",

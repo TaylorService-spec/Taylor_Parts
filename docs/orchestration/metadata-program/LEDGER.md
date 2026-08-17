@@ -17,7 +17,6 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **P0-LEDGER** (phase 0) — Program execution ledger + resumption model → Open PR; ledger becomes the resumption authority
 - **X-RULES-DISCREPANCY** (phase 0) — mobile_locations read path disagrees with Rules → Confirm directly against firestore.rules before trusting either source
 - **X-WRITE-ONLY-COLLECTIONS** (phase 0) — Deny-all collections with no governed read path → Record as a capability gap; not a metadata-program blocker
 - **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Implement generated mirror plus parity CI; close the two untested mirror pairs
@@ -27,12 +26,7 @@ continues from the next executable item — without asking what happened.
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
-
-## IMPLEMENTING
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | — | — | — | NOT_APPLICABLE | Open PR; ledger becomes the resumption authority |
+- **S-DASH-OPERATIONS** (phase 9) — Inventory & Supply Overview → Bounded-read remediation
 
 ## READY
 
@@ -57,6 +51,12 @@ continues from the next executable item — without asking what happened.
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | — | — | — | NOT_APPLICABLE | Confirm directly against firestore.rules before trusting either source |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | Record as a capability gap; not a metadata-program blocker |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
+
+## MERGE_QUEUED
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work |
 
 ## BLOCKED_PROTECTED
 
