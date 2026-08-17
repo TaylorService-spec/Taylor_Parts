@@ -8,7 +8,7 @@
   "currentWork": "governed children incomplete — parent cannot complete on a partial set",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-17T00:35:35.411Z",
+  "updatedAt": "2026-08-17T00:55:13.937Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "costToDateUsd": 0,
@@ -23,5 +23,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-864.status.json",
-  "sha256": "039667ab1908c5d5b2780f97b1d3bf9d4671d16cc1680a3f66953dc8528f2606"
+  "sha256": "74aab650a06debc352f19ce9752068e2a060153cb7e34cc0b3a8bcc039df4c34"
 }
