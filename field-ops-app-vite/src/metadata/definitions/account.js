@@ -73,11 +73,11 @@ export const accountEntity = makeEntityDefinition({
     // A filter on the singular name would have queried a field that does not exist and
     // returned an empty page that looked like an honest answer.
     //
-    // Renderable, but NO operator is claimed. The honest query is array-contains beside
-    // an ordering, and Firestore serves that only from a composite index whose shape
-    // depends on which OTHER filters are active — a query the current index derivation
-    // does not yet model, since it emits one combined index rather than one per filter
-    // combination. Claiming the filter before that exists is the promise §9 forbids.
+    // Filterable by array-contains, now that the index derivation models filter
+    // COMBINATIONS and emits arrayConfig for array operators. It was deferred until it
+    // could be declared honestly: the old derivation emitted one combined index, which
+    // would have left the relationship-only query with no index and failing in front of
+    // a user while CI stayed green.
     makeFieldDefinition({
       id: "relationshipTypes",
       entityId: "account",
@@ -85,7 +85,12 @@ export const accountEntity = makeEntityDefinition({
       type: "ENUM_SET",
       enumValues: Object.values(ACCOUNT_RELATIONSHIP_TYPE),
       enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor" },
-      description: "Multi-valued: an account can be both. Filtering is deferred until the index derivation models filter combinations.",
+      filterable: true,
+      // ARRAY_CONTAINS only. array-contains-any would let a caller pass an arbitrary set,
+      // and Firestore permits one array filter per query — declaring both invites a
+      // combination no declared index serves.
+      operators: ["ARRAY_CONTAINS"],
+      description: "Multi-valued: an account can be both a customer and a vendor.",
     }),
     makeFieldDefinition({
       id: "updatedAt",
@@ -122,6 +127,7 @@ export const accountIndexList = makeListViewDefinition({
   ],
   filters: [
     makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
+    makeFilter({ fieldId: "relationshipTypes", operators: ["ARRAY_CONTAINS"] }),
   ],
   // Most-recently-touched first is the ordering that makes a first page useful when the
   // set is larger than anyone will scroll. Name-ascending is available as a sort but is

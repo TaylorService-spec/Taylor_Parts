@@ -96,9 +96,30 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     collectionGroup: "accounts",
     queryScope: "COLLECTION",
     fields: Object.freeze([
-      { fieldPath: "status", order: "ASCENDING" },
-      { fieldPath: "updatedAt", order: "DESCENDING" },
-      { fieldPath: "__name__", order: "ASCENDING" },
+      {fieldPath: "relationshipTypes", arrayConfig: "CONTAINS"},
+      {fieldPath: "updatedAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "account.index",
+  }),
+  Object.freeze({
+    collectionGroup: "accounts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "updatedAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "account.index",
+  }),
+  Object.freeze({
+    collectionGroup: "accounts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "relationshipTypes", arrayConfig: "CONTAINS"},
+      {fieldPath: "updatedAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
     ]),
     requiredBy: "account.index",
   }),

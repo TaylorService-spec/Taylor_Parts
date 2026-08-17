@@ -201,6 +201,15 @@ export function validateListViewDefinition(def, entity) {
     problems.push(`${at}: tiebreaker "${def.tiebreaker}" also appears in defaultSort — it cannot break its own tie`);
   }
 
+  if ((def?.filters ?? []).length > MAX_DECLARED_FILTERS) {
+    // Exponential in the optional filters: five already means dozens of composites, which
+    // nobody reviews and Firestore charges for. A list needing that many filters wants a
+    // search index, not a bigger pile of composites.
+    problems.push(
+      `${at}: declares ${def.filters.length} filters; more than ${MAX_DECLARED_FILTERS} makes the required index set unreviewable`
+    );
+  }
+
   // Bounded reads.
   if (!Number.isInteger(def.pageSize) || def.pageSize <= 0) {
     problems.push(`${at}: pageSize must be a positive integer`);
@@ -240,16 +249,6 @@ export function validateListViewDefinition(def, entity) {
 }
 
 /**
- * The composite indexes a definition demands.
- *
- * Firestore needs one per equality-filter set + ordered fields. This derives them so
- * CI can prove firestore.indexes.json actually covers what the metadata promises,
- * rather than discovering the gap as a failed query in front of a user.
- *
- * Range/inequality operators are reported alongside so the caller can apply
- * Firestore's own constraint (an inequality must be the first ordered field).
- */
-/**
  * Sort direction in Firestore's own vocabulary.
  *
  * A sort clause says ASC/DESC because that is the metadata vocabulary. A required index
@@ -264,41 +263,113 @@ export function firestoreOrder(direction) {
   return "ASCENDING";
 }
 
+/** More than this many optional filters and the index set stops being reviewable. */
+export const MAX_DECLARED_FILTERS = 4;
+
+const RANGE_OPERATORS = ["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL"];
+const ARRAY_OPERATORS = ["ARRAY_CONTAINS", "ARRAY_CONTAINS_ANY"];
+
+const classify = (filter) => {
+  const ops = filter.operators ?? [];
+  if (ops.some((o) => ARRAY_OPERATORS.includes(o))) return "ARRAY";
+  if (ops.some((o) => RANGE_OPERATORS.includes(o))) return "RANGE";
+  return "EQUALITY";
+};
+
+/** Every subset of a list, declaration order preserved. */
+function subsets(items) {
+  return items.reduce((acc, item) => [...acc, ...acc.map((set) => [...set, item])], [[]]);
+}
+
+/**
+ * The composite indexes a definition demands.
+ *
+ * ONE INDEX PER FILTER COMBINATION, NOT ONE PER DEFINITION. This used to emit a single
+ * index containing every declared filter plus the sort, which reads as thorough and is
+ * wrong: Firestore will not serve a query filtering on a SUBSET from that index. A list
+ * declaring status and relationshipTypes, both optional, can be queried four ways —
+ * neither, either, both — and three of those need their own index. The old derivation
+ * therefore let CI pass while two of the three real queries would fail in front of a
+ * user, which is the exact failure the coverage gate exists to prevent.
+ *
+ * A filter marked `required` is in every query, so it is in every index rather than
+ * doubling the set.
+ *
+ * ARRAY FILTERS USE arrayConfig, NOT order. `array-contains` is not an ascending scan,
+ * and an index declaring it as one is rejected by the deploy. Firestore permits at most
+ * one array filter per query, so each array filter produces its own family rather than
+ * combining with the others.
+ *
+ * The count is exponential in the number of optional filters, which is why
+ * MAX_DECLARED_FILTERS exists: past four, nobody can review the index list, and a
+ * definition that needs that many filters wants a search index rather than composites.
+ */
 export function requiredIndexes(def, entity) {
   if (!def || !entity) return [];
   const collection = entity.collection;
   if (!collection) return []; // CALLABLE-read entities are the server's problem, not an index's
 
-  const equalityFields = [];
-  const rangeFields = [];
-  for (const f of def.filters ?? []) {
-    const ops = f.operators ?? [];
-    const isRange = ops.some((o) => ["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL"].includes(o));
-    (isRange ? rangeFields : equalityFields).push(f.fieldId);
-  }
+  const filters = def.filters ?? [];
+  const equality = filters.filter((f) => classify(f) === "EQUALITY");
+  const ranges = filters.filter((f) => classify(f) === "RANGE");
+  const arrays = filters.filter((f) => classify(f) === "ARRAY");
 
   const ordered = [
     ...(def.defaultSort ?? []).map((s) => ({ fieldPath: s.fieldId, order: firestoreOrder(s.direction) })),
     { fieldPath: def.tiebreaker === "__name__" ? "__name__" : def.tiebreaker, order: firestoreOrder("ASC") },
   ];
 
-  // A single-field equality with no explicit ordering needs no composite index —
-  // Firestore's automatic single-field indexes cover it. Reporting one anyway would
-  // train people to ignore the output.
-  if (equalityFields.length === 0 && rangeFields.length === 0 && (def.defaultSort ?? []).length === 0) return [];
+  // Nothing filtered and nothing ordered needs no composite — Firestore's automatic
+  // single-field indexes cover it, and reporting one anyway trains people to ignore the
+  // output.
+  if (filters.length === 0 && (def.defaultSort ?? []).length === 0) return [];
 
-  return [
-    Object.freeze({
-      collectionGroup: collection,
-      queryScope: "COLLECTION",
-      fields: Object.freeze([
-        ...equalityFields.map((fieldPath) => ({ fieldPath, order: firestoreOrder("ASC") })),
-        ...rangeFields.map((fieldPath) => ({ fieldPath, order: firestoreOrder("ASC") })),
-        ...ordered,
-      ]),
-      requiredBy: def.id,
-    }),
-  ];
+  const alwaysEquality = equality.filter((f) => f.required);
+  const optionalEquality = equality.filter((f) => !f.required);
+  const alwaysRange = ranges.filter((f) => f.required);
+  const optionalRange = ranges.filter((f) => !f.required);
+
+  // An array filter is optional unless declared required; `null` is the no-array case.
+  const arrayChoices = arrays.some((f) => f.required) ? arrays : [null, ...arrays];
+
+  const indexes = [];
+  const seen = new Set();
+  for (const eqSubset of subsets(optionalEquality)) {
+    for (const rangeSubset of subsets(optionalRange)) {
+      for (const arrayFilter of arrayChoices) {
+        const eqFields = [...alwaysEquality, ...eqSubset];
+        const rangeFields = [...alwaysRange, ...rangeSubset];
+        // The unfiltered query is served by the sort alone; it still needs its index when
+        // the sort is composite, and `ordered` always carries the tiebreaker.
+        const fields = [
+          ...eqFields.map((f) => ({ fieldPath: f.fieldId, order: firestoreOrder("ASC") })),
+          // Firestore's own ordering constraint: equality, then the array filter, then
+          // inequalities, then the ordered fields.
+          ...(arrayFilter ? [{ fieldPath: arrayFilter.fieldId, arrayConfig: "CONTAINS" }] : []),
+          ...rangeFields.map((f) => ({ fieldPath: f.fieldId, order: firestoreOrder("ASC") })),
+          ...ordered,
+        ];
+        const candidate = Object.freeze({
+          collectionGroup: collection,
+          queryScope: "COLLECTION",
+          fields: Object.freeze(fields),
+          requiredBy: def.id,
+        });
+        // The unfiltered, single-field-ordered query is served by Firestore's AUTOMATIC
+        // single-field index — the documentId tiebreaker is implicit there. Demanding a
+        // composite for it would force a redundant declaration and, worse, train people
+        // to ignore a gate that reports indexes nobody needs.
+        const realSortFields = (def.defaultSort ?? []).length;
+        if (eqFields.length === 0 && rangeFields.length === 0 && !arrayFilter && realSortFields <= 1) continue;
+
+        const key = indexKey(candidate);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        indexes.push(candidate);
+      }
+    }
+  }
+  return indexes;
 }
 
 /** Stable key for comparing a required index against a declared one. */

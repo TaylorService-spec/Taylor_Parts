@@ -10,7 +10,7 @@ import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition, 
 import {
   LIST_SURFACE, SORT_DIRECTION, MAX_PAGE_SIZE, MAX_RELATED_ROWS,
   makeColumn, makeFilter, makeSort, makeSavedView, makeListViewDefinition,
-  validateListViewDefinition, requiredIndexes, indexKey, missingIndexes, firestoreOrder,
+  validateListViewDefinition, requiredIndexes, indexKey, missingIndexes, firestoreOrder, MAX_DECLARED_FILTERS,
 } from "../src/metadata/listViewDefinition.js";
 
 const field = (id, extra = {}) =>
@@ -309,4 +309,62 @@ test("missingIndexes reports exactly the demands CI must fail on", () => {
     fields: [{ fieldPath: "status", order: "ASC" }, { fieldPath: "updatedAt", order: "DESC" }],
   }];
   assert.deepEqual(missingIndexes(required, declared), [], "a declared demand is satisfied");
+});
+
+// --- filter COMBINATIONS ------------------------------------------------------
+//
+// The derivation used to emit ONE index containing every declared filter plus the sort.
+// That reads as thorough and is wrong: Firestore will not serve a subset query from it,
+// so a list with two optional filters had three of its four real queries unindexed while
+// CI stayed green — the exact failure the coverage gate exists to prevent.
+
+const twoFilterList = (over = {}) =>
+  makeListViewDefinition({
+    id: "account.index", entityId: "account", label: "Customers", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    filters: [
+      makeFilter({ fieldId: "status", operators: ["EQUALS"] }),
+      makeFilter({ fieldId: "balance", operators: ["GREATER_THAN"] }),
+    ],
+    defaultSort: [makeSort({ fieldId: "updatedAt", direction: "DESC" })],
+    pageSize: 50,
+    ...over,
+  });
+
+test("two optional filters demand an index per COMBINATION, not one combined index", () => {
+  const idx = requiredIndexes(twoFilterList(), account());
+  const shapes = idx.map((i) => i.fields.map((f) => f.fieldPath).join(","));
+  assert.ok(shapes.includes("status,updatedAt,__name__"), "status alone");
+  assert.ok(shapes.includes("balance,updatedAt,__name__"), "balance alone");
+  assert.ok(shapes.includes("status,balance,updatedAt,__name__"), "both");
+});
+
+test("a REQUIRED filter appears in every index rather than doubling the set", () => {
+  // It is in every query, so there is no combination without it.
+  const def = twoFilterList({
+    filters: [
+      makeFilter({ fieldId: "status", operators: ["EQUALS"], required: true }),
+      makeFilter({ fieldId: "balance", operators: ["GREATER_THAN"] }),
+    ],
+  });
+  const idx = requiredIndexes(def, account());
+  assert.ok(idx.every((i) => i.fields.some((f) => f.fieldPath === "status")));
+});
+
+test("the unfiltered, single-field-ordered query demands NO composite", () => {
+  // Firestore's automatic single-field index serves it, and the documentId tiebreaker is
+  // implicit there. Demanding one would train people to ignore the gate.
+  const def = twoFilterList({ filters: [] });
+  assert.deepEqual(requiredIndexes(def, account()), []);
+});
+
+test("more filters than the cap is a validation failure, not a bigger pile of indexes", () => {
+  const def = twoFilterList({
+    filters: ["status", "balance", "status", "balance", "status"].map((fieldId) =>
+      makeFilter({ fieldId, operators: ["EQUALS"] })
+    ),
+  });
+  assert.ok(
+    validateListViewDefinition(def, account()).some((p) => new RegExp(`more than ${MAX_DECLARED_FILTERS}`).test(p))
+  );
 });

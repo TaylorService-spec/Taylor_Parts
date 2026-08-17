@@ -36,7 +36,7 @@ test("identity names a real field and claims no reference number", () => {
   assert.ok(findField(accountEntity, "name"), "the identity field exists on the entity");
 });
 
-test("tags are renderable but claim no filter operator", () => {
+test("tags are renderable but claim no filter operator — no authoritative catalog exists", () => {
   // A declared operator is a promise the query layer must keep. array-contains combined
   // with a sort needs its own composite index; claiming it before declaring that index
   // is exactly the promise §9 forbids.
@@ -62,10 +62,27 @@ test("the landing view is recently-viewed, not everything", () => {
   assert.equal(landing.kind, "RECENTLY_VIEWED");
 });
 
-test("the demanded index is expressed in Firestore's vocabulary, ready to declare", () => {
-  const [idx] = requiredIndexes(accountIndexList, accountEntity);
-  assert.equal(idx.collectionGroup, "accounts");
-  for (const field of idx.fields) {
-    assert.ok(["ASCENDING", "DESCENDING"].includes(field.order), `${field.fieldPath} order is Firestore's spelling`);
+test("every demanded index is expressed in Firestore's vocabulary, ready to declare", () => {
+  const indexes = requiredIndexes(accountIndexList, accountEntity);
+  assert.ok(indexes.length > 0);
+  for (const idx of indexes) {
+    assert.equal(idx.collectionGroup, "accounts");
+    for (const field of idx.fields) {
+      // An array filter carries arrayConfig, not an order. Declaring array-contains as an
+      // ascending scan is rejected by the deploy.
+      const spelled = field.arrayConfig === "CONTAINS" || ["ASCENDING", "DESCENDING"].includes(field.order);
+      assert.ok(spelled, `${field.fieldPath} uses Firestore's spelling`);
+    }
   }
+});
+
+test("the relationship filter demands its own index, not just the combined one", () => {
+  // Firestore will not serve a relationship-only query from the status+relationship
+  // index, so a single combined demand would leave that query unindexed and failing in
+  // front of a user while CI stayed green.
+  const shapes = requiredIndexes(accountIndexList, accountEntity)
+    .map((i) => i.fields.map((f) => f.fieldPath).join(","));
+  assert.ok(shapes.includes("relationshipTypes,updatedAt,__name__"), shapes.join(" | "));
+  assert.ok(shapes.includes("status,updatedAt,__name__"), shapes.join(" | "));
+  assert.ok(shapes.includes("status,relationshipTypes,updatedAt,__name__"), shapes.join(" | "));
 });
