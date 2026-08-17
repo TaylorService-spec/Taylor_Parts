@@ -40,6 +40,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **X-CONTACT-PROVENANCE-GAP** (phase 6) — Contact write paths do not agree on provenance → Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy
+- **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
+- **X-SALES-ORDER-NO-REFERENCE** (phase 6) — Sales Order has no business reference; its header renders a document id → Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -54,6 +56,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 | X-CONTACT-PROVENANCE-GAP | 6 | Contact write paths do not agree on provenance | — | — | — | — | — | NOT_APPLICABLE | Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy |
+| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | — | NOT_APPLICABLE | Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling |
+| X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Determine the actual stored semantics first, then converge future governed writes |
 
 ## MERGED
 
@@ -104,7 +108,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-NO-GOVERNED-READ-COLLECTIONS | 9 | BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all | — | — | — | — | — | NOT_APPLICABLE | No metadata work possible; each needs a governed read service under normal capability governance |
 | X-ACCOUNT-TAG-CATALOG | 6 | Governed Account tag facet / catalog projection | /customers | — | — | — | — | NOT_APPLICABLE | Needs an authoritative tag source before a facet can be honest |
 | X-WORK-ORDER-BOARD-SCOPE | 6 | Work Order boards: bounded queue or complete queue? | /dispatch | — | — | — | — | NOT_APPLICABLE | Needs a decision on what a dispatch board is allowed to show before it can be bounded |
-| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | — | NOT_APPLICABLE | Needs a decision on whether Sales Orders get a reference number |
+| X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling repo-complete and INERT; production execution requires the established protected authorization |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
@@ -113,7 +117,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 > **X-NO-GOVERNED-READ-COLLECTIONS** blocked — payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false in firestore.rules, and exhaustive search of functions/src found NO exported callable that reads any of them - only writers. part_supplier_items has a pure projection contract explicitly not activated. Metadata is presentation and composition, not authority, so it cannot make an unreadable collection readable. · requires: Owner authorizes building and activating a governed read service per collection, when the business capability requires it
 > **X-ACCOUNT-TAG-CATALOG** blocked — No authoritative Account tag catalog exists; the old facet was built by scanning every account in the browser · requires: Whether tags become governed reference data with a catalog, or remain free-form labels with no global facet. A facet rebuilt from the current page would present 'the tags on these fifty rows' as 'the tags that exist'.
 > **X-WORK-ORDER-BOARD-SCOPE** blocked — Dispatch, Control Tower and Dispatcher Board share one unfiltered work-order listener and bucket it client-side; bounding the input makes the columns a partial queue presented as the whole one · requires: Either (a) the board scope is genuinely bounded - a date window, an assigned-technician set, or open-states-only - which makes a bounded read HONEST rather than partial, or (b) the board needs a governed aggregate for its column counts the way Customers did, or (c) a new /work-orders list route is created for the browsing case and the boards keep their own scope. (a) is likely correct for a dispatch board, which nobody reads beyond the current week - but what that window IS is a business decision.
-> **X-SALES-ORDER-NO-REFERENCE** blocked — Sales Orders have no reference number field at all, and SalesOrderDetail renders `Sales Order ${id}` as its page header · requires: Either mint a governed SO-YYYY-###### reference the way Work Orders and Opportunities already have - which is a numbering and migration decision for existing records - or accept a document id in the page header. #1124 corrected the LINEAGE LINK to show a reference instead of an id; the header itself was not in that PR's scope and still shows the raw id. This is the fourth appearance of the id-as-label pattern (#1094, #1099, #1124).
+> **X-SALES-ORDER-NUMBER-BACKFILL** blocked — Assigning business references to existing production Sales Orders mutates production data · requires: Owner authorization to execute the migration against production, after a dry run reports the affected record count and any collisions.
 
 ## BLOCKED_DEPENDENCY
 
