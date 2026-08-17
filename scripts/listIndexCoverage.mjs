@@ -123,6 +123,38 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "account.index",
   }),
+  // workOrder.index (field-ops-app-vite/src/metadata/definitions/workOrder.js).
+  Object.freeze({
+    collectionGroup: "fieldops_wos",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "createdAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "workOrder.index",
+  }),
+  Object.freeze({
+    collectionGroup: "fieldops_wos",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "customerId", order: "ASCENDING"},
+      {fieldPath: "createdAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "workOrder.index",
+  }),
+  Object.freeze({
+    collectionGroup: "fieldops_wos",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "customerId", order: "ASCENDING"},
+      {fieldPath: "createdAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "workOrder.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -183,6 +215,7 @@ export function findAuthoredDefinitions(root = FRONTEND_SRC) {
  */
 export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/account.js",
+  "field-ops-app-vite/src/metadata/definitions/workOrder.js",
 ]);
 
 export function findUnregisteredDefinitions(authored, registered = REGISTERED_DEFINITION_SOURCES) {

@@ -275,13 +275,18 @@ export function validateFieldDefinition(field, entity = null) {
     if (!field.enumValues?.length) problems.push(`${at}: ${field.type} requires enumValues`);
     // The #1093 lesson as a build failure: stored value and rendered label are
     // separate, and a label map whose entries equal their keys has re-merged them.
+    // Compared as STRINGS on both sides. An object key is always a string, so a numeric
+    // enum value — Work Order priority is stored as 1..4 — could never match its own
+    // label entry, and every numeric enum would have been reported as mislabelled. The
+    // machine value stays numeric in the definition; only the lookup is normalized.
     for (const v of field.enumValues ?? []) {
-      if (field.enumLabels && field.enumLabels[v] === v) {
+      if (field.enumLabels && field.enumLabels[v] === String(v)) {
         problems.push(`${at}: enum label for "${v}" equals its machine value — label and stored value must differ`);
       }
     }
+    const declared = new Set((field.enumValues ?? []).map((v) => String(v)));
     for (const k of Object.keys(field.enumLabels ?? {})) {
-      if (!(field.enumValues ?? []).includes(k)) problems.push(`${at}: enumLabels has "${k}" which is not an enumValue`);
+      if (!declared.has(k)) problems.push(`${at}: enumLabels has "${k}" which is not an enumValue`);
     }
   } else if (field?.enumValues) {
     problems.push(`${at}: enumValues is only meaningful on an ENUM or ENUM_SET field`);
