@@ -1382,14 +1382,18 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Executable: requiredIndexes/missingIndexes are on main; wire them against firestore.indexes.json in CI",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle."
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check.",
+      "pr": 1129,
+      "headSha": "787b3e214f34e55f51914f5b676778908f988178",
+      "branch": "feat/index-ci-bridge",
+      "checks": "9/9 coverage tests; wired into deployment-drift workflow"
     },
     {
       "id": "A-PAGE-RENDERER",
@@ -1404,9 +1408,9 @@
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior. BUILT as a pure composition planner: it resolves which sections render where and carries each section's capability outward UNEVALUATED. applyVisibility() takes the caller's decision map and there is deliberately no argument by which a decision could be passed in - a runtime accepting {allowed:true} would become where authorization is decided. Fails closed at presentation level, which is defence in depth and NOT the boundary. Also reports when exclusions drop an OPERATIONAL page below its own bar, since rendering a diminished page silently is how an operations platform degrades into a form without anyone deciding to.",
       "pr": 1128,
-      "headSha": "417aba5dbacaf6fe2966fc8d9addc70e2af949cb",
+      "headSha": "54dc7a471083df6d7f3c3ba2277f0cfaf8ecce5a",
       "branch": "feat/page-renderer",
-      "checks": "14/14 page runtime tests; oxlint + tsc clean"
+      "checks": "122 metadata contract tests after reconcile; six named properties verified individually"
     },
     {
       "id": "D-OPPORTUNITY-IDENTITY",
