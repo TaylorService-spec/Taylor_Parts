@@ -162,10 +162,11 @@
       "entity": "Account",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION",
         "A-PAGE-COMPONENT"
       ],
-      "nextAction": "Migrate onto the page definition runtime",
-      "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095."
+      "nextAction": "Blocked transitively on Field Architecture v2: its related lists need Opportunity/Sales Order/Contact definitions",
+      "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095. FINDING (attempted 2026-08-17): a PageDefinition for this page does not validate, and the reason is the contract working. Five of its nine sections are RELATED_LIST or FIELD_GROUP, and the contract requires a RELATED_LIST to NAME the ListViewDefinition it renders and a FIELD_GROUP to name its fieldIds. The Account record page embeds Opportunities, Sales Orders and Contacts - so defining it requires those three entities' list definitions, which is exactly the mass-definition the Field Architecture v2 gate now precedes. Modelling them as some other section kind to get a passing definition would be defeating the check rather than satisfying it: they ARE related lists. So record-page migration across the program is transitively gated on v2, which is worth knowing before nine record pages are attempted one at a time. The page's own composition was read successfully off the existing surface - RECORD mode, five regions, capability requirements declared per section - so the work is understood, not merely deferred."
     },
     {
       "id": "S-CRM-OPPORTUNITIES",
@@ -198,10 +199,11 @@
       "entity": "SalesOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION",
         "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto page runtime; resolve raw-id labels",
-      "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels."
+      "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels. Inherits the record-page dependency found on S-CRM-ACCOUNT-RECORD: its related lists need list definitions for the entities they embed."
     },
     {
       "id": "S-CRM-RETIRED",
@@ -252,10 +254,11 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION",
         "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate after Gate B",
-      "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI."
+      "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI. Inherits the record-page dependency found on S-CRM-ACCOUNT-RECORD: its related lists need list definitions for the entities they embed."
     },
     {
       "id": "S-SVC-JOB-ASSIGNMENTS",
@@ -836,10 +839,11 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION",
         "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto page runtime",
-      "notes": "Re-reads the entire parts and suppliers collections to render one record."
+      "notes": "Re-reads the entire parts and suppliers collections to render one record. Inherits the record-page dependency found on S-CRM-ACCOUNT-RECORD: its related lists need list definitions for the entities they embed."
     },
     {
       "id": "S-INV-PART-MASTER",
@@ -1017,9 +1021,11 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
+        "A-ENTITY-MASS-DEFINITION",
         "A-PAGE-COMPONENT"
       ],
-      "nextAction": "Migrate onto page runtime"
+      "nextAction": "Migrate onto page runtime",
+      "notes": " Inherits the record-page dependency found on S-CRM-ACCOUNT-RECORD: its related lists need list definitions for the entities they embed."
     },
     {
       "id": "S-COM-PURCHASE-ORDERS",
