@@ -1097,17 +1097,15 @@
       "title": "Bounded-read remediation across list-exempt surfaces",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
+      "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
         "A-LIST-RUNTIME"
       ],
-      "nextAction": "Verify the PR number once the GitHub API recovers; work is pushed and green",
+      "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE. IN PROGRESS on feat/bounded-account-picker: account picker reads bounded and disclosed; warehouses/suppliers bounded at the call site on feat/bounded-list-reads. PR number deliberately not recorded \u2014 the GitHub API is 503ing and an unverifiable PR number is the exact false claim this ledger prevents.",
-      "branch": "feat/bounded-account-picker",
-      "headSha": "a6e3f6ac"
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE."
     },
     {
       "id": "A-INDEX-VALIDATOR",
@@ -1117,18 +1115,15 @@
       "title": "ListViewDefinition to composite-index validator",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGED",
+      "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
         "A-LIST-RUNTIME"
       ],
-      "nextAction": "Merged; the validator reuses indexDriftGuard's indexKey rather than re-deriving it",
+      "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
       "governing": [
         "Owner ruling section 8"
       ],
-      "notes": "Turns the rule that metadata must not promise unsupported filter combinations into a build failure. scripts/indexDriftGuard.mjs already exports indexKey, compareIndexes, evaluateDeploy and normalizeGcloudIndexes with a fail-closed named-acknowledgement gate; a validator must import those rather than re-deriving key normalization. Note those exports are currently imported only by their own test - no deploy script wires them in yet. DELIVERED by scripts/listIndexCoverage.mjs (#1129), which imports indexKey from indexDriftGuard.mjs as required and reports honestly that an unregistered corpus is idle, not passing.",
-      "pr": 1129,
-      "mergeSha": "f06801f0",
-      "branch": "feat/list-index-coverage"
+      "notes": "Turns the rule that metadata must not promise unsupported filter combinations into a build failure. scripts/indexDriftGuard.mjs already exports indexKey, compareIndexes, evaluateDeploy and normalizeGcloudIndexes with a fail-closed named-acknowledgement gate; a validator must import those rather than re-deriving key normalization. Note those exports are currently imported only by their own test - no deploy script wires them in yet."
     },
     {
       "id": "A-CALLABLE-UNBOUNDED",
@@ -1373,14 +1368,14 @@
       "title": "List runtime component consuming ListViewDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGED",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Merged; downstream surfaces unblocked",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer. QUERY CORE BUILT as a pure module: it produces a bounded query DESCRIPTOR and executes nothing, which is what makes section 9 assertable offline rather than hoped for. The guarantees are absences - no offset/page/skip key exists at all, no argument removes the limit - and are tested as absences, because an absence nobody checks becomes an addition. The GRID COMPONENT is still to build; this is the half that carries the governance properties.",
       "pr": 1126,
+      "headSha": "1121e888ad03e5b1368ac143b67168cd7f62a2c3",
       "branch": "feat/list-runtime",
-      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run",
-      "mergeSha": "dafa60dfc3584ae3b8726e0e6f5a76c4c6ab2c72"
+      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run"
     },
     {
       "id": "A-INDEX-CI-BRIDGE",
@@ -1390,16 +1385,16 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
         "A-LIST-RUNTIME"
       ],
-      "nextAction": "Add `node scripts/listIndexCoverage.mjs --check` to deployment-drift-core-tests.yml",
+      "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. PARTIALLY delivered by #1129: the tool exists and CI runs its unit tests. That proves the tool works; it does NOT ask whether THIS repository's definitions demand an undeclared index. Only the second check fails when someone adds a filter and forgets the index, so the gate itself is still missing."
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
     },
     {
       "id": "A-PAGE-RENDERER",
@@ -1409,14 +1404,14 @@
       "title": "Record page renderer consuming PageDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGED",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Merged; downstream surfaces unblocked",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior. BUILT as a pure composition planner: it resolves which sections render where and carries each section's capability outward UNEVALUATED. applyVisibility() takes the caller's decision map and there is deliberately no argument by which a decision could be passed in - a runtime accepting {allowed:true} would become where authorization is decided. Fails closed at presentation level, which is defence in depth and NOT the boundary. Also reports when exclusions drop an OPERATIONAL page below its own bar, since rendering a diminished page silently is how an operations platform degrades into a form without anyone deciding to.",
       "pr": 1128,
+      "headSha": "417aba5dbacaf6fe2966fc8d9addc70e2af949cb",
       "branch": "feat/page-renderer",
-      "checks": "14/14 page runtime tests; oxlint + tsc clean",
-      "mergeSha": "cdf79f1b0b7cbcc59f300e942d7d90c751e84e9b"
+      "checks": "14/14 page runtime tests; oxlint + tsc clean"
     },
     {
       "id": "D-OPPORTUNITY-IDENTITY",
@@ -1484,14 +1479,12 @@
       "title": "List grid component consuming the query core",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
+      "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
         "A-LIST-RUNTIME"
       ],
-      "nextAction": "Verify the PR number once the GitHub API recovers; work is pushed and green",
-      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120. IN PROGRESS on feat/list-grid: list presentation model (LIST_STATE, four distinct empties, enum label resolution). PR number deliberately not recorded \u2014 the GitHub API is 503ing and an unverifiable PR number is the exact false claim this ledger prevents.",
-      "branch": "feat/list-grid",
-      "headSha": "9e1c0341"
+      "nextAction": "Build after the query core is on main",
+      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
     },
     {
       "id": "A-PAGE-COMPONENT",
@@ -1501,14 +1494,12 @@
       "title": "Record page React component consuming the composition plan",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
+      "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
         "A-PAGE-RENDERER"
       ],
-      "nextAction": "Open the PR: work is committed and pushed, but the GitHub GraphQL API is returning 503 to every pr create. Retry; do NOT record a PR number until one exists.",
-      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. Component + 9 vitest tests built and green (884/884 component suite, oxlint clean), registered in metadata-contracts-tests.yml. Deliberately NOT recorded as MERGE_QUEUED: that status asserts an open PR, and asserting one the API never created is exactly the false claim this ledger exists to prevent.",
-      "branch": "feat/page-component",
-      "headSha": "b49a7b8f"
+      "nextAction": "Build after the composition planner is on main",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
     }
   ]
 }

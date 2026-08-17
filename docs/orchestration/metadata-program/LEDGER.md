@@ -15,47 +15,17 @@ continues from the next executable item — without asking what happened.
 |---|---|---|
 | 43 | 42 | 1 |
 
-## Stale blocks — resolve before trusting "nothing executable"
-
-28 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
-Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
-
-- **S-CRM-CUSTOMERS** — depends on A-LIST-RUNTIME (all satisfied) → Migrate onto Entity List Metadata v1 once the runtime exists
-- **S-CRM-ACCOUNT-RECORD** — depends on A-PAGE-RENDERER (all satisfied) → Migrate onto the page definition runtime
-- **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-RUNTIME (all satisfied) → Identity is on main; awaiting the list runtime
-- **S-CRM-SALES-ORDER-RECORD** — depends on A-PAGE-RENDERER (all satisfied) → Migrate onto page runtime; resolve raw-id labels
-- **S-SVC-WORK-ORDERS** — depends on A-LIST-RUNTIME (all satisfied) → The Gate B non-CRM validation target
-- **S-SVC-WO-RECORD** — depends on A-PAGE-RENDERER (all satisfied) → Migrate after Gate B
-- **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-RUNTIME (all satisfied) → Migrate or retire — overlaps the Work Orders list
-- **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-RUNTIME (all satisfied) → Classify: queue with governed transition writes, not a list
-- **S-SVC-COORDINATED-VISITS** — depends on A-LIST-RUNTIME (all satisfied) → Confirm synthetic-source status before migrating anything
-- **S-SVC-COORDINATED-MISSION** — depends on A-LIST-RUNTIME (all satisfied) → Same synthetic-source caveat as coordinated visits
-- **S-SVC-CONTROL-TOWER** — depends on A-PAGE-RENDERER (all satisfied) → Bounded-read remediation; dashboard composition is a later phase
-- **S-SVC-WO-NEW** — depends on A-LIST-RUNTIME (all satisfied) → Bounded-read remediation: it reads the whole accounts collection
-- **S-ADM-EMPLOYEES** — depends on A-LIST-RUNTIME (all satisfied) → Migrate onto list runtime
-- **S-ADM-SAVED-REPORTS** — depends on A-LIST-RUNTIME (all satisfied) → Migrate onto list runtime
-- **S-ADM-USERS** — depends on A-PAGE-RENDERER (all satisfied) → Inventory only; no governed directory read exists to migrate
-
 ## Next executable
 
-- **A-BOUNDED-READS** (phase 3) — Bounded-read remediation across list-exempt surfaces → Verify the PR number once the GitHub API recovers; work is pushed and green
-- **A-INDEX-CI-BRIDGE** (phase 3) — CI gate: declared list filters must have declared indexes → Add `node scripts/listIndexCoverage.mjs --check` to deployment-drift-core-tests.yml
-- **A-LIST-GRID** (phase 3) — List grid component consuming the query core → Verify the PR number once the GitHub API recovers; work is pushed and green
-- **A-PAGE-COMPONENT** (phase 5) — Record page React component consuming the composition plan → Open the PR: work is committed and pushed, but the GitHub GraphQL API is returning 503 to every pr create. Retry; do NOT record a PR number until one exists.
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
-## IMPLEMENTING
+## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | a6e3f6ac | — | NOT_APPLICABLE | Verify the PR number once the GitHub API recovers; work is pushed and green |
-| A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | 9e1c0341 | — | NOT_APPLICABLE | Verify the PR number once the GitHub API recovers; work is pushed and green |
-| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | b49a7b8f | — | NOT_APPLICABLE | Open the PR: work is committed and pushed, but the GitHub GraphQL API is returning 503 to every pr create. Retry; do NOT record a PR number until one exists. |
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Add `node scripts/listIndexCoverage.mjs --check` to deployment-drift-core-tests.yml |
+| A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | #1126 | 1121e888 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | #1128 | 417aba5d | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
@@ -72,14 +42,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | 390d5149 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | 39524862 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | c01c0531 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
-| A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | #1129 | — | f06801f0 | NOT_APPLICABLE | Merged; the validator reuses indexDriftGuard's indexKey rather than re-deriving it |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | 12e64a89 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | #1108 | 82017110 | 5b72c837 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | #1111 | 888ca6fc | 6896888b | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | 1cbd170e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | #1112 | a458d881 | abedeff5 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
-| A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | #1126 | — | dafa60df | NOT_APPLICABLE | Merged; downstream surfaces unblocked |
-| A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | #1128 | — | cdf79f1b | NOT_APPLICABLE | Merged; downstream surfaces unblocked |
 | D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | e6526d85 | 3fdf1ccf | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 58f269e2 | f7c1df5b | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | #1124 | ce827015 | a9c48a1d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -136,7 +103,12 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Generalize the existing cursor prior art rather than inventing a pattern |
+| A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
+| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
+| A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | — | — | NOT_APPLICABLE | Build after the query core is on main |
+| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Build after the composition planner is on main |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
