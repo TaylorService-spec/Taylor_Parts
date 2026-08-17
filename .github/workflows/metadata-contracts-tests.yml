@@ -25,6 +25,8 @@ on:
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/boardScope.test.mjs"
+      - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
       - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
@@ -47,6 +49,8 @@ on:
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/boardScope.test.mjs"
+      - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
       - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
@@ -104,6 +108,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Operational board scope contract tests (node:test)
+        run: node --test test/boardScope.test.mjs
         working-directory: field-ops-app-vite
       - name: Work Order definition tests (node:test)
         run: node --test test/metadataWorkOrderDefinition.test.mjs
