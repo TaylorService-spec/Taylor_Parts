@@ -129,10 +129,6 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "relationshipType",
-          "order": "ASCENDING"
-        },
-        {
           "fieldPath": "updatedAt",
           "order": "DESCENDING"
         }

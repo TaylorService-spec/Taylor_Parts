@@ -175,3 +175,21 @@ test("cellValue is pure and total — it never throws on a missing row or column
   assert.equal(cellValue({ fieldId: "x", type: "STRING" }, undefined), null);
   assert.equal(cellValue({ fieldId: "x", type: "STRING" }, {}), null);
 });
+
+test("an ENUM_SET cell resolves EVERY member through the label map", () => {
+  // Rendering the array as-is would print "CUSTOMERVENDOR" — machine values,
+  // concatenated, in front of a user.
+  const column = { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor" } };
+  assert.equal(cellValue(column, { relationshipTypes: ["CUSTOMER", "VENDOR"] }), "Customer, Vendor");
+});
+
+test("an unmapped ENUM_SET member is shown verbatim, not dropped", () => {
+  // A value the enum does not know is a data question; hiding it answers nothing.
+  const column = { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: { CUSTOMER: "Customer" } };
+  assert.equal(cellValue(column, { relationshipTypes: ["CUSTOMER", "PARTNER"] }), "Customer, PARTNER");
+});
+
+test("an empty ENUM_SET is absent, not an empty string", () => {
+  const column = { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: {} };
+  assert.equal(cellValue(column, { relationshipTypes: [] }), null);
+});

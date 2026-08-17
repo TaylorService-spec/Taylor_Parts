@@ -97,7 +97,6 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     queryScope: "COLLECTION",
     fields: Object.freeze([
       { fieldPath: "status", order: "ASCENDING" },
-      { fieldPath: "relationshipType", order: "ASCENDING" },
       { fieldPath: "updatedAt", order: "DESCENDING" },
       { fieldPath: "__name__", order: "ASCENDING" },
     ]),

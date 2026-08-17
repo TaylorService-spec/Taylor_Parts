@@ -46,6 +46,11 @@ export const FIELD_TYPE = Object.freeze([
   "DATE",
   "TIMESTAMP",
   "ENUM",
+  // A multi-valued enum: the STORED value is an array of enum members. Modelled
+  // separately from ENUM because an account that is both a customer and a vendor is not
+  // an account with a single status, and typing it as ENUM would let a scalar equality
+  // filter be declared on a field no scalar query can match.
+  "ENUM_SET",
   "REFERENCE", // points at another entity; requires referenceTo
   "ID", // a machine identifier; see IDENTITY BELOW
 ]);
@@ -266,8 +271,8 @@ export function validateFieldDefinition(field, entity = null) {
     problems.push(`${at}: filterable but declares no operators — filterable by what?`);
   }
 
-  if (field?.type === "ENUM") {
-    if (!field.enumValues?.length) problems.push(`${at}: ENUM requires enumValues`);
+  if (field?.type === "ENUM" || field?.type === "ENUM_SET") {
+    if (!field.enumValues?.length) problems.push(`${at}: ${field.type} requires enumValues`);
     // The #1093 lesson as a build failure: stored value and rendered label are
     // separate, and a label map whose entries equal their keys has re-merged them.
     for (const v of field.enumValues ?? []) {
@@ -279,7 +284,7 @@ export function validateFieldDefinition(field, entity = null) {
       if (!(field.enumValues ?? []).includes(k)) problems.push(`${at}: enumLabels has "${k}" which is not an enumValue`);
     }
   } else if (field?.enumValues) {
-    problems.push(`${at}: enumValues is only meaningful on an ENUM field`);
+    problems.push(`${at}: enumValues is only meaningful on an ENUM or ENUM_SET field`);
   }
 
   if (field?.type === "REFERENCE" && !field.referenceTo) {
