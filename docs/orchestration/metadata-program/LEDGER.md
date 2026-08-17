@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 47 | 42 | 5 |
+| 48 | 42 | 6 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,11 +38,10 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **S-CRM-SALES-ORDER-DEFINITION** (phase 6) — Sales Order entity + list definitions → Author with identity.referenceField = salesOrderNumber; declare NO nameField
+- **A-SHARED-RESOURCE-SERIALIZATION** (phase 6) — Shared-resource ownership in the writer-lane model → Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
-- **X-SALES-ORDER-HEADER** (phase 6) — SalesOrderDetail header renders a document id → Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state
-- **X-SALES-ORDER-NO-REFERENCE** (phase 6) — Sales Order has no business reference; its header renders a document id → Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling.
+- **X-SALES-ORDER-ACTION-COPY** (phase 6) — SalesOrderActions renders a document id in confirmation copy → Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -50,7 +49,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
-| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | — | NOT_APPLICABLE | Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling. |
 
 ## READY
 
@@ -58,8 +56,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 | X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Determine the actual stored semantics first, then converge future governed writes |
-| X-SALES-ORDER-HEADER | 6 | SalesOrderDetail header renders a document id | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state |
-| S-CRM-SALES-ORDER-DEFINITION | 6 | Sales Order entity + list definitions | — | — | — | — | — | NOT_APPLICABLE | Author with identity.referenceField = salesOrderNumber; declare NO nameField |
+| X-SALES-ORDER-ACTION-COPY | 6 | SalesOrderActions renders a document id in confirmation copy | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Render salesOrderNumber in the dialog consequence text, with the same honest fallback as the header |
+| A-SHARED-RESOURCE-SERIALIZATION | 6 | Shared-resource ownership in the writer-lane model | — | — | — | — | — | NOT_APPLICABLE | Extend writerLanes.mjs with declared sharedResources, logical resources and a dispatch-time lock |
 
 ## MERGED
 
@@ -99,6 +97,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-RECORD-PROVENANCE | 6 | Record provenance platform invariant | — | — | #1149 | — | 64564bb3 | NOT_APPLICABLE | Merged. The origin seam (createdVia/initiatedBy/sourceExecutionId) awaits reconciliation with the audit event architecture before anything writes it. |
 | A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | #1151 | — | 80588e61 | NOT_APPLICABLE | Merged. Automation v1, EQL v1 and Bulk Data v1 are unblocked; migrating the list runtime onto the AST is a separate slice. |
 | X-CONTACT-PROVENANCE-GAP | 6 | Contact write paths do not agree on provenance | — | — | #1157 | — | c97694a7 | NOT_APPLICABLE | Future writes converged. Historical backfill remains a separate decision requiring evidence. |
+| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | 7b200b34 | NOT_APPLICABLE | Creation, header and definition all merged. Backfill remains protected under X-SALES-ORDER-NUMBER-BACKFILL. |
+| X-SALES-ORDER-HEADER | 6 | SalesOrderDetail header renders a document id | /customers/opportunities/sales-order/:salesOrderId | — | #1162 | — | 7b200b34 | NOT_APPLICABLE | Merged. SalesOrderActions.jsx still interpolates a document id into dialog copy - see X-SALES-ORDER-ACTION-COPY. |
+| S-CRM-SALES-ORDER-DEFINITION | 6 | Sales Order entity + list definitions | — | — | #1161 | — | 5568028d | NOT_APPLICABLE | Merged. Two projection gaps documented rather than silently fixed. |
 
 ## BLOCKED_PROTECTED
 

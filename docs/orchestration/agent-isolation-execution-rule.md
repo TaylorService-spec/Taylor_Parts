@@ -139,3 +139,70 @@ resets, rebases, branch deletion, protected environment actions, permission chan
 production changes and governance changes.
 
 *"An agent asked me to"* is never sufficient authority.
+
+---
+
+# Addendum — shared-file serialization
+
+**Owner rule, 2026-08-17.** Extends the lane model above; it does not replace it.
+
+## The principle
+
+> **Parallelize disjoint implementation. Serialize shared registration and integration.**
+
+Parallelism is not measured by the number of active agents. A central registry edited by
+five agents is not five-way parallelism — it is five writers contending on one resource.
+
+Two agents may work concurrently only when their **writable** scopes are disjoint, or when
+shared-file coordination is explicitly controlled.
+
+## Shared resources
+
+Any file multiple implementation lanes routinely touch: entity/metadata/capability
+registries · workflow path filters · `package.json` test lists · `firestore.indexes.json` ·
+release manifests · sandbox-prep ledgers · global export/index files · route and navigation
+registries · central test-suite registries.
+
+A shared resource has **at most one active writer owner at a time**. A lane declares the
+shared resources it claims alongside its write scope, and dispatch fails closed when a
+requested resource is already owned.
+
+## Leaf implementation, then integration
+
+The preferred shape, rather than giving every leaf agent ownership of the same registry:
+
+```
+writer A: contact.js       ┐
+writer B: opportunity.js   │  leaf lanes — no registry edits
+writer C: salesOrder.js    │
+writer D: part.js          │
+writer E: equipment.js     ┘
+                            → one integration lane:
+                              registry · workflow filters · npm test · index declarations
+```
+
+A leaf writer may finish without registering, handing back `REGISTRATION_PENDING` naming
+the registry path, the required entry, the CI/test registration and any index changes. The
+integration lane reconciles all accepted leaf heads and verifies no definition was omitted,
+no duplicate registration exists, required CI registration is present, the full affected
+suite passes, and every shared-file change corresponds to accepted leaf work.
+
+**A leaf file existing is not the surface being integrated.** Where the distinction is
+material, track defined / registered / queryable / consumed / deployable / deployed using
+existing ledger vocabulary. Do not call an entity complete when it exists as a file the
+registry cannot resolve.
+
+## Registration completeness
+
+Where practical, validate **set equality** rather than one-way containment — an omitted or
+extra item is a coverage defect in both directions: every active definition appears in the
+registry, every registry entry resolves to a file that exists, every active definition has
+its tests, every metadata suite is both path-filtered **and** actually run, and declared
+indexes are covered by the index gate.
+
+## Conflict avoidance over conflict recovery
+
+The desired order is **prevent → detect before commit → reconcile safely → recover**.
+Repeated merge-conflict cleanup is not an operating model. If one shared file keeps
+conflicting across lanes, that is evidence it should become a serialized integration
+resource.
