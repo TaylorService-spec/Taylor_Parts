@@ -17,19 +17,15 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-PAGE-RENDERER** (phase 5) — Record page renderer consuming PageDefinition → Executable: the page contract (9d10440e) and registries (fb4257a0) are both on main
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | — | — | — | NOT_APPLICABLE | Executable: the page contract (9d10440e) and registries (fb4257a0) are both on main |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | #1126 | 66931cec | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | #1126 | 1121e888 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | #1128 | 417aba5d | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
@@ -112,6 +108,7 @@ continues from the next executable item — without asking what happened.
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | — | — | NOT_APPLICABLE | Build after the query core is on main |
+| A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Build after the composition planner is on main |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

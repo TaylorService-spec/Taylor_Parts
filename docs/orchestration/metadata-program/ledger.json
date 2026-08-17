@@ -1373,9 +1373,9 @@
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer. QUERY CORE BUILT as a pure module: it produces a bounded query DESCRIPTOR and executes nothing, which is what makes section 9 assertable offline rather than hoped for. The guarantees are absences - no offset/page/skip key exists at all, no argument removes the limit - and are tested as absences, because an absence nobody checks becomes an addition. The GRID COMPONENT is still to build; this is the half that carries the governance properties.",
       "pr": 1126,
-      "headSha": "66931cec446ae58fcdfc74c08f66c14669b525f7",
+      "headSha": "1121e888ad03e5b1368ac143b67168cd7f62a2c3",
       "branch": "feat/list-runtime",
-      "checks": "22/22 runtime tests; oxlint + tsc clean"
+      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run"
     },
     {
       "id": "A-INDEX-CI-BRIDGE",
@@ -1404,10 +1404,14 @@
       "title": "Record page renderer consuming PageDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "dependsOn": [],
-      "nextAction": "Executable: the page contract (9d10440e) and registries (fb4257a0) are both on main",
-      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior. BUILT as a pure composition planner: it resolves which sections render where and carries each section's capability outward UNEVALUATED. applyVisibility() takes the caller's decision map and there is deliberately no argument by which a decision could be passed in - a runtime accepting {allowed:true} would become where authorization is decided. Fails closed at presentation level, which is defence in depth and NOT the boundary. Also reports when exclusions drop an OPERATIONAL page below its own bar, since rendering a diminished page silently is how an operations platform degrades into a form without anyone deciding to.",
+      "pr": 1128,
+      "headSha": "417aba5dbacaf6fe2966fc8d9addc70e2af949cb",
+      "branch": "feat/page-renderer",
+      "checks": "14/14 page runtime tests; oxlint + tsc clean"
     },
     {
       "id": "D-OPPORTUNITY-IDENTITY",
@@ -1481,6 +1485,21 @@
       ],
       "nextAction": "Build after the query core is on main",
       "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
+    },
+    {
+      "id": "A-PAGE-COMPONENT",
+      "phase": "5",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Record page React component consuming the composition plan",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RENDERER"
+      ],
+      "nextAction": "Build after the composition planner is on main",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
     }
   ]
 }
