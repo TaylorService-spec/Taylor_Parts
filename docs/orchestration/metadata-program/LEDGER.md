@@ -17,8 +17,13 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
-table below before concluding the program is finished._
+- **D-OPPORTUNITY-NAME-AND-WIRING** (phase 9) — Wire Opportunity identity into the governed create path and surfaces → Executable: identity is on main (3fdf1ccf) and the format is approved
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | Executable: identity is on main (3fdf1ccf) and the format is approved |
 
 ## MERGE_QUEUED
 
@@ -71,7 +76,7 @@ table below before concluding the program is finished._
 |---|---|---|---|---|---|---|---|---|---|
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | — | — | — | NOT_APPLICABLE | Migrate onto Entity List Metadata v1 once the runtime exists |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Migrate onto the page definition runtime |
-| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Blocked on identity (now its own item) and the list runtime |
+| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | — | — | — | NOT_APPLICABLE | The Gate B non-CRM validation target |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
@@ -105,7 +110,6 @@ table below before concluding the program is finished._
 | A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | — | — | — | NOT_APPLICABLE | List contract is on main (2c673e16); still needs the registries |
 | A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 | A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the page contract and registries are on main |
-| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | Format approved; wire once #1120 is merged |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

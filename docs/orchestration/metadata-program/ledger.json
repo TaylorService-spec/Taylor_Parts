@@ -140,7 +140,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1097,
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
       "governing": [
@@ -165,7 +165,7 @@
       "entity": "Account",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto the page definition runtime",
       "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095."
@@ -184,9 +184,9 @@
       "issue": 1099,
       "dependsOn": [
         "D-OPPORTUNITY-IDENTITY",
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
-      "nextAction": "Blocked on identity (now its own item) and the list runtime",
+      "nextAction": "Identity is on main; awaiting the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
     },
     {
@@ -201,7 +201,7 @@
       "entity": "SalesOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime; resolve raw-id labels",
       "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels."
@@ -233,7 +233,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1098,
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "The Gate B non-CRM validation target",
       "governing": [
@@ -253,7 +253,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate after Gate B",
       "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI."
@@ -270,7 +270,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
       "notes": "Shares the same unbounded useWorkOrders() listener."
@@ -289,7 +289,7 @@
       "nextAction": "Classify: queue with governed transition writes, not a list",
       "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -362,7 +362,7 @@
       "nextAction": "Confirm synthetic-source status before migrating anything",
       "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -379,7 +379,7 @@
       "nextAction": "Same synthetic-source caveat as coordinated visits",
       "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -396,7 +396,7 @@
       "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
       "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -427,7 +427,7 @@
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
       "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -442,7 +442,7 @@
       "entity": "Technician",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
@@ -459,7 +459,7 @@
       "entity": "SavedReportDefinition",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
@@ -506,7 +506,7 @@
       "nextAction": "Inventory only; no governed directory read exists to migrate",
       "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -523,7 +523,7 @@
       "nextAction": "Inventory only; form is unconditionally disabled",
       "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -554,7 +554,7 @@
       "nextAction": "Later phase; dashboard composition is not list/record metadata",
       "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -817,7 +817,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
@@ -834,7 +834,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime",
       "notes": "Re-reads the entire parts and suppliers collections to render one record."
@@ -851,7 +851,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate; navHidden, direct-URL only",
       "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
@@ -868,7 +868,7 @@
       "entity": "Warehouse",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
@@ -885,7 +885,7 @@
       "entity": "Supplier",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
@@ -924,7 +924,7 @@
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
       "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -969,7 +969,7 @@
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
       "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -998,7 +998,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate; already cursor-paginated",
       "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
@@ -1015,7 +1015,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime"
     },
@@ -1031,7 +1031,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
@@ -1048,7 +1048,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Same bounded projection as purchase orders, filtered to received."
@@ -1097,7 +1097,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
       "governing": [
@@ -1115,7 +1115,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
       "governing": [
@@ -1382,7 +1382,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
       "governing": [
@@ -1436,13 +1436,11 @@
       "title": "Wire Opportunity identity into the governed create path and surfaces",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "READY",
       "issue": 1099,
-      "dependsOn": [
-        "D-OPPORTUNITY-IDENTITY"
-      ],
-      "nextAction": "Format approved; wire once #1120 is merged",
-      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive."
+      "dependsOn": [],
+      "nextAction": "Executable: identity is on main (3fdf1ccf) and the format is approved",
+      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive. PROMOTED from a stale block. Its dependency merged and the format was approved, but nothing re-opened it - the ledger does not auto-promote, so it sat blocked with nothing blocking it while the scheduler reported nothing executable. Found by the new staleBlocks() check, which is exactly the false terminal state that check exists to prevent."
     }
   ]
 }
