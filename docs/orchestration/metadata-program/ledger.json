@@ -629,14 +629,15 @@
       "title": "Page definition contract (PageDefinition/PageRegion)",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "pr": 1118,
       "headSha": "656023c80222409b5259cb3cb3dd691f72b46e13",
       "branch": "feat/page-definition-contract",
       "checks": "4/4 metadata suites green locally after the third reconcile",
-      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'."
+      "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'.",
+      "mergeSha": "9d10440e"
     },
     {
       "id": "A-REGISTRIES",
@@ -1403,12 +1404,9 @@
       "title": "Record page renderer consuming PageDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-PAGE-RUNTIME",
-        "A-REGISTRIES"
-      ],
-      "nextAction": "Build after the page contract and registries are on main",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Executable: the page contract (9d10440e) and registries (fb4257a0) are both on main",
       "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
     },
     {
