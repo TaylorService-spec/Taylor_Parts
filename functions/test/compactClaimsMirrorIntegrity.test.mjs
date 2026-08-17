@@ -105,6 +105,30 @@ check("compactClaims.ts: server and client mirrors are identical beyond the docu
   assertMirrorPairMatches("compactClaims.ts");
 });
 
+// COVERAGE GAP CLOSED (metadata program Phase 0 audit). assertMirrorPairMatches()
+// was already generic, but only compactClaims.ts was ever passed to it -- so two
+// other deliberately-mirrored access/ modules carried the same "if either file
+// changes, change the other to match" header with nothing enforcing it.
+//
+// governedBusinessRoles.ts is the one that matters most: it declares the Role ->
+// permission grants, it is the file a capability/role change has to edit in
+// lockstep across both copies, and a silent divergence there means the client's
+// idea of what a Role grants stops matching the server's. Rules and trusted
+// commands remain the authorization boundary either way -- a drifted client
+// mirror cannot grant anything -- but it CAN make the UI show or hide the wrong
+// affordances, which is a real defect and exactly the kind that hides for months.
+//
+// Their sibling parity tests (governedBusinessRoles.test.mjs,
+// shadowParityHarness.test.mjs) test BEHAVIOR of one copy. That is a different
+// question from whether the two files still agree, which is what this asserts.
+check("governedBusinessRoles.ts: server and client mirrors are identical beyond the documented cross-reference line", () => {
+  assertMirrorPairMatches("governedBusinessRoles.ts");
+});
+
+check("shadowParityHarness.ts: server and client mirrors are identical beyond the documented cross-reference line", () => {
+  assertMirrorPairMatches("shadowParityHarness.ts");
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);

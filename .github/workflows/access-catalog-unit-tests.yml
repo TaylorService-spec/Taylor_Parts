@@ -13,6 +13,13 @@ on:
     paths:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
+      # The CLIENT half of every mirrored access/ module. Without this the
+      # mirror-integrity test does not run on a change that touches ONLY the
+      # client copy -- which is exactly the change most likely to introduce
+      # drift, and the one the test exists to catch.
+      - "field-ops-app-vite/src/access/**"
+      - "functions/test/compactClaimsMirrorIntegrity.test.mjs"
+      - "functions/test/governedBusinessRoles.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/test/shadowParityHarness.test.mjs"
@@ -25,6 +32,13 @@ on:
     paths:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
+      # The CLIENT half of every mirrored access/ module. Without this the
+      # mirror-integrity test does not run on a change that touches ONLY the
+      # client copy -- which is exactly the change most likely to introduce
+      # drift, and the one the test exists to catch.
+      - "field-ops-app-vite/src/access/**"
+      - "functions/test/compactClaimsMirrorIntegrity.test.mjs"
+      - "functions/test/governedBusinessRoles.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/test/shadowParityHarness.test.mjs"
