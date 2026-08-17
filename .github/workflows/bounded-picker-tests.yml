@@ -1,0 +1,59 @@
+name: Bounded Picker Tests
+
+# CI coverage for bounded picker reads (DECISIONS #102 §9).
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this repo
+# runs per-subsystem workflows on PRs rather than one global suite.
+#
+# What is protected is not the limit but the DISCLOSURE. Bounding a picker without
+# telling the user it was bounded turns a performance defect into a correctness one: a
+# dropdown silently showing the first N of 250k is indistinguishable from one showing
+# everything, so someone searching for a customer that exists concludes it does not.
+# Offline: pure domain tests plus the wizard component, no emulator, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/pickerSource.js"
+      - "field-ops-app-vite/src/hooks/useAccountPicker.js"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx"
+      - "field-ops-app-vite/test/pickerSource.test.mjs"
+      - ".github/workflows/bounded-picker-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/pickerSource.js"
+      - "field-ops-app-vite/src/hooks/useAccountPicker.js"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderWizard.jsx"
+      - "field-ops-app-vite/test/pickerSource.test.mjs"
+      - ".github/workflows/bounded-picker-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-picker-tests:
+    name: Bounded picker reads (node:test + wizard + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Picker source tests (node:test)
+        run: node --test test/pickerSource.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Work Order wizard tests
+        run: node test/workOrderWizard.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/pickerSource.js src/hooks/useAccountPicker.js src/modules/workOrders/WorkOrderWizard.jsx
+        working-directory: field-ops-app-vite
