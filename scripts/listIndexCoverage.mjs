@@ -257,6 +257,38 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "equipment.index",
   }),
+  // employee.index (leaf definition, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "employees",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "operationalRoles", arrayConfig: "CONTAINS"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "employee.index",
+  }),
+  Object.freeze({
+    collectionGroup: "employees",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "employmentStatus", order: "ASCENDING"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "employee.index",
+  }),
+  Object.freeze({
+    collectionGroup: "employees",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "employmentStatus", order: "ASCENDING"},
+      {fieldPath: "operationalRoles", arrayConfig: "CONTAINS"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "employee.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -322,6 +354,7 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/opportunity.js",
   "field-ops-app-vite/src/metadata/definitions/part.js",
   "field-ops-app-vite/src/metadata/definitions/equipment.js",
+  "field-ops-app-vite/src/metadata/definitions/employee.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
 
