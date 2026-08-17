@@ -13,36 +13,17 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 43 | 32 | 11 |
+| 43 | 42 | 1 |
 
 ## Next executable
 
-- **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts under generation → Unify the client copy's abbreviated comments onto the canonical text, as its own PR
-- **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
-- **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
-- **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
-- **S-INV-MANUFACTURERS** (phase 9) — Manufacturers → Inventory only - writes are closed in every environment including sandbox
-- **S-INV-TRANSFERS** (phase 9) — Transfers → Bounded-read remediation; lifecycle composite, not a list
-- **S-SVC-CONTROL-TOWER** (phase 9) — Service Operations (Control Tower) → Bounded-read remediation; dashboard composition is a later phase
-- **S-SVC-COORDINATED-MISSION** (phase 9) — Coordinated mission → Same synthetic-source caveat as coordinated visits
-- **S-SVC-COORDINATED-VISITS** (phase 9) — Coordinated visits → Confirm synthetic-source status before migrating anything
-- **S-SVC-DISPATCH-QUEUE** (phase 9) — Dispatch queue → Classify: queue with governed transition writes, not a list
+- **A-METADATA-SPEC** (phase 1) — Metadata Architecture specification → Write it; DECISIONS #102 section 13 requires it to reference the IP boundary
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Classify: queue with governed transition writes, not a list |
-| S-SVC-COORDINATED-VISITS | 9 | Coordinated visits | /service/coordinated-visits | — | — | — | — | NOT_APPLICABLE | Confirm synthetic-source status before migrating anything |
-| S-SVC-COORDINATED-MISSION | 9 | Coordinated mission | /service/coordinated-mission | — | — | — | — | NOT_APPLICABLE | Same synthetic-source caveat as coordinated visits |
-| S-SVC-CONTROL-TOWER | 9 | Service Operations (Control Tower) | /service-operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; dashboard composition is a later phase |
-| S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation: it reads the whole accounts collection |
-| S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Inventory only; no governed directory read exists to migrate |
-| S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | — | — | — | NOT_APPLICABLE | Inventory only; form is unconditionally disabled |
-| S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
-| S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
-| S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
-| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Unify the client copy's abbreviated comments onto the canonical text, as its own PR |
+| A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | — | — | — | NOT_APPLICABLE | Write it; DECISIONS #102 section 13 requires it to reference the IP boundary |
 
 ## MERGE_QUEUED
 
@@ -86,8 +67,16 @@ continues from the next executable item — without asking what happened.
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | — | — | — | NOT_APPLICABLE | The Gate B non-CRM validation target |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
 | S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |
+| S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Classify: queue with governed transition writes, not a list |
+| S-SVC-COORDINATED-VISITS | 9 | Coordinated visits | /service/coordinated-visits | — | — | — | — | NOT_APPLICABLE | Confirm synthetic-source status before migrating anything |
+| S-SVC-COORDINATED-MISSION | 9 | Coordinated mission | /service/coordinated-mission | — | — | — | — | NOT_APPLICABLE | Same synthetic-source caveat as coordinated visits |
+| S-SVC-CONTROL-TOWER | 9 | Service Operations (Control Tower) | /service-operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; dashboard composition is a later phase |
+| S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation: it reads the whole accounts collection |
 | S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Inventory only; no governed directory read exists to migrate |
+| S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | — | — | — | NOT_APPLICABLE | Inventory only; form is unconditionally disabled |
+| S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | — | — | — | NOT_APPLICABLE | Build after Gate A contracts land |
 | A-PAGE-RUNTIME | 5 | Page definition runtime | — | — | — | — | — | NOT_APPLICABLE | After list runtime proves the contract shape |
@@ -100,6 +89,8 @@ continues from the next executable item — without asking what happened.
 | S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Migrate; navHidden, direct-URL only |
 | S-INV-WAREHOUSES | 9 | Warehouses | /inventory/warehouses | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-SUPPLIERS | 9 | Suppliers | /purchasing/suppliers | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
+| S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
 | S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate; already cursor-paginated |
 | S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
@@ -108,6 +99,7 @@ continues from the next executable item — without asking what happened.
 | A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Choose an authoritative-aggregate approach; do NOT page the ledger and compute from the page |
+| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Blocked until the generator is on main; generating requires the generator |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

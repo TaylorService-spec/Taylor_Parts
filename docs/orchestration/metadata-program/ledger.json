@@ -283,9 +283,12 @@
       "route": "/service/dispatch",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Classify: queue with governed transition writes, not a list",
-      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime."
+      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-DISPATCHER-BOARD",
@@ -353,9 +356,12 @@
       "route": "/service/coordinated-visits",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Confirm synthetic-source status before migrating anything",
-      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing."
+      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-COORDINATED-MISSION",
@@ -367,9 +373,12 @@
       "route": "/service/coordinated-mission",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Same synthetic-source caveat as coordinated visits",
-      "notes": "Synthetic source."
+      "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-SVC-CONTROL-TOWER",
@@ -381,9 +390,12 @@
       "route": "/service-operations",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
-      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels."
+      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-SVC-WARRANTY",
@@ -409,9 +421,12 @@
       "route": "/service/work-orders/new",
       "classification": "F_UTILITY_EXEMPT",
       "entity": "WorkOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
-      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers."
+      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-ADM-EMPLOYEES",
@@ -485,9 +500,12 @@
       "route": "/administration/users",
       "classification": "E_ADMIN_CONFIG",
       "entity": "User",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only; no governed directory read exists to migrate",
-      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does."
+      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-ADM-ROLES",
@@ -499,9 +517,12 @@
       "route": "/administration/roles-permissions",
       "classification": "E_ADMIN_CONFIG",
       "entity": "RoleAssignment",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only; form is unconditionally disabled",
-      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100."
+      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-ADM-PLACEHOLDERS",
@@ -527,9 +548,12 @@
       "route": "/dashboard",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "n/a",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Later phase; dashboard composition is not list/record metadata",
-      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read)."
+      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ]
     },
     {
       "id": "S-DASH-OPERATIONS",
@@ -876,9 +900,12 @@
       "route": "/inventory/transfers",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "TransferOrder",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
-      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded."
+      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-INV-RECEIVING",
@@ -918,9 +945,12 @@
       "route": "/inventory/manufacturers",
       "classification": "E_ADMIN_CONFIG",
       "entity": "Manufacturer",
-      "status": "READY",
+      "status": "BLOCKED_DEPENDENCY",
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
-      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere."
+      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ]
     },
     {
       "id": "S-INV-ROLE-HOMES",
@@ -1266,12 +1296,30 @@
       "title": "Bring permissionCatalog.ts under generation",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Unify the client copy's abbreviated comments onto the canonical text, as its own PR",
+      "status": "BLOCKED_DEPENDENCY",
+      "nextAction": "Blocked until the generator is on main; generating requires the generator",
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
-      "notes": "parityFixtures.ts is DONE (PR #1110) via a declared PLATFORM_SUBSTITUTIONS rule - the firebase-admin vs firebase import is a real platform boundary, unlike the artificial pathname, so substitution is the honest representation rather than a workaround. REMAINING: permissionCatalog.ts, whose client copy carries independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants to arrive as its own reviewable change. LESSON RECORDED FROM #1110: a round-trip generator check verifies that generation is REPRODUCIBLE, never that it is CORRECT - the substitution table was wired in wrong and --check passed green while the client module imported firebase-admin. Outcome assertions against the real world are required alongside any generator."
+      "notes": "parityFixtures.ts is DONE (PR #1110) via a declared PLATFORM_SUBSTITUTIONS rule - the firebase-admin vs firebase import is a real platform boundary, unlike the artificial pathname, so substitution is the honest representation rather than a workaround. REMAINING: permissionCatalog.ts, whose client copy carries independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants to arrive as its own reviewable change. LESSON RECORDED FROM #1110: a round-trip generator check verifies that generation is REPRODUCIBLE, never that it is CORRECT - the substitution table was wired in wrong and --check passed green while the client module imported firebase-admin. Outcome assertions against the real world are required alongside any generator.",
+      "dependsOn": [
+        "A-CONTRACT-TOOLING"
+      ]
+    },
+    {
+      "id": "A-METADATA-SPEC",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Metadata Architecture specification",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Write it; DECISIONS #102 section 13 requires it to reference the IP boundary",
+      "governing": [
+        "DECISIONS #102 section 13"
+      ],
+      "notes": "Not optional and not merely documentation: the governance boundary records its own back-reference from this spec as an ACCEPTANCE CONDITION of the spec. Until it exists, that requirement is a promise with no artifact behind it. Independent of every queued PR - a specification depends on decisions, not on merged code."
     }
   ]
 }
