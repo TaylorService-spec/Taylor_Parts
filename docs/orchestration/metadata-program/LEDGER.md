@@ -18,7 +18,7 @@ continues from the next executable item — without asking what happened.
 ## Next executable
 
 - **A-BOUNDED-READS** (phase 3) — Bounded-read remediation across list-exempt surfaces → Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces
-- **A-INDEX-CI-BRIDGE** (phase 3) — CI gate: declared list filters must have declared indexes → Branch is pushed and green locally; PR creation 503'd and must be retried
+- **A-INDEX-CI-BRIDGE** (phase 3) — CI gate: declared list filters must have declared indexes → Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry
 - **A-LIST-GRID** (phase 3) — List grid component consuming the query core → Executable: the query core is on main (dafa60df)
 
 ## READY
@@ -26,7 +26,7 @@ continues from the next executable item — without asking what happened.
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces |
-| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Branch is pushed and green locally; PR creation 503'd and must be retried |
+| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | — | — | — | NOT_APPLICABLE | Executable: the query core is on main (dafa60df) |
 
 ## MERGE_QUEUED

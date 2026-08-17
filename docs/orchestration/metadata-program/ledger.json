@@ -1384,7 +1384,7 @@
       "entity": "n/a",
       "status": "READY",
       "dependsOn": [],
-      "nextAction": "Branch is pushed and green locally; PR creation 503'd and must be retried",
+      "nextAction": "Branch pushed and green locally; PR creation blocked by sustained GitHub API 503s - retry",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
@@ -1393,7 +1393,7 @@
       "pr": null,
       "headSha": null,
       "branch": "feat/index-ci-bridge",
-      "checks": "9/9 coverage tests; wired into deployment-drift workflow"
+      "checks": "9/9 coverage tests locally; wired into deployment-drift workflow"
     },
     {
       "id": "A-PAGE-RENDERER",
