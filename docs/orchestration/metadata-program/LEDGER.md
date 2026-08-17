@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 45 | 41 | 4 |
+| 46 | 42 | 4 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -93,6 +93,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Owner decision on a governed per-part availability projection |
 | X-NO-GOVERNED-READ-COLLECTIONS | 9 | BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all | — | — | — | — | — | NOT_APPLICABLE | No metadata work possible; each needs a governed read service under normal capability governance |
 | X-ACCOUNT-TAG-CATALOG | 6 | Governed Account tag facet / catalog projection | /customers | — | — | — | — | NOT_APPLICABLE | Needs an authoritative tag source before a facet can be honest |
+| X-WORK-ORDER-BOARD-SCOPE | 6 | Work Order boards: bounded queue or complete queue? | /dispatch | — | — | — | — | NOT_APPLICABLE | Needs a decision on what a dispatch board is allowed to show before it can be bounded |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
@@ -100,6 +101,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 > **X-INVENTORY-ANALYTICS-AGGREGATE** blocked — INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment. · requires: Owner authorizes a governed per-part availability projection (schema + maintenance + deploy), or accepts an explicitly scoped analytic surface instead of a whole-catalog dashboard
 > **X-NO-GOVERNED-READ-COLLECTIONS** blocked — payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are all allow read, write: if false in firestore.rules, and exhaustive search of functions/src found NO exported callable that reads any of them - only writers. part_supplier_items has a pure projection contract explicitly not activated. Metadata is presentation and composition, not authority, so it cannot make an unreadable collection readable. · requires: Owner authorizes building and activating a governed read service per collection, when the business capability requires it
 > **X-ACCOUNT-TAG-CATALOG** blocked — No authoritative Account tag catalog exists; the old facet was built by scanning every account in the browser · requires: Whether tags become governed reference data with a catalog, or remain free-form labels with no global facet. A facet rebuilt from the current page would present 'the tags on these fifty rows' as 'the tags that exist'.
+> **X-WORK-ORDER-BOARD-SCOPE** blocked — Dispatch, Control Tower and Dispatcher Board share one unfiltered work-order listener and bucket it client-side; bounding the input makes the columns a partial queue presented as the whole one · requires: Either (a) the board scope is genuinely bounded - a date window, an assigned-technician set, or open-states-only - which makes a bounded read HONEST rather than partial, or (b) the board needs a governed aggregate for its column counts the way Customers did, or (c) a new /work-orders list route is created for the browsing case and the boards keep their own scope. (a) is likely correct for a dispatch board, which nobody reads beyond the current week - but what that window IS is a business decision.
 
 ## BLOCKED_DEPENDENCY
 

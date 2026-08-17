@@ -236,7 +236,7 @@
       "governing": [
         "DECISIONS #102 \u00a714"
       ],
-      "notes": "workOrderService.ts:90 onSnapshot(collection(...)) with no where() \u2014 unbounded, client-filtered. GATE B DEFINITIONS MERGED (#1141), and the point of running a non-CRM entity early is that it found three things. (1) A numeric enum could never validate: object keys are strings, so comparing enumLabels[1] against the number 1 reported every numeric enum as mislabelled - Work Order priority is stored 1..4. Both label checks now normalize to strings and the #1093 rule survives. (2) No canonical Work Order STATUS vocabulary existed; the only complete map lived inside DispatchSchedulingWorkspace. domain/workOrderStatus.js now holds it and that workspace imports it, so no user-visible copy changed. Deliberately not merged with controlTower's map, which describes what a panel is FOR at each stage rather than naming the state. (3) Three optional filters cost SEVEN composites and two cost three, so priority stays a column rather than a filter until someone accepts the cost - the derivation making a tradeoff visible instead of silently under-declaring. Identity is the reference number with NO name field: the complaint is optional, and an identity field that is frequently absent licenses a fallback to the document id. Unlike Customers, no aggregate blocker was found - the surface shows a queue, not netted totals.",
+      "notes": "workOrderService.ts:90 onSnapshot(collection(...)) with no where() \u2014 unbounded, client-filtered. GATE B DEFINITIONS MERGED (#1141), and the point of running a non-CRM entity early is that it found three things. (1) A numeric enum could never validate: object keys are strings, so comparing enumLabels[1] against the number 1 reported every numeric enum as mislabelled - Work Order priority is stored 1..4. Both label checks now normalize to strings and the #1093 rule survives. (2) No canonical Work Order STATUS vocabulary existed; the only complete map lived inside DispatchSchedulingWorkspace. domain/workOrderStatus.js now holds it and that workspace imports it, so no user-visible copy changed. Deliberately not merged with controlTower's map, which describes what a panel is FOR at each stage rather than naming the state. (3) Three optional filters cost SEVEN composites and two cost three, so priority stays a column rather than a filter until someone accepts the cost - the derivation making a tradeoff visible instead of silently under-declaring. Identity is the reference number with NO name field: the complaint is optional, and an identity field that is frequently absent licenses a fallback to the document id. Unlike Customers, no aggregate blocker was found - the surface shows a queue, not netted totals. SURFACE FINDING: there is no /work-orders LIST route. Work Orders are reached through operational BOARDS - Dispatch, Control Tower, Dispatcher Board - and a detail page, and all three boards share one unfiltered collection listener that they bucket, group and search entirely client-side. So 'migrate the Work Orders list' presumes a list that does not exist. The boards are the same class of problem as the Customers portfolio cards, not the same class as its table: a board showing the first fifty work orders bucketed into columns presents a partial queue as the whole one, which is worse than the unbounded read it would replace. Gate B's actual purpose is unaffected - the definitions validated the contract against a non-CRM entity and found three defects. What is unresolved is which surface consumes workOrder.index.",
       "pr": 1141,
       "mergeSha": "47f46feb"
     },
@@ -1614,7 +1614,7 @@
         "Owner Field Architecture v2 gate",
         "DECISIONS #102 sections 6 and 8"
       ],
-      "notes": "v1 is NOT superseded - it remains the read/query/render contract and every merged definition stays valid. What v1 must not be is final: it has one identity (id), no notion of a derived value, and a type list that treats every number alike. Scope: label vs systemName (immutable machine identity, NOT vendor 'API Name'); field classes STANDARD/SYSTEM/CUSTOM/DERIVED with DERIVED split into FORMULA/LOOKUP/ROLLUP/PROJECTION and NOT collapsed into one calculated-field concept; explicit numeric semantics incl. percentage storage and the rule that formatting never changes an authoritative value; a constrained validated expression vocabulary with no executable metadata; dependency graph by systemName with circular rejection and cross-entity authority that cannot become an authorization bypass; VIRTUAL/MATERIALIZED/AGGREGATE queryability where displayable does not imply filterable; the full behavior contract through deprecation; an EOS-native standard vocabulary that standardizes MEANING without forcing every entity to carry every field; storage separation so systemName is never assumed to be the Firestore path; and a custom-field SEAM, not the custom-field product."
+      "notes": "v1 is NOT superseded - it remains the read/query/render contract and every merged definition stays valid. What v1 must not be is final: it has one identity (id), no notion of a derived value, and a type list that treats every number alike. Scope: label vs systemName (immutable machine identity, NOT vendor 'API Name'); field classes STANDARD/SYSTEM/CUSTOM/DERIVED with DERIVED split into FORMULA/LOOKUP/ROLLUP/PROJECTION and NOT collapsed into one calculated-field concept; explicit numeric semantics incl. percentage storage and the rule that formatting never changes an authoritative value; a constrained validated expression vocabulary with no executable metadata; dependency graph by systemName with circular rejection and cross-entity authority that cannot become an authorization bypass; VIRTUAL/MATERIALIZED/AGGREGATE queryability where displayable does not imply filterable; the full behavior contract through deprecation; an EOS-native standard vocabulary that standardizes MEANING without forcing every entity to carry every field; storage separation so systemName is never assumed to be the Firestore path; and a custom-field SEAM, not the custom-field product. Specification merged as 98d15344 (docs/specifications/field-architecture-v2.md, DECISIONS #103). The GATE itself - the design work - is what remains READY."
     },
     {
       "id": "A-ENTITY-MASS-DEFINITION",
@@ -1633,6 +1633,29 @@
         "Owner Field Architecture v2 gate, sequencing"
       ],
       "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue."
+    },
+    {
+      "id": "X-WORK-ORDER-BOARD-SCOPE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Work Order boards: bounded queue or complete queue?",
+      "domain": "service",
+      "entity": "WorkOrder",
+      "route": "/dispatch",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Needs a decision on what a dispatch board is allowed to show before it can be bounded",
+      "blockers": [
+        {
+          "reason": "Dispatch, Control Tower and Dispatcher Board share one unfiltered work-order listener and bucket it client-side; bounding the input makes the columns a partial queue presented as the whole one",
+          "requiredDecision": "Either (a) the board scope is genuinely bounded - a date window, an assigned-technician set, or open-states-only - which makes a bounded read HONEST rather than partial, or (b) the board needs a governed aggregate for its column counts the way Customers did, or (c) a new /work-orders list route is created for the browsing case and the boards keep their own scope. (a) is likely correct for a dispatch board, which nobody reads beyond the current week - but what that window IS is a business decision."
+        }
+      ],
+      "governing": [
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "Recorded on discovering that workOrder.index has no consuming surface. The definitions are merged and correct; what is missing is the answer to which surface should consume them."
     }
   ]
 }
