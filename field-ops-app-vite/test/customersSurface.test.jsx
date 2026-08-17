@@ -5,7 +5,7 @@
 // screen, and the page must own no unbounded read.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const listState = { presentation: null };
@@ -21,6 +21,12 @@ vi.mock("../src/hooks/useAccountPortfolioSummary", () => ({
 // import would resolve and the test asserting it is unused would fail.
 const subscribeSpy = vi.fn(() => ({ data: [], loading: false, error: null }));
 vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: subscribeSpy }));
+// The governed Account search hook issues its own bounded Firestore read (see
+// domain/accountSearch.js); this suite is about the surface's rendering contract, not
+// Firestore, so the hook is mocked here the same way useMetadataList and
+// useAccountPortfolioSummary are above.
+const searchSpy = vi.fn(() => ({ state: "IDLE", results: [], truncated: false, message: null }));
+vi.mock("../src/hooks/useAccountSearch", () => ({ useAccountSearch: (term) => searchSpy(term) }));
 
 const { default: AccountsList } = await import("../src/modules/accounts/AccountsList.jsx");
 
@@ -100,10 +106,51 @@ describe("Customers surface", () => {
     expect(screen.getByText("No customers yet.")).toBeTruthy();
   });
 
-  it("offers no global search it cannot answer completely", () => {
-    // The provider filtered an array only the whole-collection subscription could supply.
-    // Handing it a page would return "no results" for customers that exist.
+  it("no longer offers the OLD global search — the array-filtering provider that only the removed whole-collection subscription could feed", () => {
+    // GlobalSearch's `accounts` provider (src/shared/search/searchProviders.js) filters an
+    // array the caller supplies; handing it the current page would silently answer "no
+    // results" for a customer that exists. That surface stays gone from this page.
     renderPage();
-    expect(screen.queryByPlaceholderText(/search customers/i)).toBeNull();
+    expect(subscribeSpy).not.toHaveBeenCalled();
+  });
+
+  it("offers a governed bounded search instead, whose copy says 'starts with', not 'search' or 'contains'", () => {
+    renderPage();
+    const input = screen.getByPlaceholderText(/search customers/i);
+    expect(input).toBeTruthy();
+    expect(input.placeholder).toMatch(/starts with/i);
+  });
+
+  it("the search hook is driven by typed input, not by a subscription the page holds itself", () => {
+    renderPage();
+    const input = screen.getByPlaceholderText(/search customers/i);
+    fireEvent.change(input, { target: { value: "acme" } });
+    expect(searchSpy).toHaveBeenLastCalledWith("acme");
+  });
+
+  it("a truncated search result discloses its bound instead of presenting the cap as complete", () => {
+    searchSpy.mockReturnValue({
+      state: "TRUNCATED",
+      results: [{ id: "a1", name: "Acme Fixtures", status: "ACTIVE" }],
+      truncated: true,
+      message: 'Showing the first 25 customer names starting with "acme". Type more to narrow it further.',
+    });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/search customers/i), { target: { value: "acme" } });
+    expect(screen.getByText(/Showing the first 25/i)).toBeTruthy();
+    expect(screen.getByText("Acme Fixtures")).toBeTruthy();
+  });
+
+  it("a denied search says so, distinct from 'no results'", () => {
+    searchSpy.mockReturnValue({
+      state: "DENIED",
+      results: [],
+      truncated: false,
+      message: "You don't have access to search customers.",
+    });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/search customers/i), { target: { value: "acme" } });
+    expect(screen.getByText(/don't have access to search/i)).toBeTruthy();
+    expect(screen.queryByText(/no customer/i)).toBeNull();
   });
 });

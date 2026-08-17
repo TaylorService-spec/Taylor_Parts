@@ -5,6 +5,7 @@ import { createAccount } from "../../domain/accounts";
 import { accountEntity, accountIndexList } from "../../metadata/definitions/account.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary";
+import { useAccountSearch } from "../../hooks/useAccountSearch";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
@@ -95,13 +96,20 @@ export default function AccountsList() {
     return card.status === null ? summary.total : summary.byStatus?.[card.key] ?? 0;
   };
 
-  // GLOBAL SEARCH REMOVED, DELIBERATELY. The accounts search provider filters an array
-  // the caller supplies, and the only caller that could supply it was the whole-collection
-  // subscription this page no longer holds. Handing it the current page instead would
-  // search fifty rows and render "no results" for a customer that exists — a search box
-  // that silently finds nothing is worse than no search box, because it answers.
+  // GOVERNED SEARCH, NOT THE OLD GLOBAL SEARCH. The GlobalSearch `accounts` provider
+  // (src/shared/search/searchProviders.js) filters an array the caller supplies, and the
+  // only caller that could supply it was the whole-collection subscription this page no
+  // longer holds — handing it the current page instead would search fifty rows and render
+  // "no results" for a customer that exists, so it stayed removed rather than repurposed.
   //
-  // Recorded as governed Account search, not dropped.
+  // This is the replacement recorded at that removal: domain/accountSearch.js issues a
+  // real, bounded Firestore prefix query on `name` (see that module for why prefix, not
+  // substring/full-text, and why no composite index is needed). It matches customers
+  // whose name STARTS WITH what was typed, case-sensitively — the UI copy below says so
+  // rather than implying a broader search.
+  const [searchTerm, setSearchTerm] = useState("");
+  const search = useAccountSearch(searchTerm);
+
   const actions = (
     <ActionRail
       primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>+ New Customer</button>}
@@ -122,6 +130,42 @@ export default function AccountsList() {
           />
         </Modal>
       )}
+
+      <div className="fo-global-search" role="search">
+        <input
+          type="search"
+          placeholder="Search customers by name (starts with)…"
+          aria-label="Search customers by name — matches names starting with what you type"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        {searchTerm.trim() && (
+          <div className="fo-global-search-results" role="status" aria-live="polite">
+            {search.state === "LOADING" && <div className="fo-muted fo-global-search-empty">Searching…</div>}
+            {search.state === "EMPTY" && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+            {search.state === "DENIED" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {search.state === "UNAVAILABLE" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {(search.state === "READY" || search.state === "TRUNCATED") && (
+              <>
+                {search.results.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    className="fo-global-search-result"
+                    onClick={() => { setSearchTerm(""); navigate(`/customers/${account.id}`); }}
+                  >
+                    <span>{account.name}</span>
+                    {account.status && <span className="fo-muted"> — {accountStatusLabel(account.status)}</span>}
+                  </button>
+                ))}
+                {/* Truncation is disclosed IN the results panel, not hidden below the fold —
+                    a capped list that looks complete is the exact failure this replaces. */}
+                {search.truncated && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="fo-portfolio-cards" role="group" aria-label="Customer portfolio by status">
         {STATUS_CARDS.map((card) => {
