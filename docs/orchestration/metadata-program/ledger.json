@@ -1382,16 +1382,16 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "READY",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Branch is pushed and green locally; PR creation 503'd and must be retried",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check.",
-      "pr": 1129,
-      "headSha": "787b3e214f34e55f51914f5b676778908f988178",
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check. LEDGER CORRECTION: this was briefly recorded MERGE_QUEUED with pr 1129, but the gh pr create call had 503'd and no such PR existed. The false claim survived because the command was piped to tail, so the pipeline exit status was tail's success rather than gh's failure, and the chain continued past a failed step. Caught by verifying the claim against GitHub instead of trusting what had just been written - which is the reconcile discipline applied to my own write.",
+      "pr": null,
+      "headSha": null,
       "branch": "feat/index-ci-bridge",
       "checks": "9/9 coverage tests; wired into deployment-drift workflow"
     },
