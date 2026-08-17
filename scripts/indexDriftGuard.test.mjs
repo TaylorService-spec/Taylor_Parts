@@ -89,6 +89,13 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
+  // Declared by the Part and Equipment leaf definitions; not deployed.
+  'parts|COLLECTION|status:ASCENDING,internalPartNumber:ASCENDING',
+  'parts|COLLECTION|stockingClass:ASCENDING,internalPartNumber:ASCENDING',
+  'parts|COLLECTION|status:ASCENDING,stockingClass:ASCENDING,internalPartNumber:ASCENDING',
+  'equipment|COLLECTION|accountId:ASCENDING,name:ASCENDING',
+  'equipment|COLLECTION|status:ASCENDING,name:ASCENDING',
+  'equipment|COLLECTION|accountId:ASCENDING,status:ASCENDING,name:ASCENDING',
   // Declared by the Account metadata definition (#1137), NOT yet deployed. Index
   // deployment is a separate authorized action, so account.index's declared filters are
   // a promise the repository keeps and the environment does not yet -- and listing the
