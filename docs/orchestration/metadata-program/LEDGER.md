@@ -39,7 +39,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
-- **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Writer active. Step 5 of its brief may return a Rules-allowlist BLOCKER rather than a change.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -47,7 +46,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
-| X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Writer active. Step 5 of its brief may return a Rules-allowlist BLOCKER rather than a change. |
 
 ## READY
 
@@ -114,6 +112,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-ACCOUNT-TAG-CATALOG | 6 | Governed Account tag facet / catalog projection | /customers | — | — | — | — | NOT_APPLICABLE | Needs an authoritative tag source before a facet can be honest |
 | X-WORK-ORDER-BOARD-SCOPE | 6 | Work Order boards: bounded queue or complete queue? | /dispatch | — | — | — | — | NOT_APPLICABLE | Needs a decision on what a dispatch board is allowed to show before it can be bounded |
 | X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling merged and inert. Production execution awaits the established protected authorization. |
+| X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Blocked on a Rules change: equipmentWritableKeys/equipmentEditableKeys must admit createdBy/updatedBy before any client can write them. |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
@@ -123,6 +122,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 > **X-ACCOUNT-TAG-CATALOG** blocked — No authoritative Account tag catalog exists; the old facet was built by scanning every account in the browser · requires: Whether tags become governed reference data with a catalog, or remain free-form labels with no global facet. A facet rebuilt from the current page would present 'the tags on these fifty rows' as 'the tags that exist'.
 > **X-WORK-ORDER-BOARD-SCOPE** blocked — Dispatch, Control Tower and Dispatcher Board share one unfiltered work-order listener and bucket it client-side; bounding the input makes the columns a partial queue presented as the whole one · requires: Either (a) the board scope is genuinely bounded - a date window, an assigned-technician set, or open-states-only - which makes a bounded read HONEST rather than partial, or (b) the board needs a governed aggregate for its column counts the way Customers did, or (c) a new /work-orders list route is created for the browsing case and the boards keep their own scope. (a) is likely correct for a dispatch board, which nobody reads beyond the current week - but what that window IS is a business decision.
 > **X-SALES-ORDER-NUMBER-BACKFILL** blocked — Assigning business references to existing production Sales Orders mutates production data · requires: Owner authorization to execute the migration against production, after a dry run reports the affected record count and any collisions.
+> **X-EQUIPMENT-PROVENANCE-GAP** blocked — firestore.rules gates equipment writes with STRICT hasOnly() allowlists - equipmentWritableKeys (create) and equipmentEditableKeys (update) - and neither admits createdBy or updatedBy. Adding the fields client-side without a Rules change would make EVERY equipment create and update fail permission-denied, not silently drop the fields. · requires: Authorize a Tier-2 firestore.rules change adding createdBy to equipmentWritableKeys and updatedBy to equipmentEditableKeys, plus the Rules deploy that makes it effective. Rules deployment is a protected action; the repo change and the deploy are separate gates.
 
 ## BLOCKED_DEPENDENCY
 
