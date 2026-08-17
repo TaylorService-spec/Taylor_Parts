@@ -54,6 +54,7 @@ function seededDoc(collection, id) {
 }
 
 const RECEIVABLE_RRID = "ro-sbx-001";
+const SERIAL_RRID = "ro-sbx-006";
 
 // ---- the contract itself, read from the command ------------------------------------------------
 test("the command still keys the purchase order by reorderRequestId", () => {
@@ -167,9 +168,47 @@ test("the seed stays deterministic: fixed ids, merge writes, no random or wall-c
   // from repository truth.
   assert.match(TRANSACTIONAL, /\.set\(d,\s*\{\s*merge:\s*true\s*\}\)/);
   const poCalls = [...TRANSACTIONAL.matchAll(/set\("reorder_purchase_orders",\s*"([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(poCalls, ["ro-sbx-001", "ro-sbx-005"]);
+  assert.deepEqual(poCalls, ["ro-sbx-001", "ro-sbx-005", "ro-sbx-006"]);
   for (const id of poCalls) {
     assert.equal(/^(ro|po)-sbx-\d+$/.test(id), true, `${id} is not a stable fixed id`);
   }
   assert.equal(/Math\.random/.test(TRANSACTIONAL), false, "seed ids must not vary per run");
+});
+
+// ---- the SERIALIZED receiving candidate ---------------------------------------------------------
+// Serial receipts are the only path that may create serialized_assets, so the fixture has to make a
+// serial receipt actually reachable -- otherwise that governed activation path is untestable.
+test("a SERIALIZED receiving candidate exists, keyed the same governed way", () => {
+  const po = seededDoc("reorder_purchase_orders", SERIAL_RRID);
+  assert.ok(po.includes(`reorderRequestId: "${SERIAL_RRID}"`), `reorderRequestId must name ${SERIAL_RRID}`);
+  assert.match(po, /status:\s*"ORDERED"/);
+  assert.match(po, /partId:\s*"PRT-2001"/);
+});
+
+test("the serialized candidate's request is coherent with its purchase order", () => {
+  const req = seededDoc("reorder_requests", SERIAL_RRID);
+  assert.ok(req.includes(`purchaseOrderId: "${SERIAL_RRID}"`), `purchaseOrderId must name ${SERIAL_RRID}`);
+  assert.match(req, /status:\s*"ORDERED"/);
+  assert.match(req, /partId:\s*"PRT-2001"/);
+});
+
+test("the serialized candidate references the SERIALIZED Part, not a STANDARD one", () => {
+  // If this drifted to a STANDARD part the receipt would silently exercise the quantity path and
+  // prove nothing about serial capture or serialized-asset activation.
+  const line = BASELINE.split(String.fromCharCode(10)).find((l) => l.includes('id: "PRT-2001"'));
+  assert.ok(line, "PRT-2001 is not defined in the baseline Part fixtures");
+  assert.match(line, /controlType:\s*"SERIALIZED"/);
+});
+
+test("orderedQuantity is what the serial count will be bound to", () => {
+  // The command requires exactly one serial per ordered unit, so this number IS the contract a
+  // receipt has to satisfy.
+  const po = seededDoc("reorder_purchase_orders", SERIAL_RRID);
+  const qty = /orderedQuantity:\s*(\d+)/.exec(po);
+  assert.ok(qty && Number(qty[1]) > 0);
+});
+
+test("no serialized asset is ever seeded -- only the governed receipt may create one", () => {
+  assert.equal(TRANSACTIONAL.includes('serialized_assets'), false);
+  assert.equal(BASELINE.includes('serialized_assets'), false);
 });
