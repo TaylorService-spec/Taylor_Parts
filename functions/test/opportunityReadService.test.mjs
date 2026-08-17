@@ -23,14 +23,25 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
     customerName: "Should Not Copy Co",
     internalNotes: "secret",
   });
+  // The allow-list grew by exactly two, deliberately (#1099). This assertion failing on a
+  // new field is the guard WORKING: the projection is minimal by design, so every addition
+  // has to be argued for here rather than sliding in unnoticed.
+  //
+  // name and opportunityNumber are the record's HUMAN IDENTITY, and they are the opposite
+  // of the leak this test guards against. Their absence is what forced every reader to fall
+  // back to the Firestore document id -- which is how 95kFz8WWgiSn2nU2O3Ml became a
+  // user-facing label. Identity is the minimum a caller needs in order NOT to expose an
+  // internal key.
   assert.deepEqual(Object.keys(p).sort(), [
-    "accountId", "expectedCloseAt", "expectedValue", "id", "lines", "need", "nextAction", "outcome", "ownerEmployeeId", "salesChannel", "salesOrderId", "stage",
+    "accountId", "expectedCloseAt", "expectedValue", "id", "lines", "name", "need", "nextAction",
+    "opportunityNumber", "outcome", "ownerEmployeeId", "salesChannel", "salesOrderId", "stage",
   ]);
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.salesOrderId, "SO-1");
   // no raw UID, no copied Customer name
   assert.equal("createdByUid" in p, false);
   assert.equal("customerName" in p, false);
+  assert.equal("internalNotes" in p, false);
 });
 
 test("projectOpportunity drops invalid stage/outcome and malformed lines rather than trusting them", () => {
