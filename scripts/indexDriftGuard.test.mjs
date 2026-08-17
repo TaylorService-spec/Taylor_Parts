@@ -89,7 +89,11 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // EMPTY. Every declared index has reached the live estate.
+  // Declared by the Account metadata definition (#1137), NOT yet deployed. Index
+  // deployment is a separate authorized action, so account.index's declared filters are
+  // a promise the repository keeps and the environment does not yet -- and listing the
+  // key here states that gap rather than letting the guard read as drift.
+  'accounts|COLLECTION|status:ASCENDING,relationshipType:ASCENDING,updatedAt:DESCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That
