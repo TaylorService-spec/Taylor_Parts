@@ -21,6 +21,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
   push:
@@ -28,6 +29,7 @@ on:
     paths:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
   workflow_dispatch:
@@ -55,6 +57,8 @@ jobs:
         run: node --test test/metadataEntityDefinition.test.mjs
         working-directory: field-ops-app-vite
 
+      - name: ListViewDefinition contract tests (node:test)
+        run: node --test test/metadataListViewDefinition.test.mjs
       - name: Component/action registry tests (node:test)
         run: node --test test/metadataRegistry.test.mjs
         working-directory: field-ops-app-vite
