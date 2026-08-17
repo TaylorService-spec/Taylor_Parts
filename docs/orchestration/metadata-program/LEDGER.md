@@ -17,13 +17,13 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **D-OPPORTUNITY-NAME-AND-WIRING** (phase 9) — Wire Opportunity identity into the governed create path and surfaces → Executable: identity is on main (3fdf1ccf) and the format is approved
+- **D-SALES-ORDER-OPP-IDENTITY** (phase 9) — Sales Order detail still renders sourceOpportunityId raw → Thread Opportunity identity through getSalesOrderContext
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | Executable: identity is on main (3fdf1ccf) and the format is approved |
+| D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | — | — | — | NOT_APPLICABLE | Thread Opportunity identity through getSalesOrderContext |
 
 ## MERGE_QUEUED
 
@@ -32,6 +32,7 @@ continues from the next executable item — without asking what happened.
 | A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | 93f0d326 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | 1a73d999 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 22f48184 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | #1123 | 1df0c171 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
