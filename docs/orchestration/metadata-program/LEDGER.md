@@ -17,7 +17,6 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-BOUNDED-READS-REMAINING** (phase 3) — Remaining unbounded PURE LIST reads → Bound-and-disclose technicians, warehouses, suppliers, transfer orders
 - **A-PAGE-COMPONENT** (phase 5) — Record page React component consuming the composition plan → Executable: the composition planner is on main (cdf79f1b)
 
 ## READY
@@ -25,7 +24,6 @@ continues from the next executable item — without asking what happened.
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | — | — | — | NOT_APPLICABLE | Executable: the composition planner is on main (cdf79f1b) |
-| A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | — | — | — | NOT_APPLICABLE | Bound-and-disclose technicians, warehouses, suppliers, transfer orders |
 
 ## MERGE_QUEUED
 
@@ -33,6 +31,7 @@ continues from the next executable item — without asking what happened.
 |---|---|---|---|---|---|---|---|---|---|
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | #1132 | a6e3f6ac | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | #1130 | 9e1c0341 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | 7e7967fd | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 

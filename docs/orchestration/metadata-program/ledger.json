@@ -1529,9 +1529,13 @@
       "title": "Remaining unbounded PURE LIST reads",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Bound-and-disclose technicians, warehouses, suppliers, transfer orders",
-      "notes": "Split from A-BOUNDED-READS once the picker slice landed, so 'bounded reads done' cannot imply more than the pickers. These are pure list reads and safe to bound. The AGGREGATE reads - Operations dashboard netting, availableStock, consumption and technician-volume rollups - are explicitly NOT in this item and must not be swept into it: bounding the inputs to a total produces a mathematically false figure presented as complete, which is worse than an honest failure."
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Split from A-BOUNDED-READS once the picker slice landed, so 'bounded reads done' cannot imply more than the pickers. These are pure list reads and safe to bound. The AGGREGATE reads - Operations dashboard netting, availableStock, consumption and technician-volume rollups - are explicitly NOT in this item and must not be swept into it: bounding the inputs to a total produces a mathematically false figure presented as complete, which is worse than an honest failure. WAREHOUSES AND SUPPLIERS DONE, and the SHAPE is the finding: capping the shared listCollection() factory would have been wrong. Every unbounded fetcher there serves BOTH a list surface and the Operations dashboard, which nets the same data into availableStock and reconciliation totals. Capping the factory bounds both, and a total over a truncated input is not partial but WRONG while presenting itself as complete - worse than the unbounded read, which is at least slow and honest. So the bound lives at the CALL SITE via a new listCollectionPage() beside the original. REMAINING: technicians and transfer orders, same call-site treatment; the unbounded originals must stay for the aggregate consumer.",
+      "pr": 1133,
+      "headSha": "7e7967fd3cda9a206734c21a7eeb5a814298d53f",
+      "branch": "feat/bounded-list-reads",
+      "checks": "875/875 component tests; tsc clean"
     }
   ]
 }
