@@ -81,13 +81,31 @@ const SUPPLIERS = [
 
 // Realistic refrigeration/ice-machine service parts — the business Taylor Parts
 // actually operates in — rather than generic filler.
+//
+// CONFORMANCE (2026-08-17). These fixtures previously carried only a legacy
+// `partTrackingMode: "QUANTITY"` and no governed Part Master fields, so
+// partFromFirestore() threw MalformedStoredRecordError for every one of them. Any
+// governed command that resolves a Part — transfer, cycle count, receiving —
+// therefore failed with an opaque INTERNAL error. The authoritative fixture now
+// carries the governed schema: `controlType`, `stockingClass` and `stockingUnit`
+// (validated unit CODE — "EACH", not the display abbreviation "EA").
+//
+// controlType is STANDARD for every quantity-tracked part. That is what these
+// fixtures have always MEANT; serialized/lot semantics are NOT invented here just
+// to make a test pass. PRT-2001 below is the one deliberate exception, added as a
+// purpose-built SERIALIZED fixture so the serial path has conformant data to
+// exercise — its serialized asset state is created by the governed Receiving
+// command, never seeded directly.
 const PARTS = [
-  { id: "PRT-1001", name: "Evaporator Fan Motor", category: "Refrigeration", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1002", name: "Water Inlet Valve", category: "Water System", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1003", name: "Condenser Coil Assembly", category: "Refrigeration", unit: "EA", supplierId: "sup-coldchain" },
-  { id: "PRT-1004", name: "Ice Thickness Probe", category: "Controls", unit: "EA", supplierId: "sup-coldchain" },
-  { id: "PRT-1005", name: "Water Filter Cartridge", category: "Water System", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1006", name: "Compressor Start Relay", category: "Electrical", unit: "EA", supplierId: "sup-coldchain" },
+  { id: "PRT-1001", name: "Evaporator Fan Motor", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1002", name: "Water Inlet Valve", category: "Water System", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1003", name: "Condenser Coil Assembly", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  { id: "PRT-1004", name: "Ice Thickness Probe", category: "Controls", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  { id: "PRT-1005", name: "Water Filter Cartridge", category: "Water System", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1006", name: "Compressor Start Relay", category: "Electrical", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  // Purpose-built SERIALIZED fixture. A compressor unit is genuinely serial-tracked in this
+  // business, so this is a real modelling choice rather than a test-shaped one.
+  { id: "PRT-2001", name: "Ice Machine Compressor Unit", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "SERIALIZED", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
 ];
 
 const ACCOUNTS = [
@@ -156,8 +174,16 @@ async function main() {
 
   for (const p of PARTS) {
     await upsert(db, "parts", p.id, {
-      partId: p.id, sku: p.id, name: p.name, category: p.category, unitOfMeasure: p.unit,
-      partTrackingMode: "QUANTITY", status: "ACTIVE",
+      partId: p.id, sku: p.id, name: p.name, category: p.category,
+      // Governed Part Master fields — what partFromFirestore()/validatePart() actually read.
+      internalPartNumber: p.id, stockingUnit: p.stockingUnit,
+      controlType: p.controlType, stockingClass: p.stockingClass,
+      status: "ACTIVE",
+      // Legacy compatibility fields, retained deliberately: older read paths still project
+      // unitOfMeasure/partTrackingMode, and removing them here would be an unrelated migration.
+      // The GOVERNED fields above are authoritative; these are kept in step with them.
+      unitOfMeasure: p.unit,
+      partTrackingMode: p.controlType === "SERIALIZED" ? "SERIAL" : "QUANTITY",
       createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
     });
     bump("parts");
