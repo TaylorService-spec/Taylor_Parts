@@ -1599,6 +1599,40 @@
         "Owner portfolio ruling section 6"
       ],
       "notes": "The accounts search provider filtered an array the whole-collection subscription supplied, so removing that subscription removed its only possible input. Handing it a page would return 'no results' for customers that exist - a search box that silently finds nothing is worse than none, because it answers. Removed from /customers in #1138 and recorded here."
+    },
+    {
+      "id": "G-FIELD-ARCH-V2",
+      "phase": "6",
+      "wave": "3",
+      "kind": "GATE",
+      "title": "Field Architecture v2",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Design v2 per docs/specifications/field-architecture-v2.md; schedule BEFORE broad entity mass-definition",
+      "governing": [
+        "Owner Field Architecture v2 gate",
+        "DECISIONS #102 sections 6 and 8"
+      ],
+      "notes": "v1 is NOT superseded - it remains the read/query/render contract and every merged definition stays valid. What v1 must not be is final: it has one identity (id), no notion of a derived value, and a type list that treats every number alike. Scope: label vs systemName (immutable machine identity, NOT vendor 'API Name'); field classes STANDARD/SYSTEM/CUSTOM/DERIVED with DERIVED split into FORMULA/LOOKUP/ROLLUP/PROJECTION and NOT collapsed into one calculated-field concept; explicit numeric semantics incl. percentage storage and the rule that formatting never changes an authoritative value; a constrained validated expression vocabulary with no executable metadata; dependency graph by systemName with circular rejection and cross-entity authority that cannot become an authorization bypass; VIRTUAL/MATERIALIZED/AGGREGATE queryability where displayable does not imply filterable; the full behavior contract through deprecation; an EOS-native standard vocabulary that standardizes MEANING without forcing every entity to carry every field; storage separation so systemName is never assumed to be the Firestore path; and a custom-field SEAM, not the custom-field product."
+    },
+    {
+      "id": "A-ENTITY-MASS-DEFINITION",
+      "phase": "7",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Mass-definition of remaining business entities",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "G-FIELD-ARCH-V2"
+      ],
+      "nextAction": "Define remaining entities AFTER Field Architecture v2 lands",
+      "governing": [
+        "Owner Field Architecture v2 gate, sequencing"
+      ],
+      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue."
     }
   ]
 }

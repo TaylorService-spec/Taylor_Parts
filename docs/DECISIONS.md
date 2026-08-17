@@ -1305,3 +1305,38 @@ metadata architecture.
 Full continuing rule, including the ten stop-and-escalate conditions and the required stop report
 format: `governance/metadata-architecture-ip-boundary.md`. The Metadata Architecture specification,
 when written, must reference it.
+
+## 103. FieldDefinition v1 is the current contract, not the final field architecture
+
+**Owner ruling, 2026-08-17.** v1 is **not** superseded: it remains the read/query/render contract
+and every merged definition written against it stays valid. What it must not be treated as is the
+final enterprise field model — it carries one identity, no notion of a derived value, and a type
+list that treats every number alike.
+
+**Field Architecture v2 is scheduled BEFORE broad mass-definition of the remaining business
+entities.** That is the whole point of the timing: two entities are defined today, and each further
+one written against v1 raises the cost of changing the field contract by the number of definitions,
+tests, indexes and surfaces that would have to move together.
+
+Required scope: `label` vs `systemName` — a stable machine identity, immutable except through
+governed migration, referenced by metadata, formulas, relationships, integrations, reporting,
+automation and AI/tool contracts, and deliberately **not** spelled with a vendor's "API Name" or
+custom-field suffix conventions. Field classes STANDARD / SYSTEM / CUSTOM / DERIVED, with DERIVED
+split into FORMULA / LOOKUP / ROLLUP / PROJECTION and **not** collapsed into one generic
+calculated-field concept. Explicit numeric semantics (INTEGER, DECIMAL, PERCENTAGE, RATIO, CURRENCY,
+unit-aware QUANTITY) carrying storage/calculation/display precision, rounding mode, bounds and step,
+under the rule that **formatting never silently changes an authoritative business value** and that
+percentage storage is explicit. A constrained, validated expression vocabulary — no arbitrary
+JavaScript, no executable metadata (§8). A dependency graph declared by `systemName`, validated,
+rejecting cycles, where cross-entity dependencies respect the authority of the underlying data and
+**never become an authorization bypass**. Queryability split VIRTUAL / MATERIALIZED / AGGREGATE,
+because displayable does not imply sortable or filterable at scale. The durable behavior contract
+through deprecation, under §6 — metadata declares authority requirements and never grants them. An
+EOS-native standard field vocabulary that standardizes **meaning** where concepts genuinely repeat
+without forcing every entity to carry every field. Storage separation, so `systemName` is never
+assumed to equal the Firestore path and implementation details do not become platform contract. And
+a custom-field **seam** — not the custom-field administration product.
+
+Specification: `specifications/field-architecture-v2.md`. Ledger: `G-FIELD-ARCH-V2` (the gate) and
+`A-ENTITY-MASS-DEFINITION` (the sequencing constraint, recorded as an entry so it cannot be lost
+between one migration and the next). Surfaces consuming already-defined entities are not blocked.
