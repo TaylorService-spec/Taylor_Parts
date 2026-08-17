@@ -2,6 +2,30 @@
 
 **Status: discovery inventory, verified against the repository. Nothing here is authorized or scheduled.**
 
+> ## ⚠️ Model correction (post-review) — read before trusting any activation claim below
+>
+> This document uses **`BUILT_INERT`** to mean "built and hard-denied everywhere". **That reading is
+> wrong**, and it is the same class of error the document elsewhere records itself making.
+> `functions/src/access/environmentCapabilityOverrides.ts` activates **27** catalog-inactive
+> capabilities in `eos-platform-sandbox`. A capability can be `active:false` in the catalog **and
+> genuinely authorized in sandbox at the same time**.
+>
+> Concretely: `salesOrder.fulfill`, `finance.invoice.issue`, `opportunity.write`, and the transfer and
+> cycle-count families are described below as gated or fail-closed. In the **catalog baseline** they
+> are. **In sandbox they are activated.** Statements below of the form "built but switched off" should
+> be read as "catalog-inactive", never as "unusable everywhere".
+>
+> The repo's own rule, which this document failed to honour:
+> **eligibility != activation != authorization.**
+>
+> The corrected, machine-checked view is
+> [`../architecture/capability-graph.md`](../architecture/capability-graph.md) — it reports catalog
+> declaration, implementation evidence, and environment activation as three separate facts, and computes
+> effective state only for an explicitly named environment. **Prefer it over any activation claim here.**
+>
+> The wording below is left in place deliberately. It is the evidence of the failure mode the graph
+> exists to prevent, and sanitising it would destroy that record.
+
 The durable output of the first **outward-facing** discovery sweep. The site-work discovery loop had only
 ever been pointed inward (at our own code and UX); this sweep points it at external sources — competing
 products and trade-domain practice — to surface capabilities we have not considered at all, as distinct

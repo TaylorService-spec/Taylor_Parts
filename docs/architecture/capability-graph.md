@@ -1,25 +1,31 @@
-# Capability graph — what this platform can actually do
+# Capability graph — declaration, implementation, activation
 
 **Generated. Do not edit by hand.** `node scripts/buildCapabilityGraph.mjs`
 
-`repo-graph.json` maps *structure* — who imports whom. This maps *capability* — what a person can
-actually finish. It exists because "do we already have X?" was being answered by grep, and grep
-cannot tell a capability that was never built from one that was built and deliberately switched off.
+`repo-graph.json` maps *structure*. This reports *evidence* about capabilities: what the catalog
+declares, what the code references, and what each environment activates. These are three separate
+things and this document never fuses them into one verdict.
 
-## The four layers
+> **`active: false` does not mean unusable.** `functions/src/access/environmentCapabilityOverrides.ts`
+> activates selected catalog-inactive capabilities in configured non-production environments. The
+> repo's rule holds throughout: **eligibility != activation != authorization**.
 
-| Layer | Source | Question it answers |
+## Dimensions reported
+
+| Dimension | Source | What it does NOT tell you |
 | --- | --- | --- |
-| Governance | `permissionCatalog.ts` | Is there a capability entry, and is it `active`? |
-| Backend | `functions/src/index.ts` | Is there an exported callable behind it? |
-| UI | `navConfig.js` | Is there a destination — hidden, placeholder, or real? |
-| User truth | `docs/user-guide/README.md` | Do our own guides say a person can finish the job? |
+| Catalog declaration + `active` flag | `permissionCatalog.ts` | Whether any environment activates it |
+| Implementation evidence | literal id references; callables from `index.ts` | Whether it is deployed or reachable |
+| Environment activation | `environmentCapabilityOverrides.ts` + `config/environments.json` | Whether a principal holds a qualifying grant |
+| Effective state | computed **only** with `--environment` | Anything, unless an environment was named |
 
 ## Counts
 
 - **capabilities**: 109
-- **active**: 36
-- **inactive**: 73
+- **catalogActive**: 36
+- **catalogInactive**: 73
+- **eligibleForEnvironmentActivation**: 27
+- **activatedInSomeEnvironment**: 27
 - **callableExports**: 30
 - **destinations**: 58
 - **destinationsHidden**: 20
@@ -27,105 +33,118 @@ cannot tell a capability that was never built from one that was built and delibe
 - **registerEntries**: 15
 - **parityIssues**: 0
 
-## Capability states
+Catalog parse check: 109/109 entries (ok)
 
-| State | Count | Meaning |
+## Implementation evidence
+
+Evidence of reference. **Not** proof that a callable exists, except where stated.
+
+| Class | Count | Means |
 | --- | ---: | --- |
-| ACTIVE | 5 | Granted and backed by an exported callable |
-| BUILT_INERT | 68 | **Callable exists; capability is `active:false`.** Built and hard-denied — not missing |
-| DECLARED_ONLY | 31 | Registered, no exported callable found |
-| ACTIVE_NO_CALLABLE | 0 | Active but no callable matched — read-side or a parse miss; check before trusting |
+| EXPORTED | 19 | An exported callable in `index.ts` names this capability |
+| SERVER_REFERENCED | 54 | Referenced under `functions/src`; no callable matched |
+| CLIENT_ONLY | 5 | Referenced only in the client app |
+| NO_IMPLEMENTATION_EVIDENCE | 31 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 
-## Guide statuses (user-visible truth)
+## Environment activation
 
-- **live**: 35
-- **not-yet-available**: 4
-- **demo (except Receive)**: 2
-- **real, fail-closed until activated**: 1
+Eligible for activation (allow-list in the resolver): **27**.
+Activated by at least one environment: **27**.
 
-## Permission-catalog parity
+Production is hard-blocked by role in the resolver and carries no override declaration.
 
-Server and client mirrors agree.
+## Effective state
 
-## Flows — where each business chain stops
+**Not computed.** No environment was named, and effective authorization is not a fact that
+exists environment-free. Run with `--environment <id|projectId>` to evaluate one.
 
-A chain is only as usable as its first non-active link. Steps marked `UNGOVERNED` have no capability
-behind them at all — that may be ordinary UI, or genuinely nothing; the graph does not guess.
+## Flows — governance coverage per business chain
+
+Chains transcribed from our own process docs. A step with no mapped capability is `UNMAPPED` and
+**does not stop a flow** — it may be ordinary UI, legacy role-gated authorization, non-capability
+logic, or genuinely absent, and this evidence cannot distinguish those.
 
 ### Service call → cash
 
 Source: `docs/PlatformCapabilityModel.md (Work Order lifecycle); docs/assessments/completion-to-finance-and-billing-ar-assessment.md`
 
-**Stops at step 1 of 8: Intake — customer reports a problem**
+_Governance coverage only — no stopping point computed without an environment._
 
-| # | Step | State | Capabilities |
+| # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
-| 1 | Intake — customer reports a problem | UNGOVERNED | — |
-| 2 | Create work order | BUILT_INERT | `workOrder.create` |
-| 3 | Plan parts | BUILT_INERT | `workOrder.parts.plan` |
-| 4 | Schedule / dispatch | LEGACY_ROLE_GATED | — |
-| 5 | Field execution — parts and notes | BUILT_INERT | `inventory.action.create` |
-| 6 | Complete / transition | BUILT_INERT | `workOrder.transition` |
-| 7 | Invoice | BUILT_INERT | `finance.invoice.issue` |
-| 8 | Payment | BUILT_INERT | `finance.payment.apply` |
+| 1 | Intake — customer reports a problem | UNMAPPED | — |
+| 2 | Create work order | IMPLEMENTATION_EVIDENCE | `workOrder.create` |
+| 3 | Plan parts | IMPLEMENTATION_EVIDENCE | `workOrder.parts.plan` |
+| 4 | Schedule / dispatch | UNMAPPED | — |
+| 5 | Field execution — parts and notes | IMPLEMENTATION_EVIDENCE | `inventory.action.create` |
+| 6 | Complete / transition | IMPLEMENTATION_EVIDENCE | `workOrder.transition` |
+| 7 | Invoice | IMPLEMENTATION_EVIDENCE | `finance.invoice.issue` |
+| 8 | Payment | IMPLEMENTATION_EVIDENCE | `finance.payment.apply` |
 
 ### Equipment sale → serviceable asset
 
 Source: `docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md §1 (D2→D3→D4→invoice→asset→D1)`
 
-**Stops at step 1 of 8: Opportunity**
+_Governance coverage only — no stopping point computed without an environment._
 
-| # | Step | State | Capabilities |
+| # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
-| 1 | Opportunity | BUILT_INERT | `opportunity.write` |
-| 2 | Sales & Security Agreement (D2) | UNGOVERNED | — |
-| 3 | Convert to Sales Order (D3) | BUILT_INERT | `opportunity.createSalesOrder`, `salesOrder.write` |
-| 4 | Allocate stock | BUILT_INERT | `salesOrder.fulfill` |
-| 5 | Pick ticket (D4) | UNGOVERNED | — |
-| 6 | Deliver / install | BUILT_INERT | `salesOrder.service` |
-| 7 | Invoice | BUILT_INERT | `finance.invoice.issue` |
-| 8 | Becomes serviceable asset | BUILT_INERT | `inventory.serializedAsset.read` |
+| 1 | Opportunity | IMPLEMENTATION_EVIDENCE | `opportunity.write` |
+| 2 | Sales & Security Agreement (D2) | UNMAPPED | — |
+| 3 | Convert to Sales Order (D3) | IMPLEMENTATION_EVIDENCE | `opportunity.createSalesOrder`, `salesOrder.write` |
+| 4 | Allocate stock | IMPLEMENTATION_EVIDENCE | `salesOrder.fulfill` |
+| 5 | Pick ticket (D4) | UNMAPPED | — |
+| 6 | Deliver / install | IMPLEMENTATION_EVIDENCE | `salesOrder.service` |
+| 7 | Invoice | IMPLEMENTATION_EVIDENCE | `finance.invoice.issue` |
+| 8 | Becomes serviceable asset | IMPLEMENTATION_EVIDENCE | `inventory.serializedAsset.read` |
 
 ### Ventana ice machine — inventory control lifecycle
 
 Source: `docs/business-processes/ventana-ice-machine-commercial-inventory-lifecycle.md §3 (two-condition exit: install complete AND sale closed)`
 
-**Stops at step 1 of 7: Customer demand / sale**
+_Governance coverage only — no stopping point computed without an environment._
 
-| # | Step | State | Capabilities |
+| # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
-| 1 | Customer demand / sale | BUILT_INERT | `opportunity.write`, `salesOrder.write` |
-| 2 | Taylor purchases from Ventana | BUILT_INERT | `reorder.purchaseOrder.create` |
-| 3 | Receive — inventory control BEGINS | BUILT_INERT | `inventory.stock.receive` |
-| 4 | Serialized identity & custody | BUILT_INERT | `inventory.serializedAsset.read` |
-| 5 | Allocation / staging | BUILT_INERT | `salesOrder.fulfill` |
-| 6 | Delivery / installation | BUILT_INERT | `salesOrder.service` |
-| 7 | Install complete AND sale closed — control ENDS | BUILT_INERT | `inventory.serializedAsset.read` |
+| 1 | Customer demand / sale | IMPLEMENTATION_EVIDENCE | `opportunity.write`, `salesOrder.write` |
+| 2 | Taylor purchases from Ventana | IMPLEMENTATION_EVIDENCE | `reorder.purchaseOrder.create` |
+| 3 | Receive — inventory control BEGINS | IMPLEMENTATION_EVIDENCE | `inventory.stock.receive` |
+| 4 | Serialized identity & custody | IMPLEMENTATION_EVIDENCE | `inventory.serializedAsset.read` |
+| 5 | Allocation / staging | IMPLEMENTATION_EVIDENCE | `salesOrder.fulfill` |
+| 6 | Delivery / installation | IMPLEMENTATION_EVIDENCE | `salesOrder.service` |
+| 7 | Install complete AND sale closed — control ENDS | IMPLEMENTATION_EVIDENCE | `inventory.serializedAsset.read` |
 
 ### Parts reorder → stock on hand
 
-Source: `docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as **live**`
+Source: `docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as live`
 
-**Stops at step 1 of 6: Request a reorder**
+_Governance coverage only — no stopping point computed without an environment._
 
-| # | Step | State | Capabilities |
+| # | Step | Coverage | Capabilities |
 | ---: | --- | --- | --- |
-| 1 | Request a reorder | BUILT_INERT | `reorder.request.create.manual` |
-| 2 | Review / approve | BUILT_INERT | `reorder.request.approve`, `reorder.request.reject` |
-| 3 | Assign to Parts Associate | BUILT_INERT | `reorder.request.assign` |
-| 4 | Place the order (PO) | BUILT_INERT | `reorder.request.recordPurchaseOrder`, `reorder.purchaseOrder.create` |
-| 5 | Receive into warehouse | BUILT_INERT | `inventory.stock.receive` |
-| 6 | Stock on hand updated | BUILT_INERT | `inventory.transaction.read` |
+| 1 | Request a reorder | IMPLEMENTATION_EVIDENCE | `reorder.request.create.manual` |
+| 2 | Review / approve | IMPLEMENTATION_EVIDENCE | `reorder.request.approve`, `reorder.request.reject` |
+| 3 | Assign to Parts Associate | IMPLEMENTATION_EVIDENCE | `reorder.request.assign` |
+| 4 | Place the order (PO) | IMPLEMENTATION_EVIDENCE | `reorder.purchaseOrder.create`, `reorder.request.recordPurchaseOrder` |
+| 5 | Receive into warehouse | IMPLEMENTATION_EVIDENCE | `inventory.stock.receive` |
+| 6 | Stock on hand updated | IMPLEMENTATION_EVIDENCE | `inventory.transaction.read` |
+
+## Permission-catalog parity
+
+Server and client mirrors agree.
 
 ## How to use it
 
-Before claiming a capability is missing, query this graph. Specifically:
+Before claiming a capability is missing:
 
-1. Search `capabilities[]` for the resource — a `BUILT_INERT` hit means **built and switched off**,
-   which is an activation decision, not a gap.
-2. Search `destinations[]` — a `navHidden` entry with a `placeholderExplanation` states in its own
-   words why it is not reachable.
-3. Search `guides[]` — a `not-yet-available` tag names what is missing underneath a screen that exists.
-4. Only if all four layers are silent is something genuinely absent.
+1. Find it in `capabilities[]`. Read `catalogActive`, `implementation.evidence`, and
+   `environmentActivation` as **three separate facts**.
+2. `catalogActive: false` with a non-empty `environmentActivation.environments` means it is
+   **live in those environments** — not missing, and not inert.
+3. `NO_IMPLEMENTATION_EVIDENCE` is a lead, not a verdict — indirect references are invisible here.
+4. Check `destinations[]` for a `navHidden` entry whose `placeholderExplanation` states, in its own
+   words, why it is unreachable; and `guides[]` for a status tag naming what is missing beneath a
+   screen that exists.
+5. Only when all of those are silent is something plausibly absent — and confirm by reading.
 
-Structural questions (who imports whom, is a cited path real) belong to `repo-graph.json` instead.
+Structural questions (who imports whom, is a cited path real) belong to `repo-graph.json`.
