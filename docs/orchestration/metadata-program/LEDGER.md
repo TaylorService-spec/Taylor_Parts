@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 43 | 41 | 2 |
+| 43 | 42 | 1 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -40,14 +40,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 _Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
 table below before concluding the program is finished._
-
-## MERGE_QUEUED
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1137 | 60267f0b | — | NOT_APPLICABLE | Definitions queued (#1137). Surface rewiring is NOT started - see the aggregate finding in notes. |
-
-> **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
 ## MERGED
 
@@ -85,12 +77,14 @@ table below before concluding the program is finished._
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1137 | — | bd576a92 | NOT_APPLICABLE | Definitions MERGED (bd576a92). Surface rewiring awaits the aggregate decision above. |
 | X-ADMIN-CRM-AUTHORITY | 0 | crm.activity.read via canonical admin authority | — | — | #1100 | — | — | NOT_APPLICABLE | Await Owner authorization; program proceeds around it |
 | X-STATUS-DATA-AUDIT | 6 | Account status persisted-data audit before production rollout | — | — | — | — | — | NOT_APPLICABLE | Audit production Account documents for title-case status values |
 | X-TRUCK-PROD-LIVE-RISK | 0 | URGENT: production may already expose truck write controls | — | — | — | — | — | UNKNOWN | Authorized operator verifies the live production bundle and the deployed callable set |
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Owner decision on a governed per-part availability projection |
 | X-NO-GOVERNED-READ-COLLECTIONS | 9 | BLOCKED-NO-GOVERNED-READ: six collections have no read authority at all | — | — | — | — | — | NOT_APPLICABLE | No metadata work possible; each needs a governed read service under normal capability governance |
 
+> **S-CRM-CUSTOMERS** blocked — The page's portfolio summary cards are aggregates over the whole accounts collection, not list rows · requires: Portfolio summary cards on /customers are AGGREGATES over the whole accounts collection. Bounding their input makes the counts false while presenting them as complete. Resolving needs either an authoritative count source or a decision to reframe/remove the cards - a product decision a read-shape rule does not authorize. Same class as X-INVENTORY-ANALYTICS-AGGREGATE.
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
 > **X-TRUCK-PROD-LIVE-RISK** blocked — Truck write readiness is a COMPILE-TIME constant baked into a Hosting bundle. PR #1109 fails the repository declaration closed, but if a previously released production bundle carries the old true, production users may see enabled truck-management write controls right now. Only a Hosting release built from the corrected config changes what is live. Separately, whether the eight callables are actually deployed to taylor-parts is unverified in either direction. · requires: Owner authorizes a live production check of (a) the served bundle's readiness value and (b) the deployed Functions set, then decides whether a Hosting release is required

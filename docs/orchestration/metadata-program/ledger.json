@@ -137,24 +137,25 @@
       "route": "/customers",
       "classification": "A_ENTITY_LIST",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "BLOCKED_PROTECTED",
       "issue": 1097,
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Definitions queued (#1137). Surface rewiring is NOT started - see the aggregate finding in notes.",
+      "nextAction": "Definitions MERGED (bd576a92). Surface rewiring awaits the aggregate decision above.",
       "governing": [
         "DECISIONS #102 \u00a79"
       ],
       "blockers": [
         {
-          "reason": "First consumer of the list runtime; cannot migrate before the runtime exists"
+          "reason": "The page's portfolio summary cards are aggregates over the whole accounts collection, not list rows",
+          "requiredDecision": "Portfolio summary cards on /customers are AGGREGATES over the whole accounts collection. Bounding their input makes the counts false while presenting them as complete. Resolving needs either an authoritative count source or a decision to reframe/remove the cards - a product decision a read-shape rule does not authorize. Same class as X-INVENTORY-ANALYTICS-AGGREGATE."
         }
       ],
       "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation. FIRST HALF QUEUED (#1137): Account entity + account.index list, the program's first real definitions. Enum labels sourced from domain/constants rather than a second copy; identity claims no reference number because an Account has none; tags render but claim no operator until the index exists; landing view is recently-viewed. Exposed and fixed a real defect - requiredIndexes() emitted ASC/DESC into output meant to be pasted into firestore.indexes.json, where only ASCENDING/DESCENDING is accepted, so every demand compared unequal against all eight existing declarations and would have failed the deploy of its own fix. SECOND HALF IS NOT A PURE LIST MIGRATION - OPEN QUESTION: /customers renders portfolio summary cards (total/active/prospect/inactive/archived counts) computed client-side over the WHOLE accounts collection, plus a tag facet built the same way. Those are AGGREGATES, not list rows: bounding their input makes the counts mathematically false while presenting them as complete - the same class as X-INVENTORY-ANALYTICS-AGGREGATE. Migrating the table to bounded paging while leaving the cards reading everything would keep the unbounded read and add a second one. Resolving it needs either an authoritative count source or a decision to reframe/remove the cards, which is a product decision a read-shape rule does not authorize.",
       "pr": 1137,
       "branch": "feat/customers-metadata",
-      "headSha": "60267f0b35c25d768184c65c74a131c81937781b"
+      "mergeSha": "bd576a92"
     },
     {
       "id": "S-CRM-ACCOUNT-RECORD",
