@@ -215,6 +215,44 @@ Ordered by seed number; order does not imply priority or sequence.
 
 ---
 
+### 16. Tenant Metadata Configuration & Governed Self-Service Platform
+
+- **Business problem:** EOS behaviour is currently changeable only by a developer editing source. A business
+  that must add a field, place it on a page, automate a routine decision, answer an ad-hoc question or move
+  data in bulk has to queue behind an engineering change. The capability is for authorized administrators to
+  extend and configure EOS through **business concepts** — without editing Firestore, React, JSON or source,
+  and without acquiring authority they do not already hold.
+- **Primary domains:** Platform / Metadata, Administration, Access & Authority, Reporting, Integration.
+- **Known canonical authorities:** Field Architecture v2 (`docs/specifications/field-architecture-v2.md`,
+  `field-ops-app-vite/src/metadata/v2/`) · the shared query model (`src/metadata/query/queryModel.js`) ·
+  record provenance (`src/metadata/v2/provenance.js`) · the audit event contract
+  (`functions/src/access/auditEventWriter.ts`) · the governed report creator spec · the metadata IP boundary
+  (`docs/governance/metadata-architecture-ip-boundary.md`).
+- **Key business questions:** Who may add a field, and to which entity? What may an administrator place on an
+  operational page without breaking the workflow it exists to run? Which questions can be asked directly
+  rather than through a developer? What may be automated, and under whose authority does the automation act?
+  Who may export what, and can we prove after the fact who exported which records? How does a tenant rename a
+  concept without breaking every report, formula and integration bound to it?
+- **Dependencies:** entity/list definitions across the business domains (`A-ENTITY-MASS-DEFINITION`), the
+  unified query model (`A-QUERY-MODEL-UNIFIED`, delivered), and the governed action/command catalogue.
+- **Roadmap trigger:** the first business request that would otherwise be satisfied by adding a field or a
+  report in source — or the first tenant that needs EOS terminology to differ from Taylor's.
+- **Current maturity:** `IDENTIFIED` — architecture recorded, four workstreams scheduled, none built.
+- **Related:** `docs/specifications/eos-platform-architecture-addendum.md`, DECISIONS #103/#104/#105, ledger
+  entries `A-ADMIN-METADATA-CONFIG`, `A-AUTOMATION-V1`, `A-EQL-V1`, `A-BULK-DATA-V1`.
+
+**Why this is one capability and not four.** Admin configuration, automation, EQL and bulk data look like four
+products and share one substrate: a stable machine identity, one governed query model, one action catalogue,
+and one authority resolution. Split into four, each grows its own filter vocabulary and its own idea of what
+"editable" means, and the four disagree. The register records them together so the shared substrate is a
+visible dependency rather than something each rediscovers.
+
+**The invariant that constrains the whole capability.** Configuration composes approved capabilities; it never
+invents authority. A page may request that a field be editable, an automation may request that a command run,
+an export may request every row — and each request is still resolved against Rules, governed commands and the
+initiating actor's own read scope. An administration surface that could grant itself authority would be a
+privilege escalation with a friendly interface, which is the failure this capability is defined to avoid.
+
 ## Already-supplied cross-domain requirements
 
 These were supplied earlier and have durable detail; summarized here and cross-referenced so the register is
@@ -351,6 +389,10 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 
 ## Change log
 
+- **2026-08-17** — Added #16 Tenant Metadata Configuration & Governed Self-Service Platform (`IDENTIFIED`):
+  admin data-model configuration, automation, EQL and bulk data recorded as ONE capability over one shared
+  substrate, because split into four each grows its own filter vocabulary and its own idea of what "editable"
+  means. Architecture in `specifications/eos-platform-architecture-addendum.md`; DECISIONS #103/#104/#105.
 - **2026-08-07** — Register created (roadmap hygiene, Owner direction). Seeded with capabilities 1–11
   (11 = watch item) plus cross-domain requirements 12 (Temporary Equipment) and 13 (Technician Labor). All
   `IDENTIFIED`.
