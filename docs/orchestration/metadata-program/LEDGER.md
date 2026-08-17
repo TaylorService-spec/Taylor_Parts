@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 46 | 42 | 4 |
+| 47 | 42 | 5 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,10 +38,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
+- **S-CRM-SALES-ORDER-DEFINITION** (phase 6) — Sales Order entity + list definitions → Author with identity.referenceField = salesOrderNumber; declare NO nameField
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
-- **X-CONTACT-PROVENANCE-GAP** (phase 6) — Contact write paths do not agree on provenance → Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy
 - **X-EQUIPMENT-PROVENANCE-GAP** (phase 6) — Equipment stores epoch-number timestamps and no actor → Determine the actual stored semantics first, then converge future governed writes
-- **X-SALES-ORDER-NO-REFERENCE** (phase 6) — Sales Order has no business reference; its header renders a document id → Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling
+- **X-SALES-ORDER-HEADER** (phase 6) — SalesOrderDetail header renders a document id → Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state
+- **X-SALES-ORDER-NO-REFERENCE** (phase 6) — Sales Order has no business reference; its header renders a document id → Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next.
 
 ## IMPLEMENTING
@@ -49,15 +50,16 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Contact + Opportunity merged (b4d7518b). Sales Order, Part and Equipment scouted and next. |
+| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | — | NOT_APPLICABLE | Numbering MERGED (0f797a01). Remaining: the SalesOrderDetail header, the entity definition's referenceField, and inert backfill tooling. |
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
-| X-CONTACT-PROVENANCE-GAP | 6 | Contact write paths do not agree on provenance | — | — | — | — | — | NOT_APPLICABLE | Converge the three contact write paths on createdAt/createdBy/updatedAt/updatedBy |
-| X-SALES-ORDER-NO-REFERENCE | 6 | Sales Order has no business reference; its header renders a document id | — | — | — | — | — | NOT_APPLICABLE | Implement SO-YYYY-###### numbering, the entity referenceField, the header fix, and inert migration tooling |
 | X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Determine the actual stored semantics first, then converge future governed writes |
+| X-SALES-ORDER-HEADER | 6 | SalesOrderDetail header renders a document id | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Render salesOrderNumber; legacy records without one show a neutral reference-unavailable state |
+| S-CRM-SALES-ORDER-DEFINITION | 6 | Sales Order entity + list definitions | — | — | — | — | — | NOT_APPLICABLE | Author with identity.referenceField = salesOrderNumber; declare NO nameField |
 
 ## MERGED
 
@@ -96,6 +98,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | #1147 | — | 379ef835 | NOT_APPLICABLE | Gate cleared. Mass entity definition may resume. |
 | A-RECORD-PROVENANCE | 6 | Record provenance platform invariant | — | — | #1149 | — | 64564bb3 | NOT_APPLICABLE | Merged. The origin seam (createdVia/initiatedBy/sourceExecutionId) awaits reconciliation with the audit event architecture before anything writes it. |
 | A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | #1151 | — | 80588e61 | NOT_APPLICABLE | Merged. Automation v1, EQL v1 and Bulk Data v1 are unblocked; migrating the list runtime onto the AST is a separate slice. |
+| X-CONTACT-PROVENANCE-GAP | 6 | Contact write paths do not agree on provenance | — | — | #1157 | — | c97694a7 | NOT_APPLICABLE | Future writes converged. Historical backfill remains a separate decision requiring evidence. |
 
 ## BLOCKED_PROTECTED
 
