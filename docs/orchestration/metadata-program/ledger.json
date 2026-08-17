@@ -140,7 +140,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1097,
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
       "governing": [
@@ -184,7 +184,7 @@
       "issue": 1099,
       "dependsOn": [
         "D-OPPORTUNITY-IDENTITY",
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Identity is on main; awaiting the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
@@ -233,7 +233,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1098,
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "The Gate B non-CRM validation target",
       "governing": [
@@ -270,7 +270,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
       "notes": "Shares the same unbounded useWorkOrders() listener."
@@ -289,7 +289,7 @@
       "nextAction": "Classify: queue with governed transition writes, not a list",
       "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -362,7 +362,7 @@
       "nextAction": "Confirm synthetic-source status before migrating anything",
       "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -379,7 +379,7 @@
       "nextAction": "Same synthetic-source caveat as coordinated visits",
       "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -427,7 +427,7 @@
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
       "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -442,7 +442,7 @@
       "entity": "Technician",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
@@ -459,7 +459,7 @@
       "entity": "SavedReportDefinition",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
@@ -819,7 +819,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
@@ -853,7 +853,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate; navHidden, direct-URL only",
       "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
@@ -870,7 +870,7 @@
       "entity": "Warehouse",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
@@ -887,7 +887,7 @@
       "entity": "Supplier",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
@@ -926,7 +926,7 @@
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
       "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -971,7 +971,7 @@
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
       "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -1000,7 +1000,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate; already cursor-paginated",
       "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
@@ -1033,7 +1033,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
@@ -1050,7 +1050,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Same bounded projection as purchase orders, filtered to received."
@@ -1097,11 +1097,9 @@
       "title": "Bounded-read remediation across list-exempt surfaces",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces",
       "governing": [
         "DECISIONS #102 section 9"
       ],
@@ -1115,15 +1113,13 @@
       "title": "ListViewDefinition to composite-index validator",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
+      "status": "EXEMPT",
+      "dependsOn": [],
+      "nextAction": "None - see A-INDEX-CI-BRIDGE",
       "governing": [
         "Owner ruling section 8"
       ],
-      "notes": "Turns the rule that metadata must not promise unsupported filter combinations into a build failure. scripts/indexDriftGuard.mjs already exports indexKey, compareIndexes, evaluateDeploy and normalizeGcloudIndexes with a fail-closed named-acknowledgement gate; a validator must import those rather than re-deriving key normalization. Note those exports are currently imported only by their own test - no deploy script wires them in yet."
+      "notes": "DUPLICATE, folded into A-INDEX-CI-BRIDGE. I recorded the same work twice under two names -- 'build a validator' and 'wire it into CI' -- which are one item: a validator nothing runs enforces nothing. Kept as EXEMPT rather than deleted so the duplication is visible as resolved rather than looking like an item that vanished."
     },
     {
       "id": "A-CALLABLE-UNBOUNDED",
@@ -1368,14 +1364,15 @@
       "title": "List runtime component consuming ListViewDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer. QUERY CORE BUILT as a pure module: it produces a bounded query DESCRIPTOR and executes nothing, which is what makes section 9 assertable offline rather than hoped for. The guarantees are absences - no offset/page/skip key exists at all, no argument removes the limit - and are tested as absences, because an absence nobody checks becomes an addition. The GRID COMPONENT is still to build; this is the half that carries the governance properties.",
       "pr": 1126,
       "headSha": "1121e888ad03e5b1368ac143b67168cd7f62a2c3",
       "branch": "feat/list-runtime",
-      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run"
+      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run",
+      "mergeSha": "dafa60df"
     },
     {
       "id": "A-INDEX-CI-BRIDGE",
@@ -1385,16 +1382,14 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Executable: requiredIndexes/missingIndexes are on main; wire them against firestore.indexes.json in CI",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle."
     },
     {
       "id": "A-PAGE-RENDERER",
@@ -1479,11 +1474,9 @@
       "title": "List grid component consuming the query core",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Build after the query core is on main",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Executable: the query core is on main (dafa60df)",
       "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
     },
     {
