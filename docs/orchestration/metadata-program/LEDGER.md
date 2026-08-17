@@ -101,6 +101,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
 | X-ACCOUNT-PAGE-GAPS | 6 | Account page: Locations section and Commercial Profile fields | /customers/:accountId | — | #1187 | — | f18b0e83 | NOT_APPLICABLE | Both gaps closed. Wiring is the remaining lane. |
 | X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | #1183 | — | d6e29a5d | NOT_APPLICABLE | Merged. Index demands verified unchanged and pinned by test. |
+| S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS | 6 | Warehouse + Supplier entity definitions | — | — | #1189 | — | 63b5059e | NOT_APPLICABLE | Merged and registered. Two composites declared and pending deploy. |
 
 ## BLOCKED_PROTECTED
 
