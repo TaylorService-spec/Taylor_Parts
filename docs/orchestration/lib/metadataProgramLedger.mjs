@@ -283,6 +283,35 @@ export function reconcile(ledger, observed = {}) {
   return out;
 }
 
+/**
+ * BLOCKED_DEPENDENCY items whose dependencies are ALL satisfied.
+ *
+ * The ledger does not auto-promote, deliberately: a satisfied dependency means someone
+ * should LOOK at the item, not that the item is ready. The two differ often — 23 surfaces
+ * once declared a dependency on the list CONTRACT when what they actually needed was the
+ * list RUNTIME, and auto-promoting them would have reported two dozen items executable
+ * that were not, which is the optimistic error and the harder one to notice.
+ *
+ * But not promoting must never mean HIDING. Before this existed, those 23 sat in
+ * BLOCKED_DEPENDENCY with nothing to block them while the scheduler reported "nothing
+ * executable" — a false terminal state, which is the exact failure the global
+ * executability rule exists to prevent.
+ *
+ * So a stale block is surfaced and demands a deliberate resolution: promote it, or
+ * re-point it at what it actually needs.
+ */
+export function staleBlocks(ledger) {
+  const entries = ledger?.entries ?? [];
+  const byId = new Map(entries.filter((e) => e?.id).map((e) => [e.id, e]));
+  const satisfied = (id) => ["MERGED", "COMPLETE", "EXEMPT"].includes(byId.get(id)?.status);
+  return entries.filter(
+    (e) =>
+      e.status === "BLOCKED_DEPENDENCY" &&
+      (e.dependsOn ?? []).length > 0 &&
+      (e.dependsOn ?? []).every(satisfied)
+  );
+}
+
 /** Counts for the Phase 10 conformance readout. Surfaces only — the site coverage question. */
 export function conformance(ledger) {
   const surfaces = (ledger?.entries ?? []).filter((e) => e.kind === "SURFACE");
@@ -323,6 +352,18 @@ export function renderMarkdown(ledger) {
   lines.push(`|---|---|---|`);
   lines.push(`| ${c.totalSurfaces} | ${c.accountedFor} | ${c.unaccountedFor} |`);
   lines.push("");
+  const stale = staleBlocks(ledger);
+  if (stale.length) {
+    lines.push("## Stale blocks — resolve before trusting \"nothing executable\"");
+    lines.push("");
+    lines.push(`${stale.length} item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.`);
+    lines.push("Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.");
+    lines.push("");
+    for (const e of stale.slice(0, 15)) {
+      lines.push(`- **${e.id}** — depends on ${e.dependsOn.join(", ")} (all satisfied) → ${e.nextAction}`);
+    }
+    lines.push("");
+  }
   lines.push("## Next executable");
   lines.push("");
   if (next.length === 0) {

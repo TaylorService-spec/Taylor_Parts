@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- stable,
 // capability-based Permission catalog. Fixed by docs/specifications/
 // enterprise-access-and-administration-platform.md §6/§7 and sequenced
@@ -10,9 +16,10 @@
 // anyone; Role->Permission mapping is Row 2 (Task 7)'s compatibility
 // resolver, not this file. No runtime authorization behavior changes.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/permissionCatalog.ts. If either file
-// changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Permission } from "../types/access";
 
 // Spec §6: PermissionId = "<domain>.<resource>.<action>", lower-camel
@@ -111,8 +118,8 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // WO Parts Planning Phase 2 -- authoring/changing a Work Order's planned parts (qtyPlanned) via the
   // governed setWorkOrderPartsPlan producer. Registered active:false: fail-closed for every principal until
-  // a SEPARATE Owner grant through the Persona/Permissions architecture. A capability, NOT a role check --
-  // it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
+  // a SEPARATE Owner grant through the Persona/Permissions architecture. This is a capability, NOT a role
+  // check -- it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
   Object.freeze({
     id: "workOrder.parts.plan",
     description:
@@ -123,8 +130,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // Sales Opportunity Cycle 3 -- authoring/advancing a governed Opportunity (create + lifecycle transition)
   // via the trusted opportunity command. Registered active:false: fail-closed for every principal until a
-  // SEPARATE Owner grant. A capability, NOT a role check. Opportunity is PRE-COMMITMENT: it never creates
-  // inventory movement, Work Orders, or invoices, and its lines are product-level (never a serialized asset).
+  // SEPARATE Owner grant. A capability, NOT a role check -- it answers only "may this actor write
+  // Opportunities". Opportunity is PRE-COMMITMENT: it never creates inventory movement, Work Orders, or
+  // invoices, and its lines are product-level (never a serialized Equipment asset).
   Object.freeze({
     id: "opportunity.write",
     description:
@@ -134,7 +142,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     active: false,
   }),
   // Sales Opportunity Cycle 3c -- read authorization for the TRUSTED MINIMAL read projection
-  // (listOpportunityContext), registered active:false. Backend-resolved scope; no client-direct collection read.
+  // (listOpportunityContext). Registered active:false (fail-closed). This governs a trusted backend read that
+  // returns only the minimal Sales-workspace projection; the client never reads the opportunities collection
+  // directly (no client Rules widening).
   Object.freeze({
     id: "opportunity.read",
     description:
@@ -169,8 +179,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
-  // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command,
-  // registered active:false. Committed commercial order following a WON Opportunity.
+  // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command.
+  // Registered active:false (fail-closed). The committed commercial order following a WON Opportunity; it does
+  // not assign serialized assets or write Work Orders/inventory (later governed seams do).
   Object.freeze({
     id: "salesOrder.write",
     description:
@@ -179,8 +190,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
     active: false,
   }),
-  // Fulfillment Cycle 5 -- allocate a committed Sales Order against authoritative inventory availability,
-  // registered active:false. Records allocation only on the Sales Order.
+  // Fulfillment Cycle 5 -- allocate a committed Sales Order via the governed allocateSalesOrder command
+  // (authoritative availability from canonical inventory/warehouses; records allocation only on the Sales
+  // Order). Registered active:false (fail-closed).
   Object.freeze({
     id: "salesOrder.fulfill",
     description:
@@ -189,8 +201,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "fulfill",
     active: false,
   }),
-  // Sales Order Cycle 7 -- create governed Service demand (a Work Order via the governed Work Order authority)
-  // for a Sales Order with demand lineage, registered active:false. SO never writes WO state/assignment/schedule.
+  // Sales Order Cycle 7 -- create governed Service demand for a Sales Order via createServiceForSalesOrder,
+  // which produces a Work Order through the existing governed Work Order authority (ADR-009) with demand
+  // lineage. Registered active:false. The Sales Order never writes Work Order state / assignment / schedule.
   Object.freeze({
     id: "salesOrder.service",
     description:

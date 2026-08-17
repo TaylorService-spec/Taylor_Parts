@@ -140,7 +140,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1097,
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
       "governing": [
@@ -165,7 +165,7 @@
       "entity": "Account",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto the page definition runtime",
       "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095."
@@ -184,9 +184,9 @@
       "issue": 1099,
       "dependsOn": [
         "D-OPPORTUNITY-IDENTITY",
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
-      "nextAction": "Blocked on identity (now its own item) and the list runtime",
+      "nextAction": "Identity is on main; awaiting the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
     },
     {
@@ -201,7 +201,7 @@
       "entity": "SalesOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime; resolve raw-id labels",
       "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels."
@@ -233,7 +233,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1098,
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "The Gate B non-CRM validation target",
       "governing": [
@@ -253,7 +253,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate after Gate B",
       "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI."
@@ -270,7 +270,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
       "notes": "Shares the same unbounded useWorkOrders() listener."
@@ -289,7 +289,7 @@
       "nextAction": "Classify: queue with governed transition writes, not a list",
       "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -362,7 +362,7 @@
       "nextAction": "Confirm synthetic-source status before migrating anything",
       "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -379,7 +379,7 @@
       "nextAction": "Same synthetic-source caveat as coordinated visits",
       "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -396,7 +396,7 @@
       "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
       "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -427,7 +427,7 @@
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
       "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -442,7 +442,7 @@
       "entity": "Technician",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
@@ -459,7 +459,7 @@
       "entity": "SavedReportDefinition",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
@@ -506,7 +506,7 @@
       "nextAction": "Inventory only; no governed directory read exists to migrate",
       "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -523,7 +523,7 @@
       "nextAction": "Inventory only; form is unconditionally disabled",
       "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -554,7 +554,7 @@
       "nextAction": "Later phase; dashboard composition is not list/record metadata",
       "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ]
     },
     {
@@ -606,10 +606,10 @@
       "title": "Entity List Metadata v1 runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1096,
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a79"
@@ -618,7 +618,8 @@
       "pr": 1115,
       "headSha": "bd7872117dde907eb2ec215a6abd2913b973a94d",
       "branch": "feat/entity-list-metadata-v1",
-      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test"
+      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test",
+      "mergeSha": "2c673e16"
     },
     {
       "id": "A-PAGE-RUNTIME",
@@ -632,7 +633,7 @@
       "dependsOn": [],
       "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "pr": 1118,
-      "headSha": "2151a2b4a31555d007a14c1565f0d867b395b604",
+      "headSha": "93f0d326ee40905ce61a0a0032448e1b3fa5d005",
       "branch": "feat/page-definition-contract",
       "checks": "21/21 tests incl. the conditional compositionMode rule; oxlint + tsc clean",
       "notes": "CONTRACT LANDED. SECTION_KIND names LIFECYCLE/READINESS/BLOCKERS/NEXT_ACTIONS/ATTENTION/CUSTODY as first-class kinds so a CRUD-screens page is DETECTABLE - that failure passes every other check in the program. assessOperationalComposition() is deliberately not a validation rule (an Account genuinely is record-shaped) and requires TWO operational sections, since one metric bolted onto a form looks operational in a screenshot and is not. The RENDERER consuming this is a separate item. RULING APPLIED (Owner 2026-08-17 sections 3-7). Naming operational kinds was insufficient on its own: a Work Order page of fields and related lists still validated. A page now DECLARES compositionMode (RECORD/OPERATIONAL/ANALYTIC/CONFIGURATION) and validation enforces it - an OPERATIONAL page must carry two DISTINCT operational kinds, so the CRUD failure is a build error. Conditional rather than universal on purpose: a blanket rule would have produced the very failure it prevents, by making an Account declare a LIFECYCLE section it does not mean. assessOperationalComposition() is retained as a DIAGNOSTIC; UX quality is deliberately not encoded in validation, because a mechanical check people mistake for a quality bar converts 'is this good?' into 'did it pass?'."
@@ -653,7 +654,7 @@
         "DECISIONS #102 \u00a78"
       ],
       "pr": 1116,
-      "headSha": "0a39f32f3340289b475c5e1dca931d1e803b4a9a",
+      "headSha": "1a73d99920560148ce19fa6f2c60543491760e90",
       "branch": "feat/metadata-registries",
       "checks": "15/15 tests; oxlint + tsc clean; registered in workflow and npm test",
       "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime."
@@ -666,10 +667,10 @@
       "title": "Gate A \u2014 metadata foundation review package",
       "domain": "program",
       "entity": "n/a",
-      "status": "REVIEW_QUEUED",
+      "status": "MERGED",
       "gate": "GATE_A",
       "dependsOn": [],
-      "nextAction": "Closing condition met: the ruling is recorded in the package",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "program ruling \u00a74"
       ],
@@ -677,7 +678,8 @@
       "headSha": "bad4c0b0627e02fc757a9a1b05a65d4978e85c90",
       "branch": "docs/gate-a-review-package",
       "notes": "FALSE DEPENDENCY CORRECTED, second instance. This was blocked on three contracts being MERGED, but a review DOCUMENT needs the architecture decided, not the code on main - chronological dependency wearing a technical one's clothes, the same class as A-CONTRACT-CORE dependsOn P0-LEDGER. Found by running the global executability test rather than trusting the scheduler's 'nothing executable', which is the whole reason that test is mandated before returning. RULING RECORDED in section 6 of the package, which was Gate A's stated closing condition. The package also keeps its 'what Gate A does not settle' list unchanged, so closure is not read as broader approval - the index CI bridge in particular remains unwired.",
-      "checks": "docs only"
+      "checks": "docs only",
+      "mergeSha": "64736d50"
     },
     {
       "id": "G-GATE-B",
@@ -815,7 +817,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
@@ -832,7 +834,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime",
       "notes": "Re-reads the entire parts and suppliers collections to render one record."
@@ -849,7 +851,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate; navHidden, direct-URL only",
       "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
@@ -866,7 +868,7 @@
       "entity": "Warehouse",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
@@ -883,7 +885,7 @@
       "entity": "Supplier",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
@@ -922,7 +924,7 @@
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
       "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -967,7 +969,7 @@
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
       "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ]
     },
     {
@@ -996,7 +998,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate; already cursor-paginated",
       "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
@@ -1013,7 +1015,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RUNTIME"
+        "A-PAGE-RENDERER"
       ],
       "nextAction": "Migrate onto page runtime"
     },
@@ -1029,7 +1031,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
@@ -1046,7 +1048,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Same bounded projection as purchase orders, filtered to received."
@@ -1095,7 +1097,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
       "governing": [
@@ -1113,7 +1115,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
       "governing": [
@@ -1328,12 +1330,12 @@
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
-      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes.",
+      "notes": "DONE. Eight of eight access modules are now generated; no module is hand-edited in two places again. Behavior-neutrality is PROVEN not believed: the copies differed on 32 lines and every one was a comment, zero non-comment divergence. Recorded caveat: a raw diff after regeneration reports ~2246 changed lines, which is a CRLF-vs-LF artifact and not content - the generator normalizes both sides, which is why --check passes. CI DIAGNOSIS: the Effective Access Feed failure was NOT a test failure. The job died in 'Set up job' with HTTP 429 downloading actions/setup-java after three retries - GitHub infrastructure rate-limiting, consistent with the sustained 503s on the API at the same time. The tests never ran. Confirmed by re-running the SAME head, which then passed, and by main being green on that workflow throughout. Worth remembering: an earlier head on this branch passed and a later one failed, which reads exactly like a regression and was not one - always read the log before believing the pattern.",
       "dependsOn": [],
       "pr": 1117,
-      "headSha": "6f5f1454883edad09c7d2d9f249745ec06f48bd6",
+      "headSha": "22f48184d135a5e099782c75b19bacaab1df19fd",
       "branch": "feat/permission-catalog-generation",
-      "checks": "9/9 mirror integrity; 15/15 role parity; 26/26 catalog; both packages typecheck"
+      "checks": "32 pass / 1 pending after rerun; Effective Access Feed green at the reconciled head"
     },
     {
       "id": "A-METADATA-SPEC",
@@ -1365,10 +1367,9 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1",
         "A-REGISTRIES"
       ],
-      "nextAction": "Build after the contract and registries are on main",
+      "nextAction": "List contract is on main (2c673e16); still needs the registries",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
     },
     {
@@ -1381,7 +1382,7 @@
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-METADATA-V1"
+        "A-LIST-RUNTIME"
       ],
       "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
       "governing": [
@@ -1414,9 +1415,9 @@
       "title": "Opportunity human identity (name + immutable reference)",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 section 3 - both name and number"
       ],
@@ -1424,7 +1425,8 @@
       "pr": 1120,
       "headSha": "e6526d85634ff9d833b2c6489777164cbec51ac2",
       "branch": "feat/opportunity-identity",
-      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow"
+      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow",
+      "mergeSha": "3fdf1ccf"
     },
     {
       "id": "D-OPPORTUNITY-NAME-AND-WIRING",
@@ -1434,13 +1436,32 @@
       "title": "Wire Opportunity identity into the governed create path and surfaces",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGE_QUEUED",
       "issue": 1099,
-      "dependsOn": [
-        "D-OPPORTUNITY-IDENTITY"
-      ],
-      "nextAction": "Format approved; wire once #1120 is merged",
-      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive."
+      "dependsOn": [],
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive. PROMOTED from a stale block. Its dependency merged and the format was approved, but nothing re-opened it - the ledger does not auto-promote, so it sat blocked with nothing blocking it while the scheduler reported nothing executable. Found by the new staleBlocks() check, which is exactly the false terminal state that check exists to prevent. WIRED. The document id is out of the identity chain entirely: name, then descriptor, then reference, then 'Unnamed opportunity' - which states something true instead of showing a key. The existing view test had ASSERTED the doc-id fallback, so the forbidden behaviour was pinned as correct and fixing it failed CI first; same shape as #1094.",
+      "pr": 1123,
+      "headSha": "1df0c17126ee092d8869f748aad38e2c717d79be",
+      "branch": "feat/opportunity-identity-wiring",
+      "checks": "11/11 view tests; 8/8 numbering; tsc + build + oxlint clean"
+    },
+    {
+      "id": "D-SALES-ORDER-OPP-IDENTITY",
+      "phase": "9",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Sales Order detail still renders sourceOpportunityId raw",
+      "domain": "crm",
+      "entity": "SalesOrder",
+      "status": "MERGE_QUEUED",
+      "issue": 1099,
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Recorded rather than half-done. Sales Order detail reads getSalesOrderContext, a DIFFERENT projection that does not carry Opportunity name or reference, so it still shows the raw document id as the Originating Opportunity link text. Fixing it means the sales-order read joining or denormalizing Opportunity identity - a real design choice, not a rename, which is why it is its own slice. RESOLVED, and the shape is an AUTHORIZATION decision worth remembering: joining the Opportunity into getSalesOrderContext would have returned opportunity.read-governed data through a salesOrder.read-gated callable - a read becoming a side door around the capability guarding it. The reference is instead copied at creation by the command already authorized to read it. Denormalizing is safe ONLY because the reference is immutable; the Opportunity NAME is deliberately not copied, because it is editable and a copy would drift.",
+      "pr": 1124,
+      "headSha": "64e476a18582e1c1bb72c85a652388607b0d540f",
+      "branch": "feat/sales-order-opportunity-identity",
+      "checks": "9/9 sales order view tests; tsc + build + oxlint clean"
     }
   ]
 }
