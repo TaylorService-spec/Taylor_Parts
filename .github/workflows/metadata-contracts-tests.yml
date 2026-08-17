@@ -1,0 +1,57 @@
+name: Metadata Contracts Tests
+
+# EOS Metadata-to-Platform program, Gate A -- CI coverage for the Entity/Field/
+# Relationship definition contracts (field-ops-app-vite/src/metadata/).
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this
+# repo runs per-subsystem workflows on PRs rather than one global suite, so a test
+# that exists but is named in no workflow simply never runs on a pull request.
+#
+# What these contracts guard is governance, not convenience -- metadata never
+# grants authority (boundary section 6), definitions are data and never code
+# (section 8), declared filter operators are a claim about a real backend query
+# (section 9), and a machine value is never a display label. Those properties have
+# to fail the build, not merely be documented, which is the whole reason this job
+# exists this early.
+#
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - ".github/workflows/metadata-contracts-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - ".github/workflows/metadata-contracts-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-contracts-tests:
+    name: Metadata definition contracts (node:test + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Entity/Field/Relationship contract tests (node:test)
+        run: node --test test/metadataEntityDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Lint the metadata surface (oxlint)
+        run: npx oxlint src/metadata
+        working-directory: field-ops-app-vite
