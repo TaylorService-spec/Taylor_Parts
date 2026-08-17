@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main d90db46e (governance boundary merged, PR #1092)
+**Baseline:** origin/main bb72103e (ledger + AR contract + status casing merged)
 
 ## Surface conformance
 
@@ -17,17 +17,19 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
-table below before concluding the program is finished._
+- **D-BUG-AR-OWNERSHIP** (phase 6) — One authoritative Account AR read owner → Executable now that the AR contract fix is on main
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | — | — | — | NOT_APPLICABLE | Executable now that the AR contract fix is on main |
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY. Note merge-order interaction with #1104. |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
@@ -35,6 +37,14 @@ table below before concluding the program is finished._
 | A-MIRROR-PARITY-COVERAGE | 1 | Mirror parity enforcement for governedBusinessRoles + shadowParityHarness | — | — | #1104 | 5971d37e | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | X-INVENTORY-ANALYTICS-CAPABILITY | 3 | getInventoryAnalytics: bounded read + capability-catalog authorization | — | — | #1111 | 888ca6fc | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-METADATA-SPEC | 1 | Metadata Architecture specification | — | — | #1112 | a458d881 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+
+## MERGED
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | dbb51c33 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | bb72103e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | b65066ff | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 
 ## BLOCKED_PROTECTED
 
@@ -79,7 +89,6 @@ table below before concluding the program is finished._
 | A-REGISTRIES | 2 | Component and action registries | — | — | — | — | — | NOT_APPLICABLE | Action definitions reference governed command paths only |
 | G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | — | — | — | NOT_APPLICABLE | Assemble package, mark REVIEW_QUEUED, do NOT wait |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
-| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | — | — | — | NOT_APPLICABLE | After the contract fix lands |
 | S-INV-PARTS | 9 | Parts catalog | /inventory | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Migrate; navHidden, direct-URL only |

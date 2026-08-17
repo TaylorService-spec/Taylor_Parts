@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main d90db46e (governance boundary merged, PR #1092)",
+  "baseline": "origin/main bb72103e (ledger + AR contract + status casing merged)",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -17,8 +17,8 @@
       "title": "Program execution ledger + resumption model",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "branch": "feat/metadata-program-ledger",
       "checks": "build x2 + gitleaks green; 25/25 model tests",
       "governing": [
@@ -27,7 +27,8 @@
       "lane": "controller",
       "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does.",
       "pr": 1101,
-      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15"
+      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15",
+      "mergeSha": "dbb51c338309653f671d2c83fc7087ec7e2c0665"
     },
     {
       "id": "P0-INV-CRM",
@@ -695,9 +696,9 @@
       "title": "Canonical ACCOUNT_STATUS machine values + display labels",
       "domain": "crm",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1093,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 \u00a71"
       ],
@@ -705,7 +706,8 @@
       "pr": 1103,
       "headSha": "f41045b8dc2f61193ec64c6db725cc9cc7c85702",
       "branch": "fix/account-status-canonical-values",
-      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests"
+      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests",
+      "mergeSha": "bb72103e65eec55aa95013fd87c455d331371fa6"
     },
     {
       "id": "D-BUG-AR-CONTRACT",
@@ -715,9 +717,9 @@
       "title": "Shared AR view-state contract",
       "domain": "crm",
       "entity": "Account",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1094,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner disposition 2026-08-17 \u00a72"
       ],
@@ -725,7 +727,8 @@
       "pr": 1102,
       "headSha": "7b87a025ab7d28ab0907cc2f20fafc3bc98800dd",
       "branch": "fix/account-ar-view-state-contract",
-      "checks": "16/16 offline accountHealthStrip tests pass"
+      "checks": "16/16 offline accountHealthStrip tests pass",
+      "mergeSha": "b65066ffecd40848e433915a0618887740bf3e34"
     },
     {
       "id": "D-BUG-AR-OWNERSHIP",
@@ -735,12 +738,10 @@
       "title": "One authoritative Account AR read owner",
       "domain": "crm",
       "entity": "Account",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "READY",
       "issue": 1095,
-      "dependsOn": [
-        "D-BUG-AR-CONTRACT"
-      ],
-      "nextAction": "After the contract fix lands",
+      "dependsOn": [],
+      "nextAction": "Executable now that the AR contract fix is on main",
       "notes": "Three independent consumers issue the same callable read per page load."
     },
     {
