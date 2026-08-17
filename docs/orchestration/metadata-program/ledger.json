@@ -666,13 +666,17 @@
       "title": "Canonical ACCOUNT_STATUS machine values + display labels",
       "domain": "crm",
       "entity": "Account",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1093,
-      "nextAction": "Audit persisted data first, then change the constant",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner disposition 2026-08-17 \u00a71"
       ],
-      "notes": "Independent of the metadata runtime \u2014 executable now."
+      "notes": "Independent of the metadata runtime \u2014 executable now.",
+      "pr": 1103,
+      "headSha": "f41045b8dc2f61193ec64c6db725cc9cc7c85702",
+      "branch": "fix/account-status-canonical-values",
+      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests"
     },
     {
       "id": "D-BUG-AR-CONTRACT",
@@ -1104,6 +1108,27 @@
       "status": "READY",
       "nextAction": "Sequence with A-BOUNDED-READS",
       "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component."
+    },
+    {
+      "id": "X-STATUS-DATA-AUDIT",
+      "phase": "6",
+      "wave": "1",
+      "kind": "PROTECTED_ACTION",
+      "title": "Account status persisted-data audit before production rollout",
+      "domain": "crm",
+      "entity": "Account",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Audit production Account documents for title-case status values",
+      "blockers": [
+        {
+          "reason": "AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed.",
+          "requiredDecision": "Owner authorizes a production data read to determine whether a status migration is required"
+        }
+      ],
+      "governing": [
+        "Owner disposition 2026-08-17 section 1 - audit persisted comparisons"
+      ],
+      "notes": "PR #1103 changes code only and migrates no data. Recorded so the open question survives the session that found it."
     }
   ]
 }
