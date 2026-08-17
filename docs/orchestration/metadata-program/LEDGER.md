@@ -17,8 +17,13 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
-table below before concluding the program is finished._
+- **D-OPPORTUNITY-IDENTITY** (phase 9) — Opportunity human identity (name + immutable reference) → Implement identity: human-entered name plus an immutable OPP-###### reference
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | — | — | — | NOT_APPLICABLE | Implement identity: human-entered name plus an immutable OPP-###### reference |
 
 ## REVIEW_QUEUED
 
@@ -75,7 +80,7 @@ table below before concluding the program is finished._
 |---|---|---|---|---|---|---|---|---|---|
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | — | — | — | NOT_APPLICABLE | Migrate onto Entity List Metadata v1 once the runtime exists |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Migrate onto the page definition runtime |
-| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Needs Opportunity identity before a record page is meaningful |
+| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Blocked on identity (now its own item) and the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | — | — | — | NOT_APPLICABLE | The Gate B non-CRM validation target |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |

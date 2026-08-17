@@ -183,9 +183,10 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1099,
       "dependsOn": [
+        "D-OPPORTUNITY-IDENTITY",
         "A-LIST-METADATA-V1"
       ],
-      "nextAction": "Needs Opportunity identity before a record page is meaningful",
+      "nextAction": "Blocked on identity (now its own item) and the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
     },
     {
@@ -1402,6 +1403,22 @@
       ],
       "nextAction": "Build after the page contract and registries are on main",
       "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior."
+    },
+    {
+      "id": "D-OPPORTUNITY-IDENTITY",
+      "phase": "9",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Opportunity human identity (name + immutable reference)",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "READY",
+      "issue": 1099,
+      "nextAction": "Implement identity: human-entered name plus an immutable OPP-###### reference",
+      "governing": [
+        "Owner disposition 2026-08-17 section 3 - both name and number"
+      ],
+      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable."
     }
   ]
 }
