@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main abedeff5 (Gate A contracts, bounded reads, access generator, analytics capability, metadata spec all merged)
+**Baseline:** origin/main 390d5149 (AR single-read + ledger reconciliation merged)
 
 ## Surface conformance
 
@@ -24,27 +24,27 @@ table below before concluding the program is finished._
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | #1119 | 140bd1f7 | — | NOT_APPLICABLE | Review owed, NOT waited on; program continues |
+| G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | #1119 | bad4c0b0 | — | NOT_APPLICABLE | Closing condition met: the ruling is recorded in the package |
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | 87dcaa49 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | 6d2d80e0 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | d750b018 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 3f777ce9 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
-| D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | 78720b20 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | bd787211 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | 2151a2b4 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | 0a39f32f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 6f5f1454 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | e6526d85 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1101 | 3dce271a | dbb51c33 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1113 | 3dce271a | 1f1f1a4d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | bb72103e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | b65066ff | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | 390d5149 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | 39524862 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | c01c0531 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | 12e64a89 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -110,7 +110,7 @@ table below before concluding the program is finished._
 | A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the contract and registries are on main |
 | A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 | A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the page contract and registries are on main |
-| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | After the format is confirmed: allocate on create, project name+reference, render them instead of doc ids |
+| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | Format approved; wire once #1120 is merged |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
