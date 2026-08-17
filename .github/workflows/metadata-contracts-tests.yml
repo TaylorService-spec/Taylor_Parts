@@ -29,6 +29,9 @@ on:
       - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataPurchaseOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/partVocabulary.js"
       - "field-ops-app-vite/src/domain/equipmentStatus.js"
@@ -71,6 +74,9 @@ on:
       - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataPurchaseOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/partVocabulary.js"
       - "field-ops-app-vite/src/domain/equipmentStatus.js"
@@ -162,6 +168,15 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Employee definition tests (node:test)
         run: node --test test/metadataEmployeeDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Purchase Order definition tests (node:test)
+        run: node --test test/metadataPurchaseOrderDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Location definition tests (node:test)
+        run: node --test test/metadataLocationDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Account record page definition tests (node:test)
+        run: node --test test/metadataAccountPageDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: Sales Order definition tests (node:test)
         run: node --test test/metadataSalesOrderDefinition.test.mjs

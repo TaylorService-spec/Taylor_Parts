@@ -289,6 +289,17 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "employee.index",
   }),
+  // location.index (leaf definition, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "locations",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "accountId", order: "ASCENDING"},
+      {fieldPath: "name", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "location.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -355,6 +366,8 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/part.js",
   "field-ops-app-vite/src/metadata/definitions/equipment.js",
   "field-ops-app-vite/src/metadata/definitions/employee.js",
+  "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js",
+  "field-ops-app-vite/src/metadata/definitions/location.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
 
