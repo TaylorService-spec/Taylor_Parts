@@ -1,0 +1,1153 @@
+{
+  "program": "EOS Metadata-to-Platform Program",
+  "baseline": "origin/main d90db46e (governance boundary merged, PR #1092)",
+  "governing": [
+    "docs/governance/metadata-architecture-ip-boundary.md",
+    "docs/DECISIONS.md #102",
+    "docs/architecture/SYSTEM_AUTHORITIES.md",
+    "docs/DelegationCharter.md"
+  ],
+  "note": "Phase 0 inventory COMPLETE across all seven lanes: CRM, Service, Admin/Reporting, Inventory, Commercial, shared-contract tooling, and query/index coverage. Absence of a surface from this ledger means NOT YET INVENTORIED, never EXEMPT.",
+  "entries": [
+    {
+      "id": "P0-LEDGER",
+      "phase": "0",
+      "wave": "0",
+      "kind": "ARCHITECTURE",
+      "title": "Program execution ledger + resumption model",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY; continue independent work",
+      "branch": "feat/metadata-program-ledger",
+      "checks": "build x2 + gitleaks green; 25/25 model tests",
+      "governing": [
+        "program ruling \u00a72 durable resumption"
+      ],
+      "lane": "controller",
+      "notes": "Deliberately not a competing backlog: execution-backlog.md remains repo-wide schedulability, roadmapModel.mjs remains roadmap state. This records per-surface migration/conformance, which neither does.",
+      "pr": 1101,
+      "headSha": "3dce271a3c50db1b296c90c127e1c57f1a0dfa15"
+    },
+    {
+      "id": "P0-INV-CRM",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "CRM/Sales surface inventory",
+      "domain": "crm",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into surface entries below",
+      "lane": "agent-crm",
+      "notes": "5 routed surfaces + 4 retired redirects."
+    },
+    {
+      "id": "P0-INV-SERVICE",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Service/Work Order/Dispatch surface inventory",
+      "domain": "service",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into surface entries below",
+      "lane": "agent-service",
+      "notes": "14 routed surfaces. Six dispatcher-facing surfaces share ONE unbounded listener (services/workOrderService.ts:90)."
+    },
+    {
+      "id": "P0-INV-ADMIN",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Administration/Reporting/Dashboard surface inventory",
+      "domain": "admin",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into surface entries below",
+      "lane": "agent-admin",
+      "notes": "Found major prior art: reportCatalog.js declares objects/fields/relationships as validated pure data with a capability id per field."
+    },
+    {
+      "id": "P0-INV-INVENTORY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Inventory/warehouse surface inventory",
+      "domain": "inventory",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into entries below",
+      "lane": "agent-inventory",
+      "notes": "20 routed surfaces. listCollection() at operationsQueries.ts:94-96 is the single unbounded-read factory behind parts, warehouses, suppliers, transfer_orders and inventory_transactions."
+    },
+    {
+      "id": "P0-INV-COMMERCIAL",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Commercial (Sales Order/Purchasing/AR) surface inventory",
+      "domain": "commercial",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into entries below",
+      "lane": "agent-commercial",
+      "notes": "Confirms duplicate listAccountInvoiceAr calls and raw doc IDs throughout Sales Order detail including the page title. Financial provider is hardcoded false in every environment."
+    },
+    {
+      "id": "P0-AUDIT-CONTRACTS",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Shared-contract / mirror tooling investigation",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into entries below",
+      "lane": "agent-contracts",
+      "governing": [
+        "program ruling \u00a710"
+      ],
+      "notes": "No root package.json and no workspace tooling exist. functions targets node 22. Cross-package ESM import already works at test time (reportCatalogParity.test.mjs)."
+    },
+    {
+      "id": "P0-AUDIT-QUERY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Query pattern, pagination prior art and index coverage audit",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "COMPLETE",
+      "nextAction": "Folded into entries below",
+      "lane": "agent-query",
+      "governing": [
+        "DECISIONS #102 \u00a79"
+      ],
+      "notes": "8 composite indexes declared, 8 live in sandbox, none pending. Three independent cursor-pagination implementations already exist client-side and a limit+1 truncation-honesty convention already exists callable-side. Two declared indexes match no query found."
+    },
+    {
+      "id": "S-CRM-CUSTOMERS",
+      "phase": "4",
+      "wave": "1",
+      "kind": "SURFACE",
+      "title": "Customers (Accounts list)",
+      "domain": "crm",
+      "route": "/customers",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Account",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1097,
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
+      "governing": [
+        "DECISIONS #102 \u00a79"
+      ],
+      "blockers": [
+        {
+          "reason": "First consumer of the list runtime; cannot migrate before the runtime exists"
+        }
+      ],
+      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation."
+    },
+    {
+      "id": "S-CRM-ACCOUNT-RECORD",
+      "phase": "6",
+      "wave": "2",
+      "kind": "SURFACE",
+      "title": "Customer/Account detail",
+      "domain": "crm",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "entity": "Account",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ],
+      "nextAction": "Migrate onto the page definition runtime",
+      "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095."
+    },
+    {
+      "id": "S-CRM-OPPORTUNITIES",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Opportunities workspace",
+      "domain": "crm",
+      "route": "/customers/opportunities",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "Opportunity",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1099,
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Needs Opportunity identity before a record page is meaningful",
+      "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
+    },
+    {
+      "id": "S-CRM-SALES-ORDER-RECORD",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Sales Order detail",
+      "domain": "crm",
+      "route": "/customers/opportunities/sales-order/:salesOrderId",
+      "classification": "B_ENTITY_RECORD",
+      "entity": "SalesOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ],
+      "nextAction": "Migrate onto page runtime; resolve raw-id labels",
+      "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels."
+    },
+    {
+      "id": "S-CRM-RETIRED",
+      "phase": "0",
+      "wave": "0",
+      "kind": "SURFACE",
+      "title": "Retired CRM paths (contacts/locations/equipment/service-history)",
+      "domain": "crm",
+      "route": "/customers/{contacts,locations,equipment,service-history}",
+      "classification": "F_UTILITY_EXEMPT",
+      "entity": "n/a",
+      "status": "EXEMPT",
+      "nextAction": "None",
+      "notes": "Pure Navigate redirects to /customers (App.jsx:527-536). No UI to migrate. Note /customers/contacts must be revisited when Contact becomes first-class (#1099 sibling work)."
+    },
+    {
+      "id": "S-SVC-WORK-ORDERS",
+      "phase": "8",
+      "wave": "2",
+      "kind": "SURFACE",
+      "title": "Work Orders list",
+      "domain": "service",
+      "route": "/service",
+      "classification": "A_ENTITY_LIST",
+      "entity": "WorkOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1098,
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "The Gate B non-CRM validation target",
+      "governing": [
+        "DECISIONS #102 \u00a714"
+      ],
+      "notes": "workOrderService.ts:90 onSnapshot(collection(...)) with no where() \u2014 unbounded, client-filtered."
+    },
+    {
+      "id": "S-SVC-WO-RECORD",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Work Order detail",
+      "domain": "service",
+      "route": "/service/work-orders/:workOrderId",
+      "classification": "B_ENTITY_RECORD",
+      "entity": "WorkOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ],
+      "nextAction": "Migrate after Gate B",
+      "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI."
+    },
+    {
+      "id": "S-SVC-JOB-ASSIGNMENTS",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Job Assignments (legacy jobs list)",
+      "domain": "service",
+      "route": "/service/job-assignments",
+      "classification": "A_ENTITY_LIST",
+      "entity": "WorkOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
+      "notes": "Shares the same unbounded useWorkOrders() listener."
+    },
+    {
+      "id": "S-SVC-DISPATCH-QUEUE",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Dispatch queue",
+      "domain": "service",
+      "route": "/service/dispatch",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "READY",
+      "nextAction": "Classify: queue with governed transition writes, not a list",
+      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime."
+    },
+    {
+      "id": "S-SVC-DISPATCHER-BOARD",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Dispatcher board",
+      "domain": "service",
+      "route": "/service/dispatcher-board",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "EXEMPT",
+      "nextAction": "Bounded-read remediation only",
+      "notes": "Genuine drag-drop board. DECISIONS #102 \u00a75 \u2014 forcing a board into a grid would make it worse. EXEMPT from the list runtime, NOT exempt from the enterprise-scale read rule."
+    },
+    {
+      "id": "S-SVC-SCHEDULING",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Scheduling (weekly technician x day)",
+      "domain": "service",
+      "route": "/service/scheduling",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "EXEMPT",
+      "nextAction": "Bounded-read remediation only",
+      "notes": "Genuine calendar. EXEMPT from the list runtime per DECISIONS #102 \u00a75; still shares the unbounded useWorkOrders() read."
+    },
+    {
+      "id": "S-SVC-DISPATCH-SCHEDULING",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Dispatch board (technician x time axis)",
+      "domain": "service",
+      "route": "/service/dispatch-scheduling",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "EXEMPT",
+      "nextAction": "Bounded-read remediation only",
+      "notes": "Genuine board. Overlaps dispatcher-board and scheduling \u2014 three board surfaces over one entity is a product question, recorded not resolved."
+    },
+    {
+      "id": "S-SVC-TECH-WORKSPACE",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "Technician workspace (Field Mode)",
+      "domain": "service",
+      "route": "/service/technician-workspace",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "EXEMPT",
+      "nextAction": "None",
+      "notes": "Mobile technician execution surface; deliberately not a desktop record page. Already bounded: where(assignedTechId==) + limit(100) \u2014 the best existing prior art for a bounded read."
+    },
+    {
+      "id": "S-SVC-COORDINATED-VISITS",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "Coordinated visits",
+      "domain": "service",
+      "route": "/service/coordinated-visits",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "READY",
+      "nextAction": "Confirm synthetic-source status before migrating anything",
+      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing."
+    },
+    {
+      "id": "S-SVC-COORDINATED-MISSION",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "Coordinated mission",
+      "domain": "service",
+      "route": "/service/coordinated-mission",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "WorkOrder",
+      "status": "READY",
+      "nextAction": "Same synthetic-source caveat as coordinated visits",
+      "notes": "Synthetic source."
+    },
+    {
+      "id": "S-SVC-CONTROL-TOWER",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "Service Operations (Control Tower)",
+      "domain": "service",
+      "route": "/service-operations",
+      "classification": "D_DASHBOARD_ANALYTIC",
+      "entity": "WorkOrder",
+      "status": "READY",
+      "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
+      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels."
+    },
+    {
+      "id": "S-SVC-WARRANTY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "SURFACE",
+      "title": "Warranty",
+      "domain": "service",
+      "route": "/service/warranty",
+      "classification": "F_UTILITY_EXEMPT",
+      "entity": "n/a",
+      "status": "EXEMPT",
+      "nextAction": "None",
+      "notes": "PlaceholderPage, navHidden. Nothing built to migrate."
+    },
+    {
+      "id": "S-SVC-WO-NEW",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "New Work Order wizard",
+      "domain": "service",
+      "route": "/service/work-orders/new",
+      "classification": "F_UTILITY_EXEMPT",
+      "entity": "WorkOrder",
+      "status": "READY",
+      "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
+      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers."
+    },
+    {
+      "id": "S-ADM-EMPLOYEES",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Employees (Technicians list)",
+      "domain": "admin",
+      "route": "/administration",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Technician",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
+    },
+    {
+      "id": "S-ADM-SAVED-REPORTS",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Saved Reports",
+      "domain": "reporting",
+      "route": "/reporting/saved",
+      "classification": "A_ENTITY_LIST",
+      "entity": "SavedReportDefinition",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
+    },
+    {
+      "id": "S-ADM-REPORT-BUILDER",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Report Builder",
+      "domain": "reporting",
+      "route": "/reporting/builder",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "ReportDefinition",
+      "status": "EXEMPT",
+      "nextAction": "Treat as prior art input to Gate A, not a migration target",
+      "notes": "Already definition-driven end to end. EXEMPT from migration because it is ahead of the runtime, not behind it \u2014 it is the model to learn from."
+    },
+    {
+      "id": "S-ADM-OVERVIEW",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Administration overview",
+      "domain": "admin",
+      "route": "/administration/overview",
+      "classification": "E_ADMIN_CONFIG",
+      "entity": "n/a",
+      "status": "EXEMPT",
+      "nextAction": "None",
+      "notes": "Hub page + deployment manifest panel. No governed entity read."
+    },
+    {
+      "id": "S-ADM-USERS",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Users (admin)",
+      "domain": "admin",
+      "route": "/administration/users",
+      "classification": "E_ADMIN_CONFIG",
+      "entity": "User",
+      "status": "READY",
+      "nextAction": "Inventory only; no governed directory read exists to migrate",
+      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does."
+    },
+    {
+      "id": "S-ADM-ROLES",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Roles & Permissions",
+      "domain": "admin",
+      "route": "/administration/roles-permissions",
+      "classification": "E_ADMIN_CONFIG",
+      "entity": "RoleAssignment",
+      "status": "READY",
+      "nextAction": "Inventory only; form is unconditionally disabled",
+      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100."
+    },
+    {
+      "id": "S-ADM-PLACEHOLDERS",
+      "phase": "0",
+      "wave": "0",
+      "kind": "SURFACE",
+      "title": "Unbuilt placeholder routes (18)",
+      "domain": "admin",
+      "route": "/reporting/*, /administration/{vehicles,regions,company-settings,permission-preview,audit-logs}, /dashboard/notifications, /financials, /purchasing/{quotes,demand-planning}, /inventory/back-orders, /service/warranty",
+      "classification": "F_UTILITY_EXEMPT",
+      "entity": "n/a",
+      "status": "EXEMPT",
+      "nextAction": "None until built",
+      "notes": "PlaceholderPage or AdministrationUnavailable. Nothing to migrate. Counted once rather than as 18 rows; split if any becomes real."
+    },
+    {
+      "id": "S-DASH-MY",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "My Dashboard",
+      "domain": "dashboard",
+      "route": "/dashboard",
+      "classification": "D_DASHBOARD_ANALYTIC",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Later phase; dashboard composition is not list/record metadata",
+      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read)."
+    },
+    {
+      "id": "S-DASH-OPERATIONS",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Inventory & Supply Overview",
+      "domain": "dashboard",
+      "route": "/dashboard/operations",
+      "classification": "D_DASHBOARD_ANALYTIC",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Bounded-read remediation",
+      "notes": "Ten parallel reads in one Promise.all including a full technicians collection read (Operations.jsx:103)."
+    },
+    {
+      "id": "A-CONTRACT-CORE",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Entity/Field/Relationship definition contracts",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "P0-LEDGER"
+      ],
+      "nextAction": "Derive from reportCatalog.js prior art; Gate A package",
+      "gate": "NOT_APPLICABLE",
+      "governing": [
+        "DECISIONS #102 \u00a71",
+        "DECISIONS #102 \u00a77",
+        "DECISIONS #102 \u00a714"
+      ],
+      "notes": "EOS-native derivation available in-repo: reportCatalog.js already models objects/fields/relationships as validated pure data with per-field capability ids. Provenance trace is EOS requirement -> EOS abstraction, not vendor -> equivalent."
+    },
+    {
+      "id": "A-LIST-METADATA-V1",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Entity List Metadata v1 runtime",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1096,
+      "dependsOn": [
+        "A-CONTRACT-CORE"
+      ],
+      "nextAction": "Build after Gate A contracts land",
+      "governing": [
+        "DECISIONS #102 \u00a76",
+        "DECISIONS #102 \u00a79"
+      ],
+      "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration."
+    },
+    {
+      "id": "A-PAGE-RUNTIME",
+      "phase": "5",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Page definition runtime",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-CONTRACT-CORE"
+      ],
+      "nextAction": "After list runtime proves the contract shape"
+    },
+    {
+      "id": "A-REGISTRIES",
+      "phase": "2",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Component and action registries",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-CONTRACT-CORE"
+      ],
+      "nextAction": "Action definitions reference governed command paths only",
+      "governing": [
+        "DECISIONS #102 \u00a76",
+        "DECISIONS #102 \u00a78"
+      ]
+    },
+    {
+      "id": "G-GATE-A",
+      "phase": "3",
+      "wave": "1",
+      "kind": "GATE",
+      "title": "Gate A \u2014 metadata foundation review package",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "gate": "GATE_A",
+      "dependsOn": [
+        "A-CONTRACT-CORE",
+        "A-REGISTRIES",
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Assemble package, mark REVIEW_QUEUED, do NOT wait",
+      "governing": [
+        "program ruling \u00a74"
+      ]
+    },
+    {
+      "id": "G-GATE-B",
+      "phase": "8",
+      "wave": "2",
+      "kind": "GATE",
+      "title": "Gate B \u2014 cross-domain validation (Work Orders)",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "gate": "GATE_B",
+      "issue": 1098,
+      "dependsOn": [
+        "S-CRM-CUSTOMERS",
+        "S-SVC-WORK-ORDERS"
+      ],
+      "nextAction": "Do not begin site-wide migration if this exposes a bad abstraction",
+      "governing": [
+        "DECISIONS #102 \u00a714"
+      ]
+    },
+    {
+      "id": "D-BUG-STATUS-CASING",
+      "phase": "6",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Canonical ACCOUNT_STATUS machine values + display labels",
+      "domain": "crm",
+      "entity": "Account",
+      "status": "MERGE_QUEUED",
+      "issue": 1093,
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner disposition 2026-08-17 \u00a71"
+      ],
+      "notes": "Independent of the metadata runtime \u2014 executable now.",
+      "pr": 1103,
+      "headSha": "f41045b8dc2f61193ec64c6db725cc9cc7c85702",
+      "branch": "fix/account-status-canonical-values",
+      "checks": "full field-ops-app-vite offline suite passes; 4 new regression tests"
+    },
+    {
+      "id": "D-BUG-AR-CONTRACT",
+      "phase": "6",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Shared AR view-state contract",
+      "domain": "crm",
+      "entity": "Account",
+      "status": "MERGE_QUEUED",
+      "issue": 1094,
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner disposition 2026-08-17 \u00a72"
+      ],
+      "notes": "Health strip is permanently Unavailable on every account. Do NOT uppercase accountArView discriminants \u2014 separate contract from ACCOUNT_STATUS. ROOT CAUSE OF SURVIVAL: the existing tests encoded the bug - fixtures used uppercase kinds the producer never emits, so suite and implementation agreed with each other and both disagreed with production. Fixtures now reference ACCOUNT_AR_STATE so a fixture cannot describe an impossible state.",
+      "pr": 1102,
+      "headSha": "7b87a025ab7d28ab0907cc2f20fafc3bc98800dd",
+      "branch": "fix/account-ar-view-state-contract",
+      "checks": "16/16 offline accountHealthStrip tests pass"
+    },
+    {
+      "id": "D-BUG-AR-OWNERSHIP",
+      "phase": "6",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "One authoritative Account AR read owner",
+      "domain": "crm",
+      "entity": "Account",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1095,
+      "dependsOn": [
+        "D-BUG-AR-CONTRACT"
+      ],
+      "nextAction": "After the contract fix lands",
+      "notes": "Three independent consumers issue the same callable read per page load."
+    },
+    {
+      "id": "X-ADMIN-CRM-AUTHORITY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "PROTECTED_ACTION",
+      "title": "crm.activity.read via canonical admin authority",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_PROTECTED",
+      "pr": 1100,
+      "nextAction": "Await Owner authorization; program proceeds around it",
+      "blockers": [
+        {
+          "reason": "Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read.",
+          "requiredDecision": "Owner authorizes the capability through the admin business role, and decides read-only vs read+create"
+        }
+      ],
+      "governing": [
+        "Owner disposition 2026-08-17 \u00a73",
+        "Owner ruling \u00a76 \u2014 independent of the metadata program"
+      ],
+      "notes": "Explicitly does NOT block metadata work."
+    },
+    {
+      "id": "X-MERGE-AUTHORITY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "PROTECTED_ACTION",
+      "title": "Harness merge permission for gh pr merge",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Mark PRs MERGE-QUEUED and continue independent work",
+      "blockers": [
+        {
+          "reason": "gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program.",
+          "requiredDecision": "Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs"
+        }
+      ],
+      "governing": [
+        "Owner ruling \u00a71"
+      ]
+    },
+    {
+      "id": "S-INV-PARTS",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Parts catalog",
+      "domain": "inventory",
+      "route": "/inventory",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Part",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
+    },
+    {
+      "id": "S-INV-PART-DETAIL",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Part detail",
+      "domain": "inventory",
+      "route": "/inventory/:partId",
+      "classification": "B_ENTITY_RECORD",
+      "entity": "Part",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ],
+      "nextAction": "Migrate onto page runtime",
+      "notes": "Re-reads the entire parts and suppliers collections to render one record."
+    },
+    {
+      "id": "S-INV-PART-MASTER",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Part Master bulk status table",
+      "domain": "inventory",
+      "route": "/inventory/part-master",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Part",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate; navHidden, direct-URL only",
+      "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
+    },
+    {
+      "id": "S-INV-WAREHOUSES",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Warehouses",
+      "domain": "inventory",
+      "route": "/inventory/warehouses",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Warehouse",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
+    },
+    {
+      "id": "S-INV-SUPPLIERS",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Suppliers",
+      "domain": "inventory",
+      "route": "/purchasing/suppliers",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Supplier",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
+    },
+    {
+      "id": "S-INV-TRUCK",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Truck inventory",
+      "domain": "inventory",
+      "route": "/inventory/truck-inventory",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "Truck",
+      "status": "READY",
+      "nextAction": "Resolve the deployment-status contradiction before touching this surface",
+      "notes": "CONTRADICTION: functions/src/index.ts comments say the truck callables are NOT deployed, while config/truckManagementReadiness.js and TRUCK_MANAGEMENT_WRITE_READY true in production say deployed and production-verified. Recorded, not resolved - the repo disagrees with itself and one of the two is stale."
+    },
+    {
+      "id": "S-INV-TRANSFERS",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Transfers",
+      "domain": "inventory",
+      "route": "/inventory/transfers",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "TransferOrder",
+      "status": "READY",
+      "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
+      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded."
+    },
+    {
+      "id": "S-INV-RECEIVING",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Receiving",
+      "domain": "inventory",
+      "route": "/inventory/receiving",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "PurchaseOrder",
+      "status": "EXEMPT",
+      "nextAction": "None - a workflow, not a list",
+      "notes": "Already bounded and server-shaped. inventory.stock.receive is registered but ungranted, and not production-ready."
+    },
+    {
+      "id": "S-INV-CYCLE-COUNTS",
+      "phase": "9",
+      "wave": "4",
+      "kind": "SURFACE",
+      "title": "Cycle counts",
+      "domain": "inventory",
+      "route": "/inventory/cycle-counts",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "CycleCount",
+      "status": "EXEMPT",
+      "nextAction": "None - scan-driven workflow",
+      "notes": "No client collection read at all; state comes from callable responses. Callables live in sandbox. Authority sits on the cycle-count counter and reconciler roles, not on admin."
+    },
+    {
+      "id": "S-INV-MANUFACTURERS",
+      "phase": "9",
+      "wave": "6",
+      "kind": "SURFACE",
+      "title": "Manufacturers",
+      "domain": "inventory",
+      "route": "/inventory/manufacturers",
+      "classification": "E_ADMIN_CONFIG",
+      "entity": "Manufacturer",
+      "status": "READY",
+      "nextAction": "Inventory only - writes are closed in every environment including sandbox",
+      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere."
+    },
+    {
+      "id": "S-INV-ROLE-HOMES",
+      "phase": "9",
+      "wave": "5",
+      "kind": "SURFACE",
+      "title": "Operational role homes",
+      "domain": "inventory",
+      "route": "/inventory-role/{manager,warehouse,mine}",
+      "classification": "C_OPERATIONAL_COMPOSITE",
+      "entity": "ReorderRequest",
+      "status": "EXEMPT",
+      "nextAction": "None - role-scoped queues",
+      "notes": "Technician-only via operationalRoleAccess. Reorder reads are server-filtered; the warehouse manager home additionally does the unbounded parts read."
+    },
+    {
+      "id": "S-INV-EQUIPMENT",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Equipment workspace",
+      "domain": "inventory",
+      "route": "/equipment",
+      "classification": "A_ENTITY_LIST",
+      "entity": "Equipment",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate; already cursor-paginated",
+      "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
+    },
+    {
+      "id": "S-INV-EQUIPMENT-DETAIL",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Equipment detail",
+      "domain": "inventory",
+      "route": "/equipment/:equipmentId",
+      "classification": "B_ENTITY_RECORD",
+      "entity": "Equipment",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-PAGE-RUNTIME"
+      ],
+      "nextAction": "Migrate onto page runtime"
+    },
+    {
+      "id": "S-COM-PURCHASE-ORDERS",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Purchase orders",
+      "domain": "commercial",
+      "route": "/purchasing",
+      "classification": "A_ENTITY_LIST",
+      "entity": "PurchaseOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
+    },
+    {
+      "id": "S-COM-RECEIPTS",
+      "phase": "9",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Receipts",
+      "domain": "commercial",
+      "route": "/purchasing/receipts",
+      "classification": "A_ENTITY_LIST",
+      "entity": "PurchaseOrder",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Migrate onto list runtime",
+      "notes": "Same bounded projection as purchase orders, filtered to received."
+    },
+    {
+      "id": "S-DIAG-PARITY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "SURFACE",
+      "title": "Parts shadow parity diagnostics",
+      "domain": "admin",
+      "route": "/admin/diagnostics/inventory-parts-parity",
+      "classification": "F_UTILITY_EXEMPT",
+      "entity": "n/a",
+      "status": "EXEMPT",
+      "nextAction": "None",
+      "notes": "Direct-URL-only admin diagnostic, deliberately outside nav."
+    },
+    {
+      "id": "A-CONTRACT-TOOLING",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Shared contract source of truth",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Mirror-parity gap CLOSED by PR #1104; the generated-mirror + sync-script half remains",
+      "governing": [
+        "Owner ruling section 10"
+      ],
+      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all."
+    },
+    {
+      "id": "A-BOUNDED-READS",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Bounded-read remediation across list-exempt surfaces",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
+      "governing": [
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100)."
+    },
+    {
+      "id": "A-INDEX-VALIDATOR",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "ListViewDefinition to composite-index validator",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
+      "governing": [
+        "Owner ruling section 8"
+      ],
+      "notes": "Turns the rule that metadata must not promise unsupported filter combinations into a build failure. scripts/indexDriftGuard.mjs already exports indexKey, compareIndexes, evaluateDeploy and normalizeGcloudIndexes with a fail-closed named-acknowledgement gate; a validator must import those rather than re-deriving key normalization. Note those exports are currently imported only by their own test - no deploy script wires them in yet."
+    },
+    {
+      "id": "A-CALLABLE-UNBOUNDED",
+      "phase": "3",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Unbounded trusted-callable reads",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables",
+      "governing": [
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "The scale rule is not only a client concern. listOpportunityContext does an unfiltered collection get; getAvailableEquipment filters but never limits; getInventoryAnalytics reads two whole collections AND is gated by a direct role check rather than the capability catalog every sibling read uses. Sibling callables already demonstrate the fix (limit+1, then report truncated or downgrade to unavailable rather than mislabel a partial page ready)."
+    },
+    {
+      "id": "X-RULES-DISCREPANCY",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "mobile_locations read path disagrees with Rules",
+      "domain": "inventory",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Confirm directly against firestore.rules before trusting either source",
+      "notes": "truckRegistryQueries.js does a client-direct unbounded getDocs on mobile_locations and its header claims governed admin/dispatcher read access, while two read-service headers describe mobile_locations as having no Rules match block (default deny). One of the two is stale. Read-only confirmation needed; no Rules change is proposed or authorized here."
+    },
+    {
+      "id": "X-WRITE-ONLY-COLLECTIONS",
+      "phase": "0",
+      "wave": "0",
+      "kind": "AUDIT",
+      "title": "Deny-all collections with no governed read path",
+      "domain": "commercial",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Record as a capability gap; not a metadata-program blocker",
+      "notes": "payments, payment_applications, invoice_adjustments, refunds, part_supplier_items and part_aliases are deny-all to clients and have no read callable of any kind - written by trusted writers, readable by nobody. Relevant because a metadata surface over any of them is impossible until a governed read exists."
+    },
+    {
+      "id": "S-DASH-OPERATIONS-SCALE",
+      "phase": "9",
+      "wave": "6",
+      "kind": "AUDIT",
+      "title": "Operations dashboard loads the operational database client-side",
+      "domain": "dashboard",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Sequence with A-BOUNDED-READS",
+      "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component."
+    },
+    {
+      "id": "X-STATUS-DATA-AUDIT",
+      "phase": "6",
+      "wave": "1",
+      "kind": "PROTECTED_ACTION",
+      "title": "Account status persisted-data audit before production rollout",
+      "domain": "crm",
+      "entity": "Account",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Audit production Account documents for title-case status values",
+      "blockers": [
+        {
+          "reason": "AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed.",
+          "requiredDecision": "Owner authorizes a production data read to determine whether a status migration is required"
+        }
+      ],
+      "governing": [
+        "Owner disposition 2026-08-17 section 1 - audit persisted comparisons"
+      ],
+      "notes": "PR #1103 changes code only and migrates no data. Recorded so the open question survives the session that found it."
+    },
+    {
+      "id": "A-MIRROR-PARITY-COVERAGE",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Mirror parity enforcement for governedBusinessRoles + shadowParityHarness",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGE_QUEUED",
+      "pr": 1104,
+      "headSha": "5971d37efe194d30f4771f33f6f105e970d1c1bd",
+      "branch": "test/governed-business-roles-mirror-parity",
+      "checks": "3/3 mirror pairs pass",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "governing": [
+        "Owner ruling section 10"
+      ],
+      "notes": "Two gaps: a generic helper called only once, and a CI path filter that omitted the client half of every mirrored module - so the change most likely to cause drift was the one the guard could not see. Directly de-risks PR #1100, which must edit governedBusinessRoles.ts in both copies."
+    }
+  ]
+}
