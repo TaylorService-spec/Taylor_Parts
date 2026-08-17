@@ -1,77 +1,90 @@
 #!/usr/bin/env node
-// Capability graph — generated, committed map of WHAT THIS PLATFORM CAN ACTUALLY DO.
+// Capability graph — evidence about capability declaration, implementation, and activation.
 //
-// WHY THIS EXISTS. `docs/architecture/repo-graph.json` maps structure — who imports whom, which doc
-// cites which path. It says so itself: "Structural, not semantic." That makes it the wrong tool for the
-// question that actually keeps getting asked, by the Owner and by every AI working here:
+// WHY THIS EXISTS. `docs/architecture/repo-graph.json` maps structure — who imports whom. It says so
+// itself: "Structural, not semantic." That leaves the recurring question unanswered:
 //
 //     "Do we already have X?"
 //
-// Answering that by grep-and-read produced repeated wrong answers — capabilities reported as missing that
-// were built and deliberately deactivated, and capabilities reported as present that were only a dropdown.
-// The distinction that matters is not present/absent. It is:
+// Answering it by grep produced repeatedly wrong answers in one direction: capabilities that exist in
+// code and are switched off were reported as MISSING. This graph exists to make that distinction
+// legible.
 //
-//     governed?  ->  is there a capability entry, and is it active?
-//     built?     ->  is there an exported callable behind it?
-//     reachable? ->  is there a nav destination, and is it hidden or a placeholder?
-//     usable?    ->  do our own user guides say a person can finish the job?
+// WHAT THE FIRST VERSION GOT WRONG (corrected here after independent review). It collapsed three
+// independent things into a single verdict — catalog declaration, implementation evidence, and
+// effective runtime authorization — and then asserted `active:false` meant "hard-denied". That is not
+// true in this repo. `functions/src/access/environmentCapabilityOverrides.ts` activates selected
+// `active:false` capabilities in configured non-production environments. A capability can be
+// catalog-inactive and genuinely usable in `eos-platform-sandbox` at the same time.
 //
-// Four layers, four independent sources of truth already maintained in this repo. This script joins them.
-// A capability that is governed + built + reachable + documented-live is real. Any other combination is a
-// specific, nameable state — and naming it is the whole point.
+// The repo's own rule, which this graph now respects:
 //
-// SOURCES (all already authoritative for their own layer; none invented here)
-//   1. functions/src/access/permissionCatalog.ts     — capability ids + active flags (governance)
-//   2. field-ops-app-vite/src/access/permissionCatalog.ts — client mirror, checked for parity
-//   3. functions/src/index.ts                        — exported callables (backend surface)
-//   4. field-ops-app-vite/src/navigation/navConfig.js — destinations, navHidden, placeholders (UI surface)
-//   5. docs/user-guide/README.md                     — 49 guides with honest status tags (user truth)
-//   6. docs/roadmaps/business-capability-register.md — recorded-but-unbuilt business capabilities
+//     eligibility  !=  activation  !=  authorization
 //
-// Regenerate after any change to those files:
-//     node scripts/buildCapabilityGraph.mjs
-// `--check` prints a summary and exits non-zero if the two permission catalogs disagree.
+// So the dimensions stay separate and are never fused into one label:
 //
-// WHAT IT IS NOT. It joins declarations; it does not execute anything. "Exported" is not "deployed", and
-// this script cannot know what is live in a given environment — `active:false` plus an export means the
-// code exists and is hard-denied, which is exactly the state that kept being misread as "missing".
-// Per docs/architecture/repo-graph.md: if the graph disagrees with the repository, the repository wins.
+//   catalogActive          the catalog's `active` flag, nothing more
+//   implementation         where the id is referenced, and whether a callable was actually matched
+//   environmentActivation  which environments declare it, and whether it is even eligible
+//   effective              computed ONLY when an environment is named on the command line
+//
+// The default run is environment-neutral and reports no effective authorization at all, because
+// without an environment there is no such fact. Sandbox is not the implicit universal truth.
+//
+// SOURCES (each already authoritative for its own layer; none invented here)
+//   functions/src/access/permissionCatalog.ts             capability ids + active flags
+//   field-ops-app-vite/src/access/permissionCatalog.ts    client mirror, checked for parity
+//   functions/src/index.ts                                exported callables
+//   functions/src/access/environmentCapabilityOverrides.ts eligibility allow-list
+//   config/environments.json                              canonical per-environment activation
+//   field-ops-app-vite/src/navigation/navConfig.js        destinations, navHidden, placeholders
+//   docs/user-guide/README.md                             guides with honest status tags
+//   docs/roadmaps/business-capability-register.md         recorded business capabilities
+//
+// USAGE
+//   node scripts/buildCapabilityGraph.mjs                              regenerate (environment-neutral)
+//   node scripts/buildCapabilityGraph.mjs --environment eos-platform-sandbox   add effective state
+//   node scripts/buildCapabilityGraph.mjs --check                      fail on drift; writes nothing
+//
+// LIMITS, STATED PLAINLY. Regex parsing, not an AST — `scripts/capabilityGraph.test.mjs` pins the
+// shapes it depends on. A literal-id scan is evidence of reference, never proof of a callable;
+// capabilities reached through indirection (ids assembled from constants) produce false negatives and
+// land in NO_IMPLEMENTATION_EVIDENCE. "Exported" is not "deployed" — nothing here observes a running
+// environment. Per `docs/architecture/repo-graph.md`: if the graph disagrees with the repository,
+// the repository wins.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (p) => {
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const readAt = (root, p) => {
   try {
-    return readFileSync(resolve(ROOT, p), "utf8");
+    return readFileSync(resolve(root, p), "utf8");
   } catch {
     return null;
   }
 };
 
-// ---------------------------------------------------------------- 1. capabilities (governance layer)
+// ------------------------------------------------------------------ parsers (pure, exported for tests)
 
-// Entries look like:  Object.freeze({ id: "finance.invoice.issue", description: "...", resource: "...",
-//                     action: "...", active: false })
-// Parsed by regex rather than by importing the module: this script must run without a TS toolchain, and
-// the shape is stable and enforced by the catalog's own tests.
-// Split on the entry delimiter first, then read fields within each entry. An earlier version used one
-// regex with a bounded look-ahead for `active:` and silently dropped ~30% of entries whose bodies ran
-// longer than the window — a parser that under-reports is worse than no parser, because the gaps look
-// like absences. Entry count is asserted against a raw `id:` count below.
-function parseCatalog(src) {
+// Catalog entries are `Object.freeze({ id: "...", description: "...", resource, action, active })`.
+// Split on the entry delimiter, then read fields inside. An earlier single-regex version with a bounded
+// look-ahead silently dropped ~30% of entries whose bodies ran long — and a parser that under-reports is
+// worse than none, because its gaps look exactly like absences. `assertCatalogCount` guards that class
+// of failure by comparing against a raw `id:` count.
+export function parseCatalog(src) {
   if (!src) return [];
   const out = [];
   for (const chunk of src.split(/Object\.freeze\(\{/).slice(1)) {
     const body = chunk.split(/\}\)/)[0];
     const id = (/id:\s*"([^"]+)"/.exec(body) || [])[1];
-    if (!id || !/^[a-z]/.test(id)) continue; // capability ids are dotted lower-case; skip other frozen objects
+    if (!id || !/^[a-z][a-zA-Z]*\./.test(id)) continue; // capability ids are dotted lower-camel
     const desc = /description:\s*\n?\s*"((?:[^"\\]|\\.)*)"/.exec(body);
     out.push({
       id,
-      active: /\bactive:\s*true/.test(body),
+      catalogActive: /\bactive:\s*true/.test(body),
       resource: (/resource:\s*"([^"]+)"/.exec(body) || [])[1] ?? null,
       action: (/action:\s*"([^"]+)"/.exec(body) || [])[1] ?? null,
       description: desc ? desc[1].replace(/\\"/g, '"').slice(0, 400) : null,
@@ -80,34 +93,23 @@ function parseCatalog(src) {
   return out;
 }
 
-const serverCaps = parseCatalog(read("functions/src/access/permissionCatalog.ts"));
-const clientCaps = parseCatalog(read("field-ops-app-vite/src/access/permissionCatalog.ts"));
-
-// Parity: the client mirror must not disagree with the server about whether something is active.
-const clientById = new Map(clientCaps.map((c) => [c.id, c]));
-const parityIssues = [];
-for (const c of serverCaps) {
-  const mirror = clientById.get(c.id);
-  if (!mirror) parityIssues.push({ id: c.id, issue: "missing from client mirror" });
-  else if (mirror.active !== c.active)
-    parityIssues.push({ id: c.id, issue: `active mismatch: server=${c.active} client=${mirror.active}` });
-}
-for (const c of clientCaps) {
-  if (!serverCaps.some((s) => s.id === c.id)) parityIssues.push({ id: c.id, issue: "client-only entry" });
+// Guard against silent parser drift: every capability-shaped `id: "..."` must have been captured.
+// Deliberately NOT anchored to line start — entries are written both multi-line and on one line, and an
+// anchored count under-reports the single-line form, which would defeat the purpose of the guard.
+export function assertCatalogCount(src, parsed) {
+  const raw = (src.match(/\bid:\s*"[a-z][a-zA-Z]*(?:\.[a-zA-Z]+)+"/g) || []).length;
+  return { raw, parsed: parsed.length, ok: raw === parsed.length };
 }
 
-// ---------------------------------------------------------------- 2. callables (backend surface)
-
-// `export { issueInvoice } from "./finance/invoiceCallables";` — plus the comment block above each export,
-// which by convention in index.ts states the governing capability and its activation state.
-function parseExports(src) {
+// `export { issueInvoice } from "./finance/invoiceCallables";` plus the comment block above it, which by
+// convention names the governing capability.
+export function parseExports(src) {
   if (!src) return [];
   const lines = src.split("\n");
   const out = [];
   lines.forEach((line, i) => {
     const m = /^export\s*\{([^}]+)\}\s*from\s*"([^"]+)"/.exec(line.trim());
     if (!m) return;
-    // Walk back over the contiguous comment block that documents this export.
     const note = [];
     for (let j = i - 1; j >= 0 && lines[j].trim().startsWith("//"); j--)
       note.unshift(lines[j].trim().replace(/^\/\/\s?/, ""));
@@ -115,22 +117,16 @@ function parseExports(src) {
     out.push({
       names: m[1].split(",").map((s) => s.trim()).filter(Boolean),
       module: m[2],
-      // Capability ids are written as `capability \`x.y.z\`` or bare dotted ids in these comments.
       capabilityHints: [...comment.matchAll(/`([a-z][a-zA-Z]*(?:\.[a-zA-Z]+){1,3})`/g)].map((x) => x[1]),
-      exportNotDeploy: /EXPORT\s*!=\s*DEPLOY/i.test(comment),
       comment: comment.slice(0, 300) || null,
     });
   });
   return out;
 }
-const callables = parseExports(read("functions/src/index.ts"));
 
-// ---------------------------------------------------------------- 3. destinations (UI surface)
-
-function parseNav(src) {
+export function parseNav(src) {
   if (!src) return [];
   const out = [];
-  // One object literal per nav item; domains and subnav items share the same shape.
   const re = /\{\s*key:\s*"([^"]+)"([^{}]*)\}/g;
   let m;
   while ((m = re.exec(src))) {
@@ -147,12 +143,8 @@ function parseNav(src) {
   }
   return out;
 }
-const destinations = parseNav(read("field-ops-app-vite/src/navigation/navConfig.js"));
 
-// ---------------------------------------------------------------- 4. guides (user-visible truth)
-
-// `- [Title](path/file.md) — **live** — description`
-function parseGuides(src) {
+export function parseGuides(src) {
   if (!src) return [];
   const out = [];
   let section = null;
@@ -171,11 +163,8 @@ function parseGuides(src) {
   }
   return out;
 }
-const guides = parseGuides(read("docs/user-guide/README.md"));
 
-// ---------------------------------------------------------------- 5. register (recorded, unbuilt)
-
-function parseRegister(src) {
+export function parseRegister(src) {
   if (!src) return [];
   const out = [];
   const re = /^###\s+(\d+)\.\s+(.+)$/gm;
@@ -183,33 +172,60 @@ function parseRegister(src) {
   while ((m = re.exec(src))) out.push({ number: Number(m[1]), name: m[2].trim() });
   return out;
 }
-const register = parseRegister(read("docs/roadmaps/business-capability-register.md"));
 
-// ---------------------------------------------------------------- join + verdict
+// The eligibility allow-list bounds what ANY environment may activate. Parsed from the resolver so the
+// graph cannot drift from the code that enforces it.
+export function parseEligibleIds(src) {
+  if (!src) return [];
+  const block = /SPINE_OVERRIDE_ELIGIBLE_IDS[\s\S]*?\[([\s\S]*?)\]\s*\)/.exec(src);
+  if (!block) return [];
+  return [...block[1].matchAll(/"([a-z][a-zA-Z]*(?:\.[a-zA-Z]+)+)"/g)].map((m) => m[1]);
+}
 
-// Link capabilities to code by finding where each capability id literally appears in source. Callables
-// assert their own capability, so the id string is the reliable join — index.ts comments alone missed
-// most of them (read-side capabilities are enforced inside repositories/projections, not at an export).
-function enforcementSites() {
-  const sites = new Map(); // capabilityId -> Set(path)
-  const roots = ["functions/src", "field-ops-app-vite/src"];
-  let files = [];
-  for (const r of roots) {
-    try {
-      files = files.concat(
-        execSync(`git ls-files ${r}`, { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 26 })
-          .split("\n")
-          .filter((f) => /\.(ts|tsx|js|jsx|mjs)$/.test(f)),
-      );
-    } catch {
-      /* git unavailable — sites stay empty and every capability reports DECLARED_ONLY */
-    }
-  }
-  const ids = serverCaps.map((c) => c.id);
+// ------------------------------------------------------------------ activation (pure)
+
+/**
+ * Mirror of `resolveCapabilityOverrides` in the backend resolver, over the canonical registry.
+ * Fail-closed identically: unknown environment -> none; role "production" -> none unconditionally,
+ * ignoring registry data; otherwise declared ∩ eligible.
+ *
+ * This is a READ of the same rule, not a second authority. `functions/test/environmentCapabilityOverrides.test.mjs`
+ * remains the guard that resolver and registry agree.
+ */
+export function resolveActivation(registry, environmentSelector, eligibleIds) {
+  const eligible = new Set(eligibleIds);
+  const envs = Array.isArray(registry?.environments) ? registry.environments : [];
+  const env = envs.find(
+    (e) => e?.id === environmentSelector || e?.firebase?.projectId === environmentSelector,
+  );
+  if (!env) return { found: false, environment: null, activated: [], blockedByProductionRole: false };
+  // Production hard-block: role-keyed, does not trust the data.
+  if (env.role === "production")
+    return {
+      found: true,
+      environment: { id: env.id, role: env.role, projectId: env.firebase?.projectId ?? null },
+      activated: [],
+      blockedByProductionRole: true,
+    };
+  const declared = Array.isArray(env.capabilityActivationOverrides) ? env.capabilityActivationOverrides : [];
+  return {
+    found: true,
+    environment: { id: env.id, role: env.role, projectId: env.firebase?.projectId ?? null },
+    activated: declared.filter((id) => eligible.has(id)),
+    declaredNotEligible: declared.filter((id) => !eligible.has(id)),
+    blockedByProductionRole: false,
+  };
+}
+
+// ------------------------------------------------------------------ implementation evidence
+
+// Where does each capability id literally appear? Evidence of reference — never proof of a callable.
+export function findReferenceSites(files, ids, readFile) {
+  const sites = new Map();
   for (const f of files) {
-    // The catalogs themselves declare every id; counting them as enforcement would make the join useless.
-    if (/access\/permissionCatalog\.(ts|js)$/.test(f)) continue;
-    const src = read(f);
+    if (/access[\\/]permissionCatalog\.(ts|js)$/.test(f)) continue; // declaration, not enforcement
+    if (/environmentCapabilityOverrides\.ts$/.test(f)) continue; // eligibility list, not enforcement
+    const src = readFile(f);
     if (!src) continue;
     for (const id of ids)
       if (src.includes(`"${id}"`) || src.includes(`'${id}'`)) {
@@ -219,51 +235,53 @@ function enforcementSites() {
   }
   return sites;
 }
-const sites = enforcementSites();
 
-// Callables named in index.ts comments, kept as a second, weaker signal.
-const byCapability = new Map();
-for (const c of serverCaps) byCapability.set(c.id, []);
-for (const e of callables)
-  for (const hint of e.capabilityHints)
-    if (byCapability.has(hint)) byCapability.get(hint).push(...e.names);
+/**
+ * Classify implementation evidence ONLY. Says nothing about activation — that separation is the whole
+ * point of this rewrite.
+ *
+ *   EXPORTED                    an exported callable in index.ts names this capability
+ *   SERVER_REFERENCED           referenced under functions/src, no callable matched
+ *   CLIENT_ONLY                 referenced only under the client app
+ *   NO_IMPLEMENTATION_EVIDENCE  no literal reference found (may be a false negative — see LIMITS)
+ */
+export function classifyImplementation({ exportedCallables, serverReferences, clientReferences }) {
+  if (exportedCallables.length) return "EXPORTED";
+  if (serverReferences.length) return "SERVER_REFERENCED";
+  if (clientReferences.length) return "CLIENT_ONLY";
+  return "NO_IMPLEMENTATION_EVIDENCE";
+}
 
-const capabilities = serverCaps.map((c) => {
-  const backing = [...new Set(byCapability.get(c.id) ?? [])];
-  const where = [...(sites.get(c.id) ?? [])];
-  const server = where.filter((f) => f.startsWith("functions/"));
-  const client = where.filter((f) => f.startsWith("field-ops-app-vite/"));
-  // The vocabulary deliberately separates "never built" from "built and switched off". Conflating those
-  // two is the specific error this graph exists to prevent.
-  let state;
-  if (where.length === 0) state = "DECLARED_ONLY";
-  else if (server.length === 0) state = c.active ? "CLIENT_ONLY_ACTIVE" : "CLIENT_ONLY_INERT";
-  else state = c.active ? "ACTIVE" : "BUILT_INERT";
-  return {
-    ...c,
-    callables: backing,
-    enforcedIn: where.slice(0, 12),
-    serverSites: server.length,
-    clientSites: client.length,
-    state,
-  };
-});
+/**
+ * Effective authorization for ONE named environment. Requires an environment; there is no
+ * environment-free answer, and the caller must not invent one.
+ *
+ *   CATALOG_ACTIVE          active in the catalog baseline
+ *   ENVIRONMENT_ACTIVATED   catalog-inactive, activated by this environment's overrides
+ *   NOT_ACTIVATED           neither
+ *
+ * `BUILT_INERT` is derived and returned separately: implementation evidence exists AND the capability
+ * is not authorized in the evaluated environment. It is never the default state of an `active:false`
+ * capability, because that capability may be activated somewhere.
+ */
+export function effectiveState(cap, activatedIds) {
+  const basis = cap.catalogActive
+    ? "CATALOG_ACTIVE"
+    : activatedIds.has(cap.id)
+      ? "ENVIRONMENT_ACTIVATED"
+      : "NOT_ACTIVATED";
+  const authorized = basis !== "NOT_ACTIVATED";
+  const hasImplementation = cap.implementation.evidence !== "NO_IMPLEMENTATION_EVIDENCE";
+  return { basis, authorized, builtInert: hasImplementation && !authorized };
+}
 
-const tally = (arr, key) =>
-  arr.reduce((a, x) => ((a[x[key]] = (a[x[key]] ?? 0) + 1), a), {});
+// ------------------------------------------------------------------ flows
 
-// ---------------------------------------------------------------- 6. flows (where each chain stops)
-//
-// Hierarchy answers "does capability X exist". Flow answers the question the business actually asks:
-// "can we get from one end of this chain to the other, and if not, where does it stop?" A chain of
-// individually-present capabilities can still be unusable if one link is inert — and that link is the
-// only thing worth talking about.
-//
-// The chains below are NOT invented here. Each is transcribed from the repository's own process
-// documentation, cited per chain. Steps map to capability ids by prefix; a step with no matching
-// capability is `UNGOVERNED` — it may be ordinary UI with no permission behind it, or genuinely absent,
-// and the graph deliberately does not guess which.
-const FLOWS = [
+// Chains transcribed from the repository's own process documentation, cited per flow. Steps map to
+// capability ids; a step with no mapping is UNMAPPED, which explicitly does NOT stop a flow — it may be
+// ordinary UI, legacy role-gated authorization, non-capability logic, or genuinely absent, and the
+// evidence here cannot tell those apart.
+export const FLOWS = [
   {
     id: "service-to-cash",
     name: "Service call → cash",
@@ -272,7 +290,7 @@ const FLOWS = [
       { name: "Intake — customer reports a problem", match: [] },
       { name: "Create work order", match: ["workOrder.create"] },
       { name: "Plan parts", match: ["workOrder.parts.plan"] },
-      { name: "Schedule / dispatch", match: [], legacy: "role-gated: dispatch, scheduling, dispatcherBoard" },
+      { name: "Schedule / dispatch", match: [] },
       { name: "Field execution — parts and notes", match: ["inventory.action.create"] },
       { name: "Complete / transition", match: ["workOrder.transition"] },
       { name: "Invoice", match: ["finance.invoice.issue"] },
@@ -311,7 +329,7 @@ const FLOWS = [
   {
     id: "parts-replenishment",
     name: "Parts reorder → stock on hand",
-    source: "docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as **live**",
+    source: "docs/user-guide/inventory/*.md — guides tag every step through 'Place the order' as live",
     steps: [
       { name: "Request a reorder", match: ["reorder.request.create.manual"] },
       { name: "Review / approve", match: ["reorder.request.approve", "reorder.request.reject"] },
@@ -323,160 +341,385 @@ const FLOWS = [
   },
 ];
 
-function resolveFlows(caps) {
-  const byId = new Map(caps.map((c) => [c.id, c]));
-  return FLOWS.map((f) => {
+/**
+ * Resolve flows. Without an environment (`activatedIds === null`) this reports governance coverage only
+ * and deliberately computes NO stopping point, because effective authorization is not a fact that
+ * exists environment-free. With an environment, a stop is computed only where the evidence is
+ * deterministic: the first step that has mapped capabilities AND none of them authorized. UNMAPPED
+ * steps never stop a flow.
+ */
+export function resolveFlows(flows, capabilities, activatedIds) {
+  const byId = new Map(capabilities.map((c) => [c.id, c]));
+  return flows.map((f) => {
     const steps = f.steps.map((s) => {
-      const matched = s.match.length
-        ? caps.filter((c) => s.match.some((p) => c.id === p || c.id.startsWith(p)))
-        : [];
-      let state;
-      if (!s.match.length) state = s.legacy ? "LEGACY_ROLE_GATED" : "UNGOVERNED";
-      else if (!matched.length) state = "NO_CAPABILITY";
-      else if (matched.some((c) => c.state === "ACTIVE")) state = "ACTIVE";
-      else if (matched.some((c) => c.state.startsWith("CLIENT_ONLY"))) state = "CLIENT_ONLY";
-      else if (matched.some((c) => c.state === "BUILT_INERT")) state = "BUILT_INERT";
-      else state = "DECLARED_ONLY";
-      return { ...s, state, capabilities: matched.map((c) => c.id) };
+      const mapped = s.match.map((id) => byId.get(id)).filter(Boolean);
+      const missingIds = s.match.filter((id) => !byId.has(id));
+      if (!s.match.length) return { ...s, coverage: "UNMAPPED", capabilities: [], authorized: null };
+      if (!mapped.length)
+        return { ...s, coverage: "MAPPED_ID_NOT_IN_CATALOG", capabilities: [], missingIds, authorized: null };
+      const coverage = mapped.some((c) => c.implementation.evidence !== "NO_IMPLEMENTATION_EVIDENCE")
+        ? "IMPLEMENTATION_EVIDENCE"
+        : "DECLARED_ONLY";
+      const authorized =
+        activatedIds === null
+          ? null
+          : mapped.some((c) => c.catalogActive || activatedIds.has(c.id));
+      return { ...s, coverage, capabilities: mapped.map((c) => c.id), authorized };
     });
-    // The chain is traversable up to the first step that is not ACTIVE. That index is the answer to
-    // "where does this chain stop today" — the durable question this whole graph exists to serve.
-    const stopIndex = steps.findIndex((s) => s.state !== "ACTIVE");
+    if (activatedIds === null)
+      return { ...f, steps, stopsAt: null, stopsAtIndex: -1, evaluated: false };
+    const stopIndex = steps.findIndex((s) => s.authorized === false);
     return {
       ...f,
       steps,
+      evaluated: true,
       stopsAt: stopIndex === -1 ? null : steps[stopIndex].name,
       stopsAtIndex: stopIndex,
-      traversableSteps: stopIndex === -1 ? steps.length : stopIndex,
+      authorizedSteps: steps.filter((s) => s.authorized === true).length,
+      unmappedSteps: steps.filter((s) => s.authorized === null).length,
       totalSteps: steps.length,
     };
   });
 }
 
-const graph = {
-  schema: "capability-graph/1",
-  generatedFrom: [
-    "functions/src/access/permissionCatalog.ts",
-    "field-ops-app-vite/src/access/permissionCatalog.ts",
-    "functions/src/index.ts",
-    "field-ops-app-vite/src/navigation/navConfig.js",
-    "docs/user-guide/README.md",
-    "docs/roadmaps/business-capability-register.md",
-  ],
-  counts: {
-    capabilities: capabilities.length,
-    active: capabilities.filter((c) => c.active).length,
-    inactive: capabilities.filter((c) => !c.active).length,
-    callableExports: callables.length,
-    destinations: destinations.length,
-    destinationsHidden: destinations.filter((d) => d.navHidden).length,
-    guides: guides.length,
-    registerEntries: register.length,
-    parityIssues: parityIssues.length,
-  },
-  capabilityStates: tally(capabilities, "state"),
-  flows: resolveFlows(capabilities),
-  guideStatuses: tally(guides, "status"),
-  capabilities,
-  callables,
-  destinations,
-  guides,
-  register,
-  parityIssues,
-};
+// ------------------------------------------------------------------ build
 
-writeFileSync(resolve(ROOT, "docs/architecture/capability-graph.json"), JSON.stringify(graph, null, 2) + "\n");
+export function buildGraph({ root = ROOT, environment = null, gitFiles = null } = {}) {
+  const read = (p) => readAt(root, p);
+  const catalogSrc = read("functions/src/access/permissionCatalog.ts");
+  const serverCaps = parseCatalog(catalogSrc);
+  const clientCaps = parseCatalog(read("field-ops-app-vite/src/access/permissionCatalog.ts"));
+  const countCheck = assertCatalogCount(catalogSrc ?? "", serverCaps);
 
-// Human-readable companion — the summary a person or an AI reads before deciding anything.
-const md = [
-  "# Capability graph — what this platform can actually do",
-  "",
-  "**Generated. Do not edit by hand.** `node scripts/buildCapabilityGraph.mjs`",
-  "",
-  "`repo-graph.json` maps *structure* — who imports whom. This maps *capability* — what a person can",
-  "actually finish. It exists because \"do we already have X?\" was being answered by grep, and grep",
-  "cannot tell a capability that was never built from one that was built and deliberately switched off.",
-  "",
-  "## The four layers",
-  "",
-  "| Layer | Source | Question it answers |",
-  "| --- | --- | --- |",
-  "| Governance | `permissionCatalog.ts` | Is there a capability entry, and is it `active`? |",
-  "| Backend | `functions/src/index.ts` | Is there an exported callable behind it? |",
-  "| UI | `navConfig.js` | Is there a destination — hidden, placeholder, or real? |",
-  "| User truth | `docs/user-guide/README.md` | Do our own guides say a person can finish the job? |",
-  "",
-  "## Counts",
-  "",
-  ...Object.entries(graph.counts).map(([k, v]) => `- **${k}**: ${v}`),
-  "",
-  "## Capability states",
-  "",
-  "| State | Count | Meaning |",
-  "| --- | ---: | --- |",
-  `| ACTIVE | ${graph.capabilityStates.ACTIVE ?? 0} | Granted and backed by an exported callable |`,
-  `| BUILT_INERT | ${graph.capabilityStates.BUILT_INERT ?? 0} | **Callable exists; capability is \`active:false\`.** Built and hard-denied — not missing |`,
-  `| DECLARED_ONLY | ${graph.capabilityStates.DECLARED_ONLY ?? 0} | Registered, no exported callable found |`,
-  `| ACTIVE_NO_CALLABLE | ${graph.capabilityStates.ACTIVE_NO_CALLABLE ?? 0} | Active but no callable matched — read-side or a parse miss; check before trusting |`,
-  "",
-  "## Guide statuses (user-visible truth)",
-  "",
-  ...Object.entries(graph.guideStatuses).map(([k, v]) => `- **${k}**: ${v}`),
-  "",
-  ...(parityIssues.length
-    ? [
-        "## ⚠️ Permission-catalog parity issues",
-        "",
-        "The server catalog and its client mirror disagree. The server is authoritative.",
-        "",
-        ...parityIssues.map((p) => `- \`${p.id}\` — ${p.issue}`),
-        "",
-      ]
-    : ["## Permission-catalog parity", "", "Server and client mirrors agree.", ""]),
-  "## Flows — where each business chain stops",
-  "",
-  "A chain is only as usable as its first non-active link. Steps marked `UNGOVERNED` have no capability",
-  "behind them at all — that may be ordinary UI, or genuinely nothing; the graph does not guess.",
-  "",
-  ...graph.flows.flatMap((f) => [
-    `### ${f.name}`,
-    "",
-    `Source: \`${f.source}\``,
-    "",
-    f.stopsAt
-      ? `**Stops at step ${f.stopsAtIndex + 1} of ${f.totalSteps}: ${f.stopsAt}**`
-      : `**Traversable end to end (${f.totalSteps} steps).**`,
-    "",
-    "| # | Step | State | Capabilities |",
-    "| ---: | --- | --- | --- |",
-    ...f.steps.map(
-      (s, i) =>
-        `| ${i + 1} | ${s.name} | ${s.state} | ${s.capabilities.length ? s.capabilities.map((c) => "`" + c + "`").join(", ") : "—"} |`,
-    ),
-    "",
-  ]),
-  "## How to use it",
-  "",
-  "Before claiming a capability is missing, query this graph. Specifically:",
-  "",
-  "1. Search `capabilities[]` for the resource — a `BUILT_INERT` hit means **built and switched off**,",
-  "   which is an activation decision, not a gap.",
-  "2. Search `destinations[]` — a `navHidden` entry with a `placeholderExplanation` states in its own",
-  "   words why it is not reachable.",
-  "3. Search `guides[]` — a `not-yet-available` tag names what is missing underneath a screen that exists.",
-  "4. Only if all four layers are silent is something genuinely absent.",
-  "",
-  "Structural questions (who imports whom, is a cited path real) belong to `repo-graph.json` instead.",
-  "",
-].join("\n");
+  const clientById = new Map(clientCaps.map((c) => [c.id, c]));
+  const parityIssues = [];
+  for (const c of serverCaps) {
+    const mirror = clientById.get(c.id);
+    if (!mirror) parityIssues.push({ id: c.id, issue: "missing from client mirror" });
+    else if (mirror.catalogActive !== c.catalogActive)
+      parityIssues.push({
+        id: c.id,
+        issue: `active mismatch: server=${c.catalogActive} client=${mirror.catalogActive}`,
+      });
+  }
+  for (const c of clientCaps)
+    if (!serverCaps.some((s) => s.id === c.id)) parityIssues.push({ id: c.id, issue: "client-only entry" });
 
-writeFileSync(resolve(ROOT, "docs/architecture/capability-graph.md"), md);
+  const callables = parseExports(read("functions/src/index.ts"));
+  const destinations = parseNav(read("field-ops-app-vite/src/navigation/navConfig.js"));
+  const guides = parseGuides(read("docs/user-guide/README.md"));
+  const register = parseRegister(read("docs/roadmaps/business-capability-register.md"));
+  const eligibleIds = parseEligibleIds(read("functions/src/access/environmentCapabilityOverrides.ts"));
 
-console.log("capability-graph: " + JSON.stringify(graph.counts));
-console.log("states: " + JSON.stringify(graph.capabilityStates));
-console.log("guides: " + JSON.stringify(graph.guideStatuses));
-if (parityIssues.length) {
-  console.log(`\n${parityIssues.length} parity issue(s):`);
-  for (const p of parityIssues.slice(0, 20)) console.log(`  ${p.id} — ${p.issue}`);
+  let registry = null;
+  try {
+    registry = JSON.parse(read("config/environments.json") ?? "null");
+  } catch {
+    registry = null;
+  }
+
+  // Which environments activate each id (production excluded by the resolver's own rule).
+  const activationByEnv = (registry?.environments ?? []).map((e) =>
+    resolveActivation(registry, e.id, eligibleIds),
+  );
+  const envsActivating = new Map();
+  for (const a of activationByEnv)
+    for (const id of a.activated) {
+      if (!envsActivating.has(id)) envsActivating.set(id, []);
+      envsActivating.get(id).push(a.environment.id);
+    }
+
+  let files = gitFiles;
+  if (!files) {
+    files = [];
+    for (const r of ["functions/src", "field-ops-app-vite/src"]) {
+      try {
+        files = files.concat(
+          execSync(`git ls-files ${r}`, { cwd: root, encoding: "utf8", maxBuffer: 1 << 26 })
+            .split("\n")
+            .filter((f) => /\.(ts|tsx|js|jsx|mjs)$/.test(f)),
+        );
+      } catch {
+        /* git unavailable — every capability reports NO_IMPLEMENTATION_EVIDENCE, stated in output */
+      }
+    }
+  }
+  const sites = findReferenceSites(files, serverCaps.map((c) => c.id), read);
+
+  const hintedCallables = new Map();
+  for (const c of serverCaps) hintedCallables.set(c.id, []);
+  for (const e of callables)
+    for (const hint of e.capabilityHints)
+      if (hintedCallables.has(hint)) hintedCallables.get(hint).push(...e.names);
+
+  const capabilities = serverCaps.map((c) => {
+    const where = [...(sites.get(c.id) ?? [])];
+    const serverReferences = where.filter((f) => f.startsWith("functions/"));
+    const clientReferences = where.filter((f) => f.startsWith("field-ops-app-vite/"));
+    const exportedCallables = [...new Set(hintedCallables.get(c.id) ?? [])];
+    const implementation = {
+      exportedCallables,
+      serverReferences: serverReferences.slice(0, 12),
+      clientReferences: clientReferences.slice(0, 12),
+      serverReferenceCount: serverReferences.length,
+      clientReferenceCount: clientReferences.length,
+      evidence: classifyImplementation({ exportedCallables, serverReferences, clientReferences }),
+    };
+    return {
+      id: c.id,
+      resource: c.resource,
+      action: c.action,
+      description: c.description,
+      catalogActive: c.catalogActive,
+      implementation,
+      environmentActivation: {
+        eligible: eligibleIds.includes(c.id),
+        environments: envsActivating.get(c.id) ?? [],
+      },
+    };
+  });
+
+  // Effective state ONLY when an environment was explicitly named.
+  let evaluated = null;
+  let activatedIds = null;
+  if (environment) {
+    const a = resolveActivation(registry, environment, eligibleIds);
+    activatedIds = new Set(a.activated);
+    evaluated = {
+      requested: environment,
+      found: a.found,
+      environment: a.environment,
+      blockedByProductionRole: a.blockedByProductionRole,
+      activatedCount: a.activated.length,
+    };
+    for (const c of capabilities) c.effective = effectiveState(c, activatedIds);
+  }
+
+  const tally = (arr, fn) => arr.reduce((a, x) => ((a[fn(x)] = (a[fn(x)] ?? 0) + 1), a), {});
+
+  return {
+    schema: "capability-graph/2",
+    environmentEvaluated: evaluated,
+    generatedFrom: [
+      "functions/src/access/permissionCatalog.ts",
+      "field-ops-app-vite/src/access/permissionCatalog.ts",
+      "functions/src/index.ts",
+      "functions/src/access/environmentCapabilityOverrides.ts",
+      "config/environments.json",
+      "field-ops-app-vite/src/navigation/navConfig.js",
+      "docs/user-guide/README.md",
+      "docs/roadmaps/business-capability-register.md",
+    ],
+    counts: {
+      capabilities: capabilities.length,
+      catalogActive: capabilities.filter((c) => c.catalogActive).length,
+      catalogInactive: capabilities.filter((c) => !c.catalogActive).length,
+      eligibleForEnvironmentActivation: capabilities.filter((c) => c.environmentActivation.eligible).length,
+      activatedInSomeEnvironment: capabilities.filter((c) => c.environmentActivation.environments.length).length,
+      callableExports: callables.length,
+      destinations: destinations.length,
+      destinationsHidden: destinations.filter((d) => d.navHidden).length,
+      guides: guides.length,
+      registerEntries: register.length,
+      parityIssues: parityIssues.length,
+      ...(evaluated
+        ? {
+            effectiveAuthorized: capabilities.filter((c) => c.effective?.authorized).length,
+            effectiveBuiltInert: capabilities.filter((c) => c.effective?.builtInert).length,
+          }
+        : {}),
+    },
+    catalogCountCheck: countCheck,
+    implementationEvidence: tally(capabilities, (c) => c.implementation.evidence),
+    guideStatuses: tally(guides, (g) => g.status),
+    flows: resolveFlows(FLOWS, capabilities, activatedIds),
+    capabilities,
+    callables,
+    destinations,
+    guides,
+    register,
+    eligibleIds,
+    parityIssues,
+  };
 }
-if (process.argv.includes("--check") && parityIssues.length) process.exit(1);
+
+// ------------------------------------------------------------------ markdown
+
+export function renderMarkdown(g) {
+  const ev = g.environmentEvaluated;
+  const L = [
+    "# Capability graph — declaration, implementation, activation",
+    "",
+    "**Generated. Do not edit by hand.** `node scripts/buildCapabilityGraph.mjs`",
+    "",
+    "`repo-graph.json` maps *structure*. This reports *evidence* about capabilities: what the catalog",
+    "declares, what the code references, and what each environment activates. These are three separate",
+    "things and this document never fuses them into one verdict.",
+    "",
+    "> **`active: false` does not mean unusable.** `functions/src/access/environmentCapabilityOverrides.ts`",
+    "> activates selected catalog-inactive capabilities in configured non-production environments. The",
+    "> repo's rule holds throughout: **eligibility != activation != authorization**.",
+    "",
+    "## Dimensions reported",
+    "",
+    "| Dimension | Source | What it does NOT tell you |",
+    "| --- | --- | --- |",
+    "| Catalog declaration + `active` flag | `permissionCatalog.ts` | Whether any environment activates it |",
+    "| Implementation evidence | literal id references; callables from `index.ts` | Whether it is deployed or reachable |",
+    "| Environment activation | `environmentCapabilityOverrides.ts` + `config/environments.json` | Whether a principal holds a qualifying grant |",
+    "| Effective state | computed **only** with `--environment` | Anything, unless an environment was named |",
+    "",
+    "## Counts",
+    "",
+    ...Object.entries(g.counts).map(([k, v]) => `- **${k}**: ${v}`),
+    "",
+    `Catalog parse check: ${g.catalogCountCheck.parsed}/${g.catalogCountCheck.raw} entries ${g.catalogCountCheck.ok ? "(ok)" : "(**MISMATCH — parser drift**)"}`,
+    "",
+    "## Implementation evidence",
+    "",
+    "Evidence of reference. **Not** proof that a callable exists, except where stated.",
+    "",
+    "| Class | Count | Means |",
+    "| --- | ---: | --- |",
+    `| EXPORTED | ${g.implementationEvidence.EXPORTED ?? 0} | An exported callable in \`index.ts\` names this capability |`,
+    `| SERVER_REFERENCED | ${g.implementationEvidence.SERVER_REFERENCED ?? 0} | Referenced under \`functions/src\`; no callable matched |`,
+    `| CLIENT_ONLY | ${g.implementationEvidence.CLIENT_ONLY ?? 0} | Referenced only in the client app |`,
+    `| NO_IMPLEMENTATION_EVIDENCE | ${g.implementationEvidence.NO_IMPLEMENTATION_EVIDENCE ?? 0} | No literal reference found — **may be a false negative** for ids assembled indirectly |`,
+    "",
+    "## Environment activation",
+    "",
+    `Eligible for activation (allow-list in the resolver): **${g.counts.eligibleForEnvironmentActivation}**.`,
+    `Activated by at least one environment: **${g.counts.activatedInSomeEnvironment}**.`,
+    "",
+    "Production is hard-blocked by role in the resolver and carries no override declaration.",
+    "",
+    ev
+      ? [
+          `## Effective state — \`${ev.requested}\``,
+          "",
+          ev.found
+            ? `Environment \`${ev.environment.id}\` (role \`${ev.environment.role}\`, project \`${ev.environment.projectId}\`).` +
+              (ev.blockedByProductionRole
+                ? " **Production role — activation returns empty unconditionally.**"
+                : ` Activates ${ev.activatedCount} capabilities.`)
+            : "**Environment not found in the registry — treated as activating nothing (fail-closed).**",
+          "",
+          `- Authorized (catalog-active or environment-activated): **${g.counts.effectiveAuthorized}**`,
+          `- Built but not authorized here (\`BUILT_INERT\`): **${g.counts.effectiveBuiltInert}**`,
+          "",
+        ].join("\n")
+      : [
+          "## Effective state",
+          "",
+          "**Not computed.** No environment was named, and effective authorization is not a fact that",
+          "exists environment-free. Run with `--environment <id|projectId>` to evaluate one.",
+          "",
+        ].join("\n"),
+    "## Flows — governance coverage per business chain",
+    "",
+    "Chains transcribed from our own process docs. A step with no mapped capability is `UNMAPPED` and",
+    "**does not stop a flow** — it may be ordinary UI, legacy role-gated authorization, non-capability",
+    "logic, or genuinely absent, and this evidence cannot distinguish those.",
+    "",
+    ...g.flows.flatMap((f) => [
+      `### ${f.name}`,
+      "",
+      `Source: \`${f.source}\``,
+      "",
+      f.evaluated
+        ? f.stopsAt
+          ? `**Under \`${ev.requested}\`: stops at step ${f.stopsAtIndex + 1} of ${f.totalSteps} — ${f.stopsAt}.** ${f.unmappedSteps} step(s) unmapped and not evaluated.`
+          : `**Under \`${ev.requested}\`: no mapped step is unauthorized.** ${f.unmappedSteps} step(s) unmapped and not evaluated.`
+        : "_Governance coverage only — no stopping point computed without an environment._",
+      "",
+      "| # | Step | Coverage | " + (f.evaluated ? "Authorized | " : "") + "Capabilities |",
+      "| ---: | --- | --- | " + (f.evaluated ? "--- | " : "") + "--- |",
+      ...f.steps.map(
+        (s, i) =>
+          `| ${i + 1} | ${s.name} | ${s.coverage} | ` +
+          (f.evaluated ? `${s.authorized === null ? "n/a" : s.authorized ? "yes" : "no"} | ` : "") +
+          `${s.capabilities.length ? s.capabilities.map((c) => "`" + c + "`").join(", ") : "—"} |`,
+      ),
+      "",
+    ]),
+    ...(g.parityIssues.length
+      ? [
+          "## ⚠️ Permission-catalog parity issues",
+          "",
+          ...g.parityIssues.map((p) => `- \`${p.id}\` — ${p.issue}`),
+          "",
+        ]
+      : ["## Permission-catalog parity", "", "Server and client mirrors agree.", ""]),
+    "## How to use it",
+    "",
+    "Before claiming a capability is missing:",
+    "",
+    "1. Find it in `capabilities[]`. Read `catalogActive`, `implementation.evidence`, and",
+    "   `environmentActivation` as **three separate facts**.",
+    "2. `catalogActive: false` with a non-empty `environmentActivation.environments` means it is",
+    "   **live in those environments** — not missing, and not inert.",
+    "3. `NO_IMPLEMENTATION_EVIDENCE` is a lead, not a verdict — indirect references are invisible here.",
+    "4. Check `destinations[]` for a `navHidden` entry whose `placeholderExplanation` states, in its own",
+    "   words, why it is unreachable; and `guides[]` for a status tag naming what is missing beneath a",
+    "   screen that exists.",
+    "5. Only when all of those are silent is something plausibly absent — and confirm by reading.",
+    "",
+    "Structural questions (who imports whom, is a cited path real) belong to `repo-graph.json`.",
+    "",
+  ];
+  return L.join("\n");
+}
+
+// ------------------------------------------------------------------ CLI
+
+function argOf(flag) {
+  const i = process.argv.indexOf(flag);
+  return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith("--")
+    ? process.argv[i + 1]
+    : null;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  const check = process.argv.includes("--check");
+  const environment = argOf("--environment");
+  const graph = buildGraph({ environment });
+  const json = JSON.stringify(graph, null, 2) + "\n";
+  const md = renderMarkdown(graph);
+  const jsonPath = "docs/architecture/capability-graph.json";
+  const mdPath = "docs/architecture/capability-graph.md";
+
+  if (check) {
+    // Drift detection: regenerate in memory and compare. Never writes.
+    const problems = [];
+    if (!graph.catalogCountCheck.ok)
+      problems.push(
+        `catalog parser drift: parsed ${graph.catalogCountCheck.parsed} of ${graph.catalogCountCheck.raw} entries`,
+      );
+    if (graph.parityIssues.length) problems.push(`${graph.parityIssues.length} catalog parity issue(s)`);
+    for (const [p, expected] of [
+      [jsonPath, json],
+      [mdPath, md],
+    ]) {
+      const actual = readAt(ROOT, p);
+      if (actual === null) problems.push(`${p} is missing`);
+      else if (actual.replace(/\r\n/g, "\n") !== expected.replace(/\r\n/g, "\n"))
+        problems.push(`${p} is stale — regenerate with \`node scripts/buildCapabilityGraph.mjs\``);
+    }
+    if (problems.length) {
+      console.error("capability-graph --check FAILED:");
+      for (const p of problems) console.error("  - " + p);
+      process.exit(1);
+    }
+    console.log("capability-graph --check ok (artifacts current, parity clean, parser complete)");
+  } else {
+    writeFileSync(resolve(ROOT, jsonPath), json);
+    writeFileSync(resolve(ROOT, mdPath), md);
+    console.log("counts:  " + JSON.stringify(graph.counts));
+    console.log("evidence:" + JSON.stringify(graph.implementationEvidence));
+    if (graph.environmentEvaluated)
+      console.log("env:     " + JSON.stringify(graph.environmentEvaluated));
+    else console.log("env:     none evaluated (environment-neutral graph)");
+    if (!graph.catalogCountCheck.ok)
+      console.error(`WARNING: catalog parser drift — ${JSON.stringify(graph.catalogCountCheck)}`);
+  }
+}
