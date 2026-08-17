@@ -738,11 +738,15 @@
       "title": "One authoritative Account AR read owner",
       "domain": "crm",
       "entity": "Account",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1095,
       "dependsOn": [],
-      "nextAction": "Executable now that the AR contract fix is on main",
-      "notes": "Three independent consumers issue the same callable read per page load."
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "notes": "Three independent consumers issue the same callable read per page load. FIXED in the hook via in-flight request sharing rather than by hoisting the read into AccountDetail - hoisting would have fixed the request count by destroying the sections' independent mountability, which the page was built for. Deduplication, NOT caching: the entry clears on settle, so a later mount re-reads. Retaining a settled AR balance would be a worse defect than the duplicate requests.",
+      "pr": 1114,
+      "headSha": "7824cf4f0ae16fd2a3ecadde02a8da41b549538d",
+      "branch": "refactor/account-ar-single-read",
+      "checks": "5/5 offline sharing tests; oxlint clean; NOT verified live"
     },
     {
       "id": "X-ADMIN-CRM-AUTHORITY",

@@ -17,19 +17,15 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **D-BUG-AR-OWNERSHIP** (phase 6) — One authoritative Account AR read owner → Executable now that the AR contract fix is on main
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | — | — | — | NOT_APPLICABLE | Executable now that the AR contract fix is on main |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGE_QUEUED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY. Note merge-order interaction with #1104. |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
