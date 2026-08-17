@@ -13,15 +13,15 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 27 | 18 | 9 |
+| 43 | 31 | 12 |
 
 ## Next executable
 
-- **P0-AUDIT-CONTRACTS** (phase 0) — Shared-contract / mirror tooling investigation → Agent running
-- **P0-AUDIT-QUERY** (phase 0) — Query pattern, pagination prior art and index coverage audit → Agent running
-- **P0-INV-COMMERCIAL** (phase 0) — Commercial (Sales Order/Purchasing/AR) surface inventory → Agent running
-- **P0-INV-INVENTORY** (phase 0) — Inventory/warehouse surface inventory → Agent running
-- **P0-LEDGER** (phase 0) — Program execution ledger + resumption model → Seed remaining domains as audits land; open PR
+- **P0-LEDGER** (phase 0) — Program execution ledger + resumption model → Open PR; ledger becomes the resumption authority
+- **X-RULES-DISCREPANCY** (phase 0) — mobile_locations read path disagrees with Rules → Confirm directly against firestore.rules before trusting either source
+- **X-WRITE-ONLY-COLLECTIONS** (phase 0) — Deny-all collections with no governed read path → Record as a capability gap; not a metadata-program blocker
+- **A-CONTRACT-TOOLING** (phase 1) — Shared contract source of truth → Implement generated mirror plus parity CI; close the two untested mirror pairs
+- **A-CALLABLE-UNBOUNDED** (phase 3) — Unbounded trusted-callable reads → Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables
 - **D-BUG-AR-CONTRACT** (phase 6) — Shared AR view-state contract → Single shared contract; remove hardcoded literals in accountHealthStrip.js
 - **D-BUG-STATUS-CASING** (phase 6) — Canonical ACCOUNT_STATUS machine values + display labels → Audit persisted data first, then change the constant
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
@@ -32,11 +32,7 @@ continues from the next executable item — without asking what happened.
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | — | — | — | NOT_APPLICABLE | Seed remaining domains as audits land; open PR |
-| P0-INV-INVENTORY | 0 | Inventory/warehouse surface inventory | — | — | — | — | — | NOT_APPLICABLE | Agent running |
-| P0-INV-COMMERCIAL | 0 | Commercial (Sales Order/Purchasing/AR) surface inventory | — | — | — | — | — | NOT_APPLICABLE | Agent running |
-| P0-AUDIT-CONTRACTS | 0 | Shared-contract / mirror tooling investigation | — | — | — | — | — | NOT_APPLICABLE | Agent running |
-| P0-AUDIT-QUERY | 0 | Query pattern, pagination prior art and index coverage audit | — | — | — | — | — | NOT_APPLICABLE | Agent running |
+| P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | — | — | — | NOT_APPLICABLE | Open PR; ledger becomes the resumption authority |
 
 ## READY
 
@@ -53,6 +49,14 @@ continues from the next executable item — without asking what happened.
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation |
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | — | — | — | NOT_APPLICABLE | Audit persisted data first, then change the constant |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | — | — | — | NOT_APPLICABLE | Single shared contract; remove hardcoded literals in accountHealthStrip.js |
+| S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | — | — | — | NOT_APPLICABLE | Resolve the deployment-status contradiction before touching this surface |
+| S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
+| S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
+| A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | — | — | — | NOT_APPLICABLE | Implement generated mirror plus parity CI; close the two untested mirror pairs |
+| A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | — | — | — | NOT_APPLICABLE | Apply the repo's own limit+1 truncation-honesty convention to the three unbounded callables |
+| X-RULES-DISCREPANCY | 0 | mobile_locations read path disagrees with Rules | — | — | — | — | — | NOT_APPLICABLE | Confirm directly against firestore.rules before trusting either source |
+| X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | Record as a capability gap; not a metadata-program blocker |
+| S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
 
 ## BLOCKED_PROTECTED
 
@@ -84,6 +88,17 @@ continues from the next executable item — without asking what happened.
 | G-GATE-A | 3 | Gate A — metadata foundation review package | — | — | — | — | — | NOT_APPLICABLE | Assemble package, mark REVIEW_QUEUED, do NOT wait |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | — | — | — | NOT_APPLICABLE | After the contract fix lands |
+| S-INV-PARTS | 9 | Parts catalog | /inventory | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
+| S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Migrate; navHidden, direct-URL only |
+| S-INV-WAREHOUSES | 9 | Warehouses | /inventory/warehouses | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-INV-SUPPLIERS | 9 | Suppliers | /purchasing/suppliers | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate; already cursor-paginated |
+| S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
+| S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Generalize the existing cursor prior art rather than inventing a pattern |
+| A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
@@ -100,6 +115,10 @@ continues from the next executable item — without asking what happened.
 | S-ADM-REPORT-BUILDER | 9 | Report Builder | /reporting/builder | — | — | — | — | NOT_APPLICABLE | Treat as prior art input to Gate A, not a migration target |
 | S-ADM-OVERVIEW | 9 | Administration overview | /administration/overview | — | — | — | — | NOT_APPLICABLE | None |
 | S-ADM-PLACEHOLDERS | 0 | Unbuilt placeholder routes (18) | /reporting/*, /administration/{vehicles,regions,company-settings,permission-preview,audit-logs}, /dashboard/notifications, /financials, /purchasing/{quotes,demand-planning}, /inventory/back-orders, /service/warranty | — | — | — | — | NOT_APPLICABLE | None until built |
+| S-INV-RECEIVING | 9 | Receiving | /inventory/receiving | — | — | — | — | NOT_APPLICABLE | None - a workflow, not a list |
+| S-INV-CYCLE-COUNTS | 9 | Cycle counts | /inventory/cycle-counts | — | — | — | — | NOT_APPLICABLE | None - scan-driven workflow |
+| S-INV-ROLE-HOMES | 9 | Operational role homes | /inventory-role/{manager,warehouse,mine} | — | — | — | — | NOT_APPLICABLE | None - role-scoped queues |
+| S-DIAG-PARITY | 0 | Parts shadow parity diagnostics | /admin/diagnostics/inventory-parts-parity | — | — | — | — | NOT_APPLICABLE | None |
 
 ## COMPLETE
 
@@ -108,4 +127,8 @@ continues from the next executable item — without asking what happened.
 | P0-INV-CRM | 0 | CRM/Sales surface inventory | — | — | — | — | — | NOT_APPLICABLE | Folded into surface entries below |
 | P0-INV-SERVICE | 0 | Service/Work Order/Dispatch surface inventory | — | — | — | — | — | NOT_APPLICABLE | Folded into surface entries below |
 | P0-INV-ADMIN | 0 | Administration/Reporting/Dashboard surface inventory | — | — | — | — | — | NOT_APPLICABLE | Folded into surface entries below |
+| P0-INV-INVENTORY | 0 | Inventory/warehouse surface inventory | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
+| P0-INV-COMMERCIAL | 0 | Commercial (Sales Order/Purchasing/AR) surface inventory | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
+| P0-AUDIT-CONTRACTS | 0 | Shared-contract / mirror tooling investigation | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
+| P0-AUDIT-QUERY | 0 | Query pattern, pagination prior art and index coverage audit | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
 
