@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 390d5149 (AR single-read + ledger reconciliation merged)",
+  "baseline": "origin/main f06801f0 (page composition runtime + index CI bridge merged)",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -137,21 +137,18 @@
       "route": "/customers",
       "classification": "A_ENTITY_LIST",
       "entity": "Account",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "issue": 1097,
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
+      "nextAction": "Merged. The accounts composite index is declared and pending deploy.",
       "governing": [
         "DECISIONS #102 \u00a79"
       ],
-      "blockers": [
-        {
-          "reason": "First consumer of the list runtime; cannot migrate before the runtime exists"
-        }
-      ],
-      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation."
+      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation. FIRST HALF QUEUED (#1137): Account entity + account.index list, the program's first real definitions. Enum labels sourced from domain/constants rather than a second copy; identity claims no reference number because an Account has none; tags render but claim no operator until the index exists; landing view is recently-viewed. Exposed and fixed a real defect - requiredIndexes() emitted ASC/DESC into output meant to be pasted into firestore.indexes.json, where only ASCENDING/DESCENDING is accepted, so every demand compared unequal against all eight existing declarations and would have failed the deploy of its own fix. SECOND HALF IS NOT A PURE LIST MIGRATION - OPEN QUESTION: /customers renders portfolio summary cards (total/active/prospect/inactive/archived counts) computed client-side over the WHOLE accounts collection, plus a tag facet built the same way. Those are AGGREGATES, not list rows: bounding their input makes the counts mathematically false while presenting them as complete - the same class as X-INVENTORY-ANALYTICS-AGGREGATE. Migrating the table to bounded paging while leaving the cards reading everything would keep the unbounded read and add a second one. Resolving it needs either an authoritative count source or a decision to reframe/remove the cards, which is a product decision a read-shape rule does not authorize. RESOLVED by Owner portfolio ruling and delivered (#1138): cards KEPT, fed by getAccountPortfolioSummary - a server-side count over the complete scope, authorized with the existing account.record.read rather than a new capability, not materialized. total is counted INDEPENDENTLY of the per-status counts so the difference surfaces as `unclassified`, which is how a legacy title-cased status is reported rather than vanishing from four categories that then fail to add up. The whole-collection subscription is REMOVED, not kept alongside. Tag facet, relationship facet and global search deferred as future governed work - each was built from a client-side full-collection scan and rebuilding any of them from a page would present partial data as complete. Also corrected a defect in the merged definition: relationshipType (singular ENUM) is not a stored field; accounts carry relationshipTypes, an array, now typed with the new ENUM_SET field type.",
+      "pr": 1138,
+      "mergeSha": "abfd3ee7"
     },
     {
       "id": "S-CRM-ACCOUNT-RECORD",
@@ -165,7 +162,7 @@
       "entity": "Account",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto the page definition runtime",
       "notes": "Reads are already bounded (1 doc listener + 2 where(accountId==) + callables). Carries defects #1093/#1094/#1095."
@@ -184,7 +181,7 @@
       "issue": 1099,
       "dependsOn": [
         "D-OPPORTUNITY-IDENTITY",
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Identity is on main; awaiting the list runtime",
       "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
@@ -201,7 +198,7 @@
       "entity": "SalesOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto page runtime; resolve raw-id labels",
       "notes": "getSalesOrderContext callable, bounded. Renders raw accountId, sourceOpportunityId, ownerEmployeeId and work order ids as visible labels."
@@ -233,7 +230,7 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1098,
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "The Gate B non-CRM validation target",
       "governing": [
@@ -253,7 +250,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate after Gate B",
       "notes": "Bounded single-doc read. Parts readiness projection exists (workOrderPartsReadiness.js) but is NOT wired to this UI."
@@ -270,7 +267,7 @@
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
       "notes": "Shares the same unbounded useWorkOrders() listener."
@@ -289,7 +286,7 @@
       "nextAction": "Classify: queue with governed transition writes, not a list",
       "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -362,7 +359,7 @@
       "nextAction": "Confirm synthetic-source status before migrating anything",
       "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -379,7 +376,7 @@
       "nextAction": "Same synthetic-source caveat as coordinated visits",
       "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -396,7 +393,7 @@
       "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
       "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ]
     },
     {
@@ -427,7 +424,7 @@
       "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
       "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -442,7 +439,7 @@
       "entity": "Technician",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
@@ -459,7 +456,7 @@
       "entity": "SavedReportDefinition",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
@@ -506,7 +503,7 @@
       "nextAction": "Inventory only; no governed directory read exists to migrate",
       "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ]
     },
     {
@@ -523,7 +520,7 @@
       "nextAction": "Inventory only; form is unconditionally disabled",
       "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ]
     },
     {
@@ -554,7 +551,7 @@
       "nextAction": "Later phase; dashboard composition is not list/record metadata",
       "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ]
     },
     {
@@ -795,8 +792,8 @@
       "title": "Harness merge permission for gh pr merge",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_PROTECTED",
-      "nextAction": "Mark PRs MERGE-QUEUED and continue independent work",
+      "status": "COMPLETE",
+      "nextAction": "Resolved: merges are executing",
       "blockers": [
         {
           "reason": "gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program.",
@@ -805,7 +802,8 @@
       ],
       "governing": [
         "Owner ruling \u00a71"
-      ]
+      ],
+      "notes": " RESOLVED 2026-08-17: the harness classifier now permits `gh pr merge` one invocation at a time (a shell loop over several is still refused). Six PRs merged in sequence - #1130, #1132, #1133, #1134, #1135 and the list runtime lanes before them. The block was a harness condition, not a policy one, which is why re-testing it rather than assuming it persisted was worth doing."
     },
     {
       "id": "S-INV-PARTS",
@@ -819,7 +817,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
@@ -836,7 +834,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto page runtime",
       "notes": "Re-reads the entire parts and suppliers collections to render one record."
@@ -853,7 +851,7 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate; navHidden, direct-URL only",
       "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
@@ -870,7 +868,7 @@
       "entity": "Warehouse",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
@@ -887,7 +885,7 @@
       "entity": "Supplier",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
@@ -926,7 +924,7 @@
       "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
       "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -971,7 +969,7 @@
       "nextAction": "Inventory only - writes are closed in every environment including sandbox",
       "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ]
     },
     {
@@ -1000,7 +998,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate; already cursor-paginated",
       "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
@@ -1017,7 +1015,7 @@
       "entity": "Equipment",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-PAGE-COMPONENT"
       ],
       "nextAction": "Migrate onto page runtime"
     },
@@ -1033,7 +1031,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
@@ -1050,7 +1048,7 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-RUNTIME"
+        "A-LIST-GRID"
       ],
       "nextAction": "Migrate onto list runtime",
       "notes": "Same bounded projection as purchase orders, filtered to received."
@@ -1097,15 +1095,17 @@
       "title": "Bounded-read remediation across list-exempt surfaces",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Generalize the existing cursor prior art rather than inventing a pattern",
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE."
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE. APPROACH DECIDED, recorded before execution because the obvious reading is wrong. 'Generalize the cursor prior art' does NOT mean writing a second paging helper: the list query core already IS that generalization, and a board needs a BOUNDED READ without needing a GRID. So the list-exempt surfaces consume buildQueryDescriptor and interpretPage directly, and simply never touch listPresentation. Two implementations of cursor paging would drift, and the second would be the one without the tests. SCOPE, which is not uniform: the pure-list reads are fixable now - the work-order wizard's account picker, technicians, warehouses, suppliers, transfer orders. The AGGREGATE reads are NOT, and must not be bounded as if they were: netting a total over a page produces an arithmetically false figure under a name implying a complete one, which is worse than an honest failure. Those stay blocked on X-INVENTORY-ANALYTICS-AGGREGATE. Anyone executing this should split the item rather than sweep the whole list of unbounded reads. FIRST SLICE DONE: three unbounded accounts-collection picker reads bounded and DISCLOSING truncation. The disclosure is the substance - a dropdown silently showing the first N of 250k is visually identical to one showing all, so a user searching for a customer that exists concludes it does not, turning a performance defect into a correctness one. Scope held to the mandated part: a search-first picker is the enterprise answer but removes browsing, which is a PRODUCT decision a read-shape rule does not authorize.",
+      "pr": 1132,
+      "branch": "feat/bounded-account-picker",
+      "checks": "875/875 component; 15/15 picker; 32/32 wizard; tsc + oxlint clean",
+      "mergeSha": "6fee129673727ffa89c5ec7706928581a4414c8a"
     },
     {
       "id": "A-INDEX-VALIDATOR",
@@ -1115,15 +1115,13 @@
       "title": "ListViewDefinition to composite-index validator",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Import indexDriftGuard exports; do not reimplement key normalization",
+      "status": "EXEMPT",
+      "dependsOn": [],
+      "nextAction": "None - see A-INDEX-CI-BRIDGE",
       "governing": [
         "Owner ruling section 8"
       ],
-      "notes": "Turns the rule that metadata must not promise unsupported filter combinations into a build failure. scripts/indexDriftGuard.mjs already exports indexKey, compareIndexes, evaluateDeploy and normalizeGcloudIndexes with a fail-closed named-acknowledgement gate; a validator must import those rather than re-deriving key normalization. Note those exports are currently imported only by their own test - no deploy script wires them in yet."
+      "notes": "DUPLICATE, folded into A-INDEX-CI-BRIDGE. I recorded the same work twice under two names -- 'build a validator' and 'wire it into CI' -- which are one item: a validator nothing runs enforces nothing. Kept as EXEMPT rather than deleted so the duplication is visible as resolved rather than looking like an item that vanished."
     },
     {
       "id": "A-CALLABLE-UNBOUNDED",
@@ -1289,7 +1287,7 @@
         "Owner ruling 2026-08-17 section 4",
         "DECISIONS #102 section 9"
       ],
-      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection.",
+      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection. PRECEDENT: the Account portfolio summary (#1138) resolved the same class of problem with a complete server-side count plus an independently-counted total, so a discrepancy is reported rather than hidden. Whether that shape transfers depends on whether the inventory figures are counts or netted quantities - a count aggregates; a netted availableStock does not.",
       "blockers": [
         {
           "reason": "INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment.",
@@ -1368,14 +1366,15 @@
       "title": "List runtime component consuming ListViewDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer. QUERY CORE BUILT as a pure module: it produces a bounded query DESCRIPTOR and executes nothing, which is what makes section 9 assertable offline rather than hoped for. The guarantees are absences - no offset/page/skip key exists at all, no argument removes the limit - and are tested as absences, because an absence nobody checks becomes an addition. The GRID COMPONENT is still to build; this is the half that carries the governance properties.",
       "pr": 1126,
       "headSha": "1121e888ad03e5b1368ac143b67168cd7f62a2c3",
       "branch": "feat/list-runtime",
-      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run"
+      "checks": "108 metadata contract tests green after reconcile; all 5 suites filtered+run",
+      "mergeSha": "dafa60df"
     },
     {
       "id": "A-INDEX-CI-BRIDGE",
@@ -1385,16 +1384,18 @@
       "title": "CI gate: declared list filters must have declared indexes",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner ruling on index governance",
         "DECISIONS #102 section 9"
       ],
-      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization. ABSORBED A-INDEX-VALIDATOR. Gate A named this gap explicitly as something Gate A does NOT settle. BUILT. Reuses indexDriftGuard's indexKey rather than re-deriving the __name__ rule, since two implementations of a subtle normalization would eventually disagree and the existing one is what the deploy path trusts. The registry is an explicit empty list, not a glob, and the script prints 'idle, not passing' - a check reporting green while checking nothing is worse than no check. LEDGER CORRECTION: this was briefly recorded MERGE_QUEUED with pr 1129, but the gh pr create call had 503'd and no such PR existed. The false claim survived because the command was piped to tail, so the pipeline exit status was tail's success rather than gh's failure, and the chain continued past a failed step. Caught by verifying the claim against GitHub instead of trusting what had just been written - which is the reconcile discipline applied to my own write. CORRECTION: recording this MERGED at f06801f0 was wrong. #1129 merged the TOOL and wired its UNIT TESTS into CI, which proves the tool works but never asks whether this repository's own definitions demand an undeclared index - and only the second check fails when someone adds a filter and forgets the index. #1134 wires the actual gate, and adds a registration-completeness check: a definition authored but never registered was invisible here, which looks identical to a covered one.",
+      "pr": 1134,
+      "branch": "feat/index-coverage-gate",
+      "checks": "9/9 coverage tests locally; wired into deployment-drift workflow",
+      "mergeSha": "5b87e262340002020ada306f3e8f1b2f88c1f1ce"
     },
     {
       "id": "A-PAGE-RENDERER",
@@ -1404,14 +1405,15 @@
       "title": "Record page renderer consuming PageDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "The contract is data; this renders it. Owns composition only - domain components own business behavior. BUILT as a pure composition planner: it resolves which sections render where and carries each section's capability outward UNEVALUATED. applyVisibility() takes the caller's decision map and there is deliberately no argument by which a decision could be passed in - a runtime accepting {allowed:true} would become where authorization is decided. Fails closed at presentation level, which is defence in depth and NOT the boundary. Also reports when exclusions drop an OPERATIONAL page below its own bar, since rendering a diminished page silently is how an operations platform degrades into a form without anyone deciding to.",
       "pr": 1128,
-      "headSha": "417aba5dbacaf6fe2966fc8d9addc70e2af949cb",
+      "headSha": "54dc7a471083df6d7f3c3ba2277f0cfaf8ecce5a",
       "branch": "feat/page-renderer",
-      "checks": "14/14 page runtime tests; oxlint + tsc clean"
+      "checks": "122 metadata contract tests after reconcile; six named properties verified individually",
+      "mergeSha": "cdf79f1b"
     },
     {
       "id": "D-OPPORTUNITY-IDENTITY",
@@ -1479,12 +1481,14 @@
       "title": "List grid component consuming the query core",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-RUNTIME"
-      ],
-      "nextAction": "Build after the query core is on main",
-      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120."
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "Presentation only: the query core already owns paging, scoping and bounds. TanStack Table is approved as headless behaviour infrastructure; EOS owns visual design and accessibility. Adding it is a field-ops-app-vite/package.json change, which triggers frontend workflows - worth checking the blast radius first, as the functions/package.json edit did on #1120. PRESENTATION MODEL BUILT as a pure module; the React component maps it to markup and is a separate slice. Carries FOUR distinct empty states - EMPTY, FILTERED, DENIED, UNAVAILABLE - because 'no customers found' shown to someone who lacks a capability is a lie that sends people hunting for missing data instead of missing access. TANSTACK DEFERRED: approved, but v1 needs render-from-definition rather than column reordering, and adding it now is a package.json change pulling in frontend workflows for a dependency earning nothing yet.",
+      "pr": 1130,
+      "branch": "feat/list-grid",
+      "checks": "19/19 presentation tests; seven metadata suites run==filtered; reconciled onto main",
+      "mergeSha": "582d1a3c25d44d7fc7240997908be6e2c832e70d"
     },
     {
       "id": "A-PAGE-COMPONENT",
@@ -1494,12 +1498,103 @@
       "title": "Record page React component consuming the composition plan",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan. BUILT (#1135): thin renderer over the composition plan. Section 6 decisions arrive resolved from the caller and a gated section is never rendered rather than rendered-and-hidden; section 8 components resolve from the registry by id. A page hidden entirely by access says so instead of 'nothing here', and an unregistered component leaves no titled empty shell - a heading over nothing reads as 'this exists and is empty', a different and false claim. Related lists are injected, not imported. 884/884 component tests.",
+      "pr": 1135,
+      "branch": "feat/page-component",
+      "mergeSha": "774ea795982952eb4f01f78df62afb52d3373f9e"
+    },
+    {
+      "id": "A-LIST-COMPONENT",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "List React component rendering the presentation model",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGED",
       "dependsOn": [
-        "A-PAGE-RENDERER"
+        "A-LIST-GRID"
       ],
-      "nextAction": "Build after the composition planner is on main",
-      "notes": "Presentation only: the planner already owns placement, ordering, exclusion and visibility. The component renders a plan."
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "Thin mapping from the presentation model to EOS markup (fo-table and the shared state primitives). All four empty states must render distinctly - collapsing them in the component would undo the model's whole point. BUILT (#1136): the four empties reach four different primitives - EMPTY/FILTERED as legitimate emptiness reusing EmptyState's own database/filtered vocabulary, DENIED/UNAVAILABLE as failures with alert semantics. Retry only on UNAVAILABLE, because retrying a denied read is still denied and a button that cannot work makes an access boundary read as a broken system. Copy comes from the model so two renderers cannot drift into two sentences for one fact. No new dependency: fireEvent instead of user-event keeps package.json untouched and the workflow blast radius unchanged.",
+      "pr": 1136,
+      "branch": "feat/list-component",
+      "mergeSha": "2fff78b1a1e32bae5b2f81ea5d65b8af788757fb"
+    },
+    {
+      "id": "A-BOUNDED-READS-REMAINING",
+      "phase": "3",
+      "wave": "2",
+      "kind": "ARCHITECTURE",
+      "title": "Remaining unbounded PURE LIST reads",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
+      "notes": "Split from A-BOUNDED-READS once the picker slice landed, so 'bounded reads done' cannot imply more than the pickers. These are pure list reads and safe to bound. The AGGREGATE reads - Operations dashboard netting, availableStock, consumption and technician-volume rollups - are explicitly NOT in this item and must not be swept into it: bounding the inputs to a total produces a mathematically false figure presented as complete, which is worse than an honest failure. WAREHOUSES AND SUPPLIERS DONE, and the SHAPE is the finding: capping the shared listCollection() factory would have been wrong. Every unbounded fetcher there serves BOTH a list surface and the Operations dashboard, which nets the same data into availableStock and reconciliation totals. Capping the factory bounds both, and a total over a truncated input is not partial but WRONG while presenting itself as complete - worse than the unbounded read, which is at least slow and honest. So the bound lives at the CALL SITE via a new listCollectionPage() beside the original. REMAINING: technicians and transfer orders, same call-site treatment; the unbounded originals must stay for the aggregate consumer.",
+      "pr": 1133,
+      "branch": "feat/bounded-list-reads",
+      "checks": "875/875 component tests; tsc clean",
+      "mergeSha": "2a7847d159687d94f4a0d2a7ae1018a08b081eeb"
+    },
+    {
+      "id": "X-ACCOUNT-TAG-CATALOG",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Governed Account tag facet / catalog projection",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers",
+      "classification": "A_ENTITY_LIST",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Needs an authoritative tag source before a facet can be honest",
+      "blockers": [
+        {
+          "reason": "No authoritative Account tag catalog exists; the old facet was built by scanning every account in the browser",
+          "requiredDecision": "Whether tags become governed reference data with a catalog, or remain free-form labels with no global facet. A facet rebuilt from the current page would present 'the tags on these fifty rows' as 'the tags that exist'."
+        }
+      ],
+      "governing": [
+        "Owner portfolio ruling section 4"
+      ],
+      "notes": "Tags still RENDER in rows; only the global facet is deferred. Recorded rather than dropped, per the ruling."
+    },
+    {
+      "id": "A-INDEX-FILTER-COMBINATIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Index derivation across filter COMBINATIONS",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Model per-combination indexes, including arrayConfig for array-contains",
+      "governing": [
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "requiredIndexes() emits ONE combined index for all declared filters plus the sort. Firestore does not serve a query filtering on a subset from that index, so a list declaring two independent filters really demands several indexes. It also emits `order` for every filter field, which is wrong for array-contains - that needs arrayConfig CONTAINS. This is why the Customers relationship facet is deferred: its honest query is array-contains beside an ordering, and the derivation cannot yet state the index it needs. Until this exists, a definition may declare at most one filter without the gate understating what the backend must provide."
+    },
+    {
+      "id": "X-ACCOUNT-SEARCH",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Governed Account search",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers",
+      "classification": "A_ENTITY_LIST",
+      "status": "READY",
+      "nextAction": "Design a bounded server-side name search; do not restore the client-array provider",
+      "governing": [
+        "DECISIONS #102 section 9",
+        "Owner portfolio ruling section 6"
+      ],
+      "notes": "The accounts search provider filtered an array the whole-collection subscription supplied, so removing that subscription removed its only possible input. Handing it a page would return 'no results' for customers that exist - a search box that silently finds nothing is worse than none, because it answers. Removed from /customers in #1138 and recorded here."
     }
   ]
 }
