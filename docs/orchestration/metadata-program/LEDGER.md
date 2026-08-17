@@ -38,7 +38,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-ACCOUNT-PAGE-WIRING** (phase 6) — Wire AccountDetail onto the Account record PageDefinition → Wiring lane dispatched; may return a blocker if no client-side capability resolver exists.
+- **A-RECORD-PAGE-RENDERER-GAPS** (phase 6) — MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED → Three renderer gaps the first real wiring exposed
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -46,7 +46,12 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| X-ACCOUNT-PAGE-WIRING | 6 | Wire AccountDetail onto the Account record PageDefinition | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Wiring lane dispatched; may return a blocker if no client-side capability resolver exists. |
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| A-RECORD-PAGE-RENDERER-GAPS | 6 | MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED | — | — | — | — | — | NOT_APPLICABLE | Three renderer gaps the first real wiring exposed |
 
 ## MERGED
 
@@ -101,6 +106,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
 | X-ACCOUNT-PAGE-GAPS | 6 | Account page: Locations section and Commercial Profile fields | /customers/:accountId | — | #1187 | — | f18b0e83 | NOT_APPLICABLE | Both gaps closed. Wiring is the remaining lane. |
 | X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | #1183 | — | d6e29a5d | NOT_APPLICABLE | Merged. Index demands verified unchanged and pinned by test. |
+| X-ACCOUNT-PAGE-WIRING | 6 | Wire AccountDetail onto the Account record PageDefinition | /customers/:accountId | — | #1191 | — | ac1a979f | NOT_APPLICABLE | Partial wiring merged. Related lists and field groups need renderer support first. |
 | S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS | 6 | Warehouse + Supplier entity definitions | — | — | #1189 | — | 63b5059e | NOT_APPLICABLE | Merged and registered. Two composites declared and pending deploy. |
 
 ## BLOCKED_PROTECTED
