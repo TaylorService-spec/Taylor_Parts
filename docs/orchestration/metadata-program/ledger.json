@@ -646,9 +646,9 @@
       "title": "Component and action registries",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a78"
@@ -657,7 +657,8 @@
       "headSha": "ead08eeb1787bccfc63a186ed82b13dc143b2118",
       "branch": "feat/metadata-registries",
       "checks": "6/6 checks green",
-      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime. CI REPAIR: the Metadata Contracts failure was MY conflict resolution. The two step blocks shared one trailing 'working-directory' line, so merging both left a step without it and that step ran from the repo root, where its test file does not exist. The resolver's guard missed it because it checked each suite was NAMED, not that it was RUNNABLE - the same blind spot as the access generator's round-trip check. The resolver now parses the YAML and rejects any test step lacking a working-directory."
+      "notes": " BUILT. The safety argument is an asymmetry: application code registers behavior, definitions only select from what was registered, so widening tenant configuration can never widen what code may run. Re-registering an id THROWS - a silent overwrite could shadow a governed action with a weaker capability under the same id, an authorization gap with no diff looking wrong. Nothing populates the registries yet; that arrives with the runtime. CI REPAIR: the Metadata Contracts failure was MY conflict resolution. The two step blocks shared one trailing 'working-directory' line, so merging both left a step without it and that step ran from the repo root, where its test file does not exist. The resolver's guard missed it because it checked each suite was NAMED, not that it was RUNNABLE - the same blind spot as the access generator's round-trip check. The resolver now parses the YAML and rejects any test step lacking a working-directory.",
+      "mergeSha": "fb4257a0"
     },
     {
       "id": "G-GATE-A",
@@ -1366,11 +1367,9 @@
       "title": "List runtime component consuming ListViewDefinition",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-REGISTRIES"
-      ],
-      "nextAction": "List contract is on main (2c673e16); still needs the registries",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Executable: the list contract (2c673e16) and registries (fb4257a0) are both on main",
       "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
     },
     {
@@ -1437,15 +1436,16 @@
       "title": "Wire Opportunity identity into the governed create path and surfaces",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive. PROMOTED from a stale block. Its dependency merged and the format was approved, but nothing re-opened it - the ledger does not auto-promote, so it sat blocked with nothing blocking it while the scheduler reported nothing executable. Found by the new staleBlocks() check, which is exactly the false terminal state that check exists to prevent. WIRED. The document id is out of the identity chain entirely: name, then descriptor, then reference, then 'Unnamed opportunity' - which states something true instead of showing a key. The existing view test had ASSERTED the doc-id fallback, so the forbidden behaviour was pinned as correct and fixing it failed CI first; same shape as #1094.",
       "pr": 1123,
       "headSha": "58f269e262c800fe1d641ca48c2621a99afe18ed",
       "branch": "feat/opportunity-identity-wiring",
-      "checks": "9/9 checks green"
+      "checks": "9/9 checks green",
+      "mergeSha": "f7c1df5b"
     },
     {
       "id": "D-SALES-ORDER-OPP-IDENTITY",
@@ -1455,14 +1455,15 @@
       "title": "Sales Order detail still renders sourceOpportunityId raw",
       "domain": "crm",
       "entity": "SalesOrder",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "issue": 1099,
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "Recorded rather than half-done. Sales Order detail reads getSalesOrderContext, a DIFFERENT projection that does not carry Opportunity name or reference, so it still shows the raw document id as the Originating Opportunity link text. Fixing it means the sales-order read joining or denormalizing Opportunity identity - a real design choice, not a rename, which is why it is its own slice. RESOLVED, and the shape is an AUTHORIZATION decision worth remembering: joining the Opportunity into getSalesOrderContext would have returned opportunity.read-governed data through a salesOrder.read-gated callable - a read becoming a side door around the capability guarding it. The reference is instead copied at creation by the command already authorized to read it. Denormalizing is safe ONLY because the reference is immutable; the Opportunity NAME is deliberately not copied, because it is editable and a copy would drift. CI REPAIR: two shape guards plus a render assertion. The render test had ASSERTED the raw document id appears on screen, so the forbidden behaviour was pinned as correct and the fix failed CI. Third instance of that pattern in this program after #1094 and the opportunity view - a test asserting CURRENT rather than INTENDED behaviour converts a defect into a requirement.",
       "pr": 1124,
       "headSha": "ce827015881ee62c206934c2bf1f959bc71a7865",
       "branch": "feat/sales-order-opportunity-identity",
-      "checks": "11/11 checks green"
+      "checks": "11/11 checks green",
+      "mergeSha": "a9c48a1d"
     }
   ]
 }
