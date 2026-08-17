@@ -860,7 +860,7 @@
         "A-LIST-GRID"
       ],
       "nextAction": "Migrate; navHidden, direct-URL only",
-      "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today."
+      "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today. Part definitions now exist (621dfc3a)."
     },
     {
       "id": "S-INV-WAREHOUSES",
@@ -1920,13 +1920,14 @@
       "title": "Part entity + list definitions (leaf lane)",
       "domain": "inventory",
       "entity": "Part",
-      "status": "IMPLEMENTING",
-      "branch": "feat/part-definition",
-      "nextAction": "Leaf writer active; returns REGISTRATION_PENDING for the integration lane",
+      "status": "MERGED",
+      "nextAction": "Leaf merged and registered via the integration lane.",
       "governing": [
         "Owner leaf-ownership addendum section 19"
       ],
-      "notes": "LEAF LANE: owns Part semantics, edits NO shared registry/workflow/index resource. Facts it must describe rather than idealize: the document id IS partId, enforced at read; storage uses primaryManufacturerId while the domain model says manufacturerId, a divergence v1 cannot express as storagePath and must therefore explain rather than silently rename; stock, cost and supplier fields are deliberately ABSENT from parts and must not be declared; NO capability gates the parts read - Rules use raw role checks - so readCapability is null with the reason stated, as contact.js did. Unlike Contact and Equipment, Part DOES satisfy the provenance invariant with all four fields as Firestore Timestamps."
+      "notes": "LEAF LANE: owns Part semantics, edits NO shared registry/workflow/index resource. Facts it must describe rather than idealize: the document id IS partId, enforced at read; storage uses primaryManufacturerId while the domain model says manufacturerId, a divergence v1 cannot express as storagePath and must therefore explain rather than silently rename; stock, cost and supplier fields are deliberately ABSENT from parts and must not be declared; NO capability gates the parts read - Rules use raw role checks - so readCapability is null with the reason stated, as contact.js did. Unlike Contact and Equipment, Part DOES satisfy the provenance invariant with all four fields as Firestore Timestamps.",
+      "pr": 1168,
+      "mergeSha": "621dfc3a"
     },
     {
       "id": "S-INV-EQUIPMENT-DEFINITION",
@@ -1936,13 +1937,14 @@
       "title": "Equipment entity + list definitions (leaf lane)",
       "domain": "service",
       "entity": "Equipment",
-      "status": "IMPLEMENTING",
-      "branch": "feat/equipment-definition",
-      "nextAction": "Leaf writer active; returns REGISTRATION_PENDING for the integration lane",
+      "status": "MERGED",
+      "nextAction": "Leaf merged and registered via the integration lane.",
       "governing": [
         "Owner leaf-ownership addendum sections 19-20"
       ],
-      "notes": "LEAF LANE: owns Equipment semantics, edits NO shared resource. Defines the INSTALLED-ASSET REGISTER (collection `equipment`), NOT the deny-all undeployed equipment_models catalog - two unrelated surfaces share the word and conflating them would be the definition's first error. Identity is nameField with NO referenceField: assetTag and serialNumber are both optional and unenforced, and promoting a frequently-absent field into a reference licenses exactly the document-id fallback DECISIONS #106 forbids. The provenance gap is DESCRIBED, not corrected: timestamps are stored as epoch NUMBERS and no actor fields exist, so declaring TIMESTAMP or actor fields would assert data that is not there. The CONTROLLED/EXITED/NOT_STARTED lifecycle is computed client-side and is not a stored field."
+      "notes": "LEAF LANE: owns Equipment semantics, edits NO shared resource. Defines the INSTALLED-ASSET REGISTER (collection `equipment`), NOT the deny-all undeployed equipment_models catalog - two unrelated surfaces share the word and conflating them would be the definition's first error. Identity is nameField with NO referenceField: assetTag and serialNumber are both optional and unenforced, and promoting a frequently-absent field into a reference licenses exactly the document-id fallback DECISIONS #106 forbids. The provenance gap is DESCRIBED, not corrected: timestamps are stored as epoch NUMBERS and no actor fields exist, so declaring TIMESTAMP or actor fields would assert data that is not there. The CONTROLLED/EXITED/NOT_STARTED lifecycle is computed client-side and is not a stored field.",
+      "pr": 1168,
+      "mergeSha": "621dfc3a"
     },
     {
       "id": "A-METADATA-INTEGRATION-LANE",
@@ -1952,17 +1954,16 @@
       "title": "Integration lane for Part + Equipment shared registration",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "S-INV-PART-DEFINITION",
-        "S-INV-EQUIPMENT-DEFINITION"
-      ],
-      "nextAction": "Claim METADATA_REGISTRATION / INDEX_DECLARATIONS / WORKFLOW_METADATA_TESTS and integrate both accepted leaves",
+      "status": "MERGED",
+      "dependsOn": [],
+      "nextAction": "Batch integrated. Reusable pattern for the next leaf batch.",
       "governing": [
         "Owner leaf-ownership addendum",
         "Owner shared-file serialization addendum"
       ],
-      "notes": "ONE lane owns the shared resources for the batch: scripts/listIndexCoverage.mjs registration, firestore.indexes.json declarations, indexDriftGuard pending keys, the metadata workflow, and npm test registration. It may make MECHANICAL changes only - a shared-file conflict does not authorize semantic reinterpretation, and index cost exposing a product question routes BACK to the semantic lane rather than being resolved by deleting a filter. Verification is two-directional: every accepted leaf is registered AND every registry entry resolves to a real accepted definition, preferring set equality since an omitted or extra item is a defect either way. Also carries any Account-side relationship edit the Equipment leaf could not make, since account.js is outside a leaf's scope."
+      "notes": "ONE lane owns the shared resources for the batch: scripts/listIndexCoverage.mjs registration, firestore.indexes.json declarations, indexDriftGuard pending keys, the metadata workflow, and npm test registration. It may make MECHANICAL changes only - a shared-file conflict does not authorize semantic reinterpretation, and index cost exposing a product question routes BACK to the semantic lane rather than being resolved by deleting a filter. Verification is two-directional: every accepted leaf is registered AND every registry entry resolves to a real accepted definition, preferring set equality since an omitted or extra item is a defect either way. Also carries any Account-side relationship edit the Equipment leaf could not make, since account.js is outside a leaf's scope. EXECUTED (#1168, 621dfc3a): index demands were COMPUTED from requiredIndexes() against the accepted definitions rather than copied from the handoffs - a handoff is a claim, requiredIndexes() is the fact, and they agreed. The shared-file edits assert their own outcome: the index count may only grow, and the npm test suite set before the change must remain a subset afterwards, so an existing suite cannot be dropped while adding two. No leaf file was touched and no semantic decision revisited. The registration-completeness guard failed both leaf PRs BEFORE integration ran, which is exactly what it exists for.",
+      "pr": 1168,
+      "mergeSha": "621dfc3a"
     }
   ]
 }
