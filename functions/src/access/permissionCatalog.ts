@@ -386,6 +386,30 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "reorder.purchaseOrder",
     action: "void",
   }),
+  // Inventory analytics -- the trusted getInventoryAnalytics read (inventory health
+  // dashboard over inventory_transactions + stock_locations).
+  //
+  // AUTHORITY NORMALIZATION, NOT A PERMISSION CHANGE. This callable previously
+  // authorized with a direct `caller.role === "admin" || "dispatcher"` check, the only
+  // read service in the repo bypassing the capability catalog. Registering it here and
+  // granting it through SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS reproduces that exact
+  // audience -- admin and dispatcher, no one else, nothing removed.
+  //
+  // Deliberately ONE capability rather than requiring inventory.transaction.read AND
+  // warehouse.stockLocation.read together. Those two each cover one of the collections
+  // it reads, but no callable in this repo requires two capabilities, and inventing that
+  // pattern for a single case would be a worse precedent than a composite id.
+  //
+  // `active` is omitted (undefined !== false), so it resolves like every other
+  // pre-existing capability. Registering it active:false would have DENIED today's
+  // admins and dispatchers, which is a permission removal disguised as a refactor.
+  Object.freeze({
+    id: "inventory.analytics.read",
+    description:
+      "Read the trusted inventory health analytics projection (getInventoryAnalytics) computed over inventory_transactions and stock_locations. Backend-resolved; no client-direct read of either collection.",
+    resource: "inventory.analytics",
+    action: "read",
+  }),
   Object.freeze({
     id: "inventory.transaction.read",
     description: "Read inventory_transactions records.",
@@ -1024,7 +1048,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // and MOBILE (mobile_locations/{id}.displayLabel) ONLY -- CUSTOMER and any other category resolve to
   // UNRESOLVED (label null), never a fabricated type. Bounded point-reads only (getAll on the exact
   // requested ids, capped at 50) -- no collection scan, no new index, no client-direct warehouses
-  // widening, no client-direct mobile_locations read (unchanged: no Rules match block, default deny).
+  // widening, and no client-direct mobile_locations widening introduced here. (Corrected 2026-08-17:
+  // this previously said mobile_locations has no Rules match block and is default-deny.
+  // firestore.rules:1235-1238 grants admin/dispatcher read on it and denies all client writes.)
   // REGISTERED BUT UNGRANTED BY DESIGN: this phase grants the capability to NO compatibility Role and
   // adds NO per-environment activation override, so resolveEffectivePermission() denies for every
   // principal until a later, separately authorized grant + activation gate -- same posture as

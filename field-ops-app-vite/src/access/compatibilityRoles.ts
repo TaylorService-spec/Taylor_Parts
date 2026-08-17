@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- seeded
 // admin/dispatcher/technician compatibility Roles. Fixed by docs/
 // specifications/enterprise-access-and-administration-platform.md §7
@@ -28,9 +34,10 @@
 // dispatcher). `audit.event.read` remains deferred to Row 11 (the Admin
 // Portal's own read surface), since Row 7 does not consume it.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/compatibilityRoles.ts. If either file
-// changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
 
 const PARTS_MANAGER_ONLY = { role: "PARTS_MANAGER" };
@@ -67,6 +74,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "reorder.purchaseOrder.read",
   "reorder.purchaseOrder.create",
   "reorder.purchaseOrder.void",
+  "inventory.analytics.read",
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",

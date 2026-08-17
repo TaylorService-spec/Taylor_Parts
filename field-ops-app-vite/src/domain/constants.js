@@ -71,12 +71,42 @@ export const EQUIPMENT_STATUS = {
   RETIRED: "RETIRED",
 };
 
+// CANONICAL MACHINE VALUES. Uppercase, like EQUIPMENT_STATUS above and like the
+// status values actually persisted on Account documents. These are the values
+// stored, compared and queried -- never the values rendered.
+//
+// They used to be title-case ("Active"), which is presentation casing sitting in
+// a canonical enum. Persisted data was already uppercase, so summarizeAccounts()
+// and filterAccounts() compared "ACTIVE" against "Active", matched nothing, and
+// the /customers portfolio cards reported "0 Active" beside a table of rows each
+// showing an ACTIVE pill -- while the Active card filtered the list to empty.
+// Storage value and display label are separate concepts; conflating them is what
+// produced a wrong number on the first screen of the app (#1093).
 export const ACCOUNT_STATUS = {
-  ACTIVE: "Active",
-  INACTIVE: "Inactive",
-  PROSPECT: "Prospect",
-  ARCHIVED: "Archived",
+  ACTIVE: "ACTIVE",
+  INACTIVE: "INACTIVE",
+  PROSPECT: "PROSPECT",
+  ARCHIVED: "ARCHIVED",
 };
+
+// DISPLAY LABELS. The only place an Account status becomes human-readable.
+// Never compare against these, and never persist them.
+export const ACCOUNT_STATUS_LABEL = {
+  [ACCOUNT_STATUS.ACTIVE]: "Active",
+  [ACCOUNT_STATUS.INACTIVE]: "Inactive",
+  [ACCOUNT_STATUS.PROSPECT]: "Prospect",
+  [ACCOUNT_STATUS.ARCHIVED]: "Archived",
+};
+
+/**
+ * Human label for a stored Account status. Unknown/absent values are returned
+ * verbatim rather than mapped to a default -- a status the enum does not know
+ * about is a data question, and silently relabelling it would hide exactly the
+ * kind of mismatch #1093 was.
+ */
+export function accountStatusLabel(status) {
+  return ACCOUNT_STATUS_LABEL[status] ?? status ?? "";
+}
 
 // Customer/Account Business Model -- Customer PR 2 (docs/specifications/
 // customer-account-business-model.md). An Account may represent a customer,

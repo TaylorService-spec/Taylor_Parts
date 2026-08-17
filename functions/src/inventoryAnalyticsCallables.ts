@@ -1,15 +1,35 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
-import { getCallerContext } from "./callerContext";
+import { resolveEffectiveAccess } from "./access/effectiveAccessFeed";
 import { INVENTORY_TRANSACTIONS_COLLECTION, STOCK_LOCATIONS_COLLECTION } from "./constants/collections";
 import { normalizeLedgerTransactions } from "./ledgerNormalizer";
 import { generateInventoryHealthDashboard } from "./inventoryAnalyticsService";
 import type { InventoryTransaction } from "./types/inventoryTransaction";
 import type { StockLocation } from "./types/warehouse";
+export const INVENTORY_ANALYTICS_READ_CAPABILITY = "inventory.analytics.read";
+
 export const getInventoryAnalytics = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
-  const caller = await getCallerContext(request.auth.uid);
-  if (caller.role !== "admin" && caller.role !== "dispatcher") throw new HttpsError("permission-denied", "Not authorized to read inventory analytics.");
+
+  // AUTHORITY NORMALIZATION. This was the only trusted read in the repo authorizing via
+  // a direct role comparison instead of the capability catalog, which meant its audience
+  // was invisible to resolveEffectiveAccess, to the permission catalog, and to every tool
+  // that reasons about who can read what.
+  //
+  // inventory.analytics.read is granted through SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS,
+  // so the effective audience is unchanged: admin and dispatcher, exactly as the role
+  // check allowed. Fail closed on resolver error, matching every sibling read service.
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: request.auth.uid,
+      permissionIds: [INVENTORY_ANALYTICS_READ_CAPABILITY],
+    });
+    allowed = decisions[INVENTORY_ANALYTICS_READ_CAPABILITY] === true;
+  } catch {
+    allowed = false;
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "Not authorized to read inventory analytics.");
   const db = getFirestore(); const [ledger, stock] = await Promise.all([db.collection(INVENTORY_TRANSACTIONS_COLLECTION).get(), db.collection(STOCK_LOCATIONS_COLLECTION).get()]);
   const transactions = normalizeLedgerTransactions(ledger.docs.map((d) => ({ ...(d.data() as Omit<InventoryTransaction, "id">), id: d.id })));
   // Physical bin total per part -- the warehouse-wide baseline this

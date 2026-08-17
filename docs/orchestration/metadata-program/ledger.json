@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main bb72103e (ledger + AR contract + status casing merged)",
+  "baseline": "origin/main abedeff5 (Gate A contracts, bounded reads, access generator, analytics capability, metadata spec all merged)",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -581,9 +581,9 @@
       "title": "Entity/Field/Relationship definition contracts",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [],
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "gate": "NOT_APPLICABLE",
       "governing": [
         "DECISIONS #102 \u00a71",
@@ -594,7 +594,8 @@
       "pr": 1106,
       "headSha": "283387382eba041b2224385a4e5f56fbb9cb49e4",
       "branch": "feat/metadata-entity-contracts",
-      "checks": "24/24 contract tests pass; oxlint clean; dedicated workflow added"
+      "checks": "24/24 contract tests pass; oxlint clean; dedicated workflow added",
+      "mergeSha": "3a07e4d8"
     },
     {
       "id": "A-LIST-METADATA-V1",
@@ -604,12 +605,10 @@
       "title": "Entity List Metadata v1 runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "READY",
       "issue": 1096,
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "Build after Gate A contracts land",
+      "dependsOn": [],
+      "nextAction": "Build; A-CONTRACT-CORE is on main at 3a07e4d8",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a79"
@@ -624,11 +623,9 @@
       "title": "Page definition runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "After list runtime proves the contract shape"
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Unblocked; A-CONTRACT-CORE is on main"
     },
     {
       "id": "A-REGISTRIES",
@@ -638,11 +635,9 @@
       "title": "Component and action registries",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-CONTRACT-CORE"
-      ],
-      "nextAction": "Action definitions reference governed command paths only",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Unblocked; A-CONTRACT-CORE is on main",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a78"
@@ -886,14 +881,15 @@
       "route": "/inventory/truck-inventory",
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "Truck",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "Repository declaration now fails closed for taylor-parts-production only. Sandbox and integration untouched: missing production evidence is not evidence about sandbox. Deliberately does NOT claim the callables are absent - only that their presence is unverified. The live exposure is a SEPARATE item (X-TRUCK-PROD-LIVE-RISK); a repo flag change cannot close it.",
       "blockers": [],
       "pr": 1109,
       "headSha": "b7d8d2e87a4a652100a5a6ae5dfdf98bdde18434",
       "branch": "fix/truck-production-readiness-fail-closed",
-      "checks": "23/23 environment architecture tests; truck management suites pass"
+      "checks": "23/23 environment architecture tests; truck management suites pass",
+      "mergeSha": "39524862"
     },
     {
       "id": "S-INV-TRANSFERS",
@@ -1060,8 +1056,8 @@
       "title": "Shared contract source of truth",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY. Note merge-order interaction with #1104.",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "Owner ruling section 10"
       ],
@@ -1069,7 +1065,8 @@
       "pr": 1110,
       "headSha": "a9ed84c9dd1cde09a3a72f975f55ba08ac2254c5",
       "branch": "feat/access-contract-generator",
-      "checks": "9/9 mirror integrity; both packages typecheck; shadow + catalog parity pass"
+      "checks": "9/9 mirror integrity; both packages typecheck; shadow + catalog parity pass",
+      "mergeSha": "c01c0531"
     },
     {
       "id": "A-BOUNDED-READS",
@@ -1115,8 +1112,8 @@
       "title": "Unbounded trusted-callable reads",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 section 9"
       ],
@@ -1124,7 +1121,8 @@
       "pr": 1107,
       "headSha": "fb5f933ac896591aefa7b56d50c0abc0af480112",
       "branch": "fix/bounded-callable-reads",
-      "checks": "tsc --noEmit clean; functions build clean"
+      "checks": "tsc --noEmit clean; functions build clean",
+      "mergeSha": "12e64a89"
     },
     {
       "id": "X-RULES-DISCREPANCY",
@@ -1134,13 +1132,14 @@
       "title": "mobile_locations read path disagrees with Rules",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "RESOLVED. firestore.rules:1235-1238 DOES grant admin/dispatcher read on mobile_locations and denies all client writes; both rules copies are byte-identical. The client read path was correct and two functions/src comments were stale. Corrected in both mirror copies.",
       "pr": 1108,
       "headSha": "820171100485d5025037d167584354b9ea6ba5c2",
       "branch": "fix/stale-mobile-locations-rules-comments",
-      "checks": "tsc clean; catalog parity + mirror integrity pass"
+      "checks": "tsc clean; catalog parity + mirror integrity pass",
+      "mergeSha": "5b72c837"
     },
     {
       "id": "X-WRITE-ONLY-COLLECTIONS",
@@ -1198,16 +1197,17 @@
       "title": "Mirror parity enforcement for governedBusinessRoles + shadowParityHarness",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "EXEMPT",
       "pr": 1104,
-      "headSha": "5971d37efe194d30f4771f33f6f105e970d1c1bd",
+      "headSha": null,
       "branch": "test/governed-business-roles-mirror-parity",
       "checks": "3/3 mirror pairs pass",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "nextAction": "None - superseded",
       "governing": [
         "Owner ruling section 10"
       ],
-      "notes": "Two gaps: a generic helper called only once, and a CI path filter that omitted the client half of every mirrored module - so the change most likely to cause drift was the one the guard could not see. Directly de-risks PR #1100, which must edit governedBusinessRoles.ts in both copies."
+      "notes": "CLOSED UNMERGED, deliberately, as superseded by PR #1110. Its normalization-based mirror check was replaced by the generator's byte-equality check, which is strictly stronger. Recorded EXEMPT rather than deleted so the coverage question it raised - governedBusinessRoles.ts mirrored with nothing enforcing it - stays visible as ANSWERED rather than looking like it was dropped.",
+      "mergeSha": null
     },
     {
       "id": "X-INVENTORY-ANALYTICS-CAPABILITY",
@@ -1217,8 +1217,8 @@
       "title": "getInventoryAnalytics: bounded read + capability-catalog authorization",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "blockers": [],
       "governing": [
         "DECISIONS #102 section 9",
@@ -1228,7 +1228,8 @@
       "pr": 1111,
       "headSha": "888ca6fcbef2cfb91b721e96a0b7af77312bd30e",
       "branch": "feat/inventory-analytics-capability",
-      "checks": "tsc + build clean; catalog, role-parity, governed-roles suites pass; emulator test NOT run locally"
+      "checks": "tsc + build clean; catalog, role-parity, governed-roles suites pass; emulator test NOT run locally",
+      "mergeSha": "6896888b"
     },
     {
       "id": "X-TRUCK-PROD-LIVE-RISK",
@@ -1260,11 +1261,9 @@
       "title": "Authoritative aggregation for netted inventory figures (server and client)",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "X-INVENTORY-ANALYTICS-CAPABILITY"
-      ],
-      "nextAction": "Choose an authoritative-aggregate approach; do NOT page the ledger and compute from the page",
+      "status": "READY",
+      "dependsOn": [],
+      "nextAction": "Unblocked; the capability is on main at 6896888b",
       "governing": [
         "Owner ruling 2026-08-17 section 4",
         "DECISIONS #102 section 9"
@@ -1301,15 +1300,13 @@
       "title": "Bring permissionCatalog.ts under generation",
       "domain": "program",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Blocked until the generator is on main; generating requires the generator",
+      "status": "READY",
+      "nextAction": "Unblocked; the generator is on main at c01c0531",
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
       "notes": "parityFixtures.ts is DONE (PR #1110) via a declared PLATFORM_SUBSTITUTIONS rule - the firebase-admin vs firebase import is a real platform boundary, unlike the artificial pathname, so substitution is the honest representation rather than a workaround. REMAINING: permissionCatalog.ts, whose client copy carries independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants to arrive as its own reviewable change. LESSON RECORDED FROM #1110: a round-trip generator check verifies that generation is REPRODUCIBLE, never that it is CORRECT - the substitution table was wired in wrong and --check passed green while the client module imported firebase-admin. Outcome assertions against the real world are required alongside any generator.",
-      "dependsOn": [
-        "A-CONTRACT-TOOLING"
-      ]
+      "dependsOn": []
     },
     {
       "id": "A-METADATA-SPEC",
@@ -1319,8 +1316,8 @@
       "title": "Metadata Architecture specification",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
+      "status": "MERGED",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "governing": [
         "DECISIONS #102 section 13"
       ],
@@ -1328,7 +1325,8 @@
       "pr": 1112,
       "headSha": "a458d881c9b2759a0d80f292dadaeda95e09bae2",
       "branch": "docs/metadata-architecture-specification",
-      "checks": "docs only"
+      "checks": "docs only",
+      "mergeSha": "abedeff5"
     }
   ]
 }
