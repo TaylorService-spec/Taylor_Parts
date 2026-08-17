@@ -137,12 +137,12 @@
       "route": "/customers",
       "classification": "A_ENTITY_LIST",
       "entity": "Account",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGE_QUEUED",
       "issue": 1097,
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto Entity List Metadata v1 once the runtime exists",
+      "nextAction": "Definitions queued (#1137). Surface rewiring is NOT started - see the aggregate finding in notes.",
       "governing": [
         "DECISIONS #102 \u00a79"
       ],
@@ -151,7 +151,10 @@
           "reason": "First consumer of the list runtime; cannot migrate before the runtime exists"
         }
       ],
-      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation."
+      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation. FIRST HALF QUEUED (#1137): Account entity + account.index list, the program's first real definitions. Enum labels sourced from domain/constants rather than a second copy; identity claims no reference number because an Account has none; tags render but claim no operator until the index exists; landing view is recently-viewed. Exposed and fixed a real defect - requiredIndexes() emitted ASC/DESC into output meant to be pasted into firestore.indexes.json, where only ASCENDING/DESCENDING is accepted, so every demand compared unequal against all eight existing declarations and would have failed the deploy of its own fix. SECOND HALF IS NOT A PURE LIST MIGRATION - OPEN QUESTION: /customers renders portfolio summary cards (total/active/prospect/inactive/archived counts) computed client-side over the WHOLE accounts collection, plus a tag facet built the same way. Those are AGGREGATES, not list rows: bounding their input makes the counts mathematically false while presenting them as complete - the same class as X-INVENTORY-ANALYTICS-AGGREGATE. Migrating the table to bounded paging while leaving the cards reading everything would keep the unbounded read and add a second one. Resolving it needs either an authoritative count source or a decision to reframe/remove the cards, which is a product decision a read-shape rule does not authorize.",
+      "pr": 1137,
+      "branch": "feat/customers-metadata",
+      "headSha": "60267f0b35c25d768184c65c74a131c81937781b"
     },
     {
       "id": "S-CRM-ACCOUNT-RECORD",
@@ -1517,15 +1520,15 @@
       "title": "List React component rendering the presentation model",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
+      "status": "MERGED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Open: CI running",
+      "nextAction": "Merged to origin/main; verified by mergeSha",
       "notes": "Thin mapping from the presentation model to EOS markup (fo-table and the shared state primitives). All four empty states must render distinctly - collapsing them in the component would undo the model's whole point. BUILT (#1136): the four empties reach four different primitives - EMPTY/FILTERED as legitimate emptiness reusing EmptyState's own database/filtered vocabulary, DENIED/UNAVAILABLE as failures with alert semantics. Retry only on UNAVAILABLE, because retrying a denied read is still denied and a button that cannot work makes an access boundary read as a broken system. Copy comes from the model so two renderers cannot drift into two sentences for one fact. No new dependency: fireEvent instead of user-event keeps package.json untouched and the workflow blast radius unchanged.",
       "pr": 1136,
       "branch": "feat/list-component",
-      "headSha": "13f4beb4c970d64d1961d359186254fb24ad13a3"
+      "mergeSha": "2fff78b1a1e32bae5b2f81ea5d65b8af788757fb"
     },
     {
       "id": "A-BOUNDED-READS-REMAINING",

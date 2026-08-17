@@ -13,14 +13,13 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 43 | 42 | 1 |
+| 43 | 41 | 2 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-28 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+27 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
-- **S-CRM-CUSTOMERS** — depends on A-LIST-GRID (all satisfied) → Migrate onto Entity List Metadata v1 once the runtime exists
 - **S-CRM-ACCOUNT-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto the page definition runtime
 - **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-GRID (all satisfied) → Identity is on main; awaiting the list runtime
 - **S-CRM-SALES-ORDER-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto page runtime; resolve raw-id labels
@@ -35,6 +34,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-ADM-EMPLOYEES** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-ADM-USERS** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; no governed directory read exists to migrate
+- **S-ADM-ROLES** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; form is unconditionally disabled
 
 ## Next executable
 
@@ -45,7 +45,9 @@ table below before concluding the program is finished._
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | #1136 | 13f4beb4 | — | NOT_APPLICABLE | Open: CI running |
+| S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1137 | 60267f0b | — | NOT_APPLICABLE | Definitions queued (#1137). Surface rewiring is NOT started - see the aggregate finding in notes. |
+
+> **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
 ## MERGED
 
@@ -76,6 +78,7 @@ table below before concluding the program is finished._
 | D-SALES-ORDER-OPP-IDENTITY | 9 | Sales Order detail still renders sourceOpportunityId raw | — | #1099 | #1124 | ce827015 | a9c48a1d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-GRID | 3 | List grid component consuming the query core | — | — | #1130 | — | 582d1a3c | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-PAGE-COMPONENT | 5 | Record page React component consuming the composition plan | — | — | #1135 | — | 774ea795 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | #1136 | — | 2fff78b1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | — | 2a7847d1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 
 ## BLOCKED_PROTECTED
@@ -98,7 +101,6 @@ table below before concluding the program is finished._
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | — | — | — | NOT_APPLICABLE | Migrate onto Entity List Metadata v1 once the runtime exists |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Migrate onto the page definition runtime |
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
@@ -129,8 +131,6 @@ table below before concluding the program is finished._
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
-
-> **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 
 ## EXEMPT
 
