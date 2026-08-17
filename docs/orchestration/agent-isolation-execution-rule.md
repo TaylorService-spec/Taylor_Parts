@@ -122,6 +122,19 @@ A worker worktree is removed only once its useful commits are preserved, its PR/
 disposition is known, and uncommitted state is accounted for. Remote branches holding
 unmerged evidence are not deleted unless that is the intent.
 
+## 9a. Push before handoff
+
+A lane's output is durable only once **pushed**. An isolated worktree lives with the
+session that created it, so a writer that finishes without pushing has produced nothing
+recoverable — the isolation held, and the work simply did not exist anywhere.
+
+This is §9's principle at the other end of the lane. Cleanup waits until commits are
+preserved; dispatch must equally require that they *become* preserved. Push-before-handoff
+belongs in the dispatch contract, not in the writer's discretion.
+
+An unpushed lane is **lost, not resumable**. Re-dispatch it clean rather than trying to
+reconstruct it, and tell the replacement explicitly to push.
+
 ## 10. What the tooling cannot do
 
 `writerLanes.mjs` catches the mechanical failures: a writer with no worktree, two lanes
