@@ -17,13 +17,8 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **D-OPPORTUNITY-IDENTITY** (phase 9) — Opportunity human identity (name + immutable reference) → Implement identity: human-entered name plus an immutable OPP-###### reference
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | — | — | — | NOT_APPLICABLE | Implement identity: human-entered name plus an immutable OPP-###### reference |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## REVIEW_QUEUED
 
@@ -40,6 +35,7 @@ continues from the next executable item — without asking what happened.
 | A-REGISTRIES | 2 | Component and action registries | — | — | #1116 | d750b018 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | #1117 | 3f777ce9 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
+| D-OPPORTUNITY-IDENTITY | 9 | Opportunity human identity (name + immutable reference) | — | #1099 | #1120 | 78720b20 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
 
@@ -114,6 +110,7 @@ continues from the next executable item — without asking what happened.
 | A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the contract and registries are on main |
 | A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 | A-PAGE-RENDERER | 5 | Record page renderer consuming PageDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the page contract and registries are on main |
+| D-OPPORTUNITY-NAME-AND-WIRING | 9 | Wire Opportunity identity into the governed create path and surfaces | — | #1099 | — | — | — | NOT_APPLICABLE | After the format is confirmed: allocate on create, project name+reference, render them instead of doc ids |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

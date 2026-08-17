@@ -1412,13 +1412,33 @@
       "title": "Opportunity human identity (name + immutable reference)",
       "domain": "crm",
       "entity": "Opportunity",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1099,
-      "nextAction": "Implement identity: human-entered name plus an immutable OPP-###### reference",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "Owner disposition 2026-08-17 section 3 - both name and number"
       ],
-      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable."
+      "notes": "FALSE DEPENDENCY FOUND, third instance. S-CRM-OPPORTUNITIES was blocked on A-LIST-METADATA-V1 while its own recorded next action said it needs Opportunity IDENTITY - a data-model change that has nothing to do with the list runtime. Split out here as its own executable item. Owner already decided the shape (both a human name and an immutable reference; the document id must not be part of normal UX), so no decision is pending - only implementation. Scope note for whoever picks it up: the read-side projection and UI rendering are straightforward, but the OPP-###### reference needs a counter and a write path through the governed opportunity command, which is the substantive half. Six surfaces render raw Firestore document ids today and this is the first of them to become fixable. REFERENCE HALF BUILT and deliberately NOT wired - keeping it a pure module means the format stays a one-line change while no data carries it. FORMAT DEVIATION FLAGGED: implemented OPP-YYYY-###### to match WO-YYYY-###### rather than the ruling's illustrative OPP-000123, because the two references sit side by side in the same lineage on Sales Order detail. Cheap to correct now, a migration later.",
+      "pr": 1120,
+      "headSha": "78720b2032a12868bb45ac6635f5d7da8091203a",
+      "branch": "feat/opportunity-identity",
+      "checks": "8/8 offline numbering tests; tsc + build clean; new path-filtered workflow"
+    },
+    {
+      "id": "D-OPPORTUNITY-NAME-AND-WIRING",
+      "phase": "9",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Wire Opportunity identity into the governed create path and surfaces",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "BLOCKED_DEPENDENCY",
+      "issue": 1099,
+      "dependsOn": [
+        "D-OPPORTUNITY-IDENTITY"
+      ],
+      "nextAction": "After the format is confirmed: allocate on create, project name+reference, render them instead of doc ids",
+      "notes": "The remaining half. Allocate the reference inside the governed create transaction, add the human name field, project both through opportunityReadService, and replace raw document ids on the Account page's Opportunities section and Sales Order detail's Originating Opportunity link. Held until the format is confirmed, because wiring first is precisely what would make the format question expensive."
     }
   ]
 }
