@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../src/metadata/entityDefinition.js";
 import {
-  REGION, SECTION_KIND, OPERATIONAL_SECTION_KINDS,
+  REGION, SECTION_KIND, OPERATIONAL_SECTION_KINDS, COMPOSITION_MODE, MIN_OPERATIONAL_SECTION_KINDS,
   makeSection, makePageDefinition, validatePageDefinition,
   assessOperationalComposition, pageRegistryReferences, referencedListIds,
 } from "../src/metadata/pageDefinition.js";
@@ -52,26 +52,85 @@ test("§5 — the vocabulary names operational concerns as first-class section k
   }
 });
 
-test("§5 — a page of fields and related lists is NOT operation-centric, however valid it is", () => {
-  // The exact failure mode: this page passes validation completely. Nothing is broken.
-  // It is simply a CRUD screen, and only this assessment says so.
+test("§4 — a page of fields and related lists CANNOT validate as OPERATIONAL", () => {
+  // The CRUD failure, now a build error rather than a judgement call. Before
+  // compositionMode this exact page validated clean and only a diagnostic disagreed.
   const crud = makePageDefinition({
     id: "workOrder.record", entityId: "workOrder", label: "Work Order",
+    compositionMode: "OPERATIONAL",
     sections: [
       makeSection({ id: "f", kind: "FIELD_GROUP", region: "MAIN", order: 0, fieldIds: ["woNumber"] }),
       makeSection({ id: "r", kind: "RELATED_LIST", region: "MAIN", order: 1, listId: "wo.parts" }),
     ],
   });
-  assert.deepEqual(validatePageDefinition(crud, entity("workOrder", ["woNumber"])), [], "it is valid");
+  const p = validatePageDefinition(crud, entity("workOrder", ["woNumber"]));
+  assert.ok(p.some((x) => /declares compositionMode OPERATIONAL but carries 0 distinct/.test(x)));
+  // The message points at the honest fix rather than at weakening the rule.
+  assert.ok(p.some((x) => /declare it as one rather than weakening this rule/.test(x)));
+});
 
-  const assessment = assessOperationalComposition(crud);
-  assert.equal(assessment.isOperationCentric, false, "…and still not an operational record page");
-  assert.deepEqual(assessment.operationalSectionKinds, []);
+test("§4 — one operational kind is not enough, and repeating a kind does not count as two", () => {
+  // "Distinct" is load-bearing: two BLOCKERS sections are one operational concern shown
+  // twice, not state plus what to do about it.
+  const one = makePageDefinition({
+    id: "p", entityId: "workOrder", label: "WO", compositionMode: "OPERATIONAL",
+    sections: [
+      makeSection({ id: "lc", kind: "LIFECYCLE", region: "HEADER", order: 0 }),
+      makeSection({ id: "f", kind: "FIELD_GROUP", region: "MAIN", order: 0, fieldIds: ["woNumber"] }),
+    ],
+  });
+  assert.ok(validatePageDefinition(one, entity("workOrder", ["woNumber"]))
+    .some((x) => /carries 1 distinct/.test(x)));
+
+  const repeated = makePageDefinition({
+    id: "p", entityId: "workOrder", label: "WO", compositionMode: "OPERATIONAL",
+    sections: [
+      makeSection({ id: "b1", kind: "BLOCKERS", region: "MAIN", order: 0 }),
+      makeSection({ id: "b2", kind: "BLOCKERS", region: "SIDE", order: 0 }),
+    ],
+  });
+  assert.ok(validatePageDefinition(repeated, entity("workOrder", ["woNumber"]))
+    .some((x) => /carries 1 distinct/.test(x)));
+});
+
+test("§4 — two distinct operational kinds satisfy the declared contract", () => {
+  const wo = makePageDefinition({
+    id: "workOrder.record", entityId: "workOrder", label: "Work Order", compositionMode: "OPERATIONAL",
+    sections: [
+      makeSection({ id: "lc", kind: "LIFECYCLE", region: "HEADER", order: 0 }),
+      makeSection({ id: "bl", kind: "BLOCKERS", region: "MAIN", order: 0 }),
+    ],
+  });
+  assert.deepEqual(validatePageDefinition(wo, entity("workOrder", ["woNumber"])), []);
+});
+
+test("§3 — an unknown compositionMode is rejected, and the default is the honest one", () => {
+  assert.ok(Object.isFrozen(COMPOSITION_MODE));
+  for (const m of ["RECORD", "OPERATIONAL"]) assert.ok(COMPOSITION_MODE.includes(m), `v1 must distinguish ${m}`);
+  assert.equal(MIN_OPERATIONAL_SECTION_KINDS, 2);
+
+  // Defaulting to RECORD asserts nothing operational and is held to nothing operational.
+  // Defaulting to OPERATIONAL would fail every page written before this rule existed.
+  assert.equal(page().compositionMode, "RECORD");
+  const bogus = { ...page(), compositionMode: "SOMETHING" };
+  assert.ok(validatePageDefinition(bogus, entity()).some((x) => /not a known COMPOSITION_MODE/.test(x)));
+});
+
+test("§5 — a RECORD page is NOT forced to fake operational sections", () => {
+  // The anti-cargo-cult property. An Account is genuinely record-shaped; making it
+  // declare a LIFECYCLE section to pass a universal rule would produce exactly the
+  // hollow operational theatre the rule exists to prevent.
+  const account = makePageDefinition({
+    id: "account.record", entityId: "account", label: "Customer", compositionMode: "RECORD",
+    sections: [makeSection({ id: "f", kind: "FIELD_GROUP", region: "MAIN", order: 0, fieldIds: ["name"] })],
+  });
+  assert.deepEqual(validatePageDefinition(account, entity()), []);
+  assert.equal(assessOperationalComposition(account).satisfiesDeclaredMode, true);
 });
 
 test("§5 — an operational page reports which operational concerns it expresses", () => {
   const wo = makePageDefinition({
-    id: "workOrder.record", entityId: "workOrder", label: "Work Order",
+    id: "workOrder.record", entityId: "workOrder", label: "Work Order", compositionMode: "OPERATIONAL",
     sections: [
       makeSection({ id: "lc", kind: "LIFECYCLE", region: "HEADER", order: 0 }),
       makeSection({ id: "rd", kind: "READINESS", region: "HIGHLIGHTS", order: 0 }),
@@ -84,17 +143,25 @@ test("§5 — an operational page reports which operational concerns it expresse
   assert.deepEqual(a.operationalSectionKinds, ["LIFECYCLE", "READINESS", "BLOCKERS"]);
 });
 
-test("§5 — ONE operational section is not enough", () => {
-  // A single metric bolted onto a form is the shape that looks operational in a
-  // screenshot and is not. An operational record shows state AND what to do about it.
-  const barely = makePageDefinition({
-    id: "p", entityId: "workOrder", label: "WO",
+test("§6 — assessment is a DIAGNOSTIC, reporting beyond the enforced minimum", () => {
+  // Three levels, deliberately separate: validation enforces the declared minimum,
+  // assessment describes quality above it, Gate B judges whether the experience is
+  // actually operational. Encoding UX quality into a validator produces rules that are
+  // either trivially satisfiable or simply wrong.
+  const wo = makePageDefinition({
+    id: "p", entityId: "workOrder", label: "WO", compositionMode: "OPERATIONAL",
     sections: [
       makeSection({ id: "lc", kind: "LIFECYCLE", region: "HEADER", order: 0 }),
-      makeSection({ id: "f", kind: "FIELD_GROUP", region: "MAIN", order: 0, fieldIds: ["woNumber"] }),
+      makeSection({ id: "rd", kind: "READINESS", region: "HIGHLIGHTS", order: 0 }),
+      makeSection({ id: "bl", kind: "BLOCKERS", region: "MAIN", order: 0 }),
     ],
   });
-  assert.equal(assessOperationalComposition(barely).isOperationCentric, false);
+  const a = assessOperationalComposition(wo);
+  assert.deepEqual(a.operationalSectionKinds, ["LIFECYCLE", "READINESS", "BLOCKERS"]);
+  assert.equal(a.satisfiesDeclaredMode, true);
+  // Satisfying the contract is not the same as being good. That is Gate B's question,
+  // and it is deliberately not encoded here.
+  assert.equal(a.isOperationCentric, true);
 });
 
 test("§5 — the assessment is NOT a validation rule, because not every entity is operational", () => {

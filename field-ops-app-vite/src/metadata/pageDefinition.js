@@ -13,16 +13,31 @@
 //
 // The most likely way this program fails is not a security lapse — it is arriving at a
 // competent record page that turned an operations platform into CRUD screens. §5 lists
-// what metadata must carry: lifecycle state, readiness, blockers, next actions,
-// approvals, queues, custody, demand, attention. Those are not decoration on top of
-// fields; on a Work Order they ARE the record.
+// what metadata must carry: lifecycle state, readiness, blockers, next actions, custody,
+// attention. On a Work Order those are not decoration on top of fields; they ARE the
+// record.
 //
-// So SECTION_KIND names them as first-class kinds rather than leaving everything a
-// generic "component slot". A Work Order page composed only of FIELD_GROUP and
-// RELATED_LIST sections would validate, render, and be wrong — and nothing would say so.
-// Naming the operational kinds is what lets Gate B ask a checkable question: does this
-// non-CRM entity's page express lifecycle, readiness and blockers, or did we quietly
-// build Salesforce?
+// Naming them as section kinds makes operational intent VISIBLE. It does not make the
+// CRUD failure DETECTABLE: a Work Order page built from FIELD_GROUP and RELATED_LIST
+// alone would still validate, render, and be wrong.
+//
+// So a page DECLARES what it is, and validation enforces that declaration:
+//
+//   compositionMode: RECORD | OPERATIONAL | ANALYTIC | CONFIGURATION
+//
+// An OPERATIONAL page must carry at least TWO DISTINCT operational section kinds. A page
+// of fields and related lists cannot validate as OPERATIONAL — the CRUD failure becomes
+// a build error rather than a judgement call.
+//
+// The DECLARATION is what makes this work without cargo-culting. An Account is genuinely
+// record-shaped; forcing a LIFECYCLE section onto it to satisfy a universal rule would
+// produce exactly the hollow operational theatre this is meant to prevent. The validator
+// enforces the contract a page declares. It does not decide that every entity in EOS is
+// operational.
+//
+// What validation CANNOT do is judge whether a Work Order page is any good — two
+// operational sections can be two bad ones. Validation prevents architectural
+// regression; Gate B judges product quality. Do not try to encode UX quality here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { findField } from "./entityDefinition.js";
@@ -56,7 +71,24 @@ export const SECTION_KIND = Object.freeze([
   "METRIC_STRIP", // highlights
 ]);
 
-/** Kinds that carry operational meaning. Used by the Gate B check below. */
+/**
+ * What a page IS. Declared, then enforced.
+ *
+ * RECORD and OPERATIONAL are the two v1 must distinguish. ANALYTIC and CONFIGURATION are
+ * named now because dashboards and admin surfaces already exist and would otherwise be
+ * mislabelled RECORD — which would quietly make the whole classification meaningless.
+ */
+export const COMPOSITION_MODE = Object.freeze(["RECORD", "OPERATIONAL", "ANALYTIC", "CONFIGURATION"]);
+
+/**
+ * Minimum DISTINCT operational section kinds an OPERATIONAL page must carry.
+ *
+ * Two, not one: a single lifecycle chip on a form is the shape that looks operational in
+ * a screenshot and is not. An operational record shows state AND what to do about it.
+ */
+export const MIN_OPERATIONAL_SECTION_KINDS = 2;
+
+/** The governed operational set the rule above counts against. */
 export const OPERATIONAL_SECTION_KINDS = Object.freeze([
   "LIFECYCLE", "READINESS", "BLOCKERS", "NEXT_ACTIONS", "ATTENTION", "CUSTODY",
 ]);
@@ -82,6 +114,10 @@ export function makePageDefinition(input = {}) {
     id: input.id,
     entityId: input.entityId,
     label: input.label,
+    // Declared, never inferred. A page that says nothing defaults to RECORD, which is
+    // the honest default: it asserts nothing operational and is held to nothing
+    // operational.
+    compositionMode: input.compositionMode ?? "RECORD",
     headerActions: Object.freeze([...(input.headerActions ?? [])]),
     sections: Object.freeze([...(input.sections ?? [])]),
     capabilityRequirement: input.capabilityRequirement ?? null,
@@ -134,6 +170,22 @@ export function validatePageDefinition(def, entity) {
     }
   }
 
+  // COMPOSITION MODE — the conditional rule (Owner ruling 2026-08-17 §3/§4).
+  if (!COMPOSITION_MODE.includes(def?.compositionMode)) {
+    problems.push(`${at}: compositionMode "${def?.compositionMode}" is not a known COMPOSITION_MODE`);
+  } else if (def.compositionMode === "OPERATIONAL") {
+    const distinct = new Set(
+      (def.sections ?? []).map((sec) => sec?.kind).filter((k) => OPERATIONAL_SECTION_KINDS.includes(k))
+    );
+    if (distinct.size < MIN_OPERATIONAL_SECTION_KINDS) {
+      problems.push(
+        `${at}: declares compositionMode OPERATIONAL but carries ${distinct.size} distinct operational section ` +
+          `kind(s); at least ${MIN_OPERATIONAL_SECTION_KINDS} of ${OPERATIONAL_SECTION_KINDS.join("/")} are required. ` +
+          `A page of fields and related lists is a RECORD page — declare it as one rather than weakening this rule.`
+      );
+    }
+  }
+
   // Ordering must be decidable. Two sections claiming the same slot in the same region
   // render in whatever order the array happened to be built in, which turns a layout
   // into an accident of authoring.
@@ -150,24 +202,31 @@ export function validatePageDefinition(def, entity) {
 }
 
 /**
- * Does this page express the entity as an OPERATION rather than a record? (§5)
+ * DIAGNOSTIC, not enforcement. Its role changed when compositionMode arrived, and the
+ * three levels are worth keeping straight:
  *
- * Not a validator rule, because it is not universally required — an Account genuinely is
- * a record-shaped thing, and forcing a LIFECYCLE section onto it would be cargo-culting
- * the check. It is a question a caller asks about entities that ARE operational, and it
- * is the mechanical half of the Gate B standard: "if the architecture only works well
- * for CRM records, it is not yet an EOS metadata architecture."
+ *   validation  — enforces the MINIMUM contract a page explicitly declared.
+ *   assessment  — reports architectural quality beyond that minimum.
+ *   Gate B      — judges whether the resulting experience is genuinely operational.
  *
- * @returns {{operationalSectionKinds: string[], isOperationCentric: boolean}}
+ * A page can satisfy the minimum and still be poor: two operational sections can be two
+ * bad ones. That is deliberately not a validation problem, because encoding UX quality
+ * into a validator yields rules that are either trivially satisfiable or simply wrong.
+ *
+ * @returns {{operationalSectionKinds: string[], isOperationCentric: boolean, satisfiesDeclaredMode: boolean}}
  */
 export function assessOperationalComposition(def) {
   const kinds = new Set((def?.sections ?? []).map((s) => s.kind));
   const operational = OPERATIONAL_SECTION_KINDS.filter((k) => kinds.has(k));
   return Object.freeze({
     operationalSectionKinds: Object.freeze(operational),
-    // Two or more, deliberately. One operational section is a metric bolted onto a form;
-    // an operational record page shows state AND what to do about it.
-    isOperationCentric: operational.length >= 2,
+    isOperationCentric: operational.length >= MIN_OPERATIONAL_SECTION_KINDS,
+    // Does the page meet the bar for what it CLAIMS to be? A RECORD page trivially does —
+    // which is not a compliment, only the absence of a contradiction.
+    satisfiesDeclaredMode:
+      def?.compositionMode === "OPERATIONAL"
+        ? operational.length >= MIN_OPERATIONAL_SECTION_KINDS
+        : true,
   });
 }
 
