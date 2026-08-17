@@ -40,7 +40,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 - **X-ACCOUNT-PAGE-GAPS** (phase 6) — Account page: Locations section and Commercial Profile fields → Add the account.locations edge and the commercial-profile fields to accountEntity, then extend the page
 - **X-ACCOUNT-PAGE-WIRING** (phase 6) — Wire AccountDetail onto the Account record PageDefinition → Register the five component ids, then render through buildCompositionPlan + MetadataRecordPage
-- **X-LOCATION-REFERENCE-UPGRADE** (phase 6) — Upgrade locationId from STRING to REFERENCE on equipment and salesOrder → Focused correction lane over equipment.js and salesOrder.js, now that the location entity exists
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -54,7 +53,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-PAGE-GAPS | 6 | Account page: Locations section and Commercial Profile fields | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Add the account.locations edge and the commercial-profile fields to accountEntity, then extend the page |
-| X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | — | — | — | NOT_APPLICABLE | Focused correction lane over equipment.js and salesOrder.js, now that the location entity exists |
 | X-ACCOUNT-PAGE-WIRING | 6 | Wire AccountDetail onto the Account record PageDefinition | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Register the five component ids, then render through buildCompositionPlan + MetadataRecordPage |
 
 ## MERGED
@@ -108,6 +106,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-ADM-EMPLOYEES-DEFINITION | 6 | Employee entity + list definition | — | — | #1176 | — | 42db3840 | NOT_APPLICABLE | Merged and registered. Three composites declared and pending deploy. |
 | S-COM-PURCHASE-ORDER-DEFINITION | 6 | Purchase Order entity + list definitions (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
 | S-CRM-LOCATION-DEFINITION | 6 | Location entity + list definition (leaf lane) | — | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Merged and registered via the integration lane. |
+| X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | #1183 | — | d6e29a5d | NOT_APPLICABLE | Merged. Index demands verified unchanged and pinned by test. |
 
 ## BLOCKED_PROTECTED
 
