@@ -235,7 +235,19 @@ test('INVARIANT: the default environment reproduces the current production ident
   assert.equal(resolved.firebase.projectId, 'taylor-parts');
   assert.equal(resolved.firebase.functionsRegion, 'us-central1');
   assert.equal(resolved.readiness.RECEIVING_TRANSPORT_READY, false);
-  assert.equal(resolved.readiness.TRUCK_MANAGEMENT_WRITE_READY, true);
+  // Changed true -> false on 2026-08-17 under an explicit Owner ruling, and the fact
+  // that this assertion FAILED first is the point: a production readiness value is a
+  // deliberate declaration, so it should never move without a test forcing someone to
+  // say why.
+  //
+  // Why false: production truck-write readiness is UNVERIFIED, not disproven. No
+  // production-scoped deployment record exists under docs/releases, the only Functions
+  // closeout is explicitly scoped to eos-platform-sandbox and states production was
+  // never targeted, and functions/src/index.ts -- the newer source -- says these
+  // callables are not deployed to the live project. A production write-readiness flag
+  // must not assert readiness it cannot evidence, so it fails closed pending an
+  // authorized live verification.
+  assert.equal(resolved.readiness.TRUCK_MANAGEMENT_WRITE_READY, false);
   assert.equal(resolved.readiness.TRUSTED_COMPLETION_ENABLED, true);
 });
 

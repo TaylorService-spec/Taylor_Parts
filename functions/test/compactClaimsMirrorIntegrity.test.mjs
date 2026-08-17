@@ -1,23 +1,33 @@
-// Enterprise Access & Administration Platform (Issue #226) -- mirror-
-// integrity check for functions/src/access/compactClaims.ts vs its
-// client mirror at field-ops-app-vite/src/access/compactClaims.ts
-// (Customer review round 3 requirement: "keep the server/client pure
-// modules synchronized and add a mirror-integrity assertion so
-// functional drift is automatically detected").
+// Access-contract mirror integrity.
 //
-// This repo's mirroring convention (see every access/ module's own
-// header comment) has exactly one INTENTIONAL difference between a
-// server module and its client mirror: the "Mirrored ... at <path>"
-// cross-reference line, which necessarily points the opposite
-// direction in each copy. Every other line must be byte-identical --
-// any other difference is drift, not a documented exception.
+// SUPERSEDED MECHANISM, KEPT FILE. This suite used to diff each mirrored pair
+// after normalizing away two legitimate differences: the self-referential
+// cross-reference path (each copy named the other's location) and the WRAP POINT
+// of the sentence containing it, since the two paths differ in length. That
+// normalization existed only because the file bodies encoded a pathname.
 //
-// Reads the raw TypeScript SOURCE directly (no build step required) --
-// this is a repo-hygiene check, not a runtime-behavior test.
+// scripts/syncAccessContracts.mjs removes the cause instead of tolerating it. The
+// canonical body no longer names either location, the client copy is GENERATED as
+// a neutral banner plus that body verbatim, and verification is therefore exact
+// byte comparison — no comment-paragraph joining, no CRLF regex, nothing to get
+// subtly wrong. A byte check is strictly stronger than the normalized one it
+// replaces: everything the old check would have caught, this catches, plus
+// whitespace and wrap differences it deliberately forgave.
+//
+// The file is kept (rather than deleted) because it is named in
+// functions/package.json's test:access script and in the access-catalog workflow,
+// and because "the mirrors agree" is still exactly the question being asked.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import {
+  SYNCED_MODULES,
+  GENERATED_BANNER,
+  PLATFORM_SUBSTITUTIONS,
+  generate,
+  syncAll,
+} from "../../scripts/syncAccessContracts.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -36,73 +46,124 @@ function check(name, fn) {
   }
 }
 
-// Neutralizes the two things that legitimately differ between a mirror
-// pair WITHOUT masking any other real difference:
-//   1. The cross-reference path itself ("functions/..." vs
-//      "field-ops-app-vite/...") -- necessarily points the opposite
-//      direction in each copy. Replaced with a common placeholder.
-//   2. The WRAP POINT of the sentence containing that path -- a longer
-//      path (field-ops-app-vite/...) pushes the line-wrap earlier than
-//      the shorter functions/... path, even when the wording is
-//      identical (this is what a naive per-line diff false-positived
-//      on: the same sentence, wrapped one word differently). Every
-//      contiguous run of non-blank `//` comment lines is joined into
-//      one logical paragraph before comparing, so wrap width stops
-//      mattering -- but code lines (never reflowed) and any genuine
-//      wording difference within a paragraph still surface as a real
-//      mismatch.
-function normalizeForMirrorComparison(source, peerPathVariants) {
-  let text = source;
-  for (const variant of peerPathVariants) {
-    text = text.split(variant).join("<PEER_ACCESS_MODULE_PATH>");
-  }
-  // Normalize CRLF -> LF first. A git checkout on Windows (core.autocrlf)
-  // rewrites working-tree files to CRLF; without this, the trailing "\r"
-  // left on each line after split("\n") makes the `.` in the comment
-  // regex below refuse to match up to the true end of line (`.` never
-  // matches \r), so the regex fails outright and comment lines silently
-  // stop being recognized as comment lines -- reintroducing the exact
-  // wrap-point false-positive this normalization exists to prevent.
-  // Caught live: this test passed against LF-written files and then
-  // failed on a freshly `git worktree add`-checked-out (CRLF) copy.
-  text = text.replace(/\r\n/g, "\n");
-  const lines = text.split("\n");
-  const normalizedLines = [];
-  let paragraph = null;
-  for (const line of lines) {
-    const commentMatch = /^\s*\/\/(.*)$/.exec(line);
-    const commentBody = commentMatch ? commentMatch[1].trim() : null;
-    if (commentMatch && commentBody !== "") {
-      paragraph = paragraph === null ? commentBody : `${paragraph} ${commentBody}`;
-      continue;
-    }
-    if (paragraph !== null) {
-      normalizedLines.push(paragraph);
-      paragraph = null;
-    }
-    normalizedLines.push(line);
-  }
-  if (paragraph !== null) normalizedLines.push(paragraph);
-  return normalizedLines.join("\n");
-}
-
-function assertMirrorPairMatches(moduleFileName) {
-  const serverRelativePath = `functions/src/access/${moduleFileName}`;
-  const clientRelativePath = `field-ops-app-vite/src/access/${moduleFileName}`;
-  const serverSource = readFileSync(join(REPO_ROOT, serverRelativePath), "utf8");
-  const clientSource = readFileSync(join(REPO_ROOT, clientRelativePath), "utf8");
-  const peerPathVariants = [serverRelativePath, clientRelativePath];
-  const serverNormalized = normalizeForMirrorComparison(serverSource, peerPathVariants);
-  const clientNormalized = normalizeForMirrorComparison(clientSource, peerPathVariants);
-  assert.equal(
-    serverNormalized,
-    clientNormalized,
-    `${moduleFileName}: functions/ and field-ops-app-vite/ copies differ beyond the documented mirror cross-reference (path + its wrap point) -- functional drift detected`,
+check("every synced access contract's generated copy matches its canonical source exactly", () => {
+  const { drift } = syncAll({ check: true, root: REPO_ROOT });
+  assert.deepEqual(
+    drift,
+    [],
+    "generated access contracts are out of sync — run: node scripts/syncAccessContracts.mjs",
   );
-}
+});
 
-check("compactClaims.ts: server and client mirrors are identical beyond the documented cross-reference line", () => {
-  assertMirrorPairMatches("compactClaims.ts");
+check("the generated copy is exactly the banner plus the canonical body, byte for byte", () => {
+  // Asserts the generator's own contract rather than trusting its self-report, so a
+  // generator that silently produced nothing would still fail here.
+  for (const moduleFile of SYNCED_MODULES) {
+    const canonical = readFileSync(join(REPO_ROOT, "functions", "src", "access", moduleFile), "utf8");
+    const generated = readFileSync(
+      join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile),
+      "utf8",
+    ).replace(/\r\n/g, "\n");
+    assert.equal(
+      generated,
+      generate(canonical, moduleFile),
+      `${moduleFile}: generated copy is not banner + canonical body (with declared substitutions)`,
+    );
+  }
+});
+
+// --- declared platform substitutions ---------------------------------------
+//
+// These exist because of a real bug caught while writing them: the substitution table
+// was added to the generator but never wired into generate(), and `--check` PASSED
+// anyway. It compares the generated file against what the generator would produce, so
+// a silently-skipped substitution is perfectly self-consistent and completely
+// invisible to it. A round-trip check can verify "generation is reproducible"; it can
+// never verify "generation is correct".
+//
+// So these assert the OUTCOME against the real world — the client module must import
+// the client SDK — rather than against the generator's own opinion of itself.
+
+check("a declared substitution's canonical text still exists, or the rule is stale", () => {
+  for (const [moduleFile, rules] of Object.entries(PLATFORM_SUBSTITUTIONS)) {
+    const canonical = readFileSync(join(REPO_ROOT, "functions", "src", "access", moduleFile), "utf8");
+    for (const rule of rules) {
+      assert.ok(
+        canonical.includes(rule.canonical),
+        `${moduleFile}: substitution is stale — canonical no longer contains ${rule.canonical}`,
+      );
+    }
+  }
+});
+
+check("a declared substitution is actually APPLIED in the generated copy", () => {
+  // The assertion that would have caught the wiring bug: it reads the shipped file
+  // rather than trusting the generator's report about it.
+  for (const [moduleFile, rules] of Object.entries(PLATFORM_SUBSTITUTIONS)) {
+    const generated = readFileSync(
+      join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile),
+      "utf8",
+    ).replace(/\r\n/g, "\n");
+    for (const rule of rules) {
+      assert.ok(generated.includes(rule.generated), `${moduleFile}: substitution not applied (${rule.why})`);
+      assert.ok(
+        !generated.includes(rule.canonical),
+        `${moduleFile}: generated copy still carries the canonical text — the substitution was skipped`,
+      );
+    }
+  }
+});
+
+check("no generated client access contract imports a server-only SDK", () => {
+  // Mechanism-independent backstop: whatever the generator believes, a module shipped
+  // to a browser must never import firebase-admin.
+  for (const moduleFile of SYNCED_MODULES) {
+    const generated = readFileSync(join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile), "utf8");
+    assert.ok(
+      !/from\s+["']firebase-admin/.test(generated),
+      `${moduleFile}: generated client copy imports firebase-admin, which cannot run in a browser`,
+    );
+  }
+});
+
+check("generate() throws on a stale substitution rather than silently skipping it", () => {
+  const [moduleFile] = Object.keys(PLATFORM_SUBSTITUTIONS);
+  assert.throws(
+    () => generate("// a canonical file that no longer contains the expected import\n", moduleFile),
+    /stale substitution/,
+    "a substitution whose canonical text vanished must fail loudly, not emit a broken client module",
+  );
+});
+
+check("generation is deterministic — the same input yields the same bytes", () => {
+  // A generator whose output varies run to run cannot be CI-verified, and the failure
+  // would present as mysterious intermittent drift rather than as a bug in the generator.
+  const sample = readFileSync(join(REPO_ROOT, "functions", "src", "access", SYNCED_MODULES[0]), "utf8");
+  assert.equal(generate(sample), generate(sample));
+});
+
+check("no canonical access contract still encodes a peer pathname", () => {
+  // The regression guard for the whole design: if a pathname creeps back into a
+  // canonical body, the two copies acquire a reason to differ and the generator would
+  // have to start rewriting prose again.
+  for (const moduleFile of SYNCED_MODULES) {
+    const canonical = readFileSync(join(REPO_ROOT, "functions", "src", "access", moduleFile), "utf8");
+    assert.ok(
+      !canonical.includes("field-ops-app-vite/src/access/"),
+      `${moduleFile}: canonical body names the generated copy's path — that is what forced the copies to differ`,
+    );
+  }
+});
+
+check("the generated copy carries an unmistakable do-not-edit banner", () => {
+  for (const moduleFile of SYNCED_MODULES) {
+    const generated = readFileSync(
+      join(REPO_ROOT, "field-ops-app-vite", "src", "access", moduleFile),
+      "utf8",
+    ).replace(/\r\n/g, "\n");
+    assert.ok(generated.startsWith(GENERATED_BANNER), `${moduleFile}: missing or misplaced generated banner`);
+    assert.match(generated, /DO NOT EDIT/, `${moduleFile}: banner must say so plainly`);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

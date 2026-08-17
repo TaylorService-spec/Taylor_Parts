@@ -14,9 +14,10 @@
 // eventual cutover (Implementation Plan Rows 23-25), not something this
 // harness itself decides or acts on.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at field-ops-app-vite/src/access/shadowParityHarness.ts. If
-// either file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { PermissionId } from "../types/access";
 import {
   resolveEffectivePermission,
