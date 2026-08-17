@@ -1835,13 +1835,14 @@
       "title": "Equipment stores epoch-number timestamps and no actor",
       "domain": "service",
       "entity": "Equipment",
-      "status": "READY",
-      "nextAction": "Determine the actual stored semantics first, then converge future governed writes",
+      "status": "IMPLEMENTING",
+      "nextAction": "Writer active. Step 5 of its brief may return a Rules-allowlist BLOCKER rather than a change.",
       "governing": [
         "Owner architecture addendum section 1",
         "Owner Sales Order identity ruling section 12"
       ],
-      "notes": "Found while scouting Equipment for definition. The equipment collection carries createdAt/updatedAt as NUMBERS (epoch millis, per the Rules type check) and has NO createdBy/updatedBy at all - unlike parts and equipment_models, which carry the full four as Firestore Timestamps. Two rules apply. First, determine the actual stored semantics before presenting anything: reinterpreting an epoch number as a Timestamp to match the standard presentation would misread the data rather than describe it. Second, if legacy storage must stay compatible, that is exactly what the systemName/storagePath separation is for - the standard vocabulary keeps its names and the mapping absorbs the difference. Historical actor backfill requires evidence; UNKNOWN is preferable to an invented actor."
+      "notes": "Found while scouting Equipment for definition. The equipment collection carries createdAt/updatedAt as NUMBERS (epoch millis, per the Rules type check) and has NO createdBy/updatedBy at all - unlike parts and equipment_models, which carry the full four as Firestore Timestamps. Two rules apply. First, determine the actual stored semantics before presenting anything: reinterpreting an epoch number as a Timestamp to match the standard presentation would misread the data rather than describe it. Second, if legacy storage must stay compatible, that is exactly what the systemName/storagePath separation is for - the standard vocabulary keeps its names and the mapping absorbs the difference. Historical actor backfill requires evidence; UNKNOWN is preferable to an invented actor. LANE DISPATCHED at base 80302959, following the Contact convergence (#1157) as precedent: future writes only, no backfill, same actor mechanism, and timestamps STAY epoch-millis numbers because firestore.rules asserts `is number` and Rules are outside the lane's scope. The brief requires checking equipmentWritableKeys() FIRST: if that allowlist is strict, adding createdBy/updatedBy would be REJECTED at write time, and the correct outcome is a reported blocker rather than code that cannot work. Rules deployment is a protected action.",
+      "branch": "feat/equipment-provenance"
     },
     {
       "id": "X-SALES-ORDER-HEADER",
