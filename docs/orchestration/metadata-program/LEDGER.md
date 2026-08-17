@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 43 | 31 | 12 |
+| 43 | 32 | 11 |
 
 ## Next executable
 
@@ -21,12 +21,12 @@ continues from the next executable item — without asking what happened.
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
-- **S-DASH-OPERATIONS** (phase 9) — Inventory & Supply Overview → Bounded-read remediation
-- **S-DASH-OPERATIONS-SCALE** (phase 9) — Operations dashboard loads the operational database client-side → Sequence with A-BOUNDED-READS
 - **S-INV-MANUFACTURERS** (phase 9) — Manufacturers → Inventory only - writes are closed in every environment including sandbox
 - **S-INV-TRANSFERS** (phase 9) — Transfers → Bounded-read remediation; lifecycle composite, not a list
 - **S-SVC-CONTROL-TOWER** (phase 9) — Service Operations (Control Tower) → Bounded-read remediation; dashboard composition is a later phase
 - **S-SVC-COORDINATED-MISSION** (phase 9) — Coordinated mission → Same synthetic-source caveat as coordinated visits
+- **S-SVC-COORDINATED-VISITS** (phase 9) — Coordinated visits → Confirm synthetic-source status before migrating anything
+- **S-SVC-DISPATCH-QUEUE** (phase 9) — Dispatch queue → Classify: queue with governed transition writes, not a list
 
 ## READY
 
@@ -40,10 +40,8 @@ continues from the next executable item — without asking what happened.
 | S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Inventory only; no governed directory read exists to migrate |
 | S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | — | — | — | NOT_APPLICABLE | Inventory only; form is unconditionally disabled |
 | S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
-| S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
-| S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
 | A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Unify the client copy's abbreviated comments onto the canonical text, as its own PR |
 
 ## MERGE_QUEUED
@@ -90,6 +88,7 @@ continues from the next executable item — without asking what happened.
 | S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |
 | S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | — | — | — | NOT_APPLICABLE | Build after Gate A contracts land |
 | A-PAGE-RUNTIME | 5 | Page definition runtime | — | — | — | — | — | NOT_APPLICABLE | After list runtime proves the contract shape |
 | A-REGISTRIES | 2 | Component and action registries | — | — | — | — | — | NOT_APPLICABLE | Action definitions reference governed command paths only |
@@ -107,7 +106,8 @@ continues from the next executable item — without asking what happened.
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Generalize the existing cursor prior art rather than inventing a pattern |
 | A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
-| X-INVENTORY-ANALYTICS-AGGREGATE | 3 | getInventoryAnalytics needs authoritative aggregation, not pagination | — | — | — | — | — | NOT_APPLICABLE | Choose an authoritative-aggregate approach; do NOT page the ledger and compute from the page |
+| S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
+| X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Choose an authoritative-aggregate approach; do NOT page the ledger and compute from the page |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

@@ -541,9 +541,12 @@
       "route": "/dashboard/operations",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Bounded-read remediation",
-      "notes": "Ten parallel reads in one Promise.all including a full technicians collection read (Operations.jsx:103)."
+      "status": "BLOCKED_DEPENDENCY",
+      "nextAction": "Needs an authoritative aggregate before its reads can be bounded",
+      "notes": "Ten parallel reads in one Promise.all including a full technicians collection read (Operations.jsx:103). Owner ruling section 4 applies here too, and re-classifies this from a mechanical fix. This surface computes NETTED AGGREGATES client-side (availableStock as bin totals minus outstanding RESERVED/RELEASED, plus consumption and technician-volume rollups over the whole work-order collection). Adding limit() to those reads would produce an arithmetically false total under a name implying a complete business figure - the same defect the ruling forbids on the server, arriving through the client instead. Bounding is necessary but NOT sufficient: these figures need an authoritative aggregate, not a page.",
+      "dependsOn": [
+        "X-INVENTORY-ANALYTICS-AGGREGATE"
+      ]
     },
     {
       "id": "A-CONTRACT-CORE",
@@ -1049,7 +1052,7 @@
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100)."
+      "notes": "EXEMPT from the list runtime is NOT exempt from the scale rule, and collapsing those two exemptions would quietly bless unbounded reads on boards, calendars, dashboards and wizards. Prior art to generalize: useInstalledEquipmentPage.js, reorder request history paging, and subscribeAssignedWorkOrders with its where plus limit(100). SPLIT REQUIRED (ruling section 4). Two different problems were being tracked as one. PURE LIST reads - accounts, technicians, warehouses, suppliers, transfer orders, parts - can simply be bounded and paged, because a page of rows is an honest page of rows. AGGREGATE reads - the Operations dashboard's netted availableStock, consumption and technician-volume rollups, and getInventoryAnalytics - cannot, because a page of inputs yields a false total. Only the first group is unblocked by the list runtime; the second needs an authoritative aggregate and is tracked under X-INVENTORY-ANALYTICS-AGGREGATE."
     },
     {
       "id": "A-INDEX-VALIDATOR",
@@ -1124,9 +1127,12 @@
       "title": "Operations dashboard loads the operational database client-side",
       "domain": "dashboard",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Sequence with A-BOUNDED-READS",
-      "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component."
+      "status": "BLOCKED_DEPENDENCY",
+      "nextAction": "Same authoritative-aggregate dependency as S-DASH-OPERATIONS",
+      "notes": "One Promise.all fires seven unbounded collection reads plus a raw technicians read plus two full work-order scans, then aggregates in the browser. The single largest concentration of the section 9 problem in one component. Owner ruling section 4 applies here too, and re-classifies this from a mechanical fix. This surface computes NETTED AGGREGATES client-side (availableStock as bin totals minus outstanding RESERVED/RELEASED, plus consumption and technician-volume rollups over the whole work-order collection). Adding limit() to those reads would produce an arithmetically false total under a name implying a complete business figure - the same defect the ruling forbids on the server, arriving through the client instead. Bounding is necessary but NOT sufficient: these figures need an authoritative aggregate, not a page.",
+      "dependsOn": [
+        "X-INVENTORY-ANALYTICS-AGGREGATE"
+      ]
     },
     {
       "id": "X-STATUS-DATA-AUDIT",
@@ -1216,7 +1222,7 @@
       "phase": "3",
       "wave": "2",
       "kind": "ARCHITECTURE",
-      "title": "getInventoryAnalytics needs authoritative aggregation, not pagination",
+      "title": "Authoritative aggregation for netted inventory figures (server and client)",
       "domain": "inventory",
       "entity": "n/a",
       "status": "BLOCKED_DEPENDENCY",
@@ -1228,7 +1234,7 @@
         "Owner ruling 2026-08-17 section 4",
         "DECISIONS #102 section 9"
       ],
-      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready."
+      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern."
     },
     {
       "id": "X-NO-GOVERNED-READ-COLLECTIONS",
