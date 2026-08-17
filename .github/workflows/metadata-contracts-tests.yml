@@ -28,6 +28,8 @@ on:
       - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/partVocabulary.js"
       - "field-ops-app-vite/src/domain/equipmentStatus.js"
       - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
@@ -65,6 +67,8 @@ on:
       - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/partVocabulary.js"
       - "field-ops-app-vite/src/domain/equipmentStatus.js"
       - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
@@ -149,6 +153,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Equipment definition tests (node:test)
         run: node --test test/metadataEquipmentDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Employee definition tests (node:test)
+        run: node --test test/metadataEmployeeDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: Sales Order definition tests (node:test)
         run: node --test test/metadataSalesOrderDefinition.test.mjs
