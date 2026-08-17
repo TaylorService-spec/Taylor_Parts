@@ -22,6 +22,7 @@ on:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
   push:
     branches: [main]
@@ -29,6 +30,7 @@ on:
       - "field-ops-app-vite/src/metadata/**"
       - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - ".github/workflows/metadata-contracts-tests.yml"
   workflow_dispatch:
 
@@ -57,6 +59,9 @@ jobs:
 
       - name: ListViewDefinition contract tests (node:test)
         run: node --test test/metadataListViewDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Component/action registry tests (node:test)
+        run: node --test test/metadataRegistry.test.mjs
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata
