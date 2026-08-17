@@ -88,3 +88,23 @@ test("the index list demands exactly one composite index, over state + salesOrde
 test("the related list demands no index of its own — a capped, unfiltered section needs none", () => {
   assert.deepEqual(requiredIndexes(salesOrderRelatedList, salesOrderEntity), []);
 });
+
+test("locationId is a REFERENCE to location, optional in storage, and adds no filter/sort/index demand", () => {
+  // `location` is now a registered entity (definitions/location.js). Unlike
+  // equipment.locationId, this collection is deny-all/callable-read, so there is no
+  // Rules-level accountId cross-check to describe here -- just the pointer itself.
+  const locationId = findField(salesOrderEntity, "locationId");
+  assert.equal(locationId.type, "REFERENCE");
+  assert.equal(locationId.referenceTo, "location");
+  // Not filterable/sortable -- the type upgrade alone must not change what
+  // requiredIndexes() demands. salesOrderCommands.ts stores `locationId: string | null`,
+  // so a Sales Order without a location set is a real, expected shape, not a bug.
+  assert.equal(locationId.filterable, false);
+  assert.equal(locationId.sortable, false);
+  assert.deepEqual(locationId.operators, []);
+  const indexIndexes = requiredIndexes(salesOrderIndexList, salesOrderEntity);
+  const relatedIndexes = requiredIndexes(salesOrderRelatedList, salesOrderEntity);
+  for (const idx of [...indexIndexes, ...relatedIndexes]) {
+    assert.ok(!idx.fields.some((f) => f.fieldPath === "locationId"), "no index should reference locationId");
+  }
+});

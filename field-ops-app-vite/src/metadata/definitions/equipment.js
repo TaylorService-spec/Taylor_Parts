@@ -65,13 +65,14 @@ import { EQUIPMENT_STATUS_VALUES, EQUIPMENT_STATUS_LABEL } from "../../domain/eq
 // express a derived, cross-record read as metadata; that is a real gap, stated here
 // rather than papered over with a fake field.
 //
-// RELATIONSHIPS: accountId -> account is declared below as a REFERENCE. locationId
-// stays a plain STRING, the same restraint salesOrder.js applies to its own
-// locationId — no `location` entity is registered anywhere in this program yet, so
-// REFERENCE would point at nothing a runtime could resolve. Rules enforce the
-// integrity a relationship would otherwise describe (equipmentLocationBelongsToAccount:
-// the referenced Location must exist AND its accountId must equal this Equipment's
-// accountId) — that check lives in Rules, not in this file.
+// RELATIONSHIPS: accountId -> account is declared below as a REFERENCE, and so is
+// locationId -> location, now that `location` is a registered entity
+// (definitions/location.js). The reference is genuinely Rules-enforced, not just a
+// display convenience: firestore.rules' equipmentLocationBelongsToAccount() get()s
+// /locations/{locationId} on every create/update and asserts the referenced
+// Location's own accountId equals this Equipment's accountId — the same integrity a
+// database foreign key would give, checked server-side on every write, not merely
+// assumed by this definition.
 //
 // THE OWNING SIDE OF account.equipment IS NOT DECLARED HERE. Every other outbound
 // edge in this program is declared on the entity that owns it (account.contacts,
@@ -136,14 +137,16 @@ export const equipmentEntity = makeEntityDefinition({
       operators: ["EQUALS"],
       description: "The owning Account. Immutable after create (not in equipmentEditableKeys) — reassignment is not an ordinary edit.",
     }),
-    // No `location` entity is registered yet, so this stays a plain reference id
-    // rather than a REFERENCE this registry cannot resolve — see the file header.
+    // REFERENCE to location — see the file header for the Rules-enforced integrity
+    // (equipmentLocationBelongsToAccount) this points at. Not filterable/sortable:
+    // nothing queries or orders by it today, so no operator/index demand is declared.
     makeFieldDefinition({
       id: "locationId",
       entityId: "equipment",
       label: "Location",
-      type: "STRING",
-      description: "The installed Location id, within the same Account. No location entity is registered in this program yet. Immutable on this path — a Location change is the audited MOVE action, not an ordinary edit.",
+      type: "REFERENCE",
+      referenceTo: "location",
+      description: "The installed Location, within the same Account. Immutable on this path — a Location change is the audited MOVE action, not an ordinary edit.",
     }),
     makeFieldDefinition({
       id: "manufacturer",

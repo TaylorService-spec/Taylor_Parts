@@ -113,14 +113,21 @@ export const salesOrderEntity = makeEntityDefinition({
       referenceTo: "employee",
       description: "Display resolution belongs to the employee entity, not to this list.",
     }),
-    // No `location` entity is registered yet, so this stays a plain reference id rather than a
-    // REFERENCE this registry cannot resolve — the same restraint account.js applies to `tags`.
+    // REFERENCE to location, now that `location` is a registered entity
+    // (definitions/location.js). Unlike equipment.locationId, this one has no Rules-level
+    // accountId cross-check on this collection (sales_orders is deny-all/callable-read) —
+    // the reference just names what the id points at.
     makeFieldDefinition({
       id: "locationId",
       entityId: "salesOrder",
       label: "Location",
-      type: "STRING",
-      description: "The delivery/service location id. No location entity is registered in this program yet.",
+      type: "REFERENCE",
+      referenceTo: "location",
+      // salesOrderCommands.ts stores `locationId: string | null` (nonEmpty(input.locationId)
+      // ? trim() : null) and createServiceForSalesOrder.ts throws failed-precondition when
+      // it is absent for that one write path — but on the Sales Order record itself a
+      // location is optional, not guaranteed present on every order.
+      description: "The delivery/service Location. Optional in storage — string | null (salesOrderCommands.ts) — not every Sales Order has one set.",
     }),
     makeFieldDefinition({
       id: "sourceOpportunityId",

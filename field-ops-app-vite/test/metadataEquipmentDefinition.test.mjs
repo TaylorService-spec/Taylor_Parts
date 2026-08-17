@@ -91,15 +91,27 @@ test("equipmentStatusLabel renders the same words the two prior private copies u
   assert.equal(equipmentStatusLabel("SOMETHING_ELSE"), "SOMETHING_ELSE");
 });
 
-test("accountId is a REFERENCE to account; locationId stays a plain string", () => {
-  // No `location` entity is registered anywhere in this program yet, so locationId
-  // cannot be a REFERENCE this registry could resolve -- the same restraint
-  // salesOrder.js applies to its own locationId.
+test("accountId is a REFERENCE to account; locationId is a REFERENCE to location", () => {
+  // `location` is now a registered entity (definitions/location.js), so locationId is a
+  // real REFERENCE -- Rules-enforced by equipmentLocationBelongsToAccount, not merely a
+  // display convenience. The same upgrade applies to salesOrder.js's own locationId.
   const accountId = findField(equipmentEntity, "accountId");
   const locationId = findField(equipmentEntity, "locationId");
   assert.equal(accountId.type, "REFERENCE");
   assert.equal(accountId.referenceTo, "account");
-  assert.equal(locationId.type, "STRING");
+  assert.equal(locationId.type, "REFERENCE");
+  assert.equal(locationId.referenceTo, "location");
+});
+
+test("locationId is neither filterable nor sortable -- the reference upgrade added no operator or index demand", () => {
+  // A REFERENCE field is still just a stored id string on the wire; nothing about the
+  // type change makes it queryable. Pinning this here is what would catch a future edit
+  // accidentally turning a display reference into a filterable/sortable one, which would
+  // change requiredIndexes() without anyone noticing.
+  const locationId = findField(equipmentEntity, "locationId");
+  assert.equal(locationId.filterable, false);
+  assert.equal(locationId.sortable, false);
+  assert.deepEqual(locationId.operators, []);
 });
 
 test("no outbound relationships are declared -- an owning-side edge belongs on Account", () => {
@@ -113,4 +125,15 @@ test("the index list declares real backend filters, and the index count reflects
   assert.ok(equipmentIndexList.filters.some((f) => f.fieldId === "accountId"));
   assert.ok(equipmentIndexList.filters.some((f) => f.fieldId === "status"));
   assert.equal(requiredIndexes(equipmentIndexList, equipmentEntity).length, 3);
+});
+
+test("locationId's STRING -> REFERENCE upgrade left every composite index untouched -- no fieldPath names locationId", () => {
+  // requiredIndexes() is driven entirely by filters/defaultSort, never by a field's
+  // declared type -- this pins that fact for locationId specifically, the field this
+  // program just upgraded, so a future edit that also makes it filterable/sortable
+  // trips a visible assertion instead of silently growing the index set.
+  const indexes = requiredIndexes(equipmentIndexList, equipmentEntity);
+  for (const idx of indexes) {
+    assert.ok(!idx.fields.some((f) => f.fieldPath === "locationId"), "no index should reference locationId");
+  }
 });
