@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ACCOUNT_STATUS, accountStatusLabel } from "../../domain/constants";
+import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, accountStatusLabel } from "../../domain/constants";
 import { createAccount } from "../../domain/accounts";
 import { accountEntity, accountIndexList } from "../../metadata/definitions/account.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
@@ -28,12 +28,17 @@ import AccountForm from "./AccountForm";
 // Neither read is unbounded, and there is no second one: the old subscription is gone
 // rather than kept alongside.
 //
-// FACETS DEFERRED, HONESTLY. The tag chips and relationship chips are not here. Both were
-// built by scanning every account in the browser. Rebuilding them from the current page
-// would present "the tags that exist" when the truth is "the tags on these fifty rows",
-// and no authoritative Account tag catalog exists yet. Both fields still RENDER in their
-// rows; only the global facet is deferred, and it is recorded as future governed work
-// rather than quietly dropped.
+// FACETS: ONE RESTORED, ONE STILL DEFERRED. The relationship chips are back, because the
+// index derivation now models filter COMBINATIONS and the three composites the query
+// really needs are declared. Their values come from the enum, which is a closed set the
+// code owns — not from scanning the collection.
+//
+// The tag chips are NOT back. Tag values are open, so the only way to know which exist is
+// to read every account, and rebuilding the facet from the current page would present
+// "the tags on these fifty rows" as "the tags that exist". Tags still RENDER in their
+// rows; the global facet waits on an authoritative catalog and is recorded as such.
+
+const RELATIONSHIP_LABEL = { CUSTOMER: "Customer", VENDOR: "Vendor" };
 
 const STATUS_CARDS = [
   { key: "total", label: "Total", status: null },
@@ -47,13 +52,22 @@ export default function AccountsList() {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
+  // ONE relationship at a time, not a set. Firestore permits a single array filter per
+  // query, so offering multi-select would promise an intersection no declared index
+  // serves — and the old page's AND-semantics chips were only possible because it was
+  // filtering in memory.
+  const [relationshipFilter, setRelationshipFilter] = useState(null);
   const [announcement, setAnnouncement] = useState("");
   const creatingRef = useRef(false);
 
-  const filters = useMemo(
-    () => (statusFilter ? [{ fieldId: "status", operator: "EQUALS", value: statusFilter }] : []),
-    [statusFilter]
-  );
+  const filters = useMemo(() => {
+    const next = [];
+    if (statusFilter) next.push({ fieldId: "status", operator: "EQUALS", value: statusFilter });
+    if (relationshipFilter) {
+      next.push({ fieldId: "relationshipTypes", operator: "ARRAY_CONTAINS", value: relationshipFilter });
+    }
+    return next;
+  }, [statusFilter, relationshipFilter]);
 
   const { presentation, loadMore, retry } = useMetadataList(accountIndexList, accountEntity, { filters });
   const { summary, state: summaryState, retry: retrySummary } = useAccountPortfolioSummary();
@@ -151,6 +165,31 @@ export default function AccountsList() {
           standard set, so the totals above add up to more than the four categories shown.
         </p>
       )}
+
+      <div className="fo-portfolio-filters">
+        <div className="fo-filter-group" role="group" aria-label="Filter by relationship type">
+          <span className="fo-filter-label">Relationship:</span>
+          {Object.values(ACCOUNT_RELATIONSHIP_TYPE).map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`fo-filter-chip${relationshipFilter === type ? " fo-filter-chip-active" : ""}`}
+              aria-pressed={relationshipFilter === type}
+              onClick={() => setRelationshipFilter((cur) => (cur === type ? null : type))}
+            >
+              {RELATIONSHIP_LABEL[type] ?? type}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="fo-link-btn"
+          onClick={() => { setStatusFilter(null); setRelationshipFilter(null); }}
+          disabled={!statusFilter && !relationshipFilter}
+        >
+          Clear filters
+        </button>
+      </div>
 
       <MetadataListGrid
         presentation={presentation}
