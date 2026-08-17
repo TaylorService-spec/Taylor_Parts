@@ -21,6 +21,7 @@ import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { OPPORTUNITIES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { buildCreateSalesOrder, SalesOrderCommandError, type BuiltSalesOrder, type SalesOrderLineInput } from "../salesOrder/salesOrderCommands";
+import { allocateSalesOrderNumber } from "../salesOrder/salesOrderNumbering";
 import { isChannel, type SalesChannel } from "./opportunityLifecycle";
 
 export const OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY = "opportunity.createSalesOrder";
@@ -159,6 +160,11 @@ export async function persistSalesOrderFromOpportunity(
   const soRef = db.collection(SALES_ORDERS_COLLECTION).doc();
   const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
 
+  // HUMAN IDENTITY, same contract as the direct createSalesOrder callable (persistCreatedSalesOrder):
+  // allocated inside this transaction, alongside the document write, never client-supplied, and never
+  // rewritten by any later transition path.
+  const { salesOrderNumber } = await allocateSalesOrderNumber(tx, new Date().getUTCFullYear());
+
   // LINEAGE IDENTITY, denormalized deliberately rather than joined at read time.
   //
   // Sales Order detail shows an "Originating Opportunity" link and had nothing to label it
@@ -178,6 +184,7 @@ export async function persistSalesOrderFromOpportunity(
   // display a name the Opportunity no longer has.
   tx.set(soRef, {
     ...fields,
+    salesOrderNumber,
     sourceOpportunityNumber: opp.opportunityNumber ?? null,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
