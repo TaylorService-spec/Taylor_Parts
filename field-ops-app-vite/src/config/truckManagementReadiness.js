@@ -1,9 +1,28 @@
 // EI Truck Registry -- the SINGLE, explicit write-readiness seam for the Truck
-// Management UI. The eight trusted callables (truckRegistryCommandClient.js) are now
-// DEPLOYED and production-verified (Gate D CLOSED, us-central1), so this seam is
-// ACTIVATED (Gate E1):
+// Management UI. Readiness is declared PER ENVIRONMENT in config/environments.json,
+// not by one global constant.
 //
-//   TRUCK_MANAGEMENT_WRITE_READY = true
+// PRODUCTION READINESS IS UNVERIFIED, SO IT FAILS CLOSED (Owner ruling 2026-08-17).
+// This header previously asserted the eight trusted callables were "DEPLOYED and
+// production-verified (Gate D CLOSED, us-central1)". That claim cannot be
+// substantiated from this repository: no production-scoped deployment record exists
+// under docs/releases, the only Functions closeout is explicitly scoped to
+// eos-platform-sandbox and states production was never targeted, and "Gate D" appears
+// nowhere else in the repository. Meanwhile functions/src/index.ts -- the newer of the
+// two sources -- states these callables are not deployed to the live project.
+//
+// Read the distinction precisely, because it matters for what happens next: this does
+// NOT establish that the callables are absent from production. It establishes that
+// their presence is UNVERIFIED. A production write-readiness flag must not assert
+// readiness it cannot evidence, so the repository declaration now fails closed until an
+// authorized operator verifies the live environment.
+//
+// THIS REPOSITORY CHANGE DOES NOT FIX A LIVE RISK. Readiness is a compile-time
+// constant baked into a Hosting bundle. If a previously released production bundle
+// carries the old `true`, production users may still see enabled truck-management
+// write controls right now, and only a Hosting release of a bundle built from this
+// change would alter that. The live exposure is tracked as a protected verification
+// item, not closed by this commit.
 //
 // While readiness is true, an admin/dispatcher's management controls are enabled and
 // useTruckManagement invokes the deployed callables (authorization is re-enforced
