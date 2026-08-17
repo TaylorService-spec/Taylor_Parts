@@ -17,7 +17,7 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-22 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+25 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-GRID (all satisfied) → Identity is on main; awaiting the list runtime
@@ -40,7 +40,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 - **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2
-- **A-QUERY-MODEL-UNIFIED** (phase 7) — Unified EOS query model (shared dependency) → Define the shared query AST + validation pipeline before any consumer builds its own
 
 ## READY
 
@@ -48,7 +47,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Unblocked: define remaining entities against v1 with v2 mapping proven, or author directly in v2 |
-| A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | — | — | — | NOT_APPLICABLE | Define the shared query AST + validation pipeline before any consumer builds its own |
 
 ## MERGED
 
@@ -86,6 +84,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-INDEX-FILTER-COMBINATIONS | 6 | Index derivation across filter COMBINATIONS | — | — | #1139 | — | 04567b43 | NOT_APPLICABLE | Merged; three accounts composites declared and pending deploy |
 | G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | #1147 | — | 379ef835 | NOT_APPLICABLE | Gate cleared. Mass entity definition may resume. |
 | A-RECORD-PROVENANCE | 6 | Record provenance platform invariant | — | — | #1149 | — | 64564bb3 | NOT_APPLICABLE | Merged. The origin seam (createdVia/initiatedBy/sourceExecutionId) awaits reconciliation with the audit event architecture before anything writes it. |
+| A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | #1151 | — | 80588e61 | NOT_APPLICABLE | Merged. Automation v1, EQL v1 and Bulk Data v1 are unblocked; migrating the list runtime onto the AST is a separate slice. |
 
 ## BLOCKED_PROTECTED
 

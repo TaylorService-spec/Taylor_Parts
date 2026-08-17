@@ -1690,14 +1690,15 @@
       "title": "Unified EOS query model (shared dependency)",
       "domain": "program",
       "entity": "n/a",
-      "status": "MERGE_QUEUED",
-      "nextAction": "Open: shared AST + three-stage validation pipeline",
+      "status": "MERGED",
+      "nextAction": "Merged. Automation v1, EQL v1 and Bulk Data v1 are unblocked; migrating the list runtime onto the AST is a separate slice.",
       "governing": [
         "Owner architecture addendum section 16"
       ],
       "notes": "RECORDED AS A SHARED DEPENDENCY so it is not rediscovered independently by Lists, Reports, Automation, EQL and AI. List filters, saved views, the report builder, automation conditions, EQL, AI-generated queries and the admin visual builder converge on ONE governed query AST, then one pipeline: metadata validation, authority validation, queryability validation, index validation, planner, governed execution. Independent query semantics per feature is how six subsystems end up disagreeing about what a filter means. Must ABSORB the existing governed report creator rather than run beside it, and must NOT collapse the board-scope contract into list pagination - a board returns a complete working set or admits it cannot, which is a different promise from a page. BUILT: makeQuery/comparison/group/traversal AST plus validateAgainstMetadata -> validateAuthority -> validateQueryability, stopping at the first refusal. Stage ORDER is deliberate: reporting a denial for a field that does not exist tells a caller something false about their access, and reporting a missing index for an unauthorized query leaks the shape of data they cannot see. A field a viewer may not READ cannot be FILTERED on either, because a predicate over a hidden field leaks its values by binary search. Traversal authority is the RELATED entity, not this one. An empty IN is REFUSED rather than resolved by whichever backend runs it - ambiguous by convention, and six consumers guessing separately is what this model prevents. completeness PAGE/COMPLETE/AGGREGATE keeps the board promise distinct from list paging rather than collapsing it.",
       "branch": "feat/unified-query-model",
-      "pr": 1151
+      "pr": 1151,
+      "mergeSha": "80588e61"
     },
     {
       "id": "A-AUTOMATION-V1",
