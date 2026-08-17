@@ -90,6 +90,7 @@ describe("SalesOrderDetail", () => {
           id: "SO-42",
           accountId: "ACCT-1",
           sourceOpportunityId: "OPP-7",
+          sourceOpportunityNumber: "OPP-2026-000007",
           ownerEmployeeId: "EMP-1",
           salesChannel: "RETAIL",
           state: "CONFIRMED",
@@ -103,11 +104,42 @@ describe("SalesOrderDetail", () => {
     renderAt("SO-42");
     expect(screen.getByText("Sales Order SO-42")).toBeTruthy();
     expect(screen.getByText("ACCT-1")).toBeTruthy();
-    expect(screen.getByText("OPP-7")).toBeTruthy();
+    // CHANGED, and the old expectation was the defect (#1099). This asserted the raw
+    // sourceOpportunityId was rendered — i.e. it pinned a Firestore document id as the
+    // visible label of the Originating Opportunity link, which is exactly the behaviour
+    // the governance forbids. The lineage link now shows the Opportunity's immutable
+    // reference.
+    expect(screen.getByText("OPP-2026-000007")).toBeTruthy();
+    expect(screen.queryByText("OPP-7")).toBeNull();
     expect(screen.getByText("CONFIRMED")).toBeTruthy();
     expect(screen.getByText("PRT-9")).toBeTruthy();
     expect(screen.getByText("WO-1")).toBeTruthy();
     expect(screen.getByText("WO-2")).toBeTruthy();
+  });
+
+  it("labels the lineage link honestly when the Sales Order predates Opportunity identity", () => {
+    // No reference exists to show, and the document id must NOT stand in for one. The link
+    // still renders — a Sales Order that HAS an originating Opportunity should say so — but
+    // it says something true rather than exposing an internal key.
+    useSalesOrder.mockReturnValue({
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        salesOrder: {
+          id: "SO-42",
+          accountId: "ACCT-1",
+          state: "CONFIRMED",
+          sourceOpportunityId: "OPP-7",
+          sourceOpportunityNumber: null,
+          lines: [],
+          serviceWorkOrderIds: [],
+        },
+      },
+    });
+    renderAt("SO-42");
+    expect(screen.getByText("Originating opportunity")).toBeTruthy();
+    expect(screen.queryByText("OPP-7")).toBeNull();
   });
 
   it("never renders or exposes a pricing/discount/tax/quote-term field -- the commercial boundary", () => {

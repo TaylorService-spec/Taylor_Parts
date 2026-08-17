@@ -39,10 +39,19 @@ export function accountOpportunitiesView({ loading = false, errorStatus = null, 
     rows: opportunities.map((o) => ({
       key: o.id,
       id: o.id,
-      // "need" is the only free-text descriptor on the Opportunity projection; it is the closest thing
-      // to a name/identifier this record has -- falls back to the id itself rather than fabricating a
-      // label, so the row is never blank.
-      label: o.need || o.id,
+      // HUMAN IDENTITY, in preference order. The document id is deliberately NOT in this
+      // chain any more: it used to be the final fallback, which is how `95kFz8WWgiSn2nU2O3Ml`
+      // ended up as a row label in front of users. A database key is not a name.
+      //
+      // When a record genuinely has no identity -- Opportunities created before the name and
+      // reference existed -- "Unnamed opportunity" is the honest answer. It tells the reader
+      // something true (this record has no name) instead of showing them a key they cannot
+      // read, search for, or repeat on a phone call. The reference below still identifies it
+      // precisely where one exists.
+      label: o.name || o.need || o.opportunityNumber || "Unnamed opportunity",
+      // The immutable system reference, carried separately from the label so a row can show
+      // both a human name and the identifier used in lineage links elsewhere.
+      reference: o.opportunityNumber ?? null,
       stage: o.stage,
       outcome: o.outcome,
       expectedValue: o.expectedValue,

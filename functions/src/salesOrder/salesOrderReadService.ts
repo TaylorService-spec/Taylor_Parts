@@ -49,6 +49,10 @@ export interface SalesOrderProjection {
   currency: string | null;
   locationId: string | null;
   sourceOpportunityId: string | null;
+  // The originating Opportunity's immutable reference, denormalized at creation by
+  // createSalesOrderFromOpportunity. Null for Sales Orders created before Opportunity
+  // identity existed — honestly null rather than backfilled with a guess.
+  sourceOpportunityNumber: string | null;
   customerPO: string | null;
   notes: string | null;
   state: SalesOrderState | null;
@@ -102,6 +106,7 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
     currency: str(data.currency),
     locationId: str(data.locationId),
     sourceOpportunityId: str(data.sourceOpportunityId),
+    sourceOpportunityNumber: str(data.sourceOpportunityNumber),
     customerPO: str(data.customerPO),
     notes: str(data.notes),
     state,

@@ -30,6 +30,14 @@ export const OPPORTUNITY_READ_CAPABILITY = "opportunity.read";
 // number|null; unknown/invalid stage or outcome is dropped to null rather than trusted.
 export interface OpportunityProjection {
   id: string;
+  // HUMAN IDENTITY, projected so no reader has to fall back to the document id.
+  //
+  // Both are nullable and that is deliberate: Opportunities created before this existed
+  // carry neither, and a projection that invented a value would be lying about identity.
+  // A reader that finds both null has learned something true — this record predates
+  // identity — which is more useful than a fabricated label.
+  name: string | null;
+  opportunityNumber: string | null;
   accountId: string | null;
   salesChannel: string | null;
   ownerEmployeeId: string | null;
@@ -69,6 +77,8 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     .filter((l): l is { kind: string; ref: string; qty?: number } => l !== null);
   return {
     id,
+    name: str(data.name),
+    opportunityNumber: str(data.opportunityNumber),
     accountId: str(data.accountId),
     salesChannel: str(data.salesChannel),
     ownerEmployeeId: str(data.ownerEmployeeId),
