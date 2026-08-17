@@ -17,13 +17,10 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-27 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+22 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
-- **S-CRM-ACCOUNT-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto the page definition runtime
 - **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-GRID (all satisfied) → Identity is on main; awaiting the list runtime
-- **S-CRM-SALES-ORDER-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto page runtime; resolve raw-id labels
-- **S-SVC-WO-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate after Gate B
 - **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-GRID (all satisfied) → Migrate or retire — overlaps the Work Orders list
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Classify: queue with governed transition writes, not a list
 - **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Confirm synthetic-source status before migrating anything
@@ -35,6 +32,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-ADM-USERS** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; no governed directory read exists to migrate
 - **S-ADM-ROLES** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; form is unconditionally disabled
 - **S-DASH-MY** — depends on A-PAGE-COMPONENT (all satisfied) → Later phase; dashboard composition is not list/record metadata
+- **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
+- **S-INV-PARTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
+- **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Migrate; navHidden, direct-URL only
 
 ## Next executable
 
@@ -107,7 +107,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Migrate onto the page definition runtime |
+| S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Blocked transitively on Field Architecture v2: its related lists need Opportunity/Sales Order/Contact definitions |
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
