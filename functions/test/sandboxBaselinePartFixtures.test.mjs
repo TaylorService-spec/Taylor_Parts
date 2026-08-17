@@ -102,5 +102,5 @@ test("the writer persists an optimistic-concurrency version", () => {
   // are all correct is STILL rejected as malformed metadata -- the second half of the same gap, and
   // exactly as invisible as the first.
   const writer = SEED_SRC.slice(SEED_SRC.indexOf('upsert(db, "parts"'), SEED_SRC.indexOf('bump("parts")'));
-  assert.match(writer, /version:\s*1/, "seed must persist version");
+  assert.match(writer, /\bversion:\s*1\b/, "seed must persist version");
 });
