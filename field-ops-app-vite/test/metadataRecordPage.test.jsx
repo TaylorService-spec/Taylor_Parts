@@ -9,6 +9,18 @@ import { render, screen } from "@testing-library/react";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { makeSection, makePageDefinition } from "../src/metadata/pageDefinition.js";
 import { componentRegistry } from "../src/metadata/registry.js";
+import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
+import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
+
+// GAP 2's default RELATED_LIST binding drives the real three-layer list runtime
+// (descriptor -> fetched page -> presentation model). fetchPage is the ONLY place that
+// module touches Firestore (firestoreListSource.js's own header), so mocking it is the
+// same boundary metadataFirestoreListSource.test.mjs mocks at, and it means these tests
+// never need a firebase/firestore mock at all.
+const fetchPageMock = vi.fn();
+vi.mock("../src/metadata/firestoreListSource.js", () => ({
+  fetchPage: (...args) => fetchPageMock(...args),
+}));
 
 const Lifecycle = ({ record }) => <p>lifecycle for {record?.id}</p>;
 const Blockers = () => <p>blockers section</p>;
@@ -19,6 +31,7 @@ beforeEach(() => {
   componentRegistry.register({ id: "record.lifecycle", kind: "RECORD_SECTION", component: Lifecycle });
   componentRegistry.register({ id: "record.blockers", kind: "RECORD_SECTION", component: Blockers });
   componentRegistry.register({ id: "record.gated", kind: "RECORD_SECTION", component: Gated });
+  fetchPageMock.mockReset();
 });
 
 const workOrderPage = (over = {}) =>
@@ -128,5 +141,218 @@ describe("MetadataRecordPage", () => {
   it("exposes the composition mode, so an operational page is distinguishable in the DOM", () => {
     const { container } = render(<MetadataRecordPage definition={workOrderPage()} record={{ id: "wo-1" }} />);
     expect(container.querySelector('[data-composition-mode="OPERATIONAL"]')).toBeTruthy();
+  });
+
+  // ── GAP 1 — FIELD_GROUP renders its declared fields instead of an empty shell ──────
+
+  describe("GAP 1 — the default FIELD_GROUP renderer", () => {
+    const workOrderEntity = makeEntityDefinition({
+      id: "workOrder",
+      label: "Work Order",
+      readVia: "CLIENT_DIRECT",
+      collection: "workOrders",
+      fields: [
+        makeFieldDefinition({ id: "priority", entityId: "workOrder", label: "Priority", type: "ENUM", enumLabels: { HIGH: "High priority" } }),
+        makeFieldDefinition({ id: "notes", entityId: "workOrder", label: "Notes", type: "STRING" }),
+      ],
+    });
+
+    it("renders declared fields with FieldDefinition labels and resolved enum values", () => {
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "fg", kind: "FIELD_GROUP", label: "Details", region: "MAIN", order: 0, fieldIds: ["priority", "notes"] }),
+        ],
+      });
+      render(
+        <MetadataRecordPage
+          definition={def}
+          record={{ id: "wo-1", priority: "HIGH", notes: "" }}
+          entityResolver={(id) => (id === "workOrder" ? workOrderEntity : null)}
+        />
+      );
+      expect(screen.getByText("Priority")).toBeTruthy();
+      // The raw stored value is "HIGH" — the enum's LABEL is what must reach the DOM,
+      // the same rule cellValue() already enforces for list cells (§ "0 Active" #1093).
+      expect(screen.getByText("High priority")).toBeTruthy();
+      expect(screen.queryByText("HIGH")).toBeNull();
+      // An empty string is absent data, shown honestly rather than as a blank cell.
+      expect(screen.getByText("Notes")).toBeTruthy();
+      expect(screen.getByText("—")).toBeTruthy();
+    });
+
+    it("without an entityResolver, says so rather than rendering an empty shell", () => {
+      // The false statement this whole gap exists to avoid: a FIELD_GROUP with no
+      // component and no way to resolve its own fields must not read as "nothing here".
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "fg", kind: "FIELD_GROUP", label: "Details", region: "MAIN", order: 0, fieldIds: ["priority"] }),
+        ],
+      });
+      render(<MetadataRecordPage definition={def} record={{ id: "wo-1", priority: "HIGH" }} />);
+      expect(screen.getByText(/field details are unavailable/i)).toBeTruthy();
+    });
+
+    it("a componentId still wins over the generic renderer", () => {
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "fg", kind: "FIELD_GROUP", label: "Details", region: "MAIN", order: 0, fieldIds: ["priority"], componentId: "record.gated" }),
+        ],
+      });
+      render(
+        <MetadataRecordPage
+          definition={def}
+          record={{ id: "wo-1", priority: "HIGH" }}
+          entityResolver={(id) => (id === "workOrder" ? workOrderEntity : null)}
+        />
+      );
+      expect(screen.getByText("gated content")).toBeTruthy();
+      expect(screen.queryByText("Priority")).toBeNull();
+    });
+  });
+
+  // ── GAP 2 — RELATED_LIST renders through a default binding to the list runtime ────
+
+  describe("GAP 2 — the default RELATED_LIST binding", () => {
+    const accountEntity = makeEntityDefinition({
+      id: "account",
+      label: "Account",
+      readVia: "CLIENT_DIRECT",
+      collection: "accounts",
+      relationships: [
+        makeRelationshipDefinition({
+          id: "account.opportunities",
+          label: "Opportunities",
+          fromEntityId: "account",
+          toEntityId: "opportunity",
+          viaField: "accountId",
+          cardinality: "ONE_TO_MANY",
+        }),
+      ],
+    });
+    const opportunityEntity = makeEntityDefinition({
+      id: "opportunity",
+      label: "Opportunity",
+      readVia: "CLIENT_DIRECT",
+      collection: "opportunities",
+      fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
+    });
+    const opportunitiesList = makeListViewDefinition({
+      id: "account.opportunities.related",
+      entityId: "opportunity",
+      label: "Opportunities",
+      surface: "RELATED",
+      parentRelationshipId: "account.opportunities",
+      columns: [makeColumn({ fieldId: "name" })],
+      tiebreaker: "__name__",
+    });
+
+    const accountPage = () =>
+      makePageDefinition({
+        id: "account.record",
+        entityId: "account",
+        label: "Account",
+        sections: [
+          makeSection({ id: "opps", kind: "RELATED_LIST", label: "Opportunities", region: "MAIN", order: 0, listId: "account.opportunities.related" }),
+        ],
+      });
+
+    it("renders rows through the default binding, scoped to the parent record", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      render(
+        <MetadataRecordPage
+          definition={accountPage()}
+          record={{ id: "acct-1" }}
+          listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
+          entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+        />
+      );
+      expect(await screen.findByText("Big Deal")).toBeTruthy();
+      // Scoped to the parent — the exact defect findParentRelationship/buildQueryDescriptor
+      // exist to prevent (an unscoped RELATED section reading every record of the target
+      // entity, the shape of the account/opportunity defect this file's own history notes).
+      const [descriptor] = fetchPageMock.mock.calls[0];
+      expect(descriptor.filters).toContainEqual(expect.objectContaining({ fieldId: "accountId", operator: "EQUALS", value: "acct-1" }));
+    });
+
+    it("an injected listRenderer still wins over the default binding", () => {
+      const listRenderer = vi.fn(({ listId, parentId }) => <p>{`custom ${listId} for ${parentId}`}</p>);
+      render(
+        <MetadataRecordPage
+          definition={accountPage()}
+          record={{ id: "acct-1" }}
+          listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
+          entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          listRenderer={listRenderer}
+        />
+      );
+      expect(screen.getByText("custom account.opportunities.related for acct-1")).toBeTruthy();
+      expect(fetchPageMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── GAP 3 — REGION-level nothing vs PAGE-level denial ──────────────────────────────
+
+  describe("GAP 3 — embedded scope", () => {
+    it("a region whose only section is capability-hidden renders nothing, and the page does not become a denial", () => {
+      // A full, non-embedded page: HEADER stays ungated and visible, SIDE's only section
+      // is denied. Already correct today because applyVisibility rebuilds regions from
+      // VISIBLE sections (pageRuntime.js) — locked in explicitly here.
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "lc", kind: "LIFECYCLE", region: "HEADER", order: 0, componentId: "record.lifecycle" }),
+          makeSection({ id: "gated", kind: "BLOCKERS", region: "SIDE", order: 0, componentId: "record.gated", capabilityRequirement: "finance.read" }),
+        ],
+      });
+      const { container } = render(<MetadataRecordPage definition={def} record={{ id: "wo-1" }} capabilityDecisions={{}} />);
+      expect(screen.getByText("lifecycle for wo-1")).toBeTruthy();
+      expect(container.querySelector(".fo-account-secondary")).toBeNull();
+      expect(screen.queryByText(/do not have access/i)).toBeNull();
+    });
+
+    it("embedded: a region whose only section is hidden renders NOTHING, not the page-level denial", () => {
+      // The real case this closes: accountPageComponents.js's accountRecordPageSideSubset
+      // names only the (finance.read-gated) Account Attention section. Rendered standalone
+      // (the default, embedded=false) that is indistinguishable from a whole page nobody
+      // may see, so it correctly denies. Rendered embedded — because a caller is stitching
+      // it into a larger, already-rendering page — denial would replace that surrounding
+      // content's own graceful degrade, so it renders nothing instead.
+      const def = makePageDefinition({
+        id: "account.side",
+        entityId: "account",
+        label: "Account side",
+        sections: [
+          makeSection({ id: "gated", kind: "ATTENTION", region: "SIDE", order: 0, componentId: "record.gated", capabilityRequirement: "finance.read" }),
+        ],
+      });
+      const { container } = render(
+        <MetadataRecordPage definition={def} record={{ id: "acct-1" }} capabilityDecisions={{}} embedded />
+      );
+      expect(container.firstChild).toBeNull();
+      expect(screen.queryByText(/do not have access/i)).toBeNull();
+      expect(screen.queryByText(/not available to you/i)).toBeNull();
+    });
+
+    it("embedded: a definition with no sections configured also renders nothing, not a page-level message", () => {
+      const def = makePageDefinition({ id: "account.side", entityId: "account", label: "Account side", sections: [] });
+      const { container } = render(<MetadataRecordPage definition={def} record={{ id: "acct-1" }} embedded />);
+      expect(container.firstChild).toBeNull();
+      expect(screen.queryByText(/no sections configured/i)).toBeNull();
+    });
+
+    it("without embedded, a page hidden entirely by access still denies (unchanged default)", () => {
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "gated", kind: "BLOCKERS", region: "MAIN", order: 0, componentId: "record.gated", capabilityRequirement: "finance.read" }),
+        ],
+      });
+      render(<MetadataRecordPage definition={def} record={{ id: "wo-1" }} capabilityDecisions={{}} />);
+      expect(screen.getByText(/do not have access/i)).toBeTruthy();
+    });
+
+    it("without embedded, a page with no sections configured still reports configuration (unchanged default)", () => {
+      const def = makePageDefinition({ id: "p", entityId: "e", label: "P", sections: [] });
+      render(<MetadataRecordPage definition={def} record={{ id: "x" }} />);
+      expect(screen.getByText(/no sections configured/i)).toBeTruthy();
+    });
   });
 });
