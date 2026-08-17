@@ -7,7 +7,17 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findUncoveredDemands, reportCoverage, describeIndex, REGISTERED_LIST_DEMANDS } from "./listIndexCoverage.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  findUncoveredDemands,
+  reportCoverage,
+  describeIndex,
+  REGISTERED_LIST_DEMANDS,
+  findAuthoredDefinitions,
+  findUnregisteredDefinitions,
+} from "./listIndexCoverage.mjs";
 
 const demand = (over = {}) => ({
   collectionGroup: "accounts",
@@ -103,4 +113,65 @@ test("an array-config index is described without crashing on the missing order",
     fields: [{ fieldPath: "tags", arrayConfig: "CONTAINS" }, { fieldPath: "name", order: "ASC" }],
   };
   assert.equal(describeIndex(arrayIndex), "accounts: tags CONTAINS, name ASC");
+});
+
+// --- registration completeness -------------------------------------------------
+//
+// A definition nobody registered is invisible to the coverage check, and an invisible
+// definition is indistinguishable from a covered one. These assert the gate notices.
+
+const withTree = (files, fn) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "listcov-"));
+  for (const [rel, body] of Object.entries(files)) {
+    const full = path.join(root, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, body, "utf8");
+  }
+  try {
+    return fn(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+};
+
+test("a file that authors a list definition is found", () => {
+  const found = withTree(
+    { "crm/accountList.js": "const def = makeListViewDefinition({ id: 'account.index' });\n" },
+    (root) => findAuthoredDefinitions(root)
+  );
+  assert.equal(found.length, 1);
+  assert.ok(found[0].endsWith("crm/accountList.js"), found[0]);
+});
+
+test("a file that merely mentions lists is not mistaken for a definition", () => {
+  const found = withTree(
+    { "crm/notes.js": "// see makeListViewDefinition docs; this file declares nothing\n" },
+    (root) => findAuthoredDefinitions(root)
+  );
+  // The scan matches the CALL, not the name: a doc comment is not a definition.
+  assert.deepEqual(found, []);
+});
+
+test("non-source files are not scanned", () => {
+  const found = withTree(
+    { "crm/list.md": "makeListViewDefinition(\n" },
+    (root) => findAuthoredDefinitions(root)
+  );
+  assert.deepEqual(found, []);
+});
+
+test("an authored definition that nobody registered is reported", () => {
+  const unregistered = findUnregisteredDefinitions(["src/crm/accountList.js"], []);
+  assert.deepEqual(unregistered, ["src/crm/accountList.js"]);
+});
+
+test("a registered definition is not reported", () => {
+  const unregistered = findUnregisteredDefinitions(["src/crm/accountList.js"], ["src/crm/accountList.js"]);
+  assert.deepEqual(unregistered, []);
+});
+
+test("the repository currently authors no unregistered definitions", () => {
+  // Guards the real tree, not a fixture: this is the assertion that fails when someone
+  // adds the first definition and forgets to register it.
+  assert.deepEqual(findUnregisteredDefinitions(findAuthoredDefinitions()), []);
 });
