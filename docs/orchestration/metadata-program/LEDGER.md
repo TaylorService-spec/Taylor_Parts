@@ -17,13 +17,13 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-BOUNDED-READS** (phase 3) — Bounded-read remediation across list-exempt surfaces → Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces
+- **A-BOUNDED-READS** (phase 3) — Bounded-read remediation across list-exempt surfaces → Apply buildQueryDescriptor to the pure-list unbounded reads; aggregates stay blocked
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Executable: the query core generalizes the cursor prior art; apply it to the list-exempt surfaces |
+| A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Apply buildQueryDescriptor to the pure-list unbounded reads; aggregates stay blocked |
 
 ## MERGE_QUEUED
 
