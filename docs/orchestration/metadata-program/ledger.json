@@ -137,25 +137,18 @@
       "route": "/customers",
       "classification": "A_ENTITY_LIST",
       "entity": "Account",
-      "status": "BLOCKED_PROTECTED",
+      "status": "MERGED",
       "issue": 1097,
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Definitions MERGED (bd576a92). Surface rewiring awaits the aggregate decision above.",
+      "nextAction": "Merged. The accounts composite index is declared and pending deploy.",
       "governing": [
         "DECISIONS #102 \u00a79"
       ],
-      "blockers": [
-        {
-          "reason": "The page's portfolio summary cards are aggregates over the whole accounts collection, not list rows",
-          "requiredDecision": "Portfolio summary cards on /customers are AGGREGATES over the whole accounts collection. Bounding their input makes the counts false while presenting them as complete. Resolving needs either an authoritative count source or a decision to reframe/remove the cards - a product decision a read-shape rule does not authorize. Same class as X-INVENTORY-ANALYTICS-AGGREGATE."
-        }
-      ],
-      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation. FIRST HALF QUEUED (#1137): Account entity + account.index list, the program's first real definitions. Enum labels sourced from domain/constants rather than a second copy; identity claims no reference number because an Account has none; tags render but claim no operator until the index exists; landing view is recently-viewed. Exposed and fixed a real defect - requiredIndexes() emitted ASC/DESC into output meant to be pasted into firestore.indexes.json, where only ASCENDING/DESCENDING is accepted, so every demand compared unequal against all eight existing declarations and would have failed the deploy of its own fix. SECOND HALF IS NOT A PURE LIST MIGRATION - OPEN QUESTION: /customers renders portfolio summary cards (total/active/prospect/inactive/archived counts) computed client-side over the WHOLE accounts collection, plus a tag facet built the same way. Those are AGGREGATES, not list rows: bounding their input makes the counts mathematically false while presenting them as complete - the same class as X-INVENTORY-ANALYTICS-AGGREGATE. Migrating the table to bounded paging while leaving the cards reading everything would keep the unbounded read and add a second one. Resolving it needs either an authoritative count source or a decision to reframe/remove the cards, which is a product decision a read-shape rule does not authorize.",
-      "pr": 1137,
-      "branch": "feat/customers-metadata",
-      "mergeSha": "bd576a92"
+      "notes": "AccountsList.jsx:54 useFirestoreCollection(ACCOUNTS_COLLECTION) \u2014 whole collection, all filtering/counting client-side. DECISIONS #102 \u00a79 violation. FIRST HALF QUEUED (#1137): Account entity + account.index list, the program's first real definitions. Enum labels sourced from domain/constants rather than a second copy; identity claims no reference number because an Account has none; tags render but claim no operator until the index exists; landing view is recently-viewed. Exposed and fixed a real defect - requiredIndexes() emitted ASC/DESC into output meant to be pasted into firestore.indexes.json, where only ASCENDING/DESCENDING is accepted, so every demand compared unequal against all eight existing declarations and would have failed the deploy of its own fix. SECOND HALF IS NOT A PURE LIST MIGRATION - OPEN QUESTION: /customers renders portfolio summary cards (total/active/prospect/inactive/archived counts) computed client-side over the WHOLE accounts collection, plus a tag facet built the same way. Those are AGGREGATES, not list rows: bounding their input makes the counts mathematically false while presenting them as complete - the same class as X-INVENTORY-ANALYTICS-AGGREGATE. Migrating the table to bounded paging while leaving the cards reading everything would keep the unbounded read and add a second one. Resolving it needs either an authoritative count source or a decision to reframe/remove the cards, which is a product decision a read-shape rule does not authorize. RESOLVED by Owner portfolio ruling and delivered (#1138): cards KEPT, fed by getAccountPortfolioSummary - a server-side count over the complete scope, authorized with the existing account.record.read rather than a new capability, not materialized. total is counted INDEPENDENTLY of the per-status counts so the difference surfaces as `unclassified`, which is how a legacy title-cased status is reported rather than vanishing from four categories that then fail to add up. The whole-collection subscription is REMOVED, not kept alongside. Tag facet, relationship facet and global search deferred as future governed work - each was built from a client-side full-collection scan and rebuilding any of them from a page would present partial data as complete. Also corrected a defect in the merged definition: relationshipType (singular ENUM) is not a stored field; accounts carry relationshipTypes, an array, now typed with the new ENUM_SET field type.",
+      "pr": 1138,
+      "mergeSha": "abfd3ee7"
     },
     {
       "id": "S-CRM-ACCOUNT-RECORD",
@@ -1294,7 +1287,7 @@
         "Owner ruling 2026-08-17 section 4",
         "DECISIONS #102 section 9"
       ],
-      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection.",
+      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection. PRECEDENT: the Account portfolio summary (#1138) resolved the same class of problem with a complete server-side count plus an independently-counted total, so a discrepancy is reported rather than hidden. Whether that shape transfers depends on whether the inventory figures are counts or netted quantities - a count aggregates; a netted availableStock does not.",
       "blockers": [
         {
           "reason": "INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment.",
@@ -1546,6 +1539,62 @@
       "branch": "feat/bounded-list-reads",
       "checks": "875/875 component tests; tsc clean",
       "mergeSha": "2a7847d159687d94f4a0d2a7ae1018a08b081eeb"
+    },
+    {
+      "id": "X-ACCOUNT-TAG-CATALOG",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Governed Account tag facet / catalog projection",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers",
+      "classification": "A_ENTITY_LIST",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Needs an authoritative tag source before a facet can be honest",
+      "blockers": [
+        {
+          "reason": "No authoritative Account tag catalog exists; the old facet was built by scanning every account in the browser",
+          "requiredDecision": "Whether tags become governed reference data with a catalog, or remain free-form labels with no global facet. A facet rebuilt from the current page would present 'the tags on these fifty rows' as 'the tags that exist'."
+        }
+      ],
+      "governing": [
+        "Owner portfolio ruling section 4"
+      ],
+      "notes": "Tags still RENDER in rows; only the global facet is deferred. Recorded rather than dropped, per the ruling."
+    },
+    {
+      "id": "A-INDEX-FILTER-COMBINATIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Index derivation across filter COMBINATIONS",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Model per-combination indexes, including arrayConfig for array-contains",
+      "governing": [
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "requiredIndexes() emits ONE combined index for all declared filters plus the sort. Firestore does not serve a query filtering on a subset from that index, so a list declaring two independent filters really demands several indexes. It also emits `order` for every filter field, which is wrong for array-contains - that needs arrayConfig CONTAINS. This is why the Customers relationship facet is deferred: its honest query is array-contains beside an ordering, and the derivation cannot yet state the index it needs. Until this exists, a definition may declare at most one filter without the gate understating what the backend must provide."
+    },
+    {
+      "id": "X-ACCOUNT-SEARCH",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Governed Account search",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers",
+      "classification": "A_ENTITY_LIST",
+      "status": "READY",
+      "nextAction": "Design a bounded server-side name search; do not restore the client-array provider",
+      "governing": [
+        "DECISIONS #102 section 9",
+        "Owner portfolio ruling section 6"
+      ],
+      "notes": "The accounts search provider filtered an array the whole-collection subscription supplied, so removing that subscription removed its only possible input. Handing it a page would return 'no results' for customers that exist - a search box that silently finds nothing is worse than none, because it answers. Removed from /customers in #1138 and recorded here."
     }
   ]
 }
