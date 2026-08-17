@@ -59,6 +59,7 @@ jobs:
 
       - name: ListViewDefinition contract tests (node:test)
         run: node --test test/metadataListViewDefinition.test.mjs
+        working-directory: field-ops-app-vite
       - name: Component/action registry tests (node:test)
         run: node --test test/metadataRegistry.test.mjs
         working-directory: field-ops-app-vite
