@@ -153,8 +153,11 @@ test("the seed does not write governance-init metadata onto NATIVE warehouses", 
   // field name is not the same as writing it.
   const block = raw.split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith("//")).join(String.fromCharCode(10));
   assert.match(block, /provenance:\s*"NATIVE"/);
-  assert.equal(/governanceInitializedAt/.test(block), false, "NATIVE must not carry governanceInitializedAt");
-  assert.equal(/governanceInitializedBy/.test(block), false, "NATIVE must not carry governanceInitializedBy");
+  // The pair must be DELETED, not merely omitted: every upsert is a merge, so a sandbox seeded
+  // before the correction would otherwise keep the forbidden fields forever.
+  assert.match(block, /governanceInitializedAt:\s*FieldValue\.delete\(\)/);
+  assert.match(block, /governanceInitializedBy:\s*FieldValue\.delete\(\)/);
+  assert.equal(/governanceInitializedAt:\s*now/.test(block), false, "NATIVE must not WRITE governanceInitializedAt");
   assert.match(block, /createdAt:\s*now/);
 });
 
