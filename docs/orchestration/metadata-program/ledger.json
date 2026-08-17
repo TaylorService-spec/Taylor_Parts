@@ -1031,7 +1031,7 @@
       "pr": 1110,
       "headSha": "a9ed84c9dd1cde09a3a72f975f55ba08ac2254c5",
       "branch": "feat/access-contract-generator",
-      "checks": "5/5 mirror integrity; both packages typecheck; access parity suites pass"
+      "checks": "9/9 mirror integrity; both packages typecheck; shadow + catalog parity pass"
     },
     {
       "id": "A-BOUNDED-READS",
@@ -1257,15 +1257,15 @@
       "phase": "1",
       "wave": "1",
       "kind": "ARCHITECTURE",
-      "title": "Bring permissionCatalog.ts and parityFixtures.ts under generation",
+      "title": "Bring permissionCatalog.ts under generation",
       "domain": "program",
       "entity": "n/a",
       "status": "READY",
-      "nextAction": "Two separate follow-ups; neither is mechanical",
+      "nextAction": "Unify the client copy's abbreviated comments onto the canonical text, as its own PR",
       "governing": [
         "Owner ruling 2026-08-17 section 6"
       ],
-      "notes": "permissionCatalog.ts: the client copy has independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants its own review. parityFixtures.ts: needs a declared, bounded SDK import substitution (firebase-admin/firestore vs firebase/firestore) - a real platform difference, unlike the artificial pathname one, so it is the one case where a substitution rule would be legitimate rather than a workaround."
+      "notes": "parityFixtures.ts is DONE (PR #1110) via a declared PLATFORM_SUBSTITUTIONS rule - the firebase-admin vs firebase import is a real platform boundary, unlike the artificial pathname, so substitution is the honest representation rather than a workaround. REMAINING: permissionCatalog.ts, whose client copy carries independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants to arrive as its own reviewable change. LESSON RECORDED FROM #1110: a round-trip generator check verifies that generation is REPRODUCIBLE, never that it is CORRECT - the substitution table was wired in wrong and --check passed green while the client module imported firebase-admin. Outcome assertions against the real world are required alongside any generator."
     }
   ]
 }

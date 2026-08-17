@@ -17,7 +17,7 @@ continues from the next executable item — without asking what happened.
 
 ## Next executable
 
-- **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts and parityFixtures.ts under generation → Two separate follow-ups; neither is mechanical
+- **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts under generation → Unify the client copy's abbreviated comments onto the canonical text, as its own PR
 - **S-ADM-ROLES** (phase 9) — Roles & Permissions → Inventory only; form is unconditionally disabled
 - **S-ADM-USERS** (phase 9) — Users (admin) → Inventory only; no governed directory read exists to migrate
 - **S-DASH-MY** (phase 9) — My Dashboard → Later phase; dashboard composition is not list/record metadata
@@ -44,7 +44,7 @@ continues from the next executable item — without asking what happened.
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Sequence with A-BOUNDED-READS |
-| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts and parityFixtures.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Two separate follow-ups; neither is mechanical |
+| A-PERMISSION-CATALOG-GENERATION | 1 | Bring permissionCatalog.ts under generation | — | — | — | — | — | NOT_APPLICABLE | Unify the client copy's abbreviated comments onto the canonical text, as its own PR |
 
 ## MERGE_QUEUED
 
