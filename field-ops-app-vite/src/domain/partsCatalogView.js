@@ -31,9 +31,25 @@ export const CATALOG_STATES = Object.freeze([
 // Adapter issue codes that mean a static sku could not be validly represented
 // (a dropped/duplicated/ambiguous Part) -- any of these must BLOCK, never render
 // a partial catalog that silently omits a Part.
+// Only issues that make IDENTITY itself ambiguous block. A duplicate or missing identifier means a
+// Part could be dropped, duplicated or mis-attributed, and no rendering is safe.
+//
+// AUTHORITY DIRECTION (Owner-ratified 2026-08-17). The two DIRECTIONAL mismatches are no longer
+// blocking, because blocking them inverted the authority model:
+//
+//   CANONICAL_WITHOUT_STATIC          -- a valid governed Part the legacy mirror does not carry.
+//                                        Blocking this let the static catalog VETO canonical Part
+//                                        Master truth by omission. It now renders as CANONICAL_ONLY
+//                                        and the mismatch is surfaced as evidence.
+//   STATIC_WITHOUT_CANONICAL_UNAPPROVED -- legacy-only data with no governed counterpart. Still
+//                                        NEVER promoted into a row (that fail-closed direction is
+//                                        unchanged and is the one that matters); it is simply no
+//                                        longer allowed to take the whole catalog down with it.
+//
+// The safety objective is unchanged and now literally true: a canonical Part is never silently
+// dropped, static-only data is never silently promoted, and every mismatch is surfaced explicitly.
+// ONE source mismatch must never become a whole-catalog outage.
 const BLOCKING_ISSUE_CODES = new Set([
-  "STATIC_WITHOUT_CANONICAL_UNAPPROVED",
-  "CANONICAL_WITHOUT_STATIC",
   "DUPLICATE_STATIC_SKU",
   "DUPLICATE_CANONICAL_PARTID",
   "MISSING_IDENTIFIER",
@@ -91,17 +107,24 @@ export function composeGovernedPartsWorkspace(input = {}) {
   // 4. Full-accounting invariant: every static sku must be a CANONICAL_MATCH or an
   //    approved STATIC_ONLY_EXCLUDED, and there must be no blocking structural issue.
   //    Anything else means a Part would be silently dropped/duplicated -> BLOCK.
-  const fullyAccounted =
-    ws.totals.canonicalMatch + ws.totals.staticOnlyExcluded === ws.totals.staticCount;
+  // FULL ACCOUNTING, restated as the invariant it was always meant to express: every CANONICAL Part
+  // is represented by exactly one row. The previous formula measured the STATIC catalog instead, so a
+  // governed Part with no static twin could not be accounted for at all -- which is precisely how a
+  // valid Part came to be dropped. Static-only records remain accounted for as approved exclusions or
+  // as surfaced issues; they are deliberately not required to produce rows.
+  const canonicalAccounted = ws.totals.canonicalMatch + ws.totals.canonicalOnly;
+  const fullyAccounted = canonicalAccounted === ws.totals.canonicalCount;
   const blockingIssues = ws.issues.filter((i) => BLOCKING_ISSUE_CODES.has(i.code));
   if (!fullyAccounted || blockingIssues.length > 0) {
     return {
       status: "BLOCKED_INCOMPLETE_INPUT",
       ws: null,
       meta: {
-        reason: "canonical composition did not fully account for the static catalog",
+        reason: "canonical composition did not fully account for every canonical Part",
         staticCount: ws.totals.staticCount,
+        canonicalCount: ws.totals.canonicalCount,
         canonicalMatch: ws.totals.canonicalMatch,
+        canonicalOnly: ws.totals.canonicalOnly,
         staticOnlyExcluded: ws.totals.staticOnlyExcluded,
         blockingIssueCount: blockingIssues.length,
       },
@@ -115,7 +138,11 @@ export function composeGovernedPartsWorkspace(input = {}) {
       staticCount: ws.totals.staticCount,
       canonicalCount: ws.totals.canonicalCount,
       canonicalMatch: ws.totals.canonicalMatch,
+      canonicalOnly: ws.totals.canonicalOnly,
       staticOnlyExcluded: ws.totals.staticOnlyExcluded,
+      // Reconciliation evidence: surfaced, never suppressed, never blocking.
+      canonicalWithoutStaticCount: ws.issues.filter((i) => i.code === "CANONICAL_WITHOUT_STATIC").length,
+      staticWithoutCanonicalCount: ws.issues.filter((i) => i.code === "STATIC_WITHOUT_CANONICAL_UNAPPROVED").length,
       // descriptive (non-blocking) divergences -- surfaced for evidence; Stage A
       // proved these are 0 in production. Canonical is authoritative on a divergence.
       nameDivergenceCount: ws.issues.filter((i) => i.code === "NAME_DIVERGENCE").length,

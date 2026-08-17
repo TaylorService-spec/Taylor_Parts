@@ -185,11 +185,18 @@ check("invalid blocking on the detail view surfaces no raw canonical document da
   assert.equal(blob.includes("secretField"), false);
   assert.equal(blob.includes("raw-value"), false);
 });
-check("BLOCKED (not a stale page) when the canonical read omits this very Part", () => {
+check("NOT_FOUND (never a stale static page) when the canonical read omits this very Part", () => {
+  // UPDATED 2026-08-17 (Owner-ratified authority direction). Canonical is authoritative, so a Part
+  // absent from the canonical read is genuinely not a governed Part -- NOT_FOUND is the honest
+  // answer, and it no longer takes the whole catalog down with it.
+  //
+  // The invariant that actually mattered is unchanged and still asserted: `part` is null, so the
+  // static compatibility record is NEVER served as a stale fallback detail page. Only the status
+  // LABEL moved, from a whole-composition block to a precise per-Part answer.
   const short = { status: "OK", rows: CANONICAL.filter((c) => c.partId !== A_CANONICAL_SKU) };
   const { status, part } = view(A_CANONICAL_SKU, short);
-  assert.equal(status, "BLOCKED_INCOMPLETE_INPUT", "an omitted Part must BLOCK, never silently fall back to static");
-  assert.equal(part, null);
+  assert.equal(status, "NOT_FOUND");
+  assert.equal(part, null, "the static record must never be served as the Part");
 });
 check("BLOCKED on a malformed/absent route part id (not 'Unknown part')", () => {
   for (const bad of [undefined, null, "", 42, {}]) {

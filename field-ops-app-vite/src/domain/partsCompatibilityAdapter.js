@@ -24,7 +24,11 @@ export const PROVENANCE = Object.freeze([
 ]);
 
 /** Deterministic per-row identity states. */
-export const IDENTITY_STATES = Object.freeze(["CANONICAL_MATCH", "STATIC_ONLY_EXCLUDED"]);
+// CANONICAL_ONLY added (Owner-ratified 2026-08-17): a valid canonical Part with no static
+// counterpart. Rows were previously built by iterating the STATIC catalog only, so such a Part
+// produced no row at all -- the legacy mirror could veto governed Part Master truth simply by not
+// knowing an id. Canonical is authoritative; it is never suppressed by the compatibility layer.
+export const IDENTITY_STATES = Object.freeze(["CANONICAL_MATCH", "CANONICAL_ONLY", "STATIC_ONLY_EXCLUDED"]);
 
 /** The exact approved static-only exclusions (INV-CONVERGENCE-B; Decision #44).
  * These ten may remain represented via static compatibility to preserve current
@@ -116,10 +120,14 @@ export function buildPartsWorkspace(inputs = {}) {
     staticBySku.set(sku, s);
   }
 
-  // --- canonical records with no static compatibility record (unexpected) ---
+  // --- canonical records with no static compatibility record ---
+  // Surfaced as reconciliation EVIDENCE, never as a reason to hide the Part. The row itself is
+  // emitted below from canonical authority alone.
+  const canonicalOnlyIds = [];
   for (const partId of canonicalById.keys()) {
     if (!staticBySku.has(partId)) {
       issues.push({ code: "CANONICAL_WITHOUT_STATIC", key: partId });
+      canonicalOnlyIds.push(partId);
     }
   }
 
@@ -199,6 +207,34 @@ export function buildPartsWorkspace(inputs = {}) {
     }
   }
 
+  // --- CANONICAL_ONLY rows: canonical Parts the static mirror does not carry ---
+  // Built from canonical fields ONLY. There is deliberately no static fallback here: the static
+  // catalog has nothing to say about these ids, and inventing compatibility values would be exactly
+  // the silent promotion of legacy data this adapter exists to prevent.
+  for (const partId of canonicalOnlyIds) {
+    const c = canonicalById.get(partId);
+    const overlay = overlayBySku[partId] || {};
+    const workflow = workflowBySku[partId] || {};
+    const snapshot = snapshotBySku[partId] || null;
+    const overlayOnly = {
+      ...(overlay.warehouseQty !== undefined ? { warehouseQty: field(overlay.warehouseQty, "LEDGER_OVERLAY") } : {}),
+      ...(workflow.status !== undefined ? { workflowStatus: field(workflow.status, "WORKFLOW") } : {}),
+      ...(snapshot ? { historicalSnapshot: field(snapshot, "HISTORICAL_SNAPSHOT") } : {}),
+    };
+    const fields = {
+      partId: field(c.partId, "CANONICAL"),
+      ...(isStr(c.internalPartNumber) ? { internalPartNumber: field(c.internalPartNumber, "CANONICAL") } : {}),
+      name: field(isStr(c.name) ? c.name : null, "CANONICAL"),
+      category: field(isStr(c.category) ? c.category : null, "CANONICAL"),
+      stockingUnit: field(isStr(c.stockingUnit) ? c.stockingUnit : null, "CANONICAL"),
+      ...(isStr(c.status) ? { status: field(c.status, "CANONICAL") } : {}),
+      ...(isStr(c.controlType) ? { controlType: field(c.controlType, "CANONICAL") } : {}),
+      ...(isStr(c.stockingClass) ? { stockingClass: field(c.stockingClass, "CANONICAL") } : {}),
+      ...overlayOnly,
+    };
+    rows.push({ key: partId, identityState: "CANONICAL_ONLY", fields });
+  }
+
   rows.sort((a, b) => a.key.localeCompare(b.key));
   issues.sort((a, b) => (a.code + (a.key || "")).localeCompare(b.code + (b.key || "")));
 
@@ -206,6 +242,7 @@ export function buildPartsWorkspace(inputs = {}) {
     staticCount: staticBySku.size,
     canonicalCount: canonicalById.size,
     canonicalMatch: rows.filter((r) => r.identityState === "CANONICAL_MATCH").length,
+    canonicalOnly: rows.filter((r) => r.identityState === "CANONICAL_ONLY").length,
     staticOnlyExcluded: rows.filter((r) => r.identityState === "STATIC_ONLY_EXCLUDED").length,
     issueCount: issues.length,
   };
