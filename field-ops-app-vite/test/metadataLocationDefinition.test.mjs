@@ -12,7 +12,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateEntityDefinition, findField } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
-import { locationEntity, locationIndexList } from "../src/metadata/definitions/location.js";
+import { locationEntity, locationIndexList, locationRelatedList } from "../src/metadata/definitions/location.js";
+import { accountEntity } from "../src/metadata/definitions/account.js";
 
 test("the Location entity is valid against the contract", () => {
   assert.deepEqual(validateEntityDefinition(locationEntity), []);
@@ -132,4 +133,48 @@ test("requiredIndexes derives exactly one composite: accountId + name sort + tie
   assert.equal(index.collectionGroup, locationEntity.collection);
   const fieldPaths = index.fields.map((f) => f.fieldPath);
   assert.deepEqual(fieldPaths, ["accountId", "name", "__name__"]);
+});
+
+// --- locationRelatedList — account.js now declares the owning-side `account.locations`
+// edge, which is what unblocks a RELATED list here (see the file header's updated
+// explanation of what changed).
+
+test("the Locations related list is valid against the entity AND against account.js's own relationships", () => {
+  // The third argument is the OWNING entity's relationships, exactly as
+  // validateListViewDefinition documents: a RELATED list's parent relationship must be
+  // declared on the entity that OWNS it, not on the entity the list renders.
+  assert.deepEqual(validateListViewDefinition(locationRelatedList, locationEntity, accountEntity.relationships), []);
+});
+
+test("the related list is scoped by account.locations, and hands off to location.index", () => {
+  assert.equal(locationRelatedList.id, "account.locations");
+  assert.equal(locationRelatedList.surface, "RELATED");
+  assert.equal(locationRelatedList.parentRelationshipId, "account.locations");
+  assert.equal(locationRelatedList.viewAllListId, "location.index");
+  assert.equal(locationIndexList.id, locationRelatedList.viewAllListId);
+});
+
+test("account.locations reaches the location entity from the OWNING (account) side", () => {
+  const rel = accountEntity.relationships.find((r) => r.id === "account.locations");
+  assert.ok(rel, "account.js must declare the account.locations relationship");
+  assert.equal(rel.fromEntityId, "account");
+  assert.equal(rel.toEntityId, "location");
+});
+
+test("the related list declares no capability — locationEntity.readCapability is null", () => {
+  // Same precedent contact.js's account.contacts related list follows: Rules gate this
+  // collection by role, not by capability, so no capability is invented here.
+  assert.equal(locationEntity.readCapability, null);
+});
+
+test("the related list declares no parent-scope filter — the runtime applies it from the relationship", () => {
+  assert.deepEqual([...locationRelatedList.filters], []);
+});
+
+test("requiredIndexes derives NO composite for the related list — a single-field sort needs none", () => {
+  // No filters and exactly one sort field is the case listViewDefinition.js's own
+  // requiredIndexes() explicitly skips (Firestore's automatic single-field index already
+  // serves it) — same shape contactRelatedList and opportunityRelatedList already rely on.
+  const required = requiredIndexes(locationRelatedList, locationEntity);
+  assert.deepEqual(required, []);
 });

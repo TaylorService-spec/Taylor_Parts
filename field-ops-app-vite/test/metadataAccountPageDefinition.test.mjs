@@ -16,6 +16,7 @@ import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { contactRelatedList } from "../src/metadata/definitions/contact.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
 import { salesOrderRelatedList } from "../src/metadata/definitions/salesOrder.js";
+import { locationRelatedList } from "../src/metadata/definitions/location.js";
 
 test("the Account record page is valid against the Account entity", () => {
   assert.deepEqual(validatePageDefinition(accountRecordPage, accountEntity), []);
@@ -27,9 +28,14 @@ test("compositionMode is RECORD, pinned deliberately — an Account has no lifec
 
 test("every RELATED_LIST section names a listId that resolves to a real, imported ListViewDefinition", () => {
   const relatedSections = accountRecordPage.sections.filter((s) => s.kind === "RELATED_LIST");
-  assert.ok(relatedSections.length >= 3, "expects at least Contacts, Opportunities, Sales Orders");
+  assert.ok(relatedSections.length >= 4, "expects at least Contacts, Opportunities, Sales Orders, Locations");
 
-  const realLists = { "account.contacts": contactRelatedList, "account.opportunities": opportunityRelatedList, "account.salesOrders": salesOrderRelatedList };
+  const realLists = {
+    "account.contacts": contactRelatedList,
+    "account.opportunities": opportunityRelatedList,
+    "account.salesOrders": salesOrderRelatedList,
+    "account.locations": locationRelatedList,
+  };
 
   for (const section of relatedSections) {
     assert.ok(section.listId, `RELATED_LIST section "${section.id}" must name a listId`);
@@ -85,15 +91,72 @@ test("sections verified to have NO capability gate declare none — not an omiss
   assert.equal(byId.serviceActivity.capabilityRequirement, null);
 });
 
-test("Locations, Commercial Profile, and Notes & Identifiers are deliberately NOT modeled yet", () => {
-  // These are real blocks on the live AccountDetail.jsx surface, but Locations has no
-  // ListViewDefinition and the profile/identifier fields are not yet declared on
-  // accountEntity — see the GAPS block in accountPage.js. Asserting their absence pins the
-  // decision so a future lane adding them does so knowingly, not by silent omission.
+test("Locations, Commercial Profile, and Notes & Identifiers are now modeled — the prior gaps are closed", () => {
+  // These are real blocks on the live AccountDetail.jsx surface. account.js now declares
+  // the account.locations relationship and the twelve Commercial Profile / Notes &
+  // Identifiers fields, and location.js now declares locationRelatedList — see the CLOSED
+  // GAPS block in accountPage.js.
   const ids = accountRecordPage.sections.map((s) => s.id);
-  for (const missing of ["locations", "commercialProfile", "notesAndIdentifiers"]) {
-    assert.ok(!ids.includes(missing), `"${missing}" should not be modeled until its registration gap is closed`);
+  for (const present of ["locations", "commercialProfile", "notesAndIdentifiers"]) {
+    assert.ok(ids.includes(present), `"${present}" should be modeled now that its registration gap is closed`);
   }
+});
+
+test("locations is a RELATED_LIST in MAIN, naming location.js's account.locations list", () => {
+  const section = accountRecordPage.sections.find((s) => s.id === "locations");
+  assert.equal(section.kind, "RELATED_LIST");
+  assert.equal(section.region, "MAIN");
+  assert.equal(section.listId, "account.locations");
+  assert.equal(section.listId, locationRelatedList.id);
+  // No capability — location.js declares readCapability: null explicitly, the same
+  // finding as contacts.
+  assert.equal(section.capabilityRequirement, null);
+});
+
+test("commercialProfile groups exactly the fields CommercialProfileSection renders, in render order", () => {
+  const section = accountRecordPage.sections.find((s) => s.id === "commercialProfile");
+  assert.equal(section.kind, "FIELD_GROUP");
+  assert.equal(section.region, "SIDE");
+  assert.deepEqual(
+    [...section.fieldIds],
+    [
+      "accountOwnerEmployeeId",
+      "defaultCurrency",
+      "paymentTerms",
+      "purchaseOrderRequired",
+      "invoiceDeliveryMethod",
+      "taxStatus",
+      "billingContactId",
+    ]
+  );
+  for (const fieldId of section.fieldIds) {
+    assert.ok(findField(accountEntity, fieldId), `commercialProfile claims "${fieldId}", which is not on accountEntity`);
+  }
+  // No capability — account.governedField.write gates WRITE of paymentTerms/taxStatus,
+  // not READ; the Account document's read gate is uniform, and account.js itself
+  // declares no readCapability on those two fields for that reason.
+  assert.equal(section.capabilityRequirement, null);
+});
+
+test("notesAndIdentifiers groups exactly the reserved-identifier fields, collapsed by default", () => {
+  const section = accountRecordPage.sections.find((s) => s.id === "notesAndIdentifiers");
+  assert.equal(section.kind, "FIELD_GROUP");
+  assert.equal(section.region, "SIDE");
+  assert.deepEqual([...section.fieldIds], ["notes", "customerNumber", "erpId", "accountingId", "legacyId"]);
+  for (const fieldId of section.fieldIds) {
+    assert.ok(findField(accountEntity, fieldId), `notesAndIdentifiers claims "${fieldId}", which is not on accountEntity`);
+  }
+  assert.equal(section.collapsedByDefault, true);
+  assert.equal(section.capabilityRequirement, null);
+});
+
+test("SIDE region renders Commercial Profile, then Account Attention, then Notes & Identifiers", () => {
+  // Matches AccountDetail.jsx's actual top-to-bottom order in the secondary column.
+  const side = accountRecordPage.sections
+    .filter((s) => s.region === "SIDE")
+    .sort((a, b) => a.order - b.order)
+    .map((s) => s.id);
+  assert.deepEqual(side, ["commercialProfile", "accountAttention", "notesAndIdentifiers"]);
 });
 
 test("componentId sections use REGISTERED-id shape (never a function) and are named for a later wiring lane", () => {

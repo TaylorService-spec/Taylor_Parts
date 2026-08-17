@@ -62,11 +62,11 @@ import { LOCATIONS_COLLECTION } from "../../domain/constants.js";
 // account.contacts and account.opportunities are both declared on account.js, per the
 // rule findParentRelationship enforces (a RELATED list's parent relationship must reach
 // the target entity from the OWNING side, checked against the PARENT's own declarations).
-// account.js is explicitly out of this lane's writeScope. Without that edge, a
-// RELATED list scoped to one Account's Locations has no parentRelationshipId that would
-// validate — so this file deliberately does NOT attempt one, and declares an INDEX list
-// only. See REGISTRATION_PENDING in this program's handoff for the account.js edit that
-// unblocks it.
+// account.js NOW declares that edge (`account.locations`, viaField accountId,
+// cardinality ONE_TO_MANY) — see account.js's own relationships block — which is what
+// unblocks `locationRelatedList` below. The INDEX list above still exists and is still
+// correct on its own terms (a general, filterable, cross-Account register); the RELATED
+// list is additive, not a replacement.
 //
 // `locations/{locationId}` ADMITS BY ROLE, NOT CAPABILITY, AND VALIDATES NOTHING ELSE.
 // firestore.rules: `allow read: if isAdminOrDispatcher(); allow create, update: if
@@ -213,4 +213,45 @@ export const locationIndexList = makeListViewDefinition({
   // site the way contact.index is, not read top-down like an operational queue.
   pageSize: 50,
   savedViews: [makeSavedView({ id: "recent", label: "Recently viewed", kind: "RECENTLY_VIEWED", isDefault: true })],
+});
+
+/**
+ * The Account record's Locations section.
+ *
+ * RELATED, not INDEX — now that account.js declares the owning-side edge
+ * (`account.locations`, viaField accountId, cardinality ONE_TO_MANY), this list can
+ * validate the way contactRelatedList does: parentRelationshipId names that edge, and
+ * findParentRelationship (listViewDefinition.js) resolves it against the OWNING entity's
+ * (Account's) own relationship declarations, not this file's.
+ *
+ * NO parent-scope FILTER is declared, same as contactRelatedList — the runtime applies
+ * the parent scope from the relationship's viaField, and declaring accountId as a filter
+ * here as well would double-state the same scoping two different ways.
+ *
+ * NO capabilityRequirement on the section this list backs, and none is declared here
+ * either: locationEntity.readCapability is null (Rules gate `locations/{locationId}` by
+ * ROLE — isAdminOrDispatcher() — with no capability check at all, per this file's own
+ * header). account.contacts is the precedent this follows exactly — contact.js declares
+ * no capability on contactRelatedList for the identical reason.
+ */
+export const locationRelatedList = makeListViewDefinition({
+  id: "account.locations",
+  entityId: "location",
+  label: "Locations",
+  surface: "RELATED",
+  parentRelationshipId: "account.locations",
+  viewAllListId: "location.index",
+  columns: [
+    makeColumn({ fieldId: "name", sortable: true }),
+    makeColumn({ fieldId: "addressCity" }),
+    makeColumn({ fieldId: "addressState" }),
+    makeColumn({ fieldId: "accessNotes" }),
+  ],
+  // No declared filters — the parent scope comes from the relationship, not a filter
+  // clause. Same as contactRelatedList.
+  filters: [],
+  defaultSort: [makeSort({ fieldId: "name", direction: "ASC" })],
+  // Alphabetical, matching location.index — a Locations section is scanned for a site
+  // name, not read top-down like a queue.
+  pageSize: 25,
 });

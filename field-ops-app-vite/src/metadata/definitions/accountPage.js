@@ -63,6 +63,23 @@ import { makeSection, makePageDefinition } from "../pageDefinition.js";
 //     `readCapability: null` rather than inventing one. finance.read is declared here as the
 //     strictest REAL gate this composed section actually has; the Work Order half is
 //     undeclared for the same reason contacts and Service Activity are undeclared below.)
+//   - locations (RELATED_LIST)    -> NO capability declared. location.js:
+//     locationEntity.readCapability is null (`locations/{locationId}` is Rules-gated by
+//     ROLE — isAdminOrDispatcher() — with no capability check at all). Same precedent as
+//     `contacts` immediately below.
+//   - commercialProfile (FIELD_GROUP) -> NO capability declared. account.js's own field
+//     comments for paymentTerms/taxStatus: `account.governedField.write` (capability id
+//     account.governedField.write, resource account.governedField, firestore.rules'
+//     accountGovernedFieldsValid/accountGovernedFieldsUnchanged/
+//     accountGovernedCreateBaseline) gates WRITE of those two fields to admin only — it
+//     does not gate READ. The Account document's READ gate is uniform (isAdminOrDispatcher()
+//     for the whole record, same as every other field on this entity), which is exactly
+//     why account.js itself declares no readCapability on paymentTerms/taxStatus (see that
+//     file's comment on the paymentTerms field). Declaring a section-level read capability
+//     here would contradict that finding, not strengthen it.
+//   - notesAndIdentifiers (FIELD_GROUP) -> NO capability declared, same uniform-read-gate
+//     reasoning as commercialProfile: notes/customerNumber/erpId/accountingId/legacyId
+//     carry no governance of their own in account.js.
 //   - contacts, serviceActivity, and the header identity FIELD_GROUP carry NO
 //     capabilityRequirement — verified absent, not merely unlisted:
 //       - contacts: contact.js declares `readCapability: null` explicitly — "NO CAPABILITY
@@ -73,28 +90,20 @@ import { makeSection, makePageDefinition } from "../pageDefinition.js";
 //         readCapability. Declaring one would assert an authority nothing enforces (§6).
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// GAPS — deliberately NOT modeled in this version, and why:
+// CLOSED GAPS (were open in the prior version of this file; both are now modeled):
 //
-//   1. Locations. AccountDetail.jsx renders a Locations related section (add-only, backed
-//      by useLocationsForAccount), but no `account.locations` ListViewDefinition exists —
-//      there is no location.js under definitions/ and accountEntity declares no
-//      `account.locations` relationship. pageDefinition.js's RELATED_LIST rule requires a
-//      section to "name the ListViewDefinition it renders"; naming one that does not exist
-//      would fail this file's own test that every RELATED_LIST listId resolves to a real,
-//      imported list. Out of scope for this lane (writeScope excludes every other
-//      definition file). REGISTRATION_PENDING: a future lane defines `account.locations`
-//      (entity relationship + ListViewDefinition) and this page adds the section.
+//   1. Locations. account.js now declares the owning-side `account.locations` relationship
+//      and location.js now declares `locationRelatedList` (id "account.locations",
+//      parentRelationshipId "account.locations", viewAllListId "location.index"). The
+//      `locations` RELATED_LIST section below names that list.
 //
-//   2. Commercial Profile (owner, default currency, payment terms, PO-required, invoice
-//      delivery method, tax status, billing contact) and Notes & Identifiers (notes,
-//      customerNumber, erpId, accountingId, legacyId). Both are real, literally-rendered
-//      Account fields in AccountDetail.jsx, but accountEntity (account.js) currently
-//      declares only five fields: name, status, relationshipTypes, updatedAt, tags. A
-//      FIELD_GROUP section must name fieldIds that exist on the entity
-//      (validatePageDefinition), and account.js is not in this lane's writeScope. Modeling
-//      these as a non-FIELD_GROUP componentId section would misstate them as some other
-//      SECTION_KIND (activity/attention/metric) they are not. REGISTRATION_PENDING: extend
-//      accountEntity's field list in account.js, then add these as FIELD_GROUP sections.
+//   2. Commercial Profile and Notes & Identifiers. account.js now declares
+//      defaultCurrency/purchaseOrderRequired/invoiceDeliveryMethod/paymentTerms/
+//      taxStatus/billingContactId/accountOwnerEmployeeId (Commercial Profile) and
+//      customerNumber/erpId/accountingId/legacyId/notes (Notes & Identifiers). The two
+//      FIELD_GROUP sections below name exactly the fieldIds
+//      CommercialProfileSection/the Notes & Identifiers `<details>` block in
+//      AccountDetail.jsx actually render, in the order they render them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const accountRecordPage = makePageDefinition({
@@ -178,10 +187,39 @@ export const accountRecordPage = makePageDefinition({
       listId: "account.contacts", // definitions/contact.js: contactRelatedList
       // No capabilityRequirement — contact.js declares readCapability: null explicitly.
     }),
+    // "4. Locations" in AccountDetail.jsx's own in-file numbering, rendered immediately
+    // after Contacts in the PRIMARY column.
+    makeSection({
+      id: "locations",
+      kind: "RELATED_LIST",
+      region: "MAIN",
+      order: 70,
+      listId: "account.locations", // definitions/location.js: locationRelatedList
+      // No capabilityRequirement — location.js declares readCapability: null explicitly,
+      // the same finding as contacts above.
+    }),
 
-    // SIDE (SECONDARY column) — Account Attention only, in this version. Commercial Profile
-    // and Notes & Identifiers are the field-backed GAPS documented above and are not
-    // modeled here yet.
+    // SIDE (SECONDARY column) — in AccountDetail.jsx's actual top-to-bottom order:
+    // Commercial Profile, Account Attention, Notes & Identifiers.
+    makeSection({
+      id: "commercialProfile",
+      kind: "FIELD_GROUP",
+      region: "SIDE",
+      order: 0,
+      // Exactly the fields CommercialProfileSection (AccountDetail.jsx) renders, in the
+      // order it renders them: Owner, Default currency, Payment terms, PO required,
+      // Invoice delivery, Tax status, Billing contact.
+      fieldIds: [
+        "accountOwnerEmployeeId",
+        "defaultCurrency",
+        "paymentTerms",
+        "purchaseOrderRequired",
+        "invoiceDeliveryMethod",
+        "taxStatus",
+        "billingContactId",
+      ],
+      // No capabilityRequirement — see the CAPABILITY DECLARATIONS block above.
+    }),
     makeSection({
       id: "accountAttention",
       kind: "ATTENTION", // "what needs a human" — AR overdue + WO past due, composed
@@ -189,6 +227,17 @@ export const accountRecordPage = makePageDefinition({
       order: 10,
       componentId: "accountAttentionSection", // REGISTRATION_PENDING
       capabilityRequirement: "finance.read",
+    }),
+    // "6. Notes / Identifiers" in AccountDetail.jsx's own in-file numbering — a
+    // <details>, collapsed by default, matching this section's collapsedByDefault.
+    makeSection({
+      id: "notesAndIdentifiers",
+      kind: "FIELD_GROUP",
+      region: "SIDE",
+      order: 20,
+      fieldIds: ["notes", "customerNumber", "erpId", "accountingId", "legacyId"],
+      collapsedByDefault: true,
+      // No capabilityRequirement — see the CAPABILITY DECLARATIONS block above.
     }),
   ],
 });
