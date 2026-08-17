@@ -227,16 +227,18 @@
       "route": "/service",
       "classification": "A_ENTITY_LIST",
       "entity": "WorkOrder",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "issue": 1098,
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "The Gate B non-CRM validation target",
+      "nextAction": "Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found.",
       "governing": [
         "DECISIONS #102 \u00a714"
       ],
-      "notes": "workOrderService.ts:90 onSnapshot(collection(...)) with no where() \u2014 unbounded, client-filtered."
+      "notes": "workOrderService.ts:90 onSnapshot(collection(...)) with no where() \u2014 unbounded, client-filtered. GATE B DEFINITIONS MERGED (#1141), and the point of running a non-CRM entity early is that it found three things. (1) A numeric enum could never validate: object keys are strings, so comparing enumLabels[1] against the number 1 reported every numeric enum as mislabelled - Work Order priority is stored 1..4. Both label checks now normalize to strings and the #1093 rule survives. (2) No canonical Work Order STATUS vocabulary existed; the only complete map lived inside DispatchSchedulingWorkspace. domain/workOrderStatus.js now holds it and that workspace imports it, so no user-visible copy changed. Deliberately not merged with controlTower's map, which describes what a panel is FOR at each stage rather than naming the state. (3) Three optional filters cost SEVEN composites and two cost three, so priority stays a column rather than a filter until someone accepts the cost - the derivation making a tradeoff visible instead of silently under-declaring. Identity is the reference number with NO name field: the complaint is optional, and an identity field that is frequently absent licenses a fallback to the document id. Unlike Customers, no aggregate blocker was found - the surface shows a queue, not netted totals.",
+      "pr": 1141,
+      "mergeSha": "47f46feb"
     },
     {
       "id": "S-SVC-WO-RECORD",

@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 45 | 42 | 3 |
+| 45 | 41 | 4 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -23,7 +23,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-CRM-ACCOUNT-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto the page definition runtime
 - **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-GRID (all satisfied) → Identity is on main; awaiting the list runtime
 - **S-CRM-SALES-ORDER-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate onto page runtime; resolve raw-id labels
-- **S-SVC-WORK-ORDERS** — depends on A-LIST-GRID (all satisfied) → The Gate B non-CRM validation target
 - **S-SVC-WO-RECORD** — depends on A-PAGE-COMPONENT (all satisfied) → Migrate after Gate B
 - **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-GRID (all satisfied) → Migrate or retire — overlaps the Work Orders list
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Classify: queue with governed transition writes, not a list
@@ -35,6 +34,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-ADM-USERS** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; no governed directory read exists to migrate
 - **S-ADM-ROLES** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; form is unconditionally disabled
+- **S-DASH-MY** — depends on A-PAGE-COMPONENT (all satisfied) → Later phase; dashboard composition is not list/record metadata
 
 ## Next executable
 
@@ -52,6 +52,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 |---|---|---|---|---|---|---|---|---|---|
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1113 | 3dce271a | 1f1f1a4d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1138 | — | abfd3ee7 | NOT_APPLICABLE | Merged. The accounts composite index is declared and pending deploy. |
+| S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | bd787211 | 2c673e16 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-PAGE-RUNTIME | 5 | Page definition contract (PageDefinition/PageRegion) | — | — | #1118 | 656023c8 | 9d10440e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -105,7 +106,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Migrate onto the page definition runtime |
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
-| S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | — | — | — | NOT_APPLICABLE | The Gate B non-CRM validation target |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
 | S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |
 | S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Classify: queue with governed transition writes, not a list |
