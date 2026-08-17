@@ -67,15 +67,25 @@ export const accountEntity = makeEntityDefinition({
       sortable: true,
       operators: ["EQUALS", "IN"],
     }),
+    // CORRECTION. This was first declared as a singular ENUM `relationshipType`, and
+    // wiring the surface proved no such field is stored: accounts carry
+    // `relationshipTypes`, an ARRAY, and an account may be both a customer and a vendor.
+    // A filter on the singular name would have queried a field that does not exist and
+    // returned an empty page that looked like an honest answer.
+    //
+    // Renderable, but NO operator is claimed. The honest query is array-contains beside
+    // an ordering, and Firestore serves that only from a composite index whose shape
+    // depends on which OTHER filters are active — a query the current index derivation
+    // does not yet model, since it emits one combined index rather than one per filter
+    // combination. Claiming the filter before that exists is the promise §9 forbids.
     makeFieldDefinition({
-      id: "relationshipType",
+      id: "relationshipTypes",
       entityId: "account",
       label: "Relationship",
-      type: "ENUM",
+      type: "ENUM_SET",
       enumValues: Object.values(ACCOUNT_RELATIONSHIP_TYPE),
       enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor" },
-      filterable: true,
-      operators: ["EQUALS", "IN"],
+      description: "Multi-valued: an account can be both. Filtering is deferred until the index derivation models filter combinations.",
     }),
     makeFieldDefinition({
       id: "updatedAt",
@@ -106,13 +116,12 @@ export const accountIndexList = makeListViewDefinition({
   columns: [
     makeColumn({ fieldId: "name", sortable: true }),
     makeColumn({ fieldId: "status", sortable: true }),
-    makeColumn({ fieldId: "relationshipType" }),
+    makeColumn({ fieldId: "relationshipTypes" }),
     makeColumn({ fieldId: "tags" }),
     makeColumn({ fieldId: "updatedAt", sortable: true }),
   ],
   filters: [
     makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
-    makeFilter({ fieldId: "relationshipType", operators: ["EQUALS", "IN"] }),
   ],
   // Most-recently-touched first is the ordering that makes a first page useful when the
   // set is larger than anyone will scroll. Name-ascending is available as a sort but is

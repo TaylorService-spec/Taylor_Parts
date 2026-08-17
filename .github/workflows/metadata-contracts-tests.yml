@@ -24,6 +24,11 @@ on:
       - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -39,6 +44,11 @@ on:
       - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
       - "field-ops-app-vite/test/metadataListGrid.test.jsx"
       - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
       - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
@@ -99,6 +109,12 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Record page renderer tests (vitest, jsdom)
         run: npx vitest run test/metadataRecordPage.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Firestore list source translation tests (vitest)
+        run: npx vitest run test/metadataFirestoreListSource.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Customers surface tests (vitest, jsdom)
+        run: npx vitest run test/customersSurface.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the metadata surface (oxlint)
         run: npx oxlint src/metadata

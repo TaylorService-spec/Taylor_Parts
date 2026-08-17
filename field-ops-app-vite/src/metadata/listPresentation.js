@@ -74,6 +74,12 @@ export function cellValue(column, row) {
   const raw = row?.[column.fieldId];
   if (raw === null || raw === undefined || raw === "") return null;
   if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? raw;
+  // A multi-valued enum resolves EVERY member. Rendering the array as-is would print
+  // "CUSTOMERVENDOR" — machine values, concatenated, in front of a user.
+  if (column.type === "ENUM_SET" && Array.isArray(raw)) {
+    if (raw.length === 0) return null;
+    return raw.map((v) => column.enumLabels?.[v] ?? v).join(", ");
+  }
   return raw;
 }
 

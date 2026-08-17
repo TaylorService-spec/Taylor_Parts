@@ -248,3 +248,36 @@ test("lookup helpers are pure and return null rather than throwing on a miss", (
   assert.deepEqual(filterableFields(account()), []);
   assert.deepEqual(sortableFields(account()).map((f) => f.id), ["name"]);
 });
+
+// --- ENUM_SET -----------------------------------------------------------------
+//
+// A multi-valued enum. Modelled separately from ENUM because an account that is both a
+// customer and a vendor is not an account with a single status, and typing it as ENUM
+// would let a scalar equality filter be declared on a field no scalar query can match.
+
+test("ENUM_SET carries enumValues and labels, like ENUM", () => {
+  const entity = makeEntityDefinition({
+    id: "account", label: "Customer", collection: "accounts",
+    identity: makeIdentity({ nameField: "name" }),
+    fields: [
+      makeFieldDefinition({ id: "name", entityId: "account", label: "Customer", type: "STRING" }),
+      makeFieldDefinition({
+        id: "relationshipTypes", entityId: "account", label: "Relationship", type: "ENUM_SET",
+        enumValues: ["CUSTOMER", "VENDOR"], enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor" },
+      }),
+    ],
+  });
+  assert.deepEqual(validateEntityDefinition(entity), []);
+});
+
+test("ENUM_SET without enumValues is rejected, same as ENUM", () => {
+  const entity = makeEntityDefinition({
+    id: "account", label: "Customer", collection: "accounts",
+    identity: makeIdentity({ nameField: "name" }),
+    fields: [
+      makeFieldDefinition({ id: "name", entityId: "account", label: "Customer", type: "STRING" }),
+      makeFieldDefinition({ id: "kinds", entityId: "account", label: "Kinds", type: "ENUM_SET" }),
+    ],
+  });
+  assert.ok(validateEntityDefinition(entity).some((p) => /ENUM_SET requires enumValues/.test(p)));
+});
