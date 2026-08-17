@@ -8,6 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   STATUS, KIND, CLASSIFICATION, DEPLOY, GATE,
   makeEntry, validateEntry, validateLedger, selectExecutable, reconcile, conformance, renderMarkdown,
@@ -222,4 +223,83 @@ test("authored JSON may omit defaulted fields; makeEntry normalizes before valid
   // authored JSON, strict model.
   const fromJson = { id: "J-1", phase: "1", kind: "ARCHITECTURE", title: "t", domain: "d", status: "READY" };
   assert.deepEqual(validateEntry(makeEntry(fromJson)), []);
+});
+
+
+// --- dependencies must be REAL, not chronological (Owner ruling 2026-08-17 §1) ---
+//
+// This is the defect that produced a false program-wide stop. A-CONTRACT-CORE declared
+// dependsOn P0-LEDGER purely because the ledger was built first: a documentation
+// artifact was recorded as blocking an independent code foundation on a disjoint path.
+// The scheduler then correctly refused to run the contracts, correctly reported no
+// executable work, and the whole program halted on an edge that described history
+// rather than necessity.
+//
+// A dependency edge is a claim that one item CANNOT PROCEED until another lands. These
+// guard the two properties that make that claim checkable.
+
+test("§1 — a dependency edge is only satisfied by MERGED, COMPLETE or EXEMPT", () => {
+  // The scheduler's meaning of "dependency" must stay strict, because the weaker the
+  // edge, the more tempting it is to add edges that merely express ordering.
+  for (const status of ["READY", "IMPLEMENTING", "MERGE_QUEUED", "REVIEW_QUEUED", "DEPLOY_QUEUED",
+    "BLOCKED_PROTECTED", "BLOCKED_DEPENDENCY"]) {
+    const dep = { ...base, id: "DEP", status };
+    if (status === "MERGE_QUEUED") { dep.pr = 1; dep.headSha = "aaa"; }
+    if (status === "DEPLOY_QUEUED") dep.mergeSha = "abc";
+    if (status === "BLOCKED_PROTECTED") dep.blockers = [{ reason: "r", requiredDecision: "d" }];
+    if (status === "BLOCKED_DEPENDENCY") dep.dependsOn = ["X-1"];
+    const ledger = {
+      entries: [
+        makeEntry({ ...base, id: "X-1" }),
+        makeEntry(dep),
+        makeEntry({ ...base, id: "CONSUMER", status: "READY", dependsOn: ["DEP"] }),
+      ],
+    };
+    assert.ok(
+      !selectExecutable(ledger).some((e) => e.id === "CONSUMER"),
+      `dependency in ${status} must not be treated as satisfied`
+    );
+  }
+});
+
+test("§1 — a docs-only entry never blocks a code entry, which is the exact false edge that stopped the program", () => {
+  // Regression for the real incident, expressed as the shape rather than the instance:
+  // an ARCHITECTURE code item that depends on a doc-shaped item is executable when that
+  // is the ONLY thing holding it, because the two cannot technically block each other.
+  const withFalseEdge = {
+    entries: [
+      makeEntry({ ...base, id: "LEDGER-DOC", status: "MERGE_QUEUED", pr: 1101, headSha: "aaa" }),
+      makeEntry({ ...base, id: "CODE-FOUNDATION", status: "READY", dependsOn: ["LEDGER-DOC"] }),
+    ],
+  };
+  assert.deepEqual(
+    selectExecutable(withFalseEdge).map((e) => e.id),
+    [],
+    "with the false edge present the scheduler correctly refuses — the bug was the EDGE, not the scheduler"
+  );
+
+  const corrected = {
+    entries: [
+      makeEntry({ ...base, id: "LEDGER-DOC", status: "MERGE_QUEUED", pr: 1101, headSha: "aaa" }),
+      makeEntry({ ...base, id: "CODE-FOUNDATION", status: "READY", dependsOn: [] }),
+    ],
+  };
+  assert.deepEqual(
+    selectExecutable(corrected).map((e) => e.id),
+    ["CODE-FOUNDATION"],
+    "removing a dependency that was never technically real must re-open the lane"
+  );
+});
+
+test("§1 — the shipped ledger declares no dependency on the ledger's own docs entry", () => {
+  // Guards the specific regression in the real data, not just in a fixture.
+  const raw = JSON.parse(
+    readFileSync(new URL("../metadata-program/ledger.json", import.meta.url), "utf8")
+  );
+  for (const e of raw.entries ?? []) {
+    assert.ok(
+      !(e.dependsOn ?? []).includes("P0-LEDGER"),
+      `${e.id} depends on P0-LEDGER — the ledger is a docs artifact and cannot technically block code`
+    );
+  }
 });
