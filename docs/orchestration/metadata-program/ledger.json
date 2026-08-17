@@ -1022,12 +1022,16 @@
       "title": "Shared contract source of truth",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Decide between two designs before writing the generator (see notes)",
+      "status": "MERGE_QUEUED",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY. Note merge-order interaction with #1104.",
       "governing": [
         "Owner ruling section 10"
       ],
-      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all. DESIGN FINDING (2026-08-17): diffing the mirror pairs shows the ONLY difference is the self-referential cross-reference line - each copy names the OTHER copy's path - plus the wrap point of the sentence containing it, since the two paths differ in length. That yields two candidate designs, and the choice should be made deliberately rather than by whichever is easier to script. (A) Make the cross-reference path-independent, e.g. 'mirrored at the peer access/ module of the same name'. The pairs then become byte-identical, the generator collapses to a plain copy, the parity check collapses to byte equality, and the existing comment-paragraph/CRLF normalization stops being load-bearing. Touches the header of every mirrored module, comments only. (B) Keep the paths and have the generator substitute and re-wrap. Preserves existing text but makes the generator responsible for comment reflow, which is fragile and is exactly what the current normalization exists to tolerate. (A) removes the difference; (B) automates around it. Recommend (A), but it edits several headers and should be a deliberate call, not a side effect of building a script."
+      "notes": "The audit decided this rather than leaving it open: there is no root package.json and no workspace tooling, the functions tsconfig scopes rootDir and include to src, and firebase deploy zips only the functions directory - so a genuine shared module means new workspace tooling plus deploy-packaging risk, against a Functions pipeline that is manual and has no CI gate. Generated mirror plus parity CI carries zero deploy risk and is repo-native. GAP FOUND: governedBusinessRoles.ts and shadowParityHarness.ts are mirrored with NO cross-file parity test - and governedBusinessRoles.ts is exactly the file PR #1100 would have to change in lockstep. UPDATE: the parity-coverage half is done (PR #1104) - governedBusinessRoles.ts and shadowParityHarness.ts are now enforced, and the CI path filter now includes field-ops-app-vite/src/access/** so a client-only edit actually triggers the guard. Remaining: single authored source plus generated mirror, so humans and agents stop hand-maintaining two copies at all. DESIGN FINDING (2026-08-17): diffing the mirror pairs shows the ONLY difference is the self-referential cross-reference line - each copy names the OTHER copy's path - plus the wrap point of the sentence containing it, since the two paths differ in length. That yields two candidate designs, and the choice should be made deliberately rather than by whichever is easier to script. (A) Make the cross-reference path-independent, e.g. 'mirrored at the peer access/ module of the same name'. The pairs then become byte-identical, the generator collapses to a plain copy, the parity check collapses to byte equality, and the existing comment-paragraph/CRLF normalization stops being load-bearing. Touches the header of every mirrored module, comments only. (B) Keep the paths and have the generator substitute and re-wrap. Preserves existing text but makes the generator responsible for comment reflow, which is fragile and is exactly what the current normalization exists to tolerate. (A) removes the difference; (B) automates around it. Recommend (A), but it edits several headers and should be a deliberate call, not a side effect of building a script. RESOLVED via design (A): the self-referential pathname was REMOVED from the canonical bodies rather than automated around, so the bodies are byte-identical, generation is a copy and verification is byte equality. Six pairs synced. permissionCatalog.ts excluded (client copy carries ~30 lines of independently abbreviated comments; regenerating is behavior-neutral but deserves its own review in the most authorization-sensitive file) and parityFixtures.ts excluded (genuine firebase-admin vs firebase SDK import difference, not an artificial one).",
+      "pr": 1110,
+      "headSha": "a9ed84c9dd1cde09a3a72f975f55ba08ac2254c5",
+      "branch": "feat/access-contract-generator",
+      "checks": "5/5 mirror integrity; both packages typecheck; access parity suites pass"
     },
     {
       "id": "A-BOUNDED-READS",
@@ -1243,6 +1247,21 @@
         "DECISIONS #102 section 6"
       ],
       "notes": "Required read authority per collection: payments and payment_applications -> a finance payment read capability; invoice_adjustments and refunds -> finance adjustment/refund read; part_supplier_items -> the already-drafted inventory.catalog.read / .cost.read projection, which exists as a pure contract but is not wired to a callable; part_aliases -> an inventory catalog alias read. Explicitly NOT permitted as workarounds: client-direct reads, Rules weakening, or placeholder access."
+    },
+    {
+      "id": "A-PERMISSION-CATALOG-GENERATION",
+      "phase": "1",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "Bring permissionCatalog.ts and parityFixtures.ts under generation",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "READY",
+      "nextAction": "Two separate follow-ups; neither is mechanical",
+      "governing": [
+        "Owner ruling 2026-08-17 section 6"
+      ],
+      "notes": "permissionCatalog.ts: the client copy has independently abbreviated comment wording that the comment-stripping parity test cannot see. Adopting the canonical text is behavior-neutral but is a large diff in the repo's most authorization-sensitive file, so it wants its own review. parityFixtures.ts: needs a declared, bounded SDK import substitution (firebase-admin/firestore vs firebase/firestore) - a real platform difference, unlike the artificial pathname one, so it is the one case where a substitution rule would be legitimate rather than a workaround."
     }
   ]
 }
