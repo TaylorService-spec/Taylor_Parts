@@ -33,7 +33,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { findField } from "./entityDefinition.js";
-import { MAX_PAGE_SIZE } from "./listViewDefinition.js";
+import { MAX_PAGE_SIZE, findParentRelationship } from "./listViewDefinition.js";
 
 /** Why a request was rejected. Distinct kinds so a caller can respond differently. */
 export const REQUEST_ERROR = Object.freeze([
@@ -91,7 +91,7 @@ export function buildQueryDescriptor(def, entity, request = {}) {
     if (!request.parentId) {
       errors.push(err("MISSING_PARENT_SCOPE", `list ${def.id} is a RELATED surface and requires a parentId`));
     } else {
-      const rel = (entity.relationships ?? []).find((r) => r.id === def.parentRelationshipId);
+      const rel = findParentRelationship(def, entity, request.relationships ?? []);
       if (!rel) {
         errors.push(err("MISSING_PARENT_SCOPE", `relationship "${def.parentRelationshipId}" is not on ${entity.id}`));
       } else {

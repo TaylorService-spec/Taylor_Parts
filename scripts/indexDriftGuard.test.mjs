@@ -102,6 +102,10 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // Declared by the operational board scope contract: all three of its queries filter
   // status IN (an equality) plus a scheduledStart range or equality.
   'fieldops_wos|COLLECTION|status:ASCENDING,scheduledStart:ASCENDING',
+  // Declared by the Contact and Opportunity definitions (first Account related-list
+  // dependencies). Opportunities are CALLABLE-read, so this serves the server's own query.
+  'contacts|COLLECTION|accountId:ASCENDING,name:ASCENDING',
+  'opportunities|COLLECTION|stage:ASCENDING,expectedCloseAt:ASCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That

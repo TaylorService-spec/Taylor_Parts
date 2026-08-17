@@ -22,6 +22,8 @@ const account = () => makeEntityDefinition({
   ],
   relationships: [
     makeRelationshipDefinition({ id: "account.opportunities", label: "Opportunities", fromEntityId: "account", toEntityId: "opportunity", viaField: "accountId", cardinality: "ONE_TO_MANY" }),
+    // Reaches ACCOUNT, so an account RELATED list can honestly be scoped by it.
+    makeRelationshipDefinition({ id: "parentAccount.children", label: "Child accounts", fromEntityId: "account", toEntityId: "account", viaField: "parentAccountId", cardinality: "ONE_TO_MANY" }),
   ],
 });
 
@@ -126,7 +128,7 @@ test("a RELATED list without a parentId produces NO descriptor", () => {
   const related = makeListViewDefinition({
     id: "account.opportunities.related", entityId: "account", label: "Opportunities", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
-    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    parentRelationshipId: "parentAccount.children", viewAllListId: "opportunity.index",
   });
   const { descriptor, errors } = buildQueryDescriptor(related, account(), {});
   assert.equal(descriptor, null, "no descriptor at all — not an unscoped one");
@@ -137,10 +139,10 @@ test("a RELATED list scopes by the relationship's viaField, first among the filt
   const related = makeListViewDefinition({
     id: "account.opportunities.related", entityId: "account", label: "Opportunities", surface: "RELATED",
     columns: [makeColumn({ fieldId: "name" })], pageSize: 5,
-    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    parentRelationshipId: "parentAccount.children", viewAllListId: "opportunity.index",
   });
   const { descriptor } = buildQueryDescriptor(related, account(), { parentId: "acct-harbor" });
-  assert.deepEqual(descriptor.filters[0], { fieldId: "accountId", operator: "EQUALS", value: "acct-harbor" });
+  assert.deepEqual(descriptor.filters[0], { fieldId: "parentAccountId", operator: "EQUALS", value: "acct-harbor" });
 });
 
 // --- §6: capabilities are carried, never decided ----------------------------

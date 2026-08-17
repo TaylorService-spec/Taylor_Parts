@@ -12,12 +12,15 @@ export const OPPORTUNITY_OUTCOMES = ["WON", "LOST"];
 // model.md); channelOptions() (UI select) + the governed write validators read from it, so a value widens both.
 export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"];
 
-const STAGE_LABEL = {
+// Exported so the metadata layer sources ONE vocabulary rather than minting a second.
+// The Work Order status split (#1141) is what this avoids: labels private to one module
+// become labels copied into the next one, and then the two drift.
+export const STAGE_LABEL = {
   IDENTIFIED: "Identified", QUALIFYING: "Qualifying", SOLUTION: "Solution",
   QUOTING: "Quoting", CUSTOMER_REVIEW: "Customer review", DECISION: "Decision",
 };
-const OUTCOME_LABEL = { WON: "Won", LOST: "Lost" };
-const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail", STRATEGIC_ACCOUNTS: "Strategic Accounts" };
+export const OUTCOME_LABEL = { WON: "Won", LOST: "Lost" };
+export const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail", STRATEGIC_ACCOUNTS: "Strategic Accounts" };
 
 export const stageLabel = (s) => STAGE_LABEL[s] ?? s ?? "—";
 export const channelLabel = (c) => CHANNEL_LABEL[c] ?? c ?? "—";
