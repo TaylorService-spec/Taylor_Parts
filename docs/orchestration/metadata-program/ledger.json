@@ -1598,13 +1598,15 @@
       "entity": "Account",
       "route": "/customers",
       "classification": "A_ENTITY_LIST",
-      "status": "READY",
-      "nextAction": "Design a bounded server-side name search; do not restore the client-array provider",
+      "status": "MERGED",
+      "nextAction": "Merged. Case-insensitive and substring search remain named gaps, not silent ones.",
       "governing": [
         "DECISIONS #102 section 9",
         "Owner portfolio ruling section 6"
       ],
-      "notes": "The accounts search provider filtered an array the whole-collection subscription supplied, so removing that subscription removed its only possible input. Handing it a page would return 'no results' for customers that exist - a search box that silently finds nothing is worse than none, because it answers. Removed from /customers in #1138 and recorded here."
+      "notes": "The accounts search provider filtered an array the whole-collection subscription supplied, so removing that subscription removed its only possible input. Handing it a page would return 'no results' for customers that exist - a search box that silently finds nothing is worse than none, because it answers. Removed from /customers in #1138 and recorded here. MERGED (#1177): a bounded Firestore PREFIX range on name, not a client-side filter. Firestore has no substring or full-text index, so prefix is the only honest primitive on an indexed string field - 'corp' will not find 'Anchor Corp', every user-facing string says 'starts with' rather than an unqualified 'search', and case sensitivity is NAMED as a gap. Fixing either needs a normalized field on the write path or an external index, both out of scope and both recorded rather than faked. No composite index required: a single range filter on the field it orders by uses the automatic single-field index, verified rather than assumed. INTEGRATION CORRECTION: the lane reported no registration pending, but its new node:test suite was in no workflow and no npm script and would never have run - a new test file does not feel like a shared-resource edit, which is exactly why the CI-matrix rule exists.",
+      "pr": 1177,
+      "mergeSha": "12885cfe0837e37ad8b78a6d089a25c4a9cea4ef"
     },
     {
       "id": "G-FIELD-ARCH-V2",
@@ -1989,6 +1991,23 @@
         "Owner agent isolation execution rule"
       ],
       "notes": "CORRECTED RECORD. This entry originally claimed a writer lane had been LOST because its worktree died with the session. That did not happen, and the claim was mine, not an agent's. At resumption I ran ls-remote for the lane's branch, saw nothing, and concluded the work was gone. The agent was simply still RUNNING in the background: it pushed 54cb84e9 minutes later, and its completion notification arrived after I had already re-dispatched a replacement. Nothing was lost; I checked too early and inferred death from a single point-in-time absence. The cost was a duplicated lane -- the replacement independently reached the same conclusions, found the pushed branch when its own push was rejected non-fast-forward, correctly refused to overwrite superior work, and reported instead. THE REAL LESSON: a background agent can outlive the context that dispatched it, so 'no branch on origin' is evidence of nothing on its own. Check whether the lane is still running before concluding loss, and prefer waiting to re-dispatching. The push-before-handoff practice recorded as rule 9a remains sound guidance on its own merits, but it was NOT earned by this incident, and the rule now says so."
+    },
+    {
+      "id": "S-ADM-EMPLOYEES-DEFINITION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Employee entity + list definition",
+      "domain": "admin",
+      "entity": "Employee",
+      "status": "MERGED",
+      "pr": 1176,
+      "mergeSha": "42db3840eb1c90efb24e20c3effd0ced290fa55d",
+      "nextAction": "Merged and registered. Three composites declared and pending deploy.",
+      "governing": [
+        "Owner leaf-ownership addendum"
+      ],
+      "notes": "Entity id is exactly `employee`, which salesOrder, opportunity and workOrder already referenced through referenceTo before any definition existed. Identity is displayName with NO referenceField - no employee number exists in the spec, the provisioning script or Rules. employeeId is declared as an ID field because the script writes it into the body as well as using it as the doc id, but UNLIKE Part nothing enforces the two agree, and the definition says so. Provenance is NUMBER because the script writes Date.now(); no actor fields exist and this schema never had them, unlike Contact whose write paths disagreed. TWO VOCABULARIES WERE INCOMPLETE rather than merely unlabelled: the client OPERATIONAL_ROLE carries three of the eight values the provisioning script accepts, so a definition built on the client copy would have silently excluded five real roles. Sorted by displayName, not userId - the two EXISTING employees composites are userId-ordered because they serve a != existence check rather than a UI sort, so all three demands are net-new."
     }
   ]
 }

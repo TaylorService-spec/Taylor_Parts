@@ -38,7 +38,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-ACCOUNT-SEARCH** (phase 6) — Governed Account search → Design a bounded server-side name search; do not restore the client-array provider
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -46,12 +45,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | — | — | — | NOT_APPLICABLE | Design a bounded server-side name search; do not restore the client-array provider |
 
 ## MERGED
 
@@ -87,6 +80,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-LIST-COMPONENT | 3 | List React component rendering the presentation model | — | — | #1136 | — | 2fff78b1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS-REMAINING | 3 | Remaining unbounded PURE LIST reads | — | — | #1133 | — | 2a7847d1 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-INDEX-FILTER-COMBINATIONS | 6 | Index derivation across filter COMBINATIONS | — | — | #1139 | — | 04567b43 | NOT_APPLICABLE | Merged; three accounts composites declared and pending deploy |
+| X-ACCOUNT-SEARCH | 6 | Governed Account search | /customers | — | #1177 | — | 12885cfe | NOT_APPLICABLE | Merged. Case-insensitive and substring search remain named gaps, not silent ones. |
 | G-FIELD-ARCH-V2 | 6 | Field Architecture v2 | — | — | #1147 | — | 379ef835 | NOT_APPLICABLE | Gate cleared. Mass entity definition may resume. |
 | A-RECORD-PROVENANCE | 6 | Record provenance platform invariant | — | — | #1149 | — | 64564bb3 | NOT_APPLICABLE | Merged. The origin seam (createdVia/initiatedBy/sourceExecutionId) awaits reconciliation with the audit event architecture before anything writes it. |
 | A-QUERY-MODEL-UNIFIED | 7 | Unified EOS query model (shared dependency) | — | — | #1151 | — | 80588e61 | NOT_APPLICABLE | Merged. Automation v1, EQL v1 and Bulk Data v1 are unblocked; migrating the list runtime onto the AST is a separate slice. |
@@ -99,6 +93,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-PART-DEFINITION | 6 | Part entity + list definitions (leaf lane) | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Leaf merged and registered via the integration lane. |
 | S-INV-EQUIPMENT-DEFINITION | 6 | Equipment entity + list definitions (leaf lane) | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Leaf merged and registered via the integration lane. |
 | A-METADATA-INTEGRATION-LANE | 6 | Integration lane for Part + Equipment shared registration | — | — | #1168 | — | 621dfc3a | NOT_APPLICABLE | Batch integrated. Reusable pattern for the next leaf batch. |
+| S-ADM-EMPLOYEES-DEFINITION | 6 | Employee entity + list definition | — | — | #1176 | — | 42db3840 | NOT_APPLICABLE | Merged and registered. Three composites declared and pending deploy. |
 
 ## BLOCKED_PROTECTED
 
