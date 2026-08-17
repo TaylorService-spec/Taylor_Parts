@@ -59,6 +59,7 @@ jobs:
 
       - name: ListViewDefinition contract tests (node:test)
         run: node --test test/metadataListViewDefinition.test.mjs
+        working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
         working-directory: field-ops-app-vite
