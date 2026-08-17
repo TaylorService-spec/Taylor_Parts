@@ -19,7 +19,6 @@ continues from the next executable item — without asking what happened.
 
 - **A-PERMISSION-CATALOG-GENERATION** (phase 1) — Bring permissionCatalog.ts under generation → Unblocked; the generator is on main at c01c0531
 - **A-REGISTRIES** (phase 2) — Component and action registries → Unblocked; A-CONTRACT-CORE is on main
-- **A-LIST-METADATA-V1** (phase 3) — Entity List Metadata v1 runtime → Build; A-CONTRACT-CORE is on main at 3a07e4d8
 - **X-INVENTORY-ANALYTICS-AGGREGATE** (phase 3) — Authoritative aggregation for netted inventory figures (server and client) → Unblocked; the capability is on main at 6896888b
 - **A-PAGE-RUNTIME** (phase 5) — Page definition runtime → Unblocked; A-CONTRACT-CORE is on main
 
@@ -27,7 +26,6 @@ continues from the next executable item — without asking what happened.
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | — | — | — | NOT_APPLICABLE | Build; A-CONTRACT-CORE is on main at 3a07e4d8 |
 | A-PAGE-RUNTIME | 5 | Page definition runtime | — | — | — | — | — | NOT_APPLICABLE | Unblocked; A-CONTRACT-CORE is on main |
 | A-REGISTRIES | 2 | Component and action registries | — | — | — | — | — | NOT_APPLICABLE | Unblocked; A-CONTRACT-CORE is on main |
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Unblocked; the capability is on main at 6896888b |
@@ -37,6 +35,7 @@ continues from the next executable item — without asking what happened.
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | 87dcaa49 | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | — | NOT_APPLICABLE | Merge blocked by harness classifier - see X-MERGE-AUTHORITY |
 
 ## MERGED
@@ -108,6 +107,8 @@ continues from the next executable item — without asking what happened.
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | — | — | — | NOT_APPLICABLE | Generalize the existing cursor prior art rather than inventing a pattern |
 | A-INDEX-VALIDATOR | 3 | ListViewDefinition to composite-index validator | — | — | — | — | — | NOT_APPLICABLE | Import indexDriftGuard exports; do not reimplement key normalization |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
+| A-LIST-RUNTIME | 3 | List runtime component consuming ListViewDefinition | — | — | — | — | — | NOT_APPLICABLE | Build after the contract and registries are on main |
+| A-INDEX-CI-BRIDGE | 3 | CI gate: declared list filters must have declared indexes | — | — | — | — | — | NOT_APPLICABLE | Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI |
 
 > **S-CRM-CUSTOMERS** blocked — First consumer of the list runtime; cannot migrate before the runtime exists
 

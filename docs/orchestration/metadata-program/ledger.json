@@ -605,15 +605,19 @@
       "title": "Entity List Metadata v1 runtime",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
+      "status": "MERGE_QUEUED",
       "issue": 1096,
       "dependsOn": [],
-      "nextAction": "Build; A-CONTRACT-CORE is on main at 3a07e4d8",
+      "nextAction": "Merge blocked by harness classifier - see X-MERGE-AUTHORITY",
       "governing": [
         "DECISIONS #102 \u00a76",
         "DECISIONS #102 \u00a79"
       ],
-      "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration."
+      "notes": "Must serve both index surfaces and related-record sections from one component with lighter configuration. CONTRACT LANDED as ListViewDefinition. Total sort order is guaranteed twice on purpose: the factory defaults the tiebreaker to documentId() (writing the test revealed the validator rule could never fire through the factory), and the validator keeps its rule for definitions arriving as plain data that never pass through it. There is deliberately NO offset or page-number concept in the vocabulary, and a test asserts that absence. RUNTIME (the component consuming this) is still to build.",
+      "pr": 1115,
+      "headSha": "87dcaa49ebd876c24e54d954f23effe5a01d695d",
+      "branch": "feat/entity-list-metadata-v1",
+      "checks": "26/26 contract tests; oxlint + tsc clean; registered in workflow and npm test"
     },
     {
       "id": "A-PAGE-RUNTIME",
@@ -1327,6 +1331,41 @@
       "branch": "docs/metadata-architecture-specification",
       "checks": "docs only",
       "mergeSha": "abedeff5"
+    },
+    {
+      "id": "A-LIST-RUNTIME",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "List runtime component consuming ListViewDefinition",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1",
+        "A-REGISTRIES"
+      ],
+      "nextAction": "Build after the contract and registries are on main",
+      "notes": "The contract is data; this is what renders it. Serves both surfaces from one component - an INDEX with paging controls and a RELATED section with capped rows and a view-all handoff. Grid behavior via TanStack Table (approved); EOS owns visual design, accessibility presentation and the data layer."
+    },
+    {
+      "id": "A-INDEX-CI-BRIDGE",
+      "phase": "3",
+      "wave": "1",
+      "kind": "ARCHITECTURE",
+      "title": "CI gate: declared list filters must have declared indexes",
+      "domain": "program",
+      "entity": "n/a",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-METADATA-V1"
+      ],
+      "nextAction": "Wire requiredIndexes/missingIndexes against firestore.indexes.json in CI",
+      "governing": [
+        "Owner ruling on index governance",
+        "DECISIONS #102 section 9"
+      ],
+      "notes": "requiredIndexes() and missingIndexes() exist and are tested; nothing calls them yet. Until a CI job compares them against firestore.indexes.json, the promise-keeping rule is enforced only for definitions someone thought to check by hand. Should reuse scripts/indexDriftGuard.mjs's exports rather than re-deriving key normalization."
     }
   ]
 }
