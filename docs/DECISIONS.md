@@ -1487,3 +1487,45 @@ standard four fields, future writes separated from any historical backfill decis
 `X-EQUIPMENT-PROVENANCE-GAP` (epoch-number timestamps and no actor — determine the actual stored semantics
 first, use `systemName`/`storagePath` separation if legacy storage must stay compatible, and prefer UNKNOWN to
 an invented actor).
+
+## 107. Write-capable agents require isolated worktrees; destructive git authority stays with the controller
+
+**Owner execution-governance rule, 2026-08-17.** Binding on all EOS multi-agent work.
+Rule: `orchestration/agent-isolation-execution-rule.md`. Enforced where enforceable by
+`orchestration/lib/writerLanes.mjs`.
+
+**The incident.** Two write-capable agents and the controller operated in one checkout. One agent switched
+the branch mid-commit, the controller's commit landed on that agent's branch, a remote branch was created
+carrying another lane's ancestry, and the agent then asked the controller to force-push over it. Nothing was
+lost — but only because the collision happened to be noticed.
+
+**One writer, one worktree, one branch, one lane.** A writer never shares the controller's checkout or another
+writer's. Read-only scouts may share a checkout because they mutate nothing; a scout that finds work requiring
+edits reports rather than starting to edit, and a dedicated writer lane is created.
+
+**Destructive actions are controller-level** — force push, hard reset, destructive rebase, deleting a branch
+with unmerged work, removing a worktree with uncommitted work, overwriting a remote branch, history rewrite.
+The recovery order is `inspect → preserve → fresh branch → cherry-pick verified commits → diff against scope →
+test → abandon`, and the ordering is the substance: **contamination is not solved by destroying the evidence of
+it.** In the incident, the correct resolution was pushing the corrected work under a new branch name — the same
+valid result with nothing destructive.
+
+**The controller verifies rather than trusting a handoff.** Branch still matches the lane, no unrelated commits
+appeared, files match scope, no other lane's commits leaked in, CI coverage present, PR describes the branch it
+was opened from. *"Agent says done"* is not proof of branch integrity. A writer's handoff must state branch,
+head SHA, base SHA, files, tests, risks, dependency assumptions, and **whether any recovery occurred** — never
+folded into a normal completion summary.
+
+**PR state is what GitHub confirms**, never a predicted number; and no orchestration state advances after a
+failed command because a later pipeline stage succeeded (`gh pr create … | tail -1` is the exact shape that
+caused a phantom PR in this ledger once already).
+
+**Merges stay serialized** even with parallel writers: green against an earlier main is not green.
+
+`writerLanes.mjs` catches the mechanical failures — a writer with no worktree, two lanes sharing a worktree or
+branch, one task with two active lanes, a PR recorded without verification, a recorded PR whose GitHub head is
+another branch — with 17 regression tests. It cannot prove a dependency assumption was sound or that a summary
+is honest; **controller inspection remains mandatory.**
+
+**Governing principle:** agent autonomy does not transfer destructive repository authority. A subagent may
+recommend; the controller decides. *"An agent asked me to"* is never sufficient authority.
