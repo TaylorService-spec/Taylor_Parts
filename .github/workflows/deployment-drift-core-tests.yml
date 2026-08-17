@@ -18,6 +18,8 @@ on:
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
+      - "scripts/listIndexCoverage.mjs"
+      - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
       - "field-ops-app-vite/src/firebase/firebase.js"
@@ -35,6 +37,8 @@ on:
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
+      - "scripts/listIndexCoverage.mjs"
+      - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
       - "field-ops-app-vite/src/firebase/firebase.js"
@@ -68,6 +72,9 @@ jobs:
       # O-4 — a repo-driven index deploy must never silently delete a live index.
       - name: Index drift guard (O-4)
         run: node --test scripts/indexDriftGuard.test.mjs
+
+      - name: List index coverage (metadata filters vs declared indexes)
+        run: node --test scripts/listIndexCoverage.test.mjs
       # Gate 1 D1 finding -- a deploy must never resolve its target implicitly,
       # and an artifact that misidentifies its environment must be refused
       # BEFORE it ships, not discovered afterwards in the live manifest.
