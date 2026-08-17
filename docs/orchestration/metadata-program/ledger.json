@@ -1275,14 +1275,20 @@
       "title": "Authoritative aggregation for netted inventory figures (server and client)",
       "domain": "inventory",
       "entity": "n/a",
-      "status": "READY",
+      "status": "BLOCKED_PROTECTED",
       "dependsOn": [],
-      "nextAction": "Unblocked; the capability is on main at 6896888b",
+      "nextAction": "Owner decision on a governed per-part availability projection",
       "governing": [
         "Owner ruling 2026-08-17 section 4",
         "DECISIONS #102 section 9"
       ],
-      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern."
+      "notes": "COLLECTION PAGINATION and AUTHORITATIVE AGGREGATION are different contracts and this surface needs the second. Cursor-paging inventory_transactions and computing availableStock from the returned page yields an arithmetically false total under a name that implies a complete business figure - worse than an honest failure. Preference order: an existing EOS projection or materialized summary; a server-side aggregate over a bounded authoritative scope; an explicitly scoped analytic query whose completeness can be proven; a new governed projection only if necessary. Until a complete scalable aggregate exists, the surface must not be advertised through metadata as enterprise-ready. SCOPE WIDENED: the same defect exists client-side. Operations.jsx computes the same class of netted figure in the browser over unbounded reads, so an authoritative aggregate serves both consumers rather than being a Functions-only concern. USEFUL SPLIT: single-part availability is already solved correctly by option C and is NOT blocked - getAvailableQuantity() is complete for the part it asks about. Only the WHOLE-CATALOG dashboard needs a projection. A consumer that asks 'what is available for part X' can be served today; one that asks 'show me every part' cannot. That distinction matters for scoping the eventual fix: the answer may be to narrow the surface rather than to build a projection.",
+      "blockers": [
+        {
+          "reason": "INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment.",
+          "requiredDecision": "Owner authorizes a governed per-part availability projection (schema + maintenance + deploy), or accepts an explicitly scoped analytic surface instead of a whole-catalog dashboard"
+        }
+      ]
     },
     {
       "id": "X-NO-GOVERNED-READ-COLLECTIONS",
