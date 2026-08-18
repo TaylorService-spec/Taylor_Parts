@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 4cf132ad -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 82eb0217 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -969,12 +969,14 @@
       "kind": "ARCHITECTURE",
       "title": "column.renderer is resolved by listPresentation and consumed by nothing",
       "domain": "metadata",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Either consume renderer in MetadataListGrid or remove it from the contract.",
-      "notes": "The NINTH instance of the unconsumed-declaration pattern. resolveColumns() in listPresentation.js resolves column.renderer, and MetadataListGrid never reads it when rendering cells. Found the same way as every other instance -- by trying to consume it: the Warehouses migration could not reproduce the existing coloured status pill, so status now renders as plain text (same information, no colour). The lane reported it rather than reaching into the runtime to work around it. Note this one is SILENT, not loud: a declared renderer is simply ignored with no signal, which is the failure mode the loud-seam rule exists to prevent."
+      "nextAction": "None.",
+      "notes": "The NINTH instance of the unconsumed-declaration pattern. resolveColumns() in listPresentation.js resolves column.renderer, and MetadataListGrid never reads it when rendering cells. Found the same way as every other instance -- by trying to consume it: the Warehouses migration could not reproduce the existing coloured status pill, so status now renders as plain text (same information, no colour). The lane reported it rather than reaching into the runtime to work around it. Note this one is SILENT, not loud: a declared renderer is simply ignored with no signal, which is the failure mode the loud-seam rule exists to prevent. RESOLVED by REMOVAL, not implementation, on evidence gathered first: no definition declares a renderer, nothing anywhere registers a CELL_RENDERER (the only componentRegistry.register() call in the app is for RECORD_SECTION), and the one real precedent -- the Warehouses status pill -- was decorative, since the pill always carried its own text label. Building the consumption path would have been speculative machinery for a capability nothing asked for. validateListViewDefinition now REJECTS a column declaring a renderer, including a hand-built literal bypassing makeColumn, so it fails loudly however authored. Integration also removed the now-dead col.renderer lookup in registry.js -- a registry lookup for a property no valid definition can carry is the same dead-declaration shape the removal exists to end -- and retargeted the two registry tests that used columns[].renderer as their vehicle onto regions[].componentId rather than deleting the coverage.",
+      "pr": 1236,
+      "mergeSha": "82eb0217"
     },
     {
       "id": "X-DEAD-WAREHOUSE-READ-PATH",
@@ -983,12 +985,14 @@
       "kind": "AUDIT",
       "title": "useWarehouses and warehousesView are now dead code",
       "domain": "inventory",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Remove both, or record why they are kept.",
-      "notes": "The Warehouses migration removed the only caller of the useWarehouses hook and of domain/warehousesView.js. Both remain in the tree with no consumers. Left in place because src/hooks/** was outside the migrating lane's writeScope, and recorded here rather than silently orphaned -- the id-as-name defect fixed in the same PR is precisely what unreferenced code accumulates while nobody is looking at it."
+      "nextAction": "None. Only the hook was dead.",
+      "notes": "The Warehouses migration removed the only caller of the useWarehouses hook and of domain/warehousesView.js. Both remain in the tree with no consumers. Left in place because src/hooks/** was outside the migrating lane's writeScope, and recorded here rather than silently orphaned -- the id-as-name defect fixed in the same PR is precisely what unreferenced code accumulates while nobody is looking at it. PARTIALLY CORRECT, and the wrong half was caught before acting on it. useWarehouses had zero import statements and was deleted. domain/warehousesView.js is NOT dead: src/metadata/definitions/warehouse.js imports WAREHOUSE_STATUSES and WAREHOUSE_STATUS_META from it as the canonical status vocabulary. Every other mention across the tree is a COMMENT referencing it as precedent, which is what made a name-based search look conclusive -- deleting it would have broken the definition and its tests. Also: warehousesSurface.test.jsx mocked the deleted hook and asserted it was never called; with the module gone that assertion is TRIVIALLY TRUE, so the invariant it protected (this surface issues exactly one read) is now asserted directly against useMetadataList. A test that passes for the wrong reason is worse than one that fails.",
+      "pr": 1235,
+      "mergeSha": "8d618dcf"
     },
     {
       "id": "S-INV-SUPPLIERS",
@@ -1000,12 +1004,31 @@
       "route": "/purchasing/suppliers",
       "classification": "A_ENTITY_LIST",
       "entity": "Supplier",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name."
+      "nextAction": "None.",
+      "notes": "Unbounded collection read. suppliersView.js:57 falls back to the raw doc id as name. MIGRATED on the Warehouses pattern (CLIENT_DIRECT, composite index already deployed). All four status tabs preserved including the Ungoverned bucket, and the old surface's silently dropped truncated flag replaced by an honest Load more. Reported rather than worked around: supplierIndexList declares phone and email but NOT contactName, so a supplier with only a contact name shows blank where the old merged Contact cell showed it -- recorded against supplier.js, which is where it belongs.",
+      "pr": 1236,
+      "mergeSha": "82eb0217"
+    },
+    {
+      "id": "X-SUPPLIERS-VIEW-ID-AS-NAME",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "suppliersView fell back to the document id as the display name -- LIVE",
+      "domain": "inventory",
+      "entity": "Supplier",
+      "status": "MERGED",
+      "pr": 1236,
+      "mergeSha": "82eb0217",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "buildSuppliersView resolved name as s.name ?? s.id. LIVE rather than latent: supplierPicker.js consumes this view, so a Firestore document id could reach a picker label. Fixed to an em dash and pinned. This is the THIRD id-as-name fallback found in hand-written code this session, after the Opportunity pipeline and warehousesView, and all three share one shape: a fallback chain ending in the id, written as though an id were a degraded name rather than a different kind of thing. Worth generalising -- the pattern to grep for is not `.id` but `?? x.id` at the end of a display resolution."
     },
     {
       "id": "S-INV-TRUCK",
