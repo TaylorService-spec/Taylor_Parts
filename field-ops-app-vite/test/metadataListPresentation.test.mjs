@@ -9,7 +9,14 @@ import assert from "node:assert/strict";
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
 import { componentRegistry } from "../src/metadata/registry.js";
-import { buildListPresentation, resolveColumns, cellValue, emptyMessageFor, LIST_STATE } from "../src/metadata/listPresentation.js";
+import {
+  buildListPresentation,
+  resolveColumns,
+  cellValue,
+  emptyMessageFor,
+  LIST_STATE,
+  UNRESOLVED_REFERENCE_LABEL,
+} from "../src/metadata/listPresentation.js";
 import { formatTimestamp } from "../src/domain/displayTimestamp.js";
 import { formatMinor } from "../src/domain/accountArView.js";
 
@@ -292,4 +299,152 @@ test("a genuinely absent CURRENCY_MINOR amount renders nothing -- absent and zer
   const column = { fieldId: "outstandingMinor", type: "CURRENCY_MINOR" };
   assert.equal(cellValue(column, { currency: "USD" }), null);
   assert.equal(cellValue(column, { outstandingMinor: null, currency: "USD" }), null);
+});
+
+// --- REFERENCE never renders the raw stored id (DECISIONS #106, X-LIST-REFERENCE-RENDERS-ID) ---
+
+test("a REFERENCE cell with no resolver supplied never renders the raw stored document id", () => {
+  const column = { fieldId: "accountId", type: "REFERENCE" };
+  const value = cellValue(column, { accountId: "95kFz8WWgiSn2nU2O3Ml" });
+  assert.notEqual(value, "95kFz8WWgiSn2nU2O3Ml", "the id must never reach a cell as content");
+  assert.equal(value, UNRESOLVED_REFERENCE_LABEL, "the unresolved state must be explicit, not a silent id fallthrough");
+});
+
+test("a REFERENCE cell resolves through an injected resolver to the real display value", () => {
+  const column = { fieldId: "accountId", type: "REFERENCE" };
+  const row = { accountId: "acc-1" };
+  const resolveReference = (fieldId, id, r) => {
+    assert.equal(fieldId, "accountId");
+    assert.equal(id, "acc-1");
+    assert.equal(r, row);
+    return "Harbor Grill";
+  };
+  const value = cellValue(column, row, { resolveReference });
+  assert.equal(value, "Harbor Grill");
+  assert.notEqual(value, "acc-1");
+});
+
+test("a REFERENCE cell whose resolver does not recognize the id renders the SAME explicit unresolved state as no resolver at all", () => {
+  const column = { fieldId: "accountId", type: "REFERENCE" };
+  const resolveReference = () => null; // resolver ran, found nothing for this id
+  const value = cellValue(column, { accountId: "deleted-account" }, { resolveReference });
+  assert.equal(value, UNRESOLVED_REFERENCE_LABEL);
+  assert.notEqual(value, "deleted-account");
+});
+
+test("a REFERENCE cell with no stored id is absent, not unresolved -- unset and unresolvable are different claims", () => {
+  const column = { fieldId: "accountId", type: "REFERENCE" };
+  assert.equal(cellValue(column, {}), null);
+  assert.equal(cellValue(column, { accountId: null }), null);
+  assert.equal(cellValue(column, { accountId: "" }), null);
+});
+
+test("buildListPresentation threads resolveReference through to every REFERENCE cell in a row", () => {
+  const acctEntity = makeEntityDefinition({
+    id: "invoice", label: "Invoice", collection: "invoices", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ nameField: "invoiceNumber" }),
+    fields: [
+      makeFieldDefinition({ id: "invoiceNumber", entityId: "invoice", label: "Invoice #", type: "STRING" }),
+      makeFieldDefinition({ id: "accountId", entityId: "invoice", label: "Account", type: "REFERENCE", referenceTo: "account" }),
+    ],
+  });
+  const listDef = makeListViewDefinition({
+    id: "invoice.index", entityId: "invoice", label: "Invoices", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "invoiceNumber" }), makeColumn({ fieldId: "accountId" })],
+    pageSize: 25,
+  });
+  const names = { "acc-1": "Harbor Grill" };
+  const p = buildListPresentation({
+    def: listDef,
+    entity: acctEntity,
+    page: page([{ id: "inv-1", invoiceNumber: "INV-000001", accountId: "acc-1" }]),
+    resolveReference: (fieldId, id) => names[id] ?? null,
+  });
+  const cell = p.rows[0].cells.find((c) => c.fieldId === "accountId");
+  assert.equal(cell.value, "Harbor Grill");
+});
+
+test("buildListPresentation with no resolveReference renders every REFERENCE cell as the explicit unresolved state, never the id", () => {
+  const acctEntity = makeEntityDefinition({
+    id: "invoice", label: "Invoice", collection: "invoices", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ nameField: "invoiceNumber" }),
+    fields: [
+      makeFieldDefinition({ id: "invoiceNumber", entityId: "invoice", label: "Invoice #", type: "STRING" }),
+      makeFieldDefinition({ id: "accountId", entityId: "invoice", label: "Account", type: "REFERENCE", referenceTo: "account" }),
+    ],
+  });
+  const listDef = makeListViewDefinition({
+    id: "invoice.index", entityId: "invoice", label: "Invoices", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "invoiceNumber" }), makeColumn({ fieldId: "accountId" })],
+    pageSize: 25,
+  });
+  const p = buildListPresentation({
+    def: listDef,
+    entity: acctEntity,
+    page: page([{ id: "inv-1", invoiceNumber: "INV-000001", accountId: "acc-1" }]),
+  });
+  const cell = p.rows[0].cells.find((c) => c.fieldId === "accountId");
+  assert.equal(cell.value, UNRESOLVED_REFERENCE_LABEL);
+  assert.notEqual(cell.value, "acc-1");
+});
+
+// --- additivity: every other column type still renders exactly as before REFERENCE existed ---
+
+test("additivity — STRING, ENUM, ENUM_SET, TIMESTAMP/DATE, BOOLEAN and CURRENCY_MINOR are all unaffected by cellValue's new REFERENCE branch and third parameter", () => {
+  assert.equal(cellValue({ fieldId: "name", type: "STRING" }, { name: "Harbor Grill" }), "Harbor Grill");
+  assert.equal(
+    cellValue({ fieldId: "status", type: "ENUM", enumLabels: { ACTIVE: "Active" } }, { status: "ACTIVE" }),
+    "Active"
+  );
+  assert.equal(
+    cellValue(
+      { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: { CUSTOMER: "Customer" } },
+      { relationshipTypes: ["CUSTOMER"] }
+    ),
+    "Customer"
+  );
+  const epochMs = 1_700_000_000_000;
+  assert.equal(cellValue({ fieldId: "createdAt", type: "TIMESTAMP" }, { createdAt: epochMs }), formatTimestamp(epochMs));
+  assert.equal(cellValue({ fieldId: "isPrimary", type: "BOOLEAN" }, { isPrimary: true }), "Yes");
+  assert.equal(
+    cellValue({ fieldId: "totalMinor", type: "CURRENCY_MINOR" }, { totalMinor: 12500, currency: "USD" }),
+    formatMinor(12500, "USD")
+  );
+  // Passing an (unused, since none of these are REFERENCE) resolveReference must not change
+  // any of the above — the third parameter is additive, not a behavior switch for other types.
+  assert.equal(
+    cellValue({ fieldId: "name", type: "STRING" }, { name: "Harbor Grill" }, { resolveReference: () => "ignored" }),
+    "Harbor Grill"
+  );
+});
+
+// --- the document id stays a legitimate ROUTING key even for a REFERENCE column's own row ---
+
+test("a REFERENCE column never puts the id in a cell, but the row's own routing key (buildRowHref's input) is untouched", () => {
+  const acctEntity = makeEntityDefinition({
+    id: "invoice", label: "Invoice", collection: "invoices", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ nameField: "invoiceNumber" }),
+    fields: [
+      makeFieldDefinition({ id: "invoiceNumber", entityId: "invoice", label: "Invoice #", type: "STRING" }),
+      makeFieldDefinition({ id: "accountId", entityId: "invoice", label: "Account", type: "REFERENCE", referenceTo: "account" }),
+    ],
+  });
+  const listDef = makeListViewDefinition({
+    id: "invoice.index", entityId: "invoice", label: "Invoices", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "accountId" })],
+    pageSize: 25,
+    rowNavigationTo: "/invoices/:invoiceId",
+  });
+  const p = buildListPresentation({
+    def: listDef,
+    entity: acctEntity,
+    page: page([{ id: "inv-1", accountId: "acc-1" }]),
+  });
+  // The ROW's own document id (inv-1) remains the routing key, usable via buildRowHref,
+  // completely independent of the REFERENCE column's cell content (acc-1's unresolved state).
+  assert.equal(p.rows[0].key, "inv-1");
+  for (const cell of p.rows[0].cells) {
+    assert.notEqual(cell.value, "inv-1");
+    assert.notEqual(cell.value, "acc-1");
+  }
 });

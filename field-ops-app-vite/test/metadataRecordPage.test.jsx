@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
-import { buildRowHref } from "../src/metadata/listPresentation.js";
+import { buildRowHref, UNRESOLVED_REFERENCE_LABEL } from "../src/metadata/listPresentation.js";
 import { makeSection, makePageDefinition } from "../src/metadata/pageDefinition.js";
 import { componentRegistry, actionRegistry } from "../src/metadata/registry.js";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
@@ -375,6 +375,107 @@ describe("MetadataRecordPage", () => {
         expect(screen.queryByText("Notes")).toBeNull();
         expect(screen.getByText(/not available to you/i)).toBeTruthy();
       });
+    });
+  });
+
+  // ── X-LIST-REFERENCE-RENDERS-ID — a REFERENCE field/column never renders the raw
+  // stored document id, on either GAP 1's FIELD_GROUP path or GAP 2's RELATED_LIST path
+  // (both share listPresentation.js's cellValue). See that file's own doc comment for
+  // why the fix lives there and not here: this file's job is only to prove the fix
+  // reaches BOTH consumers of cellValue, not to re-derive the resolution logic. ────────
+
+  describe("X-LIST-REFERENCE-RENDERS-ID — REFERENCE never renders the raw id", () => {
+    it("GAP 1 FIELD_GROUP: a REFERENCE field renders the explicit unresolved state, never the stored id", () => {
+      const workOrderEntityWithReference = makeEntityDefinition({
+        id: "workOrder",
+        label: "Work Order",
+        readVia: "CLIENT_DIRECT",
+        collection: "workOrders",
+        fields: [
+          makeFieldDefinition({ id: "customerId", entityId: "workOrder", label: "Customer", type: "REFERENCE", referenceTo: "account" }),
+        ],
+      });
+      const def = workOrderPage({
+        sections: [
+          makeSection({ id: "fg", kind: "FIELD_GROUP", label: "Details", region: "MAIN", order: 0, fieldIds: ["customerId"] }),
+        ],
+      });
+      render(
+        <MetadataRecordPage
+          definition={def}
+          record={{ id: "wo-1", customerId: "95kFz8WWgiSn2nU2O3Ml" }}
+          entityResolver={(id) => (id === "workOrder" ? workOrderEntityWithReference : null)}
+        />
+      );
+      expect(screen.getByText("Customer")).toBeTruthy();
+      expect(screen.getByText(UNRESOLVED_REFERENCE_LABEL)).toBeTruthy();
+      expect(screen.queryByText("95kFz8WWgiSn2nU2O3Ml")).toBeNull();
+    });
+
+    it("GAP 2 RELATED_LIST: a REFERENCE column renders the explicit unresolved state, never the stored id, while the routing key still works", async () => {
+      const accountEntity = makeEntityDefinition({
+        id: "account",
+        label: "Account",
+        readVia: "CLIENT_DIRECT",
+        collection: "accounts",
+        relationships: [
+          makeRelationshipDefinition({
+            id: "account.invoices",
+            label: "Invoices",
+            fromEntityId: "account",
+            toEntityId: "invoice",
+            viaField: "accountId",
+            cardinality: "ONE_TO_MANY",
+          }),
+        ],
+      });
+      const invoiceEntity = makeEntityDefinition({
+        id: "invoice",
+        label: "Invoice",
+        readVia: "CLIENT_DIRECT",
+        collection: "invoices",
+        fields: [
+          makeFieldDefinition({ id: "invoiceNumber", entityId: "invoice", label: "Invoice #", type: "STRING" }),
+          makeFieldDefinition({ id: "salesOrderId", entityId: "invoice", label: "Sales Order", type: "REFERENCE", referenceTo: "salesOrder" }),
+        ],
+      });
+      const invoicesList = makeListViewDefinition({
+        id: "account.invoices.related",
+        entityId: "invoice",
+        label: "Invoices",
+        surface: "RELATED",
+        parentRelationshipId: "account.invoices",
+        columns: [makeColumn({ fieldId: "invoiceNumber" }), makeColumn({ fieldId: "salesOrderId" })],
+        rowNavigationTo: "/invoices/:invoiceId",
+        tiebreaker: "__name__",
+      });
+      const def = makePageDefinition({
+        id: "account.record",
+        entityId: "account",
+        label: "Account",
+        sections: [
+          makeSection({ id: "invs", kind: "RELATED_LIST", label: "Invoices", region: "MAIN", order: 0, listId: "account.invoices.related" }),
+        ],
+      });
+      fetchPageMock.mockResolvedValue({
+        rows: [{ id: "inv-1", invoiceNumber: "INV-000042", salesOrderId: "so-42kX9pQ" }],
+        hasMore: false,
+        nextCursorDoc: null,
+      });
+      render(
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={def}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.invoices.related" ? invoicesList : null)}
+            entityResolver={(id) => ({ account: accountEntity, invoice: invoiceEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+      expect(await screen.findByText("INV-000042")).toBeTruthy();
+      expect(screen.getByText(UNRESOLVED_REFERENCE_LABEL)).toBeTruthy();
+      // The referenced id must never surface as visible cell text, on either column.
+      expect(screen.queryByText("so-42kX9pQ")).toBeNull();
     });
   });
 
