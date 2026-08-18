@@ -332,6 +332,69 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "manufacturer.index",
   }),
+  // truck.index and equipmentModel.index (leaf definitions, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "trucks",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "displayLabel", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "truck.index",
+  }),
+  Object.freeze({
+    collectionGroup: "trucks",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "homeWarehouseId", order: "ASCENDING"},
+      {fieldPath: "displayLabel", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "truck.index",
+  }),
+  Object.freeze({
+    collectionGroup: "trucks",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "homeWarehouseId", order: "ASCENDING"},
+      {fieldPath: "displayLabel", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "truck.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment_models",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipmentModel.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment_models",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "manufacturerId", order: "ASCENDING"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipmentModel.index",
+  }),
+  Object.freeze({
+    collectionGroup: "equipment_models",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "manufacturerId", order: "ASCENDING"},
+      {fieldPath: "displayName", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "equipmentModel.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -402,6 +465,10 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/location.js",
   "field-ops-app-vite/src/metadata/definitions/warehouse.js",
   "field-ops-app-vite/src/metadata/definitions/supplier.js",
+  "field-ops-app-vite/src/metadata/definitions/truck.js",
+  "field-ops-app-vite/src/metadata/definitions/equipmentModel.js",
+  "field-ops-app-vite/src/metadata/definitions/invoice.js",
+  "field-ops-app-vite/src/metadata/definitions/payment.js",
   "field-ops-app-vite/src/metadata/definitions/manufacturer.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
