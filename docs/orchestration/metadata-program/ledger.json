@@ -2600,7 +2600,21 @@
         "DECISIONS #102 section 6"
       ],
       "nextAction": "None. Recorded as an integration-practice finding.",
-      "notes": "MY error as integration lane, not a lane's. #1204 was based on 160587b7, which predates #1202 (d2b69427) and therefore predates accountPageComponents.test.jsx. Both PRs were green on their own bases and semantically incompatible once combined -- git had no textual conflict to report. #1204 made DefaultRelatedList call useNavigate() unconditionally, so every render reaching it needs Router context; the lane REPORTED exactly this and wrapped the renders it could see, but could not see a file that did not exist on its base. Two of the four failures were #1202's BLOCKER tests asserting the defects still existed -- #1204 fixed them, so they inverted rather than got wrapped, which is precisely what those tests were for. LESSON: a leaf handoff verified against ITS OWN base is not sufficient; the integration lane must re-run the suite on a base containing every PR being combined. Recorded so the practice changes, not just the file."
+      "notes": "MY error as integration lane, not a lane's. #1204 was based on 160587b7, which predates #1202 (d2b69427) and therefore predates accountPageComponents.test.jsx. Both PRs were green on their own bases and semantically incompatible once combined -- git had no textual conflict to report. #1204 made DefaultRelatedList call useNavigate() unconditionally, so every render reaching it needs Router context; the lane REPORTED exactly this and wrapped the renders it could see, but could not see a file that did not exist on its base. Two of the four failures were #1202's BLOCKER tests asserting the defects still existed -- #1204 fixed them, so they inverted rather than got wrapped, which is precisely what those tests were for. LESSON: a leaf handoff verified against ITS OWN base is not sufficient; the integration lane must re-run the suite on a base containing every PR being combined. Recorded so the practice changes, not just the file. ELEVATED to a standing controller rule in docs/orchestration/agent-isolation-execution-rule.md ('Merge safety -- current main is authoritative'). The rule as written is deliberately NOT 'remember to rebase': it is that merge correctness depends on current COMBINED behavior, not on a PR's isolated green state, and that semantic overlap matters even when git reports no textual conflict. Adds the serialized-merge requirement to recompute mergeability after EACH merge rather than trusting a batch that was green at one moment."
+    },
+    {
+      "id": "X-FALSE-LOCAL-GREEN",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "npm test reported green from a grepped log line while the process had failed",
+      "domain": "orchestration",
+      "status": "COMPLETE",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None. Elevated to a standing controller rule.",
+      "notes": "I verified `npm test` by grepping a line out of its output instead of checking its exit status, so a failing run read as green; CI exposed the false claim. The specific trap: the suite prints lines like '# todo 0' on its way to exiting 1, so text that looks like a clean summary appears inside FAILING output. The durable lesson is LOG CONTENT IS DIAGNOSTIC, PROCESS EXIT STATUS IS EXECUTION TRUTH -- and the pipeline form is what hides it, because grep/tail/head succeed on their own and replace the test command's status. Elevated to a standing rule alongside the four claims that must never be collapsed: output looks green, the command exited green, CI is green, and the merge is safe against current main. Writer handoffs must now state the actual exit status, the head SHA tested and the base SHA tested against -- 'tests pass' is not a handoff."
     },
     {
       "id": "X-OPPORTUNITY-STALE-ROUTE",
