@@ -21,44 +21,117 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WIRING SCOPE — a partial, honest wiring, not a full swap
 //
-// Two of accountRecordPage's nine non-header sections render generically enough for
-// MetadataRecordPage to compose them correctly today: none of the three FIELD_GROUP sections
-// (identity, commercialProfile, notesAndIdentifiers) name a componentId — pageDefinition.js's own
-// contract reserves componentId for componentized kinds, and MetadataRecordPage.jsx's <Section>
-// renders nothing for a FIELD_GROUP with no registered component. Swapping those in today would
-// not describe the existing surface, it would blank three panels AccountDetail.jsx currently
-// renders in full. The four RELATED_LIST sections (opportunities, salesOrders, contacts,
-// locations) need a real listResolver/listRenderer pair wired to the list runtime and the
-// existing account-scoped list hooks — a second lane's worth of work, out of THIS lane's
-// writeScope (accountPageComponents.js, this test file, and a minimal AccountDetail.jsx edit
-// only).
+// AS OF X-ACCOUNT-PAGE-WIRING-COMPLETE: MetadataRecordPage's three former renderer gaps are
+// CLOSED (commit 27b109bb — a generic FIELD_GROUP renderer, a default RELATED_LIST binding,
+// and the `embedded` prop). Every one of accountRecordPage's nine non-header sections can now
+// MECHANICALLY produce output through MetadataRecordPage. That is a necessary condition for
+// wiring a section in, not a sufficient one — this lane evaluated the remaining six sections
+// (accountAttention, the four RELATED_LIST sections, and the two FIELD_GROUP sections) against
+// what they would actually replace and found a concrete, cited reason each one still renders
+// WORSE through metadata than hand-rendered (see the block below this one for the full,
+// per-section evidence). None of the six were wired.
 //
-// What DOES render safely through the metadata path today: the five componentId-bearing
-// sections. Of those, this lane actually SWAPS three of AccountDetail.jsx's existing
-// hand-rendered calls for a MetadataRecordPage render — the MAIN-column sections that are already
-// contiguous and in the same order in both accountPage.js and AccountDetail.jsx (financials ->
-// activityAndNotes -> serviceActivity, exported below as accountRecordPageMainSubset).
+// What DOES render through the metadata path: only the same three componentId sections the
+// prior lane already swapped — the MAIN-column sections that are already contiguous and in the
+// same order in both accountPage.js and AccountDetail.jsx (financials -> activityAndNotes ->
+// serviceActivity, exported below as accountRecordPageMainSubset). This lane changed no
+// rendering in AccountDetail.jsx; it added the evaluation above and the tests that lock it in.
 //
 // AccountHealthStrip and accountAttentionSection are both REGISTERED here (so the
 // registry-completeness test holds for every componentId accountRecordPage names) but
-// deliberately left HAND-RENDERED in AccountDetail.jsx, for two different reasons:
-//   - accountHealthStrip sits in the HIGHLIGHTS region above the two-column body, and wrapping it
-//     in MetadataRecordPage's own HIGHLIGHTS container class would be a layout change this lane
-//     cannot verify is neutral.
-//   - accountAttentionSection is the ONLY section accountRecordPage's SIDE region carries a
-//     capabilityRequirement on today (exported below as accountRecordPageSideSubset, and
-//     verified by this lane's tests). Rendering a subset with exactly one gated section and
-//     nothing ungated hits MetadataRecordPage's own "zero visible sections is DENIED, not empty"
-//     rule the instant finance.read is denied — the page then shows a page-level "Not available
-//     to you" FailureState in that slot, in place of AccountAttentionSection's own existing,
-//     more accurate per-source degrade (it already renders friendly loading/denied/unavailable
-//     notes and simply says nothing when there is nothing to flag). That is a real, user-visible
-//     regression for anyone without finance.read, caught by test/accountDetailFailClosed.test.jsx
-//     while wiring this up. accountRecordPageSideSubset is kept defined and tested for the day
-//     the SIDE region carries a second, ungated section — the same shape that already makes the
-//     MAIN subset safe.
+// deliberately left HAND-RENDERED in AccountDetail.jsx.
 //
-// A partial, honest wiring beats a full one that silently changes what a user sees.
+// ─────────────────────────────────────────────────────────────────────────────
+// X-ACCOUNT-PAGE-WIRING-COMPLETE — re-evaluated after the renderer's three gaps closed
+// (commit 27b109bb: FIELD_GROUP's entityResolver, RELATED_LIST's default binding, and the
+// `embedded` prop). Closing those gaps made MORE sections MECHANICALLY renderable through
+// MetadataRecordPage — it did not make all of them SAFE to render that way. Each candidate
+// below was evaluated against the real components/definitions it would replace, not just
+// against whether MetadataRecordPage could now produce SOME output for it. None passed;
+// each stays hand-rendered for a specific, cited reason. "A partial, honest wiring beats a
+// full one that silently changes what a user sees" (the standing rule this lane inherited)
+// held again, for entirely new reasons than the ones that applied before 27b109bb.
+//
+// accountAttentionSection (SIDE, componentId path, `embedded` now available) — NOT wired,
+// and `embedded` does not rescue it. `embedded` only fixes the REGION-level symptom (a
+// zero-section plan becoming a page-level FailureState); it does nothing about the
+// SECTION-level cause: accountPage.js declares ONE capability, finance.read, for a
+// component that internally composes TWO sources at two different authority levels
+// (AccountAttentionSection.jsx: `useAccountAr`, finance.read-gated, PLUS
+// `useAccountAttentionWorkOrders`, an UNGATED Rules-by-role client read of scheduled Work
+// Orders). MetadataRecordPage's capabilityRequirement is a single boolean gate on the whole
+// section (§6 — applyVisibility has no concept of "partially visible"), so wiring this
+// section can only honor the COARSER of the two authorities: when finance.read is denied,
+// the entire section vanishes, including the ungated Work-Order-past-due half a hand-mounted
+// AccountAttentionSection would still show (with its own honest "Accounts Receivable: not
+// authorized to view" note beside the real WO items — see that component's `sourceStatusNote`).
+// This is not a theoretical edge case: finance.read is registered catalog-wide `active:false`
+// (permissionCatalog.ts) — DENIED for every current viewer — so wiring this section today
+// would make the whole Account Attention panel disappear for 100% of users, silently
+// discarding real, currently-visible Work-Order attention data. That is exactly the "lost
+// graceful degradation" case the honesty constraint on this lane names. Locked in by
+// test/accountPageComponents.test.jsx's "embedded does not rescue…" test below.
+//
+// accountHealthStrip (HIGHLIGHTS, componentId path) — unchanged from the prior lane's
+// finding: it sits above the two-column body, and wrapping it in MetadataRecordPage's own
+// HIGHLIGHTS container class would be a layout change this lane still cannot verify is
+// neutral without a visual pass. Left hand-rendered per this task's own instruction not to
+// ship an unverified visual change.
+//
+// contacts / locations (RELATED_LIST, GAP 2's default binding) — mechanically compatible
+// (both entities are readVia CLIENT_DIRECT, and account.js now declares both parent-side
+// relationships), but wiring EITHER through DefaultRelatedList would:
+//   (a) start a SECOND, independent live read of the exact same collection query
+//       AccountDetail.jsx already runs via useContactsForAccount / useLocationsForAccount —
+//       data those hooks must keep supplying regardless (contacts feeds
+//       PrimaryContactSummary, CommercialProfileSection's billing-contact resolution, and
+//       AccountForm's edit view; locations' hook return value cannot simply be dropped
+//       either without losing the section's own count). Two independent subscriptions to
+//       one query is the EXACT anti-pattern already named and tracked in this file's own
+//       AR-double-read note above (#1094/#1095) — real disagreement between "the same read,
+//       fetched twice" is a documented production bug on this page, not a hypothetical one.
+//   (b) drop "+ Add Contact" / "Import Contacts" / "+ Add Location" and their modals — real
+//       CRUD entry points with no equivalent in MetadataListGrid/DefaultRelatedList — and
+//       drop the post-add keyboard-focus handoff to the new row (`pendingContactFocus` /
+//       `pendingLocationFocus` + the row `ref`), an accessibility behavior
+//       MetadataListGrid has no hook to reproduce (rows carry no caller-supplied ref).
+// Both are real, user-visible regressions, not cosmetic ones. Left hand-rendered.
+//
+// opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — NOT a UX-tradeoff
+// case like contacts/locations (AccountOpportunitiesSection / AccountSalesOrdersSection are
+// self-contained: no Add UI, no data any other part of the page also needs). The blocker is
+// structural and unconditional: opportunity.js and salesOrder.js both declare `readVia:
+// "CALLABLE"` — `opportunities` and `sales_orders` are deny-all in Firestore Rules, and the
+// ONLY real reads are the trusted `listOpportunitiesForAccount` / `listSalesOrdersForAccount`
+// callables. MetadataRecordPage's default RELATED_LIST binding is built on
+// firestoreListSource.js's `fetchPage`, which ALWAYS executes a direct `getDocs` against
+// `descriptor.collection` — it has no CALLABLE-read path at all (out of this lane's
+// writeScope to add). Wiring either section would therefore issue a client read against a
+// deny-all collection and report every viewer — including one holding the real capability —
+// as `permission-denied` -> DENIED, a false "Not available to you" that would not even
+// resolve once opportunity.read/salesOrder.read are eventually activated. That is worse than
+// today's hand-rendered read (a real callable, a real resolver, a real result) in a way no
+// capabilityDecisions map can compensate for. Left hand-rendered.
+//
+// commercialProfile (FIELD_GROUP, GAP 1's generic renderer) — the generic FieldGroup renderer
+// (`cellValue()` off the raw stored value) has no live identity-resolution step, but two of
+// this section's seven fields need one: `accountOwnerEmployeeId` / `billingContactId` are
+// REFERENCE fields, and cellValue has no REFERENCE handling — it would print the raw stored
+// employee/contact DOCUMENT ID, where CommercialProfileSection today shows the CURRENT
+// resolved name via IdentityLine (account.js's own field comment: "the CURRENT resolved
+// identity ... never the stored snapshot"). Separately, `taxStatus` must resolve an ABSENT
+// stored value to the safe default "Unknown", never a blank (account.js's field comment,
+// domain/commercialProfile.js's resolveTaxStatus()) — the generic renderer has no such
+// fallback and would show "—" for an unset taxStatus, a different and incorrect fact. Both
+// are real data-correctness regressions, not formatting ones. Left hand-rendered.
+//
+// notesAndIdentifiers (FIELD_GROUP, GAP 1's generic renderer) — no identity-resolution or
+// safe-default gap (every field is a plain STRING/TEXT, shown as-is by both paths), but the
+// section is declared `collapsedByDefault: true` and AccountDetail.jsx renders it as a
+// collapsed `<details>/<summary>` — MetadataRecordPage's <Section> has no collapse concept
+// and would render it permanently expanded. That is a confirmed (not merely unverifiable)
+// layout change, the same category the health-strip note above and this task's own
+// instructions treat as disqualifying. Left hand-rendered.
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // §6 — CAPABILITY DECISIONS COME FROM THE REAL RESOLVER, NEVER INVENTED HERE.
@@ -197,7 +270,17 @@ function subsetOf(def, ids) {
 /** MAIN-column subset: Financials, Activity & Notes, Service Activity — same order as today. */
 export const accountRecordPageMainSubset = subsetOf(accountRecordPage, MAIN_SUBSET_IDS);
 
-/** SIDE-column subset: Account Attention. */
+/**
+ * SIDE-column subset: Account Attention.
+ *
+ * Kept defined and tested (test/accountPageComponents.test.jsx), NOT because a future lane
+ * merely needs to flip a switch — even with `embedded` (GAP 3) this subset is evaluated and
+ * REJECTED for AccountDetail.jsx's own render, see the SIDE-region note in the "WIRING SCOPE"
+ * block above. Adopting it would require either accountPage.js declaring a finer-grained
+ * capability model than "one capabilityRequirement per section" (out of this lane's writeScope,
+ * and a real change to §6's section-level contract), or AccountAttentionSection itself losing
+ * its own ungated Work-Order-past-due degrade — neither is this lane's call to make.
+ */
 export const accountRecordPageSideSubset = subsetOf(accountRecordPage, SIDE_SUBSET_IDS);
 
 // ── The real capability resolver ────────────────────────────────────────────

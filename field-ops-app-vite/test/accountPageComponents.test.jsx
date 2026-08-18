@@ -150,3 +150,59 @@ describe("accountRecordPageMainSubset / accountRecordPageSideSubset -- capabilit
     expect(screen.getByText(ATTENTION_MARK)).toBeTruthy();
   });
 });
+
+// X-ACCOUNT-PAGE-WIRING-COMPLETE — the SIDE subset stays hand-rendered in AccountDetail.jsx even
+// with `embedded` (GAP 3) available. These two tests lock in WHY, so a future lane cannot "fix"
+// AccountDetail.jsx by simply adding `embedded` without also addressing the real cause: a
+// section-level capabilityRequirement cannot express "this component has an ungated half".
+// See accountPageComponents.js's WIRING SCOPE note and AccountDetail.jsx's own comment above the
+// hand-rendered <AccountAttentionSection> for the full case (AccountAttentionSection.jsx composes
+// a finance.read-gated AR read with an UNGATED Work-Order-past-due read; a section that vanishes
+// whenever finance.read is denied throws away the ungated half too).
+describe("accountRecordPageSideSubset with `embedded` — evaluated and still not adopted", () => {
+  const ATTENTION_MARK = "account attention section rendered";
+
+  beforeEach(() => {
+    componentRegistry.__resetForTest();
+    componentRegistry.register({
+      id: "accountAttentionSection",
+      kind: "RECORD_SECTION",
+      component: () => <p>{ATTENTION_MARK}</p>,
+    });
+  });
+
+  it("embedded does NOT rescue the SIDE subset: a denied finance.read still hides the section entirely, with no page-level failure to signal it", () => {
+    const { container } = render(
+      <MetadataRecordPage
+        definition={accountRecordPageSideSubset}
+        record={{ id: "acct-1" }}
+        // Matches production's real, current state: finance.read is registered catalog-wide
+        // active:false, so an empty decisions map is not a contrived edge case here — it is what
+        // every viewer sees today.
+        capabilityDecisions={{}}
+        embedded
+      />
+    );
+    // Embedded correctly avoids the page-level "Not available to you" FailureState (GAP 3's own
+    // job) — but that only proves the REGION-level symptom is fixed. Nothing at all renders in
+    // its place: no test double, no failure state, nothing. A real AccountAttentionSection mounted
+    // by hand would still show its own Work-Order-past-due content here (that half is Rules-gated
+    // by role, not by finance.read) — this is exactly the content a metadata-driven swap would
+    // discard, for every viewer, today.
+    expect(screen.queryByText(ATTENTION_MARK)).toBeNull();
+    expect(screen.queryByText(/not available to you/i)).toBeNull();
+    expect(container.textContent).toBe("");
+  });
+
+  it("granted, embedded renders the section content cleanly — proving the mechanism works; the rejection above is a section-design mismatch, not a bug in `embedded` itself", () => {
+    render(
+      <MetadataRecordPage
+        definition={accountRecordPageSideSubset}
+        record={{ id: "acct-1" }}
+        capabilityDecisions={{ "finance.read": true }}
+        embedded
+      />
+    );
+    expect(screen.getByText(ATTENTION_MARK)).toBeTruthy();
+  });
+});

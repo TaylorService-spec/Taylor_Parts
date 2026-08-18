@@ -47,6 +47,19 @@ import {
 // useAccountPageCapabilityDecisions, the same trusted resolveEffectiveAccessCallable-backed,
 // fail-closed gate access/useReportCapabilities.js already uses, requesting exactly the ids
 // accountRecordPage declares.
+//
+// X-ACCOUNT-PAGE-WIRING-COMPLETE -- re-evaluated after MetadataRecordPage's three renderer gaps
+// closed (commit 27b109bb: FIELD_GROUP entityResolver, RELATED_LIST default binding, `embedded`).
+// Closing those gaps made every remaining section mechanically renderable; it did not make any of
+// them SAFE to render here. Each was checked against what it would actually replace and found to
+// render measurably worse -- see accountPageComponents.js's WIRING SCOPE block for the full,
+// per-section evidence (a section-level finance.read gate hiding Account Attention's ungated
+// Work-Order half for every current viewer; a CALLABLE-readVia gap the default RELATED_LIST
+// binding cannot serve for Opportunities/Sales Orders; a forced duplicate live read plus lost
+// Add/Import CRUD and lost post-add focus-handoff for Contacts/Locations; raw unresolved
+// reference ids and a lost taxStatus safe-default for Commercial Profile; a lost
+// collapsed-by-default layout for Notes & Identifiers). No section below was moved. Locked in by
+// test/accountPageComponents.test.jsx.
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -383,7 +396,15 @@ export default function AccountDetail() {
           {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
               exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
               real record surfaces, not an empty shell implying "this account has none." Ordered
-              Opportunities, then Sales Orders, above Financials in the PRIMARY column. */}
+              Opportunities, then Sales Orders, above Financials in the PRIMARY column.
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata RELATED_LIST default
+              binding (accountPage.js declares both, listId account.opportunities/
+              account.salesOrders) and left hand-rendered -- both entities are readVia CALLABLE
+              (deny-all Rules; the trusted listOpportunitiesForAccount/listSalesOrdersForAccount
+              callables are the only real read), and MetadataRecordPage's default binding
+              (firestoreListSource.fetchPage) only ever executes a direct client getDocs, with no
+              CALLABLE-read path. Wiring either would read a deny-all collection and misreport
+              every viewer as denied. See accountPageComponents.js's WIRING SCOPE note. */}
           <AccountOpportunitiesSection accountId={account.id} />
           <AccountSalesOrdersSection accountId={account.id} />
 
@@ -404,7 +425,18 @@ export default function AccountDetail() {
             capabilityDecisions={capabilityDecisions}
           />
 
-          {/* 3. Contacts */}
+          {/* 3. Contacts
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata RELATED_LIST default
+              binding (accountPage.js: listId account.contacts, entity readVia CLIENT_DIRECT --
+              mechanically compatible) and left hand-rendered. `contacts` (useContactsForAccount,
+              below) is required regardless for PrimaryContactSummary in the header and
+              CommercialProfileSection's billing-contact resolution, so wiring the list display
+              alone would start a SECOND, independent live read of the same query -- the exact
+              double-read anti-pattern this file's AR note already tracks as a real bug (#1094/
+              #1095), not a hypothetical one. Swapping the whole section would additionally drop
+              "+ Add Contact" / "Import Contacts" and the post-add focus handoff to the new row
+              (pendingContactFocus + contactRowRef) -- MetadataListGrid exposes no per-row ref. See
+              accountPageComponents.js's WIRING SCOPE note. */}
           <section className="wo-history">
             <h4>Contacts ({contactsError ? "—" : contacts.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
@@ -459,7 +491,13 @@ export default function AccountDetail() {
             />
           )}
 
-          {/* 4. Locations -- add-only (no Location edit action exists) */}
+          {/* 4. Locations -- add-only (no Location edit action exists)
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: same evaluation and outcome as Contacts above --
+              readVia CLIENT_DIRECT is mechanically compatible with the RELATED_LIST default
+              binding, but `locations` (useLocationsForAccount) still owns this section's count
+              and error/retry state, and swapping the list display would either duplicate that
+              live read or drop it, plus drop "+ Add Location" and the post-add focus handoff
+              (pendingLocationFocus + locationRowRef). Left hand-rendered. */}
           <section className="wo-history">
             <h4>Locations ({locationsError ? "—" : locations.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
@@ -505,7 +543,17 @@ export default function AccountDetail() {
             </div>
             <aside className="fo-account-secondary" aria-label="Account context">
 
-          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
+          {/* Commercial Profile -- informational fields + current-name identity (PR 1)
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
+              renderer (accountPage.js: commercialProfile, GAP 1's `entityResolver`) and left
+              hand-rendered. The generic renderer's cellValue() has no REFERENCE-field
+              resolution -- accountOwnerEmployeeId/billingContactId would show the raw stored
+              employee/contact id where CommercialProfileSection shows the CURRENT resolved name
+              via IdentityLine -- and no taxStatus safe default, so an absent taxStatus would
+              render "—" instead of the required "Unknown" (domain/commercialProfile.js's
+              resolveTaxStatus(), see account.js's own field comment). Both are data-correctness
+              regressions, not formatting ones. See accountPageComponents.js's WIRING SCOPE
+              note. */}
           <CommercialProfileSection
             account={account}
             contacts={contacts}
@@ -521,23 +569,33 @@ export default function AccountDetail() {
               is nothing to say. The Marketing seam mounts alongside and stays absent
               while no provider exists: an optional section with nothing to say should
               contribute nothing, not a permanent apology.
-              X-ACCOUNT-PAGE-WIRING: NOT routed through MetadataRecordPage, deliberately.
-              accountRecordPageSideSubset (accountPageComponents.js) names only this one
-              section, and it is the ONLY section in that subset; when finance.read denies,
-              MetadataRecordPage's own "a plan with zero visible sections is not empty, it
-              is DENIED" rule (see MetadataRecordPage.jsx) renders a page-level "Not
-              available to you" FailureState in its place -- correct for a page where that
-              is the whole story, wrong here where AccountAttentionSection already has its
-              own graceful per-source degrade (loading/denied/unavailable notes) and every
-              other section on this page keeps rendering. Hand-rendered to preserve that
-              existing, more accurate degrade; the SIDE subset stays defined and tested in
-              accountPageComponents.js for the day a SIDE region carries more than one
-              section. */}
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: still NOT routed through MetadataRecordPage,
+              re-evaluated after `embedded` (GAP 3) shipped. `embedded` fixes the REGION-level
+              symptom (a zero-section plan no longer becomes a page-level FailureState) but not
+              the SECTION-level cause: accountPage.js declares ONE capability
+              (finance.read) for this section, while AccountAttentionSection internally
+              composes TWO sources at different authority levels -- AR via useAccountAr
+              (finance.read-gated) and Work-Order-past-due via useAccountAttentionWorkOrders
+              (UNGATED, Rules-by-role only). A section-level capabilityRequirement can only
+              honor the coarser of the two, so wiring this through metadata would hide the
+              entire panel -- including the ungated Work-Order half -- whenever finance.read
+              is denied. finance.read is registered catalog-wide active:false today, i.e.
+              denied for every current viewer, so that is not a theoretical edge case: it
+              would blank this panel for 100% of users right now. Hand-rendered to keep
+              AccountAttentionSection's real per-source degrade; see accountPageComponents.js's
+              WIRING SCOPE note and test/accountPageComponents.test.jsx for the full case. */}
           <AccountAttentionSection accountId={account.id} />
 
           {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
               column: it is a record surface a salesperson works in, not sidebar context. */}
-          {/* 6. Notes / Identifiers -- collapsed by default */}
+          {/* 6. Notes / Identifiers -- collapsed by default
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
+              renderer (accountPage.js: notesAndIdentifiers) and left hand-rendered. No data
+              gap this time (every field is plain STRING/TEXT) -- but this section is declared
+              collapsedByDefault: true and MetadataRecordPage's <Section> has no collapse
+              concept, so wiring it would silently change the page from collapsed to always
+              expanded, a confirmed layout change. See accountPageComponents.js's WIRING
+              SCOPE note. */}
           <details className="fo-account-collapsible">
             <summary>Notes &amp; Identifiers</summary>
             {account.notes ? (
