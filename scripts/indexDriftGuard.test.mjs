@@ -89,6 +89,8 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
+  // Declared by the TransferOrder leaf definition; not deployed.
+  'transfer_orders|COLLECTION|status:ASCENDING,createdAt:DESCENDING',
   // Declared by the MobileLocation leaf definition; not deployed.
   'mobile_locations|COLLECTION|active:ASCENDING,displayLabel:ASCENDING',
   // Declared by the Stock Location leaf definition; not deployed.
