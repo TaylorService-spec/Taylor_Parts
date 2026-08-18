@@ -38,8 +38,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
+- **X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED** (phase 6) — FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet → Make FieldGroup render only visible parts and surface the withholding visibly.
 - **X-RELATED-LIST-ACTIONS** (phase 6) — MetadataListGrid has no row actions or focus handoff → Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections
-- **X-SECTION-CAPABILITY-GRANULARITY** (phase 6) — A section capability cannot express a partially-gated composition → Either finer-grained section capabilities, or split the composed section in two
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -52,7 +52,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-SECTION-CAPABILITY-GRANULARITY | 6 | A section capability cannot express a partially-gated composition | — | — | — | — | — | NOT_APPLICABLE | Either finer-grained section capabilities, or split the composed section in two |
+| X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED | 6 | FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet | — | — | — | — | — | NOT_APPLICABLE | Make FieldGroup render only visible parts and surface the withholding visibly. |
 | X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | — | — | — | NOT_APPLICABLE | Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections |
 
 ## MERGED
@@ -114,6 +114,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-TRANSFER-MANUFACTURER-DEFINITIONS | 6 | Transfer Order + Manufacturer definitions (leaf lane) | — | — | #1196 | — | ed448c75 | NOT_APPLICABLE | Manufacturer merged. Transfer Order held on X-TRANSFER-ORDER-NO-REFERENCE. |
 | X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | #1198 | — | f42491de | NOT_APPLICABLE | No section newly wired. Three prerequisites identified and recorded. |
 | A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | #1200 | — | 6c6480d8 | NOT_APPLICABLE | Merged. Opportunities and Sales Orders are now wirable; that lane is dispatched. |
+| X-SECTION-CAPABILITY-GRANULARITY | 6 | A section capability cannot express a partially-gated composition | — | — | #1209 | — | 18aae32c | NOT_APPLICABLE | None. Adoption is gated on the FieldGroup consumer. |
 | X-OPPORTUNITY-STALE-ROUTE | 6 | opportunity.js declared a rowNavigationTo route that never existed | — | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | Restore a rowNavigationTo only when a real per-Opportunity route exists. |
 | A-ENTITY-BILLING-DEFINITIONS | 6 | Invoice and Payment entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
 | A-ENTITY-FLEET-CATALOG-DEFINITIONS | 6 | Truck and EquipmentModel entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
