@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main d1dadca2 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 0f019b4f -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -43,13 +43,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
 - **X-TRANSFER-ORDERS-UNBOUNDED-READ** (phase 6) — fetchTransferOrderDocs is a fully unbounded collection read → Route it through the bounded listCollectionPage helper its siblings already use.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
-- **S-INV-EQUIPMENT** (phase 9) — Equipment workspace → Migrate the Customer Equipment tab list only; leave the workspace and other tabs.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate the Customer Equipment tab list only; leave the workspace and other tabs. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
 
 ## READY
@@ -89,6 +87,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SUPPLIERS-VIEW-ID-AS-NAME | 6 | suppliersView fell back to the document id as the display name -- LIVE | — | — | #1236 | — | 82eb0217 | NOT_APPLICABLE | None. |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | 39524862 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | #1233 | — | 4cf132ad | NOT_APPLICABLE | None. |
+| S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | #1246 | — | 0f019b4f | NOT_APPLICABLE | None for the tab. The other two tabs remain a stub and a create form. |
+| X-EQUIPMENT-VIEW-ID-AS-NAME | 6 | resolveName fell back to the document id -- the FOURTH instance of the same escape clause | — | — | #1246 | — | 0f019b4f | NOT_APPLICABLE | None. |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | c01c0531 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | #1132 | — | 6fee1296 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | 12e64a89 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
