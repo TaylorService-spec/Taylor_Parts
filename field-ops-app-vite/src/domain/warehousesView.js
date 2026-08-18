@@ -51,7 +51,12 @@ export function buildWarehousesView(warehouses) {
     if (!isPlainObject(w) || typeof w.id !== "string" || w.id.length === 0) continue;
     rows.push({
       id: w.id,
-      name: typeof w.name === "string" && w.name ? w.name : w.id,
+      // A record id is NOT a name. This used to fall back to `w.id`, putting a Firestore
+      // document id in front of a user whenever a warehouse had no name -- DECISIONS #106,
+      // which has no "unless nothing else is available" clause. The em dash makes the missing
+      // name visible instead of disguising it as data. Sorting still uses `id` as the
+      // tiebreaker below, so unnamed rows stay stably ordered.
+      name: typeof w.name === "string" && w.name ? w.name : "—",
       status: typeof w.status === "string" && w.status ? w.status : null,
     });
   }
