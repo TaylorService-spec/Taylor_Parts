@@ -6,6 +6,7 @@
 
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import {
   COMPONENT_KIND, ACTION_KIND,
   componentRegistry, actionRegistry,
@@ -37,17 +38,46 @@ import { workOrderIndexList } from "../src/metadata/definitions/workOrder.js";
 
 const Noop = () => null;
 
-// Every real ListViewDefinition currently exported anywhere under src/metadata/definitions/
-// (verified by a repo-wide grep for `makeListViewDefinition(` at the time this was written —
-// 20 of them). Named individually, not globbed, so an id typo above fails loudly at import
-// time rather than silently narrowing what gets checked.
-const REAL_LIST_DEFINITIONS = [
-  accountIndexList, contactIndexList, contactRelatedList, employeeIndexList, equipmentIndexList,
-  equipmentModelIndexList, invoiceIndexList, locationIndexList, locationRelatedList,
-  manufacturerIndexList, opportunityIndexList, opportunityRelatedList, partIndexList,
-  purchaseOrderIndexList, salesOrderIndexList, salesOrderRelatedList, supplierIndexList,
-  truckIndexList, warehouseIndexList, workOrderIndexList,
-];
+// Every real ListViewDefinition exported under src/metadata/definitions/, DISCOVERED FROM THE
+// DIRECTORY rather than named by hand.
+//
+// It used to be a hand-maintained list of 20, guarded by `assert.equal(length, 20)` with the
+// message "the named import list drifted from definitions/*.js — update both". It drifted:
+// four more list definitions merged (transferOrder, reorderRequest, stockLocation,
+// mobileLocation) without this file, which was never in those lanes' writeScope. The
+// assertion still passed, because it compared the list against ITS OWN length — so the check
+// stayed green while silently covering less than it claimed.
+//
+// A count guard cannot detect that. Reading the directory can: a new definition is covered
+// the moment it exists, and no lane has to remember this file. The floor assertion below
+// guards the opposite failure — a broken import silently yielding zero definitions to check,
+// which would also pass vacuously.
+const DEFINITIONS_DIR = new URL("../src/metadata/definitions/", import.meta.url);
+// Modules under definitions/ that cannot be imported by plain `node --test` because they reach
+// outside the metadata layer (React components, firebase). They carry no ListViewDefinition,
+// so excluding them loses no coverage.
+//
+// This list is ASSERTED, not assumed: any OTHER module that fails to import fails the test
+// below, by name. A silent skip is how the previous version quietly stopped covering four
+// definitions.
+const NON_DATA_MODULES = new Set(["accountPageComponents.js"]);
+
+const unexpectedImportFailures = [];
+const loadedModules = [];
+for (const file of readdirSync(DEFINITIONS_DIR).filter((f) => f.endsWith(".js"))) {
+  if (NON_DATA_MODULES.has(file)) continue;
+  try {
+    loadedModules.push(await import(new URL(file, DEFINITIONS_DIR).href));
+  } catch (err) {
+    unexpectedImportFailures.push(file + ": " + err.message);
+  }
+}
+
+const REAL_LIST_DEFINITIONS = loadedModules
+  .flatMap((mod) => Object.values(mod))
+  // A ListViewDefinition is identified by its SHAPE, not its export name: `columns` is the
+  // property validateRegistryReferences actually reads, so anything carrying one is in scope.
+  .filter((v) => v && typeof v === "object" && Array.isArray(v.columns) && typeof v.id === "string");
 
 beforeEach(() => {
   componentRegistry.__resetForTest();
@@ -233,7 +263,16 @@ test("unknown kinds are rejected on both registries", () => {
 // CELL_RENDERER — so referencedRegistryIds no longer looks for it. A lookup for a property no
 // valid definition can carry is the same dead-declaration shape the removal was meant to end.
 test("every real ListViewDefinition passes validateRegistryReferences", () => {
-  assert.equal(REAL_LIST_DEFINITIONS.length, 20, "the named import list drifted from definitions/*.js — update both");
+  // An unexpected import failure would silently drop a definition from coverage -- exactly how
+  // the hand-maintained version drifted. Fail by name instead.
+  assert.deepEqual(unexpectedImportFailures, [], "definition modules failed to import: " + unexpectedImportFailures.join("; "));
+  // A floor, not an exact count: an exact count is what let the previous version drift while
+  // still passing. This only has to catch the vacuous case where the directory scan yields
+  // nothing and the loop below checks zero definitions.
+  assert.ok(
+    REAL_LIST_DEFINITIONS.length >= 20,
+    `expected at least 20 real list definitions, found ${REAL_LIST_DEFINITIONS.length} — the directory scan is broken`,
+  );
   for (const def of REAL_LIST_DEFINITIONS) {
     const problems = validateRegistryReferences(def);
     assert.deepEqual(problems, [], `${def.id}: ${problems.join("; ")}`);
