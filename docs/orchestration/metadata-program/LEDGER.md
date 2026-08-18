@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 56fc09d9 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 07435b9a -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -149,6 +149,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-ENTITY-BILLING-DEFINITIONS | 6 | Invoice and Payment entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
 | A-ENTITY-STOCK-LOCATION-DEFINITION | 6 | Stock Location entity definition | — | — | #1223 | — | 773b72e7 | NOT_APPLICABLE | None. |
 | A-ENTITY-TERRITORY-MOBILE-DEFINITIONS | 6 | SalesTerritory and MobileLocation entity definitions | — | — | #1251 | — | 56fc09d9 | NOT_APPLICABLE | truck.js locationId can now become a REFERENCE to mobileLocation. |
+| A-DEFERRED-REFERENCE-UPGRADES | 6 | Two deferred REFERENCE fields closed once their targets existed | — | — | #1253 | — | 07435b9a | NOT_APPLICABLE | None. |
 | A-ENTITY-FLEET-CATALOG-DEFINITIONS | 6 | Truck and EquipmentModel entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
 | A-ACCOUNT-WIRE-CALLABLE-LISTS-2 | 6 | Opportunities and Sales Orders wired through metadata | /customers/:accountId | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | None. |
 | X-LIST-TIMESTAMP-FORMATTING | 6 | cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number | — | — | #1204 | — | 6998306f | NOT_APPLICABLE | None. |

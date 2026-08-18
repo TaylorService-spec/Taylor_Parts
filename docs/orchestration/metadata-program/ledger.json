@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 56fc09d9 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 07435b9a -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -2822,6 +2822,22 @@
       ],
       "nextAction": "truck.js locationId can now become a REFERENCE to mobileLocation.",
       "notes": "Both PASS validateEntityDefinition -- the first definitions to merge after four consecutive ones were held on the identity clause. The lane checked identity FIRST as instructed and both have real names, so neither had to be forced. MobileLocation closes a gap truck.js recorded deliberately at the time: its locationId is a plain ID BECAUSE no mobileLocation entity existed, and can now become a real REFERENCE (reported against truck.js, not edited from the leaf). The lane also DECLINED a plausible-but-wrong citation: inventory.location.display.read exists and touches mobile_locations, but gates a narrower bounded point-read projection service rather than this collection's own read, so it was not named as readCapability. SalesTerritory is readVia UNKNOWN and stays that way -- sales_territories is deny-all, and the one callable that touches it reads server-side for coverage resolution with a response that never includes the territory's name, kind, geo or status, so NO client-reachable read exists at all. It is append-only with no update path anywhere in the coverage module. It declared only what is STORED: territory-independent coverage, channels and effective dating are recorded roadmap requirements, and modelling them would have put a design in the repo ahead of its decision. geo left undeclared -- a discriminated union v1 has no struct type for, consistent with location.js's address gap. One net-new composite (36->37) pending deploy; SalesTerritory declares no list view and was registered anyway, on the purchaseOrder precedent."
+    },
+    {
+      "id": "A-DEFERRED-REFERENCE-UPGRADES",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Two deferred REFERENCE fields closed once their targets existed",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1253,
+      "mergeSha": "07435b9a",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "truck.locationId -> mobileLocation and part.equipmentModelId -> equipmentModel. Both were declared as plain IDs BECAUSE their target entity did not exist yet, and both recorded that reason at the time rather than working around it -- so closing them was mechanical once the targets landed. This is the payoff for the habit the program has been enforcing all wave: a gap recorded honestly costs one line to close later, while a gap worked around costs a lane to discover. Both were verified against the WRITE PATH rather than the field name: mobileLocationFromFirestore throws if a record's locationId disagrees with its doc id, and part's equipmentModelId is validated by isCanonicalEquipmentModelId plus a live assertEquipmentModelExists doc read on every create/update -- which mattered, because equipmentModel's modelNumber is unique only WITH manufacturerId and a separate alias collection exists, so the field could plausibly have held a model number or an alias. validateEntityRegistry cross-validates clean across all 20 registered entities; no index demand changed. part.primaryManufacturerId was left alone and stated, rather than quietly bundled in."
     },
     {
       "id": "X-INVENTORY-TRANSACTION-NO-IDENTITY",
