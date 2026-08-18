@@ -233,3 +233,16 @@ test("an empty ENUM_SET is absent, not an empty string", () => {
   const column = { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: {} };
   assert.equal(cellValue(column, { relationshipTypes: [] }), null);
 });
+
+test("a BOOLEAN column renders text, not a blank cell", () => {
+  // `false` is a real, meaningful value. React renders neither true nor false as a child,
+  // so before this a declared boolean column was blank whichever way it was set --
+  // "no" and "unknown" became the same cell.
+  const col = { fieldId: "isPrimary", type: "BOOLEAN" };
+  assert.equal(cellValue(col, { isPrimary: true }), "Yes");
+  assert.equal(cellValue(col, { isPrimary: false }), "No");
+  // Genuinely absent stays absent, and must not read as "No" -- "this contact is not the
+  // primary" and "nobody recorded whether they are" are different claims.
+  assert.equal(cellValue(col, { isPrimary: null }), null);
+  assert.equal(cellValue(col, {}), null);
+});

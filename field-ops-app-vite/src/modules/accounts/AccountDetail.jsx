@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
@@ -23,7 +23,6 @@ import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
 import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
@@ -31,11 +30,14 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { useAuth } from "../../auth/AuthContext";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   accountRecordPageMainSubset,
+  accountRecordPageContactsLocationsSubset,
   accountPageListResolver,
   accountPageEntityResolver,
   useAccountPageCapabilityDecisions,
+  buildAccountRelatedListPresentation,
 } from "../../metadata/definitions/accountPageComponents.js";
 
 // X-ACCOUNT-PAGE-WIRING -- Financials / Activity & Notes / Service Activity (the MAIN-column
@@ -207,6 +209,40 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
   );
 }
 
+// X-RELATED-LIST-ACTIONS wiring for the Contacts/Locations sections below --
+// A-ACCOUNT-WIRE-CONTACTS-LOCATIONS. The section HEADING (with its live row count) and the
+// "+ Add ..." / "Import ..." affordances stay hand-rendered here -- MetadataListGrid /
+// DefaultRelatedList have no equivalent -- while the row grid itself, the four
+// EMPTY/DENIED/UNAVAILABLE/READY states, and the post-create keyboard-focus handoff all
+// route through the real metadata list runtime (buildAccountRelatedListPresentation +
+// MetadataListGrid's own focusRowKey/onFocusHandled). See accountPageComponents.js's WIRING
+// SCOPE note for the full case (why a separate MetadataRecordPage call, why NOT
+// DefaultRelatedList, the Location-address-flattening and Contact-isPrimary fixes).
+function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFocusHandled, announcement, actions }) {
+  return (
+    <>
+      <h4>{heading}</h4>
+      <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
+      <MetadataListGrid
+        presentation={presentation}
+        onRetry={onRetry}
+        caption={heading}
+        focusRowKey={focusRowKey ?? undefined}
+        onFocusHandled={onFocusHandled}
+      />
+      {actions && actions.length > 0 && (
+        <div className="fo-btn-row">
+          {actions.map((action) => (
+            <button key={action.label} type="button" onClick={action.onClick}>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
@@ -217,7 +253,7 @@ export default function AccountDetail() {
   // treats as signed-out (fail-closed, denies every capability) -- never a permissive default.
   const { user } = useAuth() ?? {};
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
-  const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
+  const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
@@ -247,27 +283,14 @@ export default function AccountDetail() {
   const [locationAnnouncement, setLocationAnnouncement] = useState("");
   // The contact/location id to move focus to once the live subscription renders
   // its row (matched by id internally; the id is never rendered/announced).
+  // X-RELATED-LIST-ACTIONS: the post-create focus handoff itself (waiting for the live
+  // subscription to deliver the new row, then moving DOM focus onto it) is now
+  // MetadataListGrid's own concern (focusRowKey/onFocusHandled, wired through
+  // accountRelatedListRenderer below) -- this state is only the id to hand off and the
+  // handler that clears it once MetadataListGrid reports the handoff done, matching the
+  // contract every other caller of that prop already follows.
   const [pendingContactFocus, setPendingContactFocus] = useState(null);
   const [pendingLocationFocus, setPendingLocationFocus] = useState(null);
-  const contactRowRef = useRef(null);
-  const locationRowRef = useRef(null);
-
-  // After a successful import OR single add, focus the target Contact's row once
-  // the live useContactsForAccount subscription has delivered it.
-  useEffect(() => {
-    if (pendingContactFocus && contactRowRef.current) {
-      contactRowRef.current.focus();
-      setPendingContactFocus(null);
-    }
-  }, [pendingContactFocus, contacts]);
-
-  // Same for a newly added Location once useLocationsForAccount delivers it.
-  useEffect(() => {
-    if (pendingLocationFocus && locationRowRef.current) {
-      locationRowRef.current.focus();
-      setPendingLocationFocus(null);
-    }
-  }, [pendingLocationFocus, locations]);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading customer…</LoadingState></div>;
 
@@ -344,6 +367,53 @@ export default function AccountDetail() {
     setContactAnnouncement(
       `Imported ${importedCount} contact${importedCount === 1 ? "" : "s"}${skipPart}${rejPart}${firstName ? ` — first: ${firstName}` : ""}.`
     );
+  }
+
+  // X-RELATED-LIST-ACTIONS wiring -- the RELATED_LIST binding for accountRecordPage's
+  // "contacts" / "locations" sections. `listRenderer` (MetadataRecordPage's own injection
+  // point) always wins over the default binding for every RELATED_LIST section that call
+  // touches -- see accountRecordPageContactsLocationsSubset's own comment for why this is a
+  // SEPARATE MetadataRecordPage call rather than folded into accountRecordPageMainSubset.
+  function accountRelatedListRenderer({ listId }) {
+    if (listId === "account.contacts") {
+      return (
+        <RelatedListSection
+          heading={`Contacts (${contactsError ? "—" : contacts.length})`}
+          presentation={buildAccountRelatedListPresentation({
+            listId,
+            rows: contacts,
+            loading: contactsLoading,
+            error: contactsError,
+          })}
+          focusRowKey={pendingContactFocus}
+          onFocusHandled={() => setPendingContactFocus(null)}
+          announcement={contactAnnouncement}
+          actions={[
+            { label: "+ Add Contact", onClick: () => setShowContactModal(true) },
+            { label: "Import Contacts", onClick: () => setShowImport(true) },
+          ]}
+        />
+      );
+    }
+    if (listId === "account.locations") {
+      return (
+        <RelatedListSection
+          heading={`Locations (${locationsError ? "—" : locations.length})`}
+          presentation={buildAccountRelatedListPresentation({
+            listId,
+            rows: locations,
+            loading: locationsLoading,
+            error: locationsError,
+          })}
+          onRetry={retryLocations}
+          focusRowKey={pendingLocationFocus}
+          onFocusHandled={() => setPendingLocationFocus(null)}
+          announcement={locationAnnouncement}
+          actions={[{ label: "+ Add Location", onClick: () => setShowLocationModal(true) }]}
+        />
+      );
+    }
+    return null;
   }
 
   const billingLine = formatAddress(account.billingAddress);
@@ -451,53 +521,30 @@ export default function AccountDetail() {
             entityResolver={accountPageEntityResolver}
           />
 
-          {/* 3. Contacts
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata RELATED_LIST default
-              binding (accountPage.js: listId account.contacts, entity readVia CLIENT_DIRECT --
-              mechanically compatible) and left hand-rendered. `contacts` (useContactsForAccount,
-              below) is required regardless for PrimaryContactSummary in the header and
-              CommercialProfileSection's billing-contact resolution, so wiring the list display
-              alone would start a SECOND, independent live read of the same query -- the exact
-              double-read anti-pattern this file's AR note already tracks as a real bug (#1094/
-              #1095), not a hypothetical one. Swapping the whole section would additionally drop
-              "+ Add Contact" / "Import Contacts" and the post-add focus handoff to the new row
-              (pendingContactFocus + contactRowRef) -- MetadataListGrid exposes no per-row ref. See
-              accountPageComponents.js's WIRING SCOPE note. */}
-          <section className="wo-history">
-            <h4>Contacts ({contactsError ? "—" : contacts.length})</h4>
-            <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
-            {contactsError ? (
-              // site-work #8: a FAILED read is not "No contacts yet" -- mirrors the
-              // Locations section's fail-closed pattern below. Rendering the false
-              // empty state would hide real Contacts (duplicate-contact / mis-routed
-              // -service risk); fail closed to an actionable failure instead.
-              <div className="fo-inline-error" role="alert" data-contacts-error>
-                {contactsError}
-              </div>
-            ) : contacts.length === 0 ? (
-              <EmptyState variant="database" message="No contacts yet." />
-            ) : (
-              contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="wo-history-row"
-                  ref={contact.id === pendingContactFocus ? contactRowRef : undefined}
-                  tabIndex={contact.id === pendingContactFocus ? -1 : undefined}
-                >
-                  <strong>{contact.name}</strong>
-                  {contact.isPrimary && <StatusPill tone="positive" label="Primary" />}
-                  {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
-                  {contact.email && <span className="fo-muted"> -- {contact.email}</span>}
-                </div>
-              ))
-            )}
-            {/* Add Contact opens the shared-Modal creation flow; Import Contacts
-                keeps its own separate CSV modal. No inline form below the list. */}
-            <div className="fo-btn-row">
-              <button type="button" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
-              <button type="button" onClick={() => setShowImport(true)}>Import Contacts</button>
-            </div>
-          </section>
+          {/* 3. Contacts / 4. Locations -- X-RELATED-LIST-ACTIONS (#1211) unblocked wiring
+              these through the metadata list runtime: MetadataListGrid gained
+              focusRowKey/onFocusHandled (the post-create keyboard-focus handoff
+              pendingContactFocus/pendingLocationFocus need) and this lane
+              (A-ACCOUNT-WIRE-CONTACTS-LOCATIONS) closed the remaining double-read concern by
+              reusing useContactsForAccount/useLocationsForAccount's OWN live data
+              (buildAccountRelatedListPresentation, accountPageComponents.js) instead of
+              DefaultRelatedList's independent read. `accountRelatedListRenderer` above supplies
+              a `listRenderer` for this call ONLY -- accountRecordPageContactsLocationsSubset is
+              a SEPARATE MetadataRecordPage call from the one above precisely so `listRenderer`
+              (which wins for every RELATED_LIST section it touches) cannot also intercept
+              Opportunities/Sales Orders. "+ Add Contact" / "Import Contacts" / "+ Add Location"
+              and their modals have no equivalent inside MetadataListGrid/DefaultRelatedList and
+              stay hand-mounted here, unchanged. See accountPageComponents.js's WIRING SCOPE note
+              for the full case. */}
+          <MetadataRecordPage
+            definition={accountRecordPageContactsLocationsSubset}
+            record={account}
+            capabilityDecisions={capabilityDecisions}
+            listResolver={accountPageListResolver}
+            entityResolver={accountPageEntityResolver}
+            listRenderer={accountRelatedListRenderer}
+            embedded
+          />
 
           {showContactModal && (
             <ContactCreateModal
@@ -517,46 +564,9 @@ export default function AccountDetail() {
             />
           )}
 
-          {/* 4. Locations -- add-only (no Location edit action exists)
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: same evaluation and outcome as Contacts above --
-              readVia CLIENT_DIRECT is mechanically compatible with the RELATED_LIST default
-              binding, but `locations` (useLocationsForAccount) still owns this section's count
-              and error/retry state, and swapping the list display would either duplicate that
-              live read or drop it, plus drop "+ Add Location" and the post-add focus handoff
-              (pendingLocationFocus + locationRowRef). Left hand-rendered. */}
-          <section className="wo-history">
-            <h4>Locations ({locationsError ? "—" : locations.length})</h4>
-            <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
-            {locationsError ? (
-              // #291: a FAILED read is not "No locations yet". Fail closed to an
-              // actionable failure with retry, never an empty state that would tell the
-              // user this customer has no locations when we simply could not look.
-              <div className="fo-inline-error" role="alert" data-location-error>
-                {locationsError}{" "}
-                <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
-              </div>
-            ) : locations.length === 0 ? (
-              <EmptyState variant="database" message="No locations yet." />
-            ) : (
-              locations.map((loc) => {
-                const locLine = formatAddress(loc.address);
-                return (
-                  <div
-                    key={loc.id}
-                    className="wo-history-row"
-                    ref={loc.id === pendingLocationFocus ? locationRowRef : undefined}
-                    tabIndex={loc.id === pendingLocationFocus ? -1 : undefined}
-                  >
-                    <strong>{loc.name}</strong>
-                    {locLine && <span className="fo-muted"> -- {locLine}</span>}
-                    {loc.accessNotes && <div className="fo-muted">{loc.accessNotes}</div>}
-                  </div>
-                );
-              })
-            )}
-            {/* Add Location opens the shared-Modal creation flow; no inline form. */}
-            <button type="button" onClick={() => setShowLocationModal(true)}>+ Add Location</button>
-          </section>
+          {/* 4. Locations -- add-only (no Location edit action exists). Rendered by the same
+              MetadataRecordPage call above (accountRecordPageContactsLocationsSubset carries
+              both "contacts" and "locations"). */}
 
           {showLocationModal && (
             <LocationCreateModal
