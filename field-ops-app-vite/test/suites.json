@@ -1,0 +1,725 @@
+{
+  "_comment": "The suite list npm test runs, in order. Extracted verbatim from the previous package.json && chain, which grew to 8155 characters and exceeded the Windows command-line limit (~8191) -- npm test could no longer run locally at all on Windows, while still passing in CI on Linux. Two runners are preserved because the repo genuinely has two idioms: node:test files and the older house check()/passed convention.",
+  "suites": [
+    {
+      "file": "test/equipmentModel.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentCompatibility.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentCompatibilityImport.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentCompatibilitySection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serviceActivityView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/financialSummaryView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/commercialProfile.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/employeeSession.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/actorDisplayName.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/navConfigOperationalRoleAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/financialForecastHorizons.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/commercialProfileGoverned.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/accountPortfolio.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderWizard.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serviceNavGroups.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/railDestinationParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/fieldWorkOrder.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/fieldCurrentJob.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/scannedIdentity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/scanCandidates.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/scanActions.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderWorkflowMirrorContract.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serviceOperationsNav.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/customerSearch.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/crmSalesNav.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/contactCsvImport.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/formPrimitives.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/contactLocationSaveErrors.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/sharedStates.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workflowActionError.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workflowActionOrder.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/legacyCreateSaveErrors.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentDomain.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentWrites.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentRegister.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/administrationPortalNav.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/permissionDecisionCopy.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/adminMutationAssignableRoles.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/permissionCatalogRoleParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/navPermissionPreviewParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentDetail.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentEditDiff.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/locationSubscription.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportCatalog.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportQuery.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportBuilder.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportRunOutcome.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportResultState.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportNavAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportResultTable.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/savedReportModel.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/savedReportReconcile.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/savedReportServiceOutcome.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportCapabilityAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/completionFlow.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/jobDisplay.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partMasterView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsCompatibilityAdapter.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsShadowParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsShadowParityCapture.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsShadowParityView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsShadowParityReadOnce.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsShadowParityRunId.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsCatalogView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/warehouseManagerCatalogView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partDetailView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/c2LiveParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/routerBasename.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/appHeaderBase.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/usernames.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/passwordRecovery.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/adminPasswordReset.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/adminUsersReset.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderInventorySnapshot.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/od3ClosureSource.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serializedAssetInstallation.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/installedEquipmentListView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/availableEquipmentCatalogView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/availableEquipmentGovernedProjection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentTimelineView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partTrackingMode.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryLocation.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serializedAssetIdentity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryLedgerEvent.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryTransferPairing.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transferOrderView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transferOrdersViewModel.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transferLine.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/truckInventoryView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/truckRegistry.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/truckRegistrySource.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/truckRegistryDrivers.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/truckManagement.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/mobileLocationInventoryProjection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/serializedAssetInventoryLocation.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/accountLineOfBusiness.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/purchaseOrdersView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/receiveAgainstPurchaseOrder.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/receivingWorkspace.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transfersView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/warehousesView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/suppliersView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reorderRequestPayload.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryReorderRequestsCancelGuard.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/receiptsLaunchPoint.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partMasterWrite.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/manufacturerWrite.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/supplierPicker.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/schedulingWorkspace.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderPartsReadiness.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderPartsPlan.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/opportunityLifecycle.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/opportunityWriteReadiness.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/opportunityReadMapping.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/plannedPartsCompletion.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/sandboxCredentials.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reconciliationRowHonesty.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/displayTimestamp.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/domainIndexDenial.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/notificationScopeVocabulary.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportingPlaceholderCopy.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/purchaseOrderIntegrityState.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/customerIdentitySurfaces.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/dispatchRiskVocabulary.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/operationalRoleLanding.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderPriorityVocabulary.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryControlLifecycle.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/inventoryControlView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentInventoryControlAdapter.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/warehouseReconciliationEngine.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/cycleCountsBackOrdersNavHidden.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partMasterManufacturersNavHidden.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/manufacturerCatalogView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/partsAttentionProjection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/salesOrderActions.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderAttentionProjection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/dispatchSchedulingBoard.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transferCommandRequest.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/transferActionResult.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/navPlaceholderHonesty.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/manufacturerQueries.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/navCapabilityConvergence.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/accessResolvingGate.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/partsCatalogCanonicalAuthority.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataEntityDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/accountArInFlightSharing.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/metadataListViewDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataRegistry.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataPageDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataListRuntime.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataPageRuntime.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataListPresentation.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/pickerSource.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataAccountDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataWorkOrderDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/boardScope.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/fieldArchitectureV2.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/fieldArchitectureV2Compatibility.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/recordProvenance.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/queryModel.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataCrmDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataPartDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataEquipmentDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataEmployeeDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/accountSearch.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataPurchaseOrderDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataLocationDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataAccountPageDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataWarehouseDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataSupplierDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataManufacturerDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataFleetCatalogDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataBillingDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataStockLocationDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataTerritoryMobileDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataTransferOrderDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataInventoryMovementDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataProcurementDefinitions.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataCatalogDefinitions.test.mjs",
+      "runner": "node --test"
+    }
+  ]
+}
