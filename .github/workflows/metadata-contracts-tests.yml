@@ -33,6 +33,8 @@ on:
       - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWarehouseDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
       - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/accountCommercialVocabulary.js"
@@ -81,6 +83,8 @@ on:
       - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataWarehouseDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
       - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/employeeVocabulary.js"
       - "field-ops-app-vite/src/domain/accountCommercialVocabulary.js"
@@ -186,6 +190,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Supplier definition tests (node:test)
         run: node --test test/metadataSupplierDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Manufacturer definition tests (node:test)
+        run: node --test test/metadataManufacturerDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: Account record page definition tests (node:test)
         run: node --test test/metadataAccountPageDefinition.test.mjs
