@@ -145,13 +145,17 @@ export const actionRegistry = new ActionRegistry();
  * Every component and action id a definition references.
  *
  * Exists so a definition can be checked against the registry BEFORE it renders.
- * Discovering an unregistered renderer at paint time means a broken cell in front of
+ * Discovering an unregistered component at paint time means a broken section in front of
  * a user; discovering it in a validator means a failed build.
+ *
+ * Column `renderer` is deliberately NOT read here: it was removed from the list-view
+ * contract, and validateListViewDefinition now rejects a column that declares one. Keeping
+ * a lookup for a property no valid definition can carry would be the same dead-declaration
+ * shape the removal was meant to end.
  */
 export function referencedRegistryIds(def = {}) {
   const components = new Set();
   const actions = new Set();
-  for (const col of def.columns ?? []) if (col?.renderer) components.add(col.renderer);
   for (const region of def.regions ?? []) if (region?.componentId) components.add(region.componentId);
   for (const a of def.rowActions ?? []) if (typeof a === "string") actions.add(a);
   for (const a of def.actions ?? []) if (typeof a === "string") actions.add(a);
