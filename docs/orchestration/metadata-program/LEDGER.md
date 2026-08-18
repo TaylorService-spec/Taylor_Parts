@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 51 | 41 | 10 |
+| 52 | 41 | 11 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,7 +38,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-CALLABLE-LIST-SOURCE** (phase 6) — RELATED_LIST cannot read a CALLABLE-readVia entity → Route by readVia; fail loudly rather than falling through to a direct read
+- **X-ACCOUNT-WIRE-CALLABLE-LISTS** (phase 6) — Wire Opportunities and Sales Orders now the CALLABLE path exists → Re-evaluate only the two sections whose blocker was the CALLABLE gap
 - **X-RELATED-LIST-ACTIONS** (phase 6) — MetadataListGrid has no row actions or focus handoff → Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections
 - **X-SECTION-CAPABILITY-GRANULARITY** (phase 6) — A section capability cannot express a partially-gated composition → Either finer-grained section capabilities, or split the composed section in two
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
@@ -48,7 +48,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | — | — | — | NOT_APPLICABLE | Route by readVia; fail loudly rather than falling through to a direct read |
+| X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Wire Opportunities and Sales Orders now the CALLABLE path exists | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Re-evaluate only the two sections whose blocker was the CALLABLE gap |
 
 ## READY
 
@@ -115,6 +115,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-RECORD-PAGE-RENDERER-GAPS | 6 | MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED | — | — | #1194 | — | 27b109bb | NOT_APPLICABLE | All three gaps closed. Account completion wiring dispatched. |
 | S-INV-TRANSFER-MANUFACTURER-DEFINITIONS | 6 | Transfer Order + Manufacturer definitions (leaf lane) | — | — | #1196 | — | ed448c75 | NOT_APPLICABLE | Manufacturer merged. Transfer Order held on X-TRANSFER-ORDER-NO-REFERENCE. |
 | X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | #1198 | — | f42491de | NOT_APPLICABLE | No section newly wired. Three prerequisites identified and recorded. |
+| A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | #1200 | — | 6c6480d8 | NOT_APPLICABLE | Merged. Opportunities and Sales Orders are now wirable; that lane is dispatched. |
 
 ## BLOCKED_PROTECTED
 

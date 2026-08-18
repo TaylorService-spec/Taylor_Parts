@@ -2197,13 +2197,14 @@
       "title": "RELATED_LIST cannot read a CALLABLE-readVia entity",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
-      "branch": "feat/callable-list-source",
-      "nextAction": "Route by readVia; fail loudly rather than falling through to a direct read",
+      "status": "MERGED",
+      "nextAction": "Merged. Opportunities and Sales Orders are now wirable; that lane is dispatched.",
       "governing": [
         "DECISIONS #102 section 9"
       ],
-      "notes": "THE STRUCTURAL BLOCKER on page wiring. The default RELATED_LIST binding is built on fetchPage, which always issues a direct client getDocs -- but opportunity and salesOrder declare readVia CALLABLE, their collections are DENY-ALL in Rules, and real reads happen only through trusted callables. Wiring either today would read a deny-all collection and report EVERY viewer as denied, permanently, even one holding the real capability. The binding ignores a fact the entity explicitly declares. The fix must FAIL LOUDLY for UNKNOWN readVia or a CALLABLE entity with no readCallable, rather than silently falling through to a direct read - that silent fallthrough IS the defect."
+      "notes": "THE STRUCTURAL BLOCKER on page wiring. The default RELATED_LIST binding is built on fetchPage, which always issues a direct client getDocs -- but opportunity and salesOrder declare readVia CALLABLE, their collections are DENY-ALL in Rules, and real reads happen only through trusted callables. Wiring either today would read a deny-all collection and report EVERY viewer as denied, permanently, even one holding the real capability. The binding ignores a fact the entity explicitly declares. The fix must FAIL LOUDLY for UNKNOWN readVia or a CALLABLE entity with no readCallable, rather than silently falling through to a direct read - that silent fallthrough IS the defect. MERGED (#1200, 6c6480d8). selectListSource routes by readVia; UNKNOWN or CALLABLE with no readCallable short-circuits to unavailable and touches NEITHER source, because the silent fallthrough to a direct read WAS the defect. The scope filter is read generically off the parent-scope filter buildQueryDescriptor always prepends rather than hardcoding accountId, and both callables' existing limit+1 convention feeds the SAME interpretPage the Firestore path uses - two independent truncation rules would eventually disagree. A callable rejection's code is normalized so DENIED stays distinct from UNAVAILABLE without the caller knowing the source. ALSO FIXED, flagged by the lane as pre-existing: the related-list hook computed hasMore correctly and then threw it away, so a capped RELATED section presented its cap as the whole set - the precise failure the presentation model exists to prevent, arriving through the one path that had already worked out the right answer.",
+      "pr": 1200,
+      "mergeSha": "6c6480d8"
     },
     {
       "id": "X-SECTION-CAPABILITY-GRANULARITY",
@@ -2234,6 +2235,24 @@
         "DECISIONS #102"
       ],
       "notes": "Contacts and Locations are mechanically wirable but would lose Add/Import actions and the post-add keyboard focus handoff to the new row, which MetadataListGrid has no ref hook to reproduce. Losing focus handoff is an ACCESSIBILITY regression, not a cosmetic one. Wiring them would also start a SECOND live read of a query those pages must keep running anyway - the double-read pattern this codebase already tracks as a production bug."
+    },
+    {
+      "id": "X-ACCOUNT-WIRE-CALLABLE-LISTS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Wire Opportunities and Sales Orders now the CALLABLE path exists",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "IMPLEMENTING",
+      "branch": "feat/wire-callable-lists",
+      "nextAction": "Re-evaluate only the two sections whose blocker was the CALLABLE gap",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "notes": "Scoped deliberately to the TWO sections whose recorded blocker is now gone. The other four have unrelated blockers recorded separately, and the lane is told to leave them alone and report rather than act if it believes one is unblocked. Both sections declare capabilities registered active:false, so both will legitimately render DENIED for every current viewer - that is correct declared behaviour and not a reason to skip wiring, but the denied rendering must be honest and must not read as 'there are none'."
     }
   ]
 }
