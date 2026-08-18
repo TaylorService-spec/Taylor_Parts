@@ -132,7 +132,11 @@ test("§8 — a definition can only ever reference an id, so no configuration pa
   // The asymmetry that makes the whole model safe: application code registers
   // behavior; definitions select from what was registered. Widening what a tenant may
   // configure therefore can never widen what code may run.
-  const def = { id: "l", columns: [{ fieldId: "balance", renderer: "currency" }], rowActions: ["wo.dispatch"] };
+  // Uses regions[].componentId, not a column renderer: `renderer` was REMOVED from the
+  // list-view contract (validateListViewDefinition now rejects it), so a test built on it
+  // would be asserting against a shape no valid definition can have. The §8 property this
+  // test exists for -- a definition references ids and never a function -- is unchanged.
+  const def = { id: "l", regions: [{ componentId: "currency" }], rowActions: ["wo.dispatch"] };
   const { components, actions } = referencedRegistryIds(def);
   assert.deepEqual(components, ["currency"]);
   assert.deepEqual(actions, ["wo.dispatch"]);
@@ -155,7 +159,7 @@ test("a definition referencing an unregistered component or action is caught by 
   componentRegistry.register({ id: "currency", kind: "CELL_RENDERER", component: Noop });
   const problems = validateRegistryReferences({
     id: "account.index",
-    columns: [{ fieldId: "balance", renderer: "currency" }, { fieldId: "x", renderer: "ghost" }],
+    regions: [{ componentId: "currency" }, { componentId: "ghost" }],
     rowActions: ["phantom"],
   });
   assert.ok(problems.some((p) => /unregistered component "ghost"/.test(p)));
@@ -218,15 +222,16 @@ test("unknown kinds are rejected on both registries", () => {
 // test — i.e. this is not a permissive hand-built registry standing in for the real one,
 // it is the real (currently empty, for CELL_RENDERER/GOVERNED_COMMAND) registry state.
 //
-// HONEST SCOPE NOTE: as of this writing no real list definition declares a column `renderer`
-// or a non-empty `rowActions` (verified by a repo-wide grep) — nothing in
-// src/metadata/definitions/*.js currently registers a CELL_RENDERER or a GOVERNED_COMMAND/
-// NAVIGATION/DISCLOSURE action anywhere in application code either. So today these tests pass
-// vacuously (there is nothing referenced to be unregistered). Their value is forward-looking:
-// the moment ANY definition adds a renderer id or a row/section action id, this test fails
-// immediately unless something also registers it — closing exactly the gap this ledger item
-// names, for the shape of definition (ListViewDefinition: .columns[].renderer, .rowActions)
-// validateRegistryReferences already understands correctly.
+// HONEST SCOPE NOTE: no real list definition declares a non-empty `rowActions` (verified by a
+// repo-wide grep), and nothing in application code registers a GOVERNED_COMMAND/NAVIGATION/
+// DISCLOSURE action. So today these tests pass vacuously — there is nothing referenced to be
+// unregistered. Their value is forward-looking: the moment ANY definition adds a row/section
+// action id, this fails unless something registers it.
+//
+// Column `renderer` USED to be the other half of this note. It was removed from the contract
+// entirely rather than implemented, because nothing declared one and nothing registered a
+// CELL_RENDERER — so referencedRegistryIds no longer looks for it. A lookup for a property no
+// valid definition can carry is the same dead-declaration shape the removal was meant to end.
 test("every real ListViewDefinition passes validateRegistryReferences", () => {
   assert.equal(REAL_LIST_DEFINITIONS.length, 20, "the named import list drifted from definitions/*.js — update both");
   for (const def of REAL_LIST_DEFINITIONS) {
