@@ -15,6 +15,21 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 // a "New Technician" action opening the shared accessible Modal
 // (NewTechnicianModal). The table, its live subscription, and every
 // field/payload/validation are unchanged.
+//
+// S-ADM-EMPLOYEES -- ATTEMPTED and DECLINED for cause. The admin nav item labelled
+// "Employees" renders this module, which reads TECHNICIANS_COLLECTION
+// ("fieldops_technicians") -- a distinct, live Firestore collection from `employees`,
+// the collection employeeEntity/employeeIndexList (src/metadata/definitions/employee.js)
+// describe. Migrating this table onto the metadata list runtime would mean swapping the
+// underlying dataset (different fields, no wired create path onto `employees`, different
+// lifecycle semantics for `status`) under a label that currently means "the live
+// technician roster" -- a material product/data-model decision, not a rendering-layer
+// migration a metadata-consumption lane may make on its own. See
+// test/techniciansSurfaceEmployeeDivergence.test.jsx for the full reasoning and the
+// regression-locking tests, and the S-ADM-EMPLOYEES ledger entry
+// (docs/orchestration/metadata-program/ledger.json) for the record. No functional change
+// was made to this file; the hand-written table below, its live subscription, and its
+// create flow are unchanged.
 
 export default function Technicians() {
   const { data: technicians, loading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
