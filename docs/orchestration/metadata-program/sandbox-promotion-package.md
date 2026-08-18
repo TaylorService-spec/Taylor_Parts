@@ -711,3 +711,95 @@ The emulator **does not enforce composite-index requirements**. The index suite 
 emulator *before* the fix, including a filtered call. Emulator-green proves the query shape is
 correct at the API level; it proves nothing about production index availability. Checks 1–4 are the
 only evidence that closes that gap.
+
+---
+
+# Tranche 2R — targeted Functions repair
+
+**Result: PASS on all 15 criteria. The 500 is closed.** One material finding blocks Tranche 3 —
+see the end of this section.
+
+## Deployment
+
+| | |
+|---|---|
+| Promotion SHA | `b237f652da490ac8880393c15bc6e17bdd6f9324` (pinned, clean tree) |
+| Pre-deploy gate | `/version.json` re-read → `cd442727`, unchanged |
+| Deploy start | `2026-08-18T22:53:30Z` |
+| Deploy complete | `2026-08-18T22:54:46Z` (exit 0) |
+| Rollback baseline | revision `listsalesorderindex-00001-din` |
+
+    firebase deploy --only functions:listSalesOrderIndex --project eos-platform-sandbox --non-interactive
+
+Log confirms `Deploying to 'eos-platform-sandbox'` and exactly one operation:
+`functions[listSalesOrderIndex(us-central1)] Successful update operation`. **No Hosting, Rules,
+index, seed or activation lines.**
+
+## Verification matrix
+
+| # | Check | Result |
+|---|---|---|
+| 1 | unfiltered | **PASS** — 200, bounded |
+| 2 | `state: CONFIRMED` | **PASS** — 200 |
+| 3 | `state: CLOSED` | **PASS** — 200 |
+| 4 | pagination + descending order | **PASS** — single page, cursor terminated |
+| 5 | empty result honesty | **PASS** — 200, `status: ready`, not an error |
+| 6 | over-limit `9999` | **PASS** — **400 INVALID_ARGUMENT** |
+| 7 | unauthenticated | **PASS** — 401 |
+| 8 | technician | **PASS** — 403 |
+| 9 | authorized admin | **PASS** — 200 |
+| 10 | `getAccountPortfolioSummary` | **PASS** — 200 |
+| 11 | `listSalesOrdersForAccount` | **PASS** — 200 |
+| 12 | `listOpportunityContext` | **PASS** — 200 |
+| 13 | core inventory reachability | **PASS** — see caveat |
+| 14 | governed-ledger allocation reachability | **PASS** — see caveat |
+| 15 | no client leakage | **PASS** — 5 error shapes probed, 0 leaked |
+
+**13 / 14 caveat, stated precisely.** `receiveInventoryStock`, `createTransferOrder` and
+`createCycleCount` each returned **401 unauthenticated** and, for an authenticated persona,
+**400 invalid-argument**. A 400 proves the callable is reachable and validates input — it does
+**not** prove the authorization outcome, because argument validation runs before the capability
+check. Only `allocateSalesOrder` demonstrates the boundary directly: technician **403**, admin
+**400**. No write was performed by any probe.
+
+**15 caveat.** Leakage was tested against every error shape reachable from outside — over-limit,
+bad state, bad cursor, unauthorized, unauthenticated — and none carried a stack, an internal
+path, a Firestore status or a project id. Forcing a genuine *internal* failure from outside is not
+possible without mutating state or code, so the logging path itself is proven by the emulator
+suite rather than live.
+
+## The finding that blocks Tranche 3
+
+Every check above passed **against an empty result set**, and that is not because the sandbox has
+no sales orders.
+
+| Read | Rows |
+|---|---|
+| `listSalesOrdersForAccount` (account `acct-harbor`) | **14** |
+| `listSalesOrderIndex` (unscoped, ordered) | **0** |
+
+All 14 carry `salesOrderNumber: null`. The INDEX read orders by `salesOrderNumber`, and Firestore
+**excludes any document missing the ordered field** — so **100% of live sales orders are invisible
+to the INDEX read.**
+
+This is the gap `salesOrder.js` already documented, now quantified live: not a sampling artifact,
+but every row.
+
+The callable is behaving correctly and honestly. The problem is what a *surface* built on it would
+say. Shipping the metadata Sales Order INDEX in Tranche 3 would render **"no sales orders"** to
+every viewer while 14 exist — a list presenting an empty set as the whole truth, which is exactly
+the class of falsehood this program has spent the entire wave removing.
+
+It also means checks 1–4 verified that the query *executes*, not that it *orders, paginates or
+truncates correctly with data*. Those properties remain proven only by the emulator suite.
+
+**This is a data-state problem, not a code defect, and its remedy is already a recorded protected
+item** (`X-SALES-ORDER-NUMBER-BACKFILL`): allocating `SO-` numbers to legacy rows is a governed
+write requiring separate authorization. The inert backfill tooling exists and has not been run.
+
+## Stage
+
+Functions: **DEPLOYED** at the promotion SHA — `listSalesOrderIndex` healthy.
+Hosting: **untouched**, still `cd442727`.
+Indexes: 38 live, unchanged. Rules: untouched. Activation overrides: 27, unchanged.
+No live index deleted. No seed executed. No rollback required or performed.
