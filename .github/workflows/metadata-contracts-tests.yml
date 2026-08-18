@@ -75,6 +75,8 @@ on:
       - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
       - "field-ops-app-vite/test/transfersSurface.test.jsx"
       - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
       - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
       - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
       - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
@@ -145,6 +147,8 @@ on:
       - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
       - "field-ops-app-vite/test/transfersSurface.test.jsx"
       - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
       - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
       - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
       - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
@@ -221,6 +225,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Purchase Orders surface is a request-driven join, not a list (vitest)
         run: npx vitest run test/purchaseOrdersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Roles surface has no entity and no read (vitest)
+        run: npx vitest run test/adminRolesPermissionsDeclined.test.jsx
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
