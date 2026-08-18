@@ -38,7 +38,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-ACCOUNT-PAGE-WIRING-COMPLETE** (phase 6) — Complete the Account page wiring now the renderer supports it → Wire SIDE subset embedded, related lists scoped, field groups with an entityResolver
+- **A-CALLABLE-LIST-SOURCE** (phase 6) — RELATED_LIST cannot read a CALLABLE-readVia entity → Route by readVia; fail loudly rather than falling through to a direct read
+- **X-RELATED-LIST-ACTIONS** (phase 6) — MetadataListGrid has no row actions or focus handoff → Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections
+- **X-SECTION-CAPABILITY-GRANULARITY** (phase 6) — A section capability cannot express a partially-gated composition → Either finer-grained section capabilities, or split the composed section in two
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -46,7 +48,14 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Wire SIDE subset embedded, related lists scoped, field groups with an entityResolver |
+| A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | — | — | — | NOT_APPLICABLE | Route by readVia; fail loudly rather than falling through to a direct read |
+
+## READY
+
+| id | phase | title | route | issue | PR | head | merge | deploy | next action |
+|---|---|---|---|---|---|---|---|---|---|
+| X-SECTION-CAPABILITY-GRANULARITY | 6 | A section capability cannot express a partially-gated composition | — | — | — | — | — | NOT_APPLICABLE | Either finer-grained section capabilities, or split the composed section in two |
+| X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | — | — | — | NOT_APPLICABLE | Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections |
 
 ## MERGED
 
@@ -105,6 +114,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS | 6 | Warehouse + Supplier entity definitions | — | — | #1189 | — | 63b5059e | NOT_APPLICABLE | Merged and registered. Two composites declared and pending deploy. |
 | A-RECORD-PAGE-RENDERER-GAPS | 6 | MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED | — | — | #1194 | — | 27b109bb | NOT_APPLICABLE | All three gaps closed. Account completion wiring dispatched. |
 | S-INV-TRANSFER-MANUFACTURER-DEFINITIONS | 6 | Transfer Order + Manufacturer definitions (leaf lane) | — | — | #1196 | — | ed448c75 | NOT_APPLICABLE | Manufacturer merged. Transfer Order held on X-TRANSFER-ORDER-NO-REFERENCE. |
+| X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | #1198 | — | f42491de | NOT_APPLICABLE | No section newly wired. Three prerequisites identified and recorded. |
 
 ## BLOCKED_PROTECTED
 
