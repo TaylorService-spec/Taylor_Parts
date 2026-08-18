@@ -13,28 +13,27 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 54 | 39 | 15 |
+| 54 | 38 | 16 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-17 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+14 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
-- **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-GRID (all satisfied) → Migrate or retire — overlaps the Work Orders list
-- **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Classify: queue with governed transition writes, not a list
-- **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Confirm synthetic-source status before migrating anything
-- **S-SVC-COORDINATED-MISSION** — depends on A-LIST-GRID (all satisfied) → Same synthetic-source caveat as coordinated visits
-- **S-SVC-CONTROL-TOWER** — depends on A-PAGE-COMPONENT (all satisfied) → Bounded-read remediation; dashboard composition is a later phase
-- **S-SVC-WO-NEW** — depends on A-LIST-GRID (all satisfied) → Bounded-read remediation: it reads the whole accounts collection
-- **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
-- **S-ADM-USERS** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; no governed directory read exists to migrate
-- **S-DASH-MY** — depends on A-PAGE-COMPONENT (all satisfied) → Later phase; dashboard composition is not list/record metadata
+- **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Not a list by construction.
+- **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction -- a derived grouping has no native rows to read.
+- **S-SVC-COORDINATED-MISSION** — depends on A-LIST-GRID (all satisfied) → Not a list by construction -- a derived grouping has no native rows to read.
+- **S-SVC-CONTROL-TOWER** — depends on A-PAGE-COMPONENT (all satisfied) → Not a list; bounded-read remediation on the two reads is separately named.
+- **S-SVC-WO-NEW** — depends on A-LIST-GRID (all satisfied) → None. Stale next-action text corrected.
+- **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime.
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
-- **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Migrate; navHidden, direct-URL only
-- **S-INV-EQUIPMENT** — depends on A-LIST-GRID (all satisfied) → Migrate; already cursor-paginated
-- **S-COM-RECEIPTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
+- **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Not a list while the writes live here; the unbounded read is a separate real defect.
+- **S-COM-PURCHASE-ORDERS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Reclassify: this is a request-driven join, not an entity list.
+- **S-COM-RECEIPTS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Same construction as Purchase Orders; not a single-collection list.
 - **A-AUTOMATION-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the unified query model - automation CONDITIONS are queries
+- **A-EQL-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design the surface syntax AFTER the shared query model it compiles into
+- **A-BULK-DATA-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the query model - an export IS a governed query with a different sink
 
 ## Next executable
 
@@ -42,14 +41,15 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **X-PARTID-IDENTITY-CONFLICT** (phase 6) — part.js and the production join evidence disagree on which field is the Part's reference → Reconcile with the existing part-number supersession issue; do not decide independently.
 - **X-QUERY-MODEL-NO-FREE-TEXT** (phase 6) — The query model has no free-text operator, so no substring-search surface can migrate → Decide how the metadata query model answers free text, or record that it never will.
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
-- **X-SURFACE-CLASSIFICATION-COMPOSITES** (phase 6) — Several surfaces classified A_ENTITY_LIST are actually lifecycle composites → Reclassify the composites so the burn-down stops attempting them as lists.
 - **X-TRANSFER-ORDERS-UNBOUNDED-READ** (phase 6) — fetchTransferOrderDocs is a fully unbounded collection read → Route it through the bounded listCollectionPage helper its siblings already use.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
+- **S-INV-EQUIPMENT** (phase 9) — Equipment workspace → Migrate the Customer Equipment tab list only; leave the workspace and other tabs.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate the Customer Equipment tab list only; leave the workspace and other tabs. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
 
 ## READY
@@ -59,7 +59,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
 | X-QUERY-MODEL-NO-FREE-TEXT | 6 | The query model has no free-text operator, so no substring-search surface can migrate | — | — | — | — | — | NOT_APPLICABLE | Decide how the metadata query model answers free text, or record that it never will. |
 | X-PARTID-IDENTITY-CONFLICT | 6 | part.js and the production join evidence disagree on which field is the Part's reference | — | — | — | — | — | NOT_APPLICABLE | Reconcile with the existing part-number supersession issue; do not decide independently. |
-| X-SURFACE-CLASSIFICATION-COMPOSITES | 6 | Several surfaces classified A_ENTITY_LIST are actually lifecycle composites | — | — | — | — | — | NOT_APPLICABLE | Reclassify the composites so the burn-down stops attempting them as lists. |
 | X-TRANSFER-ORDERS-UNBOUNDED-READ | 6 | fetchTransferOrderDocs is a fully unbounded collection read | — | — | — | — | — | NOT_APPLICABLE | Route it through the bounded listCollectionPage helper its siblings already use. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
@@ -156,6 +155,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Product decision: retire the duplicate route rather than migrate it. |
 | S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | #1239 | — | ef712328 | NOT_APPLICABLE | Owner/product decision: does the Employees nav item mean technicians or employees? |
 | X-ADMIN-CRM-AUTHORITY | 0 | crm.activity.read via canonical admin authority | — | — | #1100 | — | — | NOT_APPLICABLE | Await Owner authorization; program proceeds around it |
 | X-STATUS-DATA-AUDIT | 6 | Account status persisted-data audit before production rollout | — | — | — | — | — | NOT_APPLICABLE | Audit production Account documents for title-case status values |
@@ -169,6 +169,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-TRANSFER-ORDER-NO-REFERENCE | 6 | Transfer Order has no identity of either kind | — | — | — | — | — | NOT_APPLICABLE | Needs a business decision on whether transfer orders get a reference number |
 | X-INVENTORY-TRANSACTION-NO-IDENTITY | 6 | Inventory Transaction has neither a name nor a reference -- definition held, not merged | — | — | — | — | — | NOT_APPLICABLE | Owner decision: do inventory movements get a business reference, or is the ledger unlabelable? |
 
+> **S-SVC-JOB-ASSIGNMENTS** blocked — It duplicates the already-migrated Work Orders list -- same collection, same hook, no distinct entity or filter. · requires: Whether to retire the duplicate route, which is a product/navigation decision, not a rendering one.
 > **S-ADM-EMPLOYEES** blocked — The admin nav item label 'Employees' carries legacyKey 'technicians' and renders Technicians.jsx, which reads fieldops_technicians. employeeEntity describes the separate live `employees` collection. Migrating would silently swap the dataset behind that label and introduce two authority-shaped columns (operationalRoles, securityRole) the technician record has no equivalent of. · requires: Whether the Employees nav item should continue to mean the live technician roster, or be repointed at the employees collection. Repointing changes what an admin sees and infers about authority -- a product and data-model decision, not a rendering one. The Employee/User/Technician split is already recorded as governance-approved but unimplemented.
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
@@ -189,26 +190,23 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | #1226 | — | 631170b5 | NOT_APPLICABLE | Blocked on an INDEX-surface callable read path; two further gaps recorded. |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
-| S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |
-| S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Classify: queue with governed transition writes, not a list |
-| S-SVC-COORDINATED-VISITS | 9 | Coordinated visits | /service/coordinated-visits | — | — | — | — | NOT_APPLICABLE | Confirm synthetic-source status before migrating anything |
-| S-SVC-COORDINATED-MISSION | 9 | Coordinated mission | /service/coordinated-mission | — | — | — | — | NOT_APPLICABLE | Same synthetic-source caveat as coordinated visits |
-| S-SVC-CONTROL-TOWER | 9 | Service Operations (Control Tower) | /service-operations | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; dashboard composition is a later phase |
-| S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation: it reads the whole accounts collection |
-| S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
-| S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Inventory only; no governed directory read exists to migrate |
+| S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Not a list by construction. |
+| S-SVC-COORDINATED-VISITS | 9 | Coordinated visits | /service/coordinated-visits | — | — | — | — | NOT_APPLICABLE | Not a list by construction -- a derived grouping has no native rows to read. |
+| S-SVC-COORDINATED-MISSION | 9 | Coordinated mission | /service/coordinated-mission | — | — | — | — | NOT_APPLICABLE | Not a list by construction -- a derived grouping has no native rows to read. |
+| S-SVC-CONTROL-TOWER | 9 | Service Operations (Control Tower) | /service-operations | — | — | — | — | NOT_APPLICABLE | Not a list; bounded-read remediation on the two reads is separately named. |
+| S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | None. Stale next-action text corrected. |
+| S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime. |
+| S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Needs a general-purpose unscoped Users directory read plus activation of its gating capability. |
 | S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | #1243 | — | d1dadca2 | NOT_APPLICABLE | Needs a Role/principal entity and a trusted read before it can be a list at all. |
-| S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
 | S-INV-PARTS | 9 | Parts catalog | /inventory | — | #1241 | — | 3bfc30df | NOT_APPLICABLE | Blocked on free-text search in the query model; also likely misclassified as a list. |
 | S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
-| S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Migrate; navHidden, direct-URL only |
+| S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Not a list while the writes live here; the unbounded read is a separate real defect. |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | #1239 | — | ef712328 | NOT_APPLICABLE | Blocked on the Transfer Order identity decision; separately a lifecycle composite, not a list. |
-| S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate; already cursor-paginated |
 | S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | #1241 | — | 3bfc30df | NOT_APPLICABLE | Reclassify: this is a request-driven join, not an entity list. |
-| S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
+| S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Same construction as Purchase Orders; not a single-collection list. |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | A-AUTOMATION-V1 | 7 | Automation Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design after the unified query model - automation CONDITIONS are queries |
 | A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
@@ -228,6 +226,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-ADM-REPORT-BUILDER | 9 | Report Builder | /reporting/builder | — | — | — | — | NOT_APPLICABLE | Treat as prior art input to Gate A, not a migration target |
 | S-ADM-OVERVIEW | 9 | Administration overview | /administration/overview | — | — | — | — | NOT_APPLICABLE | None |
 | S-ADM-PLACEHOLDERS | 0 | Unbuilt placeholder routes (18) | /reporting/*, /administration/{vehicles,regions,company-settings,permission-preview,audit-logs}, /dashboard/notifications, /financials, /purchasing/{quotes,demand-planning}, /inventory/back-orders, /service/warranty | — | — | — | — | NOT_APPLICABLE | None until built |
+| S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | None. Corrected: nothing to migrate, and the recorded dependency never applied. |
 | S-INV-RECEIVING | 9 | Receiving | /inventory/receiving | — | — | — | — | NOT_APPLICABLE | None - a workflow, not a list |
 | S-INV-CYCLE-COUNTS | 9 | Cycle counts | /inventory/cycle-counts | — | — | — | — | NOT_APPLICABLE | None - scan-driven workflow |
 | S-INV-ROLE-HOMES | 9 | Operational role homes | /inventory-role/{manager,warehouse,mine} | — | — | — | — | NOT_APPLICABLE | None - role-scoped queues |
@@ -247,6 +246,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | P0-AUDIT-CONTRACTS | 0 | Shared-contract / mirror tooling investigation | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
 | P0-AUDIT-QUERY | 0 | Query pattern, pagination prior art and index coverage audit | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Resolved: merges are executing |
+| X-SURFACE-CLASSIFICATION-COMPOSITES | 6 | Several surfaces classified A_ENTITY_LIST are actually lifecycle composites | — | — | — | — | — | NOT_APPLICABLE | None. Reclassification applied to every audited entry. |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
 | X-FIELD-TYPE-RENDERER-AUDIT | 6 | Audit of every declared FIELD_TYPE against cellValue's branches | — | — | — | — | — | NOT_APPLICABLE | None. Findings split into the three entries below. |
