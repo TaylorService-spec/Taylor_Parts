@@ -106,6 +106,9 @@ export interface DeserializedReceivingOrder {
   readonly updatedBy: string;
   readonly schemaVersion: number;
   readonly fingerprint: string;
+  // RO-YYYY-###### — allocated server-side at create (receivingOrderNumbering.ts). Absent (undefined)
+  // on legacy records created before this field existed; never backfilled by this deserializer.
+  readonly receivingOrderNumber?: string;
 }
 
 // -------- sanitized, class-per-reason failure taxonomy (mirrors the truck-registry / ledger precedent) --

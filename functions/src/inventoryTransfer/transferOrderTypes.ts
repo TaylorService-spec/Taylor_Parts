@@ -67,6 +67,9 @@ export interface DeserializedTransferOrder {
   readonly updatedBy: string;
   readonly schemaVersion: number;
   readonly fingerprint: string;
+  // TO-YYYY-###### — allocated server-side at create (transferOrderNumbering.ts). Absent (undefined) on
+  // legacy records created before this field existed; never backfilled by this deserializer.
+  readonly transferOrderNumber?: string;
 }
 
 export type ValidationResult<T> =
@@ -77,6 +80,9 @@ export type TransferCreateOutcome = {
   readonly outcome: "applied" | "replayed";
   readonly transferOrderId: string;
   readonly fingerprint: string;
+  // Present only on a fresh "applied" create (allocated once, alongside the document write). A
+  // "replayed" outcome does not re-derive it — the caller already has the original from the first call.
+  readonly transferOrderNumber?: string;
 };
 
 // -------- sanitized, class-per-reason failure taxonomy (mirrors the Receiving/Truck-Registry precedent) --
