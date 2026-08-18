@@ -406,7 +406,7 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     expect((await screen.findByTestId("location")).textContent).toBe("/customers/opportunities/sales-order/so-1");
   });
 
-  it("REGISTRATION_PENDING — opportunities rows stay non-focusable: opportunity.js's own rowNavigationTo names a route that does not exist anywhere in App.jsx, so this module's listResolver strips it rather than wiring a broken link", async () => {
+  it("opportunities rows stay non-focusable: opportunity.js declares no rowNavigationTo, because no per-Opportunity route exists anywhere in App.jsx", async () => {
     fetchCallablePageMock.mockResolvedValue({
       rows: [{ id: "opp-1", opportunityNumber: "OPP-2026-000999" }],
       hasMore: false,
@@ -435,10 +435,11 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     expect(row.getAttribute("tabindex")).toBeNull();
     fireEvent.click(row);
     expect((await screen.findByTestId("location")).textContent).toBe("/customers/acct-42");
-    // Confirms the RAW opportunity.js definition really does still declare the broken value
-    // this test exists to route around — if a future fix to opportunity.js corrects or
-    // removes it, this assertion (not just the behavior above) should be revisited.
-    expect(opportunityRelatedList.rowNavigationTo).toBe("/sales/opportunities/:id");
+    // The lane that wrote this test asserted the broken value was still present, and asked
+    // for the assertion to be revisited if opportunity.js were ever fixed. It has been:
+    // the stale route is gone at the source, so the row is non-focusable because nothing
+    // declares a route, not because a consumer stripped one.
+    expect(opportunityRelatedList.rowNavigationTo ?? null).toBeNull();
   });
 
   it("now part of the wired MAIN subset AccountDetail.jsx actually renders — in accountPage.js's own order, ahead of financials", () => {

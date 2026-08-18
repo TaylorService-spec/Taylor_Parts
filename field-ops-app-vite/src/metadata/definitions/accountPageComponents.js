@@ -62,13 +62,11 @@
 // own rowNavigationTo ("/sales/opportunities/:id") names a route that has never existed
 // anywhere in App.jsx — confirmed by a repo-wide route search; the only Opportunity-adjacent
 // route is the shared workspace at /customers/opportunities, which takes no :id. That file is
-// outside this module's writeScope (definitions/opportunity.js), so it is reported here as
-// REGISTRATION_PENDING rather than edited: opportunity.js's rowNavigationTo needs either a real
-// per-Opportunity route once one exists, or removal until then. In the meantime,
-// ACCOUNT_OPPORTUNITIES_RELATED_LIST below (this module's own listResolver entry, not a change
-// to opportunity.js) strips that broken value so Opportunities rows render honestly
-// non-focusable — DefaultRelatedList's own already-tested "absent rowNavigationTo" branch —
-// rather than link to a page that does not exist. Sales Orders' rowNavigationTo
+// was reported by that lane as REGISTRATION_PENDING and has since been REMOVED from
+// opportunity.js at the integration step, rather than stripped here: a consumer defending
+// against a bad declaration leaves the bad declaration in place for the next consumer.
+// Opportunities rows are therefore honestly non-focusable via DefaultRelatedList's own
+// already-tested "absent rowNavigationTo" branch. Sales Orders' rowNavigationTo
 // ("/customers/opportunities/sales-order/:salesOrderId") IS a real, working route
 // (App.jsx -> SalesOrderDetail.jsx) and is wired through unmodified.
 //
@@ -356,14 +354,15 @@ registerAccountPageComponents();
 // defect in definitions/opportunity.js, outside this module's writeScope, reported as
 // REGISTRATION_PENDING (see the WIRING SCOPE note above for the exact fix needed there).
 // Wiring that value verbatim would send a click to a page that 404s, which this task's own
-// instruction refuses ("do not wire a broken route"). ACCOUNT_OPPORTUNITIES_RELATED_LIST is
-// opportunityRelatedList with ONLY rowNavigationTo stripped (every column/filter/capability
-// stays the real, unmodified declaration) — DefaultRelatedList's own already-tested
-// "rowNavigationTo absent" branch then renders exactly the honest degrade this needs:
-// non-focusable rows, no onClick/onKeyDown. salesOrderRelatedList's rowNavigationTo
+// instruction refuses ("do not wire a broken route"). opportunity.js no longer declares one
+// at all, so DefaultRelatedList's own already-tested "rowNavigationTo absent" branch renders
+// exactly the honest degrade this needs: non-focusable rows, no onClick/onKeyDown.
+// salesOrderRelatedList's rowNavigationTo
 // ("/customers/opportunities/sales-order/:salesOrderId") IS real (App.jsx ->
 // SalesOrderDetail.jsx) and is used unmodified.
-const ACCOUNT_OPPORTUNITIES_RELATED_LIST = { ...opportunityRelatedList, rowNavigationTo: undefined };
+// Used unmodified. The stale route this used to strip has been removed from opportunity.js
+// itself, so there is nothing left to defend against here.
+const ACCOUNT_OPPORTUNITIES_RELATED_LIST = opportunityRelatedList;
 
 const ACCOUNT_PAGE_LIST_MAP = {
   "account.opportunities": ACCOUNT_OPPORTUNITIES_RELATED_LIST,

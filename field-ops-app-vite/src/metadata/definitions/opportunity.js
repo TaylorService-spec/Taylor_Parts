@@ -152,7 +152,13 @@ export const opportunityRelatedList = makeListViewDefinition({
   defaultSort: [makeSort({ fieldId: "expectedCloseAt", direction: "ASC" })],
   pageSize: 25,
   capabilityRequirement: "opportunity.read",
-  rowNavigationTo: "/sales/opportunities/:id",
+  // No rowNavigationTo. "/sales/opportunities/:id" was declared here and named a route
+  // that has never existed in App.jsx -- the only Opportunity route is the workspace at
+  // /customers/opportunities, which takes no :id. It was harmless only while nothing
+  // consumed rowNavigationTo; the moment DefaultRelatedList started reading it, every
+  // Opportunity row would have linked to a 404. Removed rather than defended against
+  // downstream: a consumer stripping a bad declaration leaves the bad declaration in
+  // place for the next consumer. Restore this with a real per-Opportunity route.
 });
 
 /**
@@ -191,5 +197,11 @@ export const opportunityIndexList = makeListViewDefinition({
       sort: [makeSort({ fieldId: "expectedCloseAt", direction: "ASC" })],
     }),
   ],
-  rowNavigationTo: "/sales/opportunities/:id",
+  // No rowNavigationTo. "/sales/opportunities/:id" was declared here and named a route
+  // that has never existed in App.jsx -- the only Opportunity route is the workspace at
+  // /customers/opportunities, which takes no :id. It was harmless only while nothing
+  // consumed rowNavigationTo; the moment DefaultRelatedList started reading it, every
+  // Opportunity row would have linked to a 404. Removed rather than defended against
+  // downstream: a consumer stripping a bad declaration leaves the bad declaration in
+  // place for the next consumer. Restore this with a real per-Opportunity route.
 });
