@@ -539,6 +539,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "mobile_locations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayLabel",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
