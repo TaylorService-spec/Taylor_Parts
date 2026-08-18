@@ -331,3 +331,75 @@ unknown mutability, those are recorded as semantic and migration findings owned 
 lanes. The integration lane does **not** "standardize" legacy storage because Field
 Architecture v2 defines a target state. `systemName` vs `storagePath` exists precisely so
 integration never requires rewriting legacy storage shape.
+
+## Merge safety — current main is authoritative
+
+A PR being green against an earlier main is not evidence that it is safe to merge now.
+
+Before merging any implementation PR: fetch current `origin/main`, compare the PR against
+it, and inspect whether main advanced in the files, tests, workflows, registries, indexes
+or contracts the PR touches. If it did, reconcile onto current main, resolve deliberately,
+confirm no test or registration entry was dropped, rerun the affected suite, and verify the
+head SHA before merging.
+
+**Semantic overlap matters even when git reports no textual conflict.** "The PR did not
+conflict" and "the combined behavior is correct" are different claims. This rule exists
+because they were treated as the same one: a PR was merged whose base predated another
+merged PR that added tests covering the same behavior. Both were green on their own bases,
+git had nothing to report, and main went red on the combination.
+
+The durable lesson is not "remember to rebase". It is that **merge correctness depends on
+current combined behavior, not on a PR's isolated green state.**
+
+Merges stay serialized. After each one: fetch main, recompute mergeability of the
+remaining PRs, rerun affected checks, update orchestration state, recompute executability.
+A batch that was all green at one moment is not still green once earlier members advance
+main.
+
+If main turns red, that is an execution defect to fix immediately — not something to stack
+further dependent merges on top of.
+
+## A test passed only if the process exited zero
+
+Log content is diagnostic. **Process exit status is execution truth.**
+
+Never use output text as the authoritative success signal. `npm test | grep passed` is
+forbidden, along with every equivalent where a downstream `grep`/`tail`/`head`/`awk`/`sed`
+succeeds while the test command itself failed. A success-looking line inside failing output
+is not success — a suite that prints `# todo 0` on its way to exiting 1 will read as green
+to a pipeline that only inspects text.
+
+This rule exists because that is exactly what happened: `npm test` was reported green on
+the strength of a grepped line while the process had failed, and CI exposed the false
+claim.
+
+When output must be filtered, preserve the original command's status — run the command
+directly and capture its exit code, or write output to a file while keeping the status,
+then analyze the file.
+
+When reporting a local suite as green, record the exact command, the exit status, and the
+test counts. Not a parsed log line.
+
+## Four claims, never collapsed
+
+- output looks green
+- the command exited green
+- CI is green
+- the merge is safe against current main
+
+These are four separate claims. Local tests are necessary evidence where they apply; they
+do not replace required CI. Before merge, required CI must be successful **at the current
+head**, and that head must be the one reviewed. Stale, pending or failed required checks
+block the merge. An infrastructure failure may be rerun only after being classified as
+one — a real failure is never relabelled a flake without evidence.
+
+After a high-impact or shared-runtime merge, verify main is still healthy: inspect the
+merge commit, run or confirm the affected required suite, and check that no shared
+registration, test or index entry disappeared.
+
+## What a writer handoff must contain
+
+"Tests pass" is not a handoff. A handoff states the commands run, their **actual exit
+status**, the head SHA tested, the base SHA tested against, and the CI state if known.
+
+The controller verifies independently before acceptance. A handoff is a claim.

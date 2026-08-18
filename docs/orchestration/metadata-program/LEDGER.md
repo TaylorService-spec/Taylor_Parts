@@ -244,6 +244,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- seven instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
 | X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
 | X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
+| X-FALSE-LOCAL-GREEN | 6 | npm test reported green from a grepped log line while the process had failed | — | — | — | — | — | NOT_APPLICABLE | None. Elevated to a standing controller rule. |
 
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
 
