@@ -20,7 +20,7 @@
 // EXPORT != DEPLOY, REGISTER != GRANT. Exported for build/test only; nothing runs in production
 // until a separate deploy + capability grant + per-environment activation.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldPath } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { SALES_ORDER_STATES, SALES_ORDER_LINE_KINDS, type SalesOrderState, type SalesOrderLineKind } from "./salesOrderLifecycle";
@@ -258,6 +258,242 @@ export const getSalesOrderContext = onCall({ region: "us-central1" }, async (req
     if (err instanceof HttpsError) throw err;
     // A read failure is UNAVAILABLE, distinct from denied/not-found -- surfaced as internal so the
     // client seam can render an honest "not connected / unavailable" state.
+    throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------
+// UNSCOPED, CURSOR-PAGINATED read (X-SALES-ORDER-NO-UNSCOPED-READ). Answers "list the Sales Orders this
+// caller is authorized to see, across every Account" for the `salesOrder.index` INDEX surface -- the exact
+// gap salesOrder.js's own header names: `listSalesOrdersForAccount` is account-scoped and
+// `getSalesOrderContext` fetches exactly one record, so neither can serve an unscoped list. Reuses the SAME
+// governed capability (`salesOrder.read`) -- the authorization question is identical to the other two
+// reads; only the query shape (no accountId equality filter) and the pagination contract (a real cursor,
+// not a client-only limit snapshot) differ.
+//
+// ORDERING. `.orderBy("salesOrderNumber", "desc").orderBy(FieldPath.documentId(), "desc")` -- the SAME
+// default sort salesOrderIndexList already declares (defaultSort: salesOrderNumber DESC), with the
+// document id appended as an EXPLICIT tiebreaker so `.startAfter()` has two concrete values to resume
+// from and the ordering is deterministic even if two orders somehow shared a salesOrderNumber (they do
+// not today -- allocateSalesOrderNumber is monotonic/unique -- but a stable tiebreaker costs nothing and
+// removes any doubt, matching equipmentCompatibility/readService.ts's own tiebreaker rule).
+//
+// A KNOWN GAP, STATED RATHER THAN PAPERED OVER: Firestore's `.orderBy()` excludes any document that does
+// not carry the ordered field. Sales Orders created before the salesOrderNumber rollout (salesOrder.js's
+// own header names this) have no `salesOrderNumber` and are therefore invisible to this read -- not
+// filtered out AFTER projection, but never returned by the query at all, and not counted in `skipped`
+// either (that counter is for docs the QUERY returned but projection rejected). This is the same gap
+// salesOrder.js already documents for the identity field; this read inherits it rather than introducing
+// it, and fixing it (e.g. a secondary un-ordered pass for legacy docs) is out of this task's scope.
+//
+// FILTER CONTRACT. Exactly what salesOrderIndexList declares -- EQUALS/IN on `state`, nothing else -- so
+// this read never accepts a filter the metadata surface cannot honestly offer. A `state` filter combined
+// with the `salesOrderNumber` order requires a Firestore composite index. The EXACT shape is not a guess:
+// `requiredIndexes(salesOrderIndexList, salesOrderEntity)` (field-ops-app-vite/src/metadata/
+// listViewDefinition.js) computes it directly from this same declaration --
+//   sales_orders: state ASCENDING, salesOrderNumber DESCENDING, __name__ ASCENDING
+// -- which this repository does NOT declare today (`firestore.indexes.json` is unchanged by this PR,
+// outside this lane's write scope; index deployment is its own separate, protected step -- see the
+// handoff's REGISTRATION_PENDING list). Calling with a `state` filter before that index exists fails at
+// the Firestore query layer in production; that failure is caught below and surfaced the same way any
+// other read failure is (`internal` / "unavailable"), never silently downgraded to an empty result. NOTE:
+// the Firestore EMULATOR does not enforce composite-index requirements the way production does, so a
+// state-filtered call passing in emulator-backed tests is not proof it will pass in production without
+// the index -- flagged explicitly rather than papered over.
+// The UNFILTERED path needs no composite index -- `requiredIndexes()` itself skips demanding one when
+// there is no filter and exactly one sort field, on the premise that Firestore's automatic single-field
+// index on `salesOrderNumber` covers it. That premise is the metadata layer's own established
+// convention (shared by every other single-sort-field INDEX list in this codebase), not something this
+// read invents.
+//
+// CURSOR. An UNTRUSTED, UNSIGNED position hint -- the SAME posture functions/src/equipmentCompatibility/
+// readCursor.ts documents (posture B): NOT an authorization boundary. Every page independently re-runs the
+// SAME capability check and re-executes the SAME bound query (limit + optional state filter, unchanged
+// ordering); a caller who edits the cursor can only reposition WITHIN their own already-authorized
+// ordering, never broaden the query or skip the capability gate. A structurally invalid cursor is a
+// malformed request (`invalid-argument`), never silently treated as "start from the beginning" -- that
+// would let a bad cursor quietly re-show page one under a "next page" label.
+export const SALES_ORDER_INDEX_CURSOR_VERSION = 1;
+
+export interface SalesOrderIndexCursorPayload {
+  readonly salesOrderNumber: string;
+  readonly id: string;
+}
+
+const SALES_ORDER_INDEX_CURSOR_FIELDS = ["v", "n", "id"] as const;
+
+// Opaque to callers, not secret, not signed -- a base64url of the strict record. Mirrors
+// equipmentCompatibility/readCursor.ts's encodeCursor.
+export function encodeSalesOrderIndexCursor(payload: SalesOrderIndexCursorPayload): string {
+  const record = { v: SALES_ORDER_INDEX_CURSOR_VERSION, n: payload.salesOrderNumber, id: payload.id };
+  return Buffer.from(JSON.stringify(record), "utf8").toString("base64url");
+}
+
+// Decode + shape-validate. Any decode failure, unknown/extra field, or bad version fails closed with
+// HttpsError("invalid-argument") -- never silently treated as "no cursor".
+export function decodeSalesOrderIndexCursor(raw: string): SalesOrderIndexCursorPayload {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048) {
+    throw new HttpsError("invalid-argument", "cursor must be a bounded non-empty string.");
+  }
+  let text: string;
+  try {
+    text = Buffer.from(raw, "base64url").toString("utf8");
+  } catch {
+    throw new HttpsError("invalid-argument", "cursor is not valid base64url.");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpsError("invalid-argument", "cursor is not a valid encoded record.");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new HttpsError("invalid-argument", "cursor payload must be an object.");
+  }
+  const record = parsed as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (
+    keys.length !== SALES_ORDER_INDEX_CURSOR_FIELDS.length ||
+    !SALES_ORDER_INDEX_CURSOR_FIELDS.every((k) => Object.prototype.hasOwnProperty.call(record, k))
+  ) {
+    throw new HttpsError("invalid-argument", "cursor payload has an unexpected shape.");
+  }
+  if (record.v !== SALES_ORDER_INDEX_CURSOR_VERSION) {
+    throw new HttpsError("invalid-argument", "cursor schema version is not recognized.");
+  }
+  if (typeof record.n !== "string" || record.n.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "cursor salesOrderNumber is invalid.");
+  }
+  if (typeof record.id !== "string" || record.id.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "cursor id is invalid.");
+  }
+  return { salesOrderNumber: record.n, id: record.id };
+}
+
+// Bounded like the account-scoped reads (not the whole-authorized-scope 1000 cap listOpportunityContext
+// uses) -- this read is meant to be PAGED through via the cursor, matching salesOrder.index's own
+// declared pageSize (50), rather than fetched once as a single large snapshot.
+export const DEFAULT_SALES_ORDER_INDEX_LIMIT = 50;
+export const MAX_SALES_ORDER_INDEX_LIMIT = 200;
+
+export interface SalesOrderIndexPageResult {
+  status: "ready";
+  salesOrders: SalesOrderProjection[];
+  skipped: number; // docs the query returned but could not be honestly projected (never silently dropped)
+  truncated: boolean; // true when more rows exist beyond this page (the existing sources' truncation shape)
+  nextCursor: string | null; // present only when truncated -- the position to resume from
+}
+
+// Core bounded, cursor-paginated read, factored out of the onCall adapter for direct testability
+// (mirrors readSalesOrdersForAccount / readOpportunitiesForAccount's own factoring).
+export async function listSalesOrderIndexPage(
+  db: FirebaseFirestore.Firestore,
+  options: { limit: number; state?: SalesOrderState | SalesOrderState[]; afterCursor?: SalesOrderIndexCursorPayload | null }
+): Promise<SalesOrderIndexPageResult> {
+  const { limit, state, afterCursor } = options;
+  let query: FirebaseFirestore.Query = db.collection(SALES_ORDERS_COLLECTION);
+  if (Array.isArray(state)) {
+    query = query.where("state", "in", state);
+  } else if (typeof state === "string") {
+    query = query.where("state", "==", state);
+  }
+  // Stable total ordering: salesOrderNumber DESC (the declared default sort), document id ASC as an
+  // explicit tiebreaker. ASC, not DESC, deliberately: field-ops-app-vite/src/metadata/
+  // listViewDefinition.js's `makeListViewDefinition` always appends the tiebreaker in ASCENDING order
+  // (`tiebreaker: input.tiebreaker ?? "__name__"`, `firestoreOrder("ASC")` in `requiredIndexes()`),
+  // regardless of the primary sort's own direction -- confirmed by running `requiredIndexes
+  // (salesOrderIndexList, salesOrderEntity)`, which demands exactly `sales_orders(state ASC,
+  // salesOrderNumber DESC, __name__ ASC)` for the filtered case. Matching that direction here means
+  // the ONE composite index this read will ever need is the one the metadata layer already computes
+  // and CI can compare against -- a DESC tiebreaker would silently demand a second, undeclared index.
+  query = query.orderBy("salesOrderNumber", "desc").orderBy(FieldPath.documentId(), "asc");
+  if (afterCursor) {
+    query = query.startAfter(afterCursor.salesOrderNumber, afterCursor.id);
+  }
+  const snap = await query.limit(limit + 1).get();
+  const truncated = snap.size > limit;
+  const docs = snap.docs.slice(0, limit);
+  const salesOrders: SalesOrderProjection[] = [];
+  let skipped = 0;
+  for (const d of docs) {
+    const projection = projectSalesOrder(d.id, d.data() as Record<string, unknown>);
+    if (projection) salesOrders.push(projection);
+    else skipped += 1;
+  }
+  const lastDoc = docs[docs.length - 1];
+  let nextCursor: string | null = null;
+  if (truncated && lastDoc) {
+    const lastData = lastDoc.data() as Record<string, unknown>;
+    const lastSalesOrderNumber = typeof lastData.salesOrderNumber === "string" ? lastData.salesOrderNumber : null;
+    // The query's own `.orderBy("salesOrderNumber", ...)` guarantees every returned doc carries a
+    // string salesOrderNumber (Firestore excludes docs missing the ordered field) -- this null check is
+    // defense-in-depth, not an expected path, and fails closed by omitting the cursor rather than
+    // encoding a broken one.
+    if (lastSalesOrderNumber) {
+      nextCursor = encodeSalesOrderIndexCursor({ salesOrderNumber: lastSalesOrderNumber, id: lastDoc.id });
+    }
+  }
+  return { status: "ready", salesOrders, skipped, truncated, nextCursor };
+}
+
+// The trusted UNSCOPED read callable for the salesOrder.index INDEX surface. Same fail-closed shape as
+// the other two reads: unauthenticated -> unauthenticated, malformed limit/state/cursor -> invalid-argument
+// (checked BEFORE authorization), ungranted -> permission-denied, read failure (including a `state` filter
+// hitting the undeclared composite index) -> internal ("unavailable"). An empty authorized scope is not an
+// error -- an honest "ready" result with zero Sales Orders and `truncated: false`.
+export const listSalesOrderIndex = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+  const data = (request.data ?? {}) as { limit?: unknown; state?: unknown; cursor?: unknown };
+
+  const limit =
+    Number.isSafeInteger(data.limit) && (data.limit as number) > 0 && (data.limit as number) <= MAX_SALES_ORDER_INDEX_LIMIT
+      ? (data.limit as number)
+      : DEFAULT_SALES_ORDER_INDEX_LIMIT;
+
+  const validStates = SALES_ORDER_STATES as readonly string[];
+  let state: SalesOrderState | SalesOrderState[] | undefined;
+  if (data.state !== undefined) {
+    if (typeof data.state === "string") {
+      if (!validStates.includes(data.state)) {
+        throw new HttpsError("invalid-argument", "state is not a recognized Sales Order state.");
+      }
+      state = data.state as SalesOrderState;
+    } else if (Array.isArray(data.state)) {
+      if (data.state.length === 0 || !data.state.every((s) => typeof s === "string" && validStates.includes(s))) {
+        throw new HttpsError("invalid-argument", "state must be a non-empty array of recognized Sales Order states.");
+      }
+      state = data.state as SalesOrderState[];
+    } else {
+      throw new HttpsError("invalid-argument", "state must be a Sales Order state or an array of them.");
+    }
+  }
+
+  let afterCursor: SalesOrderIndexCursorPayload | null = null;
+  if (data.cursor !== undefined) {
+    if (typeof data.cursor !== "string") {
+      throw new HttpsError("invalid-argument", "cursor must be a string.");
+    }
+    afterCursor = decodeSalesOrderIndexCursor(data.cursor);
+  }
+
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: request.auth.uid,
+      permissionIds: [SALES_ORDER_READ_CAPABILITY],
+    });
+    allowed = decisions[SALES_ORDER_READ_CAPABILITY] === true;
+  } catch {
+    allowed = false; // fail closed
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Sales Orders.");
+
+  try {
+    const db = getFirestore();
+    return await listSalesOrderIndexPage(db, { limit, state, afterCursor });
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
   }
 });
