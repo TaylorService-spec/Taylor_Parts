@@ -2497,6 +2497,44 @@
       "mergeSha": "653973cb"
     },
     {
+      "id": "A-ENTITY-STOCK-LOCATION-DEFINITION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Stock Location entity definition",
+      "domain": "inventory",
+      "status": "MERGED",
+      "pr": 1223,
+      "mergeSha": "773b72e7",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "binCode is a genuine caller-supplied name, not server-allocated, so nameField with no invented referenceField -- the purchaseOrder.externalPoNumber reasoning. The lane established what the collection REALLY is rather than idealizing it: NOTHING in the repo writes stock_locations. warehouseService.ts's write functions have zero callers outside their own tests, and fulfillmentAvailability.ts's header states the collection is a seeded legacy projection -- which is why the Owner-ratified decision replaced it as the Sales Order availability source. Only updatedAt exists; no createdAt/createdBy/updatedBy, recorded as a gap. readVia CLIENT_DIRECT with readCapability null, and the nuance is worth keeping: warehouse.stockLocation.read DOES exist in the catalog and describes exactly the right resource, but nothing evaluates it on this path since Rules gate the read directly. One net-new composite, pending deploy."
+    },
+    {
+      "id": "X-INVENTORY-TRANSACTION-NO-IDENTITY",
+      "phase": "6",
+      "wave": "3",
+      "kind": "PROTECTED_ACTION",
+      "title": "Inventory Transaction has neither a name nor a reference -- definition held, not merged",
+      "domain": "inventory",
+      "entity": "InventoryTransaction",
+      "status": "BLOCKED_PROTECTED",
+      "branch": "feat/entity-inventory-movement-definitions",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Owner decision: do inventory movements get a business reference, or is the ledger unlabelable?",
+      "notes": "The authored definition is COMPLETE and preserved on its branch; it is not merged, on the same precedent as X-TRANSFER-ORDER-NO-REFERENCE and X-SALES-ORDER-NO-REFERENCE. The lane declared identity.nameField 'type' and flagged it honestly as the least-invented option, because validateEntityDefinition rejects an entity with neither. But `type` is an ENUM CATEGORY -- every RECEIVED movement would label as 'RECEIVED' and the rows would be mutually indistinguishable. The validator's own message settles it: an entity with neither 'cannot be labelled without exposing its document id, which is a data-model gap to RECORD, not a fallback to NORMALIZE'. Passing the validator by nominating a category IS that normalization, so merging would have made the contract weaker than the comment inside it. This is the first entity in the program with genuinely no labelable identity. Other findings from the same lane, preserved: inventory_transactions is genuinely append-only with two disjoint stored shapes (legacy `timestamp` only, no actor at all; operational `actor{kind,id}` + server-authored `recordedAt`), which is also why no INDEX list was authored -- no field is sortable across both eras without silently dropping one. And `lotId` is a legal stored key required when a Part's trackingMode is LOT that NO live writer populates, so a LOT-tracked movement would fail validation today.",
+      "blockers": [
+        {
+          "reason": "inventory_transactions has neither a human name nor a server-allocated reference. The authored definition satisfies the validator only by nominating `type`, an ENUM category that would label every RECEIVED movement identically -- the exact normalization entityDefinition.js forbids.",
+          "requiredDecision": "Does an inventory movement get a business reference number (a family member alongside WO-/OPP-/SO-), or is this ledger accepted as an unlabelable internal record that no surface may list by identity? Numbering is a business decision outside a leaf lane's authority."
+        }
+      ]
+    },
+    {
       "id": "A-ENTITY-FLEET-CATALOG-DEFINITIONS",
       "phase": "6",
       "wave": "3",
