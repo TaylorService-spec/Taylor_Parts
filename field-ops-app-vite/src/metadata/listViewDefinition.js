@@ -54,12 +54,41 @@ export const LIST_SURFACE = Object.freeze(["INDEX", "RELATED"]);
 export const MAX_PAGE_SIZE = 200;
 export const MAX_RELATED_ROWS = 25;
 
-/** A column: a field reference plus how it is displayed. Never a renderer function. */
+/**
+ * A column: a field reference plus how it is displayed.
+ *
+ * X-LIST-COLUMN-RENDERER-UNCONSUMED: this used to also carry a `renderer` (a
+ * REGISTERED component id). `resolveColumns()` (listPresentation.js) resolved it
+ * against `componentRegistry` on every call, and `MetadataListGrid.jsx` never read
+ * the resolved value back out — a declared renderer was quietly ignored, with no
+ * signal to the surface author or the reader. This was the ninth instance of this
+ * program's defining defect (metadata declaring something nothing consumes), and the
+ * one instance recorded as SILENT rather than merely dead.
+ *
+ * Removed rather than wired up, on the evidence gathered before deciding: no
+ * definition under src/metadata/definitions/ has ever declared a column `renderer`;
+ * `componentRegistry` has a CELL_RENDERER kind but nothing in application source has
+ * ever registered one; and the one real surface that could have used it — Warehouses'
+ * status pill (src/modules/inventory/Warehouses.jsx, S-INV-WAREHOUSES) — could not
+ * reproduce its colour coding through this path and shipped without it, because the
+ * path did nothing. Building a consumption path for a capability with zero
+ * declarations, zero registrations, and one real need that was purely decorative
+ * (the pill always carried its own text label; colour was never the only signal)
+ * would be speculative complexity, not a fix for a live gap.
+ *
+ * WHAT THIS GIVES UP: a column can no longer name a custom cell component through
+ * the metadata contract. A surface that genuinely needs one (a colour-coded status,
+ * an icon, a formatted composite) renders its list through `buildListPresentation` /
+ * `MetadataListGrid` as today and post-processes `presentation.rows[].cells` itself —
+ * exactly the pattern Warehouses.jsx already uses for its client-side status summary
+ * — or, if a real cross-surface need for a shared cell component ever appears, adds a
+ * NEW, immediately-consumed mechanism at that point rather than reviving an
+ * already-proven-dead one.
+ */
 export function makeColumn(input = {}) {
   return Object.freeze({
     fieldId: input.fieldId,
     label: input.label ?? null, // null = inherit the FieldDefinition's label
-    renderer: input.renderer ?? null, // REGISTERED renderer id
     sortable: input.sortable ?? false,
     width: input.width ?? null,
   });
@@ -221,8 +250,20 @@ export function validateListViewDefinition(def, entity, relationships = []) {
     if (col.sortable && !field.sortable) {
       problems.push(`${at}: column "${col.fieldId}" is sortable but the field is not — sorting needs an indexed field`);
     }
-    if (typeof col.renderer === "function") {
-      problems.push(`${at}: column "${col.fieldId}" renderer must be a registered id, never a function (boundary §8)`);
+    // X-LIST-COLUMN-RENDERER-UNCONSUMED: `renderer` is not part of the contract —
+    // `makeColumn` no longer accepts one, and nothing downstream (`resolveColumns`,
+    // `MetadataListGrid`) reads one. A definition that still declares one (built by
+    // hand rather than through `makeColumn`, or carried over from before this change)
+    // must fail HERE, loudly, rather than be silently ignored the way it was before —
+    // that silent-ignore was the defect this closes. See `makeColumn`'s doc comment
+    // for the evidence this removal was decided on and what a caller needing a custom
+    // cell renders instead.
+    if (col.renderer !== undefined) {
+      problems.push(
+        `${at}: column "${col.fieldId}" declares "renderer", which is not part of the contract — no runtime ` +
+          "consumes it (X-LIST-COLUMN-RENDERER-UNCONSUMED). Render the list normally and post-process " +
+          "presentation.rows[].cells for custom cell display instead."
+      );
     }
   }
 
