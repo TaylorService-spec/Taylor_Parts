@@ -724,6 +724,10 @@
     {
       "file": "test/metadataCatalogDefinitions.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/metadataInventoryActionDefinitions.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
