@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 0f774fcd -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 4cf132ad -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -936,12 +936,59 @@
       "route": "/inventory/warehouses",
       "classification": "A_ENTITY_LIST",
       "entity": "Warehouse",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name."
+      "nextAction": "None.",
+      "notes": "Unbounded collection read. warehousesView.js:54 falls back to the raw doc id as the displayed name. MIGRATED. The previous surface read with a cap of 200 and NEVER DISCLOSED TRUNCATION -- the truncated flag was computed and dropped, so a 201st warehouse silently did not exist. Now disclosed. It also collapsed every error into one generic message; denied/unavailable/empty/filtered are now four distinct states, and a declared `location` column that was never shown now renders. Filtering stays CLIENT-SIDE deliberately: a server status filter cannot express the 'ungoverned' bucket (rows with no status at all), and per-tab counts need the same loaded set -- counts are labelled 'loaded so far' when more remain rather than asserted as totals, the same restraint already recorded for the Customers tag facet.",
+      "pr": 1233,
+      "mergeSha": "4cf132ad"
+    },
+    {
+      "id": "X-WAREHOUSES-VIEW-ID-AS-NAME",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "warehousesView fell back to the document id as the display name",
+      "domain": "inventory",
+      "entity": "Warehouse",
+      "status": "MERGED",
+      "pr": 1233,
+      "mergeSha": "4cf132ad",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "buildWarehousesView resolved `name: w.name || w.id`, putting a Firestore document id in front of a user whenever a warehouse had no name. Fixed to an em dash, matching the Opportunity pipeline fix: DECISIONS #106 has no 'unless nothing else is available' clause. The view is currently UNREFERENCED, and that is exactly why the defect survived -- dead code carrying a live defect is a trap for whoever picks it up next, so it was fixed and pinned rather than left because nothing calls it today. This is the third id-as-label fallback found in hand-written code this session, after the Opportunity pipeline and the Manufacturers surface."
+    },
+    {
+      "id": "X-LIST-COLUMN-RENDERER-UNCONSUMED",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "column.renderer is resolved by listPresentation and consumed by nothing",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Either consume renderer in MetadataListGrid or remove it from the contract.",
+      "notes": "The NINTH instance of the unconsumed-declaration pattern. resolveColumns() in listPresentation.js resolves column.renderer, and MetadataListGrid never reads it when rendering cells. Found the same way as every other instance -- by trying to consume it: the Warehouses migration could not reproduce the existing coloured status pill, so status now renders as plain text (same information, no colour). The lane reported it rather than reaching into the runtime to work around it. Note this one is SILENT, not loud: a declared renderer is simply ignored with no signal, which is the failure mode the loud-seam rule exists to prevent."
+    },
+    {
+      "id": "X-DEAD-WAREHOUSE-READ-PATH",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "useWarehouses and warehousesView are now dead code",
+      "domain": "inventory",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Remove both, or record why they are kept.",
+      "notes": "The Warehouses migration removed the only caller of the useWarehouses hook and of domain/warehousesView.js. Both remain in the tree with no consumers. Left in place because src/hooks/** was outside the migrating lane's writeScope, and recorded here rather than silently orphaned -- the id-as-name defect fixed in the same PR is precisely what unreferenced code accumulates while nobody is looking at it."
     },
     {
       "id": "S-INV-SUPPLIERS",
@@ -1035,12 +1082,14 @@
       "route": "/inventory/manufacturers",
       "classification": "E_ADMIN_CONFIG",
       "entity": "Manufacturer",
-      "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Inventory only - writes are closed in every environment including sandbox",
-      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "status": "MERGED",
+      "nextAction": "None.",
+      "notes": "navHidden. Read is a callable and live in sandbox; MANUFACTURER_WRITE_READY is false everywhere. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. MIGRATED. Found and fixed THREE live DECISIONS #106 displays of the Firestore document id: an 'ID' column and both dialog headers (Rename ${manufacturerId}, Change status -- ${manufacturerId}). All now show name; the id remains the row key and write-command address but is no longer readable content. The create dialog's ID INPUT stays -- the operator authors that id, which is a different thing from displaying one. The lane DECLINED to route through useMetadataList: getManufacturerCatalog is an unbounded read with an envelope shape callableListSource does not know, and registering it was outside its scope, so it used buildListPresentation over the existing read -- no double-read. Gains the entity's declared enumLabels, so the list shows 'Active' rather than raw ACTIVE.",
       "dependsOn": [
         "A-LIST-GRID"
-      ]
+      ],
+      "pr": 1233,
+      "mergeSha": "4cf132ad"
     },
     {
       "id": "S-INV-ROLE-HOMES",
