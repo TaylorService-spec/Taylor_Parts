@@ -438,6 +438,17 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "reorderRequest.index",
   }),
+  // salesOrder.index (unscoped INDEX read, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "sales_orders",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "state", order: "ASCENDING"},
+      {fieldPath: "salesOrderNumber", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "salesOrder.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------

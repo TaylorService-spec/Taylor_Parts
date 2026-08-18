@@ -718,6 +718,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/metadataSalesOrderDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/metadataCatalogDefinitions.test.mjs",
       "runner": "node --test"
     }

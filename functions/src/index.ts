@@ -27,7 +27,7 @@ export { listOpportunityContext, listOpportunitiesForAccount } from "./opportuni
 export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
-export { getSalesOrderContext, listSalesOrdersForAccount } from "./salesOrder/salesOrderReadService";
+export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.

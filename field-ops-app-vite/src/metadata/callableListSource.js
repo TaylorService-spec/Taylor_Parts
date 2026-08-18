@@ -84,6 +84,12 @@ const CALLABLE_SOURCES = Object.freeze({
   // listViewDefinition.js's `readCallable`), which both useMetadataList.js and
   // MetadataRecordPage.jsx's `selectListSource` resolve ahead of the entity's own value.
   listOpportunityContext: { listKey: "opportunities", scoped: false },
+  // functions/src/salesOrder/salesOrderReadService.ts listSalesOrderIndex -- the unscoped
+  // Sales Order read built for the INDEX surface. Deliberately a SECOND callable rather than
+  // a widened listSalesOrdersForAccount: the account-scoped related list and the unscoped
+  // index are different reads with different authority shapes, and reusing one for the other
+  // was explicitly ruled out.
+  listSalesOrderIndex: { listKey: "salesOrders", scoped: false },
 });
 
 /**
