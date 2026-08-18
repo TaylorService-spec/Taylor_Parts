@@ -15,10 +15,25 @@
 // PRODUCTION EXECUTION IS A PROTECTED ACTION -- see docs/operations/sales-order-number-backfill-runbook.md.
 // This tool being present and working does NOT authorize running it against any real project; that
 // authorization is separate and is the Owner's alone (see docs/governance/... protected-action policy).
+//
+// X-BACKFILL-ENVIRONMENT-GUARD (fail-closed target guard, lives entirely inside parseArgs):
+// `--environment` is now REQUIRED. The only accepted value is exactly "sandbox" -- "production", "prod",
+// empty, or any typo is a hard error. Under `--environment sandbox` the only accepted `--project` is the
+// single sandbox project id resolved from config/environments.json (role === "sandbox" with a real
+// firebase.projectId; today that resolves to exactly "eos-platform-sandbox"). `taylor-parts`, any alias,
+// any near-miss (trailing space, suffix, prefix), a missing --project, and any value NOT byte-identical to
+// the resolved id are all refused explicitly -- nothing is ever inferred from .firebaserc or process.env.
+// This check runs INSIDE parseArgs, which is called before buildProductionDeps() (the only place
+// firebase-admin is required and Firestore is touched) in both the CLI entrypoint (main(), below) and every
+// caller -- so a rejected configuration throws before firebase-admin is ever required and before any
+// Firestore connection, read, or write is attempted. The --project/--confirm-project identity check, the
+// --plan/--plan-sha256 pinning, and --execute's --acknowledge-production-write requirement are unchanged by
+// this guard; it is an additional gate, not a replacement for any of them.
 "use strict";
 
 const path = require("node:path");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 
 function sha256Hex(text) {
   return crypto.createHash("sha256").update(text, "utf8").digest("hex");
@@ -35,12 +50,60 @@ const lib = () => ({
   evidence: require("../lib/salesOrder/salesOrderNumberBackfillEvidence.js"),
 });
 
+// ---- environment guard: read-only local file, resolved BEFORE any Firebase/Firestore code runs ----------
+// config/environments.json is the declared source of environment identity repo-wide (see its own header
+// comment). Reading it here is a plain local JSON read via node:fs (already a dependency of this file,
+// used elsewhere for evidence publishing) -- it adds no new runtime dependency and performs no Firestore
+// or network I/O, so it does not weaken the "fails closed before Firebase init" property.
+function loadEnvironmentRegistry() {
+  const registryPath = path.resolve(__dirname, "..", "..", "config", "environments.json");
+  let raw;
+  try {
+    raw = fs.readFileSync(registryPath, "utf8");
+  } catch (err) {
+    throw new Error(`--environment sandbox requires config/environments.json to be readable at ${registryPath}: ${err.message}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`config/environments.json is not valid JSON: ${err.message}`);
+  }
+}
+
+// Resolves the single sandbox project id from the registry: environments whose `role` is "sandbox" AND
+// which carry a real `firebase.projectId` (excludes e.g. "local-emulator", whose firebase identity is
+// deliberately null). Throws if that does not resolve to EXACTLY one project id -- never guesses.
+function resolveSandboxProjectId(registry) {
+  const ids = [...new Set(
+    (registry.environments || [])
+      .filter((e) => e && e.role === "sandbox" && e.firebase && typeof e.firebase.projectId === "string" && e.firebase.projectId.length > 0)
+      .map((e) => e.firebase.projectId)
+  )];
+  if (ids.length !== 1) {
+    throw new Error(`--environment sandbox requires config/environments.json to declare exactly one sandbox project id with a real firebase.projectId; found ${ids.length} (${JSON.stringify(ids)})`);
+  }
+  return ids[0];
+}
+
+function assertSandboxTarget(args) {
+  if (!args.environment) throw new Error('--environment is required (the only accepted value today is "sandbox"; no default, nothing inferred)');
+  if (args.environment !== "sandbox") {
+    throw new Error(`--environment must be exactly "sandbox"; refusing '${args.environment}' (production and any other/unknown value are rejected)`);
+  }
+  // --project/--confirm-project identity is already enforced above; this narrows the ALLOWED identity.
+  const allowedProjectId = resolveSandboxProjectId(loadEnvironmentRegistry());
+  if (args.projectId !== allowedProjectId) {
+    throw new Error(`--environment sandbox only accepts --project '${allowedProjectId}'; refusing '${args.projectId}' (taylor-parts, aliases, near-misses, and any project not byte-identical to the registry-resolved sandbox id are refused; nothing is inferred from .firebaserc or the environment)`);
+  }
+}
+
 function parseArgs(argv) {
   const args = { execute: false, acknowledgeProductionWrite: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--execute") args.execute = true;
     else if (a === "--acknowledge-production-write") args.acknowledgeProductionWrite = true;
+    else if (a === "--environment") args.environment = argv[++i];
     else if (a === "--project") args.projectId = argv[++i];
     else if (a === "--confirm-project") args.confirmProjectId = argv[++i];
     else if (a === "--commit") args.governedCommit = argv[++i];
@@ -53,6 +116,7 @@ function parseArgs(argv) {
   if (!args.projectId) throw new Error("--project is required");
   if (!args.confirmProjectId) throw new Error("--confirm-project is required (must exactly match --project)");
   if (args.confirmProjectId !== args.projectId) throw new Error("--confirm-project does not match --project; refusing to run");
+  assertSandboxTarget(args);
   if (!args.governedCommit) throw new Error("--commit is required");
   if (!args.evidenceDir) throw new Error("--evidence-dir is required");
   if (!args.operator) throw new Error("--operator is required");
@@ -309,6 +373,17 @@ async function withPrefetchedCounters(deps, records) {
   };
 }
 
+// Full entrypoint composition, extracted from the require.main IIFE so tests can invoke the SAME
+// argv -> parseArgs -> buildProductionDeps -> run() chain a real CLI invocation uses, and prove the
+// environment guard rejects BEFORE buildProductionDeps() (and therefore before firebase-admin is ever
+// required and before any Firestore connection, read, or write) runs.
+async function main(argv) {
+  const args = parseArgs(argv);
+  let deps = buildProductionDeps(args.projectId);
+  if (!args.execute) deps = await withPrefetchedCounters(deps, await deps.readAllSalesOrders());
+  return run(deps, argv);
+}
+
 module.exports = {
   parseArgs,
   publishEvidenceAtomically,
@@ -317,16 +392,13 @@ module.exports = {
   run,
   buildProductionDeps,
   withPrefetchedCounters,
+  resolveSandboxProjectId,
+  loadEnvironmentRegistry,
+  main,
 };
 
 if (require.main === module) {
-  (async () => {
-    const argv = process.argv.slice(2);
-    const args = parseArgs(argv);
-    let deps = buildProductionDeps(args.projectId);
-    if (!args.execute) deps = await withPrefetchedCounters(deps, await deps.readAllSalesOrders());
-    return run(deps, argv);
-  })()
+  main(process.argv.slice(2))
     .then((r) => {
       console.log(JSON.stringify({ ok: true, mode: r.mode, evidenceDir: r.evidenceDir }, null, 2));
       process.exitCode = 0;

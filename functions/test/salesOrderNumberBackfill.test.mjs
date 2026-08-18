@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
+import { getApps } from "firebase-admin/app";
 import {
   UNKNOWN_YEAR_SENTINEL,
   recordFingerprint,
@@ -246,18 +247,105 @@ check("evidence: no sensitive-value pattern matches plan or execution evidence",
   assert.equal(scanForSecrets(serializeEvidence(execEv)).length, 0);
 });
 
+// ---- CLI: environment guard (X-BACKFILL-ENVIRONMENT-GUARD) ----
+// The registry-resolved sandbox project id is read through the SAME function the CLI itself uses
+// (cli.resolveSandboxProjectId + cli.loadEnvironmentRegistry), so this suite never hardcodes a second
+// copy of the id that could silently drift from config/environments.json.
+const SANDBOX_PROJECT_ID = cli.resolveSandboxProjectId(cli.loadEnvironmentRegistry());
+check("environment guard: resolves to exactly the expected sandbox project id", () => {
+  assert.equal(SANDBOX_PROJECT_ID, "eos-platform-sandbox");
+});
+
+const sandboxBase = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "test"];
+
 // ---- CLI: parseArgs ----
 check("cli.parseArgs: dry-run default; requires project confirm; execute requires ack + plan + plan-sha256", () => {
-  const base = ["--project", "taylor-parts", "--confirm-project", "taylor-parts", "--commit", "c", "--evidence-dir", "/ev", "--operator", "test"];
-  assert.equal(cli.parseArgs(base).execute, false);
+  assert.equal(cli.parseArgs(sandboxBase).execute, false);
   assert.throws(() => cli.parseArgs(["--commit", "c", "--evidence-dir", "/ev", "--operator", "t"]), /--project/);
-  assert.throws(() => cli.parseArgs(["--project", "taylor-parts", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"]), /--confirm-project/);
-  assert.throws(() => cli.parseArgs(["--project", "taylor-parts", "--confirm-project", "other", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"]), /does not match/);
-  assert.throws(() => cli.parseArgs([...base, "--execute"]), /acknowledge-production-write/);
-  assert.throws(() => cli.parseArgs([...base, "--execute", "--acknowledge-production-write"]), /--plan\b/);
-  assert.throws(() => cli.parseArgs([...base, "--execute", "--acknowledge-production-write", "--plan", "/p.json"]), /--plan-sha256/);
-  const full = cli.parseArgs([...base, "--execute", "--acknowledge-production-write", "--plan", "/p.json", "--plan-sha256", "a".repeat(64)]);
+  assert.throws(() => cli.parseArgs(["--project", SANDBOX_PROJECT_ID, "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"]), /--confirm-project/);
+  assert.throws(() => cli.parseArgs(["--project", SANDBOX_PROJECT_ID, "--confirm-project", "other", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"]), /does not match/);
+  assert.throws(() => cli.parseArgs([...sandboxBase, "--execute"]), /acknowledge-production-write/);
+  assert.throws(() => cli.parseArgs([...sandboxBase, "--execute", "--acknowledge-production-write"]), /--plan\b/);
+  assert.throws(() => cli.parseArgs([...sandboxBase, "--execute", "--acknowledge-production-write", "--plan", "/p.json"]), /--plan-sha256/);
+  const full = cli.parseArgs([...sandboxBase, "--execute", "--acknowledge-production-write", "--plan", "/p.json", "--plan-sha256", "a".repeat(64)]);
   assert.equal(full.execute, true);
+});
+
+check("cli.parseArgs: --environment is required -- absent is a hard error", () => {
+  const argv = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(argv), /--environment is required/);
+});
+
+check("cli.parseArgs: --environment production is rejected", () => {
+  const argv = ["--project", "taylor-parts", "--confirm-project", "taylor-parts", "--environment", "production", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(argv), /--environment must be exactly "sandbox"/);
+});
+
+check("cli.parseArgs: an unknown/typo --environment value is rejected (not just literal 'production')", () => {
+  for (const bad of ["prod", "PRODUCTION", "Sandbox", "staging"]) {
+    const argv = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--environment", bad, "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+    assert.throws(() => cli.parseArgs(argv), /--environment must be exactly "sandbox"/, `expected '${bad}' to be rejected`);
+  }
+  // An explicitly empty --environment value is falsy, so it is caught by the "required" branch rather than
+  // the "must be exactly sandbox" branch -- still a hard rejection, just a different (equally explicit) message.
+  const emptyArgv = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--environment", "", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(emptyArgv), /--environment is required/, "expected empty --environment to be rejected");
+});
+
+check("cli.parseArgs: --project taylor-parts is refused under --environment sandbox, even with a matching --confirm-project", () => {
+  const argv = ["--project", "taylor-parts", "--confirm-project", "taylor-parts", "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(argv), /only accepts --project/);
+});
+
+check("cli.parseArgs: --project is required even under --environment sandbox (no implicit default)", () => {
+  const argv = ["--confirm-project", SANDBOX_PROJECT_ID, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(argv), /--project is required/);
+});
+
+check("cli.parseArgs: mismatched --confirm-project is still rejected under --environment sandbox (identity check unchanged)", () => {
+  const argv = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", "not-the-same", "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  assert.throws(() => cli.parseArgs(argv), /does not match/);
+});
+
+check("cli.parseArgs: near-miss sandbox project ids are refused (not fuzzy-matched)", () => {
+  for (const nearMiss of [`${SANDBOX_PROJECT_ID}-2`, `${SANDBOX_PROJECT_ID} `, ` ${SANDBOX_PROJECT_ID}`, "eos-platform-sandb0x", SANDBOX_PROJECT_ID.toUpperCase()]) {
+    const argv = ["--project", nearMiss, "--confirm-project", nearMiss, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+    assert.throws(() => cli.parseArgs(argv), /only accepts --project/, `expected near-miss '${nearMiss}' to be rejected`);
+  }
+});
+
+check("cli.parseArgs: happy path still parses under the guard (guard is not proven only by its refusals)", () => {
+  const parsed = cli.parseArgs(sandboxBase);
+  assert.equal(parsed.projectId, SANDBOX_PROJECT_ID);
+  assert.equal(parsed.confirmProjectId, SANDBOX_PROJECT_ID);
+  assert.equal(parsed.environment, "sandbox");
+  assert.equal(parsed.execute, false);
+});
+
+// ---- CLI: environment guard fires BEFORE Firebase is ever touched ----
+// The real safety property is WHEN the rejection happens, not just THAT it happens. `main()` is the exact
+// argv -> parseArgs -> buildProductionDeps -> run() chain the real CLI entrypoint uses; buildProductionDeps
+// is the ONLY function in this file that calls `admin.initializeApp(...)` (and the only place firebase-admin
+// is required and Firestore is ever touched). `getApps()` (firebase-admin/app) reads the SAME global app
+// registry `admin.initializeApp` writes to, regardless of whether it's reached via the CJS `require("firebase-
+// admin")` this CLI uses or the ESM `firebase-admin/app` this test imports -- so if the guard's rejection
+// were ever moved to AFTER buildProductionDeps() runs, `getApps().length` would go from 0 to 1 and this
+// assertion would fail, not pass silently.
+assert.equal(getApps().length, 0, "precondition: no Firebase app has been initialized by anything else in this offline test file");
+await acheck("environment guard: a rejected --environment never reaches buildProductionDeps (fails closed BEFORE Firebase init -- no app registered)", async () => {
+  const rejectedArgv = ["--project", "taylor-parts", "--confirm-project", "taylor-parts", "--environment", "production", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  await assert.rejects(cli.main(rejectedArgv), /--environment must be exactly "sandbox"/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --environment is rejected");
+});
+await acheck("environment guard: a rejected sandbox-project mismatch also never reaches buildProductionDeps -- no app registered", async () => {
+  const rejectedArgv = ["--project", "taylor-parts", "--confirm-project", "taylor-parts", "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  await assert.rejects(cli.main(rejectedArgv), /only accepts --project/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when the sandbox project id is rejected");
+});
+await acheck("environment guard: missing --environment also never reaches buildProductionDeps -- no app registered", async () => {
+  const rejectedArgv = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+  await assert.rejects(cli.main(rejectedArgv), /--environment is required/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --environment is missing");
 });
 
 // ---- CLI: publishEvidenceAtomically ----
