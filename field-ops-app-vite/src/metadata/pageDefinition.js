@@ -93,6 +93,44 @@ export const OPERATIONAL_SECTION_KINDS = Object.freeze([
   "LIFECYCLE", "READINESS", "BLOCKERS", "NEXT_ACTIONS", "ATTENTION", "CUSTODY",
 ]);
 
+/**
+ * X-SECTION-CAPABILITY-GRANULARITY — `capabilityParts`.
+ *
+ * `capabilityRequirement` is a single boolean gate on the WHOLE section: correct when a
+ * section is backed by one source, wrong when a section COMPOSES pieces the viewer may be
+ * entitled to see separately (the recorded case: Account "Attention", which merges an
+ * AR read gated on `finance.read` with an ungated Work-Order-past-due read — one gate can
+ * only take the strictest answer, either hiding content the viewer may see or showing
+ * content they may not).
+ *
+ * `capabilityParts` is additive, not a replacement: a section that still has exactly one
+ * authority level keeps declaring `capabilityRequirement` and is untouched by this. A
+ * section declares `capabilityParts` INSTEAD of `capabilityRequirement` (validated
+ * mutually exclusive below) when it needs to say "these are the independently-gated
+ * pieces I compose" rather than "here is my one gate":
+ *
+ *   capabilityParts: [
+ *     { id: "ar", capabilityRequirement: "finance.read" },
+ *     { id: "workOrders", capabilityRequirement: null }, // ungated, always presentable
+ *   ]
+ *
+ * Each part's `id` is a semantic key the section's own consumer defines (a componentId
+ * section's registered component reads it back off the resolved section; a FIELD_GROUP
+ * part may additionally name `fieldIds`, a subset of the section's own `fieldIds`, so the
+ * generic FieldGroup renderer has a mechanical way to know which fields belong to which
+ * authority — see the FIELD_GROUP validation below). `capabilityRequirement: null` on a
+ * part means that part is ungated — always presentable, exactly like a section with no
+ * `capabilityRequirement` at all today.
+ *
+ * The runtime (pageRuntime.js `applyVisibility`) resolves per-part visibility the same
+ * fail-closed way it already resolves the single-gate case, and — the requirement this
+ * exists to satisfy — keeps a section with SOME parts withheld distinct from one with
+ * NONE: it stays in the plan with `visiblePartIds`/`withheldPartIds`/`partiallyWithheld`
+ * attached, rather than silently dropping the withheld part or rendering the section as
+ * if nothing was gated. Only when EVERY part is withheld does the section leave the plan
+ * entirely — the same "denied, not empty" outcome a fully-denied single-gate section
+ * already produces.
+ */
 export function makeSection(input = {}) {
   return Object.freeze({
     id: input.id,
@@ -105,6 +143,20 @@ export function makeSection(input = {}) {
     listId: input.listId ?? null, // RELATED_LIST only
     actions: Object.freeze([...(input.actions ?? [])]), // REGISTERED action ids
     capabilityRequirement: input.capabilityRequirement ?? null,
+    // Mutually exclusive with capabilityRequirement — see the doc comment above. `null`
+    // (the default) means this section is still the ordinary single-gate (or ungated)
+    // shape every existing definition already uses.
+    capabilityParts: input.capabilityParts
+      ? Object.freeze(
+          input.capabilityParts.map((p) =>
+            Object.freeze({
+              id: p?.id,
+              capabilityRequirement: p?.capabilityRequirement ?? null,
+              fieldIds: p?.fieldIds ? Object.freeze([...p.fieldIds]) : null,
+            })
+          )
+        )
+      : null,
     collapsedByDefault: input.collapsedByDefault ?? false,
   });
 }
@@ -167,6 +219,60 @@ export function validatePageDefinition(def, entity) {
       // opportunity rows all navigated into the unscoped all-opportunities index.
       if (!s.listId) problems.push(`${sat}: a RELATED_LIST must name the ListViewDefinition it renders`);
       if (s.fieldIds?.length) problems.push(`${sat}: fieldIds are meaningful only on a FIELD_GROUP`);
+    }
+
+    // X-SECTION-CAPABILITY-GRANULARITY — a malformed capabilityParts declaration is
+    // rejected HERE, loudly, at definition time. Tolerating it at runtime would mean the
+    // fail-closed behavior in applyVisibility is the only thing standing between a typo
+    // and a silently mis-gated section — validation is where that must be caught instead.
+    if (s?.capabilityParts != null) {
+      if (s.capabilityRequirement) {
+        problems.push(
+          `${sat}: capabilityParts and capabilityRequirement are mutually exclusive — a composed ` +
+            `section expresses authority per part, not once for the whole section`
+        );
+      }
+      if (!Array.isArray(s.capabilityParts) || s.capabilityParts.length === 0) {
+        problems.push(`${sat}: capabilityParts must be a non-empty array when declared`);
+      } else {
+        const partIds = new Set();
+        const claimedFieldIds = new Set();
+        for (const part of s.capabilityParts) {
+          if (!part || typeof part !== "object" || Array.isArray(part)) {
+            problems.push(`${sat}: each capabilityParts entry must be an object`);
+            continue;
+          }
+          if (!part.id || typeof part.id !== "string") {
+            problems.push(`${sat}: a capabilityParts entry is missing a string id`);
+            continue;
+          }
+          if (partIds.has(part.id)) problems.push(`${sat}: duplicate capabilityParts id "${part.id}"`);
+          partIds.add(part.id);
+
+          if (part.capabilityRequirement != null && typeof part.capabilityRequirement !== "string") {
+            problems.push(`${sat}: capabilityParts "${part.id}" capabilityRequirement must be a string or null`);
+          }
+
+          if (part.fieldIds != null) {
+            if (s.kind !== "FIELD_GROUP") {
+              problems.push(`${sat}: capabilityParts "${part.id}" fieldIds are meaningful only on a FIELD_GROUP`);
+            } else if (!Array.isArray(part.fieldIds) || part.fieldIds.length === 0) {
+              problems.push(`${sat}: capabilityParts "${part.id}" fieldIds must be a non-empty array when declared`);
+            } else {
+              for (const fid of part.fieldIds) {
+                if (!s.fieldIds?.includes(fid)) {
+                  problems.push(`${sat}: capabilityParts "${part.id}" names field "${fid}" which is not in this section's own fieldIds`);
+                  continue;
+                }
+                if (claimedFieldIds.has(fid)) {
+                  problems.push(`${sat}: field "${fid}" is claimed by more than one capabilityParts entry`);
+                }
+                claimedFieldIds.add(fid);
+              }
+            }
+          }
+        }
+      }
     }
   }
 
