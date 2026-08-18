@@ -334,12 +334,18 @@
       "route": "/service/job-assignments",
       "classification": "A_ENTITY_LIST",
       "entity": "WorkOrder",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "BLOCKED_PROTECTED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate or retire \u2014 overlaps the Work Orders list",
-      "notes": "Shares the same unbounded useWorkOrders() listener."
+      "nextAction": "Product decision: retire the duplicate route rather than migrate it.",
+      "notes": "Shares the same unbounded useWorkOrders() listener. READ-SHAPE AUDIT (MISLABELLED): Reads the identical fieldops_wos collection through the identical hook as the already-merged Work Orders list -- no distinct entity, no writes, no filter. It is a DUPLICATE ROUTE, not a surface. Migrating it would mean declaring a second definition onto the same entity to serve a route that duplicates another.",
+      "blockers": [
+        {
+          "reason": "It duplicates the already-migrated Work Orders list -- same collection, same hook, no distinct entity or filter.",
+          "requiredDecision": "Whether to retire the duplicate route, which is a product/navigation decision, not a rendering one."
+        }
+      ]
     },
     {
       "id": "S-SVC-DISPATCH-QUEUE",
@@ -352,8 +358,8 @@
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Classify: queue with governed transition writes, not a list",
-      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Not a list by construction.",
+      "notes": "Unbounded useWorkOrders(); the read must still be bounded even though the surface is exempt from the list runtime. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (COMPOSITE): Owns a governed Dispatch lifecycle write across TWO collections (fieldops_wos + fieldops_technicians), server-arbitrated for contention. Both underlying reads are also unbounded.",
       "dependsOn": [
         "A-LIST-GRID"
       ]
@@ -425,8 +431,8 @@
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Confirm synthetic-source status before migrating anything",
-      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Not a list by construction -- a derived grouping has no native rows to read.",
+      "notes": "Reads a SYNTHETIC injected source, not live Firestore. Migrating a surface with no real data source would prove nothing. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (COMPOSITE): The synthetic-source caveat is RESOLVED: production data is real. But no distinct collection exists -- it is a client-side grouping of fieldops_wos documents by salesOrderId, fed from a real bounded callable. Its dataset is a derived grouping, not a collection's native rows.",
       "dependsOn": [
         "A-LIST-GRID"
       ]
@@ -442,8 +448,8 @@
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Same synthetic-source caveat as coordinated visits",
-      "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Not a list by construction -- a derived grouping has no native rows to read.",
+      "notes": "Synthetic source. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (COMPOSITE): Same underlying read as Coordinated Visits, projected one level further into a per-visit field-mission shape. Synthetic-source caveat likewise resolved.",
       "dependsOn": [
         "A-LIST-GRID"
       ]
@@ -459,8 +465,8 @@
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Bounded-read remediation; dashboard composition is a later phase",
-      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Not a list; bounded-read remediation on the two reads is separately named.",
+      "notes": "Whole-collection listeners across fieldops_wos, fieldops_jobs and technicians feeding scoring panels. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (COMPOSITE): Two unbounded collections fanned into six independently-computed panels -- dashboard composition, not a list.",
       "dependsOn": [
         "A-PAGE-COMPONENT"
       ]
@@ -490,8 +496,8 @@
       "classification": "F_UTILITY_EXEMPT",
       "entity": "WorkOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Bounded-read remediation: it reads the whole accounts collection",
-      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "None. Stale next-action text corrected.",
+      "notes": "Creation wizard, not a list or record. Uses useFirestoreCollection(ACCOUNTS_COLLECTION) for the customer picker \u2014 same unbounded pattern as /customers. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (STALE-BLOCK): Recorded blocker ('reads the whole accounts collection') is STALE -- useAccountPicker already bounds that read at 200 with truncation disclosed. The F_UTILITY_EXEMPT classification was never in question.",
       "dependsOn": [
         "A-LIST-GRID"
       ]
@@ -535,8 +541,8 @@
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed."
+      "nextAction": "Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime.",
+      "notes": "Already fully callable-backed and server-scoped to the caller \u2014 a clean list-runtime consumer with no read remediation needed. READ-SHAPE AUDIT (COMPOSITE): Owns four governed CRUD writes and its read is CALLABLE-only and per-owner-scoped -- Rules deny direct client reads of reportDefinitions unconditionally, so no list definition has a collection to declare against."
     },
     {
       "id": "S-ADM-REPORT-BUILDER",
@@ -577,10 +583,10 @@
       "classification": "E_ADMIN_CONFIG",
       "entity": "User",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Inventory only; no governed directory read exists to migrate",
-      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Needs a general-purpose unscoped Users directory read plus activation of its gating capability.",
+      "notes": "Enable/Disable buttons rendered but unconditionally disabled \u2014 the setUserStatus command exists but no governed target-user read does. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (BLOCKED): The only real directory read (users, bounded) is scoped to ONE action -- credential-reset eligibility -- and sits behind a capability that is active:false everywhere. Reusing that eligibility-scoped read for a general directory would misrepresent the audit trail.",
       "dependsOn": [
-        "A-PAGE-COMPONENT"
+        "X-NO-GOVERNED-READ-COLLECTIONS"
       ]
     },
     {
@@ -626,12 +632,9 @@
       "route": "/dashboard",
       "classification": "D_DASHBOARD_ANALYTIC",
       "entity": "n/a",
-      "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Later phase; dashboard composition is not list/record metadata",
-      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
-      "dependsOn": [
-        "A-PAGE-COMPONENT"
-      ]
+      "status": "EXEMPT",
+      "nextAction": "None. Corrected: nothing to migrate, and the recorded dependency never applied.",
+      "notes": "Static landing grid for admin/dispatcher; TechnicianDashboard for technicians (bounded read). Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. READ-SHAPE AUDIT (MISLABELLED): The recorded blocker was WRONG. The admin/dispatcher path -- two of three roles -- reads NOTHING AT ALL; it is a static nav-card grid. It was recorded as blocked on the same authoritative-aggregate dependency as the Operations dashboard, which it has no relationship to. No aggregate is needed because no data is read."
     },
     {
       "id": "S-DASH-OPERATIONS",
@@ -939,12 +942,12 @@
       "kind": "ARCHITECTURE",
       "title": "Several surfaces classified A_ENTITY_LIST are actually lifecycle composites",
       "domain": "metadata",
-      "status": "READY",
+      "status": "COMPLETE",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Reclassify the composites so the burn-down stops attempting them as lists.",
-      "notes": "Three consecutive migrations declined for the same underlying reason rather than three different ones: Transfers owns four governed write actions, Purchase Orders is a request-driven join whose status lives on the OTHER collection, and Parts enforces a cross-catalog full-accounting invariant. All three are currently classified as entity lists. The Phase 0 classification was made before the list runtime existed, so it recorded what a surface LOOKS like rather than what its read actually is. Reclassifying is cheaper than discovering it one lane at a time -- and the pattern to test for is specific: does the surface's authoritative state live in the collection the list would read? For all three the answer is no."
+      "nextAction": "None. Reclassification applied to every audited entry.",
+      "notes": "Three consecutive migrations declined for the same underlying reason rather than three different ones: Transfers owns four governed write actions, Purchase Orders is a request-driven join whose status lives on the OTHER collection, and Parts enforces a cross-catalog full-accounting invariant. All three are currently classified as entity lists. The Phase 0 classification was made before the list runtime existed, so it recorded what a surface LOOKS like rather than what its read actually is. Reclassifying is cheaper than discovering it one lane at a time -- and the pattern to test for is specific: does the surface's authoritative state live in the collection the list would read? For all three the answer is no. AUDIT COMPLETE -- docs/orchestration/metadata-program/surface-read-shape-audit.md, 15 surfaces audited. Result: LIST 0, COMPOSITE 10, BLOCKED 2, MISLABELLED 2, stale-block-only 1. The decisive finding is that ZERO surfaces classified A_ENTITY_LIST survive contact with their code, outside the four already migrated -- so the remaining burn-down is not a queue of list migrations at all, and treating it as one would have cost roughly ten more lanes to discover one at a time. Receipts turned out to be literally the Purchase Orders join pre-filtered to RECEIVED. Job Assignments turned out to be a DUPLICATE ROUTE over the already-migrated Work Orders collection. My Dashboard's recorded blocker was simply wrong -- it reads nothing."
     },
     {
       "id": "S-INV-PART-DETAIL",
@@ -978,8 +981,8 @@
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate; navHidden, direct-URL only",
-      "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today. Part definitions now exist (621dfc3a)."
+      "nextAction": "Not a list while the writes live here; the unbounded read is a separate real defect.",
+      "notes": "Writes gated by inventory.catalog.manage and .activate, which are excluded even from sandbox activation - permanently fail-closed today. Part definitions now exist (621dfc3a). READ-SHAPE AUDIT (COMPOSITE): Owns three governed writes with optimistic concurrency, and its read is fully unbounded with zero truncation disclosure -- the second fully-unbounded read found, after fetchTransferOrderDocs."
     },
     {
       "id": "S-INV-WAREHOUSES",
@@ -1209,12 +1212,12 @@
       "route": "/equipment",
       "classification": "A_ENTITY_LIST",
       "entity": "Equipment",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "IMPLEMENTING",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate; already cursor-paginated",
-      "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern."
+      "nextAction": "Migrate the Customer Equipment tab list only; leave the workspace and other tabs.",
+      "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern. READ-SHAPE AUDIT (COMPOSITE (workspace) with the cleanest LIST candidate found): The /equipment route is three tabs: a clean bounded, cursor-paginated, truncation-disclosing read-only list (Customer Equipment), an unconnected stub, and a create-form. The workspace as a whole cannot be one list; the default TAB alone plausibly can. Note the audit called redrawing the surface boundary an owner/product call -- migrating the tab's LIST RENDERING is not that. Changing what the route shows would be a product decision; rendering the same rows through the shared runtime inside the same tab is a rendering change, and is the cheapest real list work remaining."
     },
     {
       "id": "S-INV-EQUIPMENT-DETAIL",
@@ -1265,10 +1268,10 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-GRID"
+        "X-SURFACE-CLASSIFICATION-COMPOSITES"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "Same bounded projection as purchase orders, filtered to received."
+      "nextAction": "Same construction as Purchase Orders; not a single-collection list.",
+      "notes": "Same bounded projection as purchase orders, filtered to received. READ-SHAPE AUDIT (COMPOSITE): Reuses the EXACT same reorder_requests + reorder_purchase_orders join and view-model already declined for Purchase Orders -- same authoritative-status-on-the-other-collection defect, pre-filtered to RECEIVED."
     },
     {
       "id": "S-DIAG-PARITY",
