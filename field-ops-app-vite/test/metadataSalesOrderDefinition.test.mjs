@@ -89,14 +89,19 @@ test("the related list demands no index of its own — a capped, unfiltered sect
   assert.deepEqual(requiredIndexes(salesOrderRelatedList, salesOrderEntity), []);
 });
 
-test("the index list declares no readCallable override — no unscoped Sales Order read exists to name (X-ENTITY-SINGLE-READCALLABLE)", () => {
-  // Unlike opportunity.index (which names the real, registered `listOpportunityContext`),
-  // salesOrderReadService.ts exports only an account-scoped list and a single-record read
-  // — no unscoped "every Sales Order this caller may see" callable. Declaring nothing here
-  // (falling back to the entity's account-scoped readCallable, which cannot serve an INDEX
-  // read either) is the honest choice; inventing a callable id would be a declaration
-  // nothing backs.
-  assert.equal(salesOrderIndexList.readCallable, null);
+test("the index list names the unscoped read built for it, NOT the account-scoped one", () => {
+  // This test previously pinned the ABSENCE of a readCallable, because salesOrderReadService.ts
+  // exported only an account-scoped list and a single-record read. That absence was the honest
+  // state then and the pin was correct — X-SALES-ORDER-NO-UNSCOPED-READ closed it by building
+  // the missing read rather than by widening the account-scoped one.
+  //
+  // The distinction the assertion protects: the account-scoped related list and the unscoped
+  // index are DIFFERENT reads with different authority shapes. Reusing listSalesOrdersForAccount
+  // for an INDEX surface was explicitly ruled out, so this asserts which callable is named, not
+  // merely that one is.
+  assert.equal(salesOrderIndexList.readCallable, "listSalesOrderIndex");
+  assert.notEqual(salesOrderIndexList.readCallable, "listSalesOrdersForAccount");
+  assert.equal(salesOrderRelatedList.readCallable ?? null, null, "the related list still inherits the entity's account-scoped read");
 });
 
 test("locationId is a REFERENCE to location, optional in storage, and adds no filter/sort/index demand", () => {
