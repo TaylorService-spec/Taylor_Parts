@@ -17,10 +17,9 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-25 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+24 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
-- **S-CRM-OPPORTUNITIES** — depends on D-OPPORTUNITY-IDENTITY, A-LIST-GRID (all satisfied) → Identity is on main; awaiting the list runtime
 - **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-GRID (all satisfied) → Migrate or retire — overlaps the Work Orders list
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Classify: queue with governed transition writes, not a list
 - **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Confirm synthetic-source status before migrating anything
@@ -35,11 +34,12 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
 - **S-INV-PARTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Migrate; navHidden, direct-URL only
+- **S-INV-WAREHOUSES** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-MONEY-FORMATTER-DISAGREEMENT** (phase 6) — Two money formatters disagree on non-2-exponent currencies → Reconcile the two, or establish that only 2-exponent currencies are supported.
+- **X-INDEX-SURFACE-CALLABLE-READ** (phase 6) — No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch → Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -52,7 +52,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-MONEY-FORMATTER-DISAGREEMENT | 6 | Two money formatters disagree on non-2-exponent currencies | — | — | — | — | — | NOT_APPLICABLE | Reconcile the two, or establish that only 2-exponent currencies are supported. |
+| X-INDEX-SURFACE-CALLABLE-READ | 6 | No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch | — | — | — | — | — | NOT_APPLICABLE | Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -62,6 +62,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1113 | 3dce271a | 1f1f1a4d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1138 | — | abfd3ee7 | NOT_APPLICABLE | Merged. The accounts composite index is declared and pending deploy. |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Definition merged. Wiring AccountDetail onto it, and the two recorded page gaps, are separate lanes. |
+| X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID | 6 | The Opportunities pipeline fell back to a raw account id -- LIVE, not latent | — | — | #1226 | — | 631170b5 | NOT_APPLICABLE | None. |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-LIST-METADATA-V1 | 3 | Entity List Metadata v1 runtime | — | #1096 | #1115 | bd787211 | 2c673e16 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -121,6 +122,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-LIST-BOOLEAN-FORMATTING | 6 | cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way | — | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
 | X-LIST-REFERENCE-RENDERS-ID | 6 | REFERENCE columns render the raw document id -- ten of them across the repo | — | — | #1221 | — | 175aff37 | NOT_APPLICABLE | Supply a real resolveReference when an INDEX surface is wired. |
 | X-LIST-CURRENCY-AND-MISTYPED-DATE | 6 | CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
+| X-MONEY-FORMATTER-DISAGREEMENT | 6 | Two money formatters disagree on non-2-exponent currencies | — | — | #1225 | — | 4ded53f9 | NOT_APPLICABLE | None. |
 | X-MANUFACTURER-ID-AS-COLUMN | 6 | manufacturerIndexList declares the document id as a visible column | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
 | X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-PAGE-REGISTRY-REFERENCES-UNCONSUMED | 6 | pageRegistryReferences was also unconsumed -- and the wrong validator passes silently | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
@@ -165,7 +167,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | — | — | — | NOT_APPLICABLE | Identity is on main; awaiting the list runtime |
+| S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | #1226 | — | 631170b5 | NOT_APPLICABLE | Blocked on an INDEX-surface callable read path; two further gaps recorded. |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
 | S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Migrate or retire — overlaps the Work Orders list |

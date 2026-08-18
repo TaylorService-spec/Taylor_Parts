@@ -180,11 +180,43 @@
       "status": "BLOCKED_DEPENDENCY",
       "issue": 1099,
       "dependsOn": [
-        "D-OPPORTUNITY-IDENTITY",
-        "A-LIST-GRID"
+        "X-INDEX-SURFACE-CALLABLE-READ"
       ],
-      "nextAction": "Identity is on main; awaiting the list runtime",
-      "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels."
+      "nextAction": "Blocked on an INDEX-surface callable read path; two further gaps recorded.",
+      "notes": "Server-shaped via listOpportunityContext callable (good prior art). Renders raw ownerEmployeeId and salesOrderId as labels. ATTEMPTED and DECLINED for cause at 631170b5. Three independent blockers, each disqualifying alone: (1) useMetadataList.js imports fetchPage from firestoreListSource.js with NO readVia branch, while opportunityEntity is readVia CALLABLE over a deny-all collection -- routing through it would deny every caller INCLUDING one holding opportunity.read, the same defect class as the original callable gap one surface over; (2) callableListSource.js hardcodes the account-scoped callable and throws without a parent filter, having been built for a RELATED section; (3) even self-sourcing would regress, because opportunityIndexList has no column for the pipeline's actual triage signal -- opportunity.js deliberately does not declare nextAction, so there is no column to ask for. What shipped is the evidence plus three regression-locking tests.",
+      "pr": 1226,
+      "mergeSha": "631170b5"
+    },
+    {
+      "id": "X-INDEX-SURFACE-CALLABLE-READ",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path.",
+      "notes": "The RELATED path learned readVia in #1200 (selectListSource in MetadataRecordPage.jsx). The INDEX path never did: hooks/useMetadataList.js imports fetchPage from firestoreListSource.js unconditionally. Any CALLABLE-read entity therefore CANNOT have an INDEX surface -- it would report permission-denied to every caller, including one genuinely entitled. This is the identical defect the program already fixed once, surviving on the surface nobody had wired yet. Also needs callableListSource.js to grow an unscoped read path (it hardcodes the account-scoped callable and throws without a parent filter) or an explicit 'INDEX + CALLABLE unsupported' contract that fails loudly."
+    },
+    {
+      "id": "X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "The Opportunities pipeline fell back to a raw account id -- LIVE, not latent",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "MERGED",
+      "pr": 1226,
+      "mergeSha": "631170b5",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "buildPipelineRow resolved the Customer column as accountNameById[...] ?? customerName ?? accountId ?? em-dash. accountNameById is {} for EVERY governed read (mapOpportunityReadResult hard-codes it) and customerName exists only on fixtures -- so real data in that column meant a raw Firestore document id in front of a user. The comment above it read 'never a raw id shown as the primary label IF A NAME IS RESOLVABLE', and that escape clause WAS the defect: DECISIONS #106 has no such clause. Removed; unresolved now renders the em dash, which makes the missing resolution visible instead of disguising it as data. Worth contrasting with X-LIST-REFERENCE-RENDERS-ID: that one was LATENT and guarded before anything wired it; this one was LIVE in a shipped hand-written surface, waiting only on a fixture swap. The metadata program keeps finding its own defects early and the hand-written surfaces' defects late."
     },
     {
       "id": "S-CRM-SALES-ORDER-RECORD",
@@ -2345,12 +2377,14 @@
       "kind": "AUDIT",
       "title": "Two money formatters disagree on non-2-exponent currencies",
       "domain": "finance",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Reconcile the two, or establish that only 2-exponent currencies are supported.",
-      "notes": "domain/money.js's formatMoneyMajor respects currencyExponent; domain/accountArView.js's formatMinor hardcodes division by 100. They disagree for any currency whose minor unit is not 1/100 -- JPY being the obvious case. formatMoneyMajor takes a {minor,currency} value object and has ZERO call sites anywhere in the app; formatMinor is the one actually consumed. The lane reused the consumed one and REPORTED the conflict rather than silently choosing, which is correct. This is the second time in one session two formatters have been found answering the same question differently (see also the displayTimestamp vs accountPortfolio.formatLastUpdate overlap recorded under A-LIST-TIMESTAMP-AND-NAVIGATION). Worth deciding deliberately: either reconcile them, or record that this system is 2-exponent-only and delete the unused one -- an unused formatter that disagrees with the used one is a trap for whoever reaches for it next."
+      "nextAction": "None.",
+      "notes": "domain/money.js's formatMoneyMajor respects currencyExponent; domain/accountArView.js's formatMinor hardcodes division by 100. They disagree for any currency whose minor unit is not 1/100 -- JPY being the obvious case. formatMoneyMajor takes a {minor,currency} value object and has ZERO call sites anywhere in the app; formatMinor is the one actually consumed. The lane reused the consumed one and REPORTED the conflict rather than silently choosing, which is correct. This is the second time in one session two formatters have been found answering the same question differently (see also the displayTimestamp vs accountPortfolio.formatLastUpdate overlap recorded under A-LIST-TIMESTAMP-AND-NAVIGATION). Worth deciding deliberately: either reconcile them, or record that this system is 2-exponent-only and delete the unused one -- an unused formatter that disagrees with the used one is a trap for whoever reaches for it next. RESOLVED, and the lane REVERSED the option I leaned toward. I suggested that if the system is USD-only, the right move was to record the constraint and delete the divergent formatter. The lane established that USD-only is a fact of the WRITE PATHS, not of the SCHEMA -- salesOrderCommands.ts hardcodes USD and every downstream command fail-closes against it with CURRENCY_MISMATCH, but account.defaultCurrency is validated against the full ISO 4217 set including JPY, and salesOrderCommands.ts's own comment names multi-currency as a future seam. So /100 was a live defect waiting on a seam that already exists in the data model, and deleting the CORRECT implementation would have made the trap permanent and invisible. Instead formatMinorUnits became the single exponent-aware core with both prior names delegating to it; no call signature changed, so listPresentation.js needed no edit at all. No USD output changed.",
+      "pr": 1225,
+      "mergeSha": "4ded53f9"
     },
     {
       "id": "X-MANUFACTURER-ID-AS-COLUMN",
