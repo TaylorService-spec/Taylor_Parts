@@ -396,6 +396,47 @@ await acheck("cli.runDryRun: writes plan.json + plan-report.md; touches nothing 
   assert.equal(planEvidence.counts.toAssign, 1);
 });
 
+// The report tells the operator which value to pass to --plan-sha256. runExecute binds the sha256 of the
+// plan.json FILE BYTES, not planEvidence.planHash (the narrower operative hash). This asserts the printed
+// instruction is the value the execute gate actually accepts -- the report used to print the operative hash
+// under that label, which fails closed at execute with a bare "plan hash mismatch".
+await acheck("cli.runDryRun: the report's --plan-sha256 value is the sha256 of the published plan.json bytes", async () => {
+  const deps = dryRunDeps({ records: [rec("a", { createdAt: T2019 })], counters: new Map() });
+  const args = { projectId: "taylor-parts", governedCommit: "c".repeat(40), evidenceDir: "/ev/bind" };
+  const { planEvidence, planFileSha256 } = await cli.runDryRun(deps, args);
+
+  const planKey = [...deps.fs.files.keys()].find((k) => k.endsWith("plan.json"));
+  const reportKey = [...deps.fs.files.keys()].find((k) => k.endsWith("plan-report.md"));
+  const sumsKey = [...deps.fs.files.keys()].find((k) => k.endsWith("checksums.sha256"));
+  const planBytes = deps.fs.files.get(planKey);
+  const report = deps.fs.files.get(reportKey);
+
+  const expected = createHash("sha256").update(planBytes, "utf8").digest("hex");
+  assert.equal(planFileSha256, expected);
+
+  const printed = /--plan-sha256 at execute \(sha256 of plan\.json bytes\): ([0-9a-f]{64})/.exec(report);
+  assert.ok(printed, "report must print the bind value under an unambiguous label");
+  assert.equal(printed[1], expected);
+  assert.notEqual(printed[1], planEvidence.planHash, "the bind value is NOT the operative plan hash");
+
+  // Same value the published checksums line carries, so the two artifacts cannot disagree.
+  assert.ok(deps.fs.files.get(sumsKey).includes(`${expected}  plan.json`));
+
+  // And it is the value runExecute accepts: hash-binding passes with it.
+  let txnCalls = 0;
+  const execDeps = {
+    fs: fakeFs(),
+    now: NOW,
+    readPlanRaw: async () => planBytes,
+    runExecuteTxn: async ({ plan }) => { txnCalls += 1; return { assigned: plan.assignments, counts: { assigned: plan.assignments.length, skippedAlreadyNumbered: 0 } }; },
+  };
+  await cli.runExecute(execDeps, {
+    projectId: "taylor-parts", governedCommit: "c".repeat(40), evidenceDir: "/ev/bind-exec",
+    planPath: "/p.json", planSha256: expected,
+  });
+  assert.equal(txnCalls, 1);
+});
+
 // ---- CLI: runExecute hash-binding ----
 await acheck("cli.runExecute: mismatched --plan-sha256 -> zero writes (txn never invoked)", async () => {
   const rawPlan = JSON.stringify({ kind: "sales-order-number-backfill-plan", projectId: "taylor-parts", governedCommit: "c".repeat(40), planHash: "irrelevant" });
