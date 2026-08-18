@@ -2245,12 +2245,42 @@
       "title": "MetadataListGrid has no row actions or focus handoff",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections",
+      "status": "MERGED",
+      "nextAction": "Wiring Contacts/Locations onto it is a separate lane.",
       "governing": [
         "DECISIONS #102"
       ],
-      "notes": "Contacts and Locations are mechanically wirable but would lose Add/Import actions and the post-add keyboard focus handoff to the new row, which MetadataListGrid has no ref hook to reproduce. Losing focus handoff is an ACCESSIBILITY regression, not a cosmetic one. Wiring them would also start a SECOND live read of a query those pages must keep running anyway - the double-read pattern this codebase already tracks as a production bug."
+      "notes": "Contacts and Locations are mechanically wirable but would lose Add/Import actions and the post-add keyboard focus handoff to the new row, which MetadataListGrid has no ref hook to reproduce. Losing focus handoff is an ACCESSIBILITY regression, not a cosmetic one. Wiring them would also start a SECOND live read of a query those pages must keep running anyway - the double-read pattern this codebase already tracks as a production bug. RESOLVED. The lane read the hand-written sections before designing and found the entry's premise was imprecise: there are NO per-row edit/delete actions today, only section-level '+ Add' buttons. The real blocker was post-create FOCUS -- AccountDetail.jsx keeps pendingContactFocus state and a row ref, and its own comment says MetadataListGrid exposes no per-row ref. Shipped: rowActions {id,label,onActivate,denied,deniedReason} resolved through the EXISTING actionRegistry (listViewDefinition.js already accepted rowActions ids and nothing consumed them -- a fourth unconsumed declaration); action activation cannot trigger row navigation (propagation stopped at the actions cell, Enter/Space handled explicitly after confirming jsdom does not synthesise a click from keydown); focus redirects to the list container when an action removes its own focused row; a denied action renders visible+disabled with its reason, because a hidden action reads as 'no actions exist'. Integration added the missing CSS for the class hooks the grid ships.",
+      "pr": 1211,
+      "mergeSha": "bd2e733e"
+    },
+    {
+      "id": "X-REGISTRY-VALIDATOR-NEVER-RUN",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "validateRegistryReferences is never run over real definitions",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Run it over the registered definitions in a test, minding registration timing.",
+      "notes": "resolveRowActions in MetadataRecordPage.jsx silently drops an unregistered action id, justified as matching validateRegistryReferences' philosophy. That validator DOES check rowActions -- but its only caller anywhere in the repo is its own unit test, so no real definition is ever validated by it. The justification therefore does not hold and an unregistered id would vanish with no trace. Not patched blind: wiring the validator over real definitions depends on when the component/action registries are populated, and a node test against empty registries would fail for the wrong reason."
+    },
+    {
+      "id": "X-UNCONSUMED-DECLARATION-PATTERN",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Metadata declares things nothing reads -- four instances in one session",
+      "domain": "metadata",
+      "status": "COMPLETE",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None. Recorded as a program-level pattern to check for, not a single defect.",
+      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review."
     },
     {
       "id": "X-ACCOUNT-WIRE-CALLABLE-LISTS",
