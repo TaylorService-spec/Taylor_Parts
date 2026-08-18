@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const readState = { loading: true, error: null, transferOrderDocs: [], warehouses: [] };
+const readState = { loading: true, error: null, transferOrderDocs: [], warehouses: [], transferOrdersTruncated: false, warehousesTruncated: false };
 const actionsState = {
   status: null,
   busyId: null,
@@ -51,6 +51,8 @@ beforeEach(() => {
   readState.error = null;
   readState.transferOrderDocs = [];
   readState.warehouses = [];
+  readState.transferOrdersTruncated = false;
+  readState.warehousesTruncated = false;
   actionsState.status = null;
   actionsState.busyId = null;
   actionsState.createTransfer.mockClear();
@@ -234,5 +236,26 @@ describe("Transfers surface -- filtering", () => {
     fireEvent.click(screen.getByRole("button", { name: /^all/i }));
     const table = screen.getByRole("table", { name: /transfers/i });
     expect(within(table).getAllByRole("row")).toHaveLength(5); // header + 4 rows
+  });
+});
+
+describe("Transfers truncation disclosure", () => {
+  it("discloses a capped transfer read instead of presenting the cap as the whole set", () => {
+    // The read was fully unbounded before it was capped. A cap nobody discloses is the defect
+    // this program keeps removing -- and a hook computing the flag is only half the fix if the
+    // surface never reads it.
+    readState.loading = false;
+    readState.error = null;
+    readState.transferOrdersTruncated = true;
+    renderSurface();
+    expect(screen.getByText(/some are not listed/i)).toBeTruthy();
+  });
+
+  it("says nothing about truncation when the read was complete", () => {
+    readState.loading = false;
+    readState.error = null;
+    readState.transferOrdersTruncated = false;
+    renderSurface();
+    expect(screen.queryByText(/some are not listed/i)).toBeNull();
   });
 });
