@@ -90,9 +90,12 @@ function isPositiveFiniteNumber(v: unknown): v is number {
 
 const STORED_KEYS = new Set([
   "schemaVersion", "receivingId", "source", "receivingLocation", "status", "version", "lines", "idempotencyKey",
-  "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint",
+  "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint", "receivingOrderNumber",
 ]);
 const RECEIVING_ID_RE = /^rcv_[0-9a-f]{40}$/;
+// RO-YYYY-###### — six-digit zero-padded sequence, but not truncated once the sequence outgrows six
+// digits (see receivingOrderNumbering.ts's formatReceivingOrderNumber), so this stays a floor, not a cap.
+const RECEIVING_ORDER_NUMBER_RE = /^RO-[0-9]{4}-[0-9]{6,}$/;
 const STORED_LINE_KEYS = new Set(["lineId", "partId", "trackingMode", "expectedQuantity", "receivedQuantity", "status", "serialNumbers"]);
 
 // Fail-closed deserialize of a stored receiving_orders record. Validates self-consistency (first-slice
@@ -152,6 +155,16 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
   if (data.updatedBy !== data.actor.id) throw new MalformedStoredRecordError("stored updatedBy does not match actor.id");
   if (data.createdAt.toMillis() !== data.updatedAt.toMillis()) throw new MalformedStoredRecordError("stored createdAt/updatedAt are not the same instant");
   if (typeof data.fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(data.fingerprint)) throw new MalformedStoredRecordError("stored fingerprint invalid");
+  // Absent on legacy records created before this field existed -- never backfilled here, never derived
+  // from anything else (not this doc's own id, not a Work Order/Transfer Order number). When present it
+  // must match the RO-YYYY-###### shape; a malformed value is never normalized into validity.
+  let receivingOrderNumber: string | undefined;
+  if (data.receivingOrderNumber !== undefined) {
+    if (typeof data.receivingOrderNumber !== "string" || !RECEIVING_ORDER_NUMBER_RE.test(data.receivingOrderNumber)) {
+      throw new MalformedStoredRecordError("stored receivingOrderNumber invalid");
+    }
+    receivingOrderNumber = data.receivingOrderNumber;
+  }
 
   const line: ReceivingLineValue = {
     lineId: l.lineId, partId: l.partId, trackingMode: storedMode,
@@ -176,6 +189,7 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
     updatedBy: data.updatedBy,
     schemaVersion: RECEIVING_SCHEMA_VERSION,
     fingerprint: data.fingerprint,
+    ...(receivingOrderNumber === undefined ? {} : { receivingOrderNumber }),
   };
 }
 
