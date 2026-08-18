@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 0f019b4f -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 9c30e311 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -38,10 +38,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
+- **X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS** (phase 6) — Both Dispatch Queue reads are unbounded live listeners shared across many surfaces → Needs a scoping decision; bounding either ripples into unrelated surfaces.
+- **X-PART-MASTER-UNBOUNDED-READ** (phase 6) — fetchPartMasterList is unbounded and doubles as a name-resolution directory → Split the directory role from the list role before bounding either.
 - **X-PARTID-IDENTITY-CONFLICT** (phase 6) — part.js and the production join evidence disagree on which field is the Part's reference → Reconcile with the existing part-number supersession issue; do not decide independently.
 - **X-QUERY-MODEL-NO-FREE-TEXT** (phase 6) — The query model has no free-text operator, so no substring-search surface can migrate → Decide how the metadata query model answers free text, or record that it never will.
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
-- **X-TRANSFER-ORDERS-UNBOUNDED-READ** (phase 6) — fetchTransferOrderDocs is a fully unbounded collection read → Route it through the bounded listCollectionPage helper its siblings already use.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -57,7 +58,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
 | X-QUERY-MODEL-NO-FREE-TEXT | 6 | The query model has no free-text operator, so no substring-search surface can migrate | — | — | — | — | — | NOT_APPLICABLE | Decide how the metadata query model answers free text, or record that it never will. |
 | X-PARTID-IDENTITY-CONFLICT | 6 | part.js and the production join evidence disagree on which field is the Part's reference | — | — | — | — | — | NOT_APPLICABLE | Reconcile with the existing part-number supersession issue; do not decide independently. |
-| X-TRANSFER-ORDERS-UNBOUNDED-READ | 6 | fetchTransferOrderDocs is a fully unbounded collection read | — | — | — | — | — | NOT_APPLICABLE | Route it through the bounded listCollectionPage helper its siblings already use. |
+| X-PART-MASTER-UNBOUNDED-READ | 6 | fetchPartMasterList is unbounded and doubles as a name-resolution directory | — | — | — | — | — | NOT_APPLICABLE | Split the directory role from the list role before bounding either. |
+| X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS | 6 | Both Dispatch Queue reads are unbounded live listeners shared across many surfaces | — | — | — | — | — | NOT_APPLICABLE | Needs a scoping decision; bounding either ripples into unrelated surfaces. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -86,6 +88,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-SUPPLIERS | 9 | Suppliers | /purchasing/suppliers | — | #1236 | — | 82eb0217 | NOT_APPLICABLE | None. |
 | X-SUPPLIERS-VIEW-ID-AS-NAME | 6 | suppliersView fell back to the document id as the display name -- LIVE | — | — | #1236 | — | 82eb0217 | NOT_APPLICABLE | None. |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | 39524862 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| X-TRANSFER-ORDERS-UNBOUNDED-READ | 6 | fetchTransferOrderDocs is a fully unbounded collection read | — | — | #1248 | — | 9c30e311 | NOT_APPLICABLE | None. |
 | S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | #1233 | — | 4cf132ad | NOT_APPLICABLE | None. |
 | S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | #1246 | — | 0f019b4f | NOT_APPLICABLE | None for the tab. The other two tabs remain a stub and a create form. |
 | X-EQUIPMENT-VIEW-ID-AS-NAME | 6 | resolveName fell back to the document id -- the FOURTH instance of the same escape clause | — | — | #1246 | — | 0f019b4f | NOT_APPLICABLE | None. |
@@ -247,6 +250,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | P0-AUDIT-QUERY | 0 | Query pattern, pagination prior art and index coverage audit | — | — | — | — | — | NOT_APPLICABLE | Folded into entries below |
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Resolved: merges are executing |
 | X-SURFACE-CLASSIFICATION-COMPOSITES | 6 | Several surfaces classified A_ENTITY_LIST are actually lifecycle composites | — | — | — | — | — | NOT_APPLICABLE | None. Reclassification applied to every audited entry. |
+| A-BOUNDED-READ-INVENTORY | 6 | Eight unbounded reads inventoried; one bounded, seven deliberately not | — | — | #1248 | — | 9c30e311 | NOT_APPLICABLE | None. The three still-open ones are recorded separately. |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
 | X-FIELD-TYPE-RENDERER-AUDIT | 6 | Audit of every declared FIELD_TYPE against cellValue's branches | — | — | — | — | — | NOT_APPLICABLE | None. Findings split into the three entries below. |

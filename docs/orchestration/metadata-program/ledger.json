@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 0f019b4f -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 9c30e311 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -1134,12 +1134,58 @@
       "kind": "AUDIT",
       "title": "fetchTransferOrderDocs is a fully unbounded collection read",
       "domain": "inventory",
+      "status": "MERGED",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "services/operationsQueries.ts's fetchTransferOrderDocs is a plain getDocs over the whole collection -- no cap and NO truncation flag at all. That is worse than the silently-dropped truncated flags found in Warehouses and Suppliers: those at least computed the fact and discarded it, so the information existed. Here there is nothing to disclose because nothing is bounded. The sibling helper listCollectionPage already caps at 200 and returns {items, truncated}. Found by the Transfers lane while establishing what the surface does; out of its writeScope, reported rather than worked around. RESOLVED at 9c30e311. Bounded at the same 200 as listCollectionPage, and -- the part that actually closes it -- Transfers.jsx now DISCLOSES the bound. The lane bounded the read but could not wire the surface (out of its writeScope) and said so; shipping it that way would have converted an unbounded read into a LYING one, which is worse. Two independent flags rather than one merged boolean, because two collections are capped and merging them would hide which list is incomplete.",
+      "pr": 1248,
+      "mergeSha": "9c30e311"
+    },
+    {
+      "id": "A-BOUNDED-READ-INVENTORY",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Eight unbounded reads inventoried; one bounded, seven deliberately not",
+      "domain": "metadata",
+      "status": "COMPLETE",
+      "pr": 1248,
+      "mergeSha": "9c30e311",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None. The three still-open ones are recorded separately.",
+      "notes": "The refusals are the valuable part of this lane. (1) The Operations dashboard reads are unbounded BY DESIGN -- they net raw ledger rows into availability and reconciliation figures, and a silently truncated aggregate is a wrong number presented as a right one, strictly worse than an unbounded read. (2) Part Master doubles as a canonical NAME-RESOLUTION DIRECTORY consumed by ~10 surfaces; bounding it would silently break name resolution app-wide. (3) useFirestoreCollection is a generic path-parameterised primitive, so bounding it would change behaviour for every unrelated caller. Also found and left alone: the truck registry reads and the employee directory query. The general rule this establishes: bound a LIST read, never an AGGREGATE read, and treat a shared directory read as neither until someone owns the consumers."
+    },
+    {
+      "id": "X-PART-MASTER-UNBOUNDED-READ",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "fetchPartMasterList is unbounded and doubles as a name-resolution directory",
+      "domain": "inventory",
       "status": "READY",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Route it through the bounded listCollectionPage helper its siblings already use.",
-      "notes": "services/operationsQueries.ts's fetchTransferOrderDocs is a plain getDocs over the whole collection -- no cap and NO truncation flag at all. That is worse than the silently-dropped truncated flags found in Warehouses and Suppliers: those at least computed the fact and discarded it, so the information existed. Here there is nothing to disclose because nothing is bounded. The sibling helper listCollectionPage already caps at 200 and returns {items, truncated}. Found by the Transfers lane while establishing what the surface does; out of its writeScope, reported rather than worked around."
+      "nextAction": "Split the directory role from the list role before bounding either.",
+      "notes": "services/partMasterQueries.js's fetchPartMasterList is fully unbounded with zero truncation disclosure. It cannot simply be capped: ~10 surfaces consume it as a canonical name-resolution directory, so a cap would silently break name resolution app-wide -- a read that is a list for one caller and a lookup table for another. The honest fix is to separate those two roles, which is a scoping decision across surfaces rather than a change to this function."
+    },
+    {
+      "id": "X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Both Dispatch Queue reads are unbounded live listeners shared across many surfaces",
+      "domain": "service",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Needs a scoping decision; bounding either ripples into unrelated surfaces.",
+      "notes": "workOrderService.ts's subscribeToWorkOrders (fieldops_wos) and the generic useFirestoreCollection (used for fieldops_technicians) are both unbounded live onSnapshot listeners, shared by Dispatch, Control Tower, Jobs, Scheduling, the Technician dashboard and Part Detail. Bounding either safely requires deciding what each consumer should see when the cap bites -- not a change one lane can make in isolation."
     },
     {
       "id": "S-INV-RECEIVING",
