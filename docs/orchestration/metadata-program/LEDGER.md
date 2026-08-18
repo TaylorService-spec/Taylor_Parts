@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 50 | 41 | 9 |
+| 51 | 41 | 10 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,8 +38,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-RECORD-PAGE-RENDERER-GAPS** (phase 6) — MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED → Dispatched: close all three gaps enough for Account to render honestly through metadata.
 - **S-INV-TRANSFER-MANUFACTURER-DEFINITIONS** (phase 6) — Transfer Order + Manufacturer definitions (leaf lane) → Leaf writer active; returns REGISTRATION_PENDING
+- **X-ACCOUNT-PAGE-WIRING-COMPLETE** (phase 6) — Complete the Account page wiring now the renderer supports it → Wire SIDE subset embedded, related lists scoped, field groups with an entityResolver
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -47,8 +47,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| A-RECORD-PAGE-RENDERER-GAPS | 6 | MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED | — | — | — | — | — | NOT_APPLICABLE | Dispatched: close all three gaps enough for Account to render honestly through metadata. |
 | S-INV-TRANSFER-MANUFACTURER-DEFINITIONS | 6 | Transfer Order + Manufacturer definitions (leaf lane) | — | — | — | — | — | NOT_APPLICABLE | Leaf writer active; returns REGISTRATION_PENDING |
+| X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Wire SIDE subset embedded, related lists scoped, field groups with an entityResolver |
 
 ## MERGED
 
@@ -105,6 +105,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-LOCATION-REFERENCE-UPGRADE | 6 | Upgrade locationId from STRING to REFERENCE on equipment and salesOrder | — | — | #1183 | — | d6e29a5d | NOT_APPLICABLE | Merged. Index demands verified unchanged and pinned by test. |
 | X-ACCOUNT-PAGE-WIRING | 6 | Wire AccountDetail onto the Account record PageDefinition | /customers/:accountId | — | #1191 | — | ac1a979f | NOT_APPLICABLE | Partial wiring merged. Related lists and field groups need renderer support first. |
 | S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS | 6 | Warehouse + Supplier entity definitions | — | — | #1189 | — | 63b5059e | NOT_APPLICABLE | Merged and registered. Two composites declared and pending deploy. |
+| A-RECORD-PAGE-RENDERER-GAPS | 6 | MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED | — | — | #1194 | — | 27b109bb | NOT_APPLICABLE | All three gaps closed. Account completion wiring dispatched. |
 
 ## BLOCKED_PROTECTED
 

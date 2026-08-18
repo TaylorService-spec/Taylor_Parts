@@ -2122,13 +2122,14 @@
       "title": "MetadataRecordPage: related-list wiring, FIELD_GROUP renderer, single-section DENIED",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
-      "nextAction": "Dispatched: close all three gaps enough for Account to render honestly through metadata.",
+      "status": "MERGED",
+      "nextAction": "All three gaps closed. Account completion wiring dispatched.",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "notes": "Found by wiring a real page rather than by review. (1) No listResolver/listRenderer wiring exists, so RELATED_LIST sections cannot render through the metadata path yet - four Account sections wait on it. (2) There is no generic FIELD_GROUP renderer, so a componentId-less FIELD_GROUP renders EMPTY rather than failing loudly, which is the worse of the two failure modes. (3) The 'zero visible sections means DENIED' rule is right for a whole page but wrong for a REGION containing one gated section: it converts a component's graceful per-source degradation into a page-level denial. The Attention section is the concrete case and is why it stayed hand-rendered. DISPATCHED at ef6baee5. The brief prefers a real FIELD_GROUP renderer over a louder failure message where one can be built honestly - a page that CAN render a field group is worth more than one that reports it cannot - while keeping the listRenderer INJECTION POINT so a caller can still supply its own and the renderer stays testable. The region-granularity fix must preserve the hidden-by-access versus no-sections-configured distinction, which is correct and already tested. Any existing test pinning the old region-level denial encoded the defect and gets its invariant corrected rather than the fix weakened.",
-      "branch": "feat/record-page-renderer-gaps"
+      "notes": "Found by wiring a real page rather than by review. (1) No listResolver/listRenderer wiring exists, so RELATED_LIST sections cannot render through the metadata path yet - four Account sections wait on it. (2) There is no generic FIELD_GROUP renderer, so a componentId-less FIELD_GROUP renders EMPTY rather than failing loudly, which is the worse of the two failure modes. (3) The 'zero visible sections means DENIED' rule is right for a whole page but wrong for a REGION containing one gated section: it converts a component's graceful per-source degradation into a page-level denial. The Attention section is the concrete case and is why it stayed hand-rendered. DISPATCHED at ef6baee5. The brief prefers a real FIELD_GROUP renderer over a louder failure message where one can be built honestly - a page that CAN render a field group is worth more than one that reports it cannot - while keeping the listRenderer INJECTION POINT so a caller can still supply its own and the renderer stays testable. The region-granularity fix must preserve the hidden-by-access versus no-sections-configured distinction, which is correct and already tested. Any existing test pinning the old region-level denial encoded the defect and gets its invariant corrected rather than the fix weakened. MERGED (#1194, 27b109bb). FIELD_GROUP renders generically, reusing cellValue from listPresentation rather than re-deriving enum handling - so a machine value cannot reach a user through this path while the list path resolves it. RELATED_LIST gained a default binding built on the same three primitives useMetadataList uses, and the lane deliberately did NOT reuse that hook: its request shape never forwards parentId/relationships, so reusing it would have produced a related list quietly showing EVERY record of the target entity. GAP 3 WAS SHARPER THAN IT LOOKED: a single-section, single-region definition is structurally IDENTICAL whether it is the whole page or a fragment of a hand-composed one, so the renderer cannot infer which and guessing is wrong for the other case. An `embedded` prop makes the caller state it. The lane also checked whether an existing test had encoded the old behaviour, found none had, and said so - worth recording because the opposite has been true four times here.",
+      "pr": 1194,
+      "mergeSha": "27b109bb"
     },
     {
       "id": "S-INV-TRANSFER-MANUFACTURER-DEFINITIONS",
@@ -2145,6 +2146,24 @@
         "Owner leaf-ownership addendum"
       ],
       "notes": "Two things to watch. Manufacturer stores a normalizedName, which is a matching KEY and not a display value - presenting it as one would be the same class of error as showing a document id. And the warehouse entity now exists, so a transfer order's from/to warehouse fields MAY honestly be REFERENCEs, but only after the real field names are verified rather than assumed. part.js still declares primaryManufacturerId as a plain STRING; that upgrade belongs to a separate lane, not to this one."
+    },
+    {
+      "id": "X-ACCOUNT-PAGE-WIRING-COMPLETE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Complete the Account page wiring now the renderer supports it",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "IMPLEMENTING",
+      "branch": "feat/account-wiring-complete",
+      "nextAction": "Wire SIDE subset embedded, related lists scoped, field groups with an entityResolver",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "notes": "Dispatched at 27b109bb. The standing constraint is unchanged and was right the first time: if any section renders WORSE through metadata - wrong data, lost scoping, lost graceful degradation, changed layout - it stays hand-rendered and gets reported. Partial and honest beats complete and wrong. The specific risk here is an UNSCOPED related list: one showing every contact in the system would be far worse than the hand-rendered version it replaced, so scoping must be verified rather than assumed from the binding existing."
     }
   ]
 }
