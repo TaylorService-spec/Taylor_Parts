@@ -18,6 +18,8 @@
 //      section happens to render.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { formatTimestamp } from "../src/domain/displayTimestamp.js";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
@@ -116,11 +118,13 @@ describe("accountRecordPageMainSubset / accountRecordPageSideSubset -- capabilit
 
   it("a section whose capability is not granted does not render -- absent from the DOM, not merely invisible", () => {
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={accountRecordPageMainSubset}
         record={{ id: "acct-1" }}
         capabilityDecisions={{ "finance.read": false, "crm.activity.read": false }}
-      />
+        />
+      </MemoryRouter>
     );
     expect(screen.queryByText(FIN_MARK)).toBeNull();
     expect(screen.queryByText(NOTES_MARK)).toBeNull();
@@ -130,11 +134,13 @@ describe("accountRecordPageMainSubset / accountRecordPageSideSubset -- capabilit
 
   it("an explicit grant reveals the section, and only the section that capability covers", () => {
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={accountRecordPageMainSubset}
         record={{ id: "acct-1" }}
         capabilityDecisions={{ "finance.read": true }}
-      />
+        />
+      </MemoryRouter>
     );
     expect(screen.getByText(FIN_MARK)).toBeTruthy();
     // finance.read grants financials, not activityAndNotes -- that needs crm.activity.read,
@@ -160,11 +166,13 @@ describe("accountRecordPageMainSubset / accountRecordPageSideSubset -- capabilit
 
   it("the SIDE subset's accountAttention is granted by the same finance.read decision as financials", () => {
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={accountRecordPageSideSubset}
         record={{ id: "acct-1" }}
         capabilityDecisions={{ "finance.read": true }}
-      />
+        />
+      </MemoryRouter>
     );
     expect(screen.getByText(ATTENTION_MARK)).toBeTruthy();
   });
@@ -192,7 +200,8 @@ describe("accountRecordPageSideSubset with `embedded` — evaluated and still no
 
   it("embedded does NOT rescue the SIDE subset: a denied finance.read still hides the section entirely, with no page-level failure to signal it", () => {
     const { container } = render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={accountRecordPageSideSubset}
         record={{ id: "acct-1" }}
         // Matches production's real, current state: finance.read is registered catalog-wide
@@ -200,7 +209,8 @@ describe("accountRecordPageSideSubset with `embedded` — evaluated and still no
         // every viewer sees today.
         capabilityDecisions={{}}
         embedded
-      />
+        />
+      </MemoryRouter>
     );
     // Embedded correctly avoids the page-level "Not available to you" FailureState (GAP 3's own
     // job) — but that only proves the REGION-level symptom is fixed. Nothing at all renders in
@@ -215,12 +225,14 @@ describe("accountRecordPageSideSubset with `embedded` — evaluated and still no
 
   it("granted, embedded renders the section content cleanly — proving the mechanism works; the rejection above is a section-design mismatch, not a bug in `embedded` itself", () => {
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={accountRecordPageSideSubset}
         record={{ id: "acct-1" }}
         capabilityDecisions={{ "finance.read": true }}
         embedded
-      />
+        />
+      </MemoryRouter>
     );
     expect(screen.getByText(ATTENTION_MARK)).toBeTruthy();
   });
@@ -265,13 +277,15 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={opportunitiesOnly}
         record={{ id: "acct-42" }}
         capabilityDecisions={{ "opportunity.read": true }}
         listResolver={listResolver}
         entityResolver={entityResolver}
-      />
+        />
+      </MemoryRouter>
     );
     // The real reference number, not the document id — the document id never reaches the DOM.
     expect(await screen.findByText("OPP-2026-000123")).toBeTruthy();
@@ -291,13 +305,15 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={opportunitiesOnly}
         record={{ id: "acct-42" }}
         capabilityDecisions={{ "opportunity.read": true }}
         listResolver={listResolver}
         entityResolver={entityResolver}
-      />
+        />
+      </MemoryRouter>
     );
     expect(await screen.findByText(/showing the most recent 25/i)).toBeTruthy();
   });
@@ -311,7 +327,8 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
     // a different, correctly-distinct case this single-section definition would otherwise
     // trigger by accident.
     const { container } = render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={opportunitiesOnly}
         record={{ id: "acct-42" }}
         // Matches production's real, current state: opportunity.read/salesOrder.read are
@@ -321,7 +338,8 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
         listResolver={listResolver}
         entityResolver={entityResolver}
         embedded
-      />
+        />
+      </MemoryRouter>
     );
     // Absent, not an empty-list message ("No opportunities on this account.") and not a
     // rendered DENIED failure box either — the section-level gate excludes it from the plan
@@ -339,20 +357,25 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={opportunitiesOnly}
         record={{ id: "acct-42" }}
         capabilityDecisions={{ "opportunity.read": true }}
         listResolver={listResolver}
         entityResolver={entityResolver}
-      />
+        />
+      </MemoryRouter>
     );
     await screen.findByText("OPP-2026-000999");
-    // The raw number reaches the DOM verbatim — no TIMESTAMP formatting path exists anywhere
-    // in listPresentation.js/MetadataListGrid.jsx. AccountOpportunitiesSection's own
-    // formatDate() would have shown a real date here; this is the confirmed regression that
-    // keeps Opportunities hand-rendered.
-    expect(screen.getByText("1755993600000")).toBeTruthy();
+    // Closed by the TIMESTAMP branch in listPresentation.js. Asserted as the ABSENCE of the
+    // raw value rather than an exact formatted string: formatTimestamp is locale- and
+    // timezone-dependent, so pinning "8/23/2025, 5:00:00 PM" would pass here and fail on a
+    // machine set to another zone. What matters is that a machine value no longer reaches
+    // a user.
+    expect(screen.queryByText("1755993600000")).toBeNull();
+    expect(formatTimestamp(1755993600000, { unknown: null })).toBeTruthy();
+    expect(screen.getByText(formatTimestamp(1755993600000, { unknown: null }))).toBeTruthy();
   });
 
   it("BLOCKER 2 — salesOrders rows carry no link and no click handler: the real per-order route is unreachable from a wired section", async () => {
@@ -362,23 +385,24 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
       nextCursorDoc: null,
     });
     const { container } = render(
-      <MetadataRecordPage
+      <MemoryRouter>
+        <MetadataRecordPage
         definition={salesOrdersOnly}
         record={{ id: "acct-42" }}
         capabilityDecisions={{ "salesOrder.read": true }}
         listResolver={listResolver}
         entityResolver={entityResolver}
-      />
+        />
+      </MemoryRouter>
     );
     const cell = await screen.findByText("SO-2026-000045");
-    // No anchor anywhere in the table -- AccountSalesOrdersSection's real
-    // Link to `/customers/opportunities/sales-order/:salesOrderId` (SalesOrderDetail.jsx,
-    // App.jsx) has no equivalent here.
-    expect(container.querySelector("a")).toBeNull();
-    // The row itself carries no click affordance either (DefaultRelatedList passes
-    // MetadataListGrid no onRowClick, so tabIndex/onClick stay unset).
+    // Closed by DefaultRelatedList consuming `rowNavigationTo` (salesOrder.js declares
+    // `/customers/opportunities/sales-order/:salesOrderId`). The row is now reachable, so
+    // it carries a real keyboard affordance rather than being a dead cell.
     const row = cell.closest("tr");
-    expect(row.getAttribute("tabindex")).toBeNull();
+    expect(row.getAttribute("tabindex")).not.toBeNull();
+    // The document id may address the record, but it must never be readable AS content.
+    expect(container.textContent).not.toMatch(/so-1/);
   });
 
   it("still not part of the wired MAIN subset AccountDetail.jsx actually renders — both stay hand-rendered", () => {
