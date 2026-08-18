@@ -4,6 +4,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import SalesWorkspace from "../src/modules/sales/SalesWorkspace.jsx";
+import { opportunityEntity, opportunityIndexList } from "../src/metadata/definitions/opportunity.js";
 
 afterEach(cleanup);
 
@@ -277,4 +278,30 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
     await screen.findByText(/Freezer replacement/i);
   });
 
+});
+
+// S-CRM-OPPORTUNITIES — metadata list runtime migration EVALUATED, DECLINED (see the header
+// comment block in SalesWorkspace.jsx for the full reasoning: three compounding blockers, any
+// one disqualifying on its own). These tests do NOT exercise a migration — they lock the two
+// facts of the real `opportunityIndexList`/`opportunityEntity` declarations that this decline
+// depends on, so a future change to either definition that would remove the blocker fails here
+// loudly and prompts re-evaluation, rather than the decline silently going stale.
+describe("SalesWorkspace (metadata list runtime migration — declined, blocking facts locked)", () => {
+  it("opportunityIndexList has no Attention/next-action column — this pipeline's real triage signal is not representable through the declared list", () => {
+    const fieldIds = opportunityIndexList.columns.map((c) => c.fieldId);
+    expect(fieldIds).not.toContain("nextAction");
+    expect(fieldIds).not.toContain("attention");
+  });
+
+  it("opportunityEntity does not declare a nextAction field at all — there is no column this migration could even ask for", () => {
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("nextAction");
+  });
+
+  it("opportunityEntity's accountId REFERENCE column has no denormalized name field beside it — a real resolveReference would require a second, per-row live read", () => {
+    const accountIdField = opportunityEntity.fields.find((f) => f.id === "accountId");
+    expect(accountIdField?.type).toBe("REFERENCE");
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("accountName");
+  });
 });

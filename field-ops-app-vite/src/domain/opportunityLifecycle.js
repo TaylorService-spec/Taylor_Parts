@@ -56,14 +56,20 @@ export function deriveAttention(opp, nowMillis) {
 }
 
 // One pipeline row (projection). Customer name is resolved from an injected name map (canonical Account
-// authority later); falls back to the opportunity's own snapshot then its accountId — never a raw id shown
-// as the primary label if a name is resolvable.
+// authority later), then the opportunity's own snapshot. It does NOT fall back to accountId.
+//
+// It used to. The comment here read "never a raw id shown as the primary label IF A NAME IS RESOLVABLE",
+// and that escape clause was the defect: DECISIONS #106 has no such clause. A missing name is not
+// permission to display a record id. This was not hypothetical -- `accountNameById` is `{}` for every
+// governed read (mapOpportunityReadResult hard-codes it), and `customerName` only exists on fixtures, so
+// real data in this column meant a raw document id in front of a user. Unresolved now renders the em dash,
+// which is honest and makes the missing resolution VISIBLE rather than disguising it as a value.
 export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} } = {}) {
   const attention = deriveAttention(opp, nowMillis);
   const worstTone = attention.some((a) => a.tone === "attention") ? "attention" : attention.length ? "info" : null;
   return {
     id: opp.id ?? opp.opportunityId ?? null,
-    customerName: accountNameById[opp.accountId] ?? opp.customerName ?? opp.accountId ?? "—",
+    customerName: accountNameById[opp.accountId] ?? opp.customerName ?? "—",
     accountId: opp.accountId ?? null,
     channel: opp.salesChannel ?? null,
     stage: opp.stage ?? null,
