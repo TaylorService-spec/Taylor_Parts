@@ -117,13 +117,36 @@ export const isNegativeMoney = (m) => isMoney(m) && m.minor < 0;
 export const sumMoney = (list, currency = DEFAULT_CURRENCY) =>
   (Array.isArray(list) ? list : []).reduce((acc, m) => addMoney(acc, m), zeroMoney(currency));
 
-// Presentation ONLY (never used for authoritative math): render minor units as a major-unit string.
-export function formatMoneyMajor(m) {
-  if (!isMoney(m)) return "—";
-  const exp = currencyExponent(m.currency);
-  const sign = m.minor < 0 ? "-" : "";
-  const abs = Math.abs(m.minor);
+// Presentation ONLY (never used for authoritative math): render minor units as a major-unit
+// string, EXPONENT-AWARE per currency (never a hardcoded /100).
+//
+// X-MONEY-FORMATTER-DISAGREEMENT: this exact integer-math body used to be duplicated in
+// domain/accountArView.js's formatMinor, which hardcoded `/100` instead of consulting
+// currencyExponent -- the two formatters silently disagreed for any currency whose minor
+// unit isn't 1/100 (JPY, exponent 0, being the obvious case). Investigation for that lane
+// found: every CURRENCY_MINOR write path reachable today (salesOrderCommands.ts's
+// buildCreateSalesOrder hardcodes `currency: "USD"`; issueInvoice/applyPayment/
+// recordAdjustment/refund all fail-closed-verify the caller's currency against that same
+// Sales-Order-committed value) emits USD only, so the two formatters happened to agree in
+// practice. But account.js's `defaultCurrency` is validated against the FULL ISO 4217 set
+// (domain/commercialProfile.js's isValidIso4217) and salesOrderCommands.ts's own comment
+// calls multi-currency "a separate future seam" -- i.e. USD-only is a current fact of the
+// write paths, not a schema-level ceiling on this system, so hardcoding /100 was a live
+// defect waiting on that seam, not a safe simplification. Resolution: this function stays
+// the ONE exact-integer-math core; formatMinor now delegates to `formatMinorUnits` below
+// instead of re-deriving the same division/remainder logic, so the two can never re-diverge
+// again -- there is exactly one place that decides how many digits follow the decimal point.
+export function formatMinorUnits(minor, currency) {
+  if (typeof minor !== "number" || !Number.isFinite(minor)) return "—";
+  const exp = currencyExponent(currency);
+  const sign = minor < 0 ? "-" : "";
+  const abs = Math.abs(minor);
   if (exp === 0) return `${sign}${abs}`;
   const factor = 10 ** exp;
   return `${sign}${Math.trunc(abs / factor)}.${String(abs % factor).padStart(exp, "0")}`;
+}
+
+export function formatMoneyMajor(m) {
+  if (!isMoney(m)) return "—";
+  return formatMinorUnits(m.minor, m.currency);
 }

@@ -301,6 +301,17 @@ test("a genuinely absent CURRENCY_MINOR amount renders nothing -- absent and zer
   assert.equal(cellValue(column, { outstandingMinor: null, currency: "USD" }), null);
 });
 
+// X-MONEY-FORMATTER-DISAGREEMENT: cellValue's CURRENCY_MINOR branch still routes to the
+// single surviving formatter (accountArView.js's formatMinor, now delegating to
+// money.js's exponent-aware core) -- proven here for a non-2-exponent currency (JPY),
+// which a hardcoded /100 would have rendered wrong.
+test("a CURRENCY_MINOR cell is exponent-aware through the SAME shared formatter for a non-2-exponent currency (JPY)", () => {
+  const column = { fieldId: "totalMinor", type: "CURRENCY_MINOR" };
+  const value = cellValue(column, { totalMinor: 1000, currency: "JPY" });
+  assert.equal(value, formatMinor(1000, "JPY"));
+  assert.equal(value, "JPY 1000");
+});
+
 // --- REFERENCE never renders the raw stored id (DECISIONS #106, X-LIST-REFERENCE-RENDERS-ID) ---
 
 test("a REFERENCE cell with no resolver supplied never renders the raw stored document id", () => {
