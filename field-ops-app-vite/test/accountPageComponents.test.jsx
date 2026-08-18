@@ -17,21 +17,29 @@
 //      visibility -> DOM) never quietly reveals or hides the wrong thing, independent of what a
 //      section happens to render.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { contactRelatedList } from "../src/metadata/definitions/contact.js";
+import { locationRelatedList } from "../src/metadata/definitions/location.js";
 import { formatTimestamp } from "../src/domain/displayTimestamp.js";
 import {
   registerAccountPageComponents,
   accountPageComponentIds,
   accountRecordPageMainSubset,
   accountRecordPageSideSubset,
+  accountRecordPageContactsLocationsSubset,
   accountPageListResolver,
   accountPageEntityResolver,
+  buildAccountRelatedListPresentation,
 } from "../src/metadata/definitions/accountPageComponents.js";
+import AccountDetail from "../src/modules/accounts/AccountDetail.jsx";
+import { useAccount } from "../src/hooks/useAccount";
+import { useLocationsForAccount } from "../src/hooks/useLocationsForAccount";
+import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 
 // The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
 // Sales Orders RELATED_LIST sections (straight off accountRecordPage — not test doubles),
@@ -47,6 +55,45 @@ vi.mock("../src/metadata/firestoreListSource.js", () => ({
 const fetchCallablePageMock = vi.fn();
 vi.mock("../src/metadata/callableListSource.js", () => ({
   fetchPage: (...args) => fetchCallablePageMock(...args),
+}));
+
+// ── A-ACCOUNT-WIRE-CONTACTS-LOCATIONS — full AccountDetail.jsx integration mocks ──────
+//
+// Only used by the "contacts / locations RELATED_LIST — WIRED" describe block far below,
+// but vi.mock is hoisted/file-scoped regardless of where it is written, so it lives here
+// with the other module-boundary mocks this file already declares. Same boundary and same
+// technique test/accountDetailFailClosed.test.jsx already uses for a full AccountDetail
+// render: mock the account-shaped hooks directly (no Firebase, no network) and stub the
+// heavy child sections that are irrelevant to Contacts/Locations, so the render stays
+// narrow. useContactsForAccount / useLocationsForAccount are NOT mocked module-wide here —
+// each test below supplies its own return value, since the whole point of this lane is
+// exercising what AccountDetail does with that hook's OWN live data.
+// Vitest hoists vi.mock factories above imports/declarations, and only allows a factory to
+// reference an outer variable whose name is prefixed "mock" (its own documented escape
+// hatch for exactly this) — hence mockCreateContact/mockCreateLocation, not
+// createContactMock/createLocationMock.
+vi.mock("../src/domain/contacts.js", async (orig) => {
+  const actual = await orig();
+  return { ...actual, createContact: (...args) => mockCreateContact(...args) };
+});
+const mockCreateContact = vi.fn();
+vi.mock("../src/domain/locations.js", async (orig) => {
+  const actual = await orig();
+  return { ...actual, createLocation: (...args) => mockCreateLocation(...args) };
+});
+const mockCreateLocation = vi.fn();
+vi.mock("../src/modules/accounts/ServiceActivitySection", () => ({ default: () => null }));
+vi.mock("../src/modules/accounts/FinancialSummarySection", () => ({ default: () => null }));
+vi.mock("../src/modules/accounts/FinancialForecastSection", () => ({ default: () => null }));
+vi.mock("react-router-dom", async (orig) => {
+  const actual = await orig();
+  return { ...actual, useParams: () => ({ accountId: "acct-1" }) };
+});
+vi.mock("../src/hooks/useAccount", () => ({ useAccount: vi.fn() }));
+vi.mock("../src/hooks/useLocationsForAccount", () => ({ useLocationsForAccount: vi.fn() }));
+vi.mock("../src/hooks/useContactsForAccount", () => ({ useContactsForAccount: vi.fn() }));
+vi.mock("../src/hooks/useEmployeeDirectory", () => ({
+  useEmployeeDirectory: () => ({ byUserId: {}, loading: false, error: null }),
 }));
 
 describe("registerAccountPageComponents", () => {
@@ -445,5 +492,265 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
   it("now part of the wired MAIN subset AccountDetail.jsx actually renders — in accountPage.js's own order, ahead of financials", () => {
     const wiredIds = accountRecordPageMainSubset.sections.map((s) => s.id);
     expect(wiredIds).toEqual(["opportunities", "salesOrders", "financials", "activityAndNotes", "serviceActivity"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A-ACCOUNT-WIRE-CONTACTS-LOCATIONS — contacts / locations RELATED_LIST WIRED
+// (X-RELATED-LIST-ACTIONS, #1211, unblocked this). Two layers of proof, matching the
+// altitude each concern actually lives at:
+//
+//   1. buildAccountRelatedListPresentation, unit-level, against the REAL contact.js /
+//      location.js definitions — the presentation-building step itself: human-meaningful
+//      cells, no document id, the Location address-flattening and Contact isPrimary fixes
+//      the WIRING SCOPE note in accountPageComponents.js documents, and the
+//      DENIED/UNAVAILABLE/EMPTY three-way distinction (with the hook's own real error text
+//      preserved for test/accountDetailFailClosed.test.jsx's sake — an existing, out-of-scope
+//      external contract this lane must not break).
+//
+//   2. A full AccountDetail.jsx render (mocked hooks, no Firebase/network — same technique
+//      test/accountDetailFailClosed.test.jsx already uses) — the actual shipped wiring: the
+//      section-level Add/Import affordances survive, and the post-create keyboard-focus
+//      handoff this whole lane exists to prove still works end to end.
+describe("buildAccountRelatedListPresentation — contacts / locations against the REAL definitions", () => {
+  it("contacts: human-meaningful cells, never the document id, isPrimary mapped to a real string (cellValue has no BOOLEAN branch)", () => {
+    const presentation = buildAccountRelatedListPresentation({
+      listId: "account.contacts",
+      rows: [
+        { id: "contact-doc-1", name: "Jane Doe", role: "Manager", email: "jane@example.com", phone: "555-1000", isPrimary: true, accountId: "acct-1" },
+        { id: "contact-doc-2", name: "John Roe", role: null, email: null, phone: null, isPrimary: false, accountId: "acct-1" },
+      ],
+      loading: false,
+      error: null,
+    });
+    expect(presentation.state).toBe("READY");
+    expect(presentation.listId).toBe(contactRelatedList.id);
+    const [row1, row2] = presentation.rows;
+    // The document id routes the row (row.key) and never appears as a cell value.
+    expect(row1.key).toBe("contact-doc-1");
+    expect(row1.cells.some((c) => c.value === "contact-doc-1")).toBe(false);
+    expect(row1.cells.find((c) => c.fieldId === "name").value).toBe("Jane Doe");
+    // BOOLEAN true -> a real, visible string, not `true` (which React would render as nothing).
+    expect(row1.cells.find((c) => c.fieldId === "isPrimary").value).toBe("Primary");
+    // BOOLEAN false -> null (the grid's normal blank-cell case), not the literal `false`.
+    expect(row2.cells.find((c) => c.fieldId === "isPrimary").value).toBeNull();
+  });
+
+  it("locations: the stored `address` map is flattened to the declared flat fieldIds, never blank", () => {
+    const presentation = buildAccountRelatedListPresentation({
+      listId: "account.locations",
+      rows: [
+        {
+          id: "location-doc-1",
+          name: "Main Plant",
+          accountId: "acct-1",
+          address: { street: "1 Main St", city: "Springfield", state: "IL", zip: "62701" },
+          accessNotes: "Use the loading dock.",
+        },
+      ],
+      loading: false,
+      error: null,
+    });
+    expect(presentation.state).toBe("READY");
+    expect(presentation.listId).toBe(locationRelatedList.id);
+    const [row] = presentation.rows;
+    expect(row.key).toBe("location-doc-1");
+    expect(row.cells.some((c) => c.value === "location-doc-1")).toBe(false);
+    // Not blank — the exact regression a raw, unflattened row would produce (a nested
+    // `address.city` never matches the flat `addressCity` fieldId cellValue() looks up).
+    expect(row.cells.find((c) => c.fieldId === "addressCity").value).toBe("Springfield");
+    expect(row.cells.find((c) => c.fieldId === "addressState").value).toBe("IL");
+    expect(row.cells.find((c) => c.fieldId === "accessNotes").value).toBe("Use the loading dock.");
+  });
+
+  it("EMPTY, DENIED and UNAVAILABLE are three distinct states, not one collapsed error box", () => {
+    const empty = buildAccountRelatedListPresentation({ listId: "account.contacts", rows: [], loading: false, error: null });
+    const denied = buildAccountRelatedListPresentation({
+      listId: "account.contacts",
+      rows: [],
+      loading: false,
+      error: "You do not have permission to view these contacts.",
+    });
+    const unavailable = buildAccountRelatedListPresentation({
+      listId: "account.contacts",
+      rows: [],
+      loading: false,
+      error: "Couldn't load contacts. Please try again.",
+    });
+    expect(empty.state).toBe("EMPTY");
+    expect(denied.state).toBe("DENIED");
+    expect(unavailable.state).toBe("UNAVAILABLE");
+    // The hook's own real error text survives verbatim — listPresentation.js's generic
+    // emptyMessageFor() copy does NOT silently replace it (test/accountDetailFailClosed.test.jsx
+    // asserts this exact string reaches the screen for a denied Contacts read).
+    expect(denied.emptyMessage).toBe("You do not have permission to view these contacts.");
+    expect(unavailable.emptyMessage).toBe("Couldn't load contacts. Please try again.");
+    expect(empty.emptyMessage).toBe("No contacts yet.");
+  });
+
+  it("LOADING takes priority over any error or row data", () => {
+    const presentation = buildAccountRelatedListPresentation({
+      listId: "account.locations",
+      rows: [],
+      loading: true,
+      error: null,
+    });
+    expect(presentation.state).toBe("LOADING");
+  });
+});
+
+describe("accountRecordPageContactsLocationsSubset", () => {
+  it("carries exactly contacts then locations, matching accountPage.js's own order (60, 70)", () => {
+    expect(accountRecordPageContactsLocationsSubset.sections.map((s) => s.id)).toEqual(["contacts", "locations"]);
+  });
+
+  it("neither section declares a capabilityRequirement — contact.js/location.js both declare readCapability: null", () => {
+    for (const section of accountRecordPageContactsLocationsSubset.sections) {
+      expect(section.capabilityRequirement).toBeNull();
+    }
+  });
+});
+
+describe("AccountDetail.jsx — Contacts/Locations wired through the metadata list runtime (full render)", () => {
+  const RESOLVED_ACCOUNT = {
+    account: { id: "acct-1", name: "Acme Foods", relationshipTypes: [], lineOfBusiness: [] },
+    loading: false,
+    error: null,
+    retry: vi.fn(),
+  };
+
+  function renderDetail() {
+    return render(
+      <MemoryRouter>
+        <AccountDetail />
+      </MemoryRouter>
+    );
+  }
+
+  beforeEach(() => {
+    componentRegistry.__resetForTest();
+    registerAccountPageComponents();
+    mockCreateContact.mockReset();
+    mockCreateLocation.mockReset();
+    useAccount.mockReturnValue(RESOLVED_ACCOUNT);
+  });
+
+  it("section-level '+ Add Contact' / 'Import Contacts' / '+ Add Location' affordances survive the metadata wiring", () => {
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
+    renderDetail();
+    expect(screen.getByRole("button", { name: "+ Add Contact" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import Contacts" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Location" })).toBeTruthy();
+  });
+
+  it("denied Contacts read shows the hook's real error text, never the false 'No contacts yet' empty state (still true through the metadata path)", () => {
+    useContactsForAccount.mockReturnValue({
+      data: [],
+      loading: false,
+      error: "You do not have permission to view these contacts.",
+    });
+    useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
+    renderDetail();
+    expect(screen.getByText("You do not have permission to view these contacts.")).toBeTruthy();
+    expect(screen.queryByText(/no contacts yet/i)).toBeNull();
+  });
+
+  it("account-scoped rows render with human-meaningful cells and never a document id", () => {
+    useContactsForAccount.mockReturnValue({
+      data: [{ id: "contact-1", name: "Jane Doe", role: "Manager", email: null, phone: null, isPrimary: false, accountId: "acct-1" }],
+      loading: false,
+      error: null,
+    });
+    useLocationsForAccount.mockReturnValue({
+      data: [{ id: "location-1", name: "Main Plant", accountId: "acct-1", address: { street: "1 Main St", city: "Springfield", state: "IL", zip: "62701" } }],
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+    });
+    renderDetail();
+    expect(screen.getByText("Jane Doe")).toBeTruthy();
+    expect(screen.getByText("Main Plant")).toBeTruthy();
+    expect(screen.getByText("Springfield")).toBeTruthy();
+    expect(screen.queryByText("contact-1")).toBeNull();
+    expect(screen.queryByText("location-1")).toBeNull();
+  });
+
+  // THE LOAD-BEARING TEST — this whole lane exists to prove this still works. Would FAIL
+  // (focus stranded on <body>, or never moved) without MetadataListGrid's
+  // focusRowKey/onFocusHandled wired to AccountDetail's own pendingContactFocus, the exact
+  // accessibility parity #1211/this lane's own instructions require before wiring at all.
+  it("post-create focus parity: creating a Contact moves keyboard focus onto its new row once the live subscription delivers it", async () => {
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
+    mockCreateContact.mockResolvedValue({ id: "contact-new", name: "New Contact" });
+
+    const { rerender } = renderDetail();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Contact" }));
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "New Contact" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Contact" }));
+
+    // The write resolved; AccountDetail queued focus onto "contact-new" -- but the live
+    // subscription has not "delivered" the row yet (the mocked hook still returns []), so
+    // MetadataListGrid's own effect has nothing to focus (see its "waits for the target row
+    // to actually appear" contract, test/metadataListGrid.test.jsx).
+    await waitFor(() => expect(mockCreateContact).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(document.body);
+
+    // The live subscription now "delivers" the new row -- re-render the SAME component
+    // instance (not a fresh mount, which would reset AccountDetail's own pendingContactFocus
+    // state back to null) with the updated hook return value, exactly as a real onSnapshot
+    // callback would trigger.
+    useContactsForAccount.mockReturnValue({
+      data: [{ id: "contact-new", name: "New Contact", role: null, email: null, phone: null, isPrimary: false, accountId: "acct-1" }],
+      loading: false,
+      error: null,
+    });
+    rerender(
+      <MemoryRouter>
+        <AccountDetail />
+      </MemoryRouter>
+    );
+
+    // Focus itself is the parity proof this test exists for. (MetadataListGrid's own
+    // focus-target tabIndex=-1 contract is asserted in isolation by
+    // test/metadataListGrid.test.jsx; checked again here it would race against
+    // onFocusHandled's own follow-on state update -- AccountDetail clears
+    // pendingContactFocus once the handoff lands, same as the hand-rolled pattern this
+    // replaces, which drops focusRowKey and therefore the row's -1 on the NEXT render.)
+    await waitFor(() => {
+      const row = screen.getByText("New Contact").closest("tr");
+      expect(document.activeElement).toBe(row);
+    });
+  });
+
+  it("post-create focus parity: creating a Location moves keyboard focus onto its new row once the live subscription delivers it", async () => {
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
+    mockCreateLocation.mockResolvedValue({ id: "location-new", name: "New Site" });
+
+    const { rerender } = renderDetail();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Location" }));
+    fireEvent.change(screen.getByLabelText(/site name/i), { target: { value: "New Site" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Location" }));
+
+    await waitFor(() => expect(mockCreateLocation).toHaveBeenCalledTimes(1));
+
+    useLocationsForAccount.mockReturnValue({
+      data: [{ id: "location-new", name: "New Site", accountId: "acct-1", address: {} }],
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+    });
+    rerender(
+      <MemoryRouter>
+        <AccountDetail />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      const row = screen.getByText("New Site").closest("tr");
+      expect(document.activeElement).toBe(row);
+    });
   });
 });

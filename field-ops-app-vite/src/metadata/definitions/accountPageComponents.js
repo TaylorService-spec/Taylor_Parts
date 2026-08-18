@@ -107,24 +107,34 @@
 // neutral without a visual pass. Left hand-rendered per this task's own instruction not to
 // ship an unverified visual change.
 //
-// contacts / locations (RELATED_LIST, GAP 2's default binding) — mechanically compatible
-// (both entities are readVia CLIENT_DIRECT, and account.js now declares both parent-side
-// relationships), but wiring EITHER through DefaultRelatedList would:
-//   (a) start a SECOND, independent live read of the exact same collection query
-//       AccountDetail.jsx already runs via useContactsForAccount / useLocationsForAccount —
-//       data those hooks must keep supplying regardless (contacts feeds
-//       PrimaryContactSummary, CommercialProfileSection's billing-contact resolution, and
-//       AccountForm's edit view; locations' hook return value cannot simply be dropped
-//       either without losing the section's own count). Two independent subscriptions to
-//       one query is the EXACT anti-pattern already named and tracked in this file's own
-//       AR-double-read note above (#1094/#1095) — real disagreement between "the same read,
-//       fetched twice" is a documented production bug on this page, not a hypothetical one.
-//   (b) drop "+ Add Contact" / "Import Contacts" / "+ Add Location" and their modals — real
-//       CRUD entry points with no equivalent in MetadataListGrid/DefaultRelatedList — and
-//       drop the post-add keyboard-focus handoff to the new row (`pendingContactFocus` /
-//       `pendingLocationFocus` + the row `ref`), an accessibility behavior
-//       MetadataListGrid has no hook to reproduce (rows carry no caller-supplied ref).
-// Both are real, user-visible regressions, not cosmetic ones. Left hand-rendered.
+// contacts / locations (RELATED_LIST, GAP 2's default binding) — SUPERSEDED by
+// A-ACCOUNT-WIRE-CONTACTS-LOCATIONS (X-RELATED-LIST-ACTIONS, #1211, unblocked this). Both
+// were mechanically compatible with DefaultRelatedList (readVia CLIENT_DIRECT, and
+// account.js declares both parent-side relationships) but wiring EITHER through the
+// DEFAULT binding specifically would still (a) start a SECOND, independent live read of
+// the exact same collection query AccountDetail.jsx already runs via
+// useContactsForAccount / useLocationsForAccount — data those hooks must keep supplying
+// regardless (contacts feeds PrimaryContactSummary and CommercialProfileSection's
+// billing-contact resolution) — the exact double-read anti-pattern this file's own
+// AR-double-read note tracks (#1094/#1095); and (b), before X-RELATED-LIST-ACTIONS,
+// MetadataListGrid had no per-row ref hook to reproduce the post-add keyboard-focus
+// handoff (`pendingContactFocus`/`pendingLocationFocus`).
+//
+// Both are now WIRED — through their OWN `listRenderer` (a SEPARATE MetadataRecordPage
+// call, accountRecordPageContactsLocationsSubset below), never DefaultRelatedList: (a) is
+// closed by `buildAccountRelatedListPresentation`, which builds the identical
+// listPresentation.js render model from the SAME live `contacts`/`locations` hook data
+// AccountDetail.jsx already holds — one subscription, reused, never a second one; (b) is
+// closed by MetadataListGrid's new `focusRowKey`/`onFocusHandled` (X-RELATED-LIST-ACTIONS),
+// wired to the exact same `pendingContactFocus`/`pendingLocationFocus` state AccountDetail.jsx
+// already owned. "+ Add Contact" / "Import Contacts" / "+ Add Location" and their modals stay
+// exactly as hand-rendered, mounted by AccountDetail.jsx alongside the new
+// MetadataRecordPage call — no equivalent exists inside MetadataListGrid/DefaultRelatedList,
+// so this lane did not attempt to invent one there. See
+// test/accountPageComponents.test.jsx's "contacts / locations RELATED_LIST — WIRED" suite
+// for the full re-verification (account scoping, no document id in any cell, the flattened
+// Location address / stringified Contact isPrimary fixes below, and the focus-handoff
+// parity proof).
 //
 // opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — SUPERSEDED by
 // A-ACCOUNT-WIRE-CALLABLE-LISTS-2 (see the WIRING SCOPE block above): both BLOCKER 1 and
@@ -244,10 +254,13 @@ import { httpsCallable } from "firebase/functions";
 import { doc, onSnapshot } from "firebase/firestore";
 import { componentRegistry } from "../registry.js";
 import { declaredPageCapabilities } from "../pageRuntime.js";
+import { buildListPresentation } from "../listPresentation.js";
 import { accountRecordPage } from "./accountPage.js";
 import { accountEntity } from "./account.js";
 import { opportunityEntity, opportunityRelatedList } from "./opportunity.js";
 import { salesOrderEntity, salesOrderRelatedList } from "./salesOrder.js";
+import { contactEntity, contactRelatedList } from "./contact.js";
+import { locationEntity, locationRelatedList } from "./location.js";
 import { functions, db } from "../../firebase/firebase";
 import { USERS_COLLECTION } from "../../domain/constants";
 import {
@@ -367,12 +380,16 @@ const ACCOUNT_OPPORTUNITIES_RELATED_LIST = opportunityRelatedList;
 const ACCOUNT_PAGE_LIST_MAP = {
   "account.opportunities": ACCOUNT_OPPORTUNITIES_RELATED_LIST,
   "account.salesOrders": salesOrderRelatedList,
+  "account.contacts": contactRelatedList,
+  "account.locations": locationRelatedList,
 };
 
 const ACCOUNT_PAGE_ENTITY_MAP = {
   account: accountEntity,
   opportunity: opportunityEntity,
   salesOrder: salesOrderEntity,
+  contact: contactEntity,
+  location: locationEntity,
 };
 
 /** Resolves a RELATED_LIST section's `listId` to the real ListViewDefinition it names. */
@@ -418,6 +435,147 @@ export const accountRecordPageMainSubset = subsetOf(accountRecordPage, MAIN_SUBS
  * its own ungated Work-Order-past-due degrade — neither is this lane's call to make.
  */
 export const accountRecordPageSideSubset = subsetOf(accountRecordPage, SIDE_SUBSET_IDS);
+
+// ── Contacts / Locations — X-RELATED-LIST-ACTIONS wiring ───────────────────
+//
+// A SEPARATE MetadataRecordPage subset/call, not folded into accountRecordPageMainSubset
+// above. Reason: this subset supplies its own `listRenderer` (see
+// buildAccountRelatedListPresentation / makeAccountRelatedListRenderer below), and
+// `listRenderer` — once given to MetadataRecordPage — wins for EVERY RELATED_LIST section
+// that render pass touches (MetadataRecordPage.jsx's `Section`: "if (listRenderer) return
+// listRenderer(...)", unconditionally, no per-listId fallback to DefaultRelatedList). Folding
+// contacts/locations into the same call as Opportunities/Sales Orders would silently switch
+// THOSE off the real DefaultRelatedList/CALLABLE binding accountRecordPageMainSubset's own
+// comment block re-verified — a regression this lane has no reason to cause. Two calls, two
+// independent bindings, exactly the same precedent accountRecordPageSideSubset already set
+// for the SIDE region.
+const CONTACTS_LOCATIONS_SUBSET_IDS = ["contacts", "locations"];
+
+/**
+ * The Contacts + Locations subset, in accountPage.js's own order (60, 70 — immediately
+ * after Service Activity, matching AccountDetail.jsx's historical "3. Contacts / 4.
+ * Locations" numbering).
+ */
+export const accountRecordPageContactsLocationsSubset = subsetOf(accountRecordPage, CONTACTS_LOCATIONS_SUBSET_IDS);
+
+/**
+ * WHY THESE TWO SECTIONS DO NOT USE THE DEFAULT RELATED_LIST BINDING
+ * (DefaultRelatedList, MetadataRecordPage.jsx), even though both entities are readVia
+ * CLIENT_DIRECT and account.js now declares both parent-side relationships (the mechanical
+ * blocker accountPageComponents.js's own WIRING SCOPE note used to cite is closed):
+ *
+ * DefaultRelatedList's useRelatedListPresentation issues its OWN independent live
+ * Firestore read of the account-scoped query. AccountDetail.jsx ALREADY runs that exact
+ * read via useContactsForAccount / useLocationsForAccount — data those hooks must keep
+ * supplying regardless (contacts feeds PrimaryContactSummary and
+ * CommercialProfileSection's billing-contact resolution; the raw `locations` array backs
+ * the section's own count). A second, independent subscription to the SAME query is the
+ * exact double-read anti-pattern this file's own AR note already tracks as a real,
+ * previously-shipped bug (#1094/#1095: two independent reads of one authoritative source
+ * disagreeing on screen), not a hypothetical one here.
+ *
+ * `buildAccountRelatedListPresentation` below is the fix: it builds the SAME
+ * `listPresentation.js` render model DefaultRelatedList would, from the rows
+ * AccountDetail.jsx's own live hooks already hold — one subscription, one source of
+ * truth, reused by both the section display and every other consumer of that hook's data.
+ */
+function classifyRelatedListError(message) {
+  if (!message) return null;
+  // useContactsForAccount / useLocationsForAccount surface domain/loadErrorMessage.js's
+  // already-TRANSLATED, safe copy — never the raw Firebase error code
+  // useRelatedListPresentation's own `e?.code === "permission-denied"` check relies on.
+  // loadErrorMessage(err) returns exactly one of three fixed strings, and
+  // "permission-denied" is the only one that mentions permission — this substitutes for
+  // the raw code these two hooks do not expose, rather than inventing a new one. If that
+  // copy ever changes, this classification needs to change with it.
+  return /permission/i.test(message) ? "denied" : "unavailable";
+}
+
+/**
+ * Locations' addressCity/addressState/addressZip columns are declared as flat fieldIds
+ * (location.js: v1 FIELD_TYPE has no composite/struct type), but the STORED document nests
+ * them under an `address` map (location.js's own header; shared/address/AddressFields.jsx).
+ * DefaultRelatedList's own firestoreListSource.js spreads the raw doc verbatim
+ * (`{ id: d.id, ...d.data() }`) and would hit this identical gap if it ever read Locations —
+ * it is not specific to reusing AccountDetail's hook data. Flattened here, before a row ever
+ * reaches the shared `cellValue()`, rather than left to silently resolve to `undefined` (a
+ * blank City/State cell on every row — not a "—", nothing at all, since cellValue only
+ * treats null/undefined/"" as absent and returns raw values otherwise unchanged).
+ */
+function mapLocationRow(location) {
+  return {
+    id: location.id,
+    name: location.name,
+    addressCity: location.address?.city ?? null,
+    addressState: location.address?.state ?? null,
+    addressZip: location.address?.zip ?? null,
+    accessNotes: location.accessNotes ?? null,
+    createdAt: location.createdAt ?? null,
+    updatedAt: location.updatedAt ?? null,
+  };
+}
+
+/**
+ * contact.js declares `isPrimary` as BOOLEAN, but listPresentation.js's `cellValue()` has
+ * NO BOOLEAN branch (only ENUM/ENUM_SET/TIMESTAMP/DATE resolve; everything else returns the
+ * raw value unchanged) and MetadataListGrid renders `{cell.value}` directly — React renders
+ * neither `true` nor `false` as visible text, so an unmapped BOOLEAN column would render
+ * BLANK for every row, primary and non-primary alike: indistinguishable, and therefore not
+ * the human-meaningful value this wiring is required to produce. Mapped to a real string
+ * ("Primary" / null, `null` rendering the grid's normal blank-cell case) before the row ever
+ * reaches `cellValue()` — the same restraint contact.js's own field comment already takes
+ * for `role` (free text, not invented), applied here to a rendering gap instead of a data
+ * gap.
+ */
+function mapContactRow(contact) {
+  return {
+    id: contact.id,
+    name: contact.name,
+    role: contact.role ?? null,
+    email: contact.email ?? null,
+    phone: contact.phone ?? null,
+    isPrimary: contact.isPrimary ? "Primary" : null,
+  };
+}
+
+const ACCOUNT_RELATED_LIST_ROW_MAPPERS = {
+  "account.contacts": mapContactRow,
+  "account.locations": mapLocationRow,
+};
+
+/**
+ * Builds a RELATED_LIST presentation model (listPresentation.js's own shape — the same one
+ * DefaultRelatedList feeds MetadataListGrid) from rows a caller's OWN live hook already
+ * holds, rather than performing a second independent read. `rows` is the hook's full,
+ * already account-scoped array (never re-filtered or re-scoped here — the scoping already
+ * happened in the Firestore query useContactsForAccount / useLocationsForAccount itself);
+ * `loading`/`error` are that same hook's own state.
+ *
+ * The DENIED/UNAVAILABLE distinction reuses `buildListPresentation`'s own state machine
+ * (via `classifyRelatedListError`) for correctness, but the DISPLAYED message is the hook's
+ * own real error text, not `listPresentation.js`'s generic canned copy
+ * (`emptyMessageFor()`) — an existing, out-of-scope external contract
+ * (test/accountDetailFailClosed.test.jsx) already asserts the exact hook-provided string
+ * reaches the screen for a denied Contacts read, and that string is more specific than the
+ * generic fallback in any case.
+ */
+export function buildAccountRelatedListPresentation({ listId, rows, loading = false, error = null }) {
+  const listDef = accountPageListResolver(listId);
+  const entity = listDef ? accountPageEntityResolver(listDef.entityId) : null;
+  const mapRow = ACCOUNT_RELATED_LIST_ROW_MAPPERS[listId] ?? ((r) => r);
+  const errorStatus = classifyRelatedListError(error);
+  const presentation = buildListPresentation({
+    def: listDef,
+    entity,
+    page: errorStatus ? null : { rows: (rows ?? []).map(mapRow), hasMore: false },
+    loading,
+    errorStatus,
+    filtersActive: false,
+  });
+  // Preserve the hook's own real error text over listPresentation.js's generic copy — see
+  // the doc comment above.
+  return errorStatus && error ? { ...presentation, emptyMessage: error } : presentation;
+}
 
 // ── The real capability resolver ────────────────────────────────────────────
 // Read directly off the definition — never a hand-typed list that could drift from what
