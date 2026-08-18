@@ -72,6 +72,10 @@ on:
       - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
       - "field-ops-app-vite/test/warehousesSurface.test.jsx"
       - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
+      - "field-ops-app-vite/test/transfersSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
       - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
       - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
       - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
@@ -136,6 +140,10 @@ on:
       - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
       - "field-ops-app-vite/test/warehousesSurface.test.jsx"
       - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
+      - "field-ops-app-vite/test/transfersSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
       - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
       - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
       - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
@@ -200,6 +208,12 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Suppliers surface on the metadata list runtime (vitest)
         run: npx vitest run test/suppliersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Technicians surface is NOT the Employees entity (vitest)
+        run: npx vitest run test/techniciansSurfaceEmployeeDivergence.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Transfers surface is a lifecycle composite, not a list (vitest)
+        run: npx vitest run test/transfersSurface.test.jsx
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
