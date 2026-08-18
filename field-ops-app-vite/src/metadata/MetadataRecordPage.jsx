@@ -54,6 +54,39 @@ const REGION_CLASS = {
 };
 
 /**
+ * X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED — maps each of a section's `capabilityParts`
+ * fieldIds back to the owning part's id, so FieldGroup can tell which authority a given
+ * field belongs to.
+ *
+ * Returns `null` (never a partial map) the moment ANYTHING about the declaration cannot
+ * be trusted mechanically: not an array, an entry missing a string `id`, a `fieldIds`
+ * that isn't a non-empty array of strings, or a field claimed twice. This mirrors
+ * pageDefinition.js's own `validatePageDefinition` checks, which normally catch this at
+ * definition time — this is the SAME rule applied again at render time, because a
+ * runtime that trusted the shape once validation had run would have no defence left the
+ * one time a malformed section reaches it anyway (a hand-built test fixture, a definition
+ * that skipped validation, a future caller). `null` here is read by its one caller as
+ * "ownership cannot be determined" and fails every field in the section closed — see the
+ * comment on FieldGroup below for why that is the deliberate choice, not just the safe
+ * default.
+ */
+function resolveFieldGroupPartMap(section) {
+  const parts = section.capabilityParts;
+  if (!Array.isArray(parts) || parts.length === 0) return null;
+  const map = new Map();
+  for (const part of parts) {
+    if (!part || typeof part !== "object" || typeof part.id !== "string" || !part.id) return null;
+    if (part.fieldIds == null) continue; // a part may legitimately own no fields
+    if (!Array.isArray(part.fieldIds) || part.fieldIds.length === 0) return null;
+    for (const fieldId of part.fieldIds) {
+      if (typeof fieldId !== "string" || !fieldId || map.has(fieldId)) return null;
+      map.set(fieldId, part.id);
+    }
+  }
+  return map;
+}
+
+/**
  * GAP 1 — a generic FIELD_GROUP renderer.
  *
  * Reads its own fieldIds off the section, resolves each against the entity's
@@ -69,12 +102,92 @@ const REGION_CLASS = {
  * No entity resolvable is a configuration gap, not silence: rendering nothing here would
  * be the exact false "nothing here" statement this section exists to avoid, so it says
  * so instead.
+ *
+ * X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED — `capabilityParts` consumption.
+ *
+ * Before this, `applyVisibility` (pageRuntime.js) already computed `visiblePartIds` /
+ * `withheldPartIds` / `partiallyWithheld` for a partially-gated section, and NOTHING on
+ * the generic FIELD_GROUP path read them: every id in `section.fieldIds` rendered
+ * unconditionally, so adopting `capabilityParts` on a FIELD_GROUP would have silently
+ * shown a viewer fields they were not entitled to — the exact failure the field carried
+ * outward specifically to prevent, unread.
+ *
+ * A section with no `capabilityParts` (the overwhelming majority today, and every
+ * existing definition) is completely untouched by any of this — `partMap` stays `null`,
+ * `renderableFieldIds` is exactly `section.fieldIds`, and the component falls straight
+ * through to the same items/dl/null shape it always rendered. That branch is proved
+ * unchanged by the existing GAP 1 tests plus the new "no capabilityParts" regression
+ * test below.
+ *
+ * When `capabilityParts` IS declared, three field-level outcomes are possible, and only
+ * one of them renders:
+ *
+ *   - claimed by a VISIBLE part   → rendered, same as any other field.
+ *   - claimed by a WITHHELD part  → dropped, and the section notes that withholding.
+ *   - claimed by NO part at all   → dropped and treated as withheld, same as a withheld
+ *     field, NOT rendered ungated. `validatePageDefinition` never requires every one of a
+ *     section's `fieldIds` to be claimed by some part (a part's `fieldIds` is optional
+ *     and coverage is not enforced) — so this case is real, not hypothetical. Ownership
+ *     cannot be determined for it, and this codebase's own stated rule for exactly that
+ *     ("a field's owning part cannot be determined") is to withhold rather than render.
+ *     The alternative — showing an unclaimed field by default — would mean the SAFE way
+ *     to add a new gated part to an existing composed section is to remember to also
+ *     re-claim every field that part now covers, and the UNSAFE way (forgetting) fails
+ *     open. Fail-closed-by-default means the unsafe order of operations (declare the part
+ *     before wiring every field to it) fails safe instead.
+ *
+ * Malformed `capabilityParts` metadata (caught structurally by `resolveFieldGroupPartMap`
+ * above) withholds every field in the section, not just the malformed part's — the
+ * runtime cannot tell which fields the broken declaration WOULD have claimed, so treating
+ * only the parseable parts as authoritative would silently trust a declaration already
+ * shown to be unreliable.
+ *
+ * Withholding is surfaced, never silent, matching the tone AccountAttentionSection.jsx's
+ * `sourceStatusNote` already uses for "part of this is unavailable" (a `<p
+ * className="fo-muted">` note, phrased as unauthorized/unavailable rather than invented
+ * copy) and the exact "not available to you" vocabulary this same file already uses for
+ * PAGE-level denial (see the `hiddenByAccess` FailureState below) — one phrase for "you
+ * may not see this," not two that could drift.
+ *
+ * The note renders whenever fewer fields render than were declared — including the
+ * all-withheld case, where `items` would otherwise be empty and indistinguishable from
+ * "nothing configured." That is the EMPTY vs WITHHELD vs UNAVAILABLE distinction this
+ * task is required to preserve: EMPTY is a fully-resolved section with nothing gated
+ * (existing `items.length === 0` -> `null` branch, untouched); WITHHELD is this new note;
+ * UNAVAILABLE is the entity-not-registered message above, unrelated to capability at all.
  */
 function FieldGroup({ section, record, entity }) {
   if (!entity) {
     return <p className="fo-muted">Field details are unavailable — this section&rsquo;s entity is not registered.</p>;
   }
-  const items = (section.fieldIds ?? []).map((fieldId) => {
+
+  const allFieldIds = section.fieldIds ?? [];
+  const hasParts = !!section.capabilityParts?.length;
+
+  let renderableFieldIds = allFieldIds;
+  let someWithheld = false;
+
+  if (hasParts) {
+    const partMap = resolveFieldGroupPartMap(section);
+    if (!partMap) {
+      // Fail closed: the declaration itself cannot be trusted, so no field this section
+      // composes is presentable — see the doc comment above.
+      renderableFieldIds = [];
+      someWithheld = allFieldIds.length > 0;
+    } else {
+      const visiblePartIds = new Set(section.visiblePartIds ?? []);
+      renderableFieldIds = allFieldIds.filter((fieldId) => {
+        const partId = partMap.get(fieldId);
+        // No claiming part -> ownership undetermined -> withheld, not ungated. See the
+        // doc comment above for why this is the deliberate choice.
+        if (!partId) return false;
+        return visiblePartIds.has(partId);
+      });
+      someWithheld = renderableFieldIds.length < allFieldIds.length;
+    }
+  }
+
+  const items = renderableFieldIds.map((fieldId) => {
     const field = findField(entity, fieldId);
     // Falls back to the raw fieldId/value exactly the way resolveColumns() falls back for
     // a list column — a field metadata gap loses its formatting, never its data.
@@ -86,19 +199,29 @@ function FieldGroup({ section, record, entity }) {
       display: value === null || value === undefined || value === "" ? "—" : String(value),
     };
   });
-  if (items.length === 0) return null;
+
+  if (items.length === 0 && !someWithheld) return null;
+
   return (
-    <dl className="fo-detail-list">
-      {/* dt/dd stay DIRECT children of dl, not wrapped — .fo-detail-list is a two-column
-          CSS grid (EquipmentDetail.jsx's own Row helper does the same for this reason),
-          and a wrapper element would collapse each pair into a single grid cell. */}
-      {items.map((item) => (
-        <Fragment key={item.fieldId}>
-          <dt>{item.label}</dt>
-          <dd>{item.display}</dd>
-        </Fragment>
-      ))}
-    </dl>
+    <Fragment>
+      {someWithheld && (
+        <p className="fo-muted">Some fields in this section are not available to you.</p>
+      )}
+      {items.length > 0 && (
+        <dl className="fo-detail-list">
+          {/* dt/dd stay DIRECT children of dl, not wrapped — .fo-detail-list is a
+              two-column CSS grid (EquipmentDetail.jsx's own Row helper does the same for
+              this reason), and a wrapper element would collapse each pair into a single
+              grid cell. */}
+          {items.map((item) => (
+            <Fragment key={item.fieldId}>
+              <dt>{item.label}</dt>
+              <dd>{item.display}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+    </Fragment>
   );
 }
 
