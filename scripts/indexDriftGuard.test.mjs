@@ -95,13 +95,11 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   'mobile_locations|COLLECTION|active:ASCENDING,displayLabel:ASCENDING',
   // Declared by the Stock Location leaf definition; not deployed.
   'stock_locations|COLLECTION|warehouseId:ASCENDING,binCode:ASCENDING',
-  // Declared by the Truck and EquipmentModel leaf definitions; not deployed.
+  // Declared by the Truck leaf definition; not deployed. (EquipmentModel's were removed --
+  // equipment_models is D4-governed; see equipmentModel.js's boundary note.)
   'trucks|COLLECTION|status:ASCENDING,displayLabel:ASCENDING',
   'trucks|COLLECTION|homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
   'trucks|COLLECTION|status:ASCENDING,homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
-  'equipment_models|COLLECTION|status:ASCENDING,displayName:ASCENDING',
-  'equipment_models|COLLECTION|manufacturerId:ASCENDING,displayName:ASCENDING',
-  'equipment_models|COLLECTION|status:ASCENDING,manufacturerId:ASCENDING,displayName:ASCENDING',
   // Declared by the Manufacturer leaf definition; not deployed.
   'manufacturers|COLLECTION|status:ASCENDING,name:ASCENDING',
   // Declared by the Warehouse and Supplier leaf definitions; not deployed.

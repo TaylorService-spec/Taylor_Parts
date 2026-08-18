@@ -332,7 +332,8 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "manufacturer.index",
   }),
-  // truck.index and equipmentModel.index (leaf definitions, registered by the integration lane).
+  // truck.index (leaf definition, registered by the integration lane). equipmentModel.index was
+  // REMOVED: equipment_models is D4-governed and D4 defers compound query shapes to D5.
   Object.freeze({
     collectionGroup: "trucks",
     queryScope: "COLLECTION",
@@ -363,37 +364,6 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
       {fieldPath: "__name__", order: "ASCENDING"},
     ]),
     requiredBy: "truck.index",
-  }),
-  Object.freeze({
-    collectionGroup: "equipment_models",
-    queryScope: "COLLECTION",
-    fields: Object.freeze([
-      {fieldPath: "status", order: "ASCENDING"},
-      {fieldPath: "displayName", order: "ASCENDING"},
-      {fieldPath: "__name__", order: "ASCENDING"},
-    ]),
-    requiredBy: "equipmentModel.index",
-  }),
-  Object.freeze({
-    collectionGroup: "equipment_models",
-    queryScope: "COLLECTION",
-    fields: Object.freeze([
-      {fieldPath: "manufacturerId", order: "ASCENDING"},
-      {fieldPath: "displayName", order: "ASCENDING"},
-      {fieldPath: "__name__", order: "ASCENDING"},
-    ]),
-    requiredBy: "equipmentModel.index",
-  }),
-  Object.freeze({
-    collectionGroup: "equipment_models",
-    queryScope: "COLLECTION",
-    fields: Object.freeze([
-      {fieldPath: "status", order: "ASCENDING"},
-      {fieldPath: "manufacturerId", order: "ASCENDING"},
-      {fieldPath: "displayName", order: "ASCENDING"},
-      {fieldPath: "__name__", order: "ASCENDING"},
-    ]),
-    requiredBy: "equipmentModel.index",
   }),
   // stockLocation.index (leaf definition, registered by the integration lane).
   Object.freeze({

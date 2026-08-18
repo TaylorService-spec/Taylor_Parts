@@ -1529,3 +1529,51 @@ is honest; **controller inspection remains mandatory.**
 
 **Governing principle:** agent autonomy does not transfer destructive repository authority. A subagent may
 recommend; the controller decides. *"An agent asked me to"* is never sufficient authority.
+
+## 108. Defining an entity does not confer indexing authority over a collection another program governs
+
+**Decision.** `equipment_models` remains governed by **D4** (equipment compatibility). D4 continues
+to defer compound query shapes to **D5**. The metadata program's `equipmentModel` entity definition
+stays; its `equipmentModel.index` list view and the three `equipment_models` composite indexes it
+derived are **removed**.
+
+**What happened.** PR #1206 added an `equipmentModel` INDEX list view. Its two declared filters
+derived three `equipment_models` composite indexes, which were declared in `firestore.indexes.json`
+and subsequently deployed to the sandbox. `functions/src/equipmentCompatibility/repository.ts`
+declares `EQUIPMENT_MODELS_COLLECTION` — the collection is D4's — and
+`functions/test/equipmentCompatibilityRegistry.test.mjs` asserts *"D4 declares no compound index
+for the governed collections."* That assertion was correct and specific; the metadata program
+crossed it.
+
+**Why nobody noticed.** The equipment-compatibility workflow's `paths:` filter did not include
+`firestore.indexes.json`. A change to the index file therefore could not trigger the guard that
+governs the index file. The breach was invisible for four days and only surfaced when an unrelated
+PR happened to touch a path that workflow *does* watch.
+
+Two program-level guards also failed to catch it, for a reason worth recording: `listIndexCoverage`
+and `indexDriftGuard` compare *declared* demands against *declared* indexes. Both were perfectly
+consistent — the metadata program declared a demand and declared an index to serve it. Neither
+guard has any notion of **who is allowed to declare an index for which collection**, so internal
+consistency was never the question that would have caught this.
+
+**The principle.** An EntityDefinition describes a collection. It does not acquire authority over
+that collection. Where two programs' contracts meet, the narrower prior boundary holds until it is
+explicitly superseded — a definition that quietly crosses one is a breach, not a supersession. If a
+catalog INDEX surface over `equipment_models` is ever wanted, it arrives through an explicit D5
+decision that moves the boundary.
+
+**Cost of the correction: none.** No UI referenced the removed list view, and `equipmentModel`'s
+`readVia` is `CALLABLE` against a capability registered `active: false`. The removed indexes served
+no query.
+
+**Live orphans, deliberately not deleted.** The three `equipment_models` composites are live and
+`READY` in `eos-platform-sandbox`. Removing a declaration from source does not authorize deleting a
+live index, and index deletion is destructive and separately authorized. They are recorded as
+**harmless live orphans** — no query uses them, they cost only storage — pending a separate cleanup
+authorization. Source and sandbox are therefore intentionally divergent by exactly three indexes,
+and any reconciliation that reports "3 unexpected live" is reporting this, not a drift defect.
+
+**Guards added.** `firestore.indexes.json` now appears in the equipment-compatibility workflow's
+path filters, so the D4 registry guard runs whenever the index file changes. The metadata program's
+own fleet-catalog suite now asserts that `equipmentModel` exports **no** ListViewDefinition, so a
+re-added index list fails on both sides of the boundary rather than only in D4's suite.
