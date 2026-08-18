@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 07435b9a -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 4e4dbd3c -- 179 entries, every claim reconciled against git. MERGED 97, COMPLETE 20, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 10, READY 4, IMPLEMENTING 3.
 
 ## Surface conformance
 
