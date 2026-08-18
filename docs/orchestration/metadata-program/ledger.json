@@ -2230,12 +2230,14 @@
       "kind": "ARCHITECTURE",
       "title": "FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet",
       "domain": "metadata",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Make FieldGroup render only visible parts and surface the withholding visibly.",
-      "notes": "The generic FieldGroup renderer in MetadataRecordPage.jsx renders every id in section.fieldIds unconditionally, so a composed FIELD_GROUP would silently omit withheld fields with no trace -- the exact failure capabilityParts exists to prevent. This is the SAME SHAPE as the stale rowNavigationTo removed in #1207: a declaration no consumer honors is harmless right up until something reads it. Merging #1209 was safe only because NO definition adopts capabilityParts yet (accountPage.js still declares the single finance.read gate). Recorded rather than left to memory: do not migrate accountAttention, or any other FIELD_GROUP, until this lands. Component-path sections need no change -- Section already forwards the resolved section object through."
+      "nextAction": "None.",
+      "notes": "The generic FieldGroup renderer in MetadataRecordPage.jsx renders every id in section.fieldIds unconditionally, so a composed FIELD_GROUP would silently omit withheld fields with no trace -- the exact failure capabilityParts exists to prevent. This is the SAME SHAPE as the stale rowNavigationTo removed in #1207: a declaration no consumer honors is harmless right up until something reads it. Merging #1209 was safe only because NO definition adopts capabilityParts yet (accountPage.js still declares the single finance.read gate). Recorded rather than left to memory: do not migrate accountAttention, or any other FIELD_GROUP, until this lands. Component-path sections need no change -- Section already forwards the resolved section object through. RESOLVED at f013d965. CORRECTION to this entry as originally written: closing this did NOT unblock accountAttention adopting capabilityParts, and the entry should not be read as saying so. AccountAttentionSection is a registered componentId section, and Section() resolves a componentId before FieldGroup is ever reached -- component-path sections already received the resolved section object for free from #1209. What this closed is the GENERIC FIELD_GROUP hole, which was real and genuinely unconsumed. Account Attention's own composition remains a separate decision. Three fail-closed choices were made deliberately: an unclaimed field is withheld rather than shown (default-show would make 'forgot to add this field to the new part' the silent failure mode when composing an existing section; fail-closed makes that same mistake safe); malformed part metadata withholds the ENTIRE section, since the runtime cannot know what a broken declaration would have claimed; and structural validation runs again at render time rather than assuming the definition validator ran.",
+      "pr": 1213,
+      "mergeSha": "f013d965"
     },
     {
       "id": "X-RELATED-LIST-ACTIONS",
