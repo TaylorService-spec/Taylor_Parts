@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { buildListPresentation } from "../metadata/listPresentation.js";
-import { fetchPage } from "../metadata/firestoreListSource.js";
+import { fetchPage as fetchFirestorePage } from "../metadata/firestoreListSource.js";
+import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.js";
 
 // Drives a metadata list: descriptor -> page -> presentation model.
 //
@@ -13,6 +14,28 @@ import { fetchPage } from "../metadata/firestoreListSource.js";
 // PAGES ACCUMULATE, they do not replace. "Load more" on a table that swapped the page out
 // would lose the rows the reader was already looking at. Changing filters or sort DOES
 // reset, because those rows answer a different question.
+//
+// ROUTES BY THE ENTITY'S DECLARED `readVia`, mirroring MetadataRecordPage.jsx's own
+// `selectListSource` for the RELATED surface (X-INDEX-SURFACE-CALLABLE-READ). Before this,
+// every INDEX list read Firestore unconditionally, so any entity declaring
+// `readVia: "CALLABLE"` over a deny-all collection (opportunity, salesOrder today) could
+// not have an INDEX surface at all — it would report permission-denied to every caller,
+// including one genuinely holding the capability. See `selectListSource` below for the
+// exact dispatch and why it is duplicated here rather than imported from the page module.
+function selectListSource(entity) {
+  if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
+  if (entity?.readVia === "CALLABLE" && entity.readCallable) return fetchCallablePage;
+  // UNKNOWN readVia, or CALLABLE with no readCallable declared: a misconfigured entity,
+  // never a live read to attempt. Returning null here (rather than falling back to
+  // fetchFirestorePage) is the fix — silently defaulting to Firestore is what would repeat
+  // the exact defect this dispatch exists to close. Two routers reading the SAME entity
+  // field and disagreeing on what it means is this program's most-repeated defect, so this
+  // mirrors MetadataRecordPage.jsx's `selectListSource` shape and failure behavior exactly
+  // rather than inventing a second vocabulary. Not imported from that module: this hook's
+  // write scope does not include it, and a hook reaching into a page component would be a
+  // worse layering violation than duplicating a five-line dispatch.
+  return null;
+}
 
 export function useMetadataList(def, entity, { filters = [], sort = [], enabled = true } = {}) {
   const [rows, setRows] = useState([]);
@@ -37,9 +60,26 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
     async ({ append }) => {
       if (!descriptor || !enabled) return;
       const token = (requestRef.current += 1);
+      const source = selectListSource(entity);
+      if (!source) {
+        // Misconfigured entity (UNKNOWN readVia, or CALLABLE with no readCallable
+        // declared) — never falls through to fetchFirestorePage, which is the exact
+        // defect this dispatch exists to close: it would issue a live getDocs against
+        // what may be a deny-all collection and report every viewer denied, permanently,
+        // even one holding the real capability. Surfaced as "unavailable", the same choice
+        // MetadataRecordPage.jsx's useRelatedListPresentation makes for the identical
+        // case — never "denied" (no authorization check ran) and never empty (no read was
+        // attempted). No source is touched.
+        setErrorStatus("unavailable");
+        setRows([]);
+        setHasMore(false);
+        cursorRef.current = null;
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
-        const page = await fetchPage(descriptor, { cursorDoc: append ? cursorRef.current : null });
+        const page = await source(descriptor, { cursorDoc: append ? cursorRef.current : null });
         if (token !== requestRef.current) return;
         setRows((prev) => (append ? [...prev, ...page.rows] : page.rows));
         setHasMore(page.hasMore);
@@ -58,7 +98,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         if (token === requestRef.current) setLoading(false);
       }
     },
-    [descriptor, enabled]
+    [descriptor, enabled, entity]
   );
 
   useEffect(() => {

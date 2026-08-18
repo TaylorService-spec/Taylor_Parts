@@ -130,9 +130,59 @@ describe("callableListSource.fetchPage", () => {
     expect(httpsCallableMock).not.toHaveBeenCalled();
   });
 
-  it("a descriptor with no parent-scope filter throws rather than calling the callable unscoped", async () => {
-    await expect(fetchPage(descriptor({ filters: [] }))).rejects.toThrow(/no parent-scope filter/);
+  it("a SCOPED callable with no parent-scope filter throws rather than calling it unscoped", async () => {
+    await expect(fetchPage(descriptor({ filters: [] }))).rejects.toThrow(/requires a parent-scope filter/);
     expect(httpsCallableMock).not.toHaveBeenCalled();
+  });
+
+  // The INDEX-surface counterpart: listOpportunityContext is the one governed Opportunity
+  // read declared UNSCOPED in CALLABLE_SOURCES (it takes no accountId — it returns the
+  // caller's whole authorized scope). An INDEX descriptor has no parent-scope filter to
+  // give it (buildQueryDescriptor only prepends one for a RELATED surface), and that must
+  // not throw the way it does for the account-scoped pair above — this is the "unscoped
+  // path" the module exists to allow.
+  describe("the unscoped path (INDEX-capable callable, e.g. listOpportunityContext)", () => {
+    it("calls an unscoped callable with no scope argument when the descriptor has no filters", async () => {
+      const callable = stubCallable(async () => ({
+        data: { status: "ready", opportunities: [{ id: "opp-1" }], skipped: 0, truncated: false },
+      }));
+      const page = await fetchPage(descriptor({ readCallable: "listOpportunityContext", filters: [] }));
+      expect(httpsCallableMock).toHaveBeenCalledWith({ __fakeFunctions: true }, "listOpportunityContext");
+      expect(callable).toHaveBeenCalledWith({ limit: 25 });
+      expect(page.rows).toEqual([{ id: "opp-1" }]);
+    });
+
+    it("never throws for a missing scope filter, unlike a scoped callable", async () => {
+      stubCallable(async () => ({
+        data: { status: "ready", opportunities: [], skipped: 0, truncated: false },
+      }));
+      await expect(fetchPage(descriptor({ readCallable: "listOpportunityContext", filters: [] }))).resolves.toBeTruthy();
+    });
+
+    it("still discloses truncation through the same interpretPage rule as the scoped path", async () => {
+      stubCallable(async () => ({
+        data: {
+          status: "ready",
+          opportunities: [{ id: "opp-1" }, { id: "opp-2" }],
+          skipped: 0,
+          truncated: true,
+        },
+      }));
+      const page = await fetchPage(descriptor({ readCallable: "listOpportunityContext", filters: [], pageSize: 2, limit: 3 }));
+      expect(page.rows).toEqual([{ id: "opp-1" }, { id: "opp-2" }]);
+      expect(page.hasMore).toBe(true);
+    });
+
+    it("a denied unscoped read normalizes distinctly from unavailable and from empty", async () => {
+      const err = new Error("nope");
+      err.code = "functions/permission-denied";
+      stubCallable(async () => {
+        throw err;
+      });
+      await expect(fetchPage(descriptor({ readCallable: "listOpportunityContext", filters: [] }))).rejects.toMatchObject({
+        code: "permission-denied",
+      });
+    });
   });
 });
 
