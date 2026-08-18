@@ -191,6 +191,14 @@ function FieldGroup({ section, record, entity }) {
     const field = findField(entity, fieldId);
     // Falls back to the raw fieldId/value exactly the way resolveColumns() falls back for
     // a list column — a field metadata gap loses its formatting, never its data.
+    //
+    // No `resolveReference` is passed here (GAP 1 has no injected resolver of its own), so a
+    // REFERENCE field routed through this generic renderer gets listPresentation.js's own
+    // fail-closed default: `UNRESOLVED_REFERENCE_LABEL`, never the stored document id. That
+    // is the same outcome accountPageComponents.js's commercialProfile section already
+    // documents choosing to route AROUND this renderer for its two REFERENCE fields
+    // (billingContactId/accountOwnerEmployeeId) — this fixes what would otherwise happen to
+    // any OTHER definition that lets a REFERENCE field reach GAP 1 unrouted.
     const column = { fieldId, type: field?.type ?? "STRING", enumLabels: field?.enumLabels ?? null };
     const value = cellValue(column, record ?? {});
     return {

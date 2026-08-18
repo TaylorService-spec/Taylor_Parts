@@ -93,8 +93,36 @@ export function resolveColumns(def, entity) {
  * currency symbol its own record does not carry. Zero is a real amount and renders as "0.00"
  * (or "<CUR> 0.00"), not blank — the top-of-function absent/null/"" check runs first and only
  * catches a genuinely missing value, never a stored zero.
+ *
+ * REFERENCE RESOLVES THROUGH AN INJECTED RESOLVER, NEVER THROUGH THE STORED ID (DECISIONS
+ * #106 — "a missing business reference is not permission to display a record id"). Every
+ * REFERENCE field declared across this program's ten entity definitions carries the SAME
+ * comment: "Display resolution belongs to the [target] entity, not to this field" (account.js's
+ * billingContactId, contact.js's accountId, equipment.js's accountId/locationId, invoice.js's
+ * accountId/salesOrderId, location.js's accountId, opportunity.js's accountId/ownerEmployeeId/
+ * salesOrderId, purchaseOrder.js's partId, salesOrder.js's accountId/ownerEmployeeId/
+ * sourceOpportunityId, truck.js's homeWarehouseId/assignedDriverEmployeeId, workOrder.js's
+ * customerId/assignedTechId — every one of them). That is not incidental phrasing repeated ten
+ * times; it is this program's own, already-settled position that a REFERENCE's display value
+ * does NOT live denormalized on the source record (contrast equipmentModel.js's
+ * manufacturerName, a genuine denormalized-sibling field, which exists precisely because that
+ * entity's read projection chose to carry one — no such sibling exists, or is invited to exist,
+ * for any of these ten). So `cellValue` cannot invent a display value from the row alone: it
+ * accepts an optional `resolveReference(fieldId, id, row)` from the caller — the party actually
+ * positioned to have fetched or joined the referenced entity, per every one of those comments —
+ * and calls it. A present id with no resolver supplied, or a resolver that does not know this
+ * particular id, is the SAME fact from a reader's standpoint ("this reference could not be shown
+ * honestly") and renders the SAME explicit `UNRESOLVED_REFERENCE_LABEL` — never blank (blank
+ * would be indistinguishable from the field genuinely being unset, which the absent/null/""
+ * check above already renders as `null`) and never the raw stored id (the exact defect this
+ * closes: a document id is a routing key, not content — see buildRowHref below, and the "id is
+ * the row KEY and never a cell" test this file's suite already enforces for every OTHER column
+ * type). A resolver that DOES recognize the id returns the real display string, which passes
+ * through unchanged.
  */
-export function cellValue(column, row) {
+export const UNRESOLVED_REFERENCE_LABEL = "Unresolved reference";
+
+export function cellValue(column, row, { resolveReference } = {}) {
   const raw = row?.[column.fieldId];
   if (raw === null || raw === undefined || raw === "") return null;
   if (column.type === "CURRENCY_MINOR") return formatMinor(raw, row?.currency ?? null);
@@ -113,15 +141,26 @@ export function cellValue(column, row) {
   // vocabulary ("Primary" rather than "Yes") can still map the value before it gets here;
   // this is the honest default, not a replacement for one.
   if (column.type === "BOOLEAN") return raw ? "Yes" : "No";
+  // REFERENCE — see the doc comment above. `raw` here is a real, present document id (the
+  // absent/null/"" case already returned above), and it must never reach this return value.
+  if (column.type === "REFERENCE") {
+    const resolved = typeof resolveReference === "function" ? resolveReference(column.fieldId, raw, row) : undefined;
+    return resolved === null || resolved === undefined || resolved === "" ? UNRESOLVED_REFERENCE_LABEL : resolved;
+  }
   return raw;
 }
 
 /**
  * Build the render model.
  *
- * @param {object} args { def, entity, page, loading, errorStatus, filtersActive }
+ * @param {object} args { def, entity, page, loading, errorStatus, filtersActive, resolveReference }
+ *
+ * `resolveReference`, if supplied, is threaded straight through to every cell's `cellValue`
+ * call — see that function's own doc comment for why the resolver lives with the caller and
+ * not here. Omitting it is a legitimate, honest choice (a caller with no live resolver wired
+ * yet): every REFERENCE cell then renders `UNRESOLVED_REFERENCE_LABEL`, never the stored id.
  */
-export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false } = {}) {
+export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null } = {}) {
   const columns = resolveColumns(def, entity);
 
   const state = (() => {
@@ -140,7 +179,7 @@ export function buildListPresentation({ def, entity, page = null, loading = fals
         // The routing key. Deliberately separate from anything displayed, so a document
         // id can be used to navigate without ever becoming a label.
         key: row.id,
-        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row) }))),
+        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row, { resolveReference }) }))),
       }))
     : [];
 
