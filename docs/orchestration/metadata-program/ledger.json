@@ -1,13 +1,13 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main f06801f0 (page composition runtime + index CI bridge merged)",
+  "baseline": "origin/main 8d360889 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
     "docs/architecture/SYSTEM_AUTHORITIES.md",
     "docs/DelegationCharter.md"
   ],
-  "note": "Phase 0 inventory COMPLETE across all seven lanes: CRM, Service, Admin/Reporting, Inventory, Commercial, shared-contract tooling, and query/index coverage. Absence of a surface from this ledger means NOT YET INVENTORIED, never EXEMPT.",
+  "note": "Phase 0 inventory COMPLETE across all seven lanes: CRM, Service, Admin/Reporting, Inventory, Commercial, shared-contract tooling, and query/index coverage. Absence of a surface from this ledger means NOT YET INVENTORIED, never EXEMPT. RESUMPTION: this ledger is the durable authority -- verify it against git with the reconciler before relying on any claim, and treat a prior session's summary as a claim, not a fact. The dominant finding of the Wave 3 renderer work is X-UNCONSUMED-DECLARATION-PATTERN: metadata declaring things nothing reads. Eight instances, every one found by attempting to CONSUME a declaration and none by review. The rule that came out of it is not 'never leave a seam unconsumed' but 'an unconsumed seam must announce itself' -- a loud seam is a TODO, a silent one is a defect waiting for a date. The integration-practice lesson is X-MAIN-RED-UNREBASED-MERGE: verifying a leaf handoff against ITS OWN base is not sufficient; re-run the suite on a base containing every PR being combined.",
   "entries": [
     {
       "id": "P0-LEDGER",
