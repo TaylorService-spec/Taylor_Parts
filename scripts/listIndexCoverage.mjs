@@ -406,6 +406,17 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "stockLocation.index",
   }),
+  // mobileLocation.index (leaf definition, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "mobile_locations",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "active", order: "ASCENDING"},
+      {fieldPath: "displayLabel", order: "ASCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "mobileLocation.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -481,6 +492,8 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/invoice.js",
   "field-ops-app-vite/src/metadata/definitions/payment.js",
   "field-ops-app-vite/src/metadata/definitions/stockLocation.js",
+  "field-ops-app-vite/src/metadata/definitions/mobileLocation.js",
+  "field-ops-app-vite/src/metadata/definitions/salesTerritory.js",
   "field-ops-app-vite/src/metadata/definitions/manufacturer.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
