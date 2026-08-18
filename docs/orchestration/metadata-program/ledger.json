@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 4e4dbd3c -- 179 entries, every claim reconciled against git. MERGED 97, COMPLETE 20, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 10, READY 4, IMPLEMENTING 3.",
+  "baseline": "origin/main b7ec0c29 -- 180 entries, every claim reconciled against git. MERGED 99, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 1, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -1161,12 +1161,18 @@
       "kind": "ARCHITECTURE",
       "title": "fetchPartMasterList is unbounded and doubles as a name-resolution directory",
       "domain": "inventory",
-      "status": "IMPLEMENTING",
+      "status": "BLOCKED_PROTECTED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Consolidated decision package being prepared; both presented together.",
-      "notes": "services/partMasterQueries.js's fetchPartMasterList is fully unbounded with zero truncation disclosure. It cannot simply be capped: ~10 surfaces consume it as a canonical name-resolution directory, so a cap would silently break name resolution app-wide -- a read that is a list for one caller and a lookup table for another. The honest fix is to separate those two roles, which is a scoping decision across surfaces rather than a change to this function. OWNER RULING: NOT resolved by this package. A single consolidated decision item is to be prepared covering BOTH, each with surface/systemName, current read path, query scope, current cap, whether the UI presents the result as COMPLETE, proposed bounded scope, what would be deliberately excluded, what must never disappear, whether the scope is LIST/BOARD/COMPLETE/AGGREGATE, cost and index implications, and a recommended ruling. Do not return with these one at a time if both can be presented together."
+      "nextAction": "Owner decision; consolidated package already prepared.",
+      "notes": "services/partMasterQueries.js's fetchPartMasterList is fully unbounded with zero truncation disclosure. It cannot simply be capped: ~10 surfaces consume it as a canonical name-resolution directory, so a cap would silently break name resolution app-wide -- a read that is a list for one caller and a lookup table for another. The honest fix is to separate those two roles, which is a scoping decision across surfaces rather than a change to this function. OWNER RULING: NOT resolved by this package. A single consolidated decision item is to be prepared covering BOTH, each with surface/systemName, current read path, query scope, current cap, whether the UI presents the result as COMPLETE, proposed bounded scope, what would be deliberately excluded, what must never disappear, whether the scope is LIST/BOARD/COMPLETE/AGGREGATE, cost and index implications, and a recommended ruling. Do not return with these one at a time if both can be presented together. RECONCILED from IMPLEMENTING/READY: no lane is implementing this and none can -- the remaining work is a decision, not engineering. Recorded so the status stops overstating activity.",
+      "blockers": [
+        {
+          "reason": "fetchPartMasterList is unbounded with no truncation disclosure AND doubles as a canonical name-resolution directory for ~10 surfaces. A cap breaks name resolution app-wide; no cap leaves an unbounded read. The consolidated decision package recommends splitting the directory role from the list role, and explicitly warns the LIST half must not be bounded until substring search is resolved, because three of those surfaces depend on full-catalog client-side substring matching today.",
+          "requiredDecision": "Whether to split fetchPartMasterList into an id-scoped directory primitive and a bounded disclosed list read, and the ordering against X-TEXT-SEARCH-BACKEND. See docs/orchestration/metadata-program/shared-read-scoping-decisions.md."
+        }
+      ]
     },
     {
       "id": "X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS",
@@ -1175,12 +1181,18 @@
       "kind": "ARCHITECTURE",
       "title": "Both Dispatch Queue reads are unbounded live listeners shared across many surfaces",
       "domain": "service",
-      "status": "IMPLEMENTING",
+      "status": "BLOCKED_PROTECTED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Consolidated decision package being prepared; both presented together.",
-      "notes": "workOrderService.ts's subscribeToWorkOrders (fieldops_wos) and the generic useFirestoreCollection (used for fieldops_technicians) are both unbounded live onSnapshot listeners, shared by Dispatch, Control Tower, Jobs, Scheduling, the Technician dashboard and Part Detail. Bounding either safely requires deciding what each consumer should see when the cap bites -- not a change one lane can make in isolation. OWNER RULING: NOT resolved by this package. A single consolidated decision item is to be prepared covering BOTH, each with surface/systemName, current read path, query scope, current cap, whether the UI presents the result as COMPLETE, proposed bounded scope, what would be deliberately excluded, what must never disappear, whether the scope is LIST/BOARD/COMPLETE/AGGREGATE, cost and index implications, and a recommended ruling. Do not return with these one at a time if both can be presented together."
+      "nextAction": "Owner decision; consolidated package already prepared.",
+      "notes": "workOrderService.ts's subscribeToWorkOrders (fieldops_wos) and the generic useFirestoreCollection (used for fieldops_technicians) are both unbounded live onSnapshot listeners, shared by Dispatch, Control Tower, Jobs, Scheduling, the Technician dashboard and Part Detail. Bounding either safely requires deciding what each consumer should see when the cap bites -- not a change one lane can make in isolation. OWNER RULING: NOT resolved by this package. A single consolidated decision item is to be prepared covering BOTH, each with surface/systemName, current read path, query scope, current cap, whether the UI presents the result as COMPLETE, proposed bounded scope, what would be deliberately excluded, what must never disappear, whether the scope is LIST/BOARD/COMPLETE/AGGREGATE, cost and index implications, and a recommended ruling. Do not return with these one at a time if both can be presented together. RECONCILED from IMPLEMENTING/READY: no lane is implementing this and none can -- the remaining work is a decision, not engineering. Recorded so the status stops overstating activity.",
+      "blockers": [
+        {
+          "reason": "subscribeToWorkOrders and the generic useFirestoreCollection are unbounded live listeners shared by six surfaces, and the decision package establishes those six need DIFFERENT answers -- board-scope, an aggregate/board split, a paginated disclosed list, a date-window query, a generous-cap roster, and a direct getDoc for a lookup that never needed a collection read. One cap would be wrong for most of them.",
+          "requiredDecision": "Per-consumer scope for the six Dispatch consumers, including whether Control Tower's aggregate counts are split from its board display. Bounding a shared aggregate factory would falsify totals, which the bounded-read rule forbids."
+        }
+      ]
     },
     {
       "id": "S-INV-RECEIVING",
@@ -2679,12 +2691,14 @@
       "kind": "AUDIT",
       "title": "actionRegistry.register() is never called in application source",
       "domain": "metadata",
-      "status": "READY",
+      "status": "COMPLETE",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Register real actions when a definition first declares one; until then rowActions is inert.",
-      "notes": "actionRegistry.register() is called nowhere in src/ -- only in test files -- so the action side of the registry is structurally empty in production. Harmless today only because no definition declares an action id, which also means the rowActions path shipped in #1211 is INERT in production until something registers one. Recorded rather than absorbed: this is the same pattern in its mirror image -- not a declaration nobody reads, but a reader nobody feeds."
+      "nextAction": "None until a definition declares an action id; the tripwire will catch it.",
+      "notes": "actionRegistry.register() is called nowhere in src/ -- only in test files -- so the action side of the registry is structurally empty in production. Harmless today only because no definition declares an action id, which also means the rowActions path shipped in #1211 is INERT in production until something registers one. Recorded rather than absorbed: this is the same pattern in its mirror image -- not a declaration nobody reads, but a reader nobody feeds. RE-VERIFIED against current main before implementing anything, per the audit-correction rule. actionRegistry.register is still called nowhere in application source AND no definition declares a rowActions id -- so there is nothing to register and no repo-safe implementation work exists. The registry mechanism exists, the runtime consumer exists (#1211), and the forward tripwire exists (#1215). This is NOT an environment or deployment gap. What WAS real: the tripwire had silently narrowed -- it checked 20 list definitions while 24 existed, because it asserted against its own hand-maintained import list. Fixed in #1261 by deriving coverage from the directory. Closing this as the honest repo-safe outcome rather than manufacturing work to satisfy the original wording.",
+      "pr": 1261,
+      "mergeSha": "b7ec0c29"
     },
     {
       "id": "X-UNCONSUMED-DECLARATION-PATTERN",
@@ -3009,12 +3023,14 @@
       "kind": "ARCHITECTURE",
       "title": "Server-authoritative TO/RO/RR numbering with inert backfill tooling",
       "domain": "operations",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Build numbering + tests + legacy detection + dry-run backfill; do NOT execute in production.",
-      "notes": "OWNER RULING. TO-YYYY-######, RO-YYYY-######, RR-YYYY-###### on the same authoritative, concurrency-safe principles as WO/OPP/SO. None may be derived from a document id or from another record's number. Deliverables: server-authoritative numbering, tests, legacy detection, DRY-RUN backfill tooling, idempotency, collision checks and sanitized evidence reporting. Production backfill requires a SEPARATE protected authorization -- and new-record correctness must not wait on historical migration."
+      "nextAction": "None. Reorder Request wiring is tracked separately.",
+      "notes": "OWNER RULING. TO-YYYY-######, RO-YYYY-######, RR-YYYY-###### on the same authoritative, concurrency-safe principles as WO/OPP/SO. None may be derived from a document id or from another record's number. Deliverables: server-authoritative numbering, tests, legacy detection, DRY-RUN backfill tooling, idempotency, collision checks and sanitized evidence reporting. Production backfill requires a SEPARATE protected authorization -- and new-record correctness must not wait on historical migration. RECONCILED: this entry was left READY after its own implementation merged under A-OPERATIONAL-NUMBERING-IMPL (#1259) -- a duplicate I created rather than closing this one. Verified against current main: transferOrderNumbering.ts, receivingOrderNumbering.ts and reorderRequestNumbering.ts all exist. Closed against the same merge SHA. The only outstanding part is the Reorder Request wiring, tracked as X-REORDER-REQUEST-NO-SERVER-CREATE.",
+      "pr": 1259,
+      "mergeSha": "4e4dbd3c"
     },
     {
       "id": "X-GENERAL-NUMBERING-RULE",
@@ -3107,12 +3123,18 @@
       "kind": "ARCHITECTURE",
       "title": "No backend can execute TEXT_CONTAINS or TEXT_SEARCH",
       "domain": "metadata",
-      "status": "READY",
+      "status": "BLOCKED_PROTECTED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Choose how substring search is served, or change the product's search semantics.",
-      "notes": "The contract now expresses substring search and REFUSES to execute it, which is the honest state rather than a regression. Firestore does prefix ranges, not substring -- so the answer is not 'add a CONTAINS operator'. A client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. The ruling explicitly forbids selecting a paid vendor merely to clear this gate, so this stays open until the product decides. Parts remains blocked on it, and per the shared-read package the Part Master LIST read must not be bounded until this is resolved, because three surfaces depend on full-catalog client-side substring search today."
+      "nextAction": "Owner decision; consolidated package already prepared.",
+      "notes": "The contract now expresses substring search and REFUSES to execute it, which is the honest state rather than a regression. Firestore does prefix ranges, not substring -- so the answer is not 'add a CONTAINS operator'. A client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. The ruling explicitly forbids selecting a paid vendor merely to clear this gate, so this stays open until the product decides. Parts remains blocked on it, and per the shared-read package the Part Master LIST read must not be bounded until this is resolved, because three surfaces depend on full-catalog client-side substring search today. RECONCILED from IMPLEMENTING/READY: no lane is implementing this and none can -- the remaining work is a decision, not engineering. Recorded so the status stops overstating activity.",
+      "blockers": [
+        {
+          "reason": "The query contract can now EXPRESS substring search and correctly refuses to execute it. No backend can serve TEXT_CONTAINS or TEXT_SEARCH truthfully. Firestore prefix/range behaviour is not equivalent to substring CONTAINS, so this cannot be closed by engineering within the current stack.",
+          "requiredDecision": "How substring search is served: an external/governed search index, an accepted narrowing of the product's search semantics, or leaving affected surfaces unmigrated. The ruling explicitly forbids selecting a paid vendor merely to clear this gate, and forbids faking it by filtering one bounded client page."
+        }
+      ]
     },
     {
       "id": "X-SHARED-READ-SCOPING-PACKAGE",
@@ -3129,6 +3151,22 @@
       ],
       "nextAction": "Owner ruling on both, when they become the critical path.",
       "notes": "docs/orchestration/metadata-program/shared-read-scoping-decisions.md, presenting BOTH together as directed rather than one at a time. Part Master: split an id-scoped directory primitive (three of eight callers only ever resolve known ids) from a bounded list read -- but do NOT bound the list half until the text-search gap is resolved, since three of those surfaces depend on full-catalog client-side substring search today; the parity/diagnostic aggregate stays unbounded. Dispatch: its six consumers need SIX DIFFERENT ANSWERS, not one cap -- board-scope, an aggregate/board split, a paginated disclosed list, a date-window query, a generous-cap roster, and a direct getDoc for a lookup that never needed a collection read at all. The lane also CORRECTED my dispatch framing rather than absorbing it: TechnicianDashboard does not consume the unbounded subscription (it already uses a bounded one) and neither flagged symbol appears in PartDetail -- I had passed both through from the earlier audit unchecked."
+    },
+    {
+      "id": "X-REGISTRY-COVERAGE-DRIFT",
+      "phase": "6",
+      "wave": "5",
+      "kind": "AUDIT",
+      "title": "The registry tripwire silently narrowed from 24 definitions to 20",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1261,
+      "mergeSha": "b7ec0c29",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "The forward tripwire added by X-REGISTRY-VALIDATOR-NEVER-RUN checked a HAND-MAINTAINED list of 20 list definitions, guarded by assert.equal(length, 20) whose own message read 'the named import list drifted from definitions/*.js -- update both'. It drifted: transferOrder, reorderRequest, stockLocation and mobileLocation merged afterwards, and this file was never in those lanes' writeScope. The assertion still passed because it compared the list against ITS OWN length -- green while covering less than it claimed. Same failure class as pageRegistryReferences: a check that passes without proving what it says. A count guard structurally cannot detect its own drift. Now derived from the directory and matched by SHAPE (anything carrying a columns array, the property validateRegistryReferences actually reads), so a new definition is covered the moment it exists and no lane has to remember this file. Coverage 20 -> 24. The one genuinely unimportable module is a NAMED, ASSERTED exclusion -- any other import failure now fails by name, because a silent skip is exactly how this drifted."
     }
   ]
 }

@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 4e4dbd3c -- 179 entries, every claim reconciled against git. MERGED 97, COMPLETE 20, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 10, READY 4, IMPLEMENTING 3.
+**Baseline:** origin/main b7ec0c29 -- 180 entries, every claim reconciled against git. MERGED 99, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 1, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -38,20 +38,13 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-OPERATIONAL-NUMBERING** (phase 6) — Server-authoritative TO/RO/RR numbering with inert backfill tooling → Build numbering + tests + legacy detection + dry-run backfill; do NOT execute in production.
-- **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS** (phase 6) — Both Dispatch Queue reads are unbounded live listeners shared across many surfaces → Consolidated decision package being prepared; both presented together.
-- **X-PART-MASTER-UNBOUNDED-READ** (phase 6) — fetchPartMasterList is unbounded and doubles as a name-resolution directory → Consolidated decision package being prepared; both presented together.
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
-- **X-TEXT-SEARCH-BACKEND** (phase 6) — No backend can execute TEXT_CONTAINS or TEXT_SEARCH → Choose how substring search is served, or change the product's search semantics.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-PART-MASTER-UNBOUNDED-READ | 6 | fetchPartMasterList is unbounded and doubles as a name-resolution directory | — | — | — | — | — | NOT_APPLICABLE | Consolidated decision package being prepared; both presented together. |
-| X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS | 6 | Both Dispatch Queue reads are unbounded live listeners shared across many surfaces | — | — | — | — | — | NOT_APPLICABLE | Consolidated decision package being prepared; both presented together. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
 
 ## READY
@@ -59,9 +52,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
-| X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
-| A-OPERATIONAL-NUMBERING | 6 | Server-authoritative TO/RO/RR numbering with inert backfill tooling | — | — | — | — | — | NOT_APPLICABLE | Build numbering + tests + legacy detection + dry-run backfill; do NOT execute in production. |
-| X-TEXT-SEARCH-BACKEND | 6 | No backend can execute TEXT_CONTAINS or TEXT_SEARCH | — | — | — | — | — | NOT_APPLICABLE | Choose how substring search is served, or change the product's search semantics. |
 
 ## MERGED
 
@@ -162,14 +152,18 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-LIST-TIMESTAMP-AND-NAVIGATION | 6 | Format TIMESTAMP cells and give related-list rows their declared navigation | — | — | #1204 | — | 6998306f | NOT_APPLICABLE | None. |
 | A-IDENTITY-MODES | 6 | Three identity modes: HUMAN_NAME, BUSINESS_REFERENCE, SYSTEM_ONLY | — | — | #1256 | — | 316bdb43 | NOT_APPLICABLE | None. |
 | A-TEXT-QUERY-SEMANTICS | 6 | Distinct text operators, and a declared operator that is not executable must fail loudly | — | — | #1257 | — | eb04007c | NOT_APPLICABLE | A backend must exist before TEXT_CONTAINS/TEXT_SEARCH can execute. |
+| A-OPERATIONAL-NUMBERING | 6 | Server-authoritative TO/RO/RR numbering with inert backfill tooling | — | — | #1259 | — | 4e4dbd3c | NOT_APPLICABLE | None. Reorder Request wiring is tracked separately. |
 | A-HELD-DEFINITIONS-IDENTITY | 6 | Four held definitions land with declared identity modes | — | — | #1258 | — | 00df6438 | NOT_APPLICABLE | None. |
 | A-OPERATIONAL-NUMBERING-IMPL | 6 | TO/RO/RR allocators, contention-tested, with fail-closed backfill tooling | — | — | #1259 | — | 4e4dbd3c | NOT_APPLICABLE | Production backfill remains a separate protected authorization. |
+| X-REGISTRY-COVERAGE-DRIFT | 6 | The registry tripwire silently narrowed from 24 definitions to 20 | — | — | #1261 | — | b7ec0c29 | NOT_APPLICABLE | None. |
 
 ## BLOCKED_PROTECTED
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-ADMIN-CRM-AUTHORITY | 0 | crm.activity.read via canonical admin authority | — | — | #1100 | — | — | NOT_APPLICABLE | Await Owner authorization; program proceeds around it |
+| X-PART-MASTER-UNBOUNDED-READ | 6 | fetchPartMasterList is unbounded and doubles as a name-resolution directory | — | — | — | — | — | NOT_APPLICABLE | Owner decision; consolidated package already prepared. |
+| X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS | 6 | Both Dispatch Queue reads are unbounded live listeners shared across many surfaces | — | — | — | — | — | NOT_APPLICABLE | Owner decision; consolidated package already prepared. |
 | X-STATUS-DATA-AUDIT | 6 | Account status persisted-data audit before production rollout | — | — | — | — | — | NOT_APPLICABLE | Audit production Account documents for title-case status values |
 | X-TRUCK-PROD-LIVE-RISK | 0 | URGENT: production may already expose truck write controls | — | — | — | — | — | UNKNOWN | Authorized operator verifies the live production bundle and the deployed callable set |
 | X-INVENTORY-ANALYTICS-AGGREGATE | 3 | Authoritative aggregation for netted inventory figures (server and client) | — | — | — | — | — | NOT_APPLICABLE | Owner decision on a governed per-part availability projection |
@@ -179,8 +173,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling merged and inert. Production execution awaits the established protected authorization. |
 | X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Blocked on a Rules change: equipmentWritableKeys/equipmentEditableKeys must admit createdBy/updatedBy before any client can write them. |
 | X-REORDER-REQUEST-NO-SERVER-CREATE | 6 | reorder_requests has no server-side create path, so RR numbers cannot be allocated | — | — | — | — | — | NOT_APPLICABLE | Owner decision: add a governed create callable, or change Rules to require one. |
+| X-TEXT-SEARCH-BACKEND | 6 | No backend can execute TEXT_CONTAINS or TEXT_SEARCH | — | — | — | — | — | NOT_APPLICABLE | Owner decision; consolidated package already prepared. |
 
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
+> **X-PART-MASTER-UNBOUNDED-READ** blocked — fetchPartMasterList is unbounded with no truncation disclosure AND doubles as a canonical name-resolution directory for ~10 surfaces. A cap breaks name resolution app-wide; no cap leaves an unbounded read. The consolidated decision package recommends splitting the directory role from the list role, and explicitly warns the LIST half must not be bounded until substring search is resolved, because three of those surfaces depend on full-catalog client-side substring matching today. · requires: Whether to split fetchPartMasterList into an id-scoped directory primitive and a bounded disclosed list read, and the ordering against X-TEXT-SEARCH-BACKEND. See docs/orchestration/metadata-program/shared-read-scoping-decisions.md.
+> **X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS** blocked — subscribeToWorkOrders and the generic useFirestoreCollection are unbounded live listeners shared by six surfaces, and the decision package establishes those six need DIFFERENT answers -- board-scope, an aggregate/board split, a paginated disclosed list, a date-window query, a generous-cap roster, and a direct getDoc for a lookup that never needed a collection read. One cap would be wrong for most of them. · requires: Per-consumer scope for the six Dispatch consumers, including whether Control Tower's aggregate counts are split from its board display. Bounding a shared aggregate factory would falsify totals, which the bounded-read rule forbids.
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
 > **X-TRUCK-PROD-LIVE-RISK** blocked — Truck write readiness is a COMPILE-TIME constant baked into a Hosting bundle. PR #1109 fails the repository declaration closed, but if a previously released production bundle carries the old true, production users may see enabled truck-management write controls right now. Only a Hosting release built from the corrected config changes what is live. Separately, whether the eight callables are actually deployed to taylor-parts is unverified in either direction. · requires: Owner authorizes a live production check of (a) the served bundle's readiness value and (b) the deployed Functions set, then decides whether a Hosting release is required
 > **X-INVENTORY-ANALYTICS-AGGREGATE** blocked — INVESTIGATED against ruling section 4's preference order; no unblocked option exists for the CROSS-PART case. (A) No materialized summary exists - repo-wide search found no per-part availability document or collection. (B) A server-side aggregate cannot express it: Firestore's getAggregateFromServer has no GROUP BY, so it can sum one part's ledger but cannot produce availability for all parts in one query. (C) An explicitly scoped complete query DOES exist and is already used - inventoryService.getAvailableQuantity() scans inventory_transactions where partId == X, which is provably complete FOR THAT PART. It does not generalize: N parts means N queries. (D) A new governed projection is therefore the only path for the dashboard, and that means schema plus trigger maintenance plus deployment. · requires: Owner authorizes a governed per-part availability projection (schema + maintenance + deploy), or accepts an explicitly scoped analytic surface instead of a whole-catalog dashboard
@@ -190,6 +187,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 > **X-SALES-ORDER-NUMBER-BACKFILL** blocked — Assigning business references to existing production Sales Orders mutates production data · requires: Owner authorization to execute the migration against production, after a dry run reports the affected record count and any collisions.
 > **X-EQUIPMENT-PROVENANCE-GAP** blocked — firestore.rules gates equipment writes with STRICT hasOnly() allowlists - equipmentWritableKeys (create) and equipmentEditableKeys (update) - and neither admits createdBy or updatedBy. Adding the fields client-side without a Rules change would make EVERY equipment create and update fail permission-denied, not silently drop the fields. · requires: Authorize a Tier-2 firestore.rules change adding createdBy to equipmentWritableKeys and updatedBy to equipmentEditableKeys, plus the Rules deploy that makes it effective. Rules deployment is a protected action; the repo change and the deploy are separate gates.
 > **X-REORDER-REQUEST-NO-SERVER-CREATE** blocked — The client writes reorder_requests documents DIRECTLY, gated only by firestore.rules -- there is no Cloud Function create path. A business reference must be server-authoritative, so RR-YYYY-###### cannot be allocated at creation today. The allocator is built and tested to the same standard as the other two and is deliberately UNWIRED rather than half-wired to look finished. · requires: Whether to introduce a governed server-side create path for reorder requests, or to change firestore.rules to require one. A Rules change is always a protected Tier-2 action, and the lane correctly did not touch firestore.rules.
+> **X-TEXT-SEARCH-BACKEND** blocked — The query contract can now EXPRESS substring search and correctly refuses to execute it. No backend can serve TEXT_CONTAINS or TEXT_SEARCH truthfully. Firestore prefix/range behaviour is not equivalent to substring CONTAINS, so this cannot be closed by engineering within the current stack. · requires: How substring search is served: an external/governed search index, an accepted narrowing of the product's search semantics, or leaving affected surfaces unmigrated. The ruling explicitly forbids selecting a paid vendor merely to clear this gate, and forbids faking it by filtering one bounded client page.
 
 ## BLOCKED_DEPENDENCY
 
@@ -263,6 +261,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
 | X-FIELD-TYPE-RENDERER-AUDIT | 6 | Audit of every declared FIELD_TYPE against cellValue's branches | — | — | — | — | — | NOT_APPLICABLE | None. Findings split into the three entries below. |
+| X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | #1261 | — | b7ec0c29 | NOT_APPLICABLE | None until a definition declares an action id; the tripwire will catch it. |
 | X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- seven instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
 | X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
 | X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
