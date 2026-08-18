@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 52 | 42 | 10 |
+| 53 | 42 | 11 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,7 +38,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **A-LIST-TIMESTAMP-AND-NAVIGATION** (phase 6) — Format TIMESTAMP cells and give related-list rows their declared navigation → Verify handoff against dispatch base before acceptance.
 - **X-RELATED-LIST-ACTIONS** (phase 6) — MetadataListGrid has no row actions or focus handoff → Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections
 - **X-SECTION-CAPABILITY-GRANULARITY** (phase 6) — A section capability cannot express a partially-gated composition → Either finer-grained section capabilities, or split the composed section in two
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
@@ -48,7 +47,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| A-LIST-TIMESTAMP-AND-NAVIGATION | 6 | Format TIMESTAMP cells and give related-list rows their declared navigation | — | — | — | — | — | NOT_APPLICABLE | Verify handoff against dispatch base before acceptance. |
 
 ## READY
 
@@ -116,6 +114,13 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-TRANSFER-MANUFACTURER-DEFINITIONS | 6 | Transfer Order + Manufacturer definitions (leaf lane) | — | — | #1196 | — | ed448c75 | NOT_APPLICABLE | Manufacturer merged. Transfer Order held on X-TRANSFER-ORDER-NO-REFERENCE. |
 | X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | #1198 | — | f42491de | NOT_APPLICABLE | No section newly wired. Three prerequisites identified and recorded. |
 | A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | #1200 | — | 6c6480d8 | NOT_APPLICABLE | Merged. Opportunities and Sales Orders are now wirable; that lane is dispatched. |
+| X-OPPORTUNITY-STALE-ROUTE | 6 | opportunity.js declared a rowNavigationTo route that never existed | — | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | Restore a rowNavigationTo only when a real per-Opportunity route exists. |
+| A-ENTITY-BILLING-DEFINITIONS | 6 | Invoice and Payment entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
+| A-ENTITY-FLEET-CATALOG-DEFINITIONS | 6 | Truck and EquipmentModel entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
+| A-ACCOUNT-WIRE-CALLABLE-LISTS-2 | 6 | Opportunities and Sales Orders wired through metadata | /customers/:accountId | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | None. |
+| X-LIST-TIMESTAMP-FORMATTING | 6 | cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number | — | — | #1204 | — | 6998306f | NOT_APPLICABLE | None. |
+| X-LIST-ROW-NAVIGATION | 6 | rowNavigationTo is declared by every list definition and consumed by nothing | — | — | #1204 | — | 6998306f | NOT_APPLICABLE | None. |
+| A-LIST-TIMESTAMP-AND-NAVIGATION | 6 | Format TIMESTAMP cells and give related-list rows their declared navigation | — | — | #1204 | — | 6998306f | NOT_APPLICABLE | None. |
 
 ## BLOCKED_PROTECTED
 
@@ -179,8 +184,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
 | A-BULK-DATA-V1 | 7 | Bulk Data Architecture v1 (import + export) | — | — | — | — | — | NOT_APPLICABLE | Design after the query model - an export IS a governed query with a different sink |
 | A-ADMIN-METADATA-CONFIG | 7 | Admin metadata configuration / page designer | — | — | — | — | — | NOT_APPLICABLE | Design after entities are defined - there is nothing to configure until there is metadata to configure |
-| X-LIST-TIMESTAMP-FORMATTING | 6 | cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number | — | — | — | — | — | NOT_APPLICABLE | Reuse the existing display formatter; do not author a second date vocabulary. |
-| X-LIST-ROW-NAVIGATION | 6 | rowNavigationTo is declared by every list definition and consumed by nothing | — | — | — | — | — | NOT_APPLICABLE | Wire DefaultRelatedList to build onRowClick from rowNavigationTo; absent means no handler. |
 
 ## EXEMPT
 
@@ -217,6 +220,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
 | X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
+| X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
 
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
 

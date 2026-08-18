@@ -2256,21 +2256,105 @@
       "pr": 1202
     },
     {
+      "id": "X-MAIN-RED-UNREBASED-MERGE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "origin/main went red: #1204 merged without rebasing onto #1202",
+      "domain": "orchestration",
+      "status": "COMPLETE",
+      "pr": 1205,
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None. Recorded as an integration-practice finding.",
+      "notes": "MY error as integration lane, not a lane's. #1204 was based on 160587b7, which predates #1202 (d2b69427) and therefore predates accountPageComponents.test.jsx. Both PRs were green on their own bases and semantically incompatible once combined -- git had no textual conflict to report. #1204 made DefaultRelatedList call useNavigate() unconditionally, so every render reaching it needs Router context; the lane REPORTED exactly this and wrapped the renders it could see, but could not see a file that did not exist on its base. Two of the four failures were #1202's BLOCKER tests asserting the defects still existed -- #1204 fixed them, so they inverted rather than got wrapped, which is precisely what those tests were for. LESSON: a leaf handoff verified against ITS OWN base is not sufficient; the integration lane must re-run the suite on a base containing every PR being combined. Recorded so the practice changes, not just the file."
+    },
+    {
+      "id": "X-OPPORTUNITY-STALE-ROUTE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "opportunity.js declared a rowNavigationTo route that never existed",
+      "domain": "crm",
+      "entity": "Opportunity",
+      "status": "MERGED",
+      "pr": 1207,
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Restore a rowNavigationTo only when a real per-Opportunity route exists.",
+      "notes": "opportunity.js declared rowNavigationTo '/sales/opportunities/:id' on both its index and related lists. No such route has ever existed in App.jsx -- the only Opportunity route is the workspace at /customers/opportunities, which takes no :id. It survived only because nothing consumed rowNavigationTo; the moment A-LIST-TIMESTAMP-AND-NAVIGATION made the runtime read it, every Opportunity row would have linked to a 404. This is the direct cost of a declaration with no consumer: it is never wrong until it suddenly is. The wiring lane correctly stripped it within its own scope and reported the file as REGISTRATION_PENDING; at integration the declaration was REMOVED from opportunity.js and the workaround dropped, because a consumer defending against a bad declaration leaves it in place for the next consumer. Pinned at the definition so the truth is inherited rather than re-litigated.",
+      "mergeSha": "1d50d875"
+    },
+    {
+      "id": "A-ENTITY-BILLING-DEFINITIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Invoice and Payment entity definitions",
+      "domain": "finance",
+      "status": "MERGED",
+      "pr": 1206,
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "Invoice has a real server-allocated reference (INV-######, allocated in-transaction, immutable). Payment has NONE -- no paymentNumber, no PAY- family, no allocator anywhere -- and none was invented. Payment's readVia is UNKNOWN and honestly so: no read callable exists, active or inactive, and no payment-read capability exists in either catalog, so no list view was declared at all. Neither entity carries createdBy/updatedBy; actor identity lives only in the separate audit event. Payment's missing updatedAt is a structural fact rather than a gap -- its only writer never updates. Zero index demands, and both sources registered anyway.",
+      "mergeSha": "653973cb"
+    },
+    {
+      "id": "A-ENTITY-FLEET-CATALOG-DEFINITIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Truck and EquipmentModel entity definitions",
+      "domain": "operations",
+      "status": "MERGED",
+      "pr": 1206,
+      "governing": [
+        "DECISIONS #106",
+        "ADR-010"
+      ],
+      "nextAction": "None.",
+      "notes": "Truck was the closest call in the program so far on the reference question: vehicleNumber is required, operator-supplied and human-meaningful, but is free text at create with NO uniqueness enforcement anywhere in the registry commands, validation or repository, which check only the doc id and locationId. Declared as a plain field with referenceField omitted -- something that looks like a reference and is not is worse than nothing, because everything downstream trusts it. EquipmentModel's modelNumber is unique only in combination with manufacturerId, so it is not the reference either. ADR-010 respected: no custody or location fields on Truck, since mobile_locations is the real MOBILE inventory location. Six composites declared, pending deploy.",
+      "mergeSha": "653973cb"
+    },
+    {
+      "id": "A-ACCOUNT-WIRE-CALLABLE-LISTS-2",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Opportunities and Sales Orders wired through metadata",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "MERGED",
+      "pr": 1207,
+      "governing": [
+        "DECISIONS #102 section 6",
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "The second attempt at the two sections the first correctly declined. Both sections now render through MetadataRecordPage in accountPage.js's declared order; AccountDetail.jsx no longer mounts the hand-written sections. All six required verifications carry an assertion rather than a claim, including that reference numbers reach the DOM while document ids do not, that a click reaches the real SalesOrderDetail route, and that a denied section is absent rather than reading as 'there are none'. The date assertion compares against formatTimestamp's own output rather than a literal, because a hardcoded formatted string passes in one timezone and fails in another. Four sections remain hand-rendered with their own recorded blockers; none was claimed newly unblocked.",
+      "mergeSha": "1d50d875"
+    },
+    {
       "id": "X-LIST-TIMESTAMP-FORMATTING",
       "phase": "6",
       "wave": "3",
       "kind": "ARCHITECTURE",
       "title": "cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number",
       "domain": "metadata",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-TIMESTAMP-AND-NAVIGATION"
-      ],
+      "status": "MERGED",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Reuse the existing display formatter; do not author a second date vocabulary.",
-      "notes": "listPresentation.js resolves ENUM and ENUM_SET through their label maps but has no TIMESTAMP or DATE branch anywhere in the repo, so a declared TIMESTAMP column renders the stored value directly. That is a machine value reaching a user -- the same class of defect enum resolution exists to prevent, one type over. Complicated by non-uniform storage: some entities store Firestore Timestamps, some epoch-millisecond numbers, and Opportunity does both across two fields of the same record."
+      "nextAction": "None.",
+      "notes": "listPresentation.js resolves ENUM and ENUM_SET through their label maps but has no TIMESTAMP or DATE branch anywhere in the repo, so a declared TIMESTAMP column renders the stored value directly. That is a machine value reaching a user -- the same class of defect enum resolution exists to prevent, one type over. Complicated by non-uniform storage: some entities store Firestore Timestamps, some epoch-millisecond numbers, and Opportunity does both across two fields of the same record.",
+      "pr": 1204,
+      "mergeSha": "6998306f"
     },
     {
       "id": "X-LIST-ROW-NAVIGATION",
@@ -2279,15 +2363,14 @@
       "kind": "ARCHITECTURE",
       "title": "rowNavigationTo is declared by every list definition and consumed by nothing",
       "domain": "metadata",
-      "status": "BLOCKED_DEPENDENCY",
-      "dependsOn": [
-        "A-LIST-TIMESTAMP-AND-NAVIGATION"
-      ],
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Wire DefaultRelatedList to build onRowClick from rowNavigationTo; absent means no handler.",
-      "notes": "makeListViewDefinition accepts rowNavigationTo as a route template and nothing in src/ reads it -- confirmed by repo-wide search, the sole hit is its own declaration. DefaultRelatedList passes MetadataListGrid no onRowClick, so metadata-rendered rows are inert. Wiring Sales Orders would therefore have discarded a real, currently-working per-order route. This is the same shape of problem as the readVia gap: metadata declaring something the runtime silently ignores. The document id must remain a ROUTING key -- it may reach a URL, never a cell."
+      "nextAction": "None.",
+      "notes": "makeListViewDefinition accepts rowNavigationTo as a route template and nothing in src/ reads it -- confirmed by repo-wide search, the sole hit is its own declaration. DefaultRelatedList passes MetadataListGrid no onRowClick, so metadata-rendered rows are inert. Wiring Sales Orders would therefore have discarded a real, currently-working per-order route. This is the same shape of problem as the readVia gap: metadata declaring something the runtime silently ignores. The document id must remain a ROUTING key -- it may reach a URL, never a cell.",
+      "pr": 1204,
+      "mergeSha": "6998306f"
     },
     {
       "id": "A-LIST-TIMESTAMP-AND-NAVIGATION",
@@ -2296,14 +2379,16 @@
       "kind": "ARCHITECTURE",
       "title": "Format TIMESTAMP cells and give related-list rows their declared navigation",
       "domain": "metadata",
-      "status": "IMPLEMENTING",
+      "status": "MERGED",
       "branch": "feat/list-timestamp-navigation",
       "governing": [
         "DECISIONS #106",
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Verify handoff against dispatch base before acceptance.",
-      "notes": "Closes both blockers found by X-ACCOUNT-WIRE-CALLABLE-LISTS. Instructed to REUSE the existing display formatter found in src/domain rather than author a second one, to report disagreeing formatters instead of silently choosing, and to render nothing for an uninterpretable timestamp rather than a raw number. writeScope is renderer + tests only; no definition, no shared registration resource."
+      "nextAction": "None.",
+      "notes": "Closes both blockers found by X-ACCOUNT-WIRE-CALLABLE-LISTS. Instructed to REUSE the existing display formatter found in src/domain rather than author a second one, to report disagreeing formatters instead of silently choosing, and to render nothing for an uninterpretable timestamp rather than a raw number. writeScope is renderer + tests only; no definition, no shared registration resource. MERGED at 6998306f. Reused formatTimestamp (src/domain/displayTimestamp.js) rather than authoring a second date vocabulary, and reported a second overlapping formatter (accountPortfolio.js formatLastUpdate, weaker edge-case handling, relative rather than absolute) instead of silently choosing. At integration I guarded navigate() against buildRowHref's documented null return and moved buildRowHref out of the component module into listPresentation.js, where exporting it no longer breaks fast refresh.",
+      "pr": 1204,
+      "mergeSha": "6998306f"
     }
   ]
 }
