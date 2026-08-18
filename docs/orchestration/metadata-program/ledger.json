@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main ef712328 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 3bfc30df -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -894,10 +894,55 @@
       "entity": "Part",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-GRID"
+        "X-QUERY-MODEL-NO-FREE-TEXT"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history)."
+      "nextAction": "Blocked on free-text search in the query model; also likely misclassified as a list.",
+      "notes": "partMasterQueries.js:15 reads the whole parts collection. Ironically this surface also hosts the best cursor-pagination prior art in the repo (reorder request history). ATTEMPTED and DECLINED at 3bfc30df. Three independent reasons; the decisive one is architectural and generalises -- see X-QUERY-MODEL-NO-FREE-TEXT. Also: the page's own composition enforces a full-accounting invariant reconciling the canonical Part collection against the static compatibility catalog, never silently dropping or duplicating a Part on identity ambiguity -- logic with no equivalent in the generic list runtime, which puts this closer to the Transfers 'lifecycle composite' reclassification than to Warehouses/Suppliers despite its A_ENTITY_LIST classification. And the row data already flowing is flattened by domain/partsCatalogView.js to {sku,name,category,warehouseQty,identityState}, dropping four of the six columns partIndexList declares -- the gap is in the consuming composition layer, not in part.js.",
+      "pr": 1241,
+      "mergeSha": "3bfc30df"
+    },
+    {
+      "id": "X-QUERY-MODEL-NO-FREE-TEXT",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "The query model has no free-text operator, so no substring-search surface can migrate",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Decide how the metadata query model answers free text, or record that it never will.",
+      "notes": "listViewDefinition.js's filter contract supports EQUALS, IN, ARRAY_CONTAINS and ARRAY_CONTAINS_ANY. There is no free-text operator anywhere in the model. The Parts search provider does TRUE SUBSTRING matching over the catalog, so migrating that surface would either silently narrow what a query matches or require a second full-catalog read purely to keep search whole. This generalises well beyond Parts: ANY surface whose search is substring cannot migrate until the query model has an answer. Note the honest constraint underneath -- Firestore supports prefix-range search, not substring, so the answer is not simply 'add a CONTAINS operator': a client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. That is a product decision as much as a technical one."
+    },
+    {
+      "id": "X-PARTID-IDENTITY-CONFLICT",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "part.js and the production join evidence disagree on which field is the Part's reference",
+      "domain": "inventory",
+      "entity": "Part",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Reconcile with the existing part-number supersession issue; do not decide independently.",
+      "notes": "Two lanes reported opposite conclusions in the same wave: the Transfers lane called partId 'the Part's SKU business identifier, not a document id', the Purchase Orders lane called raw partId an id-as-content gap. I had recorded the first uncritically, which was my error -- a handoff is a claim. part.js declares partId as type ID, 'The Firestore document id', with internalPartNumber as the separate referenceField. The merged INV-CONVERGENCE production evidence records partId == operational TST-#### SKU for all 190 production parts and states plainly that internalPartNumber is 'not exposed in source (not the operational key)'. So the definition and the production record disagree about which field is the business reference, and the answer determines whether displaying partId is legitimate or a DECISIONS #106 violation. This interacts with the already-recorded issue that part numbers change when the manufacturer changes for the same part, whose own note says to reconcile it against the partId==SKU join key rather than decide independently. NOT adjudicated here."
+    },
+    {
+      "id": "X-SURFACE-CLASSIFICATION-COMPOSITES",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Several surfaces classified A_ENTITY_LIST are actually lifecycle composites",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Reclassify the composites so the burn-down stops attempting them as lists.",
+      "notes": "Three consecutive migrations declined for the same underlying reason rather than three different ones: Transfers owns four governed write actions, Purchase Orders is a request-driven join whose status lives on the OTHER collection, and Parts enforces a cross-catalog full-accounting invariant. All three are currently classified as entity lists. The Phase 0 classification was made before the list runtime existed, so it recorded what a surface LOOKS like rather than what its read actually is. Reclassifying is cheaper than discovering it one lane at a time -- and the pattern to test for is specific: does the surface's authoritative state live in the collection the list would read? For all three the answer is no."
     },
     {
       "id": "S-INV-PART-DETAIL",
@@ -1199,10 +1244,12 @@
       "entity": "PurchaseOrder",
       "status": "BLOCKED_DEPENDENCY",
       "dependsOn": [
-        "A-LIST-GRID"
+        "X-SURFACE-CLASSIFICATION-COMPOSITES"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text."
+      "nextAction": "Reclassify: this is a request-driven join, not an entity list.",
+      "notes": "Already bounded - a clean consumer needing no read remediation. Renders the raw partId as link text. ATTEMPTED and DECLINED at 3bfc30df. Same collection on both sides -- no dataset swap -- but the READ SHAPE diverges: the metadata list would scan reorder_purchase_orders directly, while the real surface is driven by reorder_requests filtered to ORDERED/RECEIVED/VOIDED and JOINED to the PO documents. Two consequences make a list migration actively wrong: (1) a PO document's status has exactly ONE legal value, 'ORDERED', and never changes -- VOIDED and RECEIVED live only on the linked request -- so a metadata list reading the declared status column would render 'Ordered' on every row forever, including voided and received ones; (2) ORPHAN rows (an ORDERED request whose PO document cannot be read) have no PO document at all, so a list driven off that collection could never produce them and the needs-attention integrity state would silently vanish.",
+      "pr": 1241,
+      "mergeSha": "3bfc30df"
     },
     {
       "id": "S-COM-RECEIPTS",
