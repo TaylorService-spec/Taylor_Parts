@@ -803,3 +803,271 @@ Functions: **DEPLOYED** at the promotion SHA — `listSalesOrderIndex` healthy.
 Hosting: **untouched**, still `cd442727`.
 Indexes: 38 live, unchanged. Rules: untouched. Activation overrides: 27, unchanged.
 No live index deleted. No seed executed. No rollback required or performed.
+
+---
+
+# X-SALES-ORDER-NUMBER-BACKFILL — sandbox execution package (PREPARED, NOT EXECUTED)
+
+**Prepared 2026-08-18. Read-only. No sandbox data or configuration was mutated. Nothing deployed.**
+Tranche 3 remains blocked.
+
+## 1. Authority and tooling
+
+| | |
+|---|---|
+| Ledger entry | `X-SALES-ORDER-NUMBER-BACKFILL` — BLOCKED_PROTECTED |
+| Runbook | `docs/operations/sales-order-number-backfill-runbook.md` |
+| CLI | `functions/scripts/salesOrderNumberBackfillCli.js` |
+| Core | `functions/src/salesOrder/salesOrderNumberBackfill.ts` |
+| Evidence | `functions/src/salesOrder/salesOrderNumberBackfillEvidence.ts` |
+
+**Inertness verified from code.** The CLI acts only under `require.main === module`, and
+`firebase-admin` is required lazily inside the production-deps closure — importing the file
+performs no Firestore I/O.
+
+**Dry-run performs zero Firestore writes — verified before invoking.** `runDryRun` calls only
+`readAllSalesOrders` and `readAllCounters`, then writes local evidence files. The only `txn.set` /
+`txn.update` calls live inside `runExecuteTxn`, reachable solely through `runExecute`, which
+requires `--execute`.
+
+### Guard chain (as built)
+
+`--project` and `--confirm-project` must match exactly · `--execute` additionally requires
+`--acknowledge-production-write`, `--plan`, and `--plan-sha256` matching the exact bytes of a prior
+dry-run plan · execute re-reads counters and every record inside **one** transaction, aborting on
+counter drift, missing records, or a changed pre-state fingerprint · any collision or blocked entry
+in the plan means **zero writes**.
+
+### Defect: no environment allowlist — Owner decision required
+
+The tool has **no explicit sandbox allowlist and no explicit production rejection.** It will accept
+`--project taylor-parts` provided `--confirm-project taylor-parts` matches and the execute flags are
+supplied. That is coherent with its original purpose — it was built as the *production* backfill
+tool, hence `--acknowledge-production-write` — but it does **not** satisfy this task's stated
+safety contract:
+
+- *"fails closed unless the project is exactly `eos-platform-sandbox`"* — **not implemented**
+- *"`taylor-parts` must be rejected explicitly"* — **not implemented**
+
+**Not repaired here.** Modifying the tooling during preparation would both violate the instruction
+and produce a new promotion identity. Correction plan, for a separate reviewed PR:
+
+1. Add an explicit target allowlist resolved from `config/environments.json` by `role`, refusing any
+   project whose role is not `sandbox` unless a distinct production-authorization flag naming that
+   exact project id is supplied — the pattern `backfillOperationalNumbering.mjs` already uses.
+2. Refuse **before** any Firestore connection, as that sibling does.
+3. Add a test asserting `taylor-parts` is rejected with no network call.
+
+Until that lands, **project targeting is enforced by the operator's command, not by the tool.** The
+commands below are written accordingly and must not be varied.
+
+## 2. Sandbox inventory (read-only)
+
+Two independent sources agree.
+
+| Source | Result |
+|---|---|
+| CLI dry run — full `sales_orders` collection scan | **14 documents** |
+| `listSalesOrdersForAccount` (`acct-harbor`) | **14** |
+| `listSalesOrderIndex` (ordered, unscoped) | **0** |
+
+| Condition | Count |
+|---|---|
+| Total Sales Orders | **14** |
+| Valid `salesOrderNumber` | **0** |
+| Field present but null | **0** |
+| **Field absent entirely** | **14** |
+| Duplicate existing numbers | 0 |
+| Invalidly formatted numbers | 0 |
+
+**The affected population is exactly 14.** No discrepancy.
+
+**A correction to the brief's premise, established by direct REST reads.** The task states the 14
+documents have `salesOrderNumber: null`. They do not — **the field is absent.** Sampled documents
+carry 15–16 fields with no `salesOrderNumber` key at all; the `null` seen through
+`listSalesOrdersForAccount` is a **projection artifact** of that read, not stored state.
+
+This is not pedantry: it decides the rollback contract. Restoring `null` would leave the documents
+in a state they have never been in. Correct rollback is **field deletion**.
+
+It also confirms the mechanism behind the empty index read — Firestore `orderBy` excludes documents
+missing the ordered field, and here the field is missing rather than null.
+
+Counter state: **no `sales_orders_2026` counter document exists** (`sequenceBefore: 0`), consistent
+with no Sales Order ever having been numbered in this project.
+
+## 3. Proposed assignment manifest
+
+Produced by the dry run. **Plan hash `e7a7058182abaaba1e72d8cfdea9b8be50cb02c6e0aa90698f73495273107ea3`.**
+
+Counts: total 14 · alreadyNumbered 0 · toAssign 14 · collisions 0 · blocked 0.
+Counter snapshot: year 2026, `sequenceBefore: 0`. Year policy: `CREATED_AT` for **all 14** — every
+record carries a genuine `createdAt` Timestamp, so no record falls to the `SO-0000-######` sentinel.
+
+| # | Document ID | Current | Proposed | Basis | Collision | Action |
+|---|---|---|---|---|---|---|
+| 1 | `GJEuh1ImKCe7G2kvNtCy` | *(absent)* | `SO-2026-000001` | CREATED_AT, seq 1 | none | ASSIGN |
+| 2 | `INqO9CaHMdQMp2g030yf` | *(absent)* | `SO-2026-000002` | CREATED_AT, seq 2 | none | ASSIGN |
+| 3 | `OAWJJ7fE3fKrrbub01aD` | *(absent)* | `SO-2026-000003` | CREATED_AT, seq 3 | none | ASSIGN |
+| 4 | `cIk3hlPDTXH5IB3VHdLy` | *(absent)* | `SO-2026-000004` | CREATED_AT, seq 4 | none | ASSIGN |
+| 5 | `NNC1iU4DPoxJ26c35E2T` | *(absent)* | `SO-2026-000005` | CREATED_AT, seq 5 | none | ASSIGN |
+| 6 | `V4otE0s7EAp7ABCZEjam` | *(absent)* | `SO-2026-000006` | CREATED_AT, seq 6 | none | ASSIGN |
+| 7 | `qrlfHGG8x8nGMTmot9pZ` | *(absent)* | `SO-2026-000007` | CREATED_AT, seq 7 | none | ASSIGN |
+| 8 | `up3SPzmTtIZ98kCkqInI` | *(absent)* | `SO-2026-000008` | CREATED_AT, seq 8 | none | ASSIGN |
+| 9 | `eUZ7CCDAiL5BdPtgrwa4` | *(absent)* | `SO-2026-000009` | CREATED_AT, seq 9 | none | ASSIGN |
+| 10 | `EG6Mir8wXt33IUJcASMr` | *(absent)* | `SO-2026-000010` | CREATED_AT, seq 10 | none | ASSIGN |
+| 11 | `8ax2cA1DyCx8CC2hxTky` | *(absent)* | `SO-2026-000011` | CREATED_AT, seq 11 | none | ASSIGN |
+| 12 | `tCXSzCiNmn6N4kqlTfVo` | *(absent)* | `SO-2026-000012` | CREATED_AT, seq 12 | none | ASSIGN |
+| 13 | `yBimvZe72foVbX8gwrb9` | *(absent)* | `SO-2026-000013` | CREATED_AT, seq 13 | none | ASSIGN |
+| 14 | `woLlxBdWk81BW6bg8zkY` | *(absent)* | `SO-2026-000014` | CREATED_AT, seq 14 | none | ASSIGN |
+
+All 14 proposed values are unique. No existing number is reused or overwritten — there are none.
+
+### Numbering contract — evidence, not invention
+
+`SO-YYYY-######` is the established Sales Order family, already implemented by the live allocator
+and matching `WO-`/`OPP-`/`INV-`/`TO-`/`RO-`/`RR-`. Ordering is the tool's documented deterministic
+key: **(year, `createdAt` millis, document id)**, with document id as the final tiebreak so ordering
+is never arbitrary between runs. Where `createdAt` is a genuine Timestamp its UTC year is
+authoritative; where it is not, the tool assigns the sentinel year `0` rather than inventing a
+chronology. **No such record exists here**, so the sentinel path is not exercised.
+
+## 4. Safety evidence
+
+**Determinism — proven, not asserted.** Two independent dry runs produced **byte-identical plan
+hashes** (`e7a70581…`) and identical assignments. `generatedAt` differs between runs and is
+excluded from the hash, which is what makes the hash a usable execution binding.
+
+**Idempotency.** `classifyRecord` routes any record with a non-blank `salesOrderNumber` to
+`ALREADY_NUMBERED`, which is skipped and **never renumbered**. After a successful execute, a fresh
+dry run classifies all 14 as already-numbered and plans zero assignments. An unchanged unnumbered
+record yields the same proposed number on every run, by the deterministic key above.
+
+**Collision prevention.** Existing numbers are reserved at planning; a candidate duplicating one
+becomes a `CollisionEntry`, and every later record in that year becomes `YEAR_BLOCKED_BY_EARLIER_COLLISION`.
+`executeBackfill` refuses outright if the plan carries **any** collision or blocked entry —
+**zero writes**, not partial application.
+
+**Concurrency.** Execute re-reads inside one transaction and fails closed on: counter drift for any
+touched year, any planned record that cannot be re-read, or any record whose pre-state fingerprint
+changed. A Sales Order created through the normal path between plan and execute advances the 2026
+counter and **aborts the run** rather than silently reordering sequences.
+
+**Partial failure.** There is none by construction — the whole batch commits in a single Firestore
+transaction, all-or-nothing. Evidence is published atomically only after a passing post-write
+verification, so a failed run leaves **no** report directory.
+
+**Scope.** Only `salesOrderNumber` is written on each document, plus the `counters/sales_orders_2026`
+sequence. The document id is never rewritten and no relationship field is read or touched.
+
+**Batch limit.** 14 records is far inside Firestore's 500-write transaction bound. The tool does not
+chunk, which is irrelevant at this size.
+
+## 5. Snapshot and rollback design (design only — nothing written)
+
+The tool **has no rollback mode**, and the runbook has no rollback section. This is the one genuine
+gap in an otherwise complete package. The plan's `fingerprint` is a hash — it can *prove* pre-state
+was unchanged but cannot *restore* it.
+
+For this population that is recoverable, because the pre-state is uniform and now established:
+**the field is absent on all 14.**
+
+**Pre-execution snapshot format** (capture before execute; one row per target):
+
+    { salesOrderId, fieldPresent: false, originalValue: null, updateTime: "<Firestore updateTime>" }
+
+`updateTime` is the precondition token — Firestore supports a document-level update precondition,
+so a rollback can refuse any document modified after the backfill.
+
+**Execution evidence** is already produced by the tool: attempted, assigned, skipped, and the exact
+value per document, published atomically.
+
+**Rollback procedure:**
+
+1. For each row, re-read the document and compare `updateTime` against the post-backfill evidence.
+2. If it differs, **refuse that document** — a legitimate later change exists and must not be lost.
+3. Otherwise **delete the `salesOrderNumber` field** (`FieldValue.delete()`) — not set it to null.
+4. Reset `counters/sales_orders_2026` to its captured `sequenceBefore` of **0** — but only if no
+   Sales Order has been numbered by the normal creation path since; otherwise leave the counter
+   advanced and record why, because rewinding a live counter would risk reissuing numbers.
+5. Emit a rollback audit record of its own.
+
+**Restoration semantics by category:** all 14 fall in one category — *field previously absent* →
+rollback **deletes the field**. No document requires restoring a prior value, and **none should be
+set to null**, since null was never the stored state.
+
+## 6. Commands
+
+**Dry run — already executed twice, read-only, zero Firestore writes:**
+
+    node scripts/salesOrderNumberBackfillCli.js \
+      --project eos-platform-sandbox \
+      --confirm-project eos-platform-sandbox \
+      --commit b237f652da490ac8880393c15bc6e17bdd6f9324 \
+      --evidence-dir <fresh-dir> \
+      --operator <operator-id>
+
+Run from `functions/`.
+
+**Execution — NOT RUN, requires separate authorization:**
+
+    node scripts/salesOrderNumberBackfillCli.js \
+      --project eos-platform-sandbox \
+      --confirm-project eos-platform-sandbox \
+      --commit b237f652da490ac8880393c15bc6e17bdd6f9324 \
+      --evidence-dir <fresh-dir> \
+      --operator <operator-id> \
+      --execute \
+      --acknowledge-production-write \
+      --plan <path-to-reviewed-plan.json> \
+      --plan-sha256 e7a7058182abaaba1e72d8cfdea9b8be50cb02c6e0aa90698f73495273107ea3
+
+Both commands name the project explicitly and twice. No shell variable, no `.firebaserc` default —
+which matters more than usual here, because `.firebaserc` declares `"default": "taylor-parts"`
+(production) and, per §1, **the tool does not reject production on its own.**
+
+`--acknowledge-production-write` is the tool's generic mutation acknowledgement; its name reflects
+the tool's original production purpose and does **not** mean this run targets production.
+
+**Expected writes:** exactly **15 document writes** in one transaction — 14 `salesOrders`
+documents each receiving one new `salesOrderNumber` field, plus `counters/sales_orders_2026`
+created with `sequence: 14`. No other field, document, or collection is touched.
+
+## 7. Post-execution verification matrix
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | All 14 have valid non-null `salesOrderNumber` | `SO-2026-000001`…`000014` |
+| 2 | No duplicates | 14 unique |
+| 3 | No non-target field changed | only `salesOrderNumber` + the counter |
+| 4 | `listSalesOrderIndex` unfiltered | **14 rows — not 0** |
+| 5 | `CONFIRMED` filter | correct subset |
+| 6 | `CLOSED` filter | correct subset |
+| 7 | Descending order **with real data** | strictly descending by number |
+| 8 | Pagination | no omissions, no duplicates across pages |
+| 9 | Cursor transitions | stable, terminating |
+| 10 | Empty-result filter | still honest |
+| 11 | Over-limit | **400** |
+| 12 | Unauthenticated | **401** |
+| 13 | Technician | **403** |
+| 14 | Authorized admin | **200** |
+| 15 | `listSalesOrdersForAccount` | still 14, consistent |
+| 16 | `getAccountPortfolioSummary` | correct |
+| 17 | Core inventory smoke | passes |
+| 18 | Governed-ledger allocation smoke | passes |
+| 19 | Audit evidence | accounts for all 14 attempted |
+| 20 | `/version.json` | still `cd442727` — Hosting not part of this |
+
+Checks 7–9 are the ones that **cannot be satisfied today**: with zero visible rows, ordering and
+pagination are currently proven only by the emulator suite. They become real evidence only after
+this backfill.
+
+**Tranche 3 stays blocked** until check 4 returns the complete population and 7–9 are verified
+against real sandbox rows.
+
+## 8. Confirmation
+
+No sandbox data or configuration was mutated. No deploy, seed, rollback, or snapshot write was
+performed. The three live orphan indexes were not deleted. Production was not touched. Tranche 3 is
+not authorized. Two dry runs and read-only REST/callable reads are the entirety of the sandbox
+interaction.
