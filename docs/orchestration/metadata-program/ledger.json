@@ -2327,12 +2327,28 @@
       "kind": "ARCHITECTURE",
       "title": "CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER",
       "domain": "metadata",
+      "status": "MERGED",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "Two mechanical defects, both currently latent. (1) invoice.totalMinor and invoice.outstandingMinor are CURRENCY_MINOR -- integer minor units by contract -- and cellValue returns them raw, so a $125.00 invoice would display as 12500. Money wrong by a factor of one hundred is not a formatting nicety. (2) invoice.dueDate is declared NUMBER and its own description says 'Ms epoch, carried at issuance' -- so a due date would render as 1755993600000. formatTimestamp already coerces epoch millis, so the honest fix is the declared type, not a special case: the field IS a date and says so in prose while claiming to be a number. RESOLVED. CURRENCY_MINOR now formats through formatMinor (domain/accountArView.js), already the consumed formatter for outstandingMinor on the Account AR panel, with currency read from the row's own currency field per the sibling-field contract rather than a hardcoded symbol. Zero renders 0.00 and absent renders nothing -- a zero balance and an unknown balance are different claims. dueDate retyped NUMBER->DATE, with requiredIndexes() re-run to confirm the demand set stays empty (no declared filter, not in default sort).",
+      "pr": 1219,
+      "mergeSha": "a0b2f570"
+    },
+    {
+      "id": "X-MONEY-FORMATTER-DISAGREEMENT",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Two money formatters disagree on non-2-exponent currencies",
+      "domain": "finance",
       "status": "READY",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE.",
-      "notes": "Two mechanical defects, both currently latent. (1) invoice.totalMinor and invoice.outstandingMinor are CURRENCY_MINOR -- integer minor units by contract -- and cellValue returns them raw, so a $125.00 invoice would display as 12500. Money wrong by a factor of one hundred is not a formatting nicety. (2) invoice.dueDate is declared NUMBER and its own description says 'Ms epoch, carried at issuance' -- so a due date would render as 1755993600000. formatTimestamp already coerces epoch millis, so the honest fix is the declared type, not a special case: the field IS a date and says so in prose while claiming to be a number."
+      "nextAction": "Reconcile the two, or establish that only 2-exponent currencies are supported.",
+      "notes": "domain/money.js's formatMoneyMajor respects currencyExponent; domain/accountArView.js's formatMinor hardcodes division by 100. They disagree for any currency whose minor unit is not 1/100 -- JPY being the obvious case. formatMoneyMajor takes a {minor,currency} value object and has ZERO call sites anywhere in the app; formatMinor is the one actually consumed. The lane reused the consumed one and REPORTED the conflict rather than silently choosing, which is correct. This is the second time in one session two formatters have been found answering the same question differently (see also the displayTimestamp vs accountPortfolio.formatLastUpdate overlap recorded under A-LIST-TIMESTAMP-AND-NAVIGATION). Worth deciding deliberately: either reconcile them, or record that this system is 2-exponent-only and delete the unused one -- an unused formatter that disagrees with the used one is a trap for whoever reaches for it next."
     },
     {
       "id": "X-MANUFACTURER-ID-AS-COLUMN",
@@ -2342,12 +2358,14 @@
       "title": "manufacturerIndexList declares the document id as a visible column",
       "domain": "inventory",
       "entity": "Manufacturer",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Determine Manufacturer's real human-meaningful field and use it; do not keep the id.",
-      "notes": "manufacturer.js declares manufacturerId (type ID, described as 'the Firestore document id, also written into the document body') as a COLUMN in manufacturerIndexList. manufacturerEntity declares neither a nameField nor a referenceField. That combination is the precise failure DECISIONS #106 names: a missing business reference is not permission to display a record id. The id is very likely in the column list BECAUSE nothing else was declared to identify the record, which is the rationalisation the rule exists to refuse. Needs the real human-meaningful field established from storage, not an invented one."
+      "nextAction": "None.",
+      "notes": "manufacturer.js declares manufacturerId (type ID, described as 'the Firestore document id, also written into the document body') as a COLUMN in manufacturerIndexList. manufacturerEntity declares neither a nameField nor a referenceField. That combination is the precise failure DECISIONS #106 names: a missing business reference is not permission to display a record id. The id is very likely in the column list BECAUSE nothing else was declared to identify the record, which is the rationalisation the rule exists to refuse. Needs the real human-meaningful field established from storage, not an invented one. CORRECTION -- this entry as originally written was WRONG on a load-bearing point. It claimed manufacturerEntity declares neither a nameField nor a referenceField. It DOES declare identity.nameField 'name'; my audit probe read .nameField at the top level of the entity and found nothing there. referenceField: null is correct and deliberate -- no reference number exists in the write path and none was invented. So the defect was narrower and plainer than recorded: a human-meaningful name was already declared and the document id was in the visible column list anyway. The rationalisation I attributed to it ('the id is there because nothing else identifies the record') did not apply. RESOLVED by removing the id column.",
+      "pr": 1219,
+      "mergeSha": "a0b2f570"
     },
     {
       "id": "X-REGISTRY-VALIDATOR-NEVER-RUN",
