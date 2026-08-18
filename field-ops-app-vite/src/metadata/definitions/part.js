@@ -53,15 +53,25 @@ import {
 // updates and status changes, never the read). Declaring one here would be inventing an
 // authority nothing enforces, exactly what contact.js's identical note already explains.
 //
-// primaryManufacturerId AND equipmentModelId STAY PLAIN STRINGS, NOT REFERENCE FIELDS. Both
-// are, in principle, edges out of Part — to a manufacturer and (only when wholeUnit is
-// true) to an equipment model — and the contract says an edge belongs on its OWNING
-// (FROM) entity, which here is Part itself, since Part is the many/referencing side of
-// both relationships. But no `manufacturer` or `equipmentModel` EntityDefinition is
-// registered anywhere in this metadata program yet, so a REFERENCE field naming one, or a
-// relationship entry targeting one, would point at an entity nothing defines — the same
-// restraint salesOrder.js applies to `locationId` for the identical reason. The edges are
-// described in prose instead of asserted as a contract nothing can validate.
+// primaryManufacturerId STAYS A PLAIN STRING, NOT A REFERENCE FIELD. It is, in principle,
+// an edge out of Part to a manufacturer, and the contract says an edge belongs on its
+// OWNING (FROM) entity, which here is Part itself. But no `manufacturer` EntityDefinition
+// is registered anywhere this field's own writeScope covers — a REFERENCE naming one
+// would point at an entity this upgrade did not verify — the same restraint salesOrder.js
+// applies to `locationId` for the identical reason. This edge stays described in prose
+// instead of asserted as a contract nothing here has validated.
+//
+// equipmentModelId IS NOW A REAL REFERENCE — "equipmentModel" IS A REGISTERED ENTITY
+// (definitions/equipmentModel.js, D4 Part-Equipment Compatibility). Previously a plain
+// string because no equipmentModel EntityDefinition existed; that gap is closed. The
+// stored value genuinely IS the equipment_models document id, not a model number or an
+// alias: validation.ts's isCanonicalEquipmentModelId gate rejects anything that is not the
+// canonical `{manufacturerId}--{modelNumber}` form, and assertEquipmentModelExists
+// (partMasterCommands.ts) checks the value against a live
+// `db.collection(EQUIPMENT_MODELS_COLLECTION).doc(id)` read on every create and update —
+// the same document-id identity equipmentModel.js's own equipmentModelId field declares.
+// See that field's own comment below for the legality gate (wholeUnit) this upgrade does
+// not change.
 //
 // STATUS/CONTROL TYPE/STOCKING CLASS/OEM STATUS/STOCKING UNIT VOCABULARY COMES FROM
 // domain/partVocabulary.js, never a second copy here — see that module's header for why
@@ -213,17 +223,19 @@ export const partEntity = makeEntityDefinition({
       type: "BOOLEAN",
       description: "Written to the document ONLY when true; absent otherwise, never stored as false.",
     }),
-    // No equipmentModel EntityDefinition is registered — see the header. The legality
-    // gate (equipmentModelId only when wholeUnit is true) is enforced at the command
-    // layer, not by Firestore and not by this metadata.
+    // Upgraded to a REFERENCE — equipmentModel is now a registered entity. See the file
+    // header. The legality gate (equipmentModelId only when wholeUnit is true) is enforced
+    // at the command layer, not by Firestore and not by this metadata.
     makeFieldDefinition({
       id: "equipmentModelId",
       entityId: "part",
       label: "Equipment Model",
-      type: "STRING",
+      type: "REFERENCE",
+      referenceTo: "equipmentModel",
       description:
         "Legal ONLY when wholeUnit is true (enforced by validatePart at the command layer, not by Rules or this " +
-        "metadata). No equipmentModel entity is registered in this program yet, so this stays a plain id.",
+        "metadata). The stored value is the equipment_models document id, verified canonical and checked to " +
+        "exist by assertEquipmentModelExists on every write — see the file header.",
     }),
     makeFieldDefinition({
       id: "version",
@@ -261,9 +273,9 @@ export const partEntity = makeEntityDefinition({
       description: "Actor uid. Repository-owned; every stored Part carries one.",
     }),
   ],
-  // No relationships[] entries — see the header. Both outbound edges (manufacturer,
-  // equipmentModel) would belong here, on Part, once those entities exist; today neither
-  // does, so declaring one would target an entity this registry cannot validate.
+  // No relationships[] entries. The equipmentModel edge is already expressed as the
+  // equipmentModelId REFERENCE field above — a relationships[] entry would duplicate that
+  // same edge, not add a new one. The manufacturer edge stays undeclared — see the header.
 });
 
 /**

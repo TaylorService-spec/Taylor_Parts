@@ -10,9 +10,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateEntityDefinition, findField } from "../src/metadata/entityDefinition.js";
+import { validateEntityDefinition, validateEntityRegistry, findField } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
 import { partEntity, partIndexList } from "../src/metadata/definitions/part.js";
+import { equipmentModelEntity } from "../src/metadata/definitions/equipmentModel.js";
+import { manufacturerEntity } from "../src/metadata/definitions/manufacturer.js";
 import {
   PART_STATUSES, PART_STATUS_LABEL,
   STOCKING_CLASSES, STOCKING_CLASS_LABEL,
@@ -59,16 +61,28 @@ test("the manufacturer field names what is STORED, and describes the divergence 
   assert.match(field.description, /manufacturerId/);
 });
 
-test("primaryManufacturerId and equipmentModelId stay plain strings, not REFERENCE fields", () => {
-  // No manufacturer or equipmentModel entity is registered anywhere in this program yet.
-  // A REFERENCE field naming one would point at an entity nothing defines.
-  for (const id of ["primaryManufacturerId", "equipmentModelId"]) {
-    const field = findField(partEntity, id);
-    assert.equal(field.type, "STRING", id);
-    assert.equal(field.referenceTo, null, id);
-  }
-  // And no relationships[] entries stand in for them either, for the identical reason.
+test("primaryManufacturerId stays a plain string, not a REFERENCE field", () => {
+  // No manufacturer edge is asserted from this field -- see the file header.
+  const field = findField(partEntity, "primaryManufacturerId");
+  assert.equal(field.type, "STRING");
+  assert.equal(field.referenceTo, null);
+  // And no relationships[] entry stands in for it either, for the identical reason.
   assert.equal(partEntity.relationships.length, 0);
+});
+
+test("equipmentModelId is now a REFERENCE to the registered equipmentModel entity (A-DEFERRED-REFERENCE-UPGRADES)", () => {
+  // equipmentModel is now a registered entity, and the stored value genuinely is its
+  // document id (assertEquipmentModelExists checks it against a live equipment_models
+  // read on every write) -- see the file header for the full evidence chain.
+  const field = findField(partEntity, "equipmentModelId");
+  assert.equal(field.type, "REFERENCE");
+  assert.equal(field.referenceTo, "equipmentModel");
+});
+
+test("equipmentModelId's REFERENCE resolves against the real registered set -- no unknown-entity problem", () => {
+  const registered = [partEntity, equipmentModelEntity, manufacturerEntity];
+  const problems = validateEntityRegistry(registered);
+  assert.deepEqual(problems, []);
 });
 
 test("the deliberately-absent stock, cost and supplier fields are NOT declared", () => {

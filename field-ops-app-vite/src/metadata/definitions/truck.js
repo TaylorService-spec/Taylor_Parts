@@ -17,10 +17,11 @@ import { TRUCK_STATUS_OPTIONS, truckStatusLabel } from "../../domain/truckManage
 // server-side (the location_truck_claims/{locationId} guard doc), NOT expressible in Firestore
 // Rules and NOT expressible here. This definition describes ONLY the trucks/{truckId} business
 // record: no stock, quantity, custody, or "what is on this truck" fact belongs on it — that
-// authority is the ledger + serialized-asset system, reached through mobile_locations, which has
-// NO registered EntityDefinition in this program (out of this lane's writeScope; see
-// REGISTRATION_PENDING). Declaring a `location` relationship or field pointing INTO the custody
-// system from here would misstate what this record is, so none is declared.
+// authority is the ledger + serialized-asset system, reached through mobile_locations. A
+// `mobileLocation` EntityDefinition is NOW registered (definitions/mobileLocation.js), which is
+// why locationId below is declared as a REFERENCE to it (see that field's own comment) — but this
+// file still declares no `location` relationship or field pointing INTO the custody system beyond
+// that one FK, since a relationship would still misstate what this record is.
 //
 // READ IS CLIENT_DIRECT, ROLE-GATED, NO CAPABILITY. firestore.rules' `trucks/{truckId}` block
 // (EI-P1d-2-2b) grants `allow read: if isAdminOrDispatcher()` and unconditionally denies
@@ -75,12 +76,16 @@ import { TRUCK_STATUS_OPTIONS, truckStatusLabel } from "../../domain/truckManage
 // homeWarehouseId on this same create form, which changes nothing about the ID-not-identity
 // treatment already established by the two precedents above.
 //
-// locationId IS DECLARED AS A PLAIN ID, NOT A REFERENCE — mobile_locations HAS NO REGISTERED
-// EntityDefinition (see the file header above and REGISTRATION_PENDING), the same restraint
-// part.js already applies to its own equipmentModelId pending a future entity. locationId is
-// IMMUTABLE after create ("truck.locationId is IMMUTABLE (no relink op)" per
-// truckRegistryCommands.ts's own file header) but that is a write-contract fact, out of this
-// read-only definition's scope to assert.
+// locationId IS NOW A REAL REFERENCE — "mobileLocation" IS A REGISTERED ENTITY
+// (definitions/mobileLocation.js, A-ENTITY-TERRITORY-MOBILE-DEFINITIONS). Previously declared as
+// a plain ID because mobile_locations had no registered EntityDefinition; that gap is closed.
+// The stored value genuinely IS the mobile_locations document id — mobileLocationFromFirestore
+// throws if a record's own locationId disagrees with its docId, and truckRegistryRepository.ts
+// links the two collections 1:1 through this exact field (trucks/{truckId}.locationId ==
+// mobile_locations/{locationId}). locationId is IMMUTABLE after create ("truck.locationId is
+// IMMUTABLE (no relink op)" per truckRegistryCommands.ts's own file header) but that is a
+// write-contract fact, out of this read-only definition's scope to assert. Not filterable or
+// sortable — nothing in the Truck Inventory workspace queries or scans by it today.
 //
 // homeWarehouseId IS A REAL REFERENCE — "warehouse" IS ALREADY A REGISTERED ENTITY
 // (definitions/warehouse.js). Required on create (parseWarehouseId), checked against a live
@@ -176,14 +181,15 @@ export const truckEntity = makeEntityDefinition({
         "Required, non-blank, operator-typed free text. NOT enforced unique anywhere in this system — two trucks " +
         "may carry the same value. Not promoted to referenceField; see the file header for why.",
     }),
-    // Declared as a plain ID, not a REFERENCE — mobile_locations has no registered
-    // EntityDefinition. See the file header and REGISTRATION_PENDING.
+    // Upgraded to a REFERENCE — mobileLocation is now a registered entity. See the file header
+    // and the locationId note above the entity definition.
     makeFieldDefinition({
       id: "locationId",
       entityId: "truck",
-      label: "Mobile Location ID",
-      type: "ID",
-      description: "The 1:1-linked mobile_locations document id. Immutable after create (no relink op). No `mobileLocation` entity is registered in this program yet, so this stays a plain id.",
+      label: "Mobile Location",
+      type: "REFERENCE",
+      referenceTo: "mobileLocation",
+      description: "The 1:1-linked mobile_locations document id. Immutable after create (no relink op). Display resolution belongs to the mobileLocation entity, not to this field.",
     }),
     makeFieldDefinition({
       id: "homeWarehouseId",
@@ -261,8 +267,9 @@ export const truckEntity = makeEntityDefinition({
       description: "Actor uid. Stored on every record; see the file header for the client read-wiring gap on this field.",
     }),
   ],
-  // No relationships declared. mobile_locations (the real 1:1 custody-position link) has no
-  // registered EntityDefinition — see the file header and REGISTRATION_PENDING.
+  // No relationships[] entries declared. The 1:1 custody-position link to mobile_locations is
+  // already expressed as the locationId REFERENCE field above — a relationships[] entry would
+  // duplicate that same edge, not add a new one. See the file header.
 });
 
 /**
