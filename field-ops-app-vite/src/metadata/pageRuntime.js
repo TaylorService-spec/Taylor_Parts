@@ -77,8 +77,11 @@ export function buildCompositionPlan(def, opts = {}) {
       fieldIds: s.fieldIds ?? [],
       actions: s.actions ?? [],
       collapsedByDefault: !!s.collapsedByDefault,
-      // DECLARED, not decided (§6).
+      // DECLARED, not decided (§6). Exactly one of these two is ever populated —
+      // pageDefinition.js's validator rejects a section that declares both — but both are
+      // carried through here unresolved, same as everywhere else in this file.
       capabilityRequirement: s.capabilityRequirement ?? null,
+      capabilityParts: s.capabilityParts ?? null,
     }));
   }
 
@@ -120,6 +123,9 @@ export function declaredPageCapabilities(def, sections = null) {
   if (def?.capabilityRequirement) out.add(def.capabilityRequirement);
   for (const s of sections ?? def?.sections ?? []) {
     if (s.capabilityRequirement) out.add(s.capabilityRequirement);
+    for (const part of s.capabilityParts ?? []) {
+      if (part?.capabilityRequirement) out.add(part.capabilityRequirement);
+    }
     for (const a of s.actions ?? []) {
       const entry = typeof a === "string" ? actionRegistry.resolve(a) : null;
       if (entry?.capabilityRequirement) out.add(entry.capabilityRequirement);
@@ -130,6 +136,11 @@ export function declaredPageCapabilities(def, sections = null) {
     if (entry?.capabilityRequirement) out.add(entry.capabilityRequirement);
   }
   return Object.freeze([...out].sort());
+}
+
+/** A single capabilityParts entry is presentable iff it is ungated or its decision is exactly `true`. */
+function partIsVisible(part, decisions) {
+  return !part.capabilityRequirement || decisions[part.capabilityRequirement] === true;
 }
 
 /**
@@ -143,14 +154,57 @@ export function declaredPageCapabilities(def, sections = null) {
  * Fail-closed here is presentation-level defence in depth, not the boundary. The
  * boundary is Rules and trusted commands, and it does not move because this function
  * exists.
+ *
+ * X-SECTION-CAPABILITY-GRANULARITY — a section with `capabilityParts` (see
+ * pageDefinition.js's makeSection doc comment) is resolved per part, the same fail-closed
+ * way, and then reduced to a section-level outcome:
+ *
+ *   - EVERY part denied  → the section is excluded entirely, same as a fully-denied
+ *     single-gate section (the "removed from the plan, not empty" precedent this task was
+ *     told not to re-open).
+ *   - SOME parts denied  → the section stays in the plan — it is NOT empty, some of its
+ *     content is genuinely presentable — but carries `visiblePartIds`, `withheldPartIds`,
+ *     and `partiallyWithheld: true` so the caller/renderer can say so rather than
+ *     presenting a full section as if nothing were gated. This is the state the ledger
+ *     item names as silently unrepresentable today.
+ *   - NO parts denied    → the section stays in the plan exactly as a section with no
+ *     `capabilityRequirement` at all would; `partiallyWithheld` is `false`.
+ *
+ * A section with no `capabilityParts` is untouched by any of this — it takes the exact
+ * branch it always has, so every existing single-capability definition keeps behaving
+ * identically (proved by test, see metadataPageRuntime.test.mjs).
  */
 export function applyVisibility(plan, decisions = {}) {
-  const visible = plan.sections.filter(
-    (s) => !s.capabilityRequirement || decisions[s.capabilityRequirement] === true
-  );
-  const hidden = plan.sections.filter(
-    (s) => s.capabilityRequirement && decisions[s.capabilityRequirement] !== true
-  );
+  const visible = [];
+  const hidden = [];
+
+  for (const s of plan.sections) {
+    if (s.capabilityParts?.length) {
+      const visiblePartIds = [];
+      const withheldPartIds = [];
+      for (const part of s.capabilityParts) {
+        (partIsVisible(part, decisions) ? visiblePartIds : withheldPartIds).push(part.id);
+      }
+      if (visiblePartIds.length === 0) {
+        hidden.push(s);
+        continue;
+      }
+      visible.push(Object.freeze({
+        ...s,
+        visiblePartIds: Object.freeze(visiblePartIds),
+        withheldPartIds: Object.freeze(withheldPartIds),
+        partiallyWithheld: withheldPartIds.length > 0,
+      }));
+      continue;
+    }
+
+    if (!s.capabilityRequirement || decisions[s.capabilityRequirement] === true) {
+      visible.push(s);
+    } else {
+      hidden.push(s);
+    }
+  }
+
   return Object.freeze({
     ...plan,
     sections: Object.freeze(visible),
