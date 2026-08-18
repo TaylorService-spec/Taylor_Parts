@@ -39,7 +39,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-LIST-REFERENCE-RENDERS-ID** (phase 6) — REFERENCE columns render the raw document id -- ten of them across the repo → Decide how a metadata list renders a reference honestly; this is not a formatting branch.
 - **X-MONEY-FORMATTER-DISAGREEMENT** (phase 6) — Two money formatters disagree on non-2-exponent currencies → Reconcile the two, or establish that only 2-exponent currencies are supported.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
@@ -53,7 +52,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-LIST-REFERENCE-RENDERS-ID | 6 | REFERENCE columns render the raw document id -- ten of them across the repo | — | — | — | — | — | NOT_APPLICABLE | Decide how a metadata list renders a reference honestly; this is not a formatting branch. |
 | X-MONEY-FORMATTER-DISAGREEMENT | 6 | Two money formatters disagree on non-2-exponent currencies | — | — | — | — | — | NOT_APPLICABLE | Reconcile the two, or establish that only 2-exponent currencies are supported. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
@@ -121,6 +119,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | #1211 | — | bd2e733e | NOT_APPLICABLE | Wiring Contacts/Locations onto it is a separate lane. |
 | A-ACCOUNT-WIRE-CONTACTS-LOCATIONS | 6 | Contacts and Locations wired through metadata | /customers/:accountId | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
 | X-LIST-BOOLEAN-FORMATTING | 6 | cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way | — | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
+| X-LIST-REFERENCE-RENDERS-ID | 6 | REFERENCE columns render the raw document id -- ten of them across the repo | — | — | #1221 | — | 175aff37 | NOT_APPLICABLE | Supply a real resolveReference when an INDEX surface is wired. |
 | X-LIST-CURRENCY-AND-MISTYPED-DATE | 6 | CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
 | X-MANUFACTURER-ID-AS-COLUMN | 6 | manufacturerIndexList declares the document id as a visible column | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
 | X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
