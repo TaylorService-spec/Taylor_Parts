@@ -140,6 +140,7 @@ function selectListSource(entity) {
 
 function useRelatedListPresentation({ listDef, entity, parentId, relationships }) {
   const [rows, setRows] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState(null);
   const [retryNonce, setRetryNonce] = useState(0);
@@ -184,6 +185,13 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
       .then((page) => {
         if (token !== requestRef.current) return;
         setRows(page.rows);
+        // Carried through, not discarded. buildListPresentation turns hasMore into a
+        // RELATED surface's `truncated` flag, which is what renders "Showing the most
+        // recent N" and the hand-off to the full list. Dropping it made a capped section
+        // present its cap as the whole set -- the precise failure the presentation model
+        // was built to prevent, arriving through the one path that computes truncation
+        // correctly and then throws the answer away.
+        setHasMore(page.hasMore);
         setErrorStatus(null);
       })
       .catch((e) => {
@@ -195,6 +203,7 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
         // check does not need to know which source produced the error.
         setErrorStatus(e?.code === "permission-denied" ? "denied" : "unavailable");
         setRows([]);
+        setHasMore(false);
       })
       .finally(() => {
         if (token === requestRef.current) setLoading(false);
@@ -207,12 +216,12 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
       buildListPresentation({
         def: listDef,
         entity,
-        page: errorStatus ? null : { rows, hasMore: false },
+        page: errorStatus ? null : { rows, hasMore },
         loading,
         errorStatus,
         filtersActive: false,
       }),
-    [listDef, entity, rows, loading, errorStatus]
+    [listDef, entity, rows, hasMore, loading, errorStatus]
   );
 
   return { presentation, retry: () => setRetryNonce((n) => n + 1) };

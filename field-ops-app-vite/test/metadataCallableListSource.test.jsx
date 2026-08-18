@@ -135,3 +135,14 @@ describe("callableListSource.fetchPage", () => {
     expect(httpsCallableMock).not.toHaveBeenCalled();
   });
 });
+
+// A truncated RELATED page must DISCLOSE its truncation. The default binding computed
+// hasMore correctly and then dropped it, so a capped section presented its cap as the
+// whole set -- the exact failure the presentation model exists to prevent, arriving
+// through the one path that had already worked out the right answer.
+it("a truncated related page reports hasMore rather than discarding it", async () => {
+  const { interpretPage } = await import("../src/metadata/listRuntime.js");
+  const page = interpretPage({ pageSize: 2, limit: 3 }, [{ id: "a" }, { id: "b" }, { id: "probe" }]);
+  expect(page.hasMore).toBe(true);
+  expect(page.rows).toHaveLength(2);
+});
