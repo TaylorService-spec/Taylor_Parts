@@ -260,45 +260,25 @@ export const equipmentModelEntity = makeEntityDefinition({
 });
 
 /**
- * The Equipment Model catalog index. No standalone route renders this yet, and the collection is
- * undeployed end to end (Rules deny-all, no exported callable) — a definition is not a surface,
- * the same restraint warehouse.js's own not-yet-routed index applies, here compounded by the
- * whole collection being pre-deployment.
+ * NO INDEX LIST VIEW — DELIBERATE, AND A GOVERNANCE BOUNDARY RATHER THAN AN OVERSIGHT.
  *
- * status and manufacturerId are the two declared filters. Both are forward-looking in the same
- * sense warehouse.js/manufacturer.js already record for their own status filters: neither
- * readModelSummary nor readCompatibilityForModel/readCompatibilityForPart runs a `.where()` on
- * either today (each is a bounded point-read or a keyed forward/reverse traversal, never a
- * scanned list). Declared so a future INDEX surface over this catalog has real filters to serve.
- * Two optional equality filters is within MAX_DECLARED_FILTERS (4). defaultSort is displayName
- * ASC — the identity field, matching warehouse.js/manufacturer.js's own default-sort-by-identity
- * convention.
+ * `equipment_models` is a D4-GOVERNED collection (functions/src/equipmentCompatibility/
+ * repository.ts declares it as EQUIPMENT_MODELS_COLLECTION alongside the alias, part-compatibility,
+ * source and operation collections). D4's own contract defers compound query shapes to D5, and
+ * functions/test/equipmentCompatibilityRegistry.test.mjs asserts it: "D4 declares no compound
+ * index for the governed collections."
+ *
+ * An earlier revision of this file declared an INDEX list view whose filters derived three
+ * `equipment_models` composite indexes. That breached D4's boundary. It went undetected because
+ * the equipment-compatibility workflow's path filter did not include `firestore.indexes.json`,
+ * so the guard never ran on the PR that introduced it — the indexes were declared, deployed to
+ * sandbox, and only surfaced when an unrelated change happened to trigger that workflow.
+ *
+ * The correction is this absence, not a weakened assertion: defining an entity does NOT confer
+ * indexing authority over a collection another program governs. If a catalog INDEX surface is
+ * ever wanted here, it arrives through an explicit D5 supersession that moves the boundary,
+ * not through a metadata definition that quietly crosses it.
+ *
+ * Nothing consumed the removed list view: no UI referenced it, and this entity's readVia is
+ * CALLABLE against a capability registered `active: false`. Removing it costs no behaviour.
  */
-export const equipmentModelIndexList = makeListViewDefinition({
-  id: "equipmentModel.index",
-  entityId: "equipmentModel",
-  label: "Equipment Models",
-  surface: "INDEX",
-  columns: [
-    makeColumn({ fieldId: "displayName", sortable: true }),
-    makeColumn({ fieldId: "manufacturerName" }),
-    makeColumn({ fieldId: "modelNumber", sortable: true }),
-    makeColumn({ fieldId: "status", sortable: true }),
-  ],
-  filters: [
-    makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
-    makeFilter({ fieldId: "manufacturerId", operators: ["EQUALS"] }),
-  ],
-  defaultSort: [makeSort({ fieldId: "displayName", direction: "ASC" })],
-  pageSize: 50,
-  capabilityRequirement: "equipment.compatibility.view",
-  savedViews: [
-    makeSavedView({ id: "recent", label: "Recently viewed", kind: "RECENTLY_VIEWED", isDefault: true }),
-    makeSavedView({
-      id: "active",
-      label: "Active",
-      filters: [{ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }],
-      sort: [makeSort({ fieldId: "displayName", direction: "ASC" })],
-    }),
-  ],
-});

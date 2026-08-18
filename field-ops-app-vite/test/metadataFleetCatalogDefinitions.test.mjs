@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { validateEntityDefinition, validateEntityRegistry, findField } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
 import { truckEntity, truckIndexList } from "../src/metadata/definitions/truck.js";
-import { equipmentModelEntity, equipmentModelIndexList } from "../src/metadata/definitions/equipmentModel.js";
+import * as equipmentModelModule from "../src/metadata/definitions/equipmentModel.js";
+const { equipmentModelEntity } = equipmentModelModule;
 import { mobileLocationEntity } from "../src/metadata/definitions/mobileLocation.js";
 import { warehouseEntity } from "../src/metadata/definitions/warehouse.js";
 import { employeeEntity } from "../src/metadata/definitions/employee.js";
@@ -137,9 +138,6 @@ test("the EquipmentModel entity is valid against the contract", () => {
   assert.deepEqual(validateEntityDefinition(equipmentModelEntity), []);
 });
 
-test("the EquipmentModel index list is valid against the entity", () => {
-  assert.deepEqual(validateListViewDefinition(equipmentModelIndexList, equipmentModelEntity), []);
-});
 
 test("the entity id is exactly \"equipmentModel\", collection is `equipment_models`", () => {
   assert.equal(equipmentModelEntity.id, "equipmentModel");
@@ -209,29 +207,8 @@ test("no relationships are declared -- equipment_model_aliases/equipment_part_co
   assert.equal(equipmentModelEntity.relationships.length, 0);
 });
 
-test("the EquipmentModel index declares exactly two filters: status and manufacturerId", () => {
-  assert.equal(equipmentModelIndexList.filters.length, 2);
-  assert.deepEqual(
-    equipmentModelIndexList.filters.map((f) => f.fieldId).sort(),
-    ["manufacturerId", "status"]
-  );
-});
 
-test("the EquipmentModel index required indexes match its declared filters (requiredIndexes() output)", () => {
-  const required = requiredIndexes(equipmentModelIndexList, equipmentModelEntity);
-  assert.equal(required.length, 3); // status only, manufacturerId only, both (the unfiltered single-field-sort case needs no composite)
-  for (const idx of required) {
-    assert.equal(idx.collectionGroup, "equipment_models");
-  }
-});
 
-test("EquipmentModel default sort is displayName ASC, tiebroken by __name__", () => {
-  assert.deepEqual(
-    equipmentModelIndexList.defaultSort.map((s) => [s.fieldId, s.direction]),
-    [["displayName", "ASC"]]
-  );
-  assert.equal(equipmentModelIndexList.tiebreaker, "__name__");
-});
 
 // ---------------------------------------------------------------------------
 // Registry cross-validation (A-DEFERRED-REFERENCE-UPGRADES)
@@ -241,4 +218,15 @@ test("truck.locationId's REFERENCE resolves against the real registered set -- n
   const registered = [truckEntity, mobileLocationEntity, warehouseEntity, employeeEntity, equipmentModelEntity, manufacturerEntity];
   const problems = validateEntityRegistry(registered);
   assert.deepEqual(problems, []);
+});
+
+test("equipmentModel declares NO index list view -- equipment_models is D4-governed", () => {
+  // Not an omission: functions/src/equipmentCompatibility/repository.ts declares
+  // EQUIPMENT_MODELS_COLLECTION, and D4 defers compound query shapes to D5. An earlier revision
+  // declared an INDEX list whose filters derived three equipment_models composites, breaching
+  // that boundary. Asserted here so re-adding one fails in the metadata program's own suite,
+  // not only in D4's registry guard -- a boundary is worth checking from both sides.
+  assert.equal(equipmentModelModule.equipmentModelIndexList, undefined);
+  const lists = Object.values(equipmentModelModule).filter((v) => v && Array.isArray(v.columns));
+  assert.deepEqual(lists, [], "equipmentModel must export no ListViewDefinition");
 });
