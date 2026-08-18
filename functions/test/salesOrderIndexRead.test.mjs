@@ -251,11 +251,20 @@ await check("X-SALES-ORDER-INDEX-500 shape: state:CLOSED (real, matching-nothing
   });
 });
 
-await check("X-SALES-ORDER-INDEX-500 shape: unfiltered, limit:9999 (clamped to the declared max) succeeds (was a 500)", async () => {
+await check("X-SALES-ORDER-INDEX-500 shape: limit:9999 is REJECTED as invalid-argument, not silently defaulted", async () => {
+  // This case previously returned 500 (the tiebreaker defect) and its description claimed the
+  // limit was "clamped to the declared max". Neither was true: the code folded an over-limit
+  // value into "not supplied" and returned a default 50-row page, telling the caller nothing.
+  // An absent limit still defaults; a supplied invalid one now fails loudly.
   await withProject("eos-platform-sandbox", async () => {
-    const result = await reads.listSalesOrderIndex.run(request({ limit: 9999 }, adminUid));
-    assert.equal(result.status, "ready");
-    assert.ok(result.salesOrders.length <= reads.MAX_SALES_ORDER_INDEX_LIMIT);
+    await assert.rejects(
+      () => reads.listSalesOrderIndex.run(request({ limit: 9999 }, adminUid)),
+      (err) => err?.code === "invalid-argument",
+    );
+    // An ABSENT limit still takes the default and stays within the declared maximum.
+    const dflt = await reads.listSalesOrderIndex.run(request({}, adminUid));
+    assert.equal(dflt.status, "ready");
+    assert.ok(dflt.salesOrders.length <= reads.MAX_SALES_ORDER_INDEX_LIMIT);
   });
 });
 

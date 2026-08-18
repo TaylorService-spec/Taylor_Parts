@@ -470,10 +470,25 @@ export const listSalesOrderIndex = onCall({ region: "us-central1" }, async (requ
 
   const data = (request.data ?? {}) as { limit?: unknown; state?: unknown; cursor?: unknown };
 
-  const limit =
-    Number.isSafeInteger(data.limit) && (data.limit as number) > 0 && (data.limit as number) <= MAX_SALES_ORDER_INDEX_LIMIT
-      ? (data.limit as number)
-      : DEFAULT_SALES_ORDER_INDEX_LIMIT;
+  // LIMIT. An ABSENT limit takes the default. A PRESENT but invalid one is REJECTED rather than
+  // silently replaced -- the previous behaviour folded "too large" into "not supplied" and quietly
+  // returned a 50-row page to a caller who asked for 9999, with nothing in the response saying so.
+  // That is the same silent-substitution shape this program removes elsewhere, and it is
+  // inconsistent with the sibling `state`/`cursor` validations directly below, which both reject.
+  let limit = DEFAULT_SALES_ORDER_INDEX_LIMIT;
+  if (data.limit !== undefined) {
+    if (
+      !Number.isSafeInteger(data.limit) ||
+      (data.limit as number) <= 0 ||
+      (data.limit as number) > MAX_SALES_ORDER_INDEX_LIMIT
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        `limit must be a positive integer no greater than ${MAX_SALES_ORDER_INDEX_LIMIT}.`,
+      );
+    }
+    limit = data.limit as number;
+  }
 
   const validStates = SALES_ORDER_STATES as readonly string[];
   let state: SalesOrderState | SalesOrderState[] | undefined;
