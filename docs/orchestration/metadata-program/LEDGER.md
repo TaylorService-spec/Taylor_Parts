@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 8d360889 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main f7a61306 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -17,9 +17,10 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-24 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+25 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
+- **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
 - **S-SVC-JOB-ASSIGNMENTS** — depends on A-LIST-GRID (all satisfied) → Migrate or retire — overlaps the Work Orders list
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Classify: queue with governed transition writes, not a list
 - **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Confirm synthetic-source status before migrating anything
@@ -34,12 +35,11 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
 - **S-INV-PARTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Migrate; navHidden, direct-URL only
-- **S-INV-WAREHOUSES** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-INDEX-SURFACE-CALLABLE-READ** (phase 6) — No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch → Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path.
+- **X-ENTITY-SINGLE-READCALLABLE** (phase 6) — An entity declares one readCallable, but INDEX and RELATED need different ones → Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -52,7 +52,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-INDEX-SURFACE-CALLABLE-READ | 6 | No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch | — | — | — | — | — | NOT_APPLICABLE | Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path. |
+| X-ENTITY-SINGLE-READCALLABLE | 6 | An entity declares one readCallable, but INDEX and RELATED need different ones | — | — | — | — | — | NOT_APPLICABLE | Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -62,6 +62,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | P0-LEDGER | 0 | Program execution ledger + resumption model | — | — | #1113 | 3dce271a | 1f1f1a4d | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1138 | — | abfd3ee7 | NOT_APPLICABLE | Merged. The accounts composite index is declared and pending deploy. |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Definition merged. Wiring AccountDetail onto it, and the two recorded page gaps, are separate lanes. |
+| X-INDEX-SURFACE-CALLABLE-READ | 6 | No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch | — | — | #1229 | — | f7a61306 | NOT_APPLICABLE | Blocked no further at the runtime; the remaining gap is definition-level. |
 | X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID | 6 | The Opportunities pipeline fell back to a raw account id -- LIVE, not latent | — | — | #1226 | — | 631170b5 | NOT_APPLICABLE | None. |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
