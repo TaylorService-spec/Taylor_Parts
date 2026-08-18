@@ -31,11 +31,11 @@
 // WORSE through metadata than hand-rendered (see the block below this one for the full,
 // per-section evidence). None of the six were wired.
 //
-// What DOES render through the metadata path: only the same three componentId sections the
-// prior lane already swapped — the MAIN-column sections that are already contiguous and in the
-// same order in both accountPage.js and AccountDetail.jsx (financials -> activityAndNotes ->
-// serviceActivity, exported below as accountRecordPageMainSubset). This lane changed no
-// rendering in AccountDetail.jsx; it added the evaluation above and the tests that lock it in.
+// What DOES render through the metadata path (as of A-ACCOUNT-WIRE-CALLABLE-LISTS-2, see
+// below): the same three componentId sections the prior lane already swapped (financials ->
+// activityAndNotes -> serviceActivity), PLUS the Opportunities and Sales Orders RELATED_LIST
+// sections — all five now exported together as accountRecordPageMainSubset, in accountPage.js's
+// own order (opportunities -> salesOrders -> financials -> activityAndNotes -> serviceActivity).
 //
 // AccountHealthStrip and accountAttentionSection are both REGISTERED here (so the
 // registry-completeness test holds for every componentId accountRecordPage names) but
@@ -44,11 +44,33 @@
 // X-ACCOUNT-WIRE-CALLABLE-LISTS — commit 6c6480d8 later closed the ONE structural blocker
 // this lane's own "opportunities / salesOrders" finding above named (no CALLABLE-read path).
 // That gap closing did not change the count above: opportunities/salesOrders were
-// RE-EVALUATED (not re-assumed fixed) and are still hand-rendered, now for two different,
-// newly-found reasons (a raw-epoch-millisecond TIMESTAMP column, and DefaultRelatedList
-// wiring no row navigation at all) — see the corrected "opportunities / salesOrders"
-// paragraph below, which replaces the original finding rather than sitting beside a stale
-// one. Still zero of the six sections wired.
+// RE-EVALUATED (not re-assumed fixed) and were left hand-rendered at that point, for two
+// different, newly-found reasons (a raw-epoch-millisecond TIMESTAMP column, and
+// DefaultRelatedList wiring no row navigation at all) — recorded on the ledger as
+// X-LIST-TIMESTAMP-FORMATTING / X-LIST-ROW-NAVIGATION (docs/orchestration/metadata-program/
+// LEDGER.md) and reviewed in PR #1202.
+//
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 — commit 6998306f closed BOTH of those blockers in the
+// renderer (outside this module's writeScope both times, exactly as PR #1202 predicted):
+// cellValue() (listPresentation.js) now has a TIMESTAMP/DATE branch through the shared
+// formatTimestamp() (domain/displayTimestamp.js), and DefaultRelatedList (MetadataRecordPage.jsx)
+// now builds onRowClick from a resolved list definition's own rowNavigationTo. RE-VERIFIED
+// against the real opportunity.js/salesOrder.js/account.js — not re-assumed fixed a second
+// time — and both sections are now WIRED (see accountRecordPageMainSubset below).
+//
+// One thing verification surfaced that was NOT part of either closed blocker: opportunity.js's
+// own rowNavigationTo ("/sales/opportunities/:id") names a route that has never existed
+// anywhere in App.jsx — confirmed by a repo-wide route search; the only Opportunity-adjacent
+// route is the shared workspace at /customers/opportunities, which takes no :id. That file is
+// outside this module's writeScope (definitions/opportunity.js), so it is reported here as
+// REGISTRATION_PENDING rather than edited: opportunity.js's rowNavigationTo needs either a real
+// per-Opportunity route once one exists, or removal until then. In the meantime,
+// ACCOUNT_OPPORTUNITIES_RELATED_LIST below (this module's own listResolver entry, not a change
+// to opportunity.js) strips that broken value so Opportunities rows render honestly
+// non-focusable — DefaultRelatedList's own already-tested "absent rowNavigationTo" branch —
+// rather than link to a page that does not exist. Sales Orders' rowNavigationTo
+// ("/customers/opportunities/sales-order/:salesOrderId") IS a real, working route
+// (App.jsx -> SalesOrderDetail.jsx) and is wired through unmodified.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // X-ACCOUNT-PAGE-WIRING-COMPLETE — re-evaluated after the renderer's three gaps closed
@@ -106,6 +128,13 @@
 //       MetadataListGrid has no hook to reproduce (rows carry no caller-supplied ref).
 // Both are real, user-visible regressions, not cosmetic ones. Left hand-rendered.
 //
+// opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — SUPERSEDED by
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 (see the WIRING SCOPE block above): both BLOCKER 1 and
+// BLOCKER 2 below closed with commit 6998306f, and both sections are now WIRED into
+// accountRecordPageMainSubset. The paragraph and the two BLOCKER entries below are kept
+// verbatim as the historical record of what was true at X-ACCOUNT-WIRE-CALLABLE-LISTS (PR
+// #1202) — they no longer describe the current renderer.
+//
 // opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — RE-EVALUATED under
 // X-ACCOUNT-WIRE-CALLABLE-LISTS after commit 6c6480d8 closed the exact structural blocker
 // named below (MetadataRecordPage now routes a RELATED_LIST by the entity's declared
@@ -153,9 +182,19 @@
 //   capability entirely, with nothing to replace it. Locked in by the "rows carry no link and
 //   no click handler" test below.
 //
-// Both blockers are structural gaps in files outside this lane's writeScope
-// (MetadataRecordPage.jsx, listPresentation.js) — see this task's REGISTRATION_PENDING /
-// out-of-scope reporting. Left hand-rendered.
+// Both blockers were structural gaps in files outside this lane's writeScope
+// (MetadataRecordPage.jsx, listPresentation.js) — reported at the time as
+// REGISTRATION_PENDING / out-of-scope, and left hand-rendered pending that fix.
+//
+// BOTH CLOSED by commit 6998306f (ledger ids X-LIST-TIMESTAMP-FORMATTING,
+// X-LIST-ROW-NAVIGATION) — cellValue() now formats TIMESTAMP/DATE through
+// domain/displayTimestamp.js's formatTimestamp(), and DefaultRelatedList now builds
+// onRowClick from a resolved list definition's rowNavigationTo. RE-VERIFIED (not
+// re-assumed) under A-ACCOUNT-WIRE-CALLABLE-LISTS-2 against the real definitions; see the
+// WIRING SCOPE block above for the one thing that verification separately surfaced
+// (opportunity.js's own rowNavigationTo value is wrong / points at a route that does not
+// exist — REGISTRATION_PENDING there, unrelated to either blocker just closed). Opportunities
+// and Sales Orders are now WIRED into accountRecordPageMainSubset below.
 //
 // commercialProfile (FIELD_GROUP, GAP 1's generic renderer) — the generic FieldGroup renderer
 // (`cellValue()` off the raw stored value) has no live identity-resolution step, but two of
@@ -208,6 +247,9 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { componentRegistry } from "../registry.js";
 import { declaredPageCapabilities } from "../pageRuntime.js";
 import { accountRecordPage } from "./accountPage.js";
+import { accountEntity } from "./account.js";
+import { opportunityEntity, opportunityRelatedList } from "./opportunity.js";
+import { salesOrderEntity, salesOrderRelatedList } from "./salesOrder.js";
 import { functions, db } from "../../firebase/firebase";
 import { USERS_COLLECTION } from "../../domain/constants";
 import {
@@ -301,17 +343,68 @@ export function registerAccountPageComponents() {
 // the registry explicitly and call registerAccountPageComponents() again themselves.
 registerAccountPageComponents();
 
+// ── RELATED_LIST resolvers for Opportunities / Sales Orders ────────────────
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 — DefaultRelatedList (MetadataRecordPage.jsx) needs a
+// `listResolver` (section.listId -> ListViewDefinition) and an `entityResolver` (entityId ->
+// EntityDefinition) to drive the RELATED_LIST sections accountPage.js declares. These map
+// exactly the same listId/entityId strings accountPage.js/account.js/opportunity.js/
+// salesOrder.js already name — no id invented here.
+//
+// opportunityRelatedList's own `rowNavigationTo` ("/sales/opportunities/:id") is wired to a
+// route that does not exist anywhere in App.jsx (a repo-wide route search finds only the
+// shared workspace at /customers/opportunities, which takes no :id param) — a pre-existing
+// defect in definitions/opportunity.js, outside this module's writeScope, reported as
+// REGISTRATION_PENDING (see the WIRING SCOPE note above for the exact fix needed there).
+// Wiring that value verbatim would send a click to a page that 404s, which this task's own
+// instruction refuses ("do not wire a broken route"). ACCOUNT_OPPORTUNITIES_RELATED_LIST is
+// opportunityRelatedList with ONLY rowNavigationTo stripped (every column/filter/capability
+// stays the real, unmodified declaration) — DefaultRelatedList's own already-tested
+// "rowNavigationTo absent" branch then renders exactly the honest degrade this needs:
+// non-focusable rows, no onClick/onKeyDown. salesOrderRelatedList's rowNavigationTo
+// ("/customers/opportunities/sales-order/:salesOrderId") IS real (App.jsx ->
+// SalesOrderDetail.jsx) and is used unmodified.
+const ACCOUNT_OPPORTUNITIES_RELATED_LIST = { ...opportunityRelatedList, rowNavigationTo: undefined };
+
+const ACCOUNT_PAGE_LIST_MAP = {
+  "account.opportunities": ACCOUNT_OPPORTUNITIES_RELATED_LIST,
+  "account.salesOrders": salesOrderRelatedList,
+};
+
+const ACCOUNT_PAGE_ENTITY_MAP = {
+  account: accountEntity,
+  opportunity: opportunityEntity,
+  salesOrder: salesOrderEntity,
+};
+
+/** Resolves a RELATED_LIST section's `listId` to the real ListViewDefinition it names. */
+export function accountPageListResolver(listId) {
+  return ACCOUNT_PAGE_LIST_MAP[listId] ?? null;
+}
+
+/** Resolves an entityId to the real EntityDefinition it names (account/opportunity/salesOrder). */
+export function accountPageEntityResolver(entityId) {
+  return ACCOUNT_PAGE_ENTITY_MAP[entityId] ?? null;
+}
+
 // ── The subset actually wired into AccountDetail.jsx ───────────────────────
 // See the WIRING SCOPE note above for why these two subsets and not the full definition.
 
-const MAIN_SUBSET_IDS = ["financials", "activityAndNotes", "serviceActivity"];
+// accountPage.js's own array order already places these five MAIN-region sections
+// opportunities -> salesOrders -> financials -> activityAndNotes -> serviceActivity;
+// subsetOf's filter preserves that order, so this list does not also have to re-sequence.
+const MAIN_SUBSET_IDS = ["opportunities", "salesOrders", "financials", "activityAndNotes", "serviceActivity"];
 const SIDE_SUBSET_IDS = ["accountAttention"];
 
 function subsetOf(def, ids) {
   return { ...def, sections: def.sections.filter((s) => ids.includes(s.id)) };
 }
 
-/** MAIN-column subset: Financials, Activity & Notes, Service Activity — same order as today. */
+/**
+ * MAIN-column subset: Opportunities, Sales Orders, Financials, Activity & Notes, Service
+ * Activity — same order as today. Opportunities/Sales Orders are RELATED_LIST sections;
+ * rendering them requires passing accountPageListResolver/accountPageEntityResolver to
+ * MetadataRecordPage (AccountDetail.jsx does).
+ */
 export const accountRecordPageMainSubset = subsetOf(accountRecordPage, MAIN_SUBSET_IDS);
 
 /**

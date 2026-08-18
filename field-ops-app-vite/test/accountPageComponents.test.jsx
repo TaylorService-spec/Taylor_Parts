@@ -17,18 +17,20 @@
 //      visibility -> DOM) never quietly reveals or hides the wrong thing, independent of what a
 //      section happens to render.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
-import { accountEntity } from "../src/metadata/definitions/account.js";
-import { opportunityEntity, opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
-import { salesOrderEntity, salesOrderRelatedList } from "../src/metadata/definitions/salesOrder.js";
+import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { formatTimestamp } from "../src/domain/displayTimestamp.js";
 import {
   registerAccountPageComponents,
   accountPageComponentIds,
   accountRecordPageMainSubset,
   accountRecordPageSideSubset,
+  accountPageListResolver,
+  accountPageEntityResolver,
 } from "../src/metadata/definitions/accountPageComponents.js";
 
 // The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
@@ -227,19 +229,27 @@ describe("accountRecordPageSideSubset with `embedded` — evaluated and still no
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// X-ACCOUNT-WIRE-CALLABLE-LISTS — opportunities / salesOrders RE-EVALUATED after commit
-// 6c6480d8 closed the CALLABLE-readVia gap the earlier finding (above) named. These tests
-// render the REAL "opportunities" / "salesOrders" sections straight off accountRecordPage
-// (never test doubles) through the REAL DefaultRelatedList binding, against the REAL
-// opportunity.js / salesOrder.js / account.js definitions — proving BOTH halves of the
-// honest comparison this lane owes: (1) the CALLABLE gap really is closed (correct scope,
-// real reference numbers, honest truncation, correct denied/absent behavior), and (2) two
-// DIFFERENT, newly-found reasons still block wiring them in. See accountPageComponents.js's
-// WIRING SCOPE note for the full narrative these tests lock in.
-describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CALLABLE gap closed (6c6480d8)", () => {
-  // Single-section subsets of the REAL accountRecordPage — not accountRecordPageMainSubset,
-  // since that subset deliberately still excludes both (see the "not part of the wired MAIN
-  // subset" test at the bottom of this block).
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 — opportunities / salesOrders WIRED after commit 6998306f
+// closed BOTH renderer blockers the prior lane found (X-LIST-TIMESTAMP-FORMATTING,
+// X-LIST-ROW-NAVIGATION — docs/orchestration/metadata-program/LEDGER.md; reviewed as PR
+// #1202). These tests render the REAL "opportunities" / "salesOrders" sections straight off
+// accountRecordPage (never test doubles) through the REAL DefaultRelatedList binding, using
+// this module's own exported accountPageListResolver / accountPageEntityResolver (the same
+// functions AccountDetail.jsx passes to MetadataRecordPage) against the REAL opportunity.js /
+// salesOrder.js / account.js definitions — proving the wiring is correct, not merely that it
+// no longer crashes: correct account scoping, real reference numbers (never a document id),
+// a formatted expectedCloseAt date, honest truncation disclosure, correct denied/absent
+// behavior, and Sales Orders' real per-order route working end to end. See
+// accountPageComponents.js's WIRING SCOPE note for the full narrative.
+//
+// DefaultRelatedList calls react-router's useNavigate() unconditionally once a RELATED_LIST
+// section mounts (MetadataRecordPage.jsx) — every render below that GRANTS opportunity.read/
+// salesOrder.read (so the section actually mounts) needs a <MemoryRouter> ancestor; the
+// "denied" test does not, because a denied section is excluded from the plan before
+// DefaultRelatedList ever mounts.
+describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CALLABLE-LISTS-2, commit 6998306f)", () => {
+  // Single-section subsets of the REAL accountRecordPage — isolates each section's assertions
+  // from the other MAIN-column sections accountRecordPageMainSubset also carries.
   const opportunitiesOnly = {
     ...accountRecordPage,
     sections: accountRecordPage.sections.filter((s) => s.id === "opportunities"),
@@ -248,30 +258,28 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
     ...accountRecordPage,
     sections: accountRecordPage.sections.filter((s) => s.id === "salesOrders"),
   };
-  const listResolver = (id) =>
-    ({ "account.opportunities": opportunityRelatedList, "account.salesOrders": salesOrderRelatedList }[id] ?? null);
-  const entityResolver = (id) =>
-    ({ account: accountEntity, opportunity: opportunityEntity, salesOrder: salesOrderEntity }[id] ?? null);
 
   beforeEach(() => {
     fetchPageMock.mockReset();
     fetchCallablePageMock.mockReset();
   });
 
-  it("the CALLABLE gap really is closed: reads go through the callable source, correctly scoped to THIS account, never Firestore", async () => {
+  it("the CALLABLE gap stays closed: reads go through the callable source, correctly scoped to THIS account, never Firestore", async () => {
     fetchCallablePageMock.mockResolvedValue({
       rows: [{ id: "opp-doc-1", opportunityNumber: "OPP-2026-000123", stage: "QUALIFICATION", need: "New freezer" }],
       hasMore: false,
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
-        definition={opportunitiesOnly}
-        record={{ id: "acct-42" }}
-        capabilityDecisions={{ "opportunity.read": true }}
-        listResolver={listResolver}
-        entityResolver={entityResolver}
-      />
+      <MemoryRouter>
+        <MetadataRecordPage
+          definition={opportunitiesOnly}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "opportunity.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
     );
     // The real reference number, not the document id — the document id never reaches the DOM.
     expect(await screen.findByText("OPP-2026-000123")).toBeTruthy();
@@ -291,13 +299,15 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
-        definition={opportunitiesOnly}
-        record={{ id: "acct-42" }}
-        capabilityDecisions={{ "opportunity.read": true }}
-        listResolver={listResolver}
-        entityResolver={entityResolver}
-      />
+      <MemoryRouter>
+        <MetadataRecordPage
+          definition={opportunitiesOnly}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "opportunity.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
     );
     expect(await screen.findByText(/showing the most recent 25/i)).toBeTruthy();
   });
@@ -309,7 +319,8 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
     // concern), never the PAGE-level "Not available to you" — that box is what a plan with
     // ZERO visible sections anywhere on the page would show (GAP 3, MetadataRecordPage.jsx),
     // a different, correctly-distinct case this single-section definition would otherwise
-    // trigger by accident.
+    // trigger by accident. No MemoryRouter needed — the denied section never mounts
+    // DefaultRelatedList at all.
     const { container } = render(
       <MetadataRecordPage
         definition={opportunitiesOnly}
@@ -318,8 +329,8 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
         // registered catalog-wide active:false, so an empty decisions map is what every
         // current viewer sees, not a contrived edge case.
         capabilityDecisions={{}}
-        listResolver={listResolver}
-        entityResolver={entityResolver}
+        listResolver={accountPageListResolver}
+        entityResolver={accountPageEntityResolver}
         embedded
       />
     );
@@ -332,58 +343,106 @@ describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CA
     expect(fetchCallablePageMock).not.toHaveBeenCalled();
   });
 
-  it("BLOCKER 1 — opportunities' TIMESTAMP column (expectedCloseAt) renders the raw epoch-millisecond value, not a formatted date", async () => {
+  it("CLOSED BLOCKER 1 — opportunities' TIMESTAMP column (expectedCloseAt) renders a formatted date, never the raw epoch-millisecond value", async () => {
     fetchCallablePageMock.mockResolvedValue({
       rows: [{ id: "opp-1", opportunityNumber: "OPP-2026-000999", expectedCloseAt: 1755993600000 }],
       hasMore: false,
       nextCursorDoc: null,
     });
     render(
-      <MetadataRecordPage
-        definition={opportunitiesOnly}
-        record={{ id: "acct-42" }}
-        capabilityDecisions={{ "opportunity.read": true }}
-        listResolver={listResolver}
-        entityResolver={entityResolver}
-      />
+      <MemoryRouter>
+        <MetadataRecordPage
+          definition={opportunitiesOnly}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "opportunity.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
     );
     await screen.findByText("OPP-2026-000999");
-    // The raw number reaches the DOM verbatim — no TIMESTAMP formatting path exists anywhere
-    // in listPresentation.js/MetadataListGrid.jsx. AccountOpportunitiesSection's own
-    // formatDate() would have shown a real date here; this is the confirmed regression that
-    // keeps Opportunities hand-rendered.
-    expect(screen.getByText("1755993600000")).toBeTruthy();
+    // The exact same shared formatter (domain/displayTimestamp.js) the rest of the codebase
+    // already uses for a stored time, not a value re-derived here — so this assertion cannot
+    // silently drift from what cellValue() actually calls.
+    expect(screen.getByText(formatTimestamp(1755993600000, { unknown: null }))).toBeTruthy();
+    // The raw epoch number never reaches the DOM — this is the exact regression BLOCKER 1
+    // used to lock in (PR #1202); now it locks in the opposite fact.
+    expect(screen.queryByText("1755993600000")).toBeNull();
   });
 
-  it("BLOCKER 2 — salesOrders rows carry no link and no click handler: the real per-order route is unreachable from a wired section", async () => {
+  it("CLOSED BLOCKER 2 — salesOrders rows navigate to the real, existing per-order route on click", async () => {
     fetchCallablePageMock.mockResolvedValue({
       rows: [{ id: "so-1", salesOrderNumber: "SO-2026-000045", state: "OPEN" }],
       hasMore: false,
       nextCursorDoc: null,
     });
-    const { container } = render(
-      <MetadataRecordPage
-        definition={salesOrdersOnly}
-        record={{ id: "acct-42" }}
-        capabilityDecisions={{ "salesOrder.read": true }}
-        listResolver={listResolver}
-        entityResolver={entityResolver}
-      />
+    // Renders the current location's pathname so a click's navigation effect is observable
+    // without mocking react-router's useNavigate — same technique as
+    // test/metadataRecordPage.test.jsx's "DEFECT 2" suite.
+    function LocationProbe() {
+      const location = useLocation();
+      return <p data-testid="location">{location.pathname}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/customers/acct-42"]}>
+        <LocationProbe />
+        <MetadataRecordPage
+          definition={salesOrdersOnly}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "salesOrder.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
     );
     const cell = await screen.findByText("SO-2026-000045");
-    // No anchor anywhere in the table -- AccountSalesOrdersSection's real
-    // Link to `/customers/opportunities/sales-order/:salesOrderId` (SalesOrderDetail.jsx,
-    // App.jsx) has no equivalent here.
-    expect(container.querySelector("a")).toBeNull();
-    // The row itself carries no click affordance either (DefaultRelatedList passes
-    // MetadataListGrid no onRowClick, so tabIndex/onClick stay unset).
     const row = cell.closest("tr");
-    expect(row.getAttribute("tabindex")).toBeNull();
+    // The row is a real interactive target now (DefaultRelatedList wired rowNavigationTo).
+    expect(row.getAttribute("tabindex")).toBe("0");
+    fireEvent.click(row);
+    // salesOrderRelatedList's own rowNavigationTo — the SAME real route SalesOrderDetail.jsx
+    // is mounted at in App.jsx, with the routing key (document id) substituted, never shown
+    // as content.
+    expect((await screen.findByTestId("location")).textContent).toBe("/customers/opportunities/sales-order/so-1");
   });
 
-  it("still not part of the wired MAIN subset AccountDetail.jsx actually renders — both stay hand-rendered", () => {
+  it("REGISTRATION_PENDING — opportunities rows stay non-focusable: opportunity.js's own rowNavigationTo names a route that does not exist anywhere in App.jsx, so this module's listResolver strips it rather than wiring a broken link", async () => {
+    fetchCallablePageMock.mockResolvedValue({
+      rows: [{ id: "opp-1", opportunityNumber: "OPP-2026-000999" }],
+      hasMore: false,
+      nextCursorDoc: null,
+    });
+    function LocationProbe() {
+      const location = useLocation();
+      return <p data-testid="location">{location.pathname}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/customers/acct-42"]}>
+        <LocationProbe />
+        <MetadataRecordPage
+          definition={opportunitiesOnly}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "opportunity.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
+    );
+    const cell = await screen.findByText("OPP-2026-000999");
+    const row = cell.closest("tr");
+    // The exact "rowNavigationTo absent" degrade DefaultRelatedList already tests for on its
+    // own (test/metadataRecordPage.test.jsx's DEFECT 2 suite) — non-focusable, no click.
+    expect(row.getAttribute("tabindex")).toBeNull();
+    fireEvent.click(row);
+    expect((await screen.findByTestId("location")).textContent).toBe("/customers/acct-42");
+    // Confirms the RAW opportunity.js definition really does still declare the broken value
+    // this test exists to route around — if a future fix to opportunity.js corrects or
+    // removes it, this assertion (not just the behavior above) should be revisited.
+    expect(opportunityRelatedList.rowNavigationTo).toBe("/sales/opportunities/:id");
+  });
+
+  it("now part of the wired MAIN subset AccountDetail.jsx actually renders — in accountPage.js's own order, ahead of financials", () => {
     const wiredIds = accountRecordPageMainSubset.sections.map((s) => s.id);
-    expect(wiredIds).not.toContain("opportunities");
-    expect(wiredIds).not.toContain("salesOrders");
+    expect(wiredIds).toEqual(["opportunities", "salesOrders", "financials", "activityAndNotes", "serviceActivity"]);
   });
 });
