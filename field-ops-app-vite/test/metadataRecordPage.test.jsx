@@ -22,6 +22,16 @@ vi.mock("../src/metadata/firestoreListSource.js", () => ({
   fetchPage: (...args) => fetchPageMock(...args),
 }));
 
+// The CALLABLE-readVia counterpart of fetchPageMock, mocked at the same boundary
+// (callableListSource.js's own fetchPage is the ONLY place that module touches a
+// callable) so these tests exercise the routing decision, not either translator's
+// internals — those are covered by metadataCallableListSource.test.jsx and
+// metadataFirestoreListSource.test.jsx.
+const fetchCallablePageMock = vi.fn();
+vi.mock("../src/metadata/callableListSource.js", () => ({
+  fetchPage: (...args) => fetchCallablePageMock(...args),
+}));
+
 const Lifecycle = ({ record }) => <p>lifecycle for {record?.id}</p>;
 const Blockers = () => <p>blockers section</p>;
 const Gated = () => <p>gated content</p>;
@@ -32,6 +42,7 @@ beforeEach(() => {
   componentRegistry.register({ id: "record.blockers", kind: "RECORD_SECTION", component: Blockers });
   componentRegistry.register({ id: "record.gated", kind: "RECORD_SECTION", component: Gated });
   fetchPageMock.mockReset();
+  fetchCallablePageMock.mockReset();
 });
 
 const workOrderPage = (over = {}) =>
@@ -287,6 +298,138 @@ describe("MetadataRecordPage", () => {
       );
       expect(screen.getByText("custom account.opportunities.related for acct-1")).toBeTruthy();
       expect(fetchPageMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── GAP 2b — the default binding ROUTES by the child entity's declared readVia ─────
+  //
+  // Two entities in this program (opportunity, salesOrder) are deny-all in Firestore
+  // Rules and readable only through a trusted callable — declared as `readVia: "CALLABLE"`
+  // with a `readCallable` name. Defaulting every RELATED_LIST to the Firestore source
+  // regardless of that declaration is the defect this closes: it would issue a live
+  // `getDocs` against a deny-all collection and report every viewer denied, permanently.
+
+  describe("GAP 2b — routing by readVia", () => {
+    const accountEntity = makeEntityDefinition({
+      id: "account",
+      label: "Account",
+      readVia: "CLIENT_DIRECT",
+      collection: "accounts",
+      relationships: [
+        makeRelationshipDefinition({
+          id: "account.opportunities",
+          label: "Opportunities",
+          fromEntityId: "account",
+          toEntityId: "opportunity",
+          viaField: "accountId",
+          cardinality: "ONE_TO_MANY",
+        }),
+      ],
+    });
+    const nameField = (entityId) => makeFieldDefinition({ id: "name", entityId, label: "Name", type: "STRING" });
+    const opportunitiesList = makeListViewDefinition({
+      id: "account.opportunities.related",
+      entityId: "opportunity",
+      label: "Opportunities",
+      surface: "RELATED",
+      parentRelationshipId: "account.opportunities",
+      columns: [makeColumn({ fieldId: "name" })],
+      tiebreaker: "__name__",
+    });
+    const accountPage = () =>
+      makePageDefinition({
+        id: "account.record",
+        entityId: "account",
+        label: "Account",
+        sections: [
+          makeSection({ id: "opps", kind: "RELATED_LIST", label: "Opportunities", region: "MAIN", order: 0, listId: "account.opportunities.related" }),
+        ],
+      });
+    const renderWithChildEntity = (opportunityEntity) =>
+      render(
+        <MetadataRecordPage
+          definition={accountPage()}
+          record={{ id: "acct-1" }}
+          listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
+          entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+        />
+      );
+
+    it("CLIENT_DIRECT invokes the Firestore source and never the callable source", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Direct Deal" }], hasMore: false, nextCursorDoc: null });
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CLIENT_DIRECT",
+        collection: "opportunities",
+        fields: [nameField("opportunity")],
+      });
+      renderWithChildEntity(opportunityEntity);
+      expect(await screen.findByText("Direct Deal")).toBeTruthy();
+      expect(fetchPageMock).toHaveBeenCalledTimes(1);
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
+    });
+
+    it("CALLABLE with a declared readCallable invokes the callable source and never the Firestore source", async () => {
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Callable Deal" }], hasMore: false, nextCursorDoc: null });
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
+        fields: [nameField("opportunity")],
+      });
+      renderWithChildEntity(opportunityEntity);
+      expect(await screen.findByText("Callable Deal")).toBeTruthy();
+      expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
+      expect(fetchPageMock).not.toHaveBeenCalled();
+      // The SAME descriptor the Firestore source would have received — the runtime's
+      // decisions (parent scope, sort, bound) do not change with the source.
+      const [descriptor] = fetchCallablePageMock.mock.calls[0];
+      expect(descriptor.filters).toContainEqual(expect.objectContaining({ fieldId: "accountId", operator: "EQUALS", value: "acct-1" }));
+    });
+
+    it("CALLABLE with no readCallable declared renders an explicit unavailable state, attempting neither source", async () => {
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CALLABLE",
+        // readCallable intentionally omitted — a misconfigured entity.
+        fields: [nameField("opportunity")],
+      });
+      renderWithChildEntity(opportunityEntity);
+      expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
+      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
+    });
+
+    it("UNKNOWN readVia renders an explicit unavailable state, never falling through to a direct read", async () => {
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        // readVia omitted entirely -> defaults to "UNKNOWN" (entityDefinition.js).
+        fields: [nameField("opportunity")],
+      });
+      renderWithChildEntity(opportunityEntity);
+      expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
+      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
+    });
+
+    it("a permission-denied rejection from the callable source surfaces as DENIED, not empty", async () => {
+      const denied = new Error("nope");
+      denied.code = "permission-denied";
+      fetchCallablePageMock.mockRejectedValue(denied);
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
+        fields: [nameField("opportunity")],
+      });
+      renderWithChildEntity(opportunityEntity);
+      expect(await screen.findByText(/do not have access to opportunities/i)).toBeTruthy();
+      expect(screen.queryByText(/no opportunities yet/i)).toBeNull();
     });
   });
 

@@ -5,7 +5,8 @@ import { REGION } from "./pageDefinition.js";
 import { findField } from "./entityDefinition.js";
 import { buildQueryDescriptor } from "./listRuntime.js";
 import { buildListPresentation, cellValue } from "./listPresentation.js";
-import { fetchPage } from "./firestoreListSource.js";
+import { fetchPage as fetchFirestorePage } from "./firestoreListSource.js";
+import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
 import FailureState from "../shared/ui/FailureState";
 
@@ -114,9 +115,29 @@ function FieldGroup({ section, record, entity }) {
  * (`{ filters, sort, enabled }`) does not forward `parentId`/`relationships` to
  * `buildQueryDescriptor`, so it cannot scope a RELATED read at all today, and
  * `useMetadataList.js` is outside this change's write scope. `useRelatedListPresentation`
- * below is the same three primitives (`buildQueryDescriptor`, `fetchPage`,
+ * below is the same three primitives (`buildQueryDescriptor`, a `readVia`-selected fetch,
  * `buildListPresentation`) composed the way a RELATED surface actually needs.
+ *
+ * ROUTES BY THE ENTITY'S DECLARED `readVia` (see `selectListSource` below). The entity
+ * already states how it may be read — CLIENT_DIRECT via Firestore rules, CALLABLE via a
+ * trusted read the entity names as `readCallable` (its collection is deny-all in Rules) —
+ * and this is the one place a RELATED section's default binding honors that instead of
+ * assuming Firestore. Defaulting every RELATED_LIST to `fetchFirestorePage` regardless of
+ * `readVia` is the exact defect this closes: it would issue a live `getDocs` against a
+ * deny-all collection for `opportunity`/`salesOrder` and report every viewer as denied —
+ * permanently, even one holding the real capability, because the read never had a chance
+ * to succeed through the actual trusted path.
  */
+function selectListSource(entity) {
+  if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
+  if (entity?.readVia === "CALLABLE" && entity.readCallable) return fetchCallablePage;
+  // UNKNOWN readVia, or CALLABLE with no readCallable declared: a misconfigured entity,
+  // never a live read to attempt. Returning null here (rather than falling back to
+  // `fetchFirestorePage`) is the fix — silently defaulting to Firestore is what would
+  // repeat the defect this module exists to close.
+  return null;
+}
+
 function useRelatedListPresentation({ listDef, entity, parentId, relationships }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,8 +164,23 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
       setErrorStatus(errors?.length ? "unavailable" : null);
       return;
     }
+    const source = selectListSource(entity);
+    if (!source) {
+      // Misconfigured — the entity's own `readVia` cannot be read at all (UNKNOWN, or
+      // CALLABLE with no readCallable declared). Never falls through to
+      // `fetchFirestorePage`: that fallthrough against a possibly deny-all collection is
+      // the exact defect this binding exists to avoid. Surfaced as "unavailable" — the
+      // presentation model (listPresentation.js) has no separate misconfiguration state,
+      // and "the read failed" is the honest, if imprecise, thing to tell a viewer; it is
+      // still never "denied" (that would claim a real authorization check ran) and never
+      // "empty" (that would claim the read succeeded and found nothing).
+      setRows([]);
+      setLoading(false);
+      setErrorStatus("unavailable");
+      return;
+    }
     setLoading(true);
-    fetchPage(descriptor, {})
+    source(descriptor, {})
       .then((page) => {
         if (token !== requestRef.current) return;
         setRows(page.rows);
@@ -154,6 +190,9 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
         if (token !== requestRef.current) return;
         // DENIED and UNAVAILABLE stay distinct all the way down, same as every other
         // list read in this codebase — see useMetadataList.js's own comment.
+        // callableListSource.js normalizes a callable rejection's error code to the same
+        // bare "permission-denied" a Firestore read failure already carries, so this
+        // check does not need to know which source produced the error.
         setErrorStatus(e?.code === "permission-denied" ? "denied" : "unavailable");
         setRows([]);
       })
@@ -161,7 +200,7 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
         if (token === requestRef.current) setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [descriptor, retryNonce]);
+  }, [descriptor, retryNonce, entity]);
 
   const presentation = useMemo(
     () =>
