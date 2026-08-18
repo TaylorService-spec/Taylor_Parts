@@ -29,3 +29,8 @@ netwatch.log
 # principal UIDs -- they must never be committed.
 functions/.operator-access-intents/
 .operator-access-intents/
+
+# Emulator debug output — generated at runtime, never a repo artifact.
+firestore-debug.log
+firebase-debug.log
+.impeccable/
