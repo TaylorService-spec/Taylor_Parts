@@ -153,7 +153,7 @@ function publishEvidenceAtomically(fsDeps, finalDir, files) {
   }
 }
 
-function planReportMarkdown(planEvidence) {
+function planReportMarkdown(planEvidence, planFileSha256) {
   const { counts } = planEvidence;
   const lines = [
     "# Sales Order Number Backfill -- dry-run plan",
@@ -161,7 +161,16 @@ function planReportMarkdown(planEvidence) {
     `- Generated: ${planEvidence.generatedAt}`,
     `- Project: ${planEvidence.projectId}`,
     `- Repository commit: ${planEvidence.governedCommit}`,
-    `- Plan hash (bind this to --plan-sha256 at execute): ${planEvidence.planHash}`,
+    // TWO different hashes, and confusing them fails the execute gate. `--plan-sha256` binds the sha256 of
+    // the plan.json FILE BYTES (the artifact the Owner reviewed) -- that is what runExecute() compares.
+    // `planEvidence.planHash` is the narrower operative-content hash (projectId + commit + assignments +
+    // collisions + blocked + counterSnapshot, excluding generatedAt); it is what stays STABLE across two
+    // dry-runs of unchanged data, which makes it the right value for reproducibility comparison and the
+    // WRONG value to pass to --plan-sha256. This report previously printed the operative hash under the
+    // label "bind this to --plan-sha256", which would have failed closed at execute with a bare
+    // "plan hash mismatch" -- safe, but a false instruction.
+    `- Bind this to --plan-sha256 at execute (sha256 of plan.json bytes): ${planFileSha256}`,
+    `- Operative plan hash (stable across reruns when data is unchanged; NOT the --plan-sha256 value): ${planEvidence.planHash}`,
     "",
     `| total | already numbered (skip) | to assign (create) | collisions (fail) | blocked (fail) |`,
     `|---|---|---|---|---|`,
@@ -200,11 +209,15 @@ async function runDryRun(deps, args) {
   };
   const plan = backfill.planBackfill(records, readCounterSequence);
   const planEvidence = evidence.buildPlanEvidence(plan, { projectId: args.projectId, governedCommit: args.governedCommit, now: deps.now });
+  // Serialize ONCE and hash those exact bytes, so the value printed in the report is byte-identical to the
+  // plan.json actually published (and to its checksums.sha256 line) -- not a re-serialization that could drift.
+  const planJson = evidence.serializeEvidence(planEvidence);
+  const planFileSha256 = sha256Hex(planJson);
   const dir = publishEvidenceAtomically(deps.fs, args.evidenceDir, [
-    { name: "plan.json", content: evidence.serializeEvidence(planEvidence) },
-    { name: "plan-report.md", content: planReportMarkdown(planEvidence) },
+    { name: "plan.json", content: planJson },
+    { name: "plan-report.md", content: planReportMarkdown(planEvidence, planFileSha256) },
   ]);
-  return { mode: "dry-run", plan, planEvidence, evidenceDir: dir };
+  return { mode: "dry-run", plan, planEvidence, planFileSha256, evidenceDir: dir };
 }
 
 async function runExecute(deps, args) {
