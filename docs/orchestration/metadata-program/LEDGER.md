@@ -38,8 +38,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED** (phase 6) — FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet → Make FieldGroup render only visible parts and surface the withholding visibly.
-- **X-REGISTRY-VALIDATOR-NEVER-RUN** (phase 6) — validateRegistryReferences is never run over real definitions → Run it over the registered definitions in a test, minding registration timing.
+- **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -52,8 +51,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED | 6 | FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet | — | — | — | — | — | NOT_APPLICABLE | Make FieldGroup render only visible parts and surface the withholding visibly. |
-| X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | — | — | — | NOT_APPLICABLE | Run it over the registered definitions in a test, minding registration timing. |
+| X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
 
@@ -115,7 +113,10 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-ACCOUNT-PAGE-WIRING-COMPLETE | 6 | Complete the Account page wiring now the renderer supports it | /customers/:accountId | — | #1198 | — | f42491de | NOT_APPLICABLE | No section newly wired. Three prerequisites identified and recorded. |
 | A-CALLABLE-LIST-SOURCE | 6 | RELATED_LIST cannot read a CALLABLE-readVia entity | — | — | #1200 | — | 6c6480d8 | NOT_APPLICABLE | Merged. Opportunities and Sales Orders are now wirable; that lane is dispatched. |
 | X-SECTION-CAPABILITY-GRANULARITY | 6 | A section capability cannot express a partially-gated composition | — | — | #1209 | — | 18aae32c | NOT_APPLICABLE | None. Adoption is gated on the FieldGroup consumer. |
+| X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED | 6 | FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet | — | — | #1213 | — | f013d965 | NOT_APPLICABLE | None. |
 | X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | #1211 | — | bd2e733e | NOT_APPLICABLE | Wiring Contacts/Locations onto it is a separate lane. |
+| X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
+| X-PAGE-REGISTRY-REFERENCES-UNCONSUMED | 6 | pageRegistryReferences was also unconsumed -- and the wrong validator passes silently | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-OPPORTUNITY-STALE-ROUTE | 6 | opportunity.js declared a rowNavigationTo route that never existed | — | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | Restore a rowNavigationTo only when a real per-Opportunity route exists. |
 | A-ENTITY-BILLING-DEFINITIONS | 6 | Invoice and Payment entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
 | A-ENTITY-FLEET-CATALOG-DEFINITIONS | 6 | Truck and EquipmentModel entity definitions | — | — | #1206 | — | 653973cb | NOT_APPLICABLE | None. |
@@ -221,7 +222,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Resolved: merges are executing |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
-| X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- four instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
+| X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- six instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
 | X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
 | X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
 

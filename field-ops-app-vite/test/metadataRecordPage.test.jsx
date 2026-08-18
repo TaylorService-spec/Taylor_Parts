@@ -239,6 +239,143 @@ describe("MetadataRecordPage", () => {
       expect(screen.getByText("gated content")).toBeTruthy();
       expect(screen.queryByText("Priority")).toBeNull();
     });
+
+    // ── X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED — the generic FIELD_GROUP renderer
+    // honors withheld capabilityParts instead of rendering every declared field
+    // unconditionally. ─────────────────────────────────────────────────────────────
+
+    describe("X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED — capabilityParts on FIELD_GROUP", () => {
+      const record = { id: "wo-1", priority: "HIGH", notes: "Leaking valve" };
+
+      const renderFieldGroup = (capabilityParts, capabilityDecisions) => {
+        const def = workOrderPage({
+          sections: [
+            makeSection({
+              id: "fg",
+              kind: "FIELD_GROUP",
+              label: "Details",
+              region: "MAIN",
+              order: 0,
+              fieldIds: ["priority", "notes"],
+              capabilityParts,
+            }),
+          ],
+        });
+        return render(
+          <MetadataRecordPage
+            definition={def}
+            record={record}
+            capabilityDecisions={capabilityDecisions}
+            entityResolver={(id) => (id === "workOrder" ? workOrderEntity : null)}
+          />
+        );
+      };
+
+      it("renders unchanged with no capabilityParts declared — the additivity guarantee", () => {
+        // Same fixture, same fields, capabilityParts entirely absent. This must be pixel
+        // for pixel the pre-existing "renders declared fields" behavior: no withholding
+        // note, both fields present.
+        const def = workOrderPage({
+          sections: [makeSection({ id: "fg", kind: "FIELD_GROUP", label: "Details", region: "MAIN", order: 0, fieldIds: ["priority", "notes"] })],
+        });
+        render(
+          <MetadataRecordPage
+            definition={def}
+            record={record}
+            entityResolver={(id) => (id === "workOrder" ? workOrderEntity : null)}
+          />
+        );
+        expect(screen.getByText("High priority")).toBeTruthy();
+        expect(screen.getByText("Leaking valve")).toBeTruthy();
+        expect(screen.queryByText(/not available to you/i)).toBeNull();
+      });
+
+      it("a fully-granted composed section renders every field with no withholding note", () => {
+        renderFieldGroup(
+          [
+            { id: "core", capabilityRequirement: "workOrder.read", fieldIds: ["priority"] },
+            { id: "notes", capabilityRequirement: "workOrder.notes.read", fieldIds: ["notes"] },
+          ],
+          { "workOrder.read": true, "workOrder.notes.read": true }
+        );
+        expect(screen.getByText("High priority")).toBeTruthy();
+        expect(screen.getByText("Leaking valve")).toBeTruthy();
+        expect(screen.queryByText(/not available to you/i)).toBeNull();
+      });
+
+      it("a partially-withheld section renders only the entitled field and surfaces the withholding", () => {
+        renderFieldGroup(
+          [
+            { id: "core", capabilityRequirement: null, fieldIds: ["priority"] },
+            { id: "notes", capabilityRequirement: "workOrder.notes.read", fieldIds: ["notes"] },
+          ],
+          {} // workOrder.notes.read not granted
+        );
+        expect(screen.getByText("High priority")).toBeTruthy();
+        expect(screen.queryByText("Leaking valve")).toBeNull();
+        expect(screen.queryByText("Notes")).toBeNull();
+        expect(screen.getByText(/not available to you/i)).toBeTruthy();
+      });
+
+      it("empty-vs-withheld: a visible field with no data still shows '—', not the withholding note", () => {
+        // Every part visible, one field's value is legitimately absent. This must read as
+        // EMPTY (the existing "—" convention), never as WITHHELD.
+        const def = workOrderPage({
+          sections: [
+            makeSection({
+              id: "fg",
+              kind: "FIELD_GROUP",
+              label: "Details",
+              region: "MAIN",
+              order: 0,
+              fieldIds: ["priority", "notes"],
+              capabilityParts: [{ id: "core", capabilityRequirement: null, fieldIds: ["priority", "notes"] }],
+            }),
+          ],
+        });
+        render(
+          <MetadataRecordPage
+            definition={def}
+            record={{ id: "wo-2", priority: "HIGH", notes: "" }}
+            entityResolver={(id) => (id === "workOrder" ? workOrderEntity : null)}
+          />
+        );
+        expect(screen.getByText("—")).toBeTruthy();
+        expect(screen.queryByText(/not available to you/i)).toBeNull();
+      });
+
+      it("fails closed on malformed capabilityParts metadata — withholds every field, never renders any", () => {
+        // A duplicate field claim is exactly the shape validatePageDefinition rejects at
+        // definition time; this simulates it reaching the runtime anyway (a hand-built
+        // fixture, or a future caller that skips validation) to prove the render path
+        // has its own defence, not just the definition-time one.
+        renderFieldGroup(
+          [
+            { id: "core", capabilityRequirement: null, fieldIds: ["priority"] },
+            { id: "dup", capabilityRequirement: null, fieldIds: ["priority"] },
+          ],
+          {}
+        );
+        expect(screen.queryByText("High priority")).toBeNull();
+        expect(screen.queryByText("Leaking valve")).toBeNull();
+        expect(screen.getByText(/not available to you/i)).toBeTruthy();
+      });
+
+      it("a field id claimed by no capabilityParts entry is withheld, not rendered ungated", () => {
+        // "notes" is in the section's own fieldIds but no part claims it — ownership
+        // cannot be determined, so this fails closed the same as an explicitly withheld
+        // field (the deliberate choice this task requires be made and justified: see the
+        // FieldGroup doc comment in MetadataRecordPage.jsx).
+        renderFieldGroup(
+          [{ id: "core", capabilityRequirement: null, fieldIds: ["priority"] }],
+          {}
+        );
+        expect(screen.getByText("High priority")).toBeTruthy();
+        expect(screen.queryByText("Leaking valve")).toBeNull();
+        expect(screen.queryByText("Notes")).toBeNull();
+        expect(screen.getByText(/not available to you/i)).toBeTruthy();
+      });
+    });
   });
 
   // ── GAP 2 — RELATED_LIST renders through a default binding to the list runtime ────

@@ -2230,12 +2230,14 @@
       "kind": "ARCHITECTURE",
       "title": "FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet",
       "domain": "metadata",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Make FieldGroup render only visible parts and surface the withholding visibly.",
-      "notes": "The generic FieldGroup renderer in MetadataRecordPage.jsx renders every id in section.fieldIds unconditionally, so a composed FIELD_GROUP would silently omit withheld fields with no trace -- the exact failure capabilityParts exists to prevent. This is the SAME SHAPE as the stale rowNavigationTo removed in #1207: a declaration no consumer honors is harmless right up until something reads it. Merging #1209 was safe only because NO definition adopts capabilityParts yet (accountPage.js still declares the single finance.read gate). Recorded rather than left to memory: do not migrate accountAttention, or any other FIELD_GROUP, until this lands. Component-path sections need no change -- Section already forwards the resolved section object through."
+      "nextAction": "None.",
+      "notes": "The generic FieldGroup renderer in MetadataRecordPage.jsx renders every id in section.fieldIds unconditionally, so a composed FIELD_GROUP would silently omit withheld fields with no trace -- the exact failure capabilityParts exists to prevent. This is the SAME SHAPE as the stale rowNavigationTo removed in #1207: a declaration no consumer honors is harmless right up until something reads it. Merging #1209 was safe only because NO definition adopts capabilityParts yet (accountPage.js still declares the single finance.read gate). Recorded rather than left to memory: do not migrate accountAttention, or any other FIELD_GROUP, until this lands. Component-path sections need no change -- Section already forwards the resolved section object through. RESOLVED at f013d965. CORRECTION to this entry as originally written: closing this did NOT unblock accountAttention adopting capabilityParts, and the entry should not be read as saying so. AccountAttentionSection is a registered componentId section, and Section() resolves a componentId before FieldGroup is ever reached -- component-path sections already received the resolved section object for free from #1209. What this closed is the GENERIC FIELD_GROUP hole, which was real and genuinely unconsumed. Account Attention's own composition remains a separate decision. Three fail-closed choices were made deliberately: an unclaimed field is withheld rather than shown (default-show would make 'forgot to add this field to the new part' the silent failure mode when composing an existing section; fail-closed makes that same mistake safe); malformed part metadata withholds the ENTIRE section, since the runtime cannot know what a broken declaration would have claimed; and structural validation runs again at render time rather than assuming the definition validator ran.",
+      "pr": 1213,
+      "mergeSha": "f013d965"
     },
     {
       "id": "X-RELATED-LIST-ACTIONS",
@@ -2261,26 +2263,58 @@
       "kind": "AUDIT",
       "title": "validateRegistryReferences is never run over real definitions",
       "domain": "metadata",
+      "status": "MERGED",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "resolveRowActions in MetadataRecordPage.jsx silently drops an unregistered action id, justified as matching validateRegistryReferences' philosophy. That validator DOES check rowActions -- but its only caller anywhere in the repo is its own unit test, so no real definition is ever validated by it. The justification therefore does not hold and an unregistered id would vanish with no trace. Not patched blind: wiring the validator over real definitions depends on when the component/action registries are populated, and a node test against empty registries would fail for the wrong reason. RESOLVED. Two checks, both honestly scoped: all 20 real ListViewDefinitions validated in the node:test suite already wired to CI, and accountRecordPage validated against the GENUINELY populated registry by driving the real registerAccountPageComponents(). The lane explicitly avoided a hand-built registry, which would have recreated the hollow assurance this item exists to remove, and states plainly in the test file that the list-definition check is currently VACUOUS -- no real list definition declares a renderer or row action yet, so it is a forward tripwire rather than present-day coverage. Both checks were proved to FAIL on a bogus reference before being reverted.",
+      "pr": 1215,
+      "mergeSha": "8e68218e"
+    },
+    {
+      "id": "X-PAGE-REGISTRY-REFERENCES-UNCONSUMED",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "pageRegistryReferences was also unconsumed -- and the wrong validator passes silently",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1215,
+      "mergeSha": "8e68218e",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "The SIXTH instance of the unconsumed-declaration pattern, and the most dangerous shape of it so far. pageRegistryReferences (pageDefinition.js) is the correctly-shaped sibling for PageDefinitions and also had no caller but its own unit test. The trap: validateRegistryReferences reads the ListViewDefinition shape (.columns/.rowActions), while a PageDefinition keeps its references in .sections[].componentId and .headerActions -- so calling the well-known validator on a real page definition finds ZERO references and PASSES. A green check that proves nothing is worse than no check, and a naive fix to X-REGISTRY-VALIDATOR-NEVER-RUN would have produced exactly that."
+    },
+    {
+      "id": "X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "actionRegistry.register() is never called in application source",
+      "domain": "metadata",
       "status": "READY",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Run it over the registered definitions in a test, minding registration timing.",
-      "notes": "resolveRowActions in MetadataRecordPage.jsx silently drops an unregistered action id, justified as matching validateRegistryReferences' philosophy. That validator DOES check rowActions -- but its only caller anywhere in the repo is its own unit test, so no real definition is ever validated by it. The justification therefore does not hold and an unregistered id would vanish with no trace. Not patched blind: wiring the validator over real definitions depends on when the component/action registries are populated, and a node test against empty registries would fail for the wrong reason."
+      "nextAction": "Register real actions when a definition first declares one; until then rowActions is inert.",
+      "notes": "actionRegistry.register() is called nowhere in src/ -- only in test files -- so the action side of the registry is structurally empty in production. Harmless today only because no definition declares an action id, which also means the rowActions path shipped in #1211 is INERT in production until something registers one. Recorded rather than absorbed: this is the same pattern in its mirror image -- not a declaration nobody reads, but a reader nobody feeds."
     },
     {
       "id": "X-UNCONSUMED-DECLARATION-PATTERN",
       "phase": "6",
       "wave": "3",
       "kind": "AUDIT",
-      "title": "Metadata declares things nothing reads -- four instances in one session",
+      "title": "Metadata declares things nothing reads -- six instances in one session",
       "domain": "metadata",
       "status": "COMPLETE",
       "governing": [
         "DECISIONS #102 section 6"
       ],
       "nextAction": "None. Recorded as a program-level pattern to check for, not a single defect.",
-      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review."
+      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review. UPDATED: two further instances found after this entry was written. (5) pageRegistryReferences, unconsumed AND shadowed by a similarly-named validator that silently passes on the wrong shape -- see X-PAGE-REGISTRY-REFERENCES-UNCONSUMED. (6) actionRegistry, the mirror image: not a declaration nobody reads but a reader nobody feeds. The detection method held for every one of them -- each was found by attempting to consume the declaration honestly, none by review."
     },
     {
       "id": "X-ACCOUNT-WIRE-CALLABLE-LISTS",
