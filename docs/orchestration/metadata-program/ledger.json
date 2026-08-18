@@ -2214,12 +2214,28 @@
       "title": "A section capability cannot express a partially-gated composition",
       "domain": "program",
       "entity": "n/a",
-      "status": "READY",
-      "nextAction": "Either finer-grained section capabilities, or split the composed section in two",
+      "status": "MERGED",
+      "nextAction": "None. Adoption is gated on the FieldGroup consumer.",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "notes": "Found by trying to wire Account Attention. The page declares ONE capability for a component composing TWO sources at DIFFERENT authority levels: its AR read is finance.read-gated, its past-due Work Order read is ungated. A section-level requirement can only honour the coarser gate, so wiring it hides the ungated half too. finance.read is catalog-wide active:false, so this is not theoretical - it would blank the panel for every viewer today. The `embedded` prop fixed the region-denial symptom correctly; this is a different problem underneath it, and conflating the two would have shipped a blank panel while believing the fix worked."
+      "notes": "Found by trying to wire Account Attention. The page declares ONE capability for a component composing TWO sources at DIFFERENT authority levels: its AR read is finance.read-gated, its past-due Work Order read is ungated. A section-level requirement can only honour the coarser gate, so wiring it hides the ungated half too. finance.read is catalog-wide active:false, so this is not theoretical - it would blank the panel for every viewer today. The `embedded` prop fixed the region-denial symptom correctly; this is a different problem underneath it, and conflating the two would have shipped a blank panel while believing the fix worked. RESOLVED by capabilityParts: an additive, mutually-exclusive alternative to capabilityRequirement. All parts denied removes the section entirely (unchanged financials/activityAndNotes precedent); some denied keeps the section and attaches visiblePartIds/withheldPartIds/partiallyWithheld so the withholding is FLAGGED rather than silently trimmed; none denied is normal. Additivity proven by a test asserting a single-capability page carries none of the new keys across missing/false/true decisions. Grounded in the real decision feed, and confirmed Account Attention is exactly the recorded case -- finance.read gating a section that composes a finance.read AR read with an UNGATED work-order past-due read.",
+      "pr": 1209,
+      "mergeSha": "18aae32c"
+    },
+    {
+      "id": "X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Make FieldGroup render only visible parts and surface the withholding visibly.",
+      "notes": "The generic FieldGroup renderer in MetadataRecordPage.jsx renders every id in section.fieldIds unconditionally, so a composed FIELD_GROUP would silently omit withheld fields with no trace -- the exact failure capabilityParts exists to prevent. This is the SAME SHAPE as the stale rowNavigationTo removed in #1207: a declaration no consumer honors is harmless right up until something reads it. Merging #1209 was safe only because NO definition adopts capabilityParts yet (accountPage.js still declares the single finance.read gate). Recorded rather than left to memory: do not migrate accountAttention, or any other FIELD_GROUP, until this lands. Component-path sections need no change -- Section already forwards the resolved section object through."
     },
     {
       "id": "X-RELATED-LIST-ACTIONS",
