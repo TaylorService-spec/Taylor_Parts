@@ -40,6 +40,7 @@ on:
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataProcurementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
       - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
@@ -116,6 +117,7 @@ on:
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataProcurementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
       - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
       - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
@@ -284,6 +286,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Held-definition identity modes (node:test)
         run: node --test test/metadataTransferOrderDefinition.test.mjs test/metadataInventoryMovementDefinitions.test.mjs test/metadataProcurementDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Catalog definition tests (node:test)
+        run: node --test test/metadataCatalogDefinitions.test.mjs
         working-directory: field-ops-app-vite
       - name: Manufacturer definition tests (node:test)
         run: node --test test/metadataManufacturerDefinition.test.mjs
