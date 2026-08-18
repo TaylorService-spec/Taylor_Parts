@@ -152,6 +152,31 @@ export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
   return snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
 };
 
+// X-TRANSFER-ORDERS-UNBOUNDED-READ remediation: a bounded, ordered read of transfer_orders in
+// the SAME { docId, data } shape as fetchTransferOrderDocs above (docId kept separate from the
+// stored data so the transfer-order adapter can still fail closed on a stored-id conflict),
+// plus an honest truncation flag. Ordered by documentId() -- transfer orders have no natural
+// display-name field the way warehouses/suppliers do, so the authoritative id is the only
+// stable ordering available.
+//
+// DELIBERATELY A SEPARATE FUNCTION FROM fetchTransferOrderDocs, for the identical reason
+// listCollectionPage exists as a sibling of listCollection above: fetchTransferOrderDocs also
+// feeds the Operations dashboard's WarehousePanel Transfer Orders table (modules/operations/
+// Operations.jsx), which this remediation deliberately does not touch. The bound lives at the
+// LIST-SURFACE call site (Inventory > Transfers, hooks/useTransferOrders.js), never the shared
+// unbounded fetcher, matching the fetchWarehouses/fetchWarehousesPage and
+// fetchSuppliers/fetchSuppliersPage precedent above.
+export const fetchTransferOrderDocsPage = async (
+  { cap = LIST_READ_CAP }: { cap?: number } = {},
+): Promise<{ items: TransferOrderDoc[]; truncated: boolean }> => {
+  const snap = await getDocs(
+    query(collection(db, TRANSFER_ORDERS_COLLECTION), orderBy(documentId()), limit(cap + 1)),
+  );
+  const docs = snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
+  const truncated = docs.length > cap;
+  return { items: truncated ? docs.slice(0, cap) : docs, truncated };
+};
+
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
 export const fetchStockLocations = () => listCollection<RawStockLocation>(STOCK_LOCATIONS_COLLECTION);
 export const fetchWarehouses = () => listCollection<RawWarehouse>(WAREHOUSES_COLLECTION);
