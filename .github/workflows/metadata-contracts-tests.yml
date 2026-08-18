@@ -67,6 +67,10 @@ on:
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
+      - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
+      - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/metadata/callableListSource.js"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
@@ -121,6 +125,10 @@ on:
       - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRegistry.test.mjs"
       - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
+      - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
+      - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/metadata/callableListSource.js"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
       - ".github/workflows/metadata-contracts-tests.yml"
@@ -168,6 +176,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Registry references — REAL page definition against the REAL registry (vitest)
         run: npx vitest run test/metadataRegistryRealPageDefinition.test.jsx
+        working-directory: field-ops-app-vite
+      - name: List sources — readVia dispatch and the callable source (vitest)
+        run: npx vitest run test/metadataUseMetadataListReadVia.test.jsx test/metadataCallableListSource.test.jsx
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
