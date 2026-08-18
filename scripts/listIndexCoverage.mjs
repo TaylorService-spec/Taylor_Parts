@@ -417,6 +417,27 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "mobileLocation.index",
   }),
+  // transferOrder.index and reorderRequest.index (leaf definitions, registered by the integration lane).
+  Object.freeze({
+    collectionGroup: "transfer_orders",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "createdAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "transferOrder.index",
+  }),
+  Object.freeze({
+    collectionGroup: "reorder_requests",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "createdAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "reorderRequest.index",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -494,6 +515,10 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/stockLocation.js",
   "field-ops-app-vite/src/metadata/definitions/mobileLocation.js",
   "field-ops-app-vite/src/metadata/definitions/salesTerritory.js",
+  "field-ops-app-vite/src/metadata/definitions/transferOrder.js",
+  "field-ops-app-vite/src/metadata/definitions/reorderRequest.js",
+  "field-ops-app-vite/src/metadata/definitions/receivingOrder.js",
+  "field-ops-app-vite/src/metadata/definitions/inventoryTransaction.js",
   "field-ops-app-vite/src/metadata/definitions/manufacturer.js",
   "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
 ]);
