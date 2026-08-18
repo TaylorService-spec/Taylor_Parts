@@ -150,6 +150,24 @@ export default function Transfers({ accessVersion }) {
           {hiddenInvalidCount} transfer record{hiddenInvalidCount === 1 ? "" : "s"} couldn't be displayed due to a data issue — report this if it persists.
         </p>
       )}
+      {/*
+        The transfer read used to be fully UNBOUNDED -- no cap and no truncation flag at all,
+        so there was nothing to disclose because nothing was bounded. It is now capped, and a
+        cap that nobody tells the reader about is the defect this program keeps removing: a
+        capped list must never present its cap as the whole set. Two independent flags rather
+        than one merged boolean, because two different collections are capped and merging them
+        would hide WHICH list is incomplete.
+      */}
+      {read.transferOrdersTruncated && (
+        <p className="fo-muted" role="status">
+          Showing the most recent transfers. Some are not listed.
+        </p>
+      )}
+      {read.warehousesTruncated && (
+        <p className="fo-muted" role="status">
+          Some warehouses are not loaded, so a transfer's endpoint may show its stored id instead of a name.
+        </p>
+      )}
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       {rows.length === 0 ? (
