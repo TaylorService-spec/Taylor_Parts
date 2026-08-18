@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import LoadingState from "../shared/ui/LoadingState";
 import EmptyState from "../shared/ui/EmptyState";
 import FailureState from "../shared/ui/FailureState";
@@ -15,6 +16,14 @@ import FailureState from "../shared/ui/FailureState";
 //
 // The copy itself comes from the model, not from here. Two components rendering the
 // same state would otherwise drift into two different sentences for one fact.
+//
+// X-RELATED-LIST-ACTIONS — this file previously had no row-action affordance and no
+// post-create focus handoff, which is the recorded reason the hand-written Contacts and
+// Locations sections (AccountDetail.jsx) could not be wired through the metadata list
+// runtime without an accessibility regression: they offer per-row context and move
+// keyboard focus onto a newly created row, and this component could not. Both are added
+// here, additively — every existing caller that passes no `rowActions` and no
+// `focusRowKey` renders exactly as before (see the "no-actions callers unchanged" tests).
 
 /**
  * Non-READY states.
@@ -66,8 +75,62 @@ export default function MetadataListGrid({
   onViewAll,
   onRetry,
   caption,
+  // A row action: { id, label, onActivate(rowKey), denied, deniedReason }. The caller
+  // (DefaultRelatedList) resolves this list — capability decisions included — before it
+  // ever reaches here; this component renders what it is given and makes no
+  // authorization decision of its own (same boundary MetadataRecordPage draws for
+  // section visibility). Absent or empty renders no actions column at all, which is
+  // what keeps every existing no-actions caller pixel-identical.
+  rowActions,
+  // Post-create focus handoff: the row `key` (the same routing key onRowClick receives)
+  // to move focus onto once it is present among `presentation.rows`. Mirrors the
+  // ref-then-focus-once pattern AccountDetail.jsx hand-rolls per section
+  // (pendingContactFocus/contactRowRef + a useEffect keyed on the live list), so a
+  // metadata-driven related list can offer the same behaviour that hand-written pattern
+  // exists to provide. `onFocusHandled` fires once the handoff actually lands, so the
+  // caller can clear its own pending state the same way AccountDetail does.
+  focusRowKey,
+  onFocusHandled,
 }) {
   const { state, columns, rows, hasMore, viewAllListId, truncated, listId } = presentation;
+
+  const containerRef = useRef(null);
+  const rowElementsRef = useRef(new Map());
+  // The row key an action button or row most recently held focus on, so that if THAT
+  // row disappears from the next render (an action removed it — e.g. a delete), focus
+  // loss can be detected and repaired rather than left wherever the browser drops it.
+  const lastFocusedRowKeyRef = useRef(null);
+
+  const actions = rowActions && rowActions.length > 0 ? rowActions : null;
+
+  // Post-create focus handoff. Waits for the target row to actually be rendered (the
+  // live list may not have delivered it on the render that requested focus) rather than
+  // focusing something that is not there yet.
+  useEffect(() => {
+    if (!focusRowKey) return;
+    const el = rowElementsRef.current.get(focusRowKey);
+    if (!el) return;
+    el.focus();
+    onFocusHandled?.();
+    // Re-runs whenever the target key changes OR the rendered rows change (the row we
+    // are waiting for may only just have arrived).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRowKey, rows]);
+
+  // Keyboard parity for actions that remove their own row: if the element that held
+  // focus is gone on the next render, the browser drops focus to <body> — indistinguishable
+  // from focus never having been managed at all for anyone navigating by keyboard. Hand
+  // it to the list container instead of leaving it stranded off the page.
+  useEffect(() => {
+    const key = lastFocusedRowKeyRef.current;
+    if (key == null) return;
+    if (rows.some((r) => r.key === key)) return;
+    lastFocusedRowKeyRef.current = null;
+    if (typeof document !== "undefined" && document.activeElement === document.body) {
+      containerRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   if (state !== "READY") {
     return (
@@ -78,7 +141,15 @@ export default function MetadataListGrid({
   }
 
   return (
-    <div className="fo-list-grid" data-list-id={listId} data-list-state={state}>
+    <div
+      className="fo-list-grid"
+      data-list-id={listId}
+      data-list-state={state}
+      ref={containerRef}
+      // -1: a valid programmatic focus target (the row-removal fallback above), never
+      // an extra stop in the normal tab order.
+      tabIndex={-1}
+    >
       <div className="fo-table-scroll">
         <table className="fo-table">
           <caption className="fo-sr-only">{caption ?? `${columns.length} column list`}</caption>
@@ -89,33 +160,109 @@ export default function MetadataListGrid({
                   {column.label}
                 </th>
               ))}
+              {actions && (
+                <th scope="col" className="fo-sr-only">
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.key}
-                // The document id routes the row and never labels it. It is deliberately
-                // absent from the cells the model produced, so there is no path by which
-                // it reaches a reader as content.
-                onClick={onRowClick ? () => onRowClick(row.key) : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                onKeyDown={
-                  onRowClick
-                    ? (event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          onRowClick(row.key);
+            {rows.map((row) => {
+              const isFocusTarget = row.key === focusRowKey;
+              // A row already reachable by navigation keeps its own tabIndex (0). A row
+              // with neither navigation nor a pending focus request gets none, exactly
+              // as before. A row that IS the post-create focus target but has no
+              // onRowClick still needs to be a valid focus destination — the hand-written
+              // -1 pattern: programmatically focusable, not a normal tab stop.
+              const rowTabIndex = onRowClick ? 0 : isFocusTarget ? -1 : undefined;
+              return (
+                <tr
+                  key={row.key}
+                  ref={(el) => {
+                    if (el) rowElementsRef.current.set(row.key, el);
+                    else rowElementsRef.current.delete(row.key);
+                  }}
+                  onFocus={() => {
+                    lastFocusedRowKeyRef.current = row.key;
+                  }}
+                  // The document id routes the row and never labels it. It is deliberately
+                  // absent from the cells the model produced, so there is no path by which
+                  // it reaches a reader as content.
+                  onClick={onRowClick ? () => onRowClick(row.key) : undefined}
+                  tabIndex={rowTabIndex}
+                  onKeyDown={
+                    onRowClick
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onRowClick(row.key);
+                          }
                         }
-                      }
-                    : undefined
-                }
-              >
-                {row.cells.map((cell) => (
-                  <td key={cell.fieldId}>{cell.value}</td>
-                ))}
-              </tr>
-            ))}
+                      : undefined
+                  }
+                >
+                  {row.cells.map((cell) => (
+                    <td key={cell.fieldId}>{cell.value}</td>
+                  ))}
+                  {actions && (
+                    <td
+                      className="fo-list-grid-actions"
+                      // A row action must never also trigger row navigation. Both the
+                      // click AND the activating keydown (Enter/Space on a focused
+                      // action button) bubble from the button through this cell to the
+                      // <tr> above, which is exactly where onRowClick listens — so this
+                      // cell stops that bubble before it ever reaches the row.
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      {actions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className="fo-button fo-button-secondary fo-list-grid-action"
+                          disabled={!!action.denied}
+                          // A denied action stays VISIBLE and LABELED, with the reason it
+                          // cannot be used — an unknown or missing capability decision
+                          // fails closed, but failing closed by hiding the affordance
+                          // entirely would read to the viewer as "no actions exist",
+                          // which is a different (false) statement than "you may not do
+                          // this one." disabled removes it from the tab order (there is
+                          // nothing to activate), while the visible label and title keep
+                          // it an honest, explained absence rather than a silent one.
+                          aria-disabled={action.denied ? "true" : undefined}
+                          title={action.denied ? action.deniedReason ?? undefined : undefined}
+                          onFocus={() => {
+                            lastFocusedRowKeyRef.current = row.key;
+                          }}
+                          onClick={() => {
+                            if (action.denied) return;
+                            action.onActivate?.(row.key);
+                          }}
+                          // Explicit, same as the row's own onKeyDown above, rather than
+                          // relying on a <button>'s native Enter/Space default action:
+                          // this is the one activation path both a mouse click and a
+                          // keyboard press go through, so keyboard parity does not
+                          // depend on a browser's default behaviour matching this
+                          // handler's own (preventDefault stops the native click a real
+                          // browser would otherwise ALSO fire for Enter/Space, which
+                          // would double-activate).
+                          onKeyDown={(event) => {
+                            event.stopPropagation();
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            if (action.denied) return;
+                            action.onActivate?.(row.key);
+                          }}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

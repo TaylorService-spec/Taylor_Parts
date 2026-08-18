@@ -158,4 +158,173 @@ describe("MetadataListGrid", () => {
     render(<MetadataListGrid presentation={presentation({ surface: "RELATED", truncated: true, viewAllListId: null })} />);
     expect(screen.getByText(/showing the most recent/i)).toBeTruthy();
   });
+
+  // ── X-RELATED-LIST-ACTIONS — row actions + post-create focus handoff ──────────────
+  //
+  // This is the capability the LEDGER blocker names: MetadataListGrid had no row
+  // actions and no post-create focus handoff, which is why the hand-written Contacts
+  // and Locations sections (AccountDetail.jsx) could not be wired through this
+  // component without an accessibility regression. These tests establish that both now
+  // exist, additively, without disturbing every caller that declares neither.
+
+  const action = (over = {}) => ({
+    id: "contact.edit",
+    label: "Edit",
+    denied: false,
+    deniedReason: null,
+    onActivate: vi.fn(),
+    ...over,
+  });
+
+  describe("row actions", () => {
+    it("a caller that declares no rowActions renders exactly as before — no actions column at all", () => {
+      const { container } = render(<MetadataListGrid presentation={presentation()} />);
+      expect(container.querySelectorAll("thead th")).toHaveLength(2);
+      expect(container.querySelectorAll("tbody tr")[0].querySelectorAll("td")).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /edit/i })).toBeNull();
+    });
+
+    it("an empty rowActions array is treated the same as no actions at all", () => {
+      const { container } = render(<MetadataListGrid presentation={presentation()} rowActions={[]} />);
+      expect(container.querySelectorAll("thead th")).toHaveLength(2);
+    });
+
+    it("an action activates by mouse click, receiving the row's routing key", () => {
+      const onActivate = vi.fn();
+      render(<MetadataListGrid presentation={presentation()} rowActions={[action({ onActivate })]} />);
+      const [firstRowEdit] = screen.getAllByRole("button", { name: /edit/i });
+      fireEvent.click(firstRowEdit);
+      expect(onActivate).toHaveBeenCalledWith("acct-1");
+    });
+
+    it("an action activates by keyboard (Enter and Space), the same as by mouse", () => {
+      const onActivate = vi.fn();
+      render(<MetadataListGrid presentation={presentation()} rowActions={[action({ onActivate })]} />);
+      const [firstRowEdit] = screen.getAllByRole("button", { name: /edit/i });
+
+      firstRowEdit.focus();
+      fireEvent.keyDown(firstRowEdit, { key: "Enter" });
+      expect(onActivate).toHaveBeenCalledWith("acct-1");
+
+      onActivate.mockClear();
+      fireEvent.keyDown(firstRowEdit, { key: " " });
+      expect(onActivate).toHaveBeenCalledWith("acct-1");
+    });
+
+    it("activating an action does not also trigger row navigation", () => {
+      const onActivate = vi.fn();
+      const onRowClick = vi.fn();
+      render(
+        <MetadataListGrid presentation={presentation()} onRowClick={onRowClick} rowActions={[action({ onActivate })]} />
+      );
+      const [firstRowEdit] = screen.getAllByRole("button", { name: /edit/i });
+
+      fireEvent.click(firstRowEdit);
+      expect(onActivate).toHaveBeenCalledTimes(1);
+      expect(onRowClick).not.toHaveBeenCalled();
+
+      onActivate.mockClear();
+      firstRowEdit.focus();
+      fireEvent.keyDown(firstRowEdit, { key: "Enter" });
+      expect(onActivate).toHaveBeenCalledTimes(1);
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it("the row itself still navigates normally when an action is not the click target", () => {
+      const onRowClick = vi.fn();
+      render(
+        <MetadataListGrid presentation={presentation()} onRowClick={onRowClick} rowActions={[action()]} />
+      );
+      fireEvent.click(screen.getByText("Northside Foods"));
+      expect(onRowClick).toHaveBeenCalledWith("acct-1");
+    });
+
+    it("a capability-denied action fails closed: visible and labeled, but disabled and unable to activate", () => {
+      const onActivate = vi.fn();
+      render(
+        <MetadataListGrid
+          presentation={presentation()}
+          rowActions={[action({ onActivate, denied: true, deniedReason: 'You do not have access to "Edit".' })]}
+        />
+      );
+      const [firstRowEdit] = screen.getAllByRole("button", { name: /edit/i });
+      // Fails closed to genuinely unavailable, not hidden — the button is still in the
+      // DOM with its label, not removed in a way that reads as "no actions exist".
+      expect(firstRowEdit).toBeTruthy();
+      expect(firstRowEdit.disabled).toBe(true);
+      expect(firstRowEdit.getAttribute("title")).toMatch(/do not have access/i);
+
+      fireEvent.click(firstRowEdit);
+      expect(onActivate).not.toHaveBeenCalled();
+    });
+
+    it("the document id is never rendered as visible content in the actions cell either", () => {
+      render(<MetadataListGrid presentation={presentation()} rowActions={[action()]} />);
+      expect(screen.queryByText("acct-1")).toBeNull();
+      expect(screen.queryByText("acct-2")).toBeNull();
+    });
+
+    it("focus is handed to the list container when an action removes the row that held it", () => {
+      const onActivate = vi.fn();
+      const { container, rerender } = render(
+        <MetadataListGrid presentation={presentation()} rowActions={[action({ onActivate })]} />
+      );
+      const [firstRowEdit] = screen.getAllByRole("button", { name: /edit/i });
+      firstRowEdit.focus();
+      expect(document.activeElement).toBe(firstRowEdit);
+
+      // Simulate the effect of the activated action: the row it lived on is gone from
+      // the next presentation the caller passes down (e.g. a delete completed).
+      const withoutFirstRow = presentation({
+        rows: [{ key: "acct-2", cells: [{ fieldId: "name", value: "Harbor Grill" }, { fieldId: "status", value: "Inactive" }] }],
+      });
+      rerender(<MetadataListGrid presentation={withoutFirstRow} rowActions={[action({ onActivate })]} />);
+
+      // The removed button is gone; focus must not be left stranded on <body> — the
+      // list container is the sensible place to land it.
+      expect(document.activeElement).toBe(container.querySelector(".fo-list-grid"));
+    });
+  });
+
+  describe("post-create focus handoff", () => {
+    it("moves focus to the row identified by focusRowKey once it is rendered, and reports the handoff done", () => {
+      const onFocusHandled = vi.fn();
+      const { container } = render(
+        <MetadataListGrid presentation={presentation()} focusRowKey="acct-2" onFocusHandled={onFocusHandled} />
+      );
+      const targetRow = container.querySelectorAll("tbody tr")[1];
+      expect(document.activeElement).toBe(targetRow);
+      expect(onFocusHandled).toHaveBeenCalledTimes(1);
+    });
+
+    it("a focus target with no other reason to be focusable is reachable programmatically but not an extra tab stop", () => {
+      const { container } = render(
+        <MetadataListGrid presentation={presentation()} focusRowKey="acct-2" onFocusHandled={vi.fn()} />
+      );
+      const targetRow = container.querySelectorAll("tbody tr")[1];
+      // -1: a valid focus() destination, not a normal Tab stop (mirrors the hand-written
+      // AccountDetail.jsx pendingContactFocus/contactRowRef pattern).
+      expect(targetRow.getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("waits for the target row to actually appear before moving focus, rather than focusing nothing", () => {
+      const onFocusHandled = vi.fn();
+      const onlyOneRow = presentation({ rows: [presentation().rows[0]] });
+      const { container, rerender } = render(
+        <MetadataListGrid presentation={onlyOneRow} focusRowKey="acct-2" onFocusHandled={onFocusHandled} />
+      );
+      expect(onFocusHandled).not.toHaveBeenCalled();
+
+      // The live subscription now delivers the newly created row.
+      rerender(<MetadataListGrid presentation={presentation()} focusRowKey="acct-2" onFocusHandled={onFocusHandled} />);
+      const targetRow = container.querySelectorAll("tbody tr")[1];
+      expect(document.activeElement).toBe(targetRow);
+      expect(onFocusHandled).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not disturb a caller that declares no focusRowKey", () => {
+      render(<MetadataListGrid presentation={presentation()} />);
+      expect(document.activeElement).not.toBe(screen.getByText("Northside Foods").closest("tr"));
+    });
+  });
 });
