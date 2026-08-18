@@ -8,11 +8,43 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  FIELD_TYPE, FIELD_OPERATOR, CARDINALITY, READ_VIA,
+  FIELD_TYPE, FIELD_OPERATOR, CARDINALITY, READ_VIA, IDENTITY_MODE,
   makeIdentity, makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition,
   validateEntityDefinition, validateFieldDefinition, validateRelationshipDefinition,
   validateEntityRegistry, declaredCapabilities, filterableFields, sortableFields, findEntity, findField,
+  resolveIdentityMode,
 } from "../src/metadata/entityDefinition.js";
+
+// Every real, currently-registered entity definition in the program — imported directly
+// from src/metadata/definitions/, not a fixture — so the additivity test below exercises
+// the actual objects a build ships, not a stand-in that could quietly drift from them.
+import { accountEntity } from "../src/metadata/definitions/account.js";
+import { contactEntity } from "../src/metadata/definitions/contact.js";
+import { employeeEntity } from "../src/metadata/definitions/employee.js";
+import { equipmentEntity } from "../src/metadata/definitions/equipment.js";
+import { equipmentModelEntity } from "../src/metadata/definitions/equipmentModel.js";
+import { invoiceEntity } from "../src/metadata/definitions/invoice.js";
+import { locationEntity } from "../src/metadata/definitions/location.js";
+import { manufacturerEntity } from "../src/metadata/definitions/manufacturer.js";
+import { mobileLocationEntity } from "../src/metadata/definitions/mobileLocation.js";
+import { opportunityEntity } from "../src/metadata/definitions/opportunity.js";
+import { partEntity } from "../src/metadata/definitions/part.js";
+import { paymentEntity } from "../src/metadata/definitions/payment.js";
+import { purchaseOrderEntity } from "../src/metadata/definitions/purchaseOrder.js";
+import { salesOrderEntity } from "../src/metadata/definitions/salesOrder.js";
+import { salesTerritoryEntity } from "../src/metadata/definitions/salesTerritory.js";
+import { stockLocationEntity } from "../src/metadata/definitions/stockLocation.js";
+import { supplierEntity } from "../src/metadata/definitions/supplier.js";
+import { truckEntity } from "../src/metadata/definitions/truck.js";
+import { warehouseEntity } from "../src/metadata/definitions/warehouse.js";
+import { workOrderEntity } from "../src/metadata/definitions/workOrder.js";
+
+const ALL_REGISTERED_ENTITIES = [
+  accountEntity, contactEntity, employeeEntity, equipmentEntity, equipmentModelEntity,
+  invoiceEntity, locationEntity, manufacturerEntity, mobileLocationEntity, opportunityEntity,
+  partEntity, paymentEntity, purchaseOrderEntity, salesOrderEntity, salesTerritoryEntity,
+  stockLocationEntity, supplierEntity, truckEntity, warehouseEntity, workOrderEntity,
+];
 
 const nameField = makeFieldDefinition({ id: "name", entityId: "account", label: "Name", type: "STRING", sortable: true });
 
@@ -114,6 +146,128 @@ test("a reference field alone satisfies identity — WO-2026-000008 is a real na
 test("identity must point at a field that actually exists", () => {
   const e = makeEntityDefinition({ ...account(), identity: makeIdentity({ nameField: "missing" }) });
   assert.ok(validateEntityDefinition(e).some((p) => /identity\.nameField "missing" is not a field/.test(p)));
+});
+
+// --- DECISIONS #106: three identity modes, no ambiguous implicit one -------
+
+test("IDENTITY_MODE is frozen and names exactly the three modes", () => {
+  assert.ok(Object.isFrozen(IDENTITY_MODE));
+  assert.deepEqual([...IDENTITY_MODE].sort(), ["BUSINESS_REFERENCE", "HUMAN_NAME", "SYSTEM_ONLY"]);
+});
+
+test("HUMAN_NAME requires a valid nameField", () => {
+  const withField = makeEntityDefinition({
+    ...account(),
+    identity: makeIdentity({ nameField: "name", mode: "HUMAN_NAME" }),
+  });
+  assert.deepEqual(validateEntityDefinition(withField), []);
+
+  const withoutField = makeEntityDefinition({ ...account(), identity: makeIdentity({ mode: "HUMAN_NAME" }) });
+  assert.ok(
+    validateEntityDefinition(withoutField).some((p) => /identity\.mode "HUMAN_NAME" requires a nameField/.test(p))
+  );
+});
+
+test("BUSINESS_REFERENCE requires a valid referenceField", () => {
+  const withField = makeEntityDefinition({
+    id: "workOrder", label: "Work Order", collection: "fieldops_wos", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ referenceField: "woNumber", mode: "BUSINESS_REFERENCE" }),
+    fields: [makeFieldDefinition({ id: "woNumber", entityId: "workOrder", label: "WO Number", type: "STRING" })],
+  });
+  assert.deepEqual(validateEntityDefinition(withField), []);
+
+  const withoutField = makeEntityDefinition({ ...account(), identity: makeIdentity({ mode: "BUSINESS_REFERENCE" }) });
+  assert.ok(
+    validateEntityDefinition(withoutField).some(
+      (p) => /identity\.mode "BUSINESS_REFERENCE" requires a referenceField/.test(p)
+    )
+  );
+});
+
+test("SYSTEM_ONLY passes with neither a nameField nor a referenceField — a real internal/ledger record", () => {
+  const ledgerEntry = makeEntityDefinition({
+    id: "inventoryLedgerEntry", label: "Inventory Ledger Entry",
+    collection: "inventory_ledger_entries", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ mode: "SYSTEM_ONLY" }),
+    fields: [makeFieldDefinition({ id: "quantityDelta", entityId: "inventoryLedgerEntry", label: "Quantity Delta", type: "NUMBER" })],
+  });
+  assert.deepEqual(validateEntityDefinition(ledgerEntry), []);
+  assert.equal(resolveIdentityMode(ledgerEntry.identity), "SYSTEM_ONLY");
+});
+
+test("SYSTEM_ONLY forbids a nameField or a referenceField — that would just be recordId in disguise", () => {
+  const withName = makeEntityDefinition({ ...account(), identity: makeIdentity({ nameField: "name", mode: "SYSTEM_ONLY" }) });
+  assert.ok(
+    validateEntityDefinition(withName).some((p) => /"SYSTEM_ONLY" requires neither a nameField nor a referenceField/.test(p))
+  );
+
+  const withReference = makeEntityDefinition({
+    id: "workOrder", label: "Work Order", collection: "fieldops_wos", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ referenceField: "woNumber", mode: "SYSTEM_ONLY" }),
+    fields: [makeFieldDefinition({ id: "woNumber", entityId: "workOrder", label: "WO Number", type: "STRING" })],
+  });
+  assert.ok(
+    validateEntityDefinition(withReference).some(
+      (p) => /"SYSTEM_ONLY" requires neither a nameField nor a referenceField/.test(p)
+    )
+  );
+});
+
+test("SYSTEM_ONLY forbids an id display fallback — pointing nameField at an ID-typed field is rejected", () => {
+  // The escape hatch this whole contract exists to close: an author cannot satisfy
+  // HUMAN_NAME (or sneak past SYSTEM_ONLY) by declaring an ID-typed field and naming
+  // it as the nameField/referenceField. recordId must never become the display fallback,
+  // in ANY identity mode — not only under SYSTEM_ONLY.
+  const disguisedRecordId = makeEntityDefinition({
+    id: "inventoryLedgerEntry", label: "Inventory Ledger Entry",
+    collection: "inventory_ledger_entries", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ nameField: "recordId", mode: "HUMAN_NAME" }),
+    fields: [makeFieldDefinition({ id: "recordId", entityId: "inventoryLedgerEntry", label: "Record Id", type: "ID" })],
+  });
+  const problems = validateEntityDefinition(disguisedRecordId);
+  assert.ok(problems.some((p) => /ID-typed field/.test(p)));
+  assert.ok(problems.some((p) => /recordId must never become the display fallback/.test(p)));
+});
+
+test("an unknown identity.mode is rejected by name, not silently coerced into a derived mode", () => {
+  const e = makeEntityDefinition({ ...account(), identity: makeIdentity({ nameField: "name", mode: "NICKNAME" }) });
+  assert.ok(validateEntityDefinition(e).some((p) => /identity\.mode "NICKNAME" is not a known IDENTITY_MODE/.test(p)));
+});
+
+test("no ambiguous implicit mode — an entity declaring neither field is rejected, and never silently becomes SYSTEM_ONLY", () => {
+  const omitted = makeEntityDefinition({ ...account(), identity: makeIdentity() });
+  assert.equal(resolveIdentityMode(omitted.identity), null, "an omission must not resolve to any mode, least of all SYSTEM_ONLY");
+  const problems = validateEntityDefinition(omitted);
+  assert.ok(problems.some((p) => /nameField or a referenceField/.test(p)));
+  assert.ok(!problems.some((p) => /SYSTEM_ONLY.*requires neither/.test(p)), "must fail as an omission, not as a SYSTEM_ONLY violation");
+});
+
+test("mode is derived, not required, for the two human-facing modes — every pre-#106 definition stays valid unchanged", () => {
+  // nameField alone still derives HUMAN_NAME with no explicit mode.
+  assert.equal(resolveIdentityMode(makeIdentity({ nameField: "name" })), "HUMAN_NAME");
+  // referenceField alone still derives BUSINESS_REFERENCE with no explicit mode.
+  assert.equal(resolveIdentityMode(makeIdentity({ referenceField: "woNumber" })), "BUSINESS_REFERENCE");
+  // Both present (e.g. Part: name + internalPartNumber) derives HUMAN_NAME deterministically —
+  // not an ambiguity, a documented precedence — and stays valid with no mode declared.
+  assert.equal(resolveIdentityMode(makeIdentity({ nameField: "name", referenceField: "ref" })), "HUMAN_NAME");
+  const bothFields = makeEntityDefinition({
+    ...account(),
+    fields: [nameField, makeFieldDefinition({ id: "ref", entityId: "account", label: "Ref", type: "STRING" })],
+    identity: makeIdentity({ nameField: "name", referenceField: "ref" }),
+  });
+  assert.deepEqual(validateEntityDefinition(bothFields), []);
+});
+
+test("additivity: every currently-registered entity definition still validates clean under the identity-mode rules", () => {
+  assert.ok(ALL_REGISTERED_ENTITIES.length >= 20, "sanity check — the import list itself must not have silently shrunk");
+  for (const entity of ALL_REGISTERED_ENTITIES) {
+    const problems = validateEntityDefinition(entity);
+    assert.deepEqual(problems, [], `entity ${entity?.id} must still validate clean: ${problems.join("; ")}`);
+    const mode = resolveIdentityMode(entity.identity);
+    assert.ok(IDENTITY_MODE.includes(mode), `entity ${entity?.id} must resolve to a real IDENTITY_MODE, got ${mode}`);
+  }
+  // And the whole registry together, exactly as the app validates it at startup.
+  assert.deepEqual(validateEntityRegistry(ALL_REGISTERED_ENTITIES), []);
 });
 
 // --- §9: operators are a claim about a real query --------------------------
