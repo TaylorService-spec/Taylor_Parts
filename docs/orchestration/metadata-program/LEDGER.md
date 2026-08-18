@@ -7,17 +7,17 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 0f774fcd -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 4cf132ad -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 54 | 42 | 12 |
+| 54 | 40 | 14 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-25 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+23 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
@@ -39,6 +39,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
+- **X-DEAD-WAREHOUSE-READ-PATH** (phase 6) — useWarehouses and warehousesView are now dead code → Remove both, or record why they are kept.
+- **X-LIST-COLUMN-RENDERER-UNCONSUMED** (phase 6) — column.renderer is resolved by listPresentation and consumed by nothing → Either consume renderer in MetadataListGrid or remove it from the contract.
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
@@ -53,6 +55,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
+| X-LIST-COLUMN-RENDERER-UNCONSUMED | 6 | column.renderer is resolved by listPresentation and consumed by nothing | — | — | — | — | — | NOT_APPLICABLE | Either consume renderer in MetadataListGrid or remove it from the contract. |
+| X-DEAD-WAREHOUSE-READ-PATH | 6 | useWarehouses and warehousesView are now dead code | — | — | — | — | — | NOT_APPLICABLE | Remove both, or record why they are kept. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -74,7 +78,10 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | D-BUG-STATUS-CASING | 6 | Canonical ACCOUNT_STATUS machine values + display labels | — | #1093 | #1103 | f41045b8 | bb72103e | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-BUG-AR-CONTRACT | 6 | Shared AR view-state contract | — | #1094 | #1102 | 7b87a025 | b65066ff | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | D-BUG-AR-OWNERSHIP | 6 | One authoritative Account AR read owner | — | #1095 | #1114 | 7824cf4f | 390d5149 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| S-INV-WAREHOUSES | 9 | Warehouses | /inventory/warehouses | — | #1233 | — | 4cf132ad | NOT_APPLICABLE | None. |
+| X-WAREHOUSES-VIEW-ID-AS-NAME | 6 | warehousesView fell back to the document id as the display name | — | — | #1233 | — | 4cf132ad | NOT_APPLICABLE | None. |
 | S-INV-TRUCK | 9 | Truck inventory | /inventory/truck-inventory | — | #1109 | b7d8d2e8 | 39524862 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
+| S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | #1233 | — | 4cf132ad | NOT_APPLICABLE | None. |
 | A-CONTRACT-TOOLING | 1 | Shared contract source of truth | — | — | #1110 | a9ed84c9 | c01c0531 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-BOUNDED-READS | 3 | Bounded-read remediation across list-exempt surfaces | — | — | #1132 | — | 6fee1296 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
 | A-CALLABLE-UNBOUNDED | 3 | Unbounded trusted-callable reads | — | — | #1107 | fb5f933a | 12e64a89 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -188,10 +195,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-INV-PARTS | 9 | Parts catalog | /inventory | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Migrate; navHidden, direct-URL only |
-| S-INV-WAREHOUSES | 9 | Warehouses | /inventory/warehouses | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-SUPPLIERS | 9 | Suppliers | /purchasing/suppliers | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation; lifecycle composite, not a list |
-| S-INV-MANUFACTURERS | 9 | Manufacturers | /inventory/manufacturers | — | — | — | — | NOT_APPLICABLE | Inventory only - writes are closed in every environment including sandbox |
 | S-INV-EQUIPMENT | 9 | Equipment workspace | /equipment | — | — | — | — | NOT_APPLICABLE | Migrate; already cursor-paginated |
 | S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
