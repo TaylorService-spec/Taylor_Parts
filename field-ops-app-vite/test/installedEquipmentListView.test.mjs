@@ -1,7 +1,7 @@
 // INV-EQ-P1b -- tests for the pure cross-customer installed-Equipment list view-model.
 // Proves fail-closed doc validation, distinct id collection, LOADED-ONLY filters
 // (account equality + delegated term/location/status via searchEquipment), name
-// resolution with id fallback, and the coarse render-state derivation.
+// resolution (unresolved -> null, never the id), and the coarse render-state derivation.
 //
 // Run: node test/installedEquipmentListView.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
@@ -78,8 +78,12 @@ ok("composeEquipmentRows resolves names (Map / object / id fallback) + safe fiel
   assert.strictEqual(byId.e1.status, "ACTIVE");
   assert.strictEqual(byId.e1.serialNumber, "SN1");
   assert.strictEqual(byId.e2.accountName, "Acme");
-  assert.strictEqual(byId.e2.locationName, "l2"); // unresolved -> id fallback, never blank
-  assert.strictEqual(byId.e3.accountName, "a2"); // unresolved account -> id fallback
+  // Unresolved is null, not the id. "Never blank" was the wrong goal: a blank cell says
+  // "unknown", while an id says something false about the record.
+  assert.strictEqual(byId.e2.locationName, null);
+  // An unresolved account is null, NOT the id. DECISIONS #106 has no "unless nothing else
+  // is available" clause; the caller renders an honest placeholder instead.
+  assert.strictEqual(byId.e3.accountName, null);
   assert.strictEqual(byId.e3.locationName, null); // no location
   assert.ok(!rows.some((r) => r.id === "")); // malformed never composed
 });
