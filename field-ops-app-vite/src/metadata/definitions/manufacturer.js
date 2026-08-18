@@ -205,6 +205,13 @@ export const manufacturerEntity = makeEntityDefinition({
  * matching toManufacturerListView's own in-memory sort (domain/manufacturersView.js) — the real
  * order the admin workspace already presents. One optional equality filter plus one sort field is
  * a single net-new composite (status+name+__name__), confirmed in the test file.
+ *
+ * NO DOCUMENT ID COLUMN (DECISIONS #106). manufacturerId (the Firestore document id) used to be
+ * declared as a visible column here even though identity already names `name` as the real
+ * human-meaningful field (makeIdentity({ nameField: "name" }), above) -- a missing BUSINESS
+ * REFERENCE is not permission to show a record id instead. name is what a person actually reads
+ * on every governed record (required, non-blank, enforced by manufacturerFromFirestore); the id
+ * column added nothing a reader could use and is dropped rather than kept out of caution.
  */
 export const manufacturerIndexList = makeListViewDefinition({
   id: "manufacturer.index",
@@ -214,7 +221,6 @@ export const manufacturerIndexList = makeListViewDefinition({
   columns: [
     makeColumn({ fieldId: "name", sortable: true }),
     makeColumn({ fieldId: "status", sortable: true }),
-    makeColumn({ fieldId: "manufacturerId" }),
   ],
   filters: [makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] })],
   defaultSort: [makeSort({ fieldId: "name", direction: "ASC" })],

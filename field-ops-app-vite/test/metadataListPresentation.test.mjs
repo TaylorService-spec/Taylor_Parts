@@ -11,6 +11,7 @@ import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefi
 import { componentRegistry } from "../src/metadata/registry.js";
 import { buildListPresentation, resolveColumns, cellValue, emptyMessageFor, LIST_STATE } from "../src/metadata/listPresentation.js";
 import { formatTimestamp } from "../src/domain/displayTimestamp.js";
+import { formatMinor } from "../src/domain/accountArView.js";
 
 const entity = () => makeEntityDefinition({
   id: "account", label: "Customer", collection: "accounts", readVia: "CLIENT_DIRECT",
@@ -130,6 +131,17 @@ test("a DATE cell resolves through the same shared formatter as TIMESTAMP", () =
   assert.equal(cellValue(column, { installedDate: epochMs }), formatTimestamp(epochMs));
 });
 
+test("invoice.dueDate, retyped to DATE, renders through the timestamp path, not as a raw epoch number", () => {
+  // dueDate is stored as ms epoch (invoiceCommands.ts's isInt guard) but is a DATE by kind --
+  // formatTimestamp's own toMillis coercion already handles a plain epoch-millisecond NUMBER,
+  // so no storage-shape change is implied by the retype.
+  const epochMs = 1_700_000_000_000;
+  const column = { fieldId: "dueDate", type: "DATE" };
+  const value = cellValue(column, { dueDate: epochMs });
+  assert.equal(value, formatTimestamp(epochMs));
+  assert.notEqual(value, epochMs, "a due date reaching a user must never be a raw epoch number");
+});
+
 test("an uninterpretable TIMESTAMP renders nothing rather than a raw number or a placeholder string", () => {
   // A value toMillis() cannot coerce (an unrecognized object shape) must not fall back
   // to the raw stored value — the same class of defect enum resolution exists to
@@ -245,4 +257,39 @@ test("a BOOLEAN column renders text, not a blank cell", () => {
   // primary" and "nobody recorded whether they are" are different claims.
   assert.equal(cellValue(col, { isPrimary: null }), null);
   assert.equal(cellValue(col, {}), null);
+});
+
+// --- CURRENCY_MINOR resolves through the shared minor-unit formatter, never raw cents ---
+
+test("a CURRENCY_MINOR cell renders major units through the SAME formatter already used for outstandingMinor elsewhere, not raw minor units", () => {
+  // A $125.00 invoice stores totalMinor: 12500. Rendering it raw would print "12500" in
+  // front of a user -- the same class of defect enum resolution exists to prevent.
+  const column = { fieldId: "totalMinor", type: "CURRENCY_MINOR" };
+  const value = cellValue(column, { totalMinor: 12500, currency: "USD" });
+  assert.equal(value, formatMinor(12500, "USD"), "must be the SAME shared formatter's output, not a hand-rolled string");
+  assert.notEqual(value, 12500, "raw minor units are a machine value, not a display amount");
+  assert.match(value, /125\.00/);
+});
+
+test("a CURRENCY_MINOR cell reads its currency from the row's own currency field, per the CURRENCY_MINOR contract -- never a hardcoded symbol", () => {
+  const column = { fieldId: "totalMinor", type: "CURRENCY_MINOR" };
+  assert.equal(cellValue(column, { totalMinor: 500, currency: "EUR" }), formatMinor(500, "EUR"));
+  assert.notEqual(
+    cellValue(column, { totalMinor: 500, currency: "EUR" }),
+    cellValue(column, { totalMinor: 500, currency: "USD" }),
+    "the same minor-unit amount in a different currency must not render identically"
+  );
+});
+
+test("a zero CURRENCY_MINOR amount renders as zero, not blank -- zero is a real value, not an absence", () => {
+  const column = { fieldId: "outstandingMinor", type: "CURRENCY_MINOR" };
+  const value = cellValue(column, { outstandingMinor: 0, currency: "USD" });
+  assert.notEqual(value, null);
+  assert.match(value, /0\.00/);
+});
+
+test("a genuinely absent CURRENCY_MINOR amount renders nothing -- absent and zero are different claims", () => {
+  const column = { fieldId: "outstandingMinor", type: "CURRENCY_MINOR" };
+  assert.equal(cellValue(column, { currency: "USD" }), null);
+  assert.equal(cellValue(column, { outstandingMinor: null, currency: "USD" }), null);
 });

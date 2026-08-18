@@ -90,10 +90,17 @@ test("money fields are CURRENCY_MINOR -- verified against invoiceCommands.ts/pay
   }
 });
 
-test("dueDate is NUMBER (ms epoch), never TIMESTAMP -- invoiceCommands.ts's isInt guard", () => {
+test("dueDate is DATE -- stored as ms epoch (invoiceCommands.ts's isInt guard), never TIMESTAMP, but a date by kind, not a plain NUMBER", () => {
   const dueDate = findField(invoiceEntity, "dueDate");
-  assert.equal(dueDate.type, "NUMBER");
+  assert.equal(dueDate.type, "DATE");
   assert.notEqual(dueDate.type, "TIMESTAMP");
+  assert.notEqual(dueDate.type, "NUMBER");
+});
+
+test("dueDate's retype changes no FILTER/SORT and demands no new composite index -- it is neither filtered nor sorted anywhere in the index list", () => {
+  assert.equal(invoiceIndexList.filters.length, 0);
+  assert.ok(!invoiceIndexList.defaultSort.some((s) => s.fieldId === "dueDate"));
+  assert.deepEqual(requiredIndexes(invoiceIndexList, invoiceEntity), []);
 });
 
 test("provenance: issuedAt/issuedAtMillis/updatedAt exist; createdBy and updatedBy do NOT, anywhere", () => {

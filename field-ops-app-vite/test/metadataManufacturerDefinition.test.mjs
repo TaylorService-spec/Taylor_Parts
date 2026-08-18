@@ -104,6 +104,13 @@ test("no relationships are declared -- the real Part -> Manufacturer edge belong
   assert.equal(manufacturerEntity.relationships.length, 0);
 });
 
+test("the index list's columns show the real nameField, name, never the document id (DECISIONS #106)", () => {
+  const fieldIds = manufacturerIndexList.columns.map((c) => c.fieldId);
+  assert.ok(fieldIds.includes("name"), "the human-meaningful field must be a visible column");
+  assert.equal(manufacturerEntity.identity.nameField, "name");
+  assert.ok(!fieldIds.includes("manufacturerId"), "a missing business reference is not permission to show the document id instead");
+});
+
 test("the index list declares exactly one filter (status), forward-looking over an unbounded, unfiltered callable read", () => {
   assert.equal(manufacturerIndexList.filters.length, 1);
   assert.equal(manufacturerIndexList.filters[0].fieldId, "status");

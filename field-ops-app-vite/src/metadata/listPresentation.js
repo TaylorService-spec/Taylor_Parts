@@ -33,6 +33,7 @@
 import { findField } from "./entityDefinition.js";
 import { componentRegistry } from "./registry.js";
 import { formatTimestamp } from "../domain/displayTimestamp.js";
+import { formatMinor } from "../domain/accountArView.js";
 
 export const LIST_STATE = Object.freeze(["LOADING", "READY", "EMPTY", "FILTERED", "DENIED", "UNAVAILABLE"]);
 
@@ -82,10 +83,21 @@ export function resolveColumns(def, entity) {
  * raw stored value (an epoch number is a machine value, exactly the class of defect enum
  * resolution exists to prevent): `unknown: null` renders nothing rather than a formatted
  * "Unknown" placeholder or a number.
+ *
+ * CURRENCY_MINOR RESOLVES THROUGH THE SAME MINOR-UNIT FORMATTER ALREADY USED ELSEWHERE THIS
+ * APP RENDERS MINOR-UNIT MONEY (domain/accountArView.js's `formatMinor`, the function already
+ * rendering this exact shape for `outstandingMinor` on the Account AR panel) rather than a
+ * second, invented display formatter. A CURRENCY_MINOR field travels with its own sibling
+ * `currency` field by contract (invoice.js/payment.js both declare one beside their
+ * CURRENCY_MINOR amounts) — read from the ROW, never hardcoded, so a field never claims a
+ * currency symbol its own record does not carry. Zero is a real amount and renders as "0.00"
+ * (or "<CUR> 0.00"), not blank — the top-of-function absent/null/"" check runs first and only
+ * catches a genuinely missing value, never a stored zero.
  */
 export function cellValue(column, row) {
   const raw = row?.[column.fieldId];
   if (raw === null || raw === undefined || raw === "") return null;
+  if (column.type === "CURRENCY_MINOR") return formatMinor(raw, row?.currency ?? null);
   if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? raw;
   // A multi-valued enum resolves EVERY member. Rendering the array as-is would print
   // "CUSTOMERVENDOR" — machine values, concatenated, in front of a user.
