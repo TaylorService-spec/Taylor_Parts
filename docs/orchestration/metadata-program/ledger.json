@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 3bfc30df -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main d1dadca2 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -594,11 +594,13 @@
       "classification": "E_ADMIN_CONFIG",
       "entity": "RoleAssignment",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Inventory only; form is unconditionally disabled",
-      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Needs a Role/principal entity and a trusted read before it can be a list at all.",
+      "notes": "No trusted READ exists to list real principals. Relevant to PR #1100. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. ATTEMPTED and DECLINED at d1dadca2, on a more absolute basis than the other declines: AdminRolesPermissions.jsx reads NO Firestore collection at all -- it is a static informational panel plus one unconditionally-disabled form whose options come from a pure in-memory catalog -- and there is no role.js or user.js under src/metadata/definitions/. Nothing to bind a list to, and no read to route through one. Confirmed against the code rather than taken from this ledger's own prior note. Authority exposure explicitly unchanged: no production file touched, the assignable-role list still excludes the privileged admin role through its pre-existing filter, no column or capability added. Five tests lock the state INCLUDING that the definitions directory has no role or user entity, so if one is ever added this decline is re-examined rather than quietly outliving its reason.",
       "dependsOn": [
-        "A-PAGE-COMPONENT"
-      ]
+        "X-NO-GOVERNED-READ-COLLECTIONS"
+      ],
+      "pr": 1243,
+      "mergeSha": "d1dadca2"
     },
     {
       "id": "S-ADM-PLACEHOLDERS",

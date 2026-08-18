@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 3bfc30df -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main d1dadca2 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -17,7 +17,7 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-18 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+17 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
@@ -29,12 +29,12 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-SVC-WO-NEW** — depends on A-LIST-GRID (all satisfied) → Bounded-read remediation: it reads the whole accounts collection
 - **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
 - **S-ADM-USERS** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; no governed directory read exists to migrate
-- **S-ADM-ROLES** — depends on A-PAGE-COMPONENT (all satisfied) → Inventory only; form is unconditionally disabled
 - **S-DASH-MY** — depends on A-PAGE-COMPONENT (all satisfied) → Later phase; dashboard composition is not list/record metadata
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
 - **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Migrate; navHidden, direct-URL only
 - **S-INV-EQUIPMENT** — depends on A-LIST-GRID (all satisfied) → Migrate; already cursor-paginated
 - **S-COM-RECEIPTS** — depends on A-LIST-GRID (all satisfied) → Migrate onto list runtime
+- **A-AUTOMATION-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the unified query model - automation CONDITIONS are queries
 
 ## Next executable
 
@@ -197,7 +197,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | Bounded-read remediation: it reads the whole accounts collection |
 | S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Migrate onto list runtime |
 | S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Inventory only; no governed directory read exists to migrate |
-| S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | — | — | — | NOT_APPLICABLE | Inventory only; form is unconditionally disabled |
+| S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | #1243 | — | d1dadca2 | NOT_APPLICABLE | Needs a Role/principal entity and a trusted read before it can be a list at all. |
 | S-DASH-MY | 9 | My Dashboard | /dashboard | — | — | — | — | NOT_APPLICABLE | Later phase; dashboard composition is not list/record metadata |
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
