@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 9c30e311 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 56fc09d9 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -2805,6 +2805,23 @@
       ],
       "nextAction": "None.",
       "notes": "binCode is a genuine caller-supplied name, not server-allocated, so nameField with no invented referenceField -- the purchaseOrder.externalPoNumber reasoning. The lane established what the collection REALLY is rather than idealizing it: NOTHING in the repo writes stock_locations. warehouseService.ts's write functions have zero callers outside their own tests, and fulfillmentAvailability.ts's header states the collection is a seeded legacy projection -- which is why the Owner-ratified decision replaced it as the Sales Order availability source. Only updatedAt exists; no createdAt/createdBy/updatedBy, recorded as a gap. readVia CLIENT_DIRECT with readCapability null, and the nuance is worth keeping: warehouse.stockLocation.read DOES exist in the catalog and describes exactly the right resource, but nothing evaluates it on this path since Rules gate the read directly. One net-new composite, pending deploy."
+    },
+    {
+      "id": "A-ENTITY-TERRITORY-MOBILE-DEFINITIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "SalesTerritory and MobileLocation entity definitions",
+      "domain": "operations",
+      "status": "MERGED",
+      "pr": 1251,
+      "mergeSha": "56fc09d9",
+      "governing": [
+        "DECISIONS #106",
+        "ADR-010"
+      ],
+      "nextAction": "truck.js locationId can now become a REFERENCE to mobileLocation.",
+      "notes": "Both PASS validateEntityDefinition -- the first definitions to merge after four consecutive ones were held on the identity clause. The lane checked identity FIRST as instructed and both have real names, so neither had to be forced. MobileLocation closes a gap truck.js recorded deliberately at the time: its locationId is a plain ID BECAUSE no mobileLocation entity existed, and can now become a real REFERENCE (reported against truck.js, not edited from the leaf). The lane also DECLINED a plausible-but-wrong citation: inventory.location.display.read exists and touches mobile_locations, but gates a narrower bounded point-read projection service rather than this collection's own read, so it was not named as readCapability. SalesTerritory is readVia UNKNOWN and stays that way -- sales_territories is deny-all, and the one callable that touches it reads server-side for coverage resolution with a response that never includes the territory's name, kind, geo or status, so NO client-reachable read exists at all. It is append-only with no update path anywhere in the coverage module. It declared only what is STORED: territory-independent coverage, channels and effective dating are recorded roadmap requirements, and modelling them would have put a design in the repo ahead of its decision. geo left undeclared -- a discriminated union v1 has no struct type for, consistent with location.js's address gap. One net-new composite (36->37) pending deploy; SalesTerritory declares no list view and was registered anyway, on the purchaseOrder precedent."
     },
     {
       "id": "X-INVENTORY-TRANSACTION-NO-IDENTITY",
