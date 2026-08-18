@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main 5db798dc -- 183 entries, every claim reconciled against git. MERGED 103, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 1.
+**Baseline:** origin/main b891fc68 -- 186 entries, every claim reconciled against git. MERGED 105, COMPLETE 23, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 0.
 
 ## Surface conformance
 
@@ -17,10 +17,12 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-18 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+23 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
+- **S-CRM-SALES-ORDER-RECORD** — depends on A-ENTITY-MASS-DEFINITION, A-PAGE-COMPONENT (all satisfied) → Migrate onto page runtime; resolve raw-id labels
+- **S-SVC-WO-RECORD** — depends on A-ENTITY-MASS-DEFINITION, A-PAGE-COMPONENT (all satisfied) → Migrate after Gate B
 - **S-SVC-JOB-ASSIGNMENTS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Classify as duplicate/redirect/composition alias per routing architecture.
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Not a list by construction.
 - **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction -- a derived grouping has no native rows to read.
@@ -30,21 +32,14 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 - **S-ADM-EMPLOYEES** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Resolve the semantic mismatch: the definition must follow the data model the surface actually reads.
 - **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime.
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
+- **S-INV-PART-DETAIL** — depends on A-ENTITY-MASS-DEFINITION, A-PAGE-COMPONENT (all satisfied) → Migrate onto page runtime
 - **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Not a list while the writes live here; the unbounded read is a separate real defect.
 - **S-INV-TRANSFERS** — depends on X-TRANSFER-ORDER-NO-REFERENCE (all satisfied) → Blocked on the Transfer Order identity decision; separately a lifecycle composite, not a list.
-- **S-COM-PURCHASE-ORDERS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Record as a COMPOSITE/PROJECTION requirement, not a list.
-- **S-COM-RECEIPTS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Same construction as Purchase Orders; not a single-collection list.
-- **A-AUTOMATION-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the unified query model - automation CONDITIONS are queries
 
 ## Next executable
 
-- **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
-
-## IMPLEMENTING
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
+_Nothing executable. Every remaining item is blocked, queued or complete — check the blocked
+table below before concluding the program is finished._
 
 ## MERGED
 
@@ -153,6 +148,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-ENTITY-CATALOG-DEFINITIONS | 6 | SupplierCatalogItem and PartAlias definitions | — | — | #1263 | — | 6a32c644 | NOT_APPLICABLE | None. |
 | X-NPM-TEST-EXCEEDED-COMMAND-LIMIT | 6 | npm test grew past the Windows command-line limit and could not run locally | — | — | #1263 | — | 6a32c644 | NOT_APPLICABLE | None. |
 | X-SALES-ORDER-DEFINITION-TEST-UNRUN | 6 | metadataSalesOrderDefinition ran in CI but was absent from npm test | — | — | #1264 | — | 5db798dc | NOT_APPLICABLE | None. |
+| X-ENTITY-COVERAGE-RECONCILIATION | 6 | All 22 uncovered collections classified; five were stale claims | — | — | #1266 | — | 209c7707 | NOT_APPLICABLE | None. |
+| A-ENTITY-INVENTORY-ACTION-DEFINITIONS | 6 | inventoryAction and purchaseOrderVoid -- the last two definitions | — | — | #1267 | — | b891fc68 | NOT_APPLICABLE | None. |
 
 ## BLOCKED_PROTECTED
 
@@ -256,6 +253,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SURFACE-CLASSIFICATION-COMPOSITES | 6 | Several surfaces classified A_ENTITY_LIST are actually lifecycle composites | — | — | — | — | — | NOT_APPLICABLE | None. Reclassification applied to every audited entry. |
 | A-BOUNDED-READ-INVENTORY | 6 | Eight unbounded reads inventoried; one bounded, seven deliberately not | — | — | #1248 | — | 9c30e311 | NOT_APPLICABLE | None. The three still-open ones are recorded separately. |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
+| A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | #1267 | — | b891fc68 | NOT_APPLICABLE | None. Every remaining collection is EXEMPT, STALE, BLOCKED_DEPENDENCY or BLOCKED_PROTECTED. |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
 | X-FIELD-TYPE-RENDERER-AUDIT | 6 | Audit of every declared FIELD_TYPE against cellValue's branches | — | — | — | — | — | NOT_APPLICABLE | None. Findings split into the three entries below. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | #1261 | — | b7ec0c29 | NOT_APPLICABLE | None until a definition declares an action id; the tripwire will catch it. |
@@ -266,6 +264,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-ENTITIES-WITHOUT-IDENTITY-PATTERN | 6 | Four entities have no labelable identity, all waiting on one numbering decision | — | — | #1258 | — | 00df6438 | NOT_APPLICABLE | None. Settled by the Owner ruling. |
 | X-GENERAL-NUMBERING-RULE | 6 | Number what people must identify; do not number every internal record | — | — | — | — | — | NOT_APPLICABLE | None. Standing rule. |
 | X-SHARED-READ-SCOPING-PACKAGE | 6 | Consolidated shared-read scoping decision package, both blockers together | — | — | #1257 | — | eb04007c | NOT_APPLICABLE | Owner ruling on both, when they become the critical path. |
+| X-SANDBOX-BASELINE-WAS-STALE | 6 | The recorded sandbox baseline was two days stale; every delta from it was wrong | — | — | — | — | — | NOT_APPLICABLE | None. The promotion package binds to the verified live SHA. |
 
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
 

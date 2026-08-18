@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 5db798dc -- 183 entries, every claim reconciled against git. MERGED 103, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 1.",
+  "baseline": "origin/main b891fc68 -- 186 entries, every claim reconciled against git. MERGED 105, COMPLETE 23, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 0.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -1920,13 +1920,15 @@
       "title": "Mass-definition of remaining business entities",
       "domain": "program",
       "entity": "n/a",
-      "status": "IMPLEMENTING",
+      "status": "COMPLETE",
       "dependsOn": [],
-      "nextAction": "Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.",
+      "nextAction": "None. Every remaining collection is EXEMPT, STALE, BLOCKED_DEPENDENCY or BLOCKED_PROTECTED.",
       "governing": [
         "Owner Field Architecture v2 gate, sequencing"
       ],
-      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue. UNBLOCKED 2026-08-17: the gate's clearing conditions are met and compatibility is proven against both existing definitions, so a further entity written today maps into v2 without a retrofit - which was the entire reason for the sequencing constraint. STARTED (#1154, b4d7518b): Contact and Opportunity, the two entities the Account record page's related lists depend on. Authored from repository investigation rather than an idealized schema, which is why several assertions pin ABSENCE. Contact declares NO capability (Rules gate it by role; no contact.read exists) and NO provenance (three write paths disagree - single-add writes neither timestamp, import writes both and no actor, only the sandbox seed writes createdBy). Opportunity is the first CALLABLE-read entity and therefore demands no composite index of its own; its identity is the reference number because `name` is READ by the projection and written by nothing. expectedValue is NUMBER not currency, because no currency field is stored. FOUND AND FIXED A CONTRACT DEFECT: validateEntityDefinition requires an edge on its OWNING entity while the list validator and query builder looked for it on the LIST's entity, so every genuine parent-child related list was unvalidatable and only lists scoped by an edge pointing elsewhere passed. Three existing tests had encoded that defect and were corrected rather than the implementation weakened. RESUMPTION 2026-08-17: baseline verified against GitHub before continuing - origin/main e5172508, 110/110 ledger claims provable from git, 42 merged / 26 executable / 9 protected, exactly as the prior context recorded. The employee leaf lane dispatched before that context closed had NOT pushed, so its worktree died with the session and the work was lost. Re-dispatched clean rather than reconstructed."
+      "notes": "The sequencing constraint made explicit as an entry, so it cannot be lost between one migration and the next. Two entities are defined today. Every further entity written against v1 raises the cost of changing the field contract by the number of definitions, tests, indexes and surfaces that would have to move together - which is why the gate is scheduled before this, not after. Surfaces consuming ALREADY-DEFINED entities are not blocked by this: Work Orders rewiring, record pages and related lists all continue. UNBLOCKED 2026-08-17: the gate's clearing conditions are met and compatibility is proven against both existing definitions, so a further entity written today maps into v2 without a retrofit - which was the entire reason for the sequencing constraint. STARTED (#1154, b4d7518b): Contact and Opportunity, the two entities the Account record page's related lists depend on. Authored from repository investigation rather than an idealized schema, which is why several assertions pin ABSENCE. Contact declares NO capability (Rules gate it by role; no contact.read exists) and NO provenance (three write paths disagree - single-add writes neither timestamp, import writes both and no actor, only the sandbox seed writes createdBy). Opportunity is the first CALLABLE-read entity and therefore demands no composite index of its own; its identity is the reference number because `name` is READ by the projection and written by nothing. expectedValue is NUMBER not currency, because no currency field is stored. FOUND AND FIXED A CONTRACT DEFECT: validateEntityDefinition requires an edge on its OWNING entity while the list validator and query builder looked for it on the LIST's entity, so every genuine parent-child related list was unvalidatable and only lists scoped by an edge pointing elsewhere passed. Three existing tests had encoded that defect and were corrected rather than the implementation weakened. RESUMPTION 2026-08-17: baseline verified against GitHub before continuing - origin/main e5172508, 110/110 ledger claims provable from git, 42 merged / 26 executable / 9 protected, exactly as the prior context recorded. The employee leaf lane dispatched before that context closed had NOT pushed, so its worktree died with the session and the work was lost. Re-dispatched clean rather than reconstructed. EXHAUSTED. Final reconciliation (#1266) classified all 22 uncovered collections against current repo truth: DEFINE 2, EXEMPT 5, BLOCKED_DEPENDENCY 2, BLOCKED_PROTECTED 8, STALE 5. Both DEFINE items merged in #1267, bringing the program to 27 entity definitions across 28 collections. No autonomous entity-definition work remains.",
+      "pr": 1267,
+      "mergeSha": "b891fc68"
     },
     {
       "id": "X-WORK-ORDER-BOARD-SCOPE",
@@ -3217,6 +3219,52 @@
       ],
       "nextAction": "None.",
       "notes": "Found while integrating the Sales Order read: the suite that pins salesOrder's list contract ran in the CI workflow but was NOT in the aggregated npm test script, so a full local run would not have caught the break the lane predicted. This is the mirror of the earlier gap where test files ran locally but were named in no workflow -- the same class, opposite direction, and it is the fourth coverage gap of this shape found in the program. Added to the suite manifest (180 -> 181). Worth noting the general shape: two independent lists of what to run will drift, and only the one CI reads is enforced."
+    },
+    {
+      "id": "X-ENTITY-COVERAGE-RECONCILIATION",
+      "phase": "6",
+      "wave": "5",
+      "kind": "AUDIT",
+      "title": "All 22 uncovered collections classified; five were stale claims",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1266,
+      "mergeSha": "209c7707",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "The closing reconciliation of A-ENTITY-MASS-DEFINITION, and it corrected the METHOD that produced its own input. `databases` is not a collection at all -- it is Firestore Rules' service-wrapper path variable (match /databases/{database}/documents). I generated the candidate list by scraping `match /` targets out of firestore.rules, and that method manufactured a false candidate while looking rigorous: it read the authoritative file and extracted a real token, just the wrong KIND of token, and nothing downstream would have questioned it. Two more were never real: `permissions` and `roles` have ZERO writers anywhere and were never instantiated -- permissions' real authority is an in-code catalog with no Firestore I/O, and roles' operative data lives in a different collection (roleAssignments) that was not even in the candidate list. A fourth correction UNBLOCKED work: purchaseOrder.js's own header implied reorder_purchase_order_voids was deny-all; it has a live, role-gated, cross-document-validated read contract, and that correction is what promoted it from an assumed blocker to a definable entity. Honest unknowns recorded rather than guessed: no reader found anywhere for invoice_adjustments, payment_applications, refunds or location_truck_claims."
+    },
+    {
+      "id": "A-ENTITY-INVENTORY-ACTION-DEFINITIONS",
+      "phase": "6",
+      "wave": "5",
+      "kind": "ARCHITECTURE",
+      "title": "inventoryAction and purchaseOrderVoid -- the last two definitions",
+      "domain": "inventory",
+      "status": "MERGED",
+      "pr": 1267,
+      "mergeSha": "b891fc68",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "Both SYSTEM_ONLY, both EXPLICITLY declared -- the mode is never derived, so neither could have arrived by omission. The finding worth keeping is that these two look like siblings and are NOT comparable in provenance TRUST: inventoryAction.createdBy is a CLIENT-SUPPLIED CLAIM, whatever the browser sends, with no field validation on that collection's create rule at all, while purchaseOrderVoid.voidedBy is SERVER-VALIDATED (Rules enforce it equals request.auth.uid at create, verified independently at firestore.rules:952). Declaring the first as authorship would have upgraded trust semantics by wording alone -- harmless-looking until someone builds an audit view on it. Both createdAt values are client-clock Date.now() rather than serverTimestamp(), declared NUMBER not TIMESTAMP to match what is stored; purchaseOrderVoid's is additionally cross-document pinned to the linked request's voidedAt in the same write. Neither declares a list view, so zero index demands -- no real query browses either collection as a list, and declaring one would promise a query shape nothing serves. Both registered in the coverage script anyway, on the purchaseOrder precedent."
+    },
+    {
+      "id": "X-SANDBOX-BASELINE-WAS-STALE",
+      "phase": "6",
+      "wave": "5",
+      "kind": "AUDIT",
+      "title": "The recorded sandbox baseline was two days stale; every delta from it was wrong",
+      "domain": "orchestration",
+      "status": "COMPLETE",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None. The promotion package binds to the verified live SHA.",
+      "notes": "The recorded sandbox baseline was 23fd5692 (2026-08-15). The environment actually serves cd442727 (built 2026-08-17), read live from /version.json with environmentId platform-sandbox and environmentRole sandbox. Every provisional delta computed from the recorded value was wrong, all in the direction of OVERSTATING the work: Cloud Functions 74 files vs 31, new callables 8 vs 2, Hosting 201 files vs 106, live indexes 6 vs 8. The most consequential correction is the Rules delta: from the recorded baseline it looked like a Tier-2 protected action was required, and firestore.rules is in fact BYTE-IDENTICAL between the live commit and main -- so that protected boundary does not exist in this promotion, and asserting it would have manufactured an approval gate out of a stale number. A second correction in the other direction: an earlier draft warned that surfaces gated on salesOrder.read / opportunity.read / finance.read would render denied for every viewer because those capabilities are registered active:false. True of the catalog default, FALSE for this environment -- platform-sandbox carries 27 capabilityActivationOverrides including all three. That decides how verification reads a denied surface: in sandbox, a denied Sales Order list is a FAILURE, not expected behaviour. This is why deployment state must be read from the environment rather than inferred from a repository record -- including a record this program itself wrote."
     }
   ]
 }
