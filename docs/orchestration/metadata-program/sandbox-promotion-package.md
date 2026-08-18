@@ -314,3 +314,105 @@ the served commit.
 ## Stage
 
 Sandbox remains at **`cd442727`**. Nothing has been deployed. The promotion stays at **MERGED**.
+
+---
+
+# Tranche 1 — Firestore indexes
+
+**Result: PASS.** Indexes only. No Rules, Functions, Hosting, fixtures, seeds, or activation
+changes were deployed.
+
+## Timeline (UTC)
+
+| | |
+|---|---|
+| Deploy start | `2026-08-18T19:25:13Z` |
+| Deploy returned | `2026-08-18T19:25:28Z` (exit 0) |
+| All indexes serving | `2026-08-18T19:30:53Z` |
+
+Submission and completion are **not** the same event — the deploy returned in 15 seconds while
+the builds took a further ~5.4 minutes. Treating exit 0 as tranche completion would have handed
+Tranche 2 a false green.
+
+## Command
+
+```
+firebase deploy --only firestore:indexes --project eos-platform-sandbox --non-interactive
+```
+
+Scoped deliberately: `firebase.json`'s `firestore` block declares **both** `rules` and `indexes`,
+so the unscoped `--only firestore` target would have included Rules.
+
+## Index counts
+
+| | Before | After |
+|---|---|---|
+| Live in sandbox | 8 | **38** |
+| Declared at runtime SHA | 38 | 38 |
+| Missing | 30 | **0** |
+| Unexpected | 0 | **0** |
+
+30 indexes submitted, across `accounts` 3 · `employees` 3 · `equipment` 3 · `equipment_models` 3 ·
+`parts` 3 · `trucks` 3 · `fieldops_wos` 2 · `contacts` 1 · `locations` 1 · `manufacturers` 1 ·
+`mobile_locations` 1 · `opportunities` 1 · `sales_orders` 1 · `stock_locations` 1 · `suppliers` 1 ·
+`transfer_orders` 1 · `warehouses` 1.
+
+## Serving state — observed, not inferred
+
+Tranche 0 flagged that `firebase firestore:indexes` exports configuration without a `state`
+field, so serving could not be confirmed through it. Resolved by using
+`gcloud firestore indexes composite list --format="value(state)"`, which does report state:
+
+```
+19:26:55Z   30 CREATING   8 READY
+19:29:09Z   30 CREATING   8 READY
+19:30:01Z   20 CREATING  18 READY
+19:30:53Z   38 READY
+```
+
+**Final: 38 READY, 0 CREATING, 0 ERROR, 0 DELETING.**
+
+This closes the Tranche 0 limitation. Tranche 2's "required indexes serving" gate now rests on a
+direct state read rather than an absence-of-anomaly argument.
+
+## Rules — compiled, not released
+
+The deploy log contains exactly two Rules lines:
+
+```
+i  cloud.firestore: checking firestore.rules for compilation errors...
++  cloud.firestore: rules file firestore.rules compiled successfully
+```
+
+No ruleset was created and no release was issued — the only deployment line is
+`deployed indexes in firestore.indexes.json successfully`.
+
+Reported explicitly because it is stop-condition-adjacent: the `firestore` deploy target
+**reads and compiles** `firestore.rules` as a validation step even under `--only
+firestore:indexes`. That is validation, not an attempt to deploy. It is also moot in substance —
+Rules are byte-identical to live, so a release would have been a no-op — but "would have been
+harmless" is not the same claim as "did not happen", and the evidence supports the latter.
+
+Five pre-existing rules **warnings** were surfaced by that compile (unused functions, invalid
+function/variable names). They are pre-existing, unrelated to this promotion, and were not
+introduced or altered here.
+
+## Acceptance criteria
+
+| | |
+|---|---|
+| All 38 declared indexes present | **Yes** |
+| All required indexes ready/serving | **Yes** — 38 READY |
+| None building / error / deleting / missing | **Yes** |
+| No Rules or application runtime deployed | **Yes** |
+| Existing sandbox behaviour still available | Unchanged — additive indexes only |
+
+## Rollback position
+
+None taken and none required. The 30 new indexes are additive and stay in place regardless of
+later tranches, per the rollback policy.
+
+## Stage
+
+Hosting and Functions are untouched. `/version.json` still reports `cd442727`. The promotion
+remains **MERGED** for application runtime; only the index layer has advanced.
