@@ -2257,6 +2257,42 @@
       "mergeSha": "bd2e733e"
     },
     {
+      "id": "A-ACCOUNT-WIRE-CONTACTS-LOCATIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Contacts and Locations wired through metadata",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "MERGED",
+      "pr": 1217,
+      "mergeSha": "70b74afc",
+      "governing": [
+        "DECISIONS #102 section 6",
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "Both wired, nothing declined, no accessibility regression. Deliberately did NOT use DefaultRelatedList's default binding, which issues its own live read while AccountDetail already runs useContactsForAccount/useLocationsForAccount -- that would have re-read both collections, the recorded #1094/#1095 double-read anti-pattern. An injected listRenderer builds the presentation model from the data already flowing, keeping the shared grid, the four states and the focus handoff without a second subscription. The focus-parity proof initially gave a FALSE PASS -- a fresh render() reset component state -- and the lane caught that itself and switched to rerender, which is the only reason the test means anything. account.locations was CHECKED rather than assumed and does exist, so the older recorded gap was already closed. Location's nested address map vs flat addressCity/addressState field ids was found by trying and flattened. Section-level add/import affordances stay hand-mounted; the grid has no equivalent, stated rather than dropped."
+    },
+    {
+      "id": "X-LIST-BOOLEAN-FORMATTING",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1217,
+      "mergeSha": "70b74afc",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "The SEVENTH instance of the unconsumed-declaration pattern and the second of its exact kind: a declared field type with no rendering branch, after TIMESTAMP. React renders neither true nor false as a child, so contact.isPrimary came out BLANK on every row -- primary and non-primary indistinguishable. The leaf lane worked around it locally by pre-mapping to 'Primary'/null; at integration the fix was moved to cellValue and the workaround REMOVED, the same call as the stale rowNavigationTo in #1207. It would also have broken outright, since pre-mapping a BOOLEAN to a string is now coerced by the branch that fixed it. Renders the app's established Yes/No. A genuinely absent value still renders nothing, and a non-primary contact now reads 'No' rather than blank: 'is not the primary' and 'nobody recorded whether they are' are different claims, and a blank cell says neither."
+    },
+    {
       "id": "X-REGISTRY-VALIDATOR-NEVER-RUN",
       "phase": "6",
       "wave": "3",
@@ -2307,14 +2343,14 @@
       "phase": "6",
       "wave": "3",
       "kind": "AUDIT",
-      "title": "Metadata declares things nothing reads -- six instances in one session",
+      "title": "Metadata declares things nothing reads -- seven instances in one session",
       "domain": "metadata",
       "status": "COMPLETE",
       "governing": [
         "DECISIONS #102 section 6"
       ],
       "nextAction": "None. Recorded as a program-level pattern to check for, not a single defect.",
-      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review. UPDATED: two further instances found after this entry was written. (5) pageRegistryReferences, unconsumed AND shadowed by a similarly-named validator that silently passes on the wrong shape -- see X-PAGE-REGISTRY-REFERENCES-UNCONSUMED. (6) actionRegistry, the mirror image: not a declaration nobody reads but a reader nobody feeds. The detection method held for every one of them -- each was found by attempting to consume the declaration honestly, none by review."
+      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review. UPDATED: two further instances found after this entry was written. (5) pageRegistryReferences, unconsumed AND shadowed by a similarly-named validator that silently passes on the wrong shape -- see X-PAGE-REGISTRY-REFERENCES-UNCONSUMED. (6) actionRegistry, the mirror image: not a declaration nobody reads but a reader nobody feeds. The detection method held for every one of them -- each was found by attempting to consume the declaration honestly, none by review. (7) cellValue had no BOOLEAN branch -- see X-LIST-BOOLEAN-FORMATTING. Note the sub-pattern now visible across TIMESTAMP and BOOLEAN: entityDefinition.js declares a field-type vocabulary that the renderer implements only PARTLY, and the unimplemented members fail silently rather than loudly. Worth auditing the remaining declared types against cellValue's branches before the next wiring lane finds the eighth by accident."
     },
     {
       "id": "X-ACCOUNT-WIRE-CALLABLE-LISTS",
