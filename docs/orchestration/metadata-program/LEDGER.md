@@ -17,31 +17,34 @@ continues from the next executable item — without asking what happened.
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
-14 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
+16 item(s) are BLOCKED_DEPENDENCY with every dependency already satisfied.
 Each needs a deliberate call: promote it to READY, or re-point it at what it actually needs.
 
 - **S-CRM-OPPORTUNITIES** — depends on X-INDEX-SURFACE-CALLABLE-READ (all satisfied) → Blocked on an INDEX-surface callable read path; two further gaps recorded.
+- **S-SVC-JOB-ASSIGNMENTS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Classify as duplicate/redirect/composition alias per routing architecture.
 - **S-SVC-DISPATCH-QUEUE** — depends on A-LIST-GRID (all satisfied) → Not a list by construction.
 - **S-SVC-COORDINATED-VISITS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction -- a derived grouping has no native rows to read.
 - **S-SVC-COORDINATED-MISSION** — depends on A-LIST-GRID (all satisfied) → Not a list by construction -- a derived grouping has no native rows to read.
 - **S-SVC-CONTROL-TOWER** — depends on A-PAGE-COMPONENT (all satisfied) → Not a list; bounded-read remediation on the two reads is separately named.
 - **S-SVC-WO-NEW** — depends on A-LIST-GRID (all satisfied) → None. Stale next-action text corrected.
+- **S-ADM-EMPLOYEES** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Resolve the semantic mismatch: the definition must follow the data model the surface actually reads.
 - **S-ADM-SAVED-REPORTS** — depends on A-LIST-GRID (all satisfied) → Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime.
 - **G-GATE-B** — depends on S-CRM-CUSTOMERS, S-SVC-WORK-ORDERS (all satisfied) → Do not begin site-wide migration if this exposes a bad abstraction
 - **S-INV-PART-MASTER** — depends on A-LIST-GRID (all satisfied) → Not a list while the writes live here; the unbounded read is a separate real defect.
-- **S-COM-PURCHASE-ORDERS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Reclassify: this is a request-driven join, not an entity list.
+- **S-COM-PURCHASE-ORDERS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Record as a COMPOSITE/PROJECTION requirement, not a list.
 - **S-COM-RECEIPTS** — depends on X-SURFACE-CLASSIFICATION-COMPOSITES (all satisfied) → Same construction as Purchase Orders; not a single-collection list.
 - **A-AUTOMATION-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the unified query model - automation CONDITIONS are queries
 - **A-EQL-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design the surface syntax AFTER the shared query model it compiles into
-- **A-BULK-DATA-V1** — depends on A-QUERY-MODEL-UNIFIED (all satisfied) → Design after the query model - an export IS a governed query with a different sink
 
 ## Next executable
 
+- **A-IDENTITY-MODES** (phase 6) — Three identity modes: HUMAN_NAME, BUSINESS_REFERENCE, SYSTEM_ONLY → Land the contract; the four held definitions depend on it.
+- **A-OPERATIONAL-NUMBERING** (phase 6) — Server-authoritative TO/RO/RR numbering with inert backfill tooling → Build numbering + tests + legacy detection + dry-run backfill; do NOT execute in production.
+- **A-TEXT-QUERY-SEMANTICS** (phase 6) — Distinct text operators, and a declared operator that is not executable must fail loudly → Land the operator vocabulary and the backend seam contract.
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS** (phase 6) — Both Dispatch Queue reads are unbounded live listeners shared across many surfaces → Needs a scoping decision; bounding either ripples into unrelated surfaces.
-- **X-PART-MASTER-UNBOUNDED-READ** (phase 6) — fetchPartMasterList is unbounded and doubles as a name-resolution directory → Split the directory role from the list role before bounding either.
-- **X-PARTID-IDENTITY-CONFLICT** (phase 6) — part.js and the production join evidence disagree on which field is the Part's reference → Reconcile with the existing part-number supersession issue; do not decide independently.
-- **X-QUERY-MODEL-NO-FREE-TEXT** (phase 6) — The query model has no free-text operator, so no substring-search surface can migrate → Decide how the metadata query model answers free text, or record that it never will.
+- **X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS** (phase 6) — Both Dispatch Queue reads are unbounded live listeners shared across many surfaces → Consolidated decision package being prepared; both presented together.
+- **X-PART-MASTER-UNBOUNDED-READ** (phase 6) — fetchPartMasterList is unbounded and doubles as a name-resolution directory → Consolidated decision package being prepared; both presented together.
+- **X-PARTID-IDENTITY-CONFLICT** (phase 6) — part.js and the production join evidence disagree on which field is the Part's reference → Focused evidence audit running; escalate ONLY if genuinely ambiguous.
 - **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
@@ -49,18 +52,20 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| X-PARTID-IDENTITY-CONFLICT | 6 | part.js and the production join evidence disagree on which field is the Part's reference | — | — | — | — | — | NOT_APPLICABLE | Focused evidence audit running; escalate ONLY if genuinely ambiguous. |
+| X-PART-MASTER-UNBOUNDED-READ | 6 | fetchPartMasterList is unbounded and doubles as a name-resolution directory | — | — | — | — | — | NOT_APPLICABLE | Consolidated decision package being prepared; both presented together. |
+| X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS | 6 | Both Dispatch Queue reads are unbounded live listeners shared across many surfaces | — | — | — | — | — | NOT_APPLICABLE | Consolidated decision package being prepared; both presented together. |
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
+| A-IDENTITY-MODES | 6 | Three identity modes: HUMAN_NAME, BUSINESS_REFERENCE, SYSTEM_ONLY | — | — | — | — | — | NOT_APPLICABLE | Land the contract; the four held definitions depend on it. |
+| A-TEXT-QUERY-SEMANTICS | 6 | Distinct text operators, and a declared operator that is not executable must fail loudly | — | — | — | — | — | NOT_APPLICABLE | Land the operator vocabulary and the backend seam contract. |
 
 ## READY
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
-| X-QUERY-MODEL-NO-FREE-TEXT | 6 | The query model has no free-text operator, so no substring-search surface can migrate | — | — | — | — | — | NOT_APPLICABLE | Decide how the metadata query model answers free text, or record that it never will. |
-| X-PARTID-IDENTITY-CONFLICT | 6 | part.js and the production join evidence disagree on which field is the Part's reference | — | — | — | — | — | NOT_APPLICABLE | Reconcile with the existing part-number supersession issue; do not decide independently. |
-| X-PART-MASTER-UNBOUNDED-READ | 6 | fetchPartMasterList is unbounded and doubles as a name-resolution directory | — | — | — | — | — | NOT_APPLICABLE | Split the directory role from the list role before bounding either. |
-| X-DISPATCH-QUEUE-UNBOUNDED-LISTENERS | 6 | Both Dispatch Queue reads are unbounded live listeners shared across many surfaces | — | — | — | — | — | NOT_APPLICABLE | Needs a scoping decision; bounding either ripples into unrelated surfaces. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
+| A-OPERATIONAL-NUMBERING | 6 | Server-authoritative TO/RO/RR numbering with inert backfill tooling | — | — | — | — | — | NOT_APPLICABLE | Build numbering + tests + legacy detection + dry-run backfill; do NOT execute in production. |
 
 ## MERGED
 
@@ -160,8 +165,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Product decision: retire the duplicate route rather than migrate it. |
-| S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | #1239 | — | ef712328 | NOT_APPLICABLE | Owner/product decision: does the Employees nav item mean technicians or employees? |
 | X-ADMIN-CRM-AUTHORITY | 0 | crm.activity.read via canonical admin authority | — | — | #1100 | — | — | NOT_APPLICABLE | Await Owner authorization; program proceeds around it |
 | X-STATUS-DATA-AUDIT | 6 | Account status persisted-data audit before production rollout | — | — | — | — | — | NOT_APPLICABLE | Audit production Account documents for title-case status values |
 | X-TRUCK-PROD-LIVE-RISK | 0 | URGENT: production may already expose truck write controls | — | — | — | — | — | UNKNOWN | Authorized operator verifies the live production bundle and the deployed callable set |
@@ -171,12 +174,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-WORK-ORDER-BOARD-SCOPE | 6 | Work Order boards: bounded queue or complete queue? | /dispatch | — | — | — | — | NOT_APPLICABLE | Needs a decision on what a dispatch board is allowed to show before it can be bounded |
 | X-SALES-ORDER-NUMBER-BACKFILL | 6 | Backfill salesOrderNumber onto legacy Sales Orders | — | — | — | — | — | NOT_APPLICABLE | Tooling merged and inert. Production execution awaits the established protected authorization. |
 | X-EQUIPMENT-PROVENANCE-GAP | 6 | Equipment stores epoch-number timestamps and no actor | — | — | — | — | — | NOT_APPLICABLE | Blocked on a Rules change: equipmentWritableKeys/equipmentEditableKeys must admit createdBy/updatedBy before any client can write them. |
-| X-TRANSFER-ORDER-NO-REFERENCE | 6 | Transfer Order has no identity of either kind | — | — | — | — | — | NOT_APPLICABLE | Needs a business decision on whether transfer orders get a reference number |
-| X-INVENTORY-TRANSACTION-NO-IDENTITY | 6 | Inventory Transaction has neither a name nor a reference -- definition held, not merged | — | — | — | — | — | NOT_APPLICABLE | Owner decision: do inventory movements get a business reference, or is the ledger unlabelable? |
-| X-PROCUREMENT-ENTITIES-NO-IDENTITY | 6 | ReceivingOrder and ReorderRequest have no labelable identity -- definitions held, not merged | — | — | — | — | — | NOT_APPLICABLE | Owner decision: do procurement records get business references? Four entities now wait on it. |
 
-> **S-SVC-JOB-ASSIGNMENTS** blocked — It duplicates the already-migrated Work Orders list -- same collection, same hook, no distinct entity or filter. · requires: Whether to retire the duplicate route, which is a product/navigation decision, not a rendering one.
-> **S-ADM-EMPLOYEES** blocked — The admin nav item label 'Employees' carries legacyKey 'technicians' and renders Technicians.jsx, which reads fieldops_technicians. employeeEntity describes the separate live `employees` collection. Migrating would silently swap the dataset behind that label and introduce two authority-shaped columns (operationalRoles, securityRole) the technician record has no equivalent of. · requires: Whether the Employees nav item should continue to mean the live technician roster, or be repointed at the employees collection. Repointing changes what an admin sees and infers about authority -- a product and data-model decision, not a rendering one. The Employee/User/Technician split is already recorded as governance-approved but unimplemented.
 > **X-ADMIN-CRM-AUTHORITY** blocked — Capability grant / role-matrix change. Sandbox activation is already done; no business role carries crm.activity.read. · requires: Owner authorizes the capability through the admin business role, and decides read-only vs read+create
 > **X-STATUS-DATA-AUDIT** blocked — AccountForm defaulted new accounts to ACCOUNT_STATUS.PROSPECT, so any account created through the UI before PR #1103 persisted title-case. Sandbox holds two seeded accounts, both uppercase; production document state is unknown from here and was deliberately not claimed. · requires: Owner authorizes a production data read to determine whether a status migration is required
 > **X-TRUCK-PROD-LIVE-RISK** blocked — Truck write readiness is a COMPILE-TIME constant baked into a Hosting bundle. PR #1109 fails the repository declaration closed, but if a previously released production bundle carries the old true, production users may see enabled truck-management write controls right now. Only a Hosting release built from the corrected config changes what is live. Separately, whether the eight callables are actually deployed to taylor-parts is unverified in either direction. · requires: Owner authorizes a live production check of (a) the served bundle's readiness value and (b) the deployed Functions set, then decides whether a Hosting release is required
@@ -186,9 +184,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 > **X-WORK-ORDER-BOARD-SCOPE** blocked — Dispatch, Control Tower and Dispatcher Board share one unfiltered work-order listener and bucket it client-side; bounding the input makes the columns a partial queue presented as the whole one · requires: Either (a) the board scope is genuinely bounded - a date window, an assigned-technician set, or open-states-only - which makes a bounded read HONEST rather than partial, or (b) the board needs a governed aggregate for its column counts the way Customers did, or (c) a new /work-orders list route is created for the browsing case and the boards keep their own scope. (a) is likely correct for a dispatch board, which nobody reads beyond the current week - but what that window IS is a business decision.
 > **X-SALES-ORDER-NUMBER-BACKFILL** blocked — Assigning business references to existing production Sales Orders mutates production data · requires: Owner authorization to execute the migration against production, after a dry run reports the affected record count and any collisions.
 > **X-EQUIPMENT-PROVENANCE-GAP** blocked — firestore.rules gates equipment writes with STRICT hasOnly() allowlists - equipmentWritableKeys (create) and equipmentEditableKeys (update) - and neither admits createdBy or updatedBy. Adding the fields client-side without a Rules change would make EVERY equipment create and update fail permission-denied, not silently drop the fields. · requires: Authorize a Tier-2 firestore.rules change adding createdBy to equipmentWritableKeys and updatedBy to equipmentEditableKeys, plus the Rules deploy that makes it effective. Rules deployment is a protected action; the repo change and the deploy are separate gates.
-> **X-TRANSFER-ORDER-NO-REFERENCE** blocked — transferOrderEntity can declare neither a nameField nor a referenceField: no allocator exists, the document id is a replay-key hash, and the one live surface never prints it. The definition fails validateEntityDefinition by construction. · requires: Either mint a governed transfer reference the way WO-/OPP-/SO- already are - a numbering and migration decision - or rule that transfer orders are identified only by their contents and amend the identity contract deliberately rather than by exception.
-> **X-INVENTORY-TRANSACTION-NO-IDENTITY** blocked — inventory_transactions has neither a human name nor a server-allocated reference. The authored definition satisfies the validator only by nominating `type`, an ENUM category that would label every RECEIVED movement identically -- the exact normalization entityDefinition.js forbids. · requires: Does an inventory movement get a business reference number (a family member alongside WO-/OPP-/SO-), or is this ledger accepted as an unlabelable internal record that no surface may list by identity? Numbering is a business decision outside a leaf lane's authority.
-> **X-PROCUREMENT-ENTITIES-NO-IDENTITY** blocked — Both definitions are complete and BOTH FAIL validateEntityDefinition with the same problem: identity requires a nameField or a referenceField and neither has either. No server-allocated reference exists (no allocate*Number anywhere) and no human-typed name field exists. Verified at integration by running the validator directly, not taken from the handoff. · requires: Whether procurement records -- receiving orders and reorder requests -- get business reference numbers, and if so in what family. This is the SAME decision already blocking Transfer Order and Inventory Transaction. Four entities now wait on one numbering question, which is worth deciding once rather than four times.
 
 ## BLOCKED_DEPENDENCY
 
@@ -197,28 +192,35 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-OPPORTUNITIES | 9 | Opportunities workspace | /customers/opportunities | #1099 | #1226 | — | 631170b5 | NOT_APPLICABLE | Blocked on an INDEX-surface callable read path; two further gaps recorded. |
 | S-CRM-SALES-ORDER-RECORD | 9 | Sales Order detail | /customers/opportunities/sales-order/:salesOrderId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime; resolve raw-id labels |
 | S-SVC-WO-RECORD | 9 | Work Order detail | /service/work-orders/:workOrderId | — | — | — | — | NOT_APPLICABLE | Migrate after Gate B |
+| S-SVC-JOB-ASSIGNMENTS | 9 | Job Assignments (legacy jobs list) | /service/job-assignments | — | — | — | — | NOT_APPLICABLE | Classify as duplicate/redirect/composition alias per routing architecture. |
 | S-SVC-DISPATCH-QUEUE | 9 | Dispatch queue | /service/dispatch | — | — | — | — | NOT_APPLICABLE | Not a list by construction. |
 | S-SVC-COORDINATED-VISITS | 9 | Coordinated visits | /service/coordinated-visits | — | — | — | — | NOT_APPLICABLE | Not a list by construction -- a derived grouping has no native rows to read. |
 | S-SVC-COORDINATED-MISSION | 9 | Coordinated mission | /service/coordinated-mission | — | — | — | — | NOT_APPLICABLE | Not a list by construction -- a derived grouping has no native rows to read. |
 | S-SVC-CONTROL-TOWER | 9 | Service Operations (Control Tower) | /service-operations | — | — | — | — | NOT_APPLICABLE | Not a list; bounded-read remediation on the two reads is separately named. |
 | S-SVC-WO-NEW | 9 | New Work Order wizard | /service/work-orders/new | — | — | — | — | NOT_APPLICABLE | None. Stale next-action text corrected. |
+| S-ADM-EMPLOYEES | 9 | Employees (Technicians list) | /administration | — | #1239 | — | ef712328 | NOT_APPLICABLE | Resolve the semantic mismatch: the definition must follow the data model the surface actually reads. |
 | S-ADM-SAVED-REPORTS | 9 | Saved Reports | /reporting/saved | — | — | — | — | NOT_APPLICABLE | Not a list by construction; would need a CRUD/action-surface pattern distinct from the list runtime. |
 | S-ADM-USERS | 9 | Users (admin) | /administration/users | — | — | — | — | NOT_APPLICABLE | Needs a general-purpose unscoped Users directory read plus activation of its gating capability. |
 | S-ADM-ROLES | 9 | Roles & Permissions | /administration/roles-permissions | — | #1243 | — | d1dadca2 | NOT_APPLICABLE | Needs a Role/principal entity and a trusted read before it can be a list at all. |
 | S-DASH-OPERATIONS | 9 | Inventory & Supply Overview | /dashboard/operations | — | — | — | — | NOT_APPLICABLE | Needs an authoritative aggregate before its reads can be bounded |
 | G-GATE-B | 8 | Gate B — cross-domain validation (Work Orders) | — | #1098 | — | — | — | NOT_APPLICABLE | Do not begin site-wide migration if this exposes a bad abstraction |
 | S-INV-PARTS | 9 | Parts catalog | /inventory | — | #1241 | — | 3bfc30df | NOT_APPLICABLE | Blocked on free-text search in the query model; also likely misclassified as a list. |
+| X-QUERY-MODEL-NO-FREE-TEXT | 6 | The query model has no free-text operator, so no substring-search surface can migrate | — | — | — | — | — | NOT_APPLICABLE | Extend the query model with distinct text operators; build the backend seam. |
 | S-INV-PART-DETAIL | 9 | Part detail | /inventory/:partId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
 | S-INV-PART-MASTER | 9 | Part Master bulk status table | /inventory/part-master | — | — | — | — | NOT_APPLICABLE | Not a list while the writes live here; the unbounded read is a separate real defect. |
 | S-INV-TRANSFERS | 9 | Transfers | /inventory/transfers | — | #1239 | — | ef712328 | NOT_APPLICABLE | Blocked on the Transfer Order identity decision; separately a lifecycle composite, not a list. |
 | S-INV-EQUIPMENT-DETAIL | 9 | Equipment detail | /equipment/:equipmentId | — | — | — | — | NOT_APPLICABLE | Migrate onto page runtime |
-| S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | #1241 | — | 3bfc30df | NOT_APPLICABLE | Reclassify: this is a request-driven join, not an entity list. |
+| S-COM-PURCHASE-ORDERS | 9 | Purchase orders | /purchasing | — | #1241 | — | 3bfc30df | NOT_APPLICABLE | Record as a COMPOSITE/PROJECTION requirement, not a list. |
 | S-COM-RECEIPTS | 9 | Receipts | /purchasing/receipts | — | — | — | — | NOT_APPLICABLE | Same construction as Purchase Orders; not a single-collection list. |
 | S-DASH-OPERATIONS-SCALE | 9 | Operations dashboard loads the operational database client-side | — | — | — | — | — | NOT_APPLICABLE | Same authoritative-aggregate dependency as S-DASH-OPERATIONS |
 | A-AUTOMATION-V1 | 7 | Automation Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design after the unified query model - automation CONDITIONS are queries |
 | A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
 | A-BULK-DATA-V1 | 7 | Bulk Data Architecture v1 (import + export) | — | — | — | — | — | NOT_APPLICABLE | Design after the query model - an export IS a governed query with a different sink |
 | A-ADMIN-METADATA-CONFIG | 7 | Admin metadata configuration / page designer | — | — | — | — | — | NOT_APPLICABLE | Design after entities are defined - there is nothing to configure until there is metadata to configure |
+| X-TRANSFER-ORDER-NO-REFERENCE | 6 | Transfer Order has no identity of either kind | — | — | — | — | — | NOT_APPLICABLE | Declare transferOrderNumber as referenceField; numbering + inert backfill tooling. |
+| X-INVENTORY-TRANSACTION-NO-IDENTITY | 6 | Inventory Transaction has neither a name nor a reference -- definition held, not merged | — | — | — | — | — | NOT_APPLICABLE | Declare identityMode SYSTEM_ONLY; do not invent a number. |
+| X-PROCUREMENT-ENTITIES-NO-IDENTITY | 6 | ReceivingOrder and ReorderRequest have no labelable identity -- definitions held, not merged | — | — | — | — | — | NOT_APPLICABLE | Declare receivingOrderNumber and reorderRequestNumber; same numbering principles. |
+| X-EQL-TEXT-SEMANTICS | 6 | EQL must preserve the text-operator distinctions | — | — | — | — | — | NOT_APPLICABLE | When EQL is built, compile PREFIX and CONTAINS to different operators. |
 
 ## EXEMPT
 
@@ -263,6 +265,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
 | X-FALSE-LOCAL-GREEN | 6 | npm test reported green from a grepped log line while the process had failed | — | — | — | — | — | NOT_APPLICABLE | None. Elevated to a standing controller rule. |
 | X-ENTITIES-WITHOUT-IDENTITY-PATTERN | 6 | Four entities have no labelable identity, all waiting on one numbering decision | — | — | — | — | — | NOT_APPLICABLE | None. Recorded so the four are decided together rather than one at a time. |
+| X-GENERAL-NUMBERING-RULE | 6 | Number what people must identify; do not number every internal record | — | — | — | — | — | NOT_APPLICABLE | None. Standing rule. |
 
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
 
