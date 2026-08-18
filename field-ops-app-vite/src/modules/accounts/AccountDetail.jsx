@@ -13,8 +13,6 @@ import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
-import AccountOpportunitiesSection from "./AccountOpportunitiesSection";
-import AccountSalesOrdersSection from "./AccountSalesOrdersSection";
 import AccountHealthStrip from "./AccountHealthStrip";
 import AccountAttentionSection from "./AccountAttentionSection";
 import { useAccountAr } from "../../hooks/useAccountAr";
@@ -35,6 +33,8 @@ import { useAuth } from "../../auth/AuthContext";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import {
   accountRecordPageMainSubset,
+  accountPageListResolver,
+  accountPageEntityResolver,
   useAccountPageCapabilityDecisions,
 } from "../../metadata/definitions/accountPageComponents.js";
 
@@ -42,11 +42,11 @@ import {
 // componentId sections, in accountPage.js's own order) now render through MetadataRecordPage
 // against the real accountRecordPage definition (definitions/accountPage.js), using a subset of
 // its sections -- see accountPageComponents.js's WIRING SCOPE note for exactly what remains
-// hand-rendered below and why (the header identity, health strip, Account Attention, the four
-// RELATED_LIST sections, and the two FIELD_GROUP sections). Capability decisions come from
-// useAccountPageCapabilityDecisions, the same trusted resolveEffectiveAccessCallable-backed,
-// fail-closed gate access/useReportCapabilities.js already uses, requesting exactly the ids
-// accountRecordPage declares.
+// hand-rendered below and why (the header identity, health strip, Account Attention, the
+// Contacts/Locations RELATED_LIST sections, and the two FIELD_GROUP sections). Capability
+// decisions come from useAccountPageCapabilityDecisions, the same trusted
+// resolveEffectiveAccessCallable-backed, fail-closed gate access/useReportCapabilities.js
+// already uses, requesting exactly the ids accountRecordPage declares.
 //
 // X-ACCOUNT-PAGE-WIRING-COMPLETE -- re-evaluated after MetadataRecordPage's three renderer gaps
 // closed (commit 27b109bb: FIELD_GROUP entityResolver, RELATED_LIST default binding, `embedded`).
@@ -54,12 +54,22 @@ import {
 // them SAFE to render here. Each was checked against what it would actually replace and found to
 // render measurably worse -- see accountPageComponents.js's WIRING SCOPE block for the full,
 // per-section evidence (a section-level finance.read gate hiding Account Attention's ungated
-// Work-Order half for every current viewer; a CALLABLE-readVia gap the default RELATED_LIST
-// binding cannot serve for Opportunities/Sales Orders; a forced duplicate live read plus lost
-// Add/Import CRUD and lost post-add focus-handoff for Contacts/Locations; raw unresolved
-// reference ids and a lost taxStatus safe-default for Commercial Profile; a lost
-// collapsed-by-default layout for Notes & Identifiers). No section below was moved. Locked in by
-// test/accountPageComponents.test.jsx.
+// Work-Order half for every current viewer; a forced duplicate live read plus lost Add/Import
+// CRUD and lost post-add focus-handoff for Contacts/Locations; raw unresolved reference ids and a
+// lost taxStatus safe-default for Commercial Profile; a lost collapsed-by-default layout for
+// Notes & Identifiers). No section below was moved. Locked in by test/accountPageComponents.test.jsx.
+//
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 -- Opportunities and Sales Orders (both RELATED_LIST,
+// CALLABLE-readVia) are now ALSO wired through the same MetadataRecordPage call, as the first
+// two sections of accountRecordPageMainSubset (accountPage.js's own order: opportunities ->
+// salesOrders -> financials -> activityAndNotes -> serviceActivity). Their two prior blockers
+// (a raw-epoch-millisecond TIMESTAMP column; DefaultRelatedList wiring no row navigation) closed
+// with commit 6998306f -- see accountPageComponents.js's WIRING SCOPE note for the full
+// re-verification and the one new REGISTRATION_PENDING finding (opportunity.js's own
+// rowNavigationTo names a route that does not exist; handled inside accountPageComponents.js's
+// listResolver, not here). AccountOpportunitiesSection.jsx / AccountSalesOrdersSection.jsx are no
+// longer mounted here -- their own account-scoped hooks/components remain unmodified and
+// available for other callers, but this page reads both through the metadata RELATED_LIST path.
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -396,25 +406,27 @@ export default function AccountDetail() {
           {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
               exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
               real record surfaces, not an empty shell implying "this account has none." Ordered
-              Opportunities, then Sales Orders, above Financials in the PRIMARY column.
-              X-ACCOUNT-WIRE-CALLABLE-LISTS: RE-EVALUATED after commit 6c6480d8 closed the
-              CALLABLE-readVia gap the prior finding here named (MetadataRecordPage's default
-              RELATED_LIST binding now routes a CALLABLE-readVia entity through
-              callableListSource.js). That gap is genuinely closed -- verified against the real
-              opportunity.js/salesOrder.js/account.js definitions in
-              test/accountPageComponents.test.jsx: correctly account-scoped, real reference
-              numbers, honest truncation disclosure. Still left hand-rendered, for two NEW
-              reasons neither fixable in this lane's writeScope: (1) opportunity.js's
-              expectedCloseAt is a TIMESTAMP column and listPresentation.js's cellValue() has no
-              TIMESTAMP formatting path anywhere in the codebase -- wiring Opportunities would
-              show a raw epoch-millisecond number where this section shows a real formatted date;
-              (2) DefaultRelatedList wires no row navigation at all (no onRowClick,
-              rowNavigationTo has zero consumers repo-wide) -- for Sales Orders that discards the
-              only way to open a specific order from this page (a real route,
-              opportunities/sales-order/:salesOrderId -> SalesOrderDetail.jsx, App.jsx). See
-              accountPageComponents.js's WIRING SCOPE note for the full evidence. */}
-          <AccountOpportunitiesSection accountId={account.id} />
-          <AccountSalesOrdersSection accountId={account.id} />
+              Opportunities, then Sales Orders, above Financials in the PRIMARY column -- same
+              order as always, now produced by accountRecordPageMainSubset (accountPage.js's own
+              section order) rather than hand-sequenced here.
+
+              A-ACCOUNT-WIRE-CALLABLE-LISTS-2: both sections now render through the single
+              MetadataRecordPage call below (RELATED_LIST, CALLABLE readVia via
+              callableListSource.js) rather than AccountOpportunitiesSection/
+              AccountSalesOrdersSection directly. The two blockers that kept them hand-rendered
+              (opportunity.js's expectedCloseAt TIMESTAMP column rendering as a raw epoch number;
+              DefaultRelatedList wiring no row navigation) both closed with commit 6998306f --
+              cellValue() now formats TIMESTAMP/DATE, and DefaultRelatedList now builds onRowClick
+              from a resolved list definition's rowNavigationTo. Sales Orders keeps its real
+              per-order route (opportunities/sales-order/:salesOrderId -> SalesOrderDetail.jsx,
+              App.jsx) via salesOrderRelatedList's own rowNavigationTo, wired through unmodified.
+              Opportunities has no equivalent per-record route anywhere in App.jsx today --
+              opportunity.js's own rowNavigationTo names one that does not exist, a pre-existing
+              defect outside this file's/accountPageComponents.js's writeScope for that specific
+              file (definitions/opportunity.js) -- so accountPageComponents.js's listResolver
+              strips it, and Opportunities rows render honestly non-focusable (no onClick, no
+              tabIndex) rather than link to a page that would 404. See accountPageComponents.js's
+              WIRING SCOPE note for the full evidence and the REGISTRATION_PENDING finding. */}
 
           {/* Accounts Receivable + the provider-dependent financial surfaces, ACTIVITY & NOTES,
               and Service Activity -- X-ACCOUNT-PAGE-WIRING: these three are exactly
@@ -426,11 +438,17 @@ export default function AccountDetail() {
               gated on finance.read/crm.activity.read exactly as accountPage.js declares --
               crm.activity.read is registered active:false catalog-wide, so Activity & Notes will
               not render here until that capability is separately activated, which is the correct
-              fail-closed reading of accountPage.js's own declaration, not a regression. */}
+              fail-closed reading of accountPage.js's own declaration, not a regression. Same
+              fail-closed reading now applies to opportunity.read/salesOrder.read, both also
+              registered active:false catalog-wide -- Opportunities/Sales Orders will not render
+              here until either is separately activated, matching the already-accepted
+              financials/activityAndNotes precedent, not a new regression. */}
           <MetadataRecordPage
             definition={accountRecordPageMainSubset}
             record={account}
             capabilityDecisions={capabilityDecisions}
+            listResolver={accountPageListResolver}
+            entityResolver={accountPageEntityResolver}
           />
 
           {/* 3. Contacts

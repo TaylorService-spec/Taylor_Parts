@@ -101,3 +101,12 @@ test("stage vocabulary comes from the domain module, not a copy", () => {
   assert.deepEqual([...stage.enumValues], [...OPPORTUNITY_STAGES]);
   assert.deepEqual({ ...stage.enumLabels }, { ...STAGE_LABEL });
 });
+
+test("opportunity declares no rowNavigationTo, because no per-Opportunity route exists", () => {
+  // A route template is a promise that the route exists. "/sales/opportunities/:id" was
+  // declared here and matches nothing in App.jsx; it was harmless only while nothing read
+  // rowNavigationTo. Asserted at the definition so the next consumer inherits the truth
+  // rather than a value it has to defend against.
+  assert.equal(opportunityIndexList.rowNavigationTo ?? null, null);
+  assert.equal(opportunityRelatedList.rowNavigationTo ?? null, null);
+});
