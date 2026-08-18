@@ -39,9 +39,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-LIST-CURRENCY-AND-MISTYPED-DATE** (phase 6) — CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER → Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE.
 - **X-LIST-REFERENCE-RENDERS-ID** (phase 6) — REFERENCE columns render the raw document id -- ten of them across the repo → Decide how a metadata list renders a reference honestly; this is not a formatting branch.
-- **X-MANUFACTURER-ID-AS-COLUMN** (phase 6) — manufacturerIndexList declares the document id as a visible column → Determine Manufacturer's real human-meaningful field and use it; do not keep the id.
+- **X-MONEY-FORMATTER-DISAGREEMENT** (phase 6) — Two money formatters disagree on non-2-exponent currencies → Reconcile the two, or establish that only 2-exponent currencies are supported.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -55,8 +54,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | X-LIST-REFERENCE-RENDERS-ID | 6 | REFERENCE columns render the raw document id -- ten of them across the repo | — | — | — | — | — | NOT_APPLICABLE | Decide how a metadata list renders a reference honestly; this is not a formatting branch. |
-| X-LIST-CURRENCY-AND-MISTYPED-DATE | 6 | CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER | — | — | — | — | — | NOT_APPLICABLE | Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE. |
-| X-MANUFACTURER-ID-AS-COLUMN | 6 | manufacturerIndexList declares the document id as a visible column | — | — | — | — | — | NOT_APPLICABLE | Determine Manufacturer's real human-meaningful field and use it; do not keep the id. |
+| X-MONEY-FORMATTER-DISAGREEMENT | 6 | Two money formatters disagree on non-2-exponent currencies | — | — | — | — | — | NOT_APPLICABLE | Reconcile the two, or establish that only 2-exponent currencies are supported. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -123,6 +121,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | #1211 | — | bd2e733e | NOT_APPLICABLE | Wiring Contacts/Locations onto it is a separate lane. |
 | A-ACCOUNT-WIRE-CONTACTS-LOCATIONS | 6 | Contacts and Locations wired through metadata | /customers/:accountId | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
 | X-LIST-BOOLEAN-FORMATTING | 6 | cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way | — | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
+| X-LIST-CURRENCY-AND-MISTYPED-DATE | 6 | CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
+| X-MANUFACTURER-ID-AS-COLUMN | 6 | manufacturerIndexList declares the document id as a visible column | — | — | #1219 | — | a0b2f570 | NOT_APPLICABLE | None. |
 | X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-PAGE-REGISTRY-REFERENCES-UNCONSUMED | 6 | pageRegistryReferences was also unconsumed -- and the wrong validator passes silently | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-OPPORTUNITY-STALE-ROUTE | 6 | opportunity.js declared a rowNavigationTo route that never existed | — | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | Restore a rowNavigationTo only when a real per-Opportunity route exists. |
