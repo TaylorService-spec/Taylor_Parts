@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 53 | 42 | 11 |
+| 54 | 42 | 12 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -39,6 +39,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
+- **X-LIST-CURRENCY-AND-MISTYPED-DATE** (phase 6) — CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER → Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE.
+- **X-LIST-REFERENCE-RENDERS-ID** (phase 6) — REFERENCE columns render the raw document id -- ten of them across the repo → Decide how a metadata list renders a reference honestly; this is not a formatting branch.
+- **X-MANUFACTURER-ID-AS-COLUMN** (phase 6) — manufacturerIndexList declares the document id as a visible column → Determine Manufacturer's real human-meaningful field and use it; do not keep the id.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -51,6 +54,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
+| X-LIST-REFERENCE-RENDERS-ID | 6 | REFERENCE columns render the raw document id -- ten of them across the repo | — | — | — | — | — | NOT_APPLICABLE | Decide how a metadata list renders a reference honestly; this is not a formatting branch. |
+| X-LIST-CURRENCY-AND-MISTYPED-DATE | 6 | CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER | — | — | — | — | — | NOT_APPLICABLE | Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE. |
+| X-MANUFACTURER-ID-AS-COLUMN | 6 | manufacturerIndexList declares the document id as a visible column | — | — | — | — | — | NOT_APPLICABLE | Determine Manufacturer's real human-meaningful field and use it; do not keep the id. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -115,6 +121,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-SECTION-CAPABILITY-GRANULARITY | 6 | A section capability cannot express a partially-gated composition | — | — | #1209 | — | 18aae32c | NOT_APPLICABLE | None. Adoption is gated on the FieldGroup consumer. |
 | X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED | 6 | FieldGroup does not honor withheld parts -- capabilityParts must not be adopted on a FIELD_GROUP yet | — | — | #1213 | — | f013d965 | NOT_APPLICABLE | None. |
 | X-RELATED-LIST-ACTIONS | 6 | MetadataListGrid has no row actions or focus handoff | — | — | #1211 | — | bd2e733e | NOT_APPLICABLE | Wiring Contacts/Locations onto it is a separate lane. |
+| A-ACCOUNT-WIRE-CONTACTS-LOCATIONS | 6 | Contacts and Locations wired through metadata | /customers/:accountId | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
+| X-LIST-BOOLEAN-FORMATTING | 6 | cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way | — | — | #1217 | — | 70b74afc | NOT_APPLICABLE | None. |
 | X-REGISTRY-VALIDATOR-NEVER-RUN | 6 | validateRegistryReferences is never run over real definitions | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-PAGE-REGISTRY-REFERENCES-UNCONSUMED | 6 | pageRegistryReferences was also unconsumed -- and the wrong validator passes silently | — | — | #1215 | — | 8e68218e | NOT_APPLICABLE | None. |
 | X-OPPORTUNITY-STALE-ROUTE | 6 | opportunity.js declared a rowNavigationTo route that never existed | — | — | #1207 | — | 1d50d875 | NOT_APPLICABLE | Restore a rowNavigationTo only when a real per-Opportunity route exists. |
@@ -222,7 +230,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Resolved: merges are executing |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
-| X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- six instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
+| X-FIELD-TYPE-RENDERER-AUDIT | 6 | Audit of every declared FIELD_TYPE against cellValue's branches | — | — | — | — | — | NOT_APPLICABLE | None. Findings split into the three entries below. |
+| X-UNCONSUMED-DECLARATION-PATTERN | 6 | Metadata declares things nothing reads -- seven instances in one session | — | — | — | — | — | NOT_APPLICABLE | None. Recorded as a program-level pattern to check for, not a single defect. |
 | X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
 | X-MAIN-RED-UNREBASED-MERGE | 6 | origin/main went red: #1204 merged without rebasing onto #1202 | — | — | #1205 | — | — | NOT_APPLICABLE | None. Recorded as an integration-practice finding. |
 

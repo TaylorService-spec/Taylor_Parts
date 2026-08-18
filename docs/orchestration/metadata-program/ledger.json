@@ -2257,6 +2257,99 @@
       "mergeSha": "bd2e733e"
     },
     {
+      "id": "A-ACCOUNT-WIRE-CONTACTS-LOCATIONS",
+      "phase": "6",
+      "wave": "3",
+      "kind": "SURFACE",
+      "title": "Contacts and Locations wired through metadata",
+      "domain": "crm",
+      "entity": "Account",
+      "route": "/customers/:accountId",
+      "classification": "B_ENTITY_RECORD",
+      "status": "MERGED",
+      "pr": 1217,
+      "mergeSha": "70b74afc",
+      "governing": [
+        "DECISIONS #102 section 6",
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "Both wired, nothing declined, no accessibility regression. Deliberately did NOT use DefaultRelatedList's default binding, which issues its own live read while AccountDetail already runs useContactsForAccount/useLocationsForAccount -- that would have re-read both collections, the recorded #1094/#1095 double-read anti-pattern. An injected listRenderer builds the presentation model from the data already flowing, keeping the shared grid, the four states and the focus handoff without a second subscription. The focus-parity proof initially gave a FALSE PASS -- a fresh render() reset component state -- and the lane caught that itself and switched to rerender, which is the only reason the test means anything. account.locations was CHECKED rather than assumed and does exist, so the older recorded gap was already closed. Location's nested address map vs flat addressCity/addressState field ids was found by trying and flattened. Section-level add/import affordances stay hand-mounted; the grid has no equivalent, stated rather than dropped."
+    },
+    {
+      "id": "X-LIST-BOOLEAN-FORMATTING",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "cellValue() had no BOOLEAN branch -- boolean columns rendered blank either way",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1217,
+      "mergeSha": "70b74afc",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "The SEVENTH instance of the unconsumed-declaration pattern and the second of its exact kind: a declared field type with no rendering branch, after TIMESTAMP. React renders neither true nor false as a child, so contact.isPrimary came out BLANK on every row -- primary and non-primary indistinguishable. The leaf lane worked around it locally by pre-mapping to 'Primary'/null; at integration the fix was moved to cellValue and the workaround REMOVED, the same call as the stale rowNavigationTo in #1207. It would also have broken outright, since pre-mapping a BOOLEAN to a string is now coerced by the branch that fixed it. Renders the app's established Yes/No. A genuinely absent value still renders nothing, and a non-primary contact now reads 'No' rather than blank: 'is not the primary' and 'nobody recorded whether they are' are different claims, and a blank cell says neither."
+    },
+    {
+      "id": "X-FIELD-TYPE-RENDERER-AUDIT",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Audit of every declared FIELD_TYPE against cellValue's branches",
+      "domain": "metadata",
+      "status": "COMPLETE",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None. Findings split into the three entries below.",
+      "notes": "Run deliberately after BOOLEAN became the second field type found missing a renderer branch, rather than waiting for a wiring lane to find the next one by accident. entityDefinition.js declares eleven FIELD_TYPEs; cellValue resolves five (ENUM, ENUM_SET, TIMESTAMP, DATE, BOOLEAN) and returns the raw stored value for the rest. STRING/TEXT/NUMBER are correct raw. The remainder are not, and every one is latent only because the declaring list is not yet wired to a surface -- which is precisely the next wave of work. Method: enumerate every column of every real list definition, resolve its declared field type from the owning entity, and compare against the branches cellValue actually implements."
+    },
+    {
+      "id": "X-LIST-REFERENCE-RENDERS-ID",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "REFERENCE columns render the raw document id -- ten of them across the repo",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Decide how a metadata list renders a reference honestly; this is not a formatting branch.",
+      "notes": "Ten REFERENCE columns are declared across contact, equipment (x2), invoice, location, opportunity, purchaseOrder, salesOrder, truck and workOrder index lists. cellValue has no REFERENCE branch, so each would render the raw stored document id as cell content -- the exact defect DECISIONS #106 exists to prevent, in the exact place the program has been removing it from hand-written surfaces. Unlike BOOLEAN or TIMESTAMP this is NOT a formatting fix: rendering a reference honestly means resolving it to the target's human-meaningful value, which needs a read the presentation layer does not have. The options are a denormalized display field on the source record (equipmentModel already does this with manufacturerName), a resolver injected into the presentation build, or refusing REFERENCE as a column type. Latent today only because none of these lists is wired."
+    },
+    {
+      "id": "X-LIST-CURRENCY-AND-MISTYPED-DATE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "CURRENCY_MINOR renders minor units, and invoice.dueDate is typed NUMBER",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Add a CURRENCY_MINOR branch; retype invoice.dueDate to DATE.",
+      "notes": "Two mechanical defects, both currently latent. (1) invoice.totalMinor and invoice.outstandingMinor are CURRENCY_MINOR -- integer minor units by contract -- and cellValue returns them raw, so a $125.00 invoice would display as 12500. Money wrong by a factor of one hundred is not a formatting nicety. (2) invoice.dueDate is declared NUMBER and its own description says 'Ms epoch, carried at issuance' -- so a due date would render as 1755993600000. formatTimestamp already coerces epoch millis, so the honest fix is the declared type, not a special case: the field IS a date and says so in prose while claiming to be a number."
+    },
+    {
+      "id": "X-MANUFACTURER-ID-AS-COLUMN",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "manufacturerIndexList declares the document id as a visible column",
+      "domain": "inventory",
+      "entity": "Manufacturer",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Determine Manufacturer's real human-meaningful field and use it; do not keep the id.",
+      "notes": "manufacturer.js declares manufacturerId (type ID, described as 'the Firestore document id, also written into the document body') as a COLUMN in manufacturerIndexList. manufacturerEntity declares neither a nameField nor a referenceField. That combination is the precise failure DECISIONS #106 names: a missing business reference is not permission to display a record id. The id is very likely in the column list BECAUSE nothing else was declared to identify the record, which is the rationalisation the rule exists to refuse. Needs the real human-meaningful field established from storage, not an invented one."
+    },
+    {
       "id": "X-REGISTRY-VALIDATOR-NEVER-RUN",
       "phase": "6",
       "wave": "3",
@@ -2307,14 +2400,14 @@
       "phase": "6",
       "wave": "3",
       "kind": "AUDIT",
-      "title": "Metadata declares things nothing reads -- six instances in one session",
+      "title": "Metadata declares things nothing reads -- seven instances in one session",
       "domain": "metadata",
       "status": "COMPLETE",
       "governing": [
         "DECISIONS #102 section 6"
       ],
       "nextAction": "None. Recorded as a program-level pattern to check for, not a single defect.",
-      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review. UPDATED: two further instances found after this entry was written. (5) pageRegistryReferences, unconsumed AND shadowed by a similarly-named validator that silently passes on the wrong shape -- see X-PAGE-REGISTRY-REFERENCES-UNCONSUMED. (6) actionRegistry, the mirror image: not a declaration nobody reads but a reader nobody feeds. The detection method held for every one of them -- each was found by attempting to consume the declaration honestly, none by review."
+      "notes": "Four instances surfaced within one session, each found by trying to USE the metadata rather than by reading it: (1) readVia declared and ignored by the RELATED_LIST binding, which would have reported every viewer as denied; (2) rowNavigationTo declared by every list definition and read by nothing, hiding a route that had never existed and would have 404'd every row the instant it was consumed; (3) rowActions ids accepted by listViewDefinition.js and consumed by nothing; (4) validateRegistryReferences itself, never run over a real definition. capabilityParts was nearly the fifth and was deliberately gated instead. The common shape: a declaration is harmless while unread, so it is never wrong, so it is never corrected -- and it fails the moment something finally reads it. The detection method that worked every time was attempting to consume the declaration honestly; none was found by review. UPDATED: two further instances found after this entry was written. (5) pageRegistryReferences, unconsumed AND shadowed by a similarly-named validator that silently passes on the wrong shape -- see X-PAGE-REGISTRY-REFERENCES-UNCONSUMED. (6) actionRegistry, the mirror image: not a declaration nobody reads but a reader nobody feeds. The detection method held for every one of them -- each was found by attempting to consume the declaration honestly, none by review. (7) cellValue had no BOOLEAN branch -- see X-LIST-BOOLEAN-FORMATTING. Note the sub-pattern now visible across TIMESTAMP and BOOLEAN: entityDefinition.js declares a field-type vocabulary that the renderer implements only PARTLY, and the unimplemented members fail silently rather than loudly. Worth auditing the remaining declared types against cellValue's branches before the next wiring lane finds the eighth by accident."
     },
     {
       "id": "X-ACCOUNT-WIRE-CALLABLE-LISTS",
