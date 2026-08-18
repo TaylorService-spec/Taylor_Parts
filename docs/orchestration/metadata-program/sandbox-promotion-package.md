@@ -549,3 +549,165 @@ Hosting: untouched — `/version.json` still reports `cd442727`.
 Tranche 3 **not** started.
 
 Any fix must enter the normal reviewed workflow and produce a **new promotion identity**.
+
+---
+
+# Promotion reconstruction — after the Tranche 2 failure
+
+**Recorded 2026-08-18T22:25:05Z. Nothing deployed. No live index deleted.**
+
+Tranche 2 failed on `listSalesOrderIndex` returning `500 INTERNAL`. Two corrections merged through
+the normal reviewed workflow, producing a **new promotion identity**. The stopped promotion is not
+resumed.
+
+## Corrections merged
+
+| PR | Merge SHA | What |
+|---|---|---|
+| **#1273** | `79bbd6f8b1c46e325d3979252f1c1558308e9f91` | Governance: `equipment_models` stays D4-governed |
+| **#1272** | `b237f652da490ac8880393c15bc6e17bdd6f9324` | Sales Order index read fix + masked-catch logging |
+
+### #1273 — the boundary breach
+
+`equipment_models` is declared as `EQUIPMENT_MODELS_COLLECTION` by D4
+(`functions/src/equipmentCompatibility/repository.ts`), and D4 defers compound query shapes to D5.
+PR #1206 declared an `equipmentModel.index` list view whose filters derived **three
+`equipment_models` composites** — a breach of a boundary that was correct and specific.
+
+It was invisible because the equipment-compatibility workflow's `paths:` filter did not include
+`firestore.indexes.json`, so a change to the index file could not trigger the guard governing the
+index file. Two of this program's own guards also missed it: `listIndexCoverage` and
+`indexDriftGuard` compare *declared demands* against *declared indexes*, and both were perfectly
+consistent — the metadata program declared a demand **and** an index to serve it. Neither guard has
+any notion of **who may declare an index for which collection**.
+
+Corrected by removing the list view and the three declarations, adding `firestore.indexes.json` to
+the workflow path filters, and asserting the absence from the metadata side too — a boundary is
+worth checking from both directions. Recorded as `DECISIONS #108`.
+
+**The assertion was not weakened, skipped, or bypassed.**
+
+### #1272 — the 500
+
+Firestore appends `__name__` as an implicit tiebreaker **in the same direction as the last explicit
+`orderBy`**. The query requested the opposite (`salesOrderNumber DESC`, `documentId ASC`), which
+makes `__name__` a real part of the index requirement that no declared index satisfied. That is why
+filtered and unfiltered failed identically — the observation that disproved the original
+missing-index theory.
+
+Fix: `documentId()` to `DESC`. **No index added or changed.**
+
+Also closed: a limit contract gap the acceptance matrix exposed. An over-limit value was folded
+into "not supplied" and returned a default 50-row page, telling a caller who asked for 9999
+nothing — and the test description claimed it was "clamped", which was also untrue. An absent limit
+still defaults; a supplied invalid one now returns `invalid-argument`.
+
+All three previously-masked catches now log server-side. The client-facing message is byte-for-byte
+unchanged and carries no secrets, tokens, authorization data or customer records.
+
+## New promotion identity
+
+| | |
+|---|---|
+| **New runtime promotion SHA** | **`b237f652da490ac8880393c15bc6e17bdd6f9324`** |
+| Superseded promotion SHA | `b891fc689427aee2b1246f3132122e1a0feb2e8d` |
+| Commits above it | **none** — it is the tip of `main` |
+
+Between the superseded SHA and this one: three docs-only evidence commits (#1269–#1271) and the two
+corrections above, **both runtime-affecting**. This is not a docs-only advance, and the old
+promotion SHA must not be reused.
+
+## Index reconciliation — source vs live
+
+| | |
+|---|---|
+| Source-declared at the promotion SHA | **35** |
+| Live in sandbox | **38** |
+| **Missing live** | **0** |
+| **Unexpected live** | **3** — all `equipment_models` |
+
+The three unexpected entries are the **deliberate orphans** from #1273. Removing a declaration from
+source does not authorize deleting a live index; deletion is destructive and separately authorized.
+They serve no query and cost only storage. **They were not deleted.**
+
+Source and sandbox are therefore intentionally divergent by exactly three indexes. Any future
+reconciliation reporting "3 unexpected live / 0 missing" is reporting this decision, not drift.
+
+**The Sales Order fix requires no index deployment.** `salesOrder.index` still declares exactly one
+demand — `state ASC, salesOrderNumber DESC` — already live and `READY`. The fix makes the query
+match the index that already existed rather than requiring a new one.
+
+## Environment state — unchanged
+
+| | |
+|---|---|
+| Hosting `/version.json` | **`cd442727`** — unchanged |
+| Functions | **84 ACTIVE**, deployed at the superseded SHA; `listSalesOrderIndex` unhealthy |
+| Indexes | 38 live, all `READY` |
+| Rules | untouched |
+| Activation overrides | **27**, `salesOrder.read` present |
+| Fixtures / seeds | untouched |
+
+Note the asymmetry Tranche 2R exists to close: the sandbox runs Functions built from `b891fc68`,
+which contains the defect. The repository is ahead of the environment by exactly the two
+corrections.
+
+---
+
+# Tranche 2R — targeted Functions repair (PREPARED, NOT AUTHORIZED)
+
+Narrowest viable scope. **No Hosting. No Rules. No indexes. No seeds or fixtures. No activation
+changes.**
+
+## Target
+
+    firebase deploy --only functions:listSalesOrderIndex --project eos-platform-sandbox --non-interactive
+
+`--project` is mandatory and not optional convenience: **`.firebaserc` declares
+`"default": "taylor-parts"` — production.** An unscoped `firebase deploy` in this repository targets
+production. Every command must carry the flag, and the deploy log's `Deploying to` line must be read
+back before the result is accepted.
+
+Deploying only the single defective callable is deliberate. `getAccountPortfolioSummary` is already
+healthy at the superseded SHA and the other 82 functions are unchanged by both corrections, so a
+narrower target is both lower-risk and a clearer attribution if anything moves.
+
+**Pre-deploy gate:** re-read `/version.json` and confirm Hosting still reports `cd442727`. If it
+moved, someone else deployed and this plan's assumptions are void.
+
+## Post-deploy verification — required
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | `listSalesOrderIndex` unfiltered | 200, bounded page |
+| 2 | filtered `state: CONFIRMED` | 200 |
+| 3 | filtered `state: CLOSED` | 200 (may be empty — empty is a **result**, not a failure) |
+| 4 | Pagination + ordering | cursor advances and terminates; `salesOrderNumber` strictly descending |
+| 5 | Empty result | honest ready+empty, never an error |
+| 6 | Over-limit `limit: 9999` | **400 invalid-argument** |
+| 7 | Unauthenticated | **401** |
+| 8 | Technician persona | **403** |
+| 9 | Authorized admin | **200** |
+| 10 | `getAccountPortfolioSummary` | 200 — unchanged |
+| 11 | `listSalesOrdersForAccount` | 200 — account-scoped read still separate and correct |
+| 12 | `listOpportunityContext` | 200 |
+| 13 | Core inventory smoke | Parts Catalog, part-side on-hand, receiving/transfer/cycle-count authorization reachability |
+| 14 | Governed-ledger allocation smoke | sellable stock derives from the governed ledger, **not** `stock_locations` |
+| 15 | Server-side diagnostics | a forced failure logs actionable context; the client message stays byte-identical and leaks nothing |
+
+Checks 1–9 are the regression itself. **Check 15 is the one that was impossible before** — the
+masked catch is why a live 500 had no trace in Cloud Logging, and confirming the logging works is
+what makes the next failure diagnosable.
+
+## What would constitute failure
+
+Any of 1–9 not matching, any of 10–12 regressing, any inventory or ledger regression, or client
+leakage in 15. Rollback target is the currently-deployed revision of `listSalesOrderIndex` alone —
+the other 83 functions are untouched by this tranche.
+
+## Emulator caveat — restated because it caused this
+
+The emulator **does not enforce composite-index requirements**. The index suite passed against the
+emulator *before* the fix, including a filtered call. Emulator-green proves the query shape is
+correct at the API level; it proves nothing about production index availability. Checks 1–4 are the
+only evidence that closes that gap.
