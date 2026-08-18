@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 82eb0217 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main ef712328 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -506,12 +506,20 @@
       "route": "/administration",
       "classification": "A_ENTITY_LIST",
       "entity": "Technician",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "BLOCKED_PROTECTED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate onto list runtime",
-      "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded."
+      "nextAction": "Owner/product decision: does the Employees nav item mean technicians or employees?",
+      "notes": "useFirestoreCollection(TECHNICIANS_COLLECTION) \u2014 unbounded. ATTEMPTED and DECLINED at ef712328. Verified independently at integration: domain/constants.js declares TECHNICIANS_COLLECTION 'fieldops_technicians' and EMPLOYEES_COLLECTION 'employees'; navConfig.js line 371 maps {key employees, label Employees, legacyKey technicians}. Not variants of one another -- different fields, different writers (the technician surface writes via jobActions; employees is written only by an Admin-SDK provisioning script), and technician `status` participates in an atomic job-completion transaction unrelated to employmentStatus. NO id-as-content defect found in the hand-written surface, the first migration attempt where that was true; pinned by test.",
+      "pr": 1239,
+      "mergeSha": "ef712328",
+      "blockers": [
+        {
+          "reason": "The admin nav item label 'Employees' carries legacyKey 'technicians' and renders Technicians.jsx, which reads fieldops_technicians. employeeEntity describes the separate live `employees` collection. Migrating would silently swap the dataset behind that label and introduce two authority-shaped columns (operationalRoles, securityRole) the technician record has no equivalent of.",
+          "requiredDecision": "Whether the Employees nav item should continue to mean the live technician roster, or be repointed at the employees collection. Repointing changes what an admin sees and infers about authority -- a product and data-model decision, not a rendering one. The Employee/User/Technician split is already recorded as governance-approved but unimplemented."
+        }
+      ]
     },
     {
       "id": "S-ADM-SAVED-REPORTS",
@@ -1061,11 +1069,27 @@
       "classification": "C_OPERATIONAL_COMPOSITE",
       "entity": "TransferOrder",
       "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Bounded-read remediation; lifecycle composite, not a list",
-      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice.",
+      "nextAction": "Blocked on the Transfer Order identity decision; separately a lifecycle composite, not a list.",
+      "notes": "Callables deployed and verified live in sandbox. Reads transfer_orders and warehouses unbounded. Re-classified from READY: its recorded next action was inventory-only, i.e. no work actually existed yet. A scheduler that lists a no-op as executable lies in the optimistic direction, which is the harder error to notice. ATTEMPTED and DECLINED at ef712328, for TWO independent reasons either of which suffices. (1) No merged Transfer Order definition exists -- transferOrder.js was authored and deliberately withheld on X-TRANSFER-ORDER-NO-REFERENCE. (2) The surface owns four governed WRITE actions (create/dispatch/receive/cancel via useTransferActions), which the list runtime does not model; forcing it onto a list contract would be dishonest even with a definition in hand. No id-as-content defect: the table shows partId, which is the Part's SKU business identifier under the settled partId==SKU decision, not a document id. Pinned by test.",
       "dependsOn": [
-        "A-LIST-GRID"
-      ]
+        "X-TRANSFER-ORDER-NO-REFERENCE"
+      ],
+      "pr": 1239,
+      "mergeSha": "ef712328"
+    },
+    {
+      "id": "X-TRANSFER-ORDERS-UNBOUNDED-READ",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "fetchTransferOrderDocs is a fully unbounded collection read",
+      "domain": "inventory",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Route it through the bounded listCollectionPage helper its siblings already use.",
+      "notes": "services/operationsQueries.ts's fetchTransferOrderDocs is a plain getDocs over the whole collection -- no cap and NO truncation flag at all. That is worse than the silently-dropped truncated flags found in Warehouses and Suppliers: those at least computed the fact and discarded it, so the information existed. Here there is nothing to disclose because nothing is bounded. The sibling helper listCollectionPage already caps at 200 and returns {items, truncated}. Found by the Transfers lane while establishing what the surface does; out of its writeScope, reported rather than worked around."
     },
     {
       "id": "S-INV-RECEIVING",
