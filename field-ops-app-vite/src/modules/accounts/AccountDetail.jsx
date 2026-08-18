@@ -397,14 +397,22 @@ export default function AccountDetail() {
               exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
               real record surfaces, not an empty shell implying "this account has none." Ordered
               Opportunities, then Sales Orders, above Financials in the PRIMARY column.
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata RELATED_LIST default
-              binding (accountPage.js declares both, listId account.opportunities/
-              account.salesOrders) and left hand-rendered -- both entities are readVia CALLABLE
-              (deny-all Rules; the trusted listOpportunitiesForAccount/listSalesOrdersForAccount
-              callables are the only real read), and MetadataRecordPage's default binding
-              (firestoreListSource.fetchPage) only ever executes a direct client getDocs, with no
-              CALLABLE-read path. Wiring either would read a deny-all collection and misreport
-              every viewer as denied. See accountPageComponents.js's WIRING SCOPE note. */}
+              X-ACCOUNT-WIRE-CALLABLE-LISTS: RE-EVALUATED after commit 6c6480d8 closed the
+              CALLABLE-readVia gap the prior finding here named (MetadataRecordPage's default
+              RELATED_LIST binding now routes a CALLABLE-readVia entity through
+              callableListSource.js). That gap is genuinely closed -- verified against the real
+              opportunity.js/salesOrder.js/account.js definitions in
+              test/accountPageComponents.test.jsx: correctly account-scoped, real reference
+              numbers, honest truncation disclosure. Still left hand-rendered, for two NEW
+              reasons neither fixable in this lane's writeScope: (1) opportunity.js's
+              expectedCloseAt is a TIMESTAMP column and listPresentation.js's cellValue() has no
+              TIMESTAMP formatting path anywhere in the codebase -- wiring Opportunities would
+              show a raw epoch-millisecond number where this section shows a real formatted date;
+              (2) DefaultRelatedList wires no row navigation at all (no onRowClick,
+              rowNavigationTo has zero consumers repo-wide) -- for Sales Orders that discards the
+              only way to open a specific order from this page (a real route,
+              opportunities/sales-order/:salesOrderId -> SalesOrderDetail.jsx, App.jsx). See
+              accountPageComponents.js's WIRING SCOPE note for the full evidence. */}
           <AccountOpportunitiesSection accountId={account.id} />
           <AccountSalesOrdersSection accountId={account.id} />
 

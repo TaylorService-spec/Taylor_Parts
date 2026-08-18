@@ -16,17 +16,36 @@
 //      component-specific tests; what belongs HERE is proving the wiring (registry -> plan ->
 //      visibility -> DOM) never quietly reveals or hides the wrong thing, independent of what a
 //      section happens to render.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
+import { accountEntity } from "../src/metadata/definitions/account.js";
+import { opportunityEntity, opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { salesOrderEntity, salesOrderRelatedList } from "../src/metadata/definitions/salesOrder.js";
 import {
   registerAccountPageComponents,
   accountPageComponentIds,
   accountRecordPageMainSubset,
   accountRecordPageSideSubset,
 } from "../src/metadata/definitions/accountPageComponents.js";
+
+// The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
+// Sales Orders RELATED_LIST sections (straight off accountRecordPage — not test doubles),
+// through the REAL default RELATED_LIST binding (DefaultRelatedList, MetadataRecordPage.jsx).
+// That binding's only Firestore/callable touch points are firestoreListSource.js's and
+// callableListSource.js's own fetchPage — mocked at that boundary, the same boundary
+// test/metadataRecordPage.test.jsx already mocks at, so these tests exercise the routing
+// and rendering decisions, not either translator's internals.
+const fetchPageMock = vi.fn();
+vi.mock("../src/metadata/firestoreListSource.js", () => ({
+  fetchPage: (...args) => fetchPageMock(...args),
+}));
+const fetchCallablePageMock = vi.fn();
+vi.mock("../src/metadata/callableListSource.js", () => ({
+  fetchPage: (...args) => fetchCallablePageMock(...args),
+}));
 
 describe("registerAccountPageComponents", () => {
   beforeEach(() => {
@@ -204,5 +223,167 @@ describe("accountRecordPageSideSubset with `embedded` — evaluated and still no
       />
     );
     expect(screen.getByText(ATTENTION_MARK)).toBeTruthy();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// X-ACCOUNT-WIRE-CALLABLE-LISTS — opportunities / salesOrders RE-EVALUATED after commit
+// 6c6480d8 closed the CALLABLE-readVia gap the earlier finding (above) named. These tests
+// render the REAL "opportunities" / "salesOrders" sections straight off accountRecordPage
+// (never test doubles) through the REAL DefaultRelatedList binding, against the REAL
+// opportunity.js / salesOrder.js / account.js definitions — proving BOTH halves of the
+// honest comparison this lane owes: (1) the CALLABLE gap really is closed (correct scope,
+// real reference numbers, honest truncation, correct denied/absent behavior), and (2) two
+// DIFFERENT, newly-found reasons still block wiring them in. See accountPageComponents.js's
+// WIRING SCOPE note for the full narrative these tests lock in.
+describe("opportunities / salesOrders RELATED_LIST — re-evaluated after the CALLABLE gap closed (6c6480d8)", () => {
+  // Single-section subsets of the REAL accountRecordPage — not accountRecordPageMainSubset,
+  // since that subset deliberately still excludes both (see the "not part of the wired MAIN
+  // subset" test at the bottom of this block).
+  const opportunitiesOnly = {
+    ...accountRecordPage,
+    sections: accountRecordPage.sections.filter((s) => s.id === "opportunities"),
+  };
+  const salesOrdersOnly = {
+    ...accountRecordPage,
+    sections: accountRecordPage.sections.filter((s) => s.id === "salesOrders"),
+  };
+  const listResolver = (id) =>
+    ({ "account.opportunities": opportunityRelatedList, "account.salesOrders": salesOrderRelatedList }[id] ?? null);
+  const entityResolver = (id) =>
+    ({ account: accountEntity, opportunity: opportunityEntity, salesOrder: salesOrderEntity }[id] ?? null);
+
+  beforeEach(() => {
+    fetchPageMock.mockReset();
+    fetchCallablePageMock.mockReset();
+  });
+
+  it("the CALLABLE gap really is closed: reads go through the callable source, correctly scoped to THIS account, never Firestore", async () => {
+    fetchCallablePageMock.mockResolvedValue({
+      rows: [{ id: "opp-doc-1", opportunityNumber: "OPP-2026-000123", stage: "QUALIFICATION", need: "New freezer" }],
+      hasMore: false,
+      nextCursorDoc: null,
+    });
+    render(
+      <MetadataRecordPage
+        definition={opportunitiesOnly}
+        record={{ id: "acct-42" }}
+        capabilityDecisions={{ "opportunity.read": true }}
+        listResolver={listResolver}
+        entityResolver={entityResolver}
+      />
+    );
+    // The real reference number, not the document id — the document id never reaches the DOM.
+    expect(await screen.findByText("OPP-2026-000123")).toBeTruthy();
+    expect(screen.queryByText("opp-doc-1")).toBeNull();
+    expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
+    expect(fetchPageMock).not.toHaveBeenCalled();
+    const [descriptor] = fetchCallablePageMock.mock.calls[0];
+    // Scoped to THIS account (account.js's account.opportunities relationship, viaField
+    // accountId) — never every Opportunity in the system.
+    expect(descriptor.filters).toContainEqual(expect.objectContaining({ fieldId: "accountId", operator: "EQUALS", value: "acct-42" }));
+  });
+
+  it("truncation is honestly disclosed, not presented as the whole set", async () => {
+    fetchCallablePageMock.mockResolvedValue({
+      rows: Array.from({ length: 25 }, (_, i) => ({ id: `opp-${i}`, opportunityNumber: `OPP-2026-${String(i).padStart(6, "0")}` })),
+      hasMore: true,
+      nextCursorDoc: null,
+    });
+    render(
+      <MetadataRecordPage
+        definition={opportunitiesOnly}
+        record={{ id: "acct-42" }}
+        capabilityDecisions={{ "opportunity.read": true }}
+        listResolver={listResolver}
+        entityResolver={entityResolver}
+      />
+    );
+    expect(await screen.findByText(/showing the most recent 25/i)).toBeTruthy();
+  });
+
+  it("denied/unactivated capability makes the section absent, not read as \"there are none\" — matching the ALREADY-ACCEPTED financials/activityAndNotes precedent, not a new capability regression", () => {
+    // `embedded`, matching how AccountDetail.jsx actually mounts this: opportunities/
+    // salesOrders sit alongside other MAIN-column sections on the real page, so denying
+    // ONE section's capability is a REGION-level "nothing to show here" (this test's own
+    // concern), never the PAGE-level "Not available to you" — that box is what a plan with
+    // ZERO visible sections anywhere on the page would show (GAP 3, MetadataRecordPage.jsx),
+    // a different, correctly-distinct case this single-section definition would otherwise
+    // trigger by accident.
+    const { container } = render(
+      <MetadataRecordPage
+        definition={opportunitiesOnly}
+        record={{ id: "acct-42" }}
+        // Matches production's real, current state: opportunity.read/salesOrder.read are
+        // registered catalog-wide active:false, so an empty decisions map is what every
+        // current viewer sees, not a contrived edge case.
+        capabilityDecisions={{}}
+        listResolver={listResolver}
+        entityResolver={entityResolver}
+        embedded
+      />
+    );
+    // Absent, not an empty-list message ("No opportunities on this account.") and not a
+    // rendered DENIED failure box either — the section-level gate excludes it from the plan
+    // before either state could render. Never attempts the read.
+    expect(container.textContent).not.toMatch(/no opportunities/i);
+    expect(container.textContent).not.toMatch(/not available to you/i);
+    expect(container.textContent).toBe("");
+    expect(fetchCallablePageMock).not.toHaveBeenCalled();
+  });
+
+  it("BLOCKER 1 — opportunities' TIMESTAMP column (expectedCloseAt) renders the raw epoch-millisecond value, not a formatted date", async () => {
+    fetchCallablePageMock.mockResolvedValue({
+      rows: [{ id: "opp-1", opportunityNumber: "OPP-2026-000999", expectedCloseAt: 1755993600000 }],
+      hasMore: false,
+      nextCursorDoc: null,
+    });
+    render(
+      <MetadataRecordPage
+        definition={opportunitiesOnly}
+        record={{ id: "acct-42" }}
+        capabilityDecisions={{ "opportunity.read": true }}
+        listResolver={listResolver}
+        entityResolver={entityResolver}
+      />
+    );
+    await screen.findByText("OPP-2026-000999");
+    // The raw number reaches the DOM verbatim — no TIMESTAMP formatting path exists anywhere
+    // in listPresentation.js/MetadataListGrid.jsx. AccountOpportunitiesSection's own
+    // formatDate() would have shown a real date here; this is the confirmed regression that
+    // keeps Opportunities hand-rendered.
+    expect(screen.getByText("1755993600000")).toBeTruthy();
+  });
+
+  it("BLOCKER 2 — salesOrders rows carry no link and no click handler: the real per-order route is unreachable from a wired section", async () => {
+    fetchCallablePageMock.mockResolvedValue({
+      rows: [{ id: "so-1", salesOrderNumber: "SO-2026-000045", state: "OPEN" }],
+      hasMore: false,
+      nextCursorDoc: null,
+    });
+    const { container } = render(
+      <MetadataRecordPage
+        definition={salesOrdersOnly}
+        record={{ id: "acct-42" }}
+        capabilityDecisions={{ "salesOrder.read": true }}
+        listResolver={listResolver}
+        entityResolver={entityResolver}
+      />
+    );
+    const cell = await screen.findByText("SO-2026-000045");
+    // No anchor anywhere in the table -- AccountSalesOrdersSection's real
+    // Link to `/customers/opportunities/sales-order/:salesOrderId` (SalesOrderDetail.jsx,
+    // App.jsx) has no equivalent here.
+    expect(container.querySelector("a")).toBeNull();
+    // The row itself carries no click affordance either (DefaultRelatedList passes
+    // MetadataListGrid no onRowClick, so tabIndex/onClick stay unset).
+    const row = cell.closest("tr");
+    expect(row.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("still not part of the wired MAIN subset AccountDetail.jsx actually renders — both stay hand-rendered", () => {
+    const wiredIds = accountRecordPageMainSubset.sections.map((s) => s.id);
+    expect(wiredIds).not.toContain("opportunities");
+    expect(wiredIds).not.toContain("salesOrders");
   });
 });

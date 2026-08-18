@@ -41,6 +41,15 @@
 // registry-completeness test holds for every componentId accountRecordPage names) but
 // deliberately left HAND-RENDERED in AccountDetail.jsx.
 //
+// X-ACCOUNT-WIRE-CALLABLE-LISTS — commit 6c6480d8 later closed the ONE structural blocker
+// this lane's own "opportunities / salesOrders" finding above named (no CALLABLE-read path).
+// That gap closing did not change the count above: opportunities/salesOrders were
+// RE-EVALUATED (not re-assumed fixed) and are still hand-rendered, now for two different,
+// newly-found reasons (a raw-epoch-millisecond TIMESTAMP column, and DefaultRelatedList
+// wiring no row navigation at all) — see the corrected "opportunities / salesOrders"
+// paragraph below, which replaces the original finding rather than sitting beside a stale
+// one. Still zero of the six sections wired.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // X-ACCOUNT-PAGE-WIRING-COMPLETE — re-evaluated after the renderer's three gaps closed
 // (commit 27b109bb: FIELD_GROUP's entityResolver, RELATED_LIST's default binding, and the
@@ -97,21 +106,56 @@
 //       MetadataListGrid has no hook to reproduce (rows carry no caller-supplied ref).
 // Both are real, user-visible regressions, not cosmetic ones. Left hand-rendered.
 //
-// opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — NOT a UX-tradeoff
-// case like contacts/locations (AccountOpportunitiesSection / AccountSalesOrdersSection are
-// self-contained: no Add UI, no data any other part of the page also needs). The blocker is
-// structural and unconditional: opportunity.js and salesOrder.js both declare `readVia:
-// "CALLABLE"` — `opportunities` and `sales_orders` are deny-all in Firestore Rules, and the
-// ONLY real reads are the trusted `listOpportunitiesForAccount` / `listSalesOrdersForAccount`
-// callables. MetadataRecordPage's default RELATED_LIST binding is built on
-// firestoreListSource.js's `fetchPage`, which ALWAYS executes a direct `getDocs` against
-// `descriptor.collection` — it has no CALLABLE-read path at all (out of this lane's
-// writeScope to add). Wiring either section would therefore issue a client read against a
-// deny-all collection and report every viewer — including one holding the real capability —
-// as `permission-denied` -> DENIED, a false "Not available to you" that would not even
-// resolve once opportunity.read/salesOrder.read are eventually activated. That is worse than
-// today's hand-rendered read (a real callable, a real resolver, a real result) in a way no
-// capabilityDecisions map can compensate for. Left hand-rendered.
+// opportunities / salesOrders (RELATED_LIST, GAP 2's default binding) — RE-EVALUATED under
+// X-ACCOUNT-WIRE-CALLABLE-LISTS after commit 6c6480d8 closed the exact structural blocker
+// named below (MetadataRecordPage now routes a RELATED_LIST by the entity's declared
+// `readVia`, via callableListSource.js). The CALLABLE gap is genuinely closed — verified
+// against the REAL opportunity.js/salesOrder.js/account.js definitions in
+// test/accountPageComponents.test.jsx: the account-scoped read goes through the trusted
+// callable, correctly scoped to `accountId` via account.js's own relationship, shows the
+// real reference number as identity (opportunityNumber / salesOrderNumber, never a document
+// id), and a `truncated: true` response honestly renders "Showing the most recent N."
+// (MetadataListGrid) rather than presenting a capped page as the whole set. The
+// section-level capability gate (opportunity.read/salesOrder.read both registered
+// active:false catalog-wide) makes the WHOLE section vanish on denial rather than rendering
+// MetadataListGrid's own DENIED state — but that is NOT a new capability regression: it is
+// the SAME "absent from the DOM, not merely invisible" behavior already accepted for
+// financials/activityAndNotes when THEY were wired (X-ACCOUNT-PAGE-WIRING-COMPLETE, "the
+// correct fail-closed reading of accountPage.js's own declaration, not a regression"). See
+// the "RE-EVALUATED under X-ACCOUNT-WIRE-CALLABLE-LISTS" tests below.
+//
+// Still NOT wired — for two DIFFERENT, newly-found reasons, neither fixable inside this
+// lane's writeScope (both live in MetadataRecordPage.jsx / listPresentation.js):
+//
+//   BLOCKER 1 (opportunities only) — opportunity.js declares `expectedCloseAt` as a
+//   TIMESTAMP column (epoch milliseconds, its own field comment). listPresentation.js's
+//   `cellValue()` has NO formatting branch for TIMESTAMP at all (only ENUM/ENUM_SET resolve;
+//   everything else is returned raw), and MetadataListGrid prints that value verbatim into
+//   the cell — confirmed repo-wide: no TIMESTAMP renderer exists anywhere in
+//   src/metadata/listPresentation.js or MetadataListGrid.jsx today. Wiring the Opportunities
+//   related list would show the literal epoch-millisecond number (e.g. "1755993600000") in
+//   the "Expected close" column, where AccountOpportunitiesSection today shows a real
+//   formatted date via its own `formatDate()`. That is a genuine, confirmed-on-every-row
+//   display regression, not a hypothetical one — locked in by the "renders a raw
+//   epoch-millisecond timestamp" test below.
+//
+//   BLOCKER 2 (both, more severe for salesOrders) — DefaultRelatedList
+//   (MetadataRecordPage.jsx) passes MetadataListGrid no `onRowClick`, and `rowNavigationTo`
+//   (declared on both opportunityRelatedList and salesOrderRelatedList) has NO consumer
+//   anywhere in src/ today — confirmed by a repo-wide grep. A wired row would be inert: no
+//   click, no keyboard focus (`tabIndex` stays undefined), no link. For Opportunities that
+//   loses a mild convenience (today's link only goes to the shared `/opportunities`
+//   workspace — AccountOpportunitiesSection's own comment already says the app has no real
+//   per-Opportunity route). For Sales Orders it is a real, material loss: App.jsx registers
+//   a genuine per-record route (`opportunities/sales-order/:salesOrderId` ->
+//   SalesOrderDetail.jsx), and AccountSalesOrdersSection's Link to it today is the only way
+//   to open a specific Sales Order from the Account page — wiring would remove that
+//   capability entirely, with nothing to replace it. Locked in by the "rows carry no link and
+//   no click handler" test below.
+//
+// Both blockers are structural gaps in files outside this lane's writeScope
+// (MetadataRecordPage.jsx, listPresentation.js) — see this task's REGISTRATION_PENDING /
+// out-of-scope reporting. Left hand-rendered.
 //
 // commercialProfile (FIELD_GROUP, GAP 1's generic renderer) — the generic FieldGroup renderer
 // (`cellValue()` off the raw stored value) has no live identity-resolution step, but two of
