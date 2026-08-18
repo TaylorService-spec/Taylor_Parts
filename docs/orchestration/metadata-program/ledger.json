@@ -2139,13 +2139,14 @@
       "title": "Transfer Order + Manufacturer definitions (leaf lane)",
       "domain": "inventory",
       "entity": "TransferOrder/Manufacturer",
-      "status": "IMPLEMENTING",
-      "branch": "feat/transfer-manufacturer-definitions",
-      "nextAction": "Leaf writer active; returns REGISTRATION_PENDING",
+      "status": "MERGED",
+      "nextAction": "Manufacturer merged. Transfer Order held on X-TRANSFER-ORDER-NO-REFERENCE.",
       "governing": [
         "Owner leaf-ownership addendum"
       ],
-      "notes": "Two things to watch. Manufacturer stores a normalizedName, which is a matching KEY and not a display value - presenting it as one would be the same class of error as showing a document id. And the warehouse entity now exists, so a transfer order's from/to warehouse fields MAY honestly be REFERENCEs, but only after the real field names are verified rather than assumed. part.js still declares primaryManufacturerId as a plain STRING; that upgrade belongs to a separate lane, not to this one."
+      "notes": "Two things to watch. Manufacturer stores a normalizedName, which is a matching KEY and not a display value - presenting it as one would be the same class of error as showing a document id. And the warehouse entity now exists, so a transfer order's from/to warehouse fields MAY honestly be REFERENCEs, but only after the real field names are verified rather than assumed. part.js still declares primaryManufacturerId as a plain STRING; that upgrade belongs to a separate lane, not to this one. SPLIT AT INTEGRATION. Manufacturer merged (#1196, ed448c75): CALLABLE read behind inventory.catalog.read; normalizedName declared AND noted as having ZERO consumers anywhere - a write-time artifact rather than a display value, unlike supplier's normalizedKey which at least gates dedup detection; all four provenance fields stored and repository-enforced but NOT returned by the current projection, the same honesty pattern salesOrder used for its undelivered number. Transfer Order was NOT merged - see X-TRANSFER-ORDER-NO-REFERENCE.",
+      "pr": 1196,
+      "mergeSha": "ed448c75"
     },
     {
       "id": "X-ACCOUNT-PAGE-WIRING-COMPLETE",
@@ -2164,6 +2165,28 @@
         "DECISIONS #102 section 6"
       ],
       "notes": "Dispatched at 27b109bb. The standing constraint is unchanged and was right the first time: if any section renders WORSE through metadata - wrong data, lost scoping, lost graceful degradation, changed layout - it stays hand-rendered and gets reported. Partial and honest beats complete and wrong. The specific risk here is an UNSCOPED related list: one showing every contact in the system would be far worse than the hand-rendered version it replaced, so scoping must be verified rather than assumed from the binding existing."
+    },
+    {
+      "id": "X-TRANSFER-ORDER-NO-REFERENCE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Transfer Order has no identity of either kind",
+      "domain": "inventory",
+      "entity": "TransferOrder",
+      "status": "BLOCKED_PROTECTED",
+      "nextAction": "Needs a business decision on whether transfer orders get a reference number",
+      "blockers": [
+        {
+          "reason": "transferOrderEntity can declare neither a nameField nor a referenceField: no allocator exists, the document id is a replay-key hash, and the one live surface never prints it. The definition fails validateEntityDefinition by construction.",
+          "requiredDecision": "Either mint a governed transfer reference the way WO-/OPP-/SO- already are - a numbering and migration decision - or rule that transfer orders are identified only by their contents and amend the identity contract deliberately rather than by exception."
+        }
+      ],
+      "governing": [
+        "DECISIONS #106",
+        "DECISIONS #102"
+      ],
+      "notes": "The definition was authored well and is NOT merged. It records the gap honestly and pins it with a test asserting exactly one validation problem - but merging a definition that fails its own contract would weaken the contract by demonstrating it can be carried broken. THE PRECEDENT IS EXACT: X-SALES-ORDER-NO-REFERENCE blocked the Sales Order definition for this same condition, and Sales Order waited for a governed SO-YYYY-###### before its definition landed. Inventing a transfer numbering scheme is the same business decision this program already ruled is not a leaf's to make. The authored file is preserved on feat/transfer-manufacturer-definitions and can be merged unchanged once the decision exists."
     }
   ]
 }
