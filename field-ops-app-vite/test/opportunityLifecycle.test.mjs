@@ -55,7 +55,8 @@ test("buildPipelineRow resolves customer name from the injected map, then snapsh
   const snapOnly = buildPipelineRow({ id: "O2", accountId: "A2", customerName: "Snap Co" }, { nowMillis: NOW });
   assert.equal(snapOnly.customerName, "Snap Co");
   const idOnly = buildPipelineRow({ id: "O3", accountId: "A3" }, { nowMillis: NOW });
-  assert.equal(idOnly.customerName, "A3");
+  // A record id is NOT a name. With neither a mapped nor a snapshot name, the column says so.
+  assert.equal(idOnly.customerName, "—");
 });
 
 test("buildOpportunityPipeline excludes closed from the queue but counts them", () => {
