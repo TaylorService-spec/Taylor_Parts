@@ -223,6 +223,97 @@ await check("admin reads a real unscoped page through the callable once sandbox 
   });
 });
 
+// ----- X-SALES-ORDER-INDEX-500 regression: the EXACT shapes live-probing found returning a 500 -----
+// (unfiltered {limit:3}, {state:"CONFIRMED"}, {state:"CLOSED"}, {limit:9999}). The emulator does not
+// enforce composite-index requirements, so this does not by itself prove the production index gap is
+// closed -- but it does prove the query shape (the `.orderBy()` tiebreaker direction) is no longer
+// broken independent of indexing, and it locks in the regression at the shape level.
+await check("X-SALES-ORDER-INDEX-500 shape: unfiltered, limit:3 succeeds (was a 500)", async () => {
+  await withProject("eos-platform-sandbox", async () => {
+    const result = await reads.listSalesOrderIndex.run(request({ limit: 3 }, adminUid));
+    assert.equal(result.status, "ready");
+  });
+});
+
+await check("X-SALES-ORDER-INDEX-500 shape: state:CONFIRMED with real matches succeeds and returns them (was a 500)", async () => {
+  await withProject("eos-platform-sandbox", async () => {
+    const result = await reads.listSalesOrderIndex.run(request({ state: "CONFIRMED", limit: 100 }, adminUid));
+    assert.equal(result.status, "ready");
+    const mine = result.salesOrders.filter((so) => so.salesOrderNumber && so.salesOrderNumber.startsWith(prefix));
+    assert.equal(mine.length, 7); // every seeded row above is state: CONFIRMED
+  });
+});
+
+await check("X-SALES-ORDER-INDEX-500 shape: state:CLOSED (real, matching-nothing) succeeds (was a 500)", async () => {
+  await withProject("eos-platform-sandbox", async () => {
+    const result = await reads.listSalesOrderIndex.run(request({ state: "CLOSED" }, adminUid));
+    assert.equal(result.status, "ready");
+  });
+});
+
+await check("X-SALES-ORDER-INDEX-500 shape: limit:9999 is REJECTED as invalid-argument, not silently defaulted", async () => {
+  // This case previously returned 500 (the tiebreaker defect) and its description claimed the
+  // limit was "clamped to the declared max". Neither was true: the code folded an over-limit
+  // value into "not supplied" and returned a default 50-row page, telling the caller nothing.
+  // An absent limit still defaults; a supplied invalid one now fails loudly.
+  await withProject("eos-platform-sandbox", async () => {
+    await assert.rejects(
+      () => reads.listSalesOrderIndex.run(request({ limit: 9999 }, adminUid)),
+      (err) => err?.code === "invalid-argument",
+    );
+    // An ABSENT limit still takes the default and stays within the declared maximum.
+    const dflt = await reads.listSalesOrderIndex.run(request({}, adminUid));
+    assert.equal(dflt.status, "ready");
+    assert.ok(dflt.salesOrders.length <= reads.MAX_SALES_ORDER_INDEX_LIMIT);
+  });
+});
+
+// ----- a genuine read failure is logged server-side (Cloud Logging), never exposed to the caller -----
+// Before this fix, the callable's catch block discarded the caught error entirely -- the ONLY trace of
+// a production 500 was a bare request/response log entry with no error text at all. This proves the
+// error is now passed to console.error() (the SAME mechanism this codebase already uses elsewhere --
+// e.g. functions/src/completeAssignedJob.ts, functions/src/access/adminCredentialCommands.ts) BEFORE
+// being masked, and that masking is unchanged: the client still gets the exact same generic message,
+// never the internal error's own text.
+await check("a genuine read failure is logged server-side and the client-facing message stays generic", async () => {
+  await withProject("eos-platform-sandbox", async () => {
+    const originalCollection = db.collection.bind(db);
+    const forcedError = new Error("FORCED_TEST_FAILURE: simulated FAILED_PRECONDITION (composite index required)");
+    const originalConsoleError = console.error;
+    const logCalls = [];
+    // Only the sales_orders read itself fails -- resolveEffectiveAccess's own reads (users,
+    // roleAssignments, ...) must still succeed, or the authorization check fails closed to
+    // permission-denied before ever reaching the catch this test means to exercise.
+    db.collection = (name) => {
+      if (name === "sales_orders") throw forcedError;
+      return originalCollection(name);
+    };
+    console.error = (...args) => {
+      logCalls.push(args);
+    };
+    let caught;
+    try {
+      await reads.listSalesOrderIndex.run(request({ limit: 1 }, adminUid));
+    } catch (e) {
+      caught = e;
+    } finally {
+      db.collection = originalCollection;
+      console.error = originalConsoleError;
+    }
+    assert.ok(caught, "expected the callable to reject");
+    assert.equal(caught.code, "internal");
+    // The client-facing message is the SAME generic string as always -- never the forced error's own
+    // message, never a stack, never a document id.
+    assert.equal(caught.message, "The Sales Order read is temporarily unavailable.");
+    assert.ok(!String(caught.message).includes("FORCED_TEST_FAILURE"));
+    // The forced error WAS logged server-side, with an identifying prefix (not silently discarded).
+    assert.ok(
+      logCalls.some(([msg, err]) => typeof msg === "string" && msg.includes("listSalesOrderIndex") && err === forcedError),
+      `expected console.error to have been called with the forced error; got: ${JSON.stringify(logCalls.map((c) => c[0]))}`
+    );
+  });
+});
+
 // ----- production keeps DENY even for a granted admin (defense in depth) -----
 await check("production projectId keeps the read DENY even for a granted admin", async () => {
   await withProject("taylor-parts-production", async () => {

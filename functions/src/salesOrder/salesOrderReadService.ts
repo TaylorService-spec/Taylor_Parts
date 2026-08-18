@@ -204,7 +204,12 @@ export const listSalesOrdersForAccount = onCall({ region: "us-central1" }, async
   try {
     const db = getFirestore();
     return await readSalesOrdersForAccount(db, accountId, limit);
-  } catch {
+  } catch (err) {
+    // Logged server-side ONLY (Cloud Logging), never in the client-facing message -- the client still
+    // gets the same generic "unavailable" it always did. Without this, a read failure here is
+    // undiagnosable in production: the only trace is a bare 500 with no error text at all (the defect
+    // X-SALES-ORDER-INDEX-500 fixed for listSalesOrderIndex below).
+    console.error("listSalesOrdersForAccount: read failed", err);
     throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
   }
 });
@@ -257,7 +262,9 @@ export const getSalesOrderContext = onCall({ region: "us-central1" }, async (req
   } catch (err) {
     if (err instanceof HttpsError) throw err;
     // A read failure is UNAVAILABLE, distinct from denied/not-found -- surfaced as internal so the
-    // client seam can render an honest "not connected / unavailable" state.
+    // client seam can render an honest "not connected / unavailable" state. Logged server-side ONLY
+    // (Cloud Logging) before masking -- the client-facing message is unchanged.
+    console.error("getSalesOrderContext: read failed", err);
     throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
   }
 });
@@ -287,24 +294,16 @@ export const getSalesOrderContext = onCall({ region: "us-central1" }, async (req
 // it, and fixing it (e.g. a secondary un-ordered pass for legacy docs) is out of this task's scope.
 //
 // FILTER CONTRACT. Exactly what salesOrderIndexList declares -- EQUALS/IN on `state`, nothing else -- so
-// this read never accepts a filter the metadata surface cannot honestly offer. A `state` filter combined
-// with the `salesOrderNumber` order requires a Firestore composite index. The EXACT shape is not a guess:
-// `requiredIndexes(salesOrderIndexList, salesOrderEntity)` (field-ops-app-vite/src/metadata/
-// listViewDefinition.js) computes it directly from this same declaration --
-//   sales_orders: state ASCENDING, salesOrderNumber DESCENDING, __name__ ASCENDING
-// -- which this repository does NOT declare today (`firestore.indexes.json` is unchanged by this PR,
-// outside this lane's write scope; index deployment is its own separate, protected step -- see the
-// handoff's REGISTRATION_PENDING list). Calling with a `state` filter before that index exists fails at
-// the Firestore query layer in production; that failure is caught below and surfaced the same way any
-// other read failure is (`internal` / "unavailable"), never silently downgraded to an empty result. NOTE:
-// the Firestore EMULATOR does not enforce composite-index requirements the way production does, so a
-// state-filtered call passing in emulator-backed tests is not proof it will pass in production without
-// the index -- flagged explicitly rather than papered over.
-// The UNFILTERED path needs no composite index -- `requiredIndexes()` itself skips demanding one when
-// there is no filter and exactly one sort field, on the premise that Firestore's automatic single-field
-// index on `salesOrderNumber` covers it. That premise is the metadata layer's own established
-// convention (shared by every other single-sort-field INDEX list in this codebase), not something this
-// read invents.
+// this read never accepts a filter the metadata surface cannot honestly offer. `firestore.indexes.json`
+// already declares `sales_orders(state ASC, salesOrderNumber DESC)` for the filtered case, and matches
+// the `.orderBy()` direction below exactly (see the ORDERING note) -- no index deploy is required by
+// this fix. NOTE: the Firestore EMULATOR does not enforce composite-index requirements the way
+// production does (it never rejects a query for a missing/mismatched index), so an emulator-backed test
+// passing is not, by itself, proof a given query shape will succeed in production -- flagged explicitly
+// rather than papered over; this is exactly the gap X-SALES-ORDER-INDEX-500 fell into (see ORDERING).
+// The UNFILTERED path needs no composite index either, for the same reason -- Firestore's automatic
+// single-field index on `salesOrderNumber` covers a single-sort-field query whose tiebreaker direction
+// matches Firestore's own implicit default.
 //
 // CURSOR. An UNTRUSTED, UNSIGNED position hint -- the SAME posture functions/src/equipmentCompatibility/
 // readCursor.ts documents (posture B): NOT an authorization boundary. Every page independently re-runs the
@@ -397,16 +396,41 @@ export async function listSalesOrderIndexPage(
   } else if (typeof state === "string") {
     query = query.where("state", "==", state);
   }
-  // Stable total ordering: salesOrderNumber DESC (the declared default sort), document id ASC as an
-  // explicit tiebreaker. ASC, not DESC, deliberately: field-ops-app-vite/src/metadata/
-  // listViewDefinition.js's `makeListViewDefinition` always appends the tiebreaker in ASCENDING order
-  // (`tiebreaker: input.tiebreaker ?? "__name__"`, `firestoreOrder("ASC")` in `requiredIndexes()`),
-  // regardless of the primary sort's own direction -- confirmed by running `requiredIndexes
-  // (salesOrderIndexList, salesOrderEntity)`, which demands exactly `sales_orders(state ASC,
-  // salesOrderNumber DESC, __name__ ASC)` for the filtered case. Matching that direction here means
-  // the ONE composite index this read will ever need is the one the metadata layer already computes
-  // and CI can compare against -- a DESC tiebreaker would silently demand a second, undeclared index.
-  query = query.orderBy("salesOrderNumber", "desc").orderBy(FieldPath.documentId(), "asc");
+  // Stable total ordering: salesOrderNumber DESC (the declared default sort), document id DESC as an
+  // explicit tiebreaker.
+  //
+  // DESC, not ASC -- this was the X-SALES-ORDER-INDEX-500 defect. Firestore appends `__name__` to
+  // every query as an IMPLICIT final tiebreaker, in the SAME direction as the last explicit orderBy()
+  // clause -- here, DESC (matching salesOrderNumber). Explicitly requesting `__name__` in a DIFFERENT
+  // direction (the previous "asc" here) is not free: it makes `__name__`'s direction a genuine part of
+  // the query's index requirement, and `firestore.indexes.json`'s declared `sales_orders` composite
+  // (`state ASC, salesOrderNumber DESC` -- two fields, no `__name__` at all) only ever matches the
+  // IMPLICIT DESC tiebreaker. So the filtered query (matching the 2 declared fields exactly) still
+  // failed, because its 3rd, unstated field didn't agree with what was asked for; the unfiltered query
+  // failed for the same reason one level down -- the automatic single-field index on `salesOrderNumber`
+  // covers only the implicit-direction tiebreaker, not an explicitly different one. Both shapes hit
+  // Firestore's FAILED_PRECONDITION "this query requires an index", which the callable's catch block
+  // (previously) discarded and reported as a bare `internal` 500 -- see the logging added below.
+  //
+  // This was invisible to `requiredIndexes()` (field-ops-app-vite/src/metadata/listViewDefinition.js)
+  // and to CI's index-coverage check (scripts/listIndexCoverage.mjs / scripts/indexDriftGuard.mjs)
+  // because `indexKey()` in indexDriftGuard.mjs strips `__name__` out of BOTH sides of the comparison
+  // before matching -- by design, so a declared index (which never lists the normal implicit
+  // tiebreaker) isn't flagged as "missing" it. That normalization is correct for the common case but
+  // has a blind spot: it cannot tell an implicit-direction tiebreaker (free) from an explicit,
+  // different-direction one (requires the field to actually be declared) -- so CI reported this
+  // filtered demand as already covered, and the query still failed in production. That CI gap is
+  // itself a finding, out of this lane's write scope (scripts/), reported in the handoff rather than
+  // fixed here.
+  //
+  // Matching Firestore's own implicit default (DESC) here means BOTH shapes are servable by indexes
+  // that already exist today -- the declared 2-field `sales_orders(state ASC, salesOrderNumber DESC)`
+  // composite for the filtered case, and the automatic single-field index on `salesOrderNumber` for the
+  // unfiltered case -- with no index deploy required. A DESC tiebreaker is exactly as deterministic and
+  // costs nothing functionally (two Sales Orders sharing a salesOrderNumber does not happen today --
+  // allocateSalesOrderNumber is monotonic/unique -- so which direction breaks a tie is otherwise
+  // arbitrary); it just has to agree with what Firestore does for free.
+  query = query.orderBy("salesOrderNumber", "desc").orderBy(FieldPath.documentId(), "desc");
   if (afterCursor) {
     query = query.startAfter(afterCursor.salesOrderNumber, afterCursor.id);
   }
@@ -446,10 +470,25 @@ export const listSalesOrderIndex = onCall({ region: "us-central1" }, async (requ
 
   const data = (request.data ?? {}) as { limit?: unknown; state?: unknown; cursor?: unknown };
 
-  const limit =
-    Number.isSafeInteger(data.limit) && (data.limit as number) > 0 && (data.limit as number) <= MAX_SALES_ORDER_INDEX_LIMIT
-      ? (data.limit as number)
-      : DEFAULT_SALES_ORDER_INDEX_LIMIT;
+  // LIMIT. An ABSENT limit takes the default. A PRESENT but invalid one is REJECTED rather than
+  // silently replaced -- the previous behaviour folded "too large" into "not supplied" and quietly
+  // returned a 50-row page to a caller who asked for 9999, with nothing in the response saying so.
+  // That is the same silent-substitution shape this program removes elsewhere, and it is
+  // inconsistent with the sibling `state`/`cursor` validations directly below, which both reject.
+  let limit = DEFAULT_SALES_ORDER_INDEX_LIMIT;
+  if (data.limit !== undefined) {
+    if (
+      !Number.isSafeInteger(data.limit) ||
+      (data.limit as number) <= 0 ||
+      (data.limit as number) > MAX_SALES_ORDER_INDEX_LIMIT
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        `limit must be a positive integer no greater than ${MAX_SALES_ORDER_INDEX_LIMIT}.`,
+      );
+    }
+    limit = data.limit as number;
+  }
 
   const validStates = SALES_ORDER_STATES as readonly string[];
   let state: SalesOrderState | SalesOrderState[] | undefined;
@@ -494,6 +533,12 @@ export const listSalesOrderIndex = onCall({ region: "us-central1" }, async (requ
     return await listSalesOrderIndexPage(db, { limit, state, afterCursor });
   } catch (err) {
     if (err instanceof HttpsError) throw err;
+    // X-SALES-ORDER-INDEX-500: this catch previously discarded `err` entirely -- no `logger`, no
+    // `console.error` -- so the live 500 this callable returned in the sandbox had NO trace in Cloud
+    // Logging beyond the bare request/response entry and the auth-verification debug line. Logged
+    // server-side ONLY (Cloud Logging) before masking; the client-facing message is byte-for-byte
+    // unchanged and still leaks no internal error string, stack, document id, or business data.
+    console.error("listSalesOrderIndex: read failed", err);
     throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
   }
 });
