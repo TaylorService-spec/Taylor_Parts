@@ -159,3 +159,15 @@ export function emptyMessageFor(state, def = null) {
     default: return null;
   }
 }
+
+/**
+ * Builds a row's destination from a list definition's `rowNavigationTo` template.
+ * Lives here rather than in MetadataRecordPage.jsx because it is pure presentation
+ * logic with no component of its own -- exporting it from a component module broke
+ * fast refresh for every component in that file.
+ */
+export function buildRowHref(template, key) {
+  if (!template || key === null || key === undefined) return null;
+  return template.replace(/:[^/]+/, encodeURIComponent(String(key)));
+}
+

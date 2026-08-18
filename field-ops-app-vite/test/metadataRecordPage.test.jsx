@@ -7,7 +7,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import MetadataRecordPage, { buildRowHref } from "../src/metadata/MetadataRecordPage.jsx";
+import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
+import { buildRowHref } from "../src/metadata/listPresentation.js";
 import { makeSection, makePageDefinition } from "../src/metadata/pageDefinition.js";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
