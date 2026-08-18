@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main b7ec0c29 -- 180 entries, every claim reconciled against git. MERGED 99, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 1, IMPLEMENTING 1.",
+  "baseline": "origin/main 5db798dc -- 183 entries, every claim reconciled against git. MERGED 103, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -227,12 +227,14 @@
       "title": "No unscoped Sales Order list read exists -- its INDEX surface stays unreachable",
       "domain": "sales",
       "entity": "SalesOrder",
-      "status": "READY",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.",
-      "notes": "salesOrderReadService.ts exports only listSalesOrdersForAccount (account-scoped) and getSalesOrderContext (a single record by id). There is no unscoped list read, so salesOrderIndexList declares no readCallable and its INDEX surface remains genuinely unreachable -- pinned by a test asserting readCallable is null, so the absence is a checked fact rather than an oversight. The lane was explicitly told not to invent one and did not. Opportunity by contrast has listOpportunityContext, which genuinely exists, and its INDEX list now declares it."
+      "nextAction": "Wiring an INDEX surface to it needs cursor plumbing in callableListSource; deploy is protected.",
+      "notes": "salesOrderReadService.ts exports only listSalesOrdersForAccount (account-scoped) and getSalesOrderContext (a single record by id). There is no unscoped list read, so salesOrderIndexList declares no readCallable and its INDEX surface remains genuinely unreachable -- pinned by a test asserting readCallable is null, so the absence is a checked fact rather than an oversight. The lane was explicitly told not to invent one and did not. Opportunity by contrast has listOpportunityContext, which genuinely exists, and its INDEX list now declares it. RESOLVED by building a SECOND callable (listSalesOrderIndex), not by widening the account-scoped one -- reuse was explicitly ruled out, and the related list still inherits the entity's own read, asserted by test. Bounded (default 50, max 200, always applied), cursor-based with no offsets, deterministic ordering (salesOrderNumber DESC then document id) so a cursor means something, capability re-checked on every page, truncated/nextCursor matching the existing sources, no fabricated totals. Capability is the existing salesOrder.read, currently active:false -- stated rather than worked around, and no new capability invented. INHERITED GAP reported not hidden: Sales Orders with no salesOrderNumber are invisible to an ordered read because Firestore excludes documents missing the ordered field -- the same pre-numbering gap salesOrder.js already documents. A PIN DID ITS JOB: metadataSalesOrderDefinition.test.mjs asserted the ABSENCE of a readCallable, the lane flagged it would break, and it now asserts WHICH callable is named plus that it is not the account-scoped one -- inverting a pin to assert the new truth rather than weakening it to 'some callable exists'. STAGE: functions/src/index.ts exports the callable, but EXPORT IS NOT DEPLOY -- this is MERGED, not DEPLOYED, and nothing is callable in any environment until a protected Functions deploy runs.",
+      "pr": 1264,
+      "mergeSha": "5db798dc"
     },
     {
       "id": "X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID",
@@ -3167,6 +3169,54 @@
       ],
       "nextAction": "None.",
       "notes": "The forward tripwire added by X-REGISTRY-VALIDATOR-NEVER-RUN checked a HAND-MAINTAINED list of 20 list definitions, guarded by assert.equal(length, 20) whose own message read 'the named import list drifted from definitions/*.js -- update both'. It drifted: transferOrder, reorderRequest, stockLocation and mobileLocation merged afterwards, and this file was never in those lanes' writeScope. The assertion still passed because it compared the list against ITS OWN length -- green while covering less than it claimed. Same failure class as pageRegistryReferences: a check that passes without proving what it says. A count guard structurally cannot detect its own drift. Now derived from the directory and matched by SHAPE (anything carrying a columns array, the property validateRegistryReferences actually reads), so a new definition is covered the moment it exists and no lane has to remember this file. Coverage 20 -> 24. The one genuinely unimportable module is a NAMED, ASSERTED exclusion -- any other import failure now fails by name, because a silent skip is exactly how this drifted."
+    },
+    {
+      "id": "A-ENTITY-CATALOG-DEFINITIONS",
+      "phase": "6",
+      "wave": "5",
+      "kind": "ARCHITECTURE",
+      "title": "SupplierCatalogItem and PartAlias definitions",
+      "domain": "inventory",
+      "status": "MERGED",
+      "pr": 1263,
+      "mergeSha": "6a32c644",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "supplierCatalogItem is SYSTEM_ONLY: the stored shape is {id, supplierId, partId, unitPrice, available} with no name and no reference, and neither foreign key qualifies -- a shared FK is a CATEGORY, not identity, the same reasoning the Owner-ruled inventoryTransaction precedent established. The lane DECLINED to upgrade partId to a REFERENCE, which is the valuable judgment: the seed data holds legacy SKU strings rather than Part Master's canonical partId, and declaring a REFERENCE over a value that is not the target's id would be a false declaration. unitPrice stays NUMBER rather than CURRENCY_MINOR (a plain decimal float, no currency field, matching the opportunity.expectedValue precedent) and no provenance is stored at all, so none was declared. partAlias is BUSINESS_REFERENCE on originalValue, with the derived document id deliberately NOT declared as a field because it is a percent-encoded storage artifact, never a human-readable token. Its collection is allow read, write: if false for every principal including admin and no callable reads it, so readVia is honestly UNKNOWN; it is also genuinely unpopulated, so the definition describes the shape a document WOULD have. It reused the recorded alias-identity contract (120-char limit, percent-encoding) rather than re-deriving it."
+    },
+    {
+      "id": "X-NPM-TEST-EXCEEDED-COMMAND-LIMIT",
+      "phase": "6",
+      "wave": "5",
+      "kind": "AUDIT",
+      "title": "npm test grew past the Windows command-line limit and could not run locally",
+      "domain": "orchestration",
+      "status": "MERGED",
+      "pr": 1263,
+      "mergeSha": "6a32c644",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "The test script was a single && chain of 180 invocations, 8155 characters. Windows caps a command line near 8191, so registering one more suite tipped it over and npm test failed outright with 'The command line is too long' -- WHILE CI ON LINUX KEPT PASSING, because Linux allows far longer command lines. That is the worst shape of this failure: the machine you verify on disagrees with the machine that gates the merge, so local verification silently stops being evidence. It was caught only because exit status is checked rather than output read -- the rule written earlier this session after getting exactly that wrong. The suite list now lives in test/suites.json with a runner that preserves && semantics (stop at first failure, exit with that suite's status, and treat a signal death as failure rather than letting ?? 0 pass it). The runner was PROVED to fail: a suite exiting 3 made it exit 3, naming the file -- a runner that always exits 0 would be worse than the broken chain. The list is a verbatim mechanical extraction; changing WHICH suites run is a different decision from fixing HOW they run. A manifest is also reviewable, which an 8000-character string in package.json was not."
+    },
+    {
+      "id": "X-SALES-ORDER-DEFINITION-TEST-UNRUN",
+      "phase": "6",
+      "wave": "5",
+      "kind": "AUDIT",
+      "title": "metadataSalesOrderDefinition ran in CI but was absent from npm test",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1264,
+      "mergeSha": "5db798dc",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "None.",
+      "notes": "Found while integrating the Sales Order read: the suite that pins salesOrder's list contract ran in the CI workflow but was NOT in the aggregated npm test script, so a full local run would not have caught the break the lane predicted. This is the mirror of the earlier gap where test files ran locally but were named in no workflow -- the same class, opposite direction, and it is the fourth coverage gap of this shape found in the program. Added to the suite manifest (180 -> 181). Worth noting the general shape: two independent lists of what to run will drift, and only the one CI reads is enforced."
     }
   ]
 }

@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main b7ec0c29 -- 180 entries, every claim reconciled against git. MERGED 99, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 1, IMPLEMENTING 1.
+**Baseline:** origin/main 5db798dc -- 183 entries, every claim reconciled against git. MERGED 103, COMPLETE 21, EXEMPT 16, BLOCKED_DEPENDENCY 29, BLOCKED_PROTECTED 13, READY 0, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -38,7 +38,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -46,12 +45,6 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-
-## READY
-
-| id | phase | title | route | issue | PR | head | merge | deploy | next action |
-|---|---|---|---|---|---|---|---|---|---|
-| X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
 
 ## MERGED
 
@@ -62,6 +55,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Definition merged. Wiring AccountDetail onto it, and the two recorded page gaps, are separate lanes. |
 | X-INDEX-SURFACE-CALLABLE-READ | 6 | No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch | — | — | #1229 | — | f7a61306 | NOT_APPLICABLE | Blocked no further at the runtime; the remaining gap is definition-level. |
 | X-ENTITY-SINGLE-READCALLABLE | 6 | An entity declares one readCallable, but INDEX and RELATED need different ones | — | — | #1231 | — | 0f774fcd | NOT_APPLICABLE | Opportunity INDEX is now reachable. Sales Order INDEX needs a server-side unscoped read. |
+| X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | #1264 | — | 5db798dc | NOT_APPLICABLE | Wiring an INDEX surface to it needs cursor plumbing in callableListSource; deploy is protected. |
 | X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID | 6 | The Opportunities pipeline fell back to a raw account id -- LIVE, not latent | — | — | #1226 | — | 631170b5 | NOT_APPLICABLE | None. |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
@@ -156,6 +150,9 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-HELD-DEFINITIONS-IDENTITY | 6 | Four held definitions land with declared identity modes | — | — | #1258 | — | 00df6438 | NOT_APPLICABLE | None. |
 | A-OPERATIONAL-NUMBERING-IMPL | 6 | TO/RO/RR allocators, contention-tested, with fail-closed backfill tooling | — | — | #1259 | — | 4e4dbd3c | NOT_APPLICABLE | Production backfill remains a separate protected authorization. |
 | X-REGISTRY-COVERAGE-DRIFT | 6 | The registry tripwire silently narrowed from 24 definitions to 20 | — | — | #1261 | — | b7ec0c29 | NOT_APPLICABLE | None. |
+| A-ENTITY-CATALOG-DEFINITIONS | 6 | SupplierCatalogItem and PartAlias definitions | — | — | #1263 | — | 6a32c644 | NOT_APPLICABLE | None. |
+| X-NPM-TEST-EXCEEDED-COMMAND-LIMIT | 6 | npm test grew past the Windows command-line limit and could not run locally | — | — | #1263 | — | 6a32c644 | NOT_APPLICABLE | None. |
+| X-SALES-ORDER-DEFINITION-TEST-UNRUN | 6 | metadataSalesOrderDefinition ran in CI but was absent from npm test | — | — | #1264 | — | 5db798dc | NOT_APPLICABLE | None. |
 
 ## BLOCKED_PROTECTED
 
