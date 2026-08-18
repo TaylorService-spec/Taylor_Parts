@@ -241,17 +241,30 @@ test("surface-specific fields are rejected on the wrong surface", () => {
 
 // --- structural ------------------------------------------------------------
 
-test("columns must reference real fields, must not duplicate, and cannot carry functions", () => {
+test("columns must reference real fields and must not duplicate", () => {
   assert.ok(validateListViewDefinition(baseIndex({ columns: [makeColumn({ fieldId: "ghost" })] }), account())
     .some((x) => /is not a field on account/.test(x)));
 
   assert.ok(validateListViewDefinition(
     baseIndex({ columns: [makeColumn({ fieldId: "name" }), makeColumn({ fieldId: "name" })] }), account())
     .some((x) => /duplicate column/.test(x)));
+});
 
-  assert.ok(validateListViewDefinition(
-    baseIndex({ columns: [makeColumn({ fieldId: "name", renderer: () => null })] }), account())
-    .some((x) => /registered id, never a function/.test(x)));
+// --- X-LIST-COLUMN-RENDERER-UNCONSUMED: renderer is not part of the contract --------
+
+test("makeColumn drops a renderer input — the built column never carries one", () => {
+  const col = makeColumn({ fieldId: "name", renderer: "some-id" });
+  assert.equal("renderer" in col, false);
+});
+
+test("a column that DOES declare renderer (built by hand, bypassing makeColumn) fails validation loudly", () => {
+  // Before this change, a declared renderer was silently resolved and then never read
+  // by MetadataListGrid — ignored, with no signal. Now it must fail validation instead,
+  // so an author (or a definition that predates this change) finds out immediately
+  // rather than shipping a renderer nothing will ever run.
+  const def = baseIndex({ columns: [{ fieldId: "name", renderer: "currency" }] });
+  assert.ok(validateListViewDefinition(def, account())
+    .some((x) => /declares "renderer", which is not part of the contract/.test(x)));
 });
 
 test("a sortable column requires a sortable field — sorting needs an index", () => {

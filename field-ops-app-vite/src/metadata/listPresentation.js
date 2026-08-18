@@ -31,7 +31,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { findField } from "./entityDefinition.js";
-import { componentRegistry } from "./registry.js";
 import { formatTimestamp } from "../domain/displayTimestamp.js";
 import { formatMinor } from "../domain/accountArView.js";
 
@@ -40,10 +39,12 @@ export const LIST_STATE = Object.freeze(["LOADING", "READY", "EMPTY", "FILTERED"
 /**
  * Resolve the columns a definition declares against the entity.
  *
- * A column whose renderer is not registered keeps its column and loses its renderer,
- * rather than being dropped: dropping it would silently narrow the table and the reader
- * would never know a field was missing. Falling back to the raw value is the honest
- * degradation — the data is still true, only its formatting is gone.
+ * X-LIST-COLUMN-RENDERER-UNCONSUMED: this used to also resolve a `renderer` id
+ * against `componentRegistry` here, on every call — and nothing ever read the
+ * resolved value back out of the column it built. `makeColumn`/`validateListViewDefinition`
+ * (listViewDefinition.js) no longer accept or permit a `renderer` at all, so there is
+ * nothing left to resolve here. See `makeColumn`'s doc comment for the evidence this
+ * was decided on.
  */
 export function resolveColumns(def, entity) {
   return Object.freeze(
@@ -56,8 +57,6 @@ export function resolveColumns(def, entity) {
         label: col.label ?? field?.label ?? col.fieldId,
         type: field?.type ?? "STRING",
         sortable: !!col.sortable && !!field?.sortable,
-        renderer: col.renderer && componentRegistry.has(col.renderer) ? col.renderer : null,
-        rendererMissing: !!col.renderer && !componentRegistry.has(col.renderer),
         enumLabels: field?.enumLabels ?? null,
       });
     })

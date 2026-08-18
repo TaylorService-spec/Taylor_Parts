@@ -4,11 +4,10 @@
 // assertable offline while the model stays pure. Several of these encode defects this
 // codebase has already shipped.
 
-import { test, beforeEach } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
-import { componentRegistry } from "../src/metadata/registry.js";
 import {
   buildListPresentation,
   resolveColumns,
@@ -41,11 +40,6 @@ const def = (over = {}) => makeListViewDefinition({
 });
 
 const page = (rows, hasMore = false) => ({ rows, hasMore, nextCursor: null });
-
-beforeEach(() => {
-  componentRegistry.__resetForTest();
-  componentRegistry.register({ id: "currency", kind: "CELL_RENDERER", component: () => null });
-});
 
 test("LIST_STATE is frozen and distinguishes every way a list can show nothing", () => {
   assert.ok(Object.isFrozen(LIST_STATE));
@@ -185,21 +179,28 @@ test("an empty or missing value renders as null, so the component decides the pl
   for (const cell of p.rows[0].cells) assert.equal(cell.value, null);
 });
 
-// --- degradation is honest --------------------------------------------------
+// --- X-LIST-COLUMN-RENDERER-UNCONSUMED: renderer is not part of the contract --------
 
-test("a column whose renderer is unregistered keeps the column and loses the renderer", () => {
-  // Dropping the column would silently narrow the table and the reader would never learn
-  // a field was missing. The data stays true; only its formatting is gone.
-  const cols = resolveColumns(def({ columns: [makeColumn({ fieldId: "balance", renderer: "ghost" })] }), entity());
-  assert.equal(cols[0].fieldId, "balance");
-  assert.equal(cols[0].renderer, null);
-  assert.equal(cols[0].rendererMissing, true, "the degradation is reported, not hidden");
+test("makeColumn does not carry a renderer through, even when one is supplied", () => {
+  // Removed rather than wired up (see makeColumn's doc comment for the evidence):
+  // resolveColumns used to resolve a `renderer` id against componentRegistry on every
+  // call, and MetadataListGrid never read the resolved value back out — a silent,
+  // ninth instance of this program's declares-but-nothing-consumes defect. There is no
+  // registered-vs-unregistered distinction left to make; a `renderer` input is simply
+  // never present on the built column.
+  const col = makeColumn({ fieldId: "balance", renderer: "currency" });
+  assert.equal("renderer" in col, false, "makeColumn must not accept or echo a renderer");
 });
 
-test("a registered renderer is kept", () => {
-  const cols = resolveColumns(def({ columns: [makeColumn({ fieldId: "balance", renderer: "currency" })] }), entity());
-  assert.equal(cols[0].renderer, "currency");
-  assert.equal(cols[0].rendererMissing, false);
+test("resolveColumns never produces a renderer key, even for a hand-built column literal", () => {
+  // A column built by hand (bypassing makeColumn) could still carry a stray `renderer`
+  // property. resolveColumns must not resolve, keep, or otherwise surface it — the
+  // resolved column has no renderer-shaped field at all for MetadataListGrid to
+  // (not) read.
+  const cols = resolveColumns(def({ columns: [{ fieldId: "balance", renderer: "ghost" }] }), entity());
+  assert.equal(cols[0].fieldId, "balance");
+  assert.equal("renderer" in cols[0], false);
+  assert.equal("rendererMissing" in cols[0], false);
 });
 
 test("a column is only sortable when the FIELD is too — sorting needs an index", () => {
