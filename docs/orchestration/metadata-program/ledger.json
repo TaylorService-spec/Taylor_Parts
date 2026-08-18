@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main d1dadca2 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 0f019b4f -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -1212,12 +1212,31 @@
       "route": "/equipment",
       "classification": "A_ENTITY_LIST",
       "entity": "Equipment",
-      "status": "IMPLEMENTING",
+      "status": "MERGED",
       "dependsOn": [
         "A-LIST-GRID"
       ],
-      "nextAction": "Migrate the Customer Equipment tab list only; leave the workspace and other tabs.",
-      "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern. READ-SHAPE AUDIT (COMPOSITE (workspace) with the cleanest LIST candidate found): The /equipment route is three tabs: a clean bounded, cursor-paginated, truncation-disclosing read-only list (Customer Equipment), an unconnected stub, and a create-form. The workspace as a whole cannot be one list; the default TAB alone plausibly can. Note the audit called redrawing the surface boundary an owner/product call -- migrating the tab's LIST RENDERING is not that. Changing what the route shows would be a product decision; rendering the same rows through the shared runtime inside the same tab is a rendering change, and is the cheapest real list work remaining."
+      "nextAction": "None for the tab. The other two tabs remain a stub and a create form.",
+      "notes": "BEST PRIOR ART IN THE REPO: useInstalledEquipmentPage.js:51-55 already does orderBy(documentId) plus startAfter plus limit. Entity List Metadata v1 should generalize this rather than invent a pattern. READ-SHAPE AUDIT (COMPOSITE (workspace) with the cleanest LIST candidate found): The /equipment route is three tabs: a clean bounded, cursor-paginated, truncation-disclosing read-only list (Customer Equipment), an unconnected stub, and a create-form. The workspace as a whole cannot be one list; the default TAB alone plausibly can. Note the audit called redrawing the surface boundary an owner/product call -- migrating the tab's LIST RENDERING is not that. Changing what the route shows would be a product decision; rendering the same rows through the shared runtime inside the same tab is a rendering change, and is the cheapest real list work remaining. MIGRATED at 0f019b4f, tab only -- route, tabs and default tab unchanged, EquipmentWorkspace.jsx untouched. The lane deliberately did NOT use useMetadataList (the Warehouses/Suppliers pattern) because that hook issues its own live read, which would have been a SECOND concurrent read of the equipment collection alongside the tab's existing one; it called buildListPresentation directly over the rows already loaded. REFERENCE columns resolve from the name maps the existing read already populates -- zero new reads, no N+1 -- and an unresolvable id renders 'Unresolved reference' rather than blank or the raw id. Reported not worked around: equipmentIndexList declares no serialNumber column though the field exists and the old tab showed it inline, the same shape of gap Suppliers reported for contactName.",
+      "pr": 1246,
+      "mergeSha": "0f019b4f"
+    },
+    {
+      "id": "X-EQUIPMENT-VIEW-ID-AS-NAME",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "resolveName fell back to the document id -- the FOURTH instance of the same escape clause",
+      "domain": "inventory",
+      "entity": "Equipment",
+      "status": "MERGED",
+      "pr": 1246,
+      "mergeSha": "0f019b4f",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "installedEquipmentListView.js's resolveName returned nameMap.get(id) ?? id, justified in its own comment as 'missing -> the id itself (never a blank cell), so an unresolved name degrades gracefully'. That is the same escape clause as the Opportunity pipeline, warehousesView and suppliersView -- FOUR now, each written independently, each reasoning that an id is a degraded name. The generalisation worth keeping: 'never blank' is the WRONG GOAL. A blank cell says 'unknown', which is true; an id says something false about the record. The migrating lane sidestepped it by not routing display through the function; it was fixed at the source at integration because the function is still live and the next caller would inherit it. Two tests that pinned the fallback now pin its absence."
     },
     {
       "id": "S-INV-EQUIPMENT-DETAIL",
