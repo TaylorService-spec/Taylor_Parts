@@ -5,8 +5,9 @@
 // tested in pageRuntime; what is tested HERE is that rendering does not quietly undo them.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import MetadataRecordPage, { buildRowHref } from "../src/metadata/MetadataRecordPage.jsx";
 import { makeSection, makePageDefinition } from "../src/metadata/pageDefinition.js";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
@@ -57,6 +58,23 @@ const workOrderPage = (over = {}) =>
     ],
     ...over,
   });
+
+describe("buildRowHref", () => {
+  it("substitutes the row's routing key for the template's dynamic segment", () => {
+    expect(buildRowHref("/customers/:id", "acct-1")).toBe("/customers/acct-1");
+  });
+
+  it("substitutes whatever param name the template declares, not just :id", () => {
+    // Templates in this program are not uniform — equipment.js uses :equipmentId,
+    // salesOrder.js uses :salesOrderId. The template names its own resource.
+    expect(buildRowHref("/equipment/:equipmentId", "eq-9")).toBe("/equipment/eq-9");
+  });
+
+  it("returns null for a missing template or key, never a malformed href", () => {
+    expect(buildRowHref(null, "acct-1")).toBeNull();
+    expect(buildRowHref("/customers/:id", null)).toBeNull();
+  });
+});
 
 describe("MetadataRecordPage", () => {
   it("renders registered section components and passes the record through", () => {
@@ -270,12 +288,14 @@ describe("MetadataRecordPage", () => {
     it("renders rows through the default binding, scoped to the parent record", async () => {
       fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       render(
-        <MetadataRecordPage
-          definition={accountPage()}
-          record={{ id: "acct-1" }}
-          listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
-          entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
-        />
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
       );
       expect(await screen.findByText("Big Deal")).toBeTruthy();
       // Scoped to the parent — the exact defect findParentRelationship/buildQueryDescriptor
@@ -347,12 +367,14 @@ describe("MetadataRecordPage", () => {
       });
     const renderWithChildEntity = (opportunityEntity) =>
       render(
-        <MetadataRecordPage
-          definition={accountPage()}
-          record={{ id: "acct-1" }}
-          listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
-          entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
-        />
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.opportunities.related" ? opportunitiesList : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
       );
 
     it("CLIENT_DIRECT invokes the Firestore source and never the callable source", async () => {
@@ -430,6 +452,125 @@ describe("MetadataRecordPage", () => {
       renderWithChildEntity(opportunityEntity);
       expect(await screen.findByText(/do not have access to opportunities/i)).toBeTruthy();
       expect(screen.queryByText(/no opportunities yet/i)).toBeNull();
+    });
+  });
+
+  // ── DEFECT 2 — rowNavigationTo had zero consumers ──────────────────────────────────
+  //
+  // makeListViewDefinition accepts rowNavigationTo (a route template like
+  // "/customers/:id") and, before this, nothing in the repo read it: DefaultRelatedList
+  // passed MetadataListGrid no onRowClick, so every row rendered through the metadata
+  // path was inert. A LocationProbe alongside the page is the only way to observe a real
+  // react-router navigation without mocking useNavigate — it renders the CURRENT
+  // location's pathname so a click's effect is visible in the DOM.
+
+  describe("DEFECT 2 — rowNavigationTo is wired to row clicks", () => {
+    const accountEntity = makeEntityDefinition({
+      id: "account",
+      label: "Account",
+      readVia: "CLIENT_DIRECT",
+      collection: "accounts",
+      relationships: [
+        makeRelationshipDefinition({
+          id: "account.opportunities",
+          label: "Opportunities",
+          fromEntityId: "account",
+          toEntityId: "opportunity",
+          viaField: "accountId",
+          cardinality: "ONE_TO_MANY",
+        }),
+      ],
+    });
+    const opportunityEntity = makeEntityDefinition({
+      id: "opportunity",
+      label: "Opportunity",
+      readVia: "CLIENT_DIRECT",
+      collection: "opportunities",
+      fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
+    });
+    const accountPage = () =>
+      makePageDefinition({
+        id: "account.record",
+        entityId: "account",
+        label: "Account",
+        sections: [
+          makeSection({ id: "opps", kind: "RELATED_LIST", label: "Opportunities", region: "MAIN", order: 0, listId: "account.opportunities.related" }),
+        ],
+      });
+
+    // Renders the current location's pathname into the DOM, so a click's navigation
+    // effect is observable without mocking react-router's useNavigate.
+    function LocationProbe() {
+      const location = useLocation();
+      return <p data-testid="location">{location.pathname}</p>;
+    }
+
+    const renderWithList = (listDef) =>
+      render(
+        <MemoryRouter initialEntries={["/customers/acct-1"]}>
+          <LocationProbe />
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.opportunities.related" ? listDef : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+
+    it("a row click navigates to the template with the routing key substituted", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowNavigationTo: "/sales/opportunities/:id",
+      });
+      renderWithList(listDef);
+      const row = (await screen.findByText("Big Deal")).closest("tr");
+      fireEvent.click(row);
+      expect((await screen.findByTestId("location")).textContent).toBe("/sales/opportunities/opp-1");
+    });
+
+    it("a list with no rowNavigationTo renders non-focusable rows and no handler", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        // rowNavigationTo intentionally omitted.
+      });
+      renderWithList(listDef);
+      const row = (await screen.findByText("Big Deal")).closest("tr");
+      expect(row.getAttribute("tabindex")).toBeNull();
+      fireEvent.click(row);
+      // No navigation occurred — the location stays where it started.
+      expect((await screen.findByTestId("location")).textContent).toBe("/customers/acct-1");
+    });
+
+    it("the document id still never appears as cell content when a route is wired", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowNavigationTo: "/sales/opportunities/:id",
+      });
+      renderWithList(listDef);
+      await screen.findByText("Big Deal");
+      expect(screen.queryByText("opp-1")).toBeNull();
     });
   });
 

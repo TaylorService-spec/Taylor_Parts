@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { componentRegistry } from "./registry.js";
 import { buildCompositionPlan, applyVisibility } from "./pageRuntime.js";
 import { REGION } from "./pageDefinition.js";
@@ -227,7 +228,24 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
   return { presentation, retry: () => setRetryNonce((n) => n + 1) };
 }
 
+/**
+ * Substitute a list definition's `rowNavigationTo` route template (e.g. "/customers/:id",
+ * "/equipment/:equipmentId") with a row's ROUTING key.
+ *
+ * Templates in this program use different param names for the same purpose — a definition
+ * names its own resource, not a fixed "id" convention — so this replaces whichever single
+ * dynamic segment the template declares rather than assuming `:id` literally. The key
+ * itself is never inspected for content: it is the document id `MetadataListGrid` already
+ * keeps separate from every cell (see listPresentation.js's own "routing key, never a
+ * label" rule), and this function's only job is to place it in a URL, never a DOM label.
+ */
+export function buildRowHref(template, key) {
+  if (!template || key === null || key === undefined) return null;
+  return template.replace(/:[^/]+/, encodeURIComponent(String(key)));
+}
+
 function DefaultRelatedList({ section, record, definition, listResolver, entityResolver }) {
+  const navigate = useNavigate();
   const listDef = listResolver ? listResolver(section.listId) : null;
   const childEntity = listDef && entityResolver ? entityResolver(listDef.entityId) : null;
   // The PARENT's relationships, not the child's — findParentRelationship (via
@@ -242,7 +260,18 @@ function DefaultRelatedList({ section, record, definition, listResolver, entityR
     relationships: parentEntity?.relationships ?? [],
   });
 
-  return <MetadataListGrid presentation={presentation} onRetry={retry} caption={section.label ?? undefined} />;
+  // `rowNavigationTo` had zero consumers before this — a declared route nothing read,
+  // the same shape of gap as an unconsumed `readVia`. Absent, this passes `undefined`
+  // (not a no-op function) so MetadataListGrid takes its OWN already-tested branch for
+  // "no handler": non-focusable rows, no onClick/onKeyDown, rather than a handler that
+  // silently does nothing and leaves a row looking clickable that is not.
+  const onRowClick = listDef?.rowNavigationTo
+    ? (key) => navigate(buildRowHref(listDef.rowNavigationTo, key))
+    : undefined;
+
+  return (
+    <MetadataListGrid presentation={presentation} onRetry={retry} onRowClick={onRowClick} caption={section.label ?? undefined} />
+  );
 }
 
 function Section({ section, record, definition, listRenderer, listResolver, entityResolver }) {
