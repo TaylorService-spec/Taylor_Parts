@@ -224,3 +224,93 @@ Everything above is at **MERGED**. Nothing is DEPLOYED, ACTIVATED, USER-VISIBLE 
 Each stage must be earned separately: export ≠ deployed, merge ≠ deployed, a successful deploy
 command ≠ environment convergence, emulator pass ≠ live index availability, Hosting version ≠
 Functions version, and old E2E evidence ≠ current-main E2E evidence.
+
+---
+
+# Tranche 0 — read-only preflight evidence
+
+**Captured 2026-08-18T19:17:58Z. Read-only. No deployment, seed, or configuration mutation was
+performed.**
+
+## Result: PASS
+
+| Check | Result |
+|---|---|
+| Working tree clean | **Yes** — `git status --porcelain` empty |
+| Runtime SHA exists | **Yes** — `b891fc689427aee2b1246f3132122e1a0feb2e8d` |
+| Delta from `main` | **Docs-only** (3 files under `docs/orchestration/metadata-program/`) — runtime-identical |
+| Firebase project | **`eos-platform-sandbox`** — confirmed via `firebase projects:list` |
+| Hosting site | `eos-platform-sandbox` → `https://eos-platform-sandbox.web.app` |
+| Rules delta | **None** — byte-identical between live `cd442727` and the runtime SHA |
+| Fixture delta requiring execution | **None** |
+| Activation overrides | **27 present**, `salesOrder.read` included |
+
+## Live `/version.json`
+
+```json
+{ "commit": "cd442727", "base": "/", "buildTime": "2026-08-17T04:45:17.863Z",
+  "environmentId": "platform-sandbox", "environmentRole": "sandbox", "schema": 2 }
+```
+
+Unchanged from the package binding. `environmentId` and `environmentRole` confirm the target.
+
+## Index reconciliation
+
+| | |
+|---|---|
+| Declared at runtime SHA | **38** |
+| Live in sandbox | **8** |
+| **Missing** | **30** — matches the package exactly |
+| **Unexpected live** | **0** |
+
+Missing by collection: `accounts` 3 · `employees` 3 · `equipment` 3 · `equipment_models` 3 ·
+`parts` 3 · `trucks` 3 · `fieldops_wos` 2 · `contacts` 1 · `locations` 1 · `manufacturers` 1 ·
+`mobile_locations` 1 · `opportunities` 1 · `sales_orders` 1 · `stock_locations` 1 ·
+`suppliers` 1 · `transfer_orders` 1 · `warehouses` 1.
+
+**Error / deletion state:** none observed. All 8 live indexes are enumerable and every one is a
+subset of the declared set, so nothing is orphaned or conflicting.
+
+*Limitation, stated rather than glossed:* `firebase firestore:indexes` exports index
+**configuration**, not build state — the output carries no `state` field. "No index in an error
+or deleting state" is therefore supported by the absence of unexpected or orphaned entries, not
+by a direct state read. Tranche 1 must confirm serving state through a channel that actually
+reports it.
+
+## Functions inventory
+
+| | |
+|---|---|
+| Live functions | **82** — all `us-central1`, all `nodejs22` |
+| Declared at runtime SHA | **84** |
+| `getAccountPortfolioSummary` | **Not live** — expected |
+| `listSalesOrderIndex` | **Not live** — expected |
+| `listSalesOrdersForAccount` | Live |
+| `listOpportunityContext` | Live |
+
+Runtime `nodejs22` matches `functions/package.json` engines. No callable is being removed or
+renamed.
+
+## Validation run at the runtime SHA
+
+Repository pinned to `b891fc68…` (detached) for these runs. Exit status checked directly, never
+inferred from output text.
+
+```
+npm test                        → exit 0   182 suites
+npx vitest run                  → exit 0   106 files / 1115 tests
+listIndexCoverage --check       → exit 0   33 demands / 38 indexes
+indexDriftGuard                 → exit 0
+environmentArchitecture         → exit 0
+functions build (tsc)           → exit 0
+```
+
+## Drift and stop conditions
+
+**None triggered.** Live sandbox state matches the promotion package in every reconciled
+dimension: index count and shape, functions inventory, activation overrides, Rules parity, and
+the served commit.
+
+## Stage
+
+Sandbox remains at **`cd442727`**. Nothing has been deployed. The promotion stays at **MERGED**.
