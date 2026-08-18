@@ -153,9 +153,18 @@ export const invoiceEntity = makeEntityDefinition({
       id: "dueDate",
       entityId: "invoice",
       label: "Due Date",
-      type: "NUMBER",
+      // DATE, NOT NUMBER — it is a date that happens to be STORED as ms epoch (invoiceCommands.ts's
+      // isInt guard), never a Firestore Timestamp. Typing it NUMBER made it a date claiming to be a
+      // plain number; DATE resolves through the same shared formatter as TIMESTAMP
+      // (listPresentation.js's cellValue -> domain/displayTimestamp.js's formatTimestamp), which
+      // already coerces an epoch-millisecond NUMBER, so no storage-shape change is implied. Not
+      // filtered or sorted by anywhere in this file (invoiceIndexList's own default sort is
+      // invoiceNumber DESC, and there are no declared filters) so this retype changes no FILTER/SORT
+      // meaning and demands no new composite index — requiredIndexes(invoiceIndexList, invoiceEntity)
+      // is confirmed still [] in the test file.
+      type: "DATE",
       sortable: true,
-      description: "Ms epoch, carried (not computed) at issuance — AR aging begins here. A plain number, never a Firestore Timestamp (invoiceCommands.ts's isInt guard).",
+      description: "Ms epoch, carried (not computed) at issuance — AR aging begins here. A plain number in storage, never a Firestore Timestamp (invoiceCommands.ts's isInt guard), but a DATE by kind — see cellValue's DATE/TIMESTAMP handling.",
     }),
     makeFieldDefinition({
       id: "issuedAt",
