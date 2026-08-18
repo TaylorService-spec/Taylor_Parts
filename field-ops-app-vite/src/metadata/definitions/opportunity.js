@@ -168,12 +168,25 @@ export const opportunityRelatedList = makeListViewDefinition({
  * server owns the query — so the usual index-cost argument does not apply here, and the
  * restraint is instead about what the callable actually supports: it filters by account,
  * and a stage filter is a claim the read service would have to keep.
+ *
+ * READS THROUGH ITS OWN readCallable, NOT THE ENTITY'S (X-ENTITY-SINGLE-READCALLABLE).
+ * `opportunityEntity.readCallable` above is the account-scoped `listOpportunitiesForAccount`
+ * — correct for the RELATED section under an Account, wrong here: an unscoped INDEX
+ * surface has no account to scope by. `listOpportunityContext`
+ * (functions/src/opportunity/opportunityReadService.ts) is the one governed Opportunity
+ * read that takes no parent-scope argument at all — registered UNSCOPED in
+ * `callableListSource.js`'s `CALLABLE_SOURCES` already, with its own tests — so declaring
+ * it here is the real callable, not an invented one. `validateListViewDefinition` checks
+ * this is a known, correctly-scoped (unscoped, matching this INDEX surface) callable on a
+ * CALLABLE-read entity; get any of those three wrong and validation fails loudly rather
+ * than at the first click.
  */
 export const opportunityIndexList = makeListViewDefinition({
   id: "opportunity.index",
   entityId: "opportunity",
   label: "Opportunities",
   surface: "INDEX",
+  readCallable: "listOpportunityContext",
   columns: [
     makeColumn({ fieldId: "opportunityNumber", sortable: true }),
     makeColumn({ fieldId: "accountId" }),

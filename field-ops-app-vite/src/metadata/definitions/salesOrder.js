@@ -192,6 +192,22 @@ export const salesOrderRelatedList = makeListViewDefinition({
  * State is the one declared filter, mirroring opportunity.index's stage filter for the same
  * reason: the callable this entity reads through is account-scoped, so a filter beyond what
  * listSalesOrdersForAccount actually supports would be a claim the read service cannot keep.
+ *
+ * DECLARES NO readCallable OVERRIDE (X-ENTITY-SINGLE-READCALLABLE) — UNLIKE
+ * opportunity.index. opportunity.index can name `listOpportunityContext` because that
+ * unscoped read genuinely exists and is registered in callableListSource.js. Its Sales
+ * Order equivalent does not: functions/src/salesOrder/salesOrderReadService.ts exports
+ * exactly two reads, `listSalesOrdersForAccount` (account-scoped — this entity's own
+ * `readCallable`, above) and `getSalesOrderContext` (a SINGLE order by id, not a list at
+ * all). There is no unscoped "every Sales Order this caller may see" callable to declare.
+ * Inventing one here — or pointing this at `listSalesOrdersForAccount` with no account —
+ * would either fail `validateListViewDefinition`'s scope check (a scoped callable on an
+ * INDEX surface, which never has a parent scope to give it) or, if that check were
+ * bypassed, throw on every real request. This list therefore still falls back to the
+ * entity's own `readCallable` — which is account-scoped and cannot serve an unscoped INDEX
+ * read either, so salesOrder.index remains genuinely unreachable until a real unscoped
+ * Sales Order read is built server-side and registered here. That gap is unchanged by this
+ * program's work; it is recorded, not closed.
  */
 export const salesOrderIndexList = makeListViewDefinition({
   id: "salesOrder.index",

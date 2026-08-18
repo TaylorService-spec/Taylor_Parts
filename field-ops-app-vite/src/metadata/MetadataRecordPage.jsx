@@ -260,13 +260,28 @@ function FieldGroup({ section, record, entity }) {
  * permanently, even one holding the real capability, because the read never had a chance
  * to succeed through the actual trusted path.
  */
-function selectListSource(entity) {
+// X-ENTITY-SINGLE-READCALLABLE: a list view MAY declare its own `readCallable` (
+// listViewDefinition.js), honored ahead of the entity's own. Today no RELATED list
+// declares one — the account-scoped callable a RELATED section needs IS the entity's own
+// `readCallable` — but a future RELATED list that legitimately needs a different scoped
+// callable than its entity's default now has a way to say so, and this resolver is where
+// both surfaces (this one and useMetadataList.js's identical copy) honor it. A list view
+// that declares nothing (`listDef?.readCallable` null/undefined, the default) falls
+// straight through to the entity's own value — a no-op for every RELATED section wired
+// before this field existed, including the Account page's Opportunities/Sales Orders
+// sections this file already renders.
+function resolveReadCallable(listDef, entity) {
+  return listDef?.readCallable || entity?.readCallable || null;
+}
+
+function selectListSource(entity, listDef) {
   if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
-  if (entity?.readVia === "CALLABLE" && entity.readCallable) return fetchCallablePage;
-  // UNKNOWN readVia, or CALLABLE with no readCallable declared: a misconfigured entity,
-  // never a live read to attempt. Returning null here (rather than falling back to
-  // `fetchFirestorePage`) is the fix — silently defaulting to Firestore is what would
-  // repeat the defect this module exists to close.
+  if (entity?.readVia === "CALLABLE" && resolveReadCallable(listDef, entity)) return fetchCallablePage;
+  // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor
+  // the entity declares one): a misconfigured entity, never a live read to attempt.
+  // Returning null here (rather than falling back to `fetchFirestorePage`) is the fix —
+  // silently defaulting to Firestore is what would repeat the defect this module exists to
+  // close.
   return null;
 }
 
@@ -297,7 +312,7 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
       setErrorStatus(errors?.length ? "unavailable" : null);
       return;
     }
-    const source = selectListSource(entity);
+    const source = selectListSource(entity, listDef);
     if (!source) {
       // Misconfigured — the entity's own `readVia` cannot be read at all (UNKNOWN, or
       // CALLABLE with no readCallable declared). Never falls through to
@@ -313,7 +328,16 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
       return;
     }
     setLoading(true);
-    source(descriptor, {})
+    // Re-stamped with the resolved readCallable for the same reason useMetadataList.js's
+    // load() does: buildQueryDescriptor (listRuntime.js, outside this file's write scope)
+    // always carries the ENTITY's readCallable, so a list view's override only reaches
+    // callableListSource.fetchPage if it is applied here. A no-op for CLIENT_DIRECT and
+    // for every RELATED section that declares nothing on its list view.
+    const effectiveDescriptor =
+      entity?.readVia === "CALLABLE"
+        ? Object.freeze({ ...descriptor, readCallable: resolveReadCallable(listDef, entity) })
+        : descriptor;
+    source(effectiveDescriptor, {})
       .then((page) => {
         if (token !== requestRef.current) return;
         setRows(page.rows);

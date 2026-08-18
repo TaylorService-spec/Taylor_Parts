@@ -76,15 +76,40 @@ const CALLABLE_SOURCES = Object.freeze({
   // needed — only the scope requirement differs.
   //
   // Listed here so a descriptor CAN be served honestly through this path the moment an
-  // entity/list definition declares this callable for an INDEX surface. No entity does
-  // yet: opportunity.js's own `readCallable` is the account-scoped
-  // "listOpportunitiesForAccount" (it is what the RELATED section under an Account needs),
-  // and an entity has exactly one declared `readCallable`, not one per surface. Wiring an
-  // INDEX list to read Opportunities honestly therefore needs a definition-level change —
-  // e.g. a second callable id an INDEX list can declare — which is outside this module's
-  // write scope. This module is ready for that day; it does not perform it.
+  // entity/list definition declares this callable. opportunity.js's ENTITY-level
+  // `readCallable` is still the account-scoped "listOpportunitiesForAccount" (an entity
+  // declares exactly one, and that is what the RELATED section under an Account needs) —
+  // but opportunity.index (definitions/opportunity.js) now declares its OWN `readCallable`
+  // of "listOpportunityContext" as a LIST-VIEW-level override (X-ENTITY-SINGLE-READCALLABLE,
+  // listViewDefinition.js's `readCallable`), which both useMetadataList.js and
+  // MetadataRecordPage.jsx's `selectListSource` resolve ahead of the entity's own value.
   listOpportunityContext: { listKey: "opportunities", scoped: false },
 });
+
+/**
+ * Whether `name` is a callable this module knows how to unwrap.
+ *
+ * Exported so `listViewDefinition.js` can validate a list view's declared `readCallable`
+ * AT DEFINITION TIME rather than letting an unrecognized name reach `fetchPage` and throw
+ * only when a user happens to open that list — the exact "checked nothing until runtime"
+ * defect X-UNCONSUMED-DECLARATION-PATTERN names. This module stays the single source of
+ * truth for what a callable is named and how it behaves; the validator asks it rather than
+ * keeping a second list that could drift.
+ */
+export function isKnownReadCallable(name) {
+  return typeof name === "string" && Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, name);
+}
+
+/**
+ * The scope/response-shape record for a known callable, or null. Exported for the same
+ * reason as `isKnownReadCallable` — `listViewDefinition.js` needs to know whether a
+ * callable a list view declares is `scoped` (requires a parent) so it can reject a RELATED
+ * list naming an unscoped callable, or an INDEX list naming a scoped one, before either
+ * ever reaches a live request.
+ */
+export function readCallableSourceInfo(name) {
+  return isKnownReadCallable(name) ? CALLABLE_SOURCES[name] : null;
+}
 
 /**
  * Fetch one page through a descriptor's declared `readCallable`.
@@ -132,6 +157,20 @@ export async function fetchPage(descriptor) {
   if (source.scoped && !scopeFilter) {
     throw new Error(
       `callableListSource: readCallable "${descriptor.readCallable}" requires a parent-scope filter and the descriptor has none`
+    );
+  }
+  // The other half of "scope must match": an UNSCOPED callable (listOpportunityContext)
+  // takes no parent-scope argument at all, so a scope filter arriving here — e.g. a
+  // RELATED descriptor whose list view mistakenly named an unscoped callable, or any
+  // future caller that hands this an unexpected filter — must not be silently smuggled
+  // into the payload. Silently forwarding it would read the WRONG rows (every row the
+  // caller's whole scope authorizes, not the parent-scoped set the RELATED section
+  // promises), which is worse than failing. Reject loudly instead of guessing which of the
+  // two the caller actually meant.
+  if (!source.scoped && scopeFilter) {
+    throw new Error(
+      `callableListSource: readCallable "${descriptor.readCallable}" is unscoped and cannot accept a parent-scope filter ` +
+        `(got "${scopeFilter.fieldId}") — an unscoped callable returns the caller's whole authorized scope`
     );
   }
 

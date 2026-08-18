@@ -412,3 +412,96 @@ test("more filters than the cap is a validation failure, not a bigger pile of in
     validateListViewDefinition(def, account()).some((p) => new RegExp(`more than ${MAX_DECLARED_FILTERS}`).test(p))
   );
 });
+
+// --- X-ENTITY-SINGLE-READCALLABLE: a list view's own readCallable override -----------
+//
+// A list view MAY declare its own `readCallable`, honored ahead of the entity's own
+// (useMetadataList.js / MetadataRecordPage.jsx). validateListViewDefinition is where a bad
+// declaration is caught -- at definition time, not the first time someone opens the list
+// (X-UNCONSUMED-DECLARATION-PATTERN).
+
+const callableEntity = (over = {}) =>
+  makeEntityDefinition({
+    id: "opportunity", label: "Opportunity", readVia: "CALLABLE",
+    readCallable: "listOpportunitiesForAccount", // the entity's own, account-scoped, default
+    identity: makeIdentity({ referenceField: "opportunityNumber" }),
+    fields: [makeFieldDefinition({ id: "opportunityNumber", entityId: "opportunity", label: "Number", type: "STRING", sortable: true })],
+    ...over,
+  });
+
+const relatedOnCallable = (over = {}) =>
+  makeListViewDefinition({
+    id: "account.opportunities", entityId: "opportunity", label: "Opportunities", surface: "RELATED",
+    parentRelationshipId: "account.opportunities", viewAllListId: "opportunity.index",
+    columns: [makeColumn({ fieldId: "opportunityNumber" })], pageSize: 10,
+    ...over,
+  });
+
+const indexOnCallable = (over = {}) =>
+  makeListViewDefinition({
+    id: "opportunity.index", entityId: "opportunity", label: "Opportunities", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "opportunityNumber" })], pageSize: 25,
+    ...over,
+  });
+
+const opportunityRelationships = [
+  makeRelationshipDefinition({
+    id: "account.opportunities", label: "Opportunities",
+    fromEntityId: "account", toEntityId: "opportunity",
+    viaField: "accountId", cardinality: "ONE_TO_MANY",
+  }),
+];
+
+test("no declared readCallable is fully additive — validates clean, same as before this field existed", () => {
+  assert.deepEqual(validateListViewDefinition(relatedOnCallable(), callableEntity(), opportunityRelationships), []);
+  assert.deepEqual(validateListViewDefinition(indexOnCallable(), callableEntity()), []);
+  // The default itself is null, not undefined or omitted -- resolveReadCallable in both
+  // consumers relies on this falling straight through to the entity's own value.
+  assert.equal(relatedOnCallable().readCallable, null);
+  assert.equal(indexOnCallable().readCallable, null);
+});
+
+test("a declared readCallable this module has never heard of is rejected at the definition, not at runtime", () => {
+  const def = indexOnCallable({ readCallable: "someTypoedCallableName" });
+  const p = validateListViewDefinition(def, callableEntity());
+  assert.ok(p.some((x) => /not a known callable/.test(x)));
+});
+
+test("a readCallable declared on a CLIENT_DIRECT entity is rejected — that entity never routes through a callable", () => {
+  const clientDirectEntity = makeEntityDefinition({
+    id: "account", label: "Customer", readVia: "CLIENT_DIRECT", collection: "accounts",
+    identity: makeIdentity({ nameField: "name" }),
+    fields: [makeFieldDefinition({ id: "name", entityId: "account", label: "Name", type: "STRING" })],
+  });
+  const def = makeListViewDefinition({
+    id: "account.index", entityId: "account", label: "Customers", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })], pageSize: 25,
+    readCallable: "listOpportunityContext",
+  });
+  const p = validateListViewDefinition(def, clientDirectEntity);
+  assert.ok(p.some((x) => /reads CLIENT_DIRECT/.test(x)));
+});
+
+test("a RELATED list declaring an UNSCOPED callable is rejected — a RELATED list always supplies a parent-scope filter", () => {
+  const def = relatedOnCallable({ readCallable: "listOpportunityContext" });
+  const p = validateListViewDefinition(def, callableEntity(), opportunityRelationships);
+  assert.ok(p.some((x) => /is unscoped, but a RELATED list always supplies a parent-scope/.test(x)));
+});
+
+test("an INDEX list declaring a SCOPED callable is rejected — an INDEX list never supplies a parent scope", () => {
+  const def = indexOnCallable({ readCallable: "listOpportunitiesForAccount" });
+  const p = validateListViewDefinition(def, callableEntity());
+  assert.ok(p.some((x) => /requires a parent-scope filter, but an INDEX list never supplies one/.test(x)));
+});
+
+test("an INDEX list declaring the REAL unscoped callable validates clean — the case opportunity.index actually uses", () => {
+  const def = indexOnCallable({ readCallable: "listOpportunityContext" });
+  assert.deepEqual(validateListViewDefinition(def, callableEntity()), []);
+});
+
+test("a RELATED list declaring a DIFFERENT scoped callable than the entity's own still validates clean", () => {
+  // Scope matches (both scoped); the point is the override is honored, not that it must
+  // equal the entity's own value.
+  const def = relatedOnCallable({ readCallable: "listSalesOrdersForAccount" });
+  assert.deepEqual(validateListViewDefinition(def, callableEntity(), opportunityRelationships), []);
+});

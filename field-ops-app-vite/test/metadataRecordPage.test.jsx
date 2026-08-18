@@ -693,6 +693,68 @@ describe("MetadataRecordPage", () => {
       expect(await screen.findByText(/do not have access to opportunities/i)).toBeTruthy();
       expect(screen.queryByText(/no opportunities yet/i)).toBeNull();
     });
+
+    // X-ENTITY-SINGLE-READCALLABLE — a list view's own readCallable, honored here exactly
+    // as useMetadataList.js honors it for the INDEX surface. `opportunitiesList` above
+    // declares nothing, and every test above it already proves that unchanged path; these
+    // prove the override itself reaches callableListSource.fetchPage rather than being
+    // silently dropped on the RELATED path specifically.
+    it("a list view's declared readCallable overrides the entity's own on the RELATED path too", async () => {
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Override Deal" }], hasMore: false, nextCursorDoc: null });
+      const overriddenList = makeListViewDefinition({
+        ...opportunitiesList,
+        readCallable: "listSalesOrdersForAccount", // deliberately a DIFFERENT known callable
+      });
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
+        fields: [nameField("opportunity")],
+      });
+      render(
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.opportunities.related" ? overriddenList : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+      expect(await screen.findByText("Override Deal")).toBeTruthy();
+      expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
+      const [descriptor] = fetchCallablePageMock.mock.calls[0];
+      expect(descriptor.readCallable).toBe("listSalesOrdersForAccount");
+    });
+
+    it("routes to the callable source when only the list view declares a readCallable and the entity's own is absent", async () => {
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "List-Only Deal" }], hasMore: false, nextCursorDoc: null });
+      const overriddenList = makeListViewDefinition({
+        ...opportunitiesList,
+        readCallable: "listOpportunitiesForAccount",
+      });
+      const opportunityEntity = makeEntityDefinition({
+        id: "opportunity",
+        label: "Opportunity",
+        readVia: "CALLABLE",
+        // readCallable intentionally omitted -- only the list view names one.
+        fields: [nameField("opportunity")],
+      });
+      render(
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            listResolver={(id) => (id === "account.opportunities.related" ? overriddenList : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+      expect(await screen.findByText("List-Only Deal")).toBeTruthy();
+      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── DEFECT 2 — rowNavigationTo had zero consumers ──────────────────────────────────

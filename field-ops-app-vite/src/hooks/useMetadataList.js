@@ -22,18 +22,33 @@ import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.j
 // not have an INDEX surface at all — it would report permission-denied to every caller,
 // including one genuinely holding the capability. See `selectListSource` below for the
 // exact dispatch and why it is duplicated here rather than imported from the page module.
-function selectListSource(entity) {
+// X-ENTITY-SINGLE-READCALLABLE: a list view MAY declare its own `readCallable`, honored
+// ahead of the entity's — an INDEX list reading a CALLABLE entity through the unscoped
+// callable its RELATED sibling cannot use (opportunity.index -> listOpportunityContext,
+// vs. the entity's own account-scoped listOpportunitiesForAccount). A list view that
+// declares nothing (`def.readCallable` null/undefined, the default `makeListViewDefinition`
+// produces) falls straight through to the entity's own value — the exact value
+// `buildQueryDescriptor` already put on the descriptor — so this is a no-op for every list
+// view that predates this field. Mirrors MetadataRecordPage.jsx's identical resolver
+// exactly, for the same X-UNCONSUMED-DECLARATION-PATTERN reason `selectListSource` below
+// duplicates that module's dispatch rather than importing it.
+function resolveReadCallable(def, entity) {
+  return def?.readCallable || entity?.readCallable || null;
+}
+
+function selectListSource(entity, def) {
   if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
-  if (entity?.readVia === "CALLABLE" && entity.readCallable) return fetchCallablePage;
-  // UNKNOWN readVia, or CALLABLE with no readCallable declared: a misconfigured entity,
-  // never a live read to attempt. Returning null here (rather than falling back to
-  // fetchFirestorePage) is the fix — silently defaulting to Firestore is what would repeat
-  // the exact defect this dispatch exists to close. Two routers reading the SAME entity
-  // field and disagreeing on what it means is this program's most-repeated defect, so this
-  // mirrors MetadataRecordPage.jsx's `selectListSource` shape and failure behavior exactly
-  // rather than inventing a second vocabulary. Not imported from that module: this hook's
-  // write scope does not include it, and a hook reaching into a page component would be a
-  // worse layering violation than duplicating a five-line dispatch.
+  if (entity?.readVia === "CALLABLE" && resolveReadCallable(def, entity)) return fetchCallablePage;
+  // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor
+  // the entity declares one): a misconfigured entity, never a live read to attempt.
+  // Returning null here (rather than falling back to fetchFirestorePage) is the fix —
+  // silently defaulting to Firestore is what would repeat the exact defect this dispatch
+  // exists to close. Two routers reading the SAME entity field and disagreeing on what it
+  // means is this program's most-repeated defect, so this mirrors MetadataRecordPage.jsx's
+  // `selectListSource` shape and failure behavior exactly rather than inventing a second
+  // vocabulary. Not imported from that module: this hook's write scope does not include
+  // it, and a hook reaching into a page component would be a worse layering violation than
+  // duplicating a five-line dispatch.
   return null;
 }
 
@@ -60,7 +75,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
     async ({ append }) => {
       if (!descriptor || !enabled) return;
       const token = (requestRef.current += 1);
-      const source = selectListSource(entity);
+      const source = selectListSource(entity, def);
       if (!source) {
         // Misconfigured entity (UNKNOWN readVia, or CALLABLE with no readCallable
         // declared) — never falls through to fetchFirestorePage, which is the exact
@@ -79,7 +94,19 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
       }
       setLoading(true);
       try {
-        const page = await source(descriptor, { cursorDoc: append ? cursorRef.current : null });
+        // The descriptor buildQueryDescriptor produced always carries the ENTITY's
+        // readCallable (listRuntime.js is outside this hook's write scope, so it cannot be
+        // taught the list view's override directly). Re-stamping it here with the resolved
+        // value — the list view's own if it declared one, otherwise the entity's,
+        // identical to what was already there — is what lets a declared override actually
+        // reach callableListSource.fetchPage instead of being silently ignored, without
+        // touching anything else buildQueryDescriptor decided (parent scope, sort, bound).
+        // A no-op for CLIENT_DIRECT and for every list view that declares nothing.
+        const effectiveDescriptor =
+          entity?.readVia === "CALLABLE"
+            ? Object.freeze({ ...descriptor, readCallable: resolveReadCallable(def, entity) })
+            : descriptor;
+        const page = await source(effectiveDescriptor, { cursorDoc: append ? cursorRef.current : null });
         if (token !== requestRef.current) return;
         setRows((prev) => (append ? [...prev, ...page.rows] : page.rows));
         setHasMore(page.hasMore);
@@ -98,7 +125,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         if (token === requestRef.current) setLoading(false);
       }
     },
-    [descriptor, enabled, entity]
+    [descriptor, enabled, entity, def]
   );
 
   useEffect(() => {

@@ -89,6 +89,16 @@ test("the related list demands no index of its own — a capped, unfiltered sect
   assert.deepEqual(requiredIndexes(salesOrderRelatedList, salesOrderEntity), []);
 });
 
+test("the index list declares no readCallable override — no unscoped Sales Order read exists to name (X-ENTITY-SINGLE-READCALLABLE)", () => {
+  // Unlike opportunity.index (which names the real, registered `listOpportunityContext`),
+  // salesOrderReadService.ts exports only an account-scoped list and a single-record read
+  // — no unscoped "every Sales Order this caller may see" callable. Declaring nothing here
+  // (falling back to the entity's account-scoped readCallable, which cannot serve an INDEX
+  // read either) is the honest choice; inventing a callable id would be a declaration
+  // nothing backs.
+  assert.equal(salesOrderIndexList.readCallable, null);
+});
+
 test("locationId is a REFERENCE to location, optional in storage, and adds no filter/sort/index demand", () => {
   // `location` is now a registered entity (definitions/location.js). Unlike
   // equipment.locationId, this collection is deny-all/callable-read, so there is no
