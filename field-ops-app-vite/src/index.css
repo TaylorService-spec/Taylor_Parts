@@ -2286,6 +2286,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-record-header, .fo-record-highlights, .fo-record-main, .fo-record-footer {
   min-width: 0; display: flex; flex-direction: column; gap: 16px;
 }
+
+/* Related-list row actions. The grid ships the class hooks; without these rules the
+   buttons stack at full width and the actions cell has no separation from the last data
+   column -- a metadata-rendered row must not be recognisable by its spacing. A disabled
+   action stays visible and readable rather than fading out of notice: it is deliberately
+   presented as unavailable-with-a-reason, not as absent. */
+.fo-list-grid-actions { display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
+.fo-list-grid-action[disabled] { opacity: 0.6; cursor: not-allowed; }
+.fo-list-grid:focus-visible { outline: 2px solid var(--fo-focus, #2563eb); outline-offset: 2px; }
 .fo-account-health { margin: 12px 0 18px; }
 .fo-stat-label { font-size: 0.85em; }
 .fo-stat-value { font-size: 1.15em; font-weight: 600; }
