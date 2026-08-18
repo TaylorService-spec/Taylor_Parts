@@ -7,10 +7,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateEntityDefinition, findField } from "../src/metadata/entityDefinition.js";
+import { validateEntityDefinition, validateEntityRegistry, findField } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
 import { truckEntity, truckIndexList } from "../src/metadata/definitions/truck.js";
 import { equipmentModelEntity, equipmentModelIndexList } from "../src/metadata/definitions/equipmentModel.js";
+import { mobileLocationEntity } from "../src/metadata/definitions/mobileLocation.js";
+import { warehouseEntity } from "../src/metadata/definitions/warehouse.js";
+import { employeeEntity } from "../src/metadata/definitions/employee.js";
+import { manufacturerEntity } from "../src/metadata/definitions/manufacturer.js";
 import { TRUCK_STATUS_OPTIONS } from "../src/domain/truckManagement.js";
 import { MODEL_STATUSES } from "../src/domain/equipmentModel.js";
 
@@ -57,10 +61,10 @@ test("truckId is declared as its own ID field, not promoted into identity", () =
   assert.notEqual(truckEntity.identity.referenceField, "truckId");
 });
 
-test("locationId is a plain ID, not a REFERENCE -- mobile_locations has no registered entity", () => {
+test("locationId is now a REFERENCE to the registered mobileLocation entity (A-DEFERRED-REFERENCE-UPGRADES)", () => {
   const locationId = findField(truckEntity, "locationId");
-  assert.equal(locationId.type, "ID");
-  assert.notEqual(locationId.type, "REFERENCE");
+  assert.equal(locationId.type, "REFERENCE");
+  assert.equal(locationId.referenceTo, "mobileLocation");
 });
 
 test("homeWarehouseId is a REFERENCE to the registered warehouse entity", () => {
@@ -227,4 +231,14 @@ test("EquipmentModel default sort is displayName ASC, tiebroken by __name__", ()
     [["displayName", "ASC"]]
   );
   assert.equal(equipmentModelIndexList.tiebreaker, "__name__");
+});
+
+// ---------------------------------------------------------------------------
+// Registry cross-validation (A-DEFERRED-REFERENCE-UPGRADES)
+// ---------------------------------------------------------------------------
+
+test("truck.locationId's REFERENCE resolves against the real registered set -- no unknown-entity problem", () => {
+  const registered = [truckEntity, mobileLocationEntity, warehouseEntity, employeeEntity, equipmentModelEntity, manufacturerEntity];
+  const problems = validateEntityRegistry(registered);
+  assert.deepEqual(problems, []);
 });
