@@ -82,25 +82,75 @@ export const FIELD_OPERATOR = Object.freeze([
 export const CARDINALITY = Object.freeze(["ONE_TO_MANY", "MANY_TO_ONE", "ONE_TO_ONE"]);
 
 /**
+ * IDENTITY MODES v1 (DECISIONS #106).
+ *
+ * Every entity resolves to exactly one of these. There is no fourth, implicit
+ * mode where "neither field is set" quietly means something — that ambiguity is
+ * exactly how a document id ends up as a label.
+ *
+ *   HUMAN_NAME         — the entity has a meaningful human-facing `nameField`.
+ *   BUSINESS_REFERENCE — the entity has a durable human-facing `referenceField`
+ *                         (WO-2026-000008, OPP-000123, SO-2026-000004).
+ *   SYSTEM_ONLY         — the entity is an internal/ledger/transactional record
+ *                         whose `recordId` is machine identity only. It has NO
+ *                         human-facing identity, and does not get one by
+ *                         declaring `recordId` as a display fallback.
+ */
+export const IDENTITY_MODE = Object.freeze(["HUMAN_NAME", "BUSINESS_REFERENCE", "SYSTEM_ONLY"]);
+
+/**
  * How a record identifies itself to a human.
  *
  * Recorded as first-class metadata because "the Firestore document id is the
- * label" is a defect this codebase has in at least six places today — Sales Order
- * detail titles itself with its own doc id, opportunities render as
- * 95kFz8WWgiSn2nU2O3Ml, and warehouse/supplier views fall back to `.id` when a
- * name is missing. A record page or list built from metadata must be able to ask
- * "what do I call this record" and get a real answer or an honest absence, rather
- * than silently degrading to a database key.
+ * label" is a defect this codebase has found and fixed FOUR separate times as a
+ * live `?? x.id` display fallback — Sales Order detail titled itself with its own
+ * doc id, opportunities rendered as 95kFz8WWgiSn2nU2O3Ml, and warehouse/supplier
+ * views fell back to `.id` when a name was missing. A record page or list built
+ * from metadata must be able to ask "what do I call this record" and get a real
+ * answer or an honest absence, rather than silently degrading to a database key.
  *
  *   nameField      — the human name a person types or reads (may be null)
  *   referenceField — the stable business reference (WO-2026-000008, OPP-000123)
+ *   mode           — the declared IDENTITY_MODE (optional — see resolveIdentityMode)
  *
- * At least one must be present. `documentId` is deliberately NOT an accepted
- * value: if an entity has neither, that is a data-model gap to record, not a
- * fallback to normalize.
+ * `documentId` / `recordId` is deliberately NOT an accepted value for nameField or
+ * referenceField: an entity that names itself only by its own machine id has a
+ * data-model gap to record, not a fallback to normalize. SYSTEM_ONLY is the
+ * explicit, deliberate way to say "this entity genuinely has none" — it is not
+ * what happens automatically when a definition forgets to name one.
  */
-export function makeIdentity({ nameField = null, referenceField = null } = {}) {
-  return Object.freeze({ nameField, referenceField });
+export function makeIdentity({ nameField = null, referenceField = null, mode = null } = {}) {
+  return Object.freeze({ nameField, referenceField, mode });
+}
+
+/**
+ * Resolve the effective IDENTITY_MODE for an identity, or `null` if it cannot be
+ * resolved at all (an omission — see the "no implicit mode" note below).
+ *
+ * DESIGN: mode is explicit-first, derived as a fallback, and SYSTEM_ONLY is NEVER
+ * derived — only ever reached by an author writing `mode: "SYSTEM_ONLY"` on
+ * purpose.
+ *
+ *   1. An explicitly declared `mode` always wins (including an invalid one —
+ *      `validateEntityDefinition` reports that separately so the error names the
+ *      actual mistake instead of masking it behind a derived guess).
+ *   2. Otherwise, if `nameField` is set, the mode is HUMAN_NAME. `nameField` wins
+ *      over `referenceField` when both are set, matching the same display-order
+ *      precedent used elsewhere for record identity (name, then reference) —
+ *      this keeps every pre-existing definition that supplies both fields (e.g.
+ *      Part) valid without having to retrofit an explicit `mode` everywhere.
+ *   3. Otherwise, if `referenceField` is set, the mode is BUSINESS_REFERENCE.
+ *   4. Otherwise the mode is UNRESOLVED (`null`) — this is the "genuinely forgot
+ *      to declare identity" case, and it must fail validation, not silently
+ *      resolve to SYSTEM_ONLY. That silent slide is the exact failure this
+ *      contract exists to prevent: it would let a real omission pass review
+ *      dressed up as a deliberate decision.
+ */
+export function resolveIdentityMode(identity) {
+  if (identity?.mode != null) return identity.mode;
+  if (identity?.nameField) return "HUMAN_NAME";
+  if (identity?.referenceField) return "BUSINESS_REFERENCE";
+  return null;
 }
 
 const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -205,12 +255,30 @@ export function validateEntityDefinition(entity) {
     problems.push(`${at}: readVia CLIENT_DIRECT requires a collection`);
   }
 
-  // Identity: a record must be able to name itself without exposing a database key.
+  // Identity: a record must be able to name itself without exposing a database key,
+  // and it must resolve to exactly one IDENTITY_MODE — no ambiguous implicit mode.
   const identity = entity?.identity;
-  if (!identity?.nameField && !identity?.referenceField) {
+  const identityMode = resolveIdentityMode(identity);
+
+  if (identity?.mode != null && !IDENTITY_MODE.includes(identity.mode)) {
+    problems.push(`${at}: identity.mode "${identity.mode}" is not a known IDENTITY_MODE`);
+  }
+
+  if (identityMode === null) {
     problems.push(
       `${at}: identity requires a nameField or a referenceField — an entity with neither cannot be labelled ` +
-        `without exposing its document id, which is a data-model gap to record, not a fallback to normalize`
+        `without exposing its document id, which is a data-model gap to record, not a fallback to normalize. ` +
+        `If this entity genuinely has no human-facing identity, declare identity.mode "SYSTEM_ONLY" explicitly`
+    );
+  } else if (identityMode === "HUMAN_NAME" && !identity?.nameField) {
+    problems.push(`${at}: identity.mode "HUMAN_NAME" requires a nameField`);
+  } else if (identityMode === "BUSINESS_REFERENCE" && !identity?.referenceField) {
+    problems.push(`${at}: identity.mode "BUSINESS_REFERENCE" requires a referenceField`);
+  } else if (identityMode === "SYSTEM_ONLY" && (identity?.nameField || identity?.referenceField)) {
+    problems.push(
+      `${at}: identity.mode "SYSTEM_ONLY" requires neither a nameField nor a referenceField — a SYSTEM_ONLY ` +
+        `entity has no human-facing identity at all, and a name/reference field here would just be recordId ` +
+        `wearing a disguise`
     );
   }
 
@@ -218,18 +286,31 @@ export function validateEntityDefinition(entity) {
   if (exec) problems.push(`${at}: executable value at "${exec}" — definitions are data, never code (boundary §8)`);
 
   const fieldIds = new Set();
+  const fieldsById = new Map();
   for (const field of entity?.fields ?? []) {
     problems.push(...validateFieldDefinition(field, entity));
     if (field?.id) {
       if (fieldIds.has(field.id)) problems.push(`${at}: duplicate field id "${field.id}"`);
       fieldIds.add(field.id);
+      fieldsById.set(field.id, field);
     }
   }
 
   // Identity fields must actually exist on the entity, or a renderer will ask for
-  // a field that isn't there and silently fall back to the id.
+  // a field that isn't there and silently fall back to the id. They must also not
+  // point at an ID-typed (machine identifier) field — that is the exact escape
+  // hatch that would let `recordId` re-enter as a disguised nameField/referenceField
+  // and become the display fallback DECISIONS #106 forbids, in ANY identity mode.
   for (const [key, ref] of [["nameField", identity?.nameField], ["referenceField", identity?.referenceField]]) {
-    if (ref && !fieldIds.has(ref)) problems.push(`${at}: identity.${key} "${ref}" is not a field on this entity`);
+    if (!ref) continue;
+    if (!fieldIds.has(ref)) {
+      problems.push(`${at}: identity.${key} "${ref}" is not a field on this entity`);
+    } else if (fieldsById.get(ref)?.type === "ID") {
+      problems.push(
+        `${at}: identity.${key} "${ref}" is an ID-typed field — a machine identifier is never valid human ` +
+          `display identity, in any IDENTITY_MODE (recordId must never become the display fallback)`
+      );
+    }
   }
 
   const relIds = new Set();
