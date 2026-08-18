@@ -416,3 +416,136 @@ later tranches, per the rollback policy.
 
 Hosting and Functions are untouched. `/version.json` still reports `cd442727`. The promotion
 remains **MERGED** for application runtime; only the index layer has advanced.
+
+---
+
+# Tranche 2 — Functions
+
+**Result: FAIL.** Deployment succeeded; **acceptance did not.** One of the two new callables is
+unhealthy. Stopped before Tranche 3. **No rollback performed** — see the reasoning below.
+
+## Timeline (UTC)
+
+| | |
+|---|---|
+| Build | exit 0 |
+| Deploy start | `2026-08-18T20:50:27Z` |
+| Deploy complete | `2026-08-18T20:53:41Z` (exit 0) |
+| Verification | `20:55Z – 21:0xZ` |
+
+Command: `firebase deploy --only functions --project eos-platform-sandbox --non-interactive --force`.
+Log header confirms `Deploying to 'eos-platform-sandbox'`. **84 successful create/update
+operations, no Hosting or Rules lines.**
+
+## A production-adjacency hazard found during reconfirmation
+
+`.firebaserc` is a **tracked repo file** declaring `"default": "taylor-parts"` — **production**.
+`firebase use` with no argument returns `taylor-parts`.
+
+Every command in Tranches 0–2 passed `--project eos-platform-sandbox` explicitly, and both deploy
+logs name the sandbox target, so nothing touched production. But **an unscoped `firebase deploy`
+in this repository deploys to production**, and the deploy instructions do not require the flag.
+
+Recorded as a standing hazard. Not remediated here: changing `.firebaserc` is a runtime-config
+change, and generating changes during deployment is forbidden.
+
+## Functions state
+
+| | |
+|---|---|
+| Live before | 82 (rollback baseline captured) |
+| Live after | **84** — all `ACTIVE` |
+| `getAccountPortfolioSummary` | **ACTIVE**, healthy — returns `200 keys=[summary]` |
+| `listSalesOrderIndex` | **ACTIVE**, **unhealthy** — returns `500 INTERNAL` |
+| Runtime | `nodejs22`, entry point correct, deployed `20:52:19Z` |
+
+## Authorization boundary — correct
+
+| Probe | Result |
+|---|---|
+| `listSalesOrderIndex`, no auth | **401 UNAUTHENTICATED** |
+| `getAccountPortfolioSummary`, no auth | **401 UNAUTHENTICATED** |
+| `listSalesOrderIndex`, technician persona | **403 PERMISSION_DENIED** |
+| `listSalesOrderIndex`, admin persona | reaches the query, then 500 |
+
+The capability gate works: least-privilege is denied, admin passes the gate. The failure is
+**after** authorization, in the read itself.
+
+## The failure
+
+`listSalesOrderIndex` returns `500 INTERNAL` with the message *"The Sales Order read is
+temporarily unavailable."* — for **every** shape tried:
+
+- unfiltered, `limit: 3` → 500
+- `state: "CONFIRMED"` → 500
+- `state: "CLOSED"` → 500
+- `limit: 9999` (clamp probe) → 500
+
+Invalid input is still rejected correctly (`state: "OPEN"` → `400 invalid-argument`, naming the
+unrecognised state), so argument validation is intact.
+
+### The root cause could not be determined from the environment
+
+**The callable's own catch block discards the error**:
+
+```ts
+} catch (err) {
+  if (err instanceof HttpsError) throw err;
+  throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
+}
+```
+
+No `logger` call, no `console.error`. Cloud Logging therefore contains the 500 request entries
+and the `Callable request verification passed` debug lines — **and no error message at all.**
+
+That is a diagnosability defect in its own right, and arguably the more important finding: a
+masked catch-all made a live 500 undiagnosable from logs. The user-facing message is honest
+about impact but carries nothing an operator can act on.
+
+### A hypothesis tested and disproved
+
+The first hypothesis was a missing composite index: the query orders
+`salesOrderNumber DESC` then `documentId() ASC` — mixed directions — while the only declared
+`sales_orders` composite is `(state ASC, salesOrderNumber DESC, __name__ ASC)`, which serves the
+**filtered** shape.
+
+That would explain the unfiltered failure. **It does not explain the filtered one**, which
+matches the declared index exactly and is now live and serving. Both fail identically, so a
+missing index is not a sufficient explanation. Recorded so the next lane does not re-run a
+disproved theory.
+
+Further black-box narrowing would require either a code change (forbidden during deployment) or
+Admin-SDK credentials (a boundary not to cross).
+
+## Regression assessment — none observed
+
+| Callable | Result |
+|---|---|
+| `listSalesOrdersForAccount` (account-scoped read) | **200** — unchanged |
+| `listOpportunityContext` | **200**, 8 rows |
+| `getAvailableEquipment`, `listCoordinatedOperations`, `getLocationDisplay` | **403** governed denial |
+
+The 403s are fail-closed capability denials, not errors. **Honest limitation:** no pre-deploy
+behavioural baseline was captured for those three, so "unchanged" is asserted only for the two
+with before-and-after evidence.
+
+## Why no rollback
+
+The rollback trigger is a **material regression**. There is none:
+
+- No pre-existing callable regressed.
+- One new callable works.
+- The broken callable is **not reachable from any UI** — Hosting is not deployed, so nothing
+  calls it.
+
+Rolling back would revert 82 healthy function updates and remove a working new callable in order
+to fix nothing. The 82-function rollback baseline is captured and available if that judgement is
+overridden.
+
+## Stage
+
+Functions: **DEPLOYED** at the promotion SHA, one callable unhealthy.
+Hosting: untouched — `/version.json` still reports `cd442727`.
+Tranche 3 **not** started.
+
+Any fix must enter the normal reviewed workflow and produce a **new promotion identity**.
