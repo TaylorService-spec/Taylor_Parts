@@ -2829,6 +2829,41 @@
       ]
     },
     {
+      "id": "X-PROCUREMENT-ENTITIES-NO-IDENTITY",
+      "phase": "6",
+      "wave": "3",
+      "kind": "PROTECTED_ACTION",
+      "title": "ReceivingOrder and ReorderRequest have no labelable identity -- definitions held, not merged",
+      "domain": "inventory",
+      "status": "BLOCKED_PROTECTED",
+      "branch": "feat/entity-procurement-definitions",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Owner decision: do procurement records get business references? Four entities now wait on it.",
+      "blockers": [
+        {
+          "reason": "Both definitions are complete and BOTH FAIL validateEntityDefinition with the same problem: identity requires a nameField or a referenceField and neither has either. No server-allocated reference exists (no allocate*Number anywhere) and no human-typed name field exists. Verified at integration by running the validator directly, not taken from the handoff.",
+          "requiredDecision": "Whether procurement records -- receiving orders and reorder requests -- get business reference numbers, and if so in what family. This is the SAME decision already blocking Transfer Order and Inventory Transaction. Four entities now wait on one numbering question, which is worth deciding once rather than four times."
+        }
+      ],
+      "notes": "Held on the X-TRANSFER-ORDER-NO-REFERENCE / X-INVENTORY-TRANSACTION-NO-IDENTITY precedent: merging a definition that fails its own contract would make the contract weaker than the comment inside it. The files are COMPLETE and preserved on their branch; the lane asserted the validation failure verbatim in its own tests rather than papering over it, which is the correct behaviour. Two substantive findings preserved with them: (1) reorder_requests.status has NINE legal values, not the ten in REORDER_REQUEST_STATUS -- 'APPROVED' appears exactly once in firestore.rules and it is on reviewDecision, a separate two-value enum, never on status; (2) reorderRequest provenance is PER-TRANSITION rather than generic -- createdAt/requestedBy at creation, then each of eight later transitions stamps its own actor+timestamp pair, with no updatedAt/updatedBy anywhere. receivingOrder's updatedAt/updatedBy exist but always equal the created pair, because its repository only ever creates: append-only in practice, recorded rather than omitted. readVia: reorderRequest CLIENT_DIRECT (Rules gate by role, no capability evaluated); receivingOrder UNKNOWN, not CALLABLE -- Rules are deny-all and NO function anywhere reads a receiving_orders document back, so no honest readCallable could be named."
+    },
+    {
+      "id": "X-ENTITIES-WITHOUT-IDENTITY-PATTERN",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "Four entities have no labelable identity, all waiting on one numbering decision",
+      "domain": "metadata",
+      "status": "COMPLETE",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None. Recorded so the four are decided together rather than one at a time.",
+      "notes": "Transfer Order, Inventory Transaction, Receiving Order and Reorder Request all have complete, authored definitions that FAIL validateEntityDefinition on the same clause: an entity with neither a nameField nor a referenceField cannot be labelled without exposing its document id. Each was held rather than normalised. The pattern is not incidental -- all four are OPERATIONAL/LEDGER records rather than party or catalog records, and this system numbers the things people talk about (WO-, OPP-, SO-, INV-) while leaving the things the system does to itself unnumbered. That is a coherent position, not an oversight; but it means those records cannot appear in any surface that lists them by identity, which is exactly what the metadata program needs. The decision is one question, not four: do internal operational records get references, or is the answer that they are never listed by identity and every surface showing them must lead with a joined parent's name? Deciding it four separate times would risk four different answers."
+    },
+    {
       "id": "A-ENTITY-FLEET-CATALOG-DEFINITIONS",
       "phase": "6",
       "wave": "3",
