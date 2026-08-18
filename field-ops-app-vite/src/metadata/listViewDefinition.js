@@ -94,12 +94,85 @@ export function makeColumn(input = {}) {
   });
 }
 
-/** A declared, indexed filter. `operators` must be a subset of the field's own. */
+/**
+ * Text-query operators (X-QUERY-MODEL-NO-FREE-TEXT).
+ *
+ * FIELD_OPERATOR (entityDefinition.js) has no free-text member, and that is
+ * deliberate — it is a claim about a STRUCTURED backend predicate (equality, range,
+ * membership, array containment), and "search this string" is a different kind of
+ * claim with a different execution story per operator. This vocabulary exists
+ * SEPARATELY from FIELD_OPERATOR so a field's own `operators` (checked against
+ * FIELD_OPERATOR by entityDefinition.js's own validator) never has to widen to
+ * include it — a list-level filter opts into a text operator explicitly, the field
+ * does not have to declare it, and nothing here touches entityDefinition.js.
+ *
+ *   TEXT_EXACT     — exact string match. Behaves as an equality predicate; kept as
+ *                    a distinct semantic (not aliased to EQUALS) because a surface
+ *                    that asks for it is asking for TEXT search UX (a search box),
+ *                    not a structured equality filter, even though today's only
+ *                    backend serves both identically.
+ *   TEXT_PREFIX    — "starts with". A range scan on the field's natural ordering.
+ *   TEXT_CONTAINS  — substring anywhere in the field. NOT a range or equality
+ *                    predicate — no ordered scan produces it.
+ *   TEXT_SEARCH    — multi-term / relevance-ranked search. NOT a Firestore
+ *                    predicate at all; this is what a real search backend is for.
+ *
+ * Substring and prefix are different product semantics, not a quality gradient
+ * (Owner ruling, this lane). TEXT_CONTAINS must never be served by silently running
+ * TEXT_PREFIX instead — see `TEXT_BACKEND_CAPABILITY` and the validation below.
+ */
+export const TEXT_QUERY_OPERATOR = Object.freeze(["TEXT_EXACT", "TEXT_PREFIX", "TEXT_CONTAINS", "TEXT_SEARCH"]);
+
+/**
+ * Text-search backends a filter may name. Today there is exactly one, because that
+ * is the only backend that exists — see `TEXT_BACKEND_CAPABILITY`'s doc comment and
+ * docs/orchestration/metadata-program/text-search-backend-seam.md for the seam a
+ * future provider (e.g. a hosted search index) must satisfy before it is added
+ * here. Adding a name to this array is what "the backend exists" means; nothing
+ * else in this module may be edited to make a provider real.
+ */
+export const TEXT_QUERY_BACKEND = Object.freeze(["FIRESTORE_NATIVE"]);
+
+/**
+ * What each named backend can execute HONESTLY, at enterprise scale, today.
+ *
+ * THE POINT OF THIS LANE: declaring an operator in TEXT_QUERY_OPERATOR does not
+ * make it executable. A filter naming a text operator its named backend cannot
+ * serve is rejected at validation (`validateListViewDefinition` below) — loudly,
+ * at definition time — never silently downgraded to a semantic the backend can
+ * serve and never left to fail at paint time in front of a user.
+ *
+ * FIRESTORE_NATIVE can serve TEXT_EXACT (a plain equality query) and TEXT_PREFIX
+ * (a range query: `field >= value AND field < value + ''`). It cannot serve
+ * TEXT_CONTAINS or TEXT_SEARCH — Firestore has no substring or relevance-search
+ * predicate, only prefix ranges over an ordered index, and pretending otherwise is
+ * exactly the "browser downloads the whole collection and filters client-side"
+ * failure mode §9 exists to forbid (X-QUERY-MODEL-NO-FREE-TEXT).
+ */
+export const TEXT_BACKEND_CAPABILITY = Object.freeze({
+  FIRESTORE_NATIVE: Object.freeze(["TEXT_EXACT", "TEXT_PREFIX"]),
+});
+
+/** True if `backend` can honestly execute text `operator` today. Used by the validator; exported so a caller can ask the same question before authoring a filter. */
+export function supportsTextOperator(backend, operator) {
+  return (TEXT_BACKEND_CAPABILITY[backend] ?? []).includes(operator);
+}
+
+/**
+ * A declared, indexed filter. `operators` must be a subset of the field's own —
+ * UNLESS an operator is a TEXT_QUERY_OPERATOR, which a field never declares (see
+ * that vocabulary's doc comment). A filter that declares a text operator MUST also
+ * declare `textBackend`: naming the backend is how a surface "explicitly supports
+ * the requested semantic" (Owner ruling) instead of merely wishing for it. `null`
+ * (the default) means "no text operator here" — the additive case every existing
+ * filter falls into, unchanged from before this field existed.
+ */
 export function makeFilter(input = {}) {
   return Object.freeze({
     fieldId: input.fieldId,
     operators: Object.freeze([...(input.operators ?? [])]),
     required: input.required ?? false,
+    textBackend: input.textBackend ?? null,
   });
 }
 
@@ -278,7 +351,38 @@ export function validateListViewDefinition(def, entity, relationships = []) {
       );
     }
     if (!f.operators?.length) problems.push(`${at}: filter "${f.fieldId}" declares no operators`);
+    const hasTextOperator = (f.operators ?? []).some((op) => TEXT_QUERY_OPERATOR.includes(op));
     for (const op of f.operators ?? []) {
+      // TEXT_* operators are a SEPARATE vocabulary from FIELD_OPERATOR (see
+      // TEXT_QUERY_OPERATOR's doc comment) — a field never declares one in its own
+      // `operators`, so the "list may narrow, never widen" check below does not apply
+      // to them. What DOES apply, and is the entire point of this lane: a text
+      // operator is only valid when the filter names a `textBackend` that can
+      // honestly execute it (X-QUERY-MODEL-NO-FREE-TEXT). Unsupported means REJECTED
+      // HERE, at validation — never silently downgraded, never left to fail later.
+      if (TEXT_QUERY_OPERATOR.includes(op)) {
+        if (!f.textBackend) {
+          problems.push(
+            `${at}: filter "${f.fieldId}" declares text operator "${op}" but no textBackend — declaring a text ` +
+              `operator does not make it executable; name the backend that will serve it (see TEXT_QUERY_BACKEND)`
+          );
+          continue;
+        }
+        if (!TEXT_QUERY_BACKEND.includes(f.textBackend)) {
+          problems.push(`${at}: filter "${f.fieldId}" declares textBackend "${f.textBackend}", which is not a known TEXT_QUERY_BACKEND`);
+          continue;
+        }
+        if (!supportsTextOperator(f.textBackend, op)) {
+          const supported = TEXT_BACKEND_CAPABILITY[f.textBackend] ?? [];
+          problems.push(
+            `${at}: filter "${f.fieldId}" declares text operator "${op}" against backend "${f.textBackend}", which ` +
+              `cannot execute it honestly at enterprise scale — ${f.textBackend} supports [${supported.join(", ")}] only. ` +
+              `Substring and prefix are different product semantics, not a quality gradient: this is rejected rather ` +
+              `than silently served as a narrower search. See docs/orchestration/metadata-program/text-search-backend-seam.md.`
+          );
+        }
+        continue;
+      }
       if (!FIELD_OPERATOR.includes(op)) { problems.push(`${at}: filter "${f.fieldId}" operator "${op}" is unknown`); continue; }
       if (!field.operators.includes(op)) {
         problems.push(
@@ -286,6 +390,9 @@ export function validateListViewDefinition(def, entity, relationships = []) {
             `a list may narrow a field's operators, never widen them`
         );
       }
+    }
+    if (!hasTextOperator && f.textBackend) {
+      problems.push(`${at}: filter "${f.fieldId}" declares textBackend "${f.textBackend}" but no text operator — textBackend is meaningless without one`);
     }
   }
 
@@ -384,11 +491,28 @@ export const MAX_DECLARED_FILTERS = 4;
 const RANGE_OPERATORS = ["GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL"];
 const ARRAY_OPERATORS = ["ARRAY_CONTAINS", "ARRAY_CONTAINS_ANY"];
 
+// Index-derivation impact of the text vocabulary (X-QUERY-MODEL-NO-FREE-TEXT):
+//   TEXT_EXACT    behaves as EQUALITY — same composite-index math as EQUALS.
+//   TEXT_PREFIX   behaves as RANGE — a prefix scan is a range scan on the field's
+//                 own ordering, same composite-index math as GREATER_THAN et al.
+//   TEXT_CONTAINS / TEXT_SEARCH classify as EXTERNAL. A definition can only declare
+//                 these when `validateListViewDefinition` has already accepted the
+//                 filter (i.e. never, today — no backend can serve them, see
+//                 TEXT_BACKEND_CAPABILITY), so in practice an EXTERNAL filter never
+//                 reaches a VALID definition. Classified anyway, and excluded below,
+//                 so that IF a future backend is added to TEXT_QUERY_BACKEND for one
+//                 of these, requiredIndexes() does not start demanding a Firestore
+//                 composite index for a predicate Firestore was never asked to run —
+//                 that backend owns its own indexing, not firestore.indexes.json.
+const TEXT_RANGE_OPERATORS = ["TEXT_PREFIX"];
+const TEXT_EXTERNAL_OPERATORS = ["TEXT_CONTAINS", "TEXT_SEARCH"];
+
 const classify = (filter) => {
   const ops = filter.operators ?? [];
+  if (ops.some((o) => TEXT_EXTERNAL_OPERATORS.includes(o))) return "EXTERNAL";
   if (ops.some((o) => ARRAY_OPERATORS.includes(o))) return "ARRAY";
-  if (ops.some((o) => RANGE_OPERATORS.includes(o))) return "RANGE";
-  return "EQUALITY";
+  if (ops.some((o) => RANGE_OPERATORS.includes(o) || TEXT_RANGE_OPERATORS.includes(o))) return "RANGE";
+  return "EQUALITY"; // includes TEXT_EXACT — an exact-match text query is an equality predicate
 };
 
 /** Every subset of a list, declaration order preserved. */

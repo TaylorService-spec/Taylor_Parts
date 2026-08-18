@@ -11,7 +11,32 @@ import {
   LIST_SURFACE, SORT_DIRECTION, MAX_PAGE_SIZE, MAX_RELATED_ROWS,
   makeColumn, makeFilter, makeSort, makeSavedView, makeListViewDefinition,
   validateListViewDefinition, requiredIndexes, indexKey, missingIndexes, firestoreOrder, MAX_DECLARED_FILTERS,
+  TEXT_QUERY_OPERATOR, TEXT_QUERY_BACKEND, TEXT_BACKEND_CAPABILITY, supportsTextOperator,
 } from "../src/metadata/listViewDefinition.js";
+
+// Every real registered definition, imported by module rather than by hand-built
+// fixture (X-QUERY-MODEL-NO-FREE-TEXT's additivity requirement: prove the change
+// against what is actually registered, not a shape convenient for the test).
+import * as accountDefs from "../src/metadata/definitions/account.js";
+import * as contactDefs from "../src/metadata/definitions/contact.js";
+import * as employeeDefs from "../src/metadata/definitions/employee.js";
+import * as equipmentDefs from "../src/metadata/definitions/equipment.js";
+import * as equipmentModelDefs from "../src/metadata/definitions/equipmentModel.js";
+import * as invoiceDefs from "../src/metadata/definitions/invoice.js";
+import * as locationDefs from "../src/metadata/definitions/location.js";
+import * as manufacturerDefs from "../src/metadata/definitions/manufacturer.js";
+import * as mobileLocationDefs from "../src/metadata/definitions/mobileLocation.js";
+import * as opportunityDefs from "../src/metadata/definitions/opportunity.js";
+import * as partDefs from "../src/metadata/definitions/part.js";
+import * as paymentDefs from "../src/metadata/definitions/payment.js";
+import * as purchaseOrderDefs from "../src/metadata/definitions/purchaseOrder.js";
+import * as salesOrderDefs from "../src/metadata/definitions/salesOrder.js";
+import * as salesTerritoryDefs from "../src/metadata/definitions/salesTerritory.js";
+import * as stockLocationDefs from "../src/metadata/definitions/stockLocation.js";
+import * as supplierDefs from "../src/metadata/definitions/supplier.js";
+import * as truckDefs from "../src/metadata/definitions/truck.js";
+import * as warehouseDefs from "../src/metadata/definitions/warehouse.js";
+import * as workOrderDefs from "../src/metadata/definitions/workOrder.js";
 
 const field = (id, extra = {}) =>
   makeFieldDefinition({ id, entityId: "account", label: id.toUpperCase(), type: "STRING", ...extra });
@@ -517,4 +542,231 @@ test("a RELATED list declaring a DIFFERENT scoped callable than the entity's own
   // equal the entity's own value.
   const def = relatedOnCallable({ readCallable: "listSalesOrdersForAccount" });
   assert.deepEqual(validateListViewDefinition(def, callableEntity(), opportunityRelationships), []);
+});
+
+// --- X-QUERY-MODEL-NO-FREE-TEXT: text-query operators -------------------------------
+//
+// The ruling this lane implements: extending the vocabulary to distinguish text
+// operations is authorized, but DECLARING A TEXT OPERATOR DOES NOT MAKE IT
+// EXECUTABLE. Each filter that wants one must also name a `textBackend`, and the
+// validator rejects the combination if that backend cannot honestly serve the
+// semantic — loudly, at definition time, never as a silent downgrade and never left
+// to fail at paint time.
+
+const textEntity = () => makeEntityDefinition({
+  id: "widget", label: "Widget", collection: "widgets", readVia: "CLIENT_DIRECT",
+  identity: makeIdentity({ nameField: "name" }),
+  fields: [
+    makeFieldDefinition({ id: "name", entityId: "widget", label: "Name", type: "STRING", filterable: true, sortable: true, operators: ["EQUALS"] }),
+    makeFieldDefinition({ id: "description", entityId: "widget", label: "Description", type: "STRING", filterable: true, sortable: true }),
+  ],
+});
+
+const textList = (filterOverrides = {}) => makeListViewDefinition({
+  id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+  columns: [makeColumn({ fieldId: "name" })],
+  defaultSort: [makeSort({ fieldId: "name" })],
+  tiebreaker: "__name__",
+  pageSize: 25,
+  filters: [makeFilter({ fieldId: "name", operators: ["TEXT_EXACT"], textBackend: "FIRESTORE_NATIVE", ...filterOverrides })],
+});
+
+test("TEXT_QUERY_OPERATOR and TEXT_QUERY_BACKEND are frozen enums", () => {
+  assert.ok(Object.isFrozen(TEXT_QUERY_OPERATOR));
+  assert.deepEqual([...TEXT_QUERY_OPERATOR], ["TEXT_EXACT", "TEXT_PREFIX", "TEXT_CONTAINS", "TEXT_SEARCH"]);
+  assert.ok(Object.isFrozen(TEXT_QUERY_BACKEND));
+  assert.deepEqual([...TEXT_QUERY_BACKEND], ["FIRESTORE_NATIVE"]);
+});
+
+test("TEXT_EXACT against FIRESTORE_NATIVE validates clean — an exact match is a real equality query", () => {
+  assert.deepEqual(validateListViewDefinition(textList(), textEntity()), []);
+  assert.ok(supportsTextOperator("FIRESTORE_NATIVE", "TEXT_EXACT"));
+});
+
+test("TEXT_PREFIX against FIRESTORE_NATIVE validates clean — a prefix range query is real today", () => {
+  const def = textList({ operators: ["TEXT_PREFIX"] });
+  assert.deepEqual(validateListViewDefinition(def, textEntity()), []);
+  assert.ok(supportsTextOperator("FIRESTORE_NATIVE", "TEXT_PREFIX"));
+});
+
+test("TEXT_CONTAINS against FIRESTORE_NATIVE is REJECTED at validation — Firestore has no substring predicate", () => {
+  const def = textList({ operators: ["TEXT_CONTAINS"] });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.length > 0, "an unsupported text operator must fail validation, not pass silently");
+  assert.ok(p.some((x) => /cannot execute it honestly/.test(x) && /TEXT_CONTAINS/.test(x)));
+  assert.ok(!supportsTextOperator("FIRESTORE_NATIVE", "TEXT_CONTAINS"));
+});
+
+test("TEXT_SEARCH against FIRESTORE_NATIVE is REJECTED at validation — no relevance-ranked backend exists yet", () => {
+  const def = textList({ operators: ["TEXT_SEARCH"] });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.some((x) => /cannot execute it honestly/.test(x) && /TEXT_SEARCH/.test(x)));
+  assert.ok(!supportsTextOperator("FIRESTORE_NATIVE", "TEXT_SEARCH"));
+});
+
+test("a text operator with no textBackend is REJECTED — declaring the operator alone is not enough", () => {
+  const def = textList({ textBackend: null });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.some((x) => /declares text operator "TEXT_EXACT" but no textBackend/.test(x)));
+});
+
+test("a textBackend nobody has heard of is REJECTED, not silently accepted", () => {
+  const def = textList({ textBackend: "SOME_FUTURE_SEARCH_VENDOR" });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.some((x) => /is not a known TEXT_QUERY_BACKEND/.test(x)));
+});
+
+test("a textBackend declared with no text operator is REJECTED — meaningless without one", () => {
+  const def = makeListViewDefinition({
+    id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    defaultSort: [makeSort({ fieldId: "name" })],
+    tiebreaker: "__name__",
+    pageSize: 25,
+    filters: [makeFilter({ fieldId: "name", operators: ["EQUALS"], textBackend: "FIRESTORE_NATIVE" })],
+  });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.some((x) => /declares textBackend "FIRESTORE_NATIVE" but no text operator/.test(x)));
+});
+
+test("NO SILENT DOWNGRADE: an unsupported TEXT_CONTAINS filter never validates clean by any route, including alongside a supported operator", () => {
+  // Declaring TEXT_CONTAINS next to a supported TEXT_PREFIX on the same filter must
+  // not let the supported operator's success paper over the unsupported one — each
+  // operator is judged on its own.
+  const def = textList({ operators: ["TEXT_PREFIX", "TEXT_CONTAINS"] });
+  const p = validateListViewDefinition(def, textEntity());
+  assert.ok(p.some((x) => /TEXT_CONTAINS/.test(x) && /cannot execute it honestly/.test(x)));
+  // And critically: the rejection message never mentions serving it AS TEXT_PREFIX —
+  // there is no downgrade path, only a rejection.
+  assert.ok(!p.some((x) => /TEXT_CONTAINS/.test(x) && /as TEXT_PREFIX/i.test(x)));
+});
+
+test("a text filter still requires the field to be filterable — the generic promise-keeping rule is not bypassed by text operators", () => {
+  const entity = makeEntityDefinition({
+    id: "widget", label: "Widget", collection: "widgets", readVia: "CLIENT_DIRECT",
+    identity: makeIdentity({ nameField: "name" }),
+    fields: [makeFieldDefinition({ id: "name", entityId: "widget", label: "Name", type: "STRING" })], // filterable defaults false
+  });
+  const p = validateListViewDefinition(textList(), entity);
+  assert.ok(p.some((x) => /not declared filterable/.test(x)));
+});
+
+test("a text operator is not FIELD_OPERATOR and does not require the field to have declared it — a field never widens to text", () => {
+  // widget.name only declares ["EQUALS"] in its own field.operators, yet TEXT_EXACT on
+  // the same field validates clean: text operators are a list-level opt-in, not a claim
+  // the field itself makes.
+  assert.deepEqual(validateListViewDefinition(textList(), textEntity()), []);
+});
+
+// --- Index-derivation impact of text operators ---------------------------------------
+
+test("TEXT_EXACT participates in composite-index derivation exactly like EQUALS", () => {
+  const equalsDef = makeListViewDefinition({
+    id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    defaultSort: [makeSort({ fieldId: "name" })],
+    tiebreaker: "__name__",
+    pageSize: 25,
+    filters: [makeFilter({ fieldId: "description", operators: ["EQUALS"], required: true })],
+  });
+  const textExactDef = makeListViewDefinition({
+    id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    defaultSort: [makeSort({ fieldId: "name" })],
+    tiebreaker: "__name__",
+    pageSize: 25,
+    filters: [makeFilter({ fieldId: "description", operators: ["TEXT_EXACT"], textBackend: "FIRESTORE_NATIVE", required: true })],
+  });
+  const entity = textEntity();
+  const equalsIndexes = requiredIndexes(equalsDef, entity).map(indexKey);
+  const textIndexes = requiredIndexes(textExactDef, entity).map(indexKey);
+  assert.deepEqual(textIndexes, equalsIndexes);
+  assert.ok(equalsIndexes.length > 0);
+});
+
+test("TEXT_PREFIX participates in composite-index derivation exactly like a range operator (GREATER_OR_EQUAL)", () => {
+  const rangeDef = makeListViewDefinition({
+    id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    defaultSort: [makeSort({ fieldId: "name" })],
+    tiebreaker: "__name__",
+    pageSize: 25,
+    filters: [makeFilter({ fieldId: "description", operators: ["GREATER_OR_EQUAL"], required: true })],
+  });
+  const prefixDef = makeListViewDefinition({
+    id: "widget.index", entityId: "widget", label: "Widgets", surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    defaultSort: [makeSort({ fieldId: "name" })],
+    tiebreaker: "__name__",
+    pageSize: 25,
+    filters: [makeFilter({ fieldId: "description", operators: ["TEXT_PREFIX"], textBackend: "FIRESTORE_NATIVE", required: true })],
+  });
+  const entity = textEntity();
+  const rangeIndexes = requiredIndexes(rangeDef, entity).map(indexKey);
+  const prefixIndexes = requiredIndexes(prefixDef, entity).map(indexKey);
+  assert.deepEqual(prefixIndexes, rangeIndexes);
+  assert.ok(rangeIndexes.length > 0);
+});
+
+test("requiredIndexes derivation for TEXT_EXACT/TEXT_PREFIX is unaffected: no new index shape, no code path skipped", () => {
+  // Documents plainly which text operators need a Firestore index at all: TEXT_EXACT and
+  // TEXT_PREFIX do (they run as real Firestore predicates), TEXT_CONTAINS/TEXT_SEARCH
+  // never reach requiredIndexes() with a valid definition because no backend can serve
+  // them yet (asserted above) -- there is nothing to derive an index for.
+  const def = textList(); // TEXT_EXACT
+  assert.ok(requiredIndexes(def, textEntity()).length >= 0); // does not throw; shape covered above
+});
+
+// --- Additivity: every REAL registered definition still validates exactly as before -
+//
+// The Owner ruling's additive requirement: prove this against the real registered
+// definitions, not a fixture built to be convenient. Every *Entity/*List export across
+// src/metadata/definitions/ is collected below and cross-validated exactly as the
+// runtime would, with every entity's own relationships pooled as the third argument
+// (mirrors how RELATED lists actually resolve their parent edge).
+
+function collectDefinitions(...modules) {
+  const entities = [];
+  const lists = [];
+  for (const mod of modules) {
+    for (const [key, value] of Object.entries(mod)) {
+      if (!value || typeof value !== "object") continue;
+      if (key.endsWith("Entity") && value.fields && value.id) entities.push(value);
+      else if (key.endsWith("List") && value.surface && value.entityId) lists.push(value);
+    }
+  }
+  return { entities, lists };
+}
+
+const { entities: realEntities, lists: realLists } = collectDefinitions(
+  accountDefs, contactDefs, employeeDefs, equipmentDefs, equipmentModelDefs, invoiceDefs,
+  locationDefs, manufacturerDefs, mobileLocationDefs, opportunityDefs, partDefs, paymentDefs,
+  purchaseOrderDefs, salesOrderDefs, salesTerritoryDefs, stockLocationDefs, supplierDefs,
+  truckDefs, warehouseDefs, workOrderDefs
+);
+
+const allRelationships = realEntities.flatMap((e) => e.relationships ?? []);
+
+test("sanity: real definitions were actually collected (a broken import would otherwise pass 0 tests silently)", () => {
+  assert.ok(realEntities.length >= 15, `expected at least 15 real entities, found ${realEntities.length}`);
+  assert.ok(realLists.length >= 15, `expected at least 15 real list views, found ${realLists.length}`);
+});
+
+test("ADDITIVITY: every real registered ListViewDefinition still validates with zero problems after the text-operator extension", () => {
+  const failures = [];
+  for (const list of realLists) {
+    const entity = realEntities.find((e) => e.id === list.entityId);
+    if (!entity) { failures.push(`${list.id}: no entity "${list.entityId}" found among collected definitions`); continue; }
+    const problems = validateListViewDefinition(list, entity, allRelationships);
+    if (problems.length) failures.push(`${list.id}: ${problems.join(" | ")}`);
+  }
+  assert.deepEqual(failures, [], `real definitions regressed after the text-operator extension:\n${failures.join("\n")}`);
+});
+
+test("ADDITIVITY: no real registered filter declares textBackend — every existing filter is entirely unaffected by the new field", () => {
+  for (const list of realLists) {
+    for (const f of list.filters ?? []) {
+      assert.equal(f.textBackend, null, `${list.id} filter "${f.fieldId}" unexpectedly has a non-null textBackend`);
+    }
+  }
 });
