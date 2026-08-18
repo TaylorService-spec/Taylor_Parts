@@ -10,6 +10,7 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../src/
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
 import { componentRegistry } from "../src/metadata/registry.js";
 import { buildListPresentation, resolveColumns, cellValue, emptyMessageFor, LIST_STATE } from "../src/metadata/listPresentation.js";
+import { formatTimestamp } from "../src/domain/displayTimestamp.js";
 
 const entity = () => makeEntityDefinition({
   id: "account", label: "Customer", collection: "accounts", readVia: "CLIENT_DIRECT",
@@ -98,6 +99,45 @@ test("#1093 — an unmapped enum value is shown verbatim rather than blanked", (
   // row look complete when it is not.
   const p = buildListPresentation({ def: def(), entity: entity(), page: page([{ id: "a1", name: "X", status: "SOMETHING_NEW" }]) });
   assert.equal(p.rows[0].cells.find((c) => c.fieldId === "status").value, "SOMETHING_NEW");
+});
+
+// --- TIMESTAMP/DATE cells resolve through the shared formatter, never as raw epoch ---
+
+test("a TIMESTAMP cell renders a formatted date, not an epoch number, for a Firestore Timestamp", () => {
+  // A fake client-SDK Firestore Timestamp — the shape domain/timestampMillis.js's
+  // toMillis() already coerces via .toMillis().
+  const stamp = { toMillis: () => 1_700_000_000_000 };
+  const column = { fieldId: "createdAt", type: "TIMESTAMP" };
+  const value = cellValue(column, { createdAt: stamp });
+  assert.equal(value, formatTimestamp(stamp), "must be the SAME shared formatter's output, not a hardcoded string");
+  assert.notEqual(value, 1_700_000_000_000, "an epoch number is a machine value reaching a user");
+});
+
+test("a TIMESTAMP cell renders a formatted date, not an epoch number, for an epoch-millisecond NUMBER", () => {
+  // equipment/employee store createdAt/updatedAt as plain numbers, not Timestamps —
+  // Opportunity even mixes both shapes across its own fields (expectedCloseAt is a
+  // number, createdAt is a Timestamp). The formatter must handle this shape too.
+  const epochMs = 1_700_000_000_000;
+  const column = { fieldId: "expectedCloseAt", type: "TIMESTAMP" };
+  const value = cellValue(column, { expectedCloseAt: epochMs });
+  assert.equal(value, formatTimestamp(epochMs));
+  assert.notEqual(value, epochMs, "an epoch number is a machine value reaching a user");
+});
+
+test("a DATE cell resolves through the same shared formatter as TIMESTAMP", () => {
+  const epochMs = 1_700_000_000_000;
+  const column = { fieldId: "installedDate", type: "DATE" };
+  assert.equal(cellValue(column, { installedDate: epochMs }), formatTimestamp(epochMs));
+});
+
+test("an uninterpretable TIMESTAMP renders nothing rather than a raw number or a placeholder string", () => {
+  // A value toMillis() cannot coerce (an unrecognized object shape) must not fall back
+  // to the raw stored value — the same class of defect enum resolution exists to
+  // prevent (#1093). It also must not silently become formatTimestamp's default
+  // "Unknown" placeholder text: this cell renders NOTHING, exactly like a missing value.
+  const column = { fieldId: "expectedCloseAt", type: "TIMESTAMP" };
+  const value = cellValue(column, { expectedCloseAt: { weird: "shape" } });
+  assert.equal(value, null);
 });
 
 test("a header never falls back to the fieldId — that is a schema leaking into a UI", () => {

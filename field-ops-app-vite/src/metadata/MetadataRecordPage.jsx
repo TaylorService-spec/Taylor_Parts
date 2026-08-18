@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { componentRegistry } from "./registry.js";
 import { buildCompositionPlan, applyVisibility } from "./pageRuntime.js";
 import { REGION } from "./pageDefinition.js";
 import { findField } from "./entityDefinition.js";
 import { buildQueryDescriptor } from "./listRuntime.js";
-import { buildListPresentation, cellValue } from "./listPresentation.js";
+import { buildListPresentation, cellValue, buildRowHref } from "./listPresentation.js";
 import { fetchPage as fetchFirestorePage } from "./firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
@@ -228,6 +229,7 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
 }
 
 function DefaultRelatedList({ section, record, definition, listResolver, entityResolver }) {
+  const navigate = useNavigate();
   const listDef = listResolver ? listResolver(section.listId) : null;
   const childEntity = listDef && entityResolver ? entityResolver(listDef.entityId) : null;
   // The PARENT's relationships, not the child's — findParentRelationship (via
@@ -242,7 +244,25 @@ function DefaultRelatedList({ section, record, definition, listResolver, entityR
     relationships: parentEntity?.relationships ?? [],
   });
 
-  return <MetadataListGrid presentation={presentation} onRetry={retry} caption={section.label ?? undefined} />;
+  // `rowNavigationTo` had zero consumers before this — a declared route nothing read,
+  // the same shape of gap as an unconsumed `readVia`. Absent, this passes `undefined`
+  // (not a no-op function) so MetadataListGrid takes its OWN already-tested branch for
+  // "no handler": non-focusable rows, no onClick/onKeyDown, rather than a handler that
+  // silently does nothing and leaves a row looking clickable that is not.
+  // buildRowHref deliberately returns null for a missing key, so the result is checked
+  // rather than handed straight to navigate(): navigating to null is not a degraded
+  // destination, it is a crash. A row with no routing key stays put, which is the same
+  // outcome as declaring no route at all.
+  const onRowClick = listDef?.rowNavigationTo
+    ? (key) => {
+        const href = buildRowHref(listDef.rowNavigationTo, key);
+        if (href) navigate(href);
+      }
+    : undefined;
+
+  return (
+    <MetadataListGrid presentation={presentation} onRetry={retry} onRowClick={onRowClick} caption={section.label ?? undefined} />
+  );
 }
 
 function Section({ section, record, definition, listRenderer, listResolver, entityResolver }) {

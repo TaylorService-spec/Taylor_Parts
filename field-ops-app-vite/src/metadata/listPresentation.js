@@ -32,6 +32,7 @@
 
 import { findField } from "./entityDefinition.js";
 import { componentRegistry } from "./registry.js";
+import { formatTimestamp } from "../domain/displayTimestamp.js";
 
 export const LIST_STATE = Object.freeze(["LOADING", "READY", "EMPTY", "FILTERED", "DENIED", "UNAVAILABLE"]);
 
@@ -69,6 +70,18 @@ export function resolveColumns(def, entity) {
  * reaching a user — the same conflation that produced "0 Active" beside a table of
  * ACTIVE rows (#1093). An unmapped value is shown verbatim rather than blanked, because
  * an unrecognized status is a data question and hiding it answers nothing.
+ *
+ * TIMESTAMP/DATE RESOLVE THROUGH THE SHARED DISPLAY FORMATTER (domain/displayTimestamp.js),
+ * the same one already used everywhere else in this codebase a stored time reaches a
+ * screen, rather than a second date vocabulary invented here. Stored shapes are NOT
+ * uniform across entities — some store a Firestore Timestamp, some store an epoch-
+ * millisecond NUMBER (equipment, employee), and Opportunity stores `expectedCloseAt` as
+ * epoch millis while its own `createdAt` is a Firestore Timestamp — so this defers the
+ * shape-sniffing entirely to `formatTimestamp`'s own `toMillis` coercion rather than
+ * assuming one shape. A value that coercion cannot interpret must not fall back to the
+ * raw stored value (an epoch number is a machine value, exactly the class of defect enum
+ * resolution exists to prevent): `unknown: null` renders nothing rather than a formatted
+ * "Unknown" placeholder or a number.
  */
 export function cellValue(column, row) {
   const raw = row?.[column.fieldId];
@@ -80,6 +93,7 @@ export function cellValue(column, row) {
     if (raw.length === 0) return null;
     return raw.map((v) => column.enumLabels?.[v] ?? v).join(", ");
   }
+  if (column.type === "TIMESTAMP" || column.type === "DATE") return formatTimestamp(raw, { unknown: null });
   return raw;
 }
 
@@ -145,3 +159,15 @@ export function emptyMessageFor(state, def = null) {
     default: return null;
   }
 }
+
+/**
+ * Builds a row's destination from a list definition's `rowNavigationTo` template.
+ * Lives here rather than in MetadataRecordPage.jsx because it is pure presentation
+ * logic with no component of its own -- exporting it from a component module broke
+ * fast refresh for every component in that file.
+ */
+export function buildRowHref(template, key) {
+  if (!template || key === null || key === undefined) return null;
+  return template.replace(/:[^/]+/, encodeURIComponent(String(key)));
+}
+
