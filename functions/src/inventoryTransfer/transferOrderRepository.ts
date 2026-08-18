@@ -49,8 +49,17 @@ function isActor(a: unknown): a is TransferActor {
   return isPlainObject(a) && (a.kind === "USER" || a.kind === "SYSTEM") && isNonEmptyString(a.id);
 }
 
-// Serialize a validated CREATE value into the stored REQUESTED/version-1 order.
-export function serializeTransferOrder(value: TransferOrderValue, actor: TransferActor, now: Date, fingerprint: string): Record<string, unknown> {
+// Serialize a validated CREATE value into the stored REQUESTED/version-1 order. `transferOrderNumber` is
+// server-authored (allocated by transferOrderNumbering.ts inside the SAME transaction, never taken from
+// the request) — like `actor`/`createdAt`, it is NOT part of the request-derived `value` and therefore
+// NOT part of fingerprintTransferOrder's replay comparison.
+export function serializeTransferOrder(
+  value: TransferOrderValue,
+  actor: TransferActor,
+  now: Date,
+  fingerprint: string,
+  transferOrderNumber: string,
+): Record<string, unknown> {
   const legacyWarehouseOnly = value.origin.type === "WAREHOUSE" && value.destination.type === "WAREHOUSE";
   return {
     schemaVersion: TRANSFER_SCHEMA_VERSION,
@@ -70,14 +79,18 @@ export function serializeTransferOrder(value: TransferOrderValue, actor: Transfe
     updatedAt: Timestamp.fromDate(now),
     updatedBy: actor.id,
     fingerprint,
+    transferOrderNumber,
   };
 }
 
 const STORED_KEYS = new Set([
   "schemaVersion", "partId", "trackingMode", "quantity", "origin", "destination", "serialNumbers",
   "fromWarehouseId", "toWarehouseId", "status", "version", "idempotencyKey", "actor",
-  "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint",
+  "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint", "transferOrderNumber",
 ]);
+// TO-YYYY-###### — six-digit zero-padded sequence, but not truncated once the sequence outgrows six
+// digits (see transferOrderNumbering.ts's formatTransferOrderNumber), so this stays a floor, not a cap.
+const TRANSFER_ORDER_NUMBER_RE = /^TO-[0-9]{4}-[0-9]{6,}$/;
 
 // Fail-closed deserialize of a stored transfer_orders record. Never normalizes malformed data into
 // validity -- throws TransferMalformedStoredRecordError on anything unexpected.
@@ -125,6 +138,16 @@ export function deserializeTransferOrder(docId: string, data: unknown): Deserial
   if (!isNonEmptyString(data.createdBy) || !isNonEmptyString(data.updatedBy)) throw new TransferMalformedStoredRecordError("stored createdBy/updatedBy invalid");
   if (!(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)) throw new TransferMalformedStoredRecordError("stored timestamps are not server Timestamps");
   if (typeof data.fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(data.fingerprint)) throw new TransferMalformedStoredRecordError("stored fingerprint invalid");
+  // Absent on legacy records created before this field existed — never backfilled here, never derived
+  // from anything else. When present it must match the TO-YYYY-###### shape; a malformed value is never
+  // normalized into validity.
+  let transferOrderNumber: string | undefined;
+  if (data.transferOrderNumber !== undefined) {
+    if (typeof data.transferOrderNumber !== "string" || !TRANSFER_ORDER_NUMBER_RE.test(data.transferOrderNumber)) {
+      throw new TransferMalformedStoredRecordError("stored transferOrderNumber invalid");
+    }
+    transferOrderNumber = data.transferOrderNumber;
+  }
 
   const value: TransferOrderValue = {
     partId: data.partId,
@@ -147,6 +170,7 @@ export function deserializeTransferOrder(docId: string, data: unknown): Deserial
     updatedBy: data.updatedBy,
     schemaVersion: TRANSFER_SCHEMA_VERSION,
     fingerprint: data.fingerprint,
+    ...(transferOrderNumber === undefined ? {} : { transferOrderNumber }),
   };
 }
 
