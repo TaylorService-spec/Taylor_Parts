@@ -13,14 +13,14 @@ const listState = { presentation: null };
 const retrySpy = vi.fn();
 const loadMoreSpy = vi.fn();
 
-vi.mock("../src/hooks/useMetadataList", () => ({
-  useMetadataList: () => ({ presentation: listState.presentation, loadMore: loadMoreSpy, retry: retrySpy }),
-}));
-// Tripwire: if this surface ever reacquires the old hand-written hook (a second,
-// independent live read of the same collection), this mock makes that regression fail
-// loudly instead of silently passing.
-const useWarehousesSpy = vi.fn();
-vi.mock("../src/hooks/useWarehouses", () => ({ useWarehouses: useWarehousesSpy }));
+const useMetadataListSpy = vi.fn(() => ({ presentation: listState.presentation, loadMore: loadMoreSpy, retry: retrySpy }));
+vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: (...args) => useMetadataListSpy(...args) }));
+// The old hand-written useWarehouses hook was DELETED once this surface stopped calling it
+// (it had no other importer). This test used to mock that module and assert it was never
+// called; with the file gone that assertion is trivially true, so the invariant it actually
+// protected -- this surface issues exactly ONE read, never a second independent one -- is
+// asserted directly instead. Deleting the module is itself the stronger tripwire: an import
+// of it now fails to resolve rather than quietly adding a second live read.
 
 const { default: Warehouses } = await import("../src/modules/inventory/Warehouses.jsx");
 
@@ -72,16 +72,16 @@ const renderPage = (props = {}) => render(<MemoryRouter><Warehouses {...props} /
 beforeEach(() => {
   retrySpy.mockClear();
   loadMoreSpy.mockClear();
-  useWarehousesSpy.mockClear();
+  useMetadataListSpy.mockClear();
   listState.presentation = listOf([{ id: "w1", name: "Main Warehouse", location: "123 Main St", status: "Active" }]);
 });
 
 describe("Warehouses surface", () => {
-  it("renders rows through the metadata list runtime, not the old hand-written hook", () => {
+  it("renders rows through the metadata list runtime, with exactly one read", () => {
     renderPage();
     expect(screen.getByText("Main Warehouse")).toBeTruthy();
     expect(screen.getByText("123 Main St")).toBeTruthy();
-    expect(useWarehousesSpy).not.toHaveBeenCalled();
+    expect(useMetadataListSpy).toHaveBeenCalledTimes(1);
   });
 
   it("never renders a document id as visible cell content", () => {
