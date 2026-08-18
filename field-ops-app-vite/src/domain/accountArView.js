@@ -11,6 +11,8 @@
 // ready (ready, at least one invoice). Never fabricates a total; a currency split across
 // multiple currencies is shown per-currency, never blindly summed.
 
+import { formatMinorUnits } from "./money.js";
+
 export const ACCOUNT_AR_STATE = {
   LOADING: "loading",
   DENIED: "denied",
@@ -42,9 +44,22 @@ export function arPositionTone(position) {
 
 // Integer minor units -> a display string. Never divides/rounds lossily; multi-currency
 // balances are listed per-currency, never summed across currencies.
+//
+// Thin delegation to domain/money.js's `formatMinorUnits` -- the ONE exact-integer-math
+// exponent-aware core (X-MONEY-FORMATTER-DISAGREEMENT). This function used to hardcode
+// `/100`, which silently disagreed with money.js's own (unused, zero-call-site)
+// `formatMoneyMajor` for any currency whose minor unit isn't 1/100 (JPY, exponent 0).
+// Every CURRENCY_MINOR write path this app can reach today emits USD only (see the
+// comment on formatMinorUnits for the evidence), so this was invisible in practice --
+// but account.js's `defaultCurrency` already accepts the full ISO 4217 set, and
+// salesOrderCommands.ts calls multi-currency "a separate future seam", so the hardcoded
+// `/100` was a defect waiting to happen, not a safe assumption. This is the ONE call
+// this codebase's metadata renderer reaches for CURRENCY_MINOR cells (see
+// metadata/listPresentation.js's `cellValue`) -- it only adds the optional currency-code
+// prefix on top of money.js's shared core, never a second division.
 export function formatMinor(amountMinor, currency) {
-  if (typeof amountMinor !== "number" || !Number.isFinite(amountMinor)) return "—";
-  const major = (amountMinor / 100).toFixed(2);
+  const major = formatMinorUnits(amountMinor, currency);
+  if (major === "—") return major;
   return currency ? `${currency} ${major}` : major;
 }
 
