@@ -905,10 +905,12 @@
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Extend the query model with distinct text operators; build the backend seam.",
-      "notes": "listViewDefinition.js's filter contract supports EQUALS, IN, ARRAY_CONTAINS and ARRAY_CONTAINS_ANY. There is no free-text operator anywhere in the model. The Parts search provider does TRUE SUBSTRING matching over the catalog, so migrating that surface would either silently narrow what a query matches or require a second full-catalog read purely to keep search whole. This generalises well beyond Parts: ANY surface whose search is substring cannot migrate until the query model has an answer. Note the honest constraint underneath -- Firestore supports prefix-range search, not substring, so the answer is not simply 'add a CONTAINS operator': a client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. That is a product decision as much as a technical one. OWNER RULING: DIRECTION SET -- do NOT migrate Parts search by silently converting substring into prefix; those are different product semantics. The query model gains distinct text operators (TEXT_EXACT / TEXT_PREFIX / TEXT_CONTAINS / TEXT_SEARCH, naming to follow existing conventions). The load-bearing rule: DECLARING A TEXT OPERATOR DOES NOT MAKE IT EXECUTABLE -- each surface/backend must explicitly support the semantic, validation must REJECT an unsupported query shape, and there is to be no browser whole-dataset fallback and no silent downgrade. A governed text-search backend seam is to be defined without pretending Firestore supports arbitrary substring search and without selecting a paid vendor to clear the gate. Parts stays blocked until its search can be served honestly or the product changes its search semantics.",
+      "nextAction": "Parts stays blocked until a backend can serve substring honestly, or the product changes its semantics.",
+      "notes": "listViewDefinition.js's filter contract supports EQUALS, IN, ARRAY_CONTAINS and ARRAY_CONTAINS_ANY. There is no free-text operator anywhere in the model. The Parts search provider does TRUE SUBSTRING matching over the catalog, so migrating that surface would either silently narrow what a query matches or require a second full-catalog read purely to keep search whole. This generalises well beyond Parts: ANY surface whose search is substring cannot migrate until the query model has an answer. Note the honest constraint underneath -- Firestore supports prefix-range search, not substring, so the answer is not simply 'add a CONTAINS operator': a client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. That is a product decision as much as a technical one. OWNER RULING: DIRECTION SET -- do NOT migrate Parts search by silently converting substring into prefix; those are different product semantics. The query model gains distinct text operators (TEXT_EXACT / TEXT_PREFIX / TEXT_CONTAINS / TEXT_SEARCH, naming to follow existing conventions). The load-bearing rule: DECLARING A TEXT OPERATOR DOES NOT MAKE IT EXECUTABLE -- each surface/backend must explicitly support the semantic, validation must REJECT an unsupported query shape, and there is to be no browser whole-dataset fallback and no silent downgrade. A governed text-search backend seam is to be defined without pretending Firestore supports arbitrary substring search and without selecting a paid vendor to clear the gate. Parts stays blocked until its search can be served honestly or the product changes its search semantics. Contract landed; the GAP REMAINS OPEN and that is the honest state.",
+      "pr": 1257,
+      "mergeSha": "eb04007c",
       "dependsOn": [
-        "A-TEXT-QUERY-SEMANTICS"
+        "X-TEXT-SEARCH-BACKEND"
       ]
     },
     {
@@ -919,12 +921,14 @@
       "title": "part.js and the production join evidence disagree on which field is the Part's reference",
       "domain": "inventory",
       "entity": "Part",
-      "status": "IMPLEMENTING",
+      "status": "MERGED",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Focused evidence audit running; escalate ONLY if genuinely ambiguous.",
-      "notes": "Two lanes reported opposite conclusions in the same wave: the Transfers lane called partId 'the Part's SKU business identifier, not a document id', the Purchase Orders lane called raw partId an id-as-content gap. I had recorded the first uncritically, which was my error -- a handoff is a claim. part.js declares partId as type ID, 'The Firestore document id', with internalPartNumber as the separate referenceField. The merged INV-CONVERGENCE production evidence records partId == operational TST-#### SKU for all 190 production parts and states plainly that internalPartNumber is 'not exposed in source (not the operational key)'. So the definition and the production record disagree about which field is the business reference, and the answer determines whether displaying partId is legitimate or a DECISIONS #106 violation. This interacts with the already-recorded issue that part numbers change when the manufacturer changes for the same part, whose own note says to reconcile it against the partId==SKU join key rather than decide independently. NOT adjudicated here. OWNER RULING: Do NOT choose from naming aesthetics -- follow actual business identity, established by a focused evidence audit across production-like records, Part detail presentation, search workflows, receiving, purchasing, WO parts planning, inventory transactions, labels/barcodes/scanning, imports/exports and user-facing documents. Answer explicitly: which field is opaque storage identity; which do users recognise and communicate as the part number; which is stable enough to be a business reference; are both populated consistently; is either externally sourced. If repo evidence proves one is canonical, act on it WITHOUT escalation. Target architecture keeps four concepts distinct and uncollapsed: recordId (opaque), systemName (part), businessReference (whichever is proven canonical), humanDescription."
+      "nextAction": "None. part.js needs no change.",
+      "notes": "Two lanes reported opposite conclusions in the same wave: the Transfers lane called partId 'the Part's SKU business identifier, not a document id', the Purchase Orders lane called raw partId an id-as-content gap. I had recorded the first uncritically, which was my error -- a handoff is a claim. part.js declares partId as type ID, 'The Firestore document id', with internalPartNumber as the separate referenceField. The merged INV-CONVERGENCE production evidence records partId == operational TST-#### SKU for all 190 production parts and states plainly that internalPartNumber is 'not exposed in source (not the operational key)'. So the definition and the production record disagree about which field is the business reference, and the answer determines whether displaying partId is legitimate or a DECISIONS #106 violation. This interacts with the already-recorded issue that part numbers change when the manufacturer changes for the same part, whose own note says to reconcile it against the partId==SKU join key rather than decide independently. NOT adjudicated here. OWNER RULING: Do NOT choose from naming aesthetics -- follow actual business identity, established by a focused evidence audit across production-like records, Part detail presentation, search workflows, receiving, purchasing, WO parts planning, inventory transactions, labels/barcodes/scanning, imports/exports and user-facing documents. Answer explicitly: which field is opaque storage identity; which do users recognise and communicate as the part number; which is stable enough to be a business reference; are both populated consistently; is either externally sourced. If repo evidence proves one is canonical, act on it WITHOUT escalation. Target architecture keeps four concepts distinct and uncollapsed: recordId (opaque), systemName (part), businessReference (whichever is proven canonical), humanDescription. RESOLVED by focused evidence audit (docs/orchestration/metadata-program/part-identity-evidence.md), and it REVERSES this entry's own premise. internalPartNumber IS the business reference and partId IS the opaque storage identity -- exactly what part.js already declared, so no definition change was needed. The INV-CONVERGENCE claim that internalPartNumber is 'not exposed in source' turns out to have been a READ-BACK PROJECTION GAP IN THE ANALYZER, not an absence: other write paths require and populate it on every create, and in migration partId is DERIVED FROM internalPartNumber rather than the reverse. The manufacturer-renumbering complication is also resolved rather than deferred: the Owner-ratified Part Master architecture explicitly rejects business-number-as-canonical-id FOR THAT EXACT REASON, and a working alias-preserving rename path already exists -- so internalPartNumber being mutable under governance is the designed behaviour, not a disqualification. Per the ruling, repo evidence settled it, so this continued without escalation. Not established: whether any live production Part today has internalPartNumber != partId, since no fresh export was available.",
+      "pr": 1257,
+      "mergeSha": "eb04007c"
     },
     {
       "id": "X-SURFACE-CLASSIFICATION-COMPOSITES",
@@ -2444,17 +2448,15 @@
       "title": "Transfer Order has no identity of either kind",
       "domain": "inventory",
       "entity": "TransferOrder",
-      "status": "BLOCKED_DEPENDENCY",
-      "nextAction": "Declare transferOrderNumber as referenceField; numbering + inert backfill tooling.",
+      "status": "MERGED",
+      "nextAction": "None.",
       "governing": [
         "DECISIONS #106",
         "DECISIONS #102"
       ],
-      "notes": "The definition was authored well and is NOT merged. It records the gap honestly and pins it with a test asserting exactly one validation problem - but merging a definition that fails its own contract would weaken the contract by demonstrating it can be carried broken. THE PRECEDENT IS EXACT: X-SALES-ORDER-NO-REFERENCE blocked the Sales Order definition for this same condition, and Sales Order waited for a governed SO-YYYY-###### before its definition landed. Inventing a transfer numbering scheme is the same business decision this program already ruled is not a leaf's to make. The authored file is preserved on feat/transfer-manufacturer-definitions and can be merged unchanged once the decision exists. OWNER RULING: APPROVED -- Transfer Order is a user-facing operational record and gets a durable business reference TO-YYYY-######, server-authoritative and concurrency-safe. identityMode BUSINESS_REFERENCE, referenceField transferOrderNumber. Explicitly NOT derived from the document id, the Work Order number, the Receiving Order number or an inventory transaction id. New records get it going forward; legacy needs inert backfill tooling and a SEPARATE protected production authorization.",
-      "dependsOn": [
-        "A-IDENTITY-MODES",
-        "A-OPERATIONAL-NUMBERING"
-      ]
+      "notes": "The definition was authored well and is NOT merged. It records the gap honestly and pins it with a test asserting exactly one validation problem - but merging a definition that fails its own contract would weaken the contract by demonstrating it can be carried broken. THE PRECEDENT IS EXACT: X-SALES-ORDER-NO-REFERENCE blocked the Sales Order definition for this same condition, and Sales Order waited for a governed SO-YYYY-###### before its definition landed. Inventing a transfer numbering scheme is the same business decision this program already ruled is not a leaf's to make. The authored file is preserved on feat/transfer-manufacturer-definitions and can be merged unchanged once the decision exists. OWNER RULING: APPROVED -- Transfer Order is a user-facing operational record and gets a durable business reference TO-YYYY-######, server-authoritative and concurrency-safe. identityMode BUSINESS_REFERENCE, referenceField transferOrderNumber. Explicitly NOT derived from the document id, the Work Order number, the Receiving Order number or an inventory transaction id. New records get it going forward; legacy needs inert backfill tooling and a SEPARATE protected production authorization. CLOSED. transferOrder.js declares identityMode BUSINESS_REFERENCE with referenceField transferOrderNumber, and the allocator is wired into the real createTransferOrder path.",
+      "pr": 1258,
+      "mergeSha": "00df6438"
     },
     {
       "id": "A-CALLABLE-LIST-SOURCE",
@@ -2836,16 +2838,15 @@
       "title": "Inventory Transaction has neither a name nor a reference -- definition held, not merged",
       "domain": "inventory",
       "entity": "InventoryTransaction",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "branch": "feat/entity-inventory-movement-definitions",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Declare identityMode SYSTEM_ONLY; do not invent a number.",
-      "notes": "The authored definition is COMPLETE and preserved on its branch; it is not merged, on the same precedent as X-TRANSFER-ORDER-NO-REFERENCE and X-SALES-ORDER-NO-REFERENCE. The lane declared identity.nameField 'type' and flagged it honestly as the least-invented option, because validateEntityDefinition rejects an entity with neither. But `type` is an ENUM CATEGORY -- every RECEIVED movement would label as 'RECEIVED' and the rows would be mutually indistinguishable. The validator's own message settles it: an entity with neither 'cannot be labelled without exposing its document id, which is a data-model gap to RECORD, not a fallback to NORMALIZE'. Passing the validator by nominating a category IS that normalization, so merging would have made the contract weaker than the comment inside it. This is the first entity in the program with genuinely no labelable identity. Other findings from the same lane, preserved: inventory_transactions is genuinely append-only with two disjoint stored shapes (legacy `timestamp` only, no actor at all; operational `actor{kind,id}` + server-authored `recordedAt`), which is also why no INDEX list was authored -- no field is sortable across both eras without silently dropping one. And `lotId` is a legal stored key required when a Part's trackingMode is LOT that NO live writer populates, so a LOT-tracked movement would fail validation today. OWNER RULING: RESOLVED WITHOUT A NUMBER -- and the ruling explicitly refuses to invent one merely to satisfy the validator. Inventory Transaction is a ledger/event record: identityMode SYSTEM_ONLY, recordId stays internal. Presentation must derive context from legitimate fields -- type, part, quantity, source and destination location, timestamp, and a related business reference where one applies. Rendering 'Inventory Transaction <documentId>' is explicitly NOT acceptable as ordinary identity. If operators later prove they need to reference these directly, that becomes a separate business-reference decision.",
-      "dependsOn": [
-        "A-IDENTITY-MODES"
-      ]
+      "nextAction": "None.",
+      "notes": "The authored definition is COMPLETE and preserved on its branch; it is not merged, on the same precedent as X-TRANSFER-ORDER-NO-REFERENCE and X-SALES-ORDER-NO-REFERENCE. The lane declared identity.nameField 'type' and flagged it honestly as the least-invented option, because validateEntityDefinition rejects an entity with neither. But `type` is an ENUM CATEGORY -- every RECEIVED movement would label as 'RECEIVED' and the rows would be mutually indistinguishable. The validator's own message settles it: an entity with neither 'cannot be labelled without exposing its document id, which is a data-model gap to RECORD, not a fallback to NORMALIZE'. Passing the validator by nominating a category IS that normalization, so merging would have made the contract weaker than the comment inside it. This is the first entity in the program with genuinely no labelable identity. Other findings from the same lane, preserved: inventory_transactions is genuinely append-only with two disjoint stored shapes (legacy `timestamp` only, no actor at all; operational `actor{kind,id}` + server-authored `recordedAt`), which is also why no INDEX list was authored -- no field is sortable across both eras without silently dropping one. And `lotId` is a legal stored key required when a Part's trackingMode is LOT that NO live writer populates, so a LOT-tracked movement would fail validation today. OWNER RULING: RESOLVED WITHOUT A NUMBER -- and the ruling explicitly refuses to invent one merely to satisfy the validator. Inventory Transaction is a ledger/event record: identityMode SYSTEM_ONLY, recordId stays internal. Presentation must derive context from legitimate fields -- type, part, quantity, source and destination location, timestamp, and a related business reference where one applies. Rendering 'Inventory Transaction <documentId>' is explicitly NOT acceptable as ordinary identity. If operators later prove they need to reference these directly, that becomes a separate business-reference decision. CLOSED WITHOUT A NUMBER. inventoryTransaction.js declares identityMode SYSTEM_ONLY explicitly and no longer nominates `type` as a nameField -- an ENUM category would have labelled every RECEIVED movement identically, which is the specific thing the earlier lane was right to refuse.",
+      "pr": 1258,
+      "mergeSha": "00df6438"
     },
     {
       "id": "X-PROCUREMENT-ENTITIES-NO-IDENTITY",
@@ -2854,17 +2855,15 @@
       "kind": "PROTECTED_ACTION",
       "title": "ReceivingOrder and ReorderRequest have no labelable identity -- definitions held, not merged",
       "domain": "inventory",
-      "status": "BLOCKED_DEPENDENCY",
+      "status": "MERGED",
       "branch": "feat/entity-procurement-definitions",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Declare receivingOrderNumber and reorderRequestNumber; same numbering principles.",
-      "notes": "Held on the X-TRANSFER-ORDER-NO-REFERENCE / X-INVENTORY-TRANSACTION-NO-IDENTITY precedent: merging a definition that fails its own contract would make the contract weaker than the comment inside it. The files are COMPLETE and preserved on their branch; the lane asserted the validation failure verbatim in its own tests rather than papering over it, which is the correct behaviour. Two substantive findings preserved with them: (1) reorder_requests.status has NINE legal values, not the ten in REORDER_REQUEST_STATUS -- 'APPROVED' appears exactly once in firestore.rules and it is on reviewDecision, a separate two-value enum, never on status; (2) reorderRequest provenance is PER-TRANSITION rather than generic -- createdAt/requestedBy at creation, then each of eight later transitions stamps its own actor+timestamp pair, with no updatedAt/updatedBy anywhere. receivingOrder's updatedAt/updatedBy exist but always equal the created pair, because its repository only ever creates: append-only in practice, recorded rather than omitted. readVia: reorderRequest CLIENT_DIRECT (Rules gate by role, no capability evaluated); receivingOrder UNKNOWN, not CALLABLE -- Rules are deny-all and NO function anywhere reads a receiving_orders document back, so no honest readCallable could be named. OWNER RULING: APPROVED -- both get business references. Receiving Order: RO-YYYY-######, referenceField receivingOrderNumber, because its identity must be communicable between warehouse and operations users. Reorder Request: RR-YYYY-######, referenceField reorderRequestNumber -- and explicitly NOT conflated with Purchase Order identity, because a request and the eventual PO are separate business records. Both identityMode BUSINESS_REFERENCE, same authoritative numbering principles as WO/OPP/SO/TO. Do not expose documentId while legacy references are absent.",
-      "dependsOn": [
-        "A-IDENTITY-MODES",
-        "A-OPERATIONAL-NUMBERING"
-      ]
+      "nextAction": "None.",
+      "notes": "Held on the X-TRANSFER-ORDER-NO-REFERENCE / X-INVENTORY-TRANSACTION-NO-IDENTITY precedent: merging a definition that fails its own contract would make the contract weaker than the comment inside it. The files are COMPLETE and preserved on their branch; the lane asserted the validation failure verbatim in its own tests rather than papering over it, which is the correct behaviour. Two substantive findings preserved with them: (1) reorder_requests.status has NINE legal values, not the ten in REORDER_REQUEST_STATUS -- 'APPROVED' appears exactly once in firestore.rules and it is on reviewDecision, a separate two-value enum, never on status; (2) reorderRequest provenance is PER-TRANSITION rather than generic -- createdAt/requestedBy at creation, then each of eight later transitions stamps its own actor+timestamp pair, with no updatedAt/updatedBy anywhere. receivingOrder's updatedAt/updatedBy exist but always equal the created pair, because its repository only ever creates: append-only in practice, recorded rather than omitted. readVia: reorderRequest CLIENT_DIRECT (Rules gate by role, no capability evaluated); receivingOrder UNKNOWN, not CALLABLE -- Rules are deny-all and NO function anywhere reads a receiving_orders document back, so no honest readCallable could be named. OWNER RULING: APPROVED -- both get business references. Receiving Order: RO-YYYY-######, referenceField receivingOrderNumber, because its identity must be communicable between warehouse and operations users. Reorder Request: RR-YYYY-######, referenceField reorderRequestNumber -- and explicitly NOT conflated with Purchase Order identity, because a request and the eventual PO are separate business records. Both identityMode BUSINESS_REFERENCE, same authoritative numbering principles as WO/OPP/SO/TO. Do not expose documentId while legacy references are absent. CLOSED for both. receivingOrder.js and reorderRequest.js declare BUSINESS_REFERENCE with receivingOrderNumber / reorderRequestNumber. Receiving Order's allocator is wired into receiveInventoryStock; Reorder Request's is built and tested but UNWIRED -- see X-REORDER-REQUEST-NO-SERVER-CREATE.",
+      "pr": 1258,
+      "mergeSha": "00df6438"
     },
     {
       "id": "X-ENTITIES-WITHOUT-IDENTITY-PATTERN",
@@ -2877,8 +2876,10 @@
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "None. Recorded so the four are decided together rather than one at a time.",
-      "notes": "Transfer Order, Inventory Transaction, Receiving Order and Reorder Request all have complete, authored definitions that FAIL validateEntityDefinition on the same clause: an entity with neither a nameField nor a referenceField cannot be labelled without exposing its document id. Each was held rather than normalised. The pattern is not incidental -- all four are OPERATIONAL/LEDGER records rather than party or catalog records, and this system numbers the things people talk about (WO-, OPP-, SO-, INV-) while leaving the things the system does to itself unnumbered. That is a coherent position, not an oversight; but it means those records cannot appear in any surface that lists them by identity, which is exactly what the metadata program needs. The decision is one question, not four: do internal operational records get references, or is the answer that they are never listed by identity and every surface showing them must lead with a joined parent's name? Deciding it four separate times would risk four different answers."
+      "nextAction": "None. Settled by the Owner ruling.",
+      "notes": "Transfer Order, Inventory Transaction, Receiving Order and Reorder Request all have complete, authored definitions that FAIL validateEntityDefinition on the same clause: an entity with neither a nameField nor a referenceField cannot be labelled without exposing its document id. Each was held rather than normalised. The pattern is not incidental -- all four are OPERATIONAL/LEDGER records rather than party or catalog records, and this system numbers the things people talk about (WO-, OPP-, SO-, INV-) while leaving the things the system does to itself unnumbered. That is a coherent position, not an oversight; but it means those records cannot appear in any surface that lists them by identity, which is exactly what the metadata program needs. The decision is one question, not four: do internal operational records get references, or is the answer that they are never listed by identity and every surface showing them must lead with a joined parent's name? Deciding it four separate times would risk four different answers. SETTLED, and the answer was NOT one answer -- which is what makes it right. Three of the four are user-facing operational records and received references; the inventory ledger is genuinely system-only and received none. The program's instinct to refuse invented numbers was correct every time; the CONTRACT that forced the question was the thing that was wrong.",
+      "pr": 1258,
+      "mergeSha": "00df6438"
     },
     {
       "id": "A-ENTITY-FLEET-CATALOG-DEFINITIONS",
@@ -2974,13 +2975,15 @@
       "kind": "ARCHITECTURE",
       "title": "Three identity modes: HUMAN_NAME, BUSINESS_REFERENCE, SYSTEM_ONLY",
       "domain": "metadata",
-      "status": "IMPLEMENTING",
+      "status": "MERGED",
       "branch": "feat/identity-modes",
       "governing": [
         "DECISIONS #106"
       ],
-      "nextAction": "Land the contract; the four held definitions depend on it.",
-      "notes": "OWNER RULING. The identity contract was too narrow: it assumed every entity must have a human name or a business reference, which is why four correct definitions failed validation on one clause. Three modes now: HUMAN_NAME requires a valid nameField; BUSINESS_REFERENCE requires a valid referenceField; SYSTEM_ONLY requires NEITHER and explicitly forbids recordId as a human display fallback. No ambiguous implicit mode. recordId stays opaque internal identity in EVERY mode and must never become the normal display fallback -- DECISIONS #106 is NOT weakened, and SYSTEM_ONLY is not permission to show an id, it is a declaration that the record has no user-facing identity at all. A SYSTEM_ONLY entity may still appear in an operational or detail surface, but the UI must compose a description from legitimate business context. The design risk to watch: a genuine OMISSION must not silently become SYSTEM_ONLY, or the contract would let an oversight pass as a decision."
+      "nextAction": "None.",
+      "notes": "OWNER RULING. The identity contract was too narrow: it assumed every entity must have a human name or a business reference, which is why four correct definitions failed validation on one clause. Three modes now: HUMAN_NAME requires a valid nameField; BUSINESS_REFERENCE requires a valid referenceField; SYSTEM_ONLY requires NEITHER and explicitly forbids recordId as a human display fallback. No ambiguous implicit mode. recordId stays opaque internal identity in EVERY mode and must never become the normal display fallback -- DECISIONS #106 is NOT weakened, and SYSTEM_ONLY is not permission to show an id, it is a declaration that the record has no user-facing identity at all. A SYSTEM_ONLY entity may still appear in an operational or detail surface, but the UI must compose a description from legitimate business context. The design risk to watch: a genuine OMISSION must not silently become SYSTEM_ONLY, or the contract would let an oversight pass as a decision. LANDED. Explicit-first, derived-as-fallback, and SYSTEM_ONLY is UNREACHABLE by derivation -- an entity declaring neither field resolves to null, not a mode, and still fails with the original error. That directly answers the design risk recorded when this was dispatched: a genuine omission cannot pass as a deliberate decision. Verified at integration by calling resolveIdentityMode directly. The lane also closed an escape hatch that was NOT specified: any nameField or referenceField pointing at an ID-typed field is now rejected outright -- 'a machine identifier is never valid human display identity, in any IDENTITY_MODE'. Without it, an author could nominate an ID field as the display field and walk a disguised recordId past validation while nominally satisfying HUMAN_NAME, which is exactly the defect found and fixed four times in live code this wave. Additivity proven against all 20 real registered definitions, not a fixture.",
+      "pr": 1256,
+      "mergeSha": "316bdb43"
     },
     {
       "id": "A-TEXT-QUERY-SEMANTICS",
@@ -2989,13 +2992,15 @@
       "kind": "ARCHITECTURE",
       "title": "Distinct text operators, and a declared operator that is not executable must fail loudly",
       "domain": "metadata",
-      "status": "IMPLEMENTING",
+      "status": "MERGED",
       "branch": "feat/text-query-semantics",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Land the operator vocabulary and the backend seam contract.",
-      "notes": "OWNER RULING. Substring and prefix are different PRODUCT semantics, not a quality gradient. The critical rule is that declaring a text operator does not make it executable: each surface/backend must explicitly support the semantic, validation must reject an unsupported query shape, and there must be no browser whole-dataset fallback and no silent downgrade of CONTAINS to PREFIX. Note this deliberately creates a declaration whose backend does not exist yet -- the TENTH in this program -- and it is authorized precisely because it is LOUD: it fails at validation, not at paint time. That is exactly the distinction X-UNCONSUMED-DECLARATION-PATTERN arrived at."
+      "nextAction": "A backend must exist before TEXT_CONTAINS/TEXT_SEARCH can execute.",
+      "notes": "OWNER RULING. Substring and prefix are different PRODUCT semantics, not a quality gradient. The critical rule is that declaring a text operator does not make it executable: each surface/backend must explicitly support the semantic, validation must reject an unsupported query shape, and there must be no browser whole-dataset fallback and no silent downgrade of CONTAINS to PREFIX. Note this deliberately creates a declaration whose backend does not exist yet -- the TENTH in this program -- and it is authorized precisely because it is LOUD: it fails at validation, not at paint time. That is exactly the distinction X-UNCONSUMED-DECLARATION-PATTERN arrived at. LANDED. TEXT_EXACT / TEXT_PREFIX / TEXT_CONTAINS / TEXT_SEARCH as a SEPARATE vocabulary from FIELD_OPERATOR, so a field never widens its own operators to admit a text semantic -- a list-level filter opts in explicitly. Three rejection paths, all at validateListViewDefinition (definition time, never paint time): no declared backend; unknown backend; known backend that does not support the operator, with the message naming what it DOES support. No downgrade path exists anywhere in the diff, including when a rejected operator sits alongside a supported one on the same filter -- tested explicitly. Index derivation: TEXT_EXACT -> EQUALITY, TEXT_PREFIX -> RANGE (same composite math as their non-text equivalents, proven by comparing derived keys), TEXT_CONTAINS/TEXT_SEARCH -> a new EXTERNAL bucket excluded from Firestore index math since a non-Firestore backend would own its own indexing. TODAY both CONTAINS and SEARCH always fail validation because no backend supports them -- the gap is made LOUD and expressible, not closed. Seam contract at docs/orchestration/metadata-program/text-search-backend-seam.md; no provider built, no vendor selected.",
+      "pr": 1257,
+      "mergeSha": "eb04007c"
     },
     {
       "id": "A-OPERATIONAL-NUMBERING",
@@ -3041,6 +3046,89 @@
       ],
       "nextAction": "When EQL is built, compile PREFIX and CONTAINS to different operators.",
       "notes": "OWNER RULING. A prefix predicate and a contains predicate must NOT compile to the same query operator. EQL, visual filters, the admin query builder, AI queries and list search all compile through the SAME unified query semantics -- so the vocabulary chosen now has to keep that distinction expressible."
+    },
+    {
+      "id": "A-HELD-DEFINITIONS-IDENTITY",
+      "phase": "6",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "Four held definitions land with declared identity modes",
+      "domain": "metadata",
+      "status": "MERGED",
+      "pr": 1258,
+      "mergeSha": "00df6438",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "None.",
+      "notes": "All four now return [] from validateEntityDefinition, verified at integration by running the validator directly rather than trusting the handoff. The work was RECOVERED, not rewritten -- each definition carried findings that were expensive to establish (the nine-value status enum whose tenth value lives on reviewDecision, the per-transition provenance model, receiving_orders having no read path at all, the inventory ledger's two disjoint stored eras) and all were preserved. The transfer definition had no obviously-named branch and was found via git log --all on the path. The three reference fields are declared HONESTLY ABSENT: server-allocated, missing on every legacy record, with an explicit instruction that a renderer must not fall back to the document id -- that pairing is the ruling's point, since declaring the field makes the architecture honest while forbidding the fallback keeps the absence VISIBLE. One incidental fix, disclosed: a recovered test's registry cross-check failed because part.equipmentModelId became a real REFERENCE on main AFTER that test was written (#1253); no file conflicted, and it surfaced only because the suite was re-run on a base containing both -- exactly the semantic-overlap case X-MAIN-RED-UNREBASED-MERGE exists for."
+    },
+    {
+      "id": "A-OPERATIONAL-NUMBERING-IMPL",
+      "phase": "6",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "TO/RO/RR allocators, contention-tested, with fail-closed backfill tooling",
+      "domain": "operations",
+      "status": "MERGED",
+      "pr": 1259,
+      "mergeSha": "4e4dbd3c",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Production backfill remains a separate protected authorization.",
+      "notes": "Matched the existing opportunityNumbering allocator rather than inventing a second vocabulary: one counter document per (family, year) in the shared counters collection, incremented inside the caller's transaction. Contention was TESTED, not assumed -- against a real Firestore emulator, 10 concurrent transactions per family, asserting sequences of exactly 1..10 with zero duplicates and zero gaps. Explicit tests assert each allocator's only read is its own counter doc, so no number can derive from another record's identity. ONE DELIBERATE ADAPTATION: receiveInventoryStock buffers writes and keeps reading (SERIAL identity checks) after the Receiving Order is staged, so committing the counter write immediately would violate Firestore's reads-before-writes rule -- that allocator instead returns the counter's PENDING WRITE for the caller to buffer. The mechanism is unchanged, only who performs the write, and it is documented in the module header rather than left as a surprise. Backfill is dry-run by default and its production guard was verified at integration THREE ways, each refusing before any Firestore connection: --write alone, --write with the confirm flag but no env var, and with an env var naming the wrong project. It has not been run against any real project."
+    },
+    {
+      "id": "X-REORDER-REQUEST-NO-SERVER-CREATE",
+      "phase": "6",
+      "wave": "4",
+      "kind": "PROTECTED_ACTION",
+      "title": "reorder_requests has no server-side create path, so RR numbers cannot be allocated",
+      "domain": "inventory",
+      "entity": "ReorderRequest",
+      "status": "BLOCKED_PROTECTED",
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Owner decision: add a governed create callable, or change Rules to require one.",
+      "blockers": [
+        {
+          "reason": "The client writes reorder_requests documents DIRECTLY, gated only by firestore.rules -- there is no Cloud Function create path. A business reference must be server-authoritative, so RR-YYYY-###### cannot be allocated at creation today. The allocator is built and tested to the same standard as the other two and is deliberately UNWIRED rather than half-wired to look finished.",
+          "requiredDecision": "Whether to introduce a governed server-side create path for reorder requests, or to change firestore.rules to require one. A Rules change is always a protected Tier-2 action, and the lane correctly did not touch firestore.rules."
+        }
+      ],
+      "notes": "Found by trying to wire the allocator rather than by review -- the same detection method that produced every instance of X-UNCONSUMED-DECLARATION-PATTERN. Note the shape: a client-written collection cannot carry a server-authoritative reference, so the identity ruling and the write architecture are coupled in a way neither decision anticipated."
+    },
+    {
+      "id": "X-TEXT-SEARCH-BACKEND",
+      "phase": "6",
+      "wave": "4",
+      "kind": "ARCHITECTURE",
+      "title": "No backend can execute TEXT_CONTAINS or TEXT_SEARCH",
+      "domain": "metadata",
+      "status": "READY",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Choose how substring search is served, or change the product's search semantics.",
+      "notes": "The contract now expresses substring search and REFUSES to execute it, which is the honest state rather than a regression. Firestore does prefix ranges, not substring -- so the answer is not 'add a CONTAINS operator'. A client-side filter over a bounded page silently changes what the user is searching, and a real answer likely means an external index or an accepted narrowing of the search contract. The ruling explicitly forbids selecting a paid vendor merely to clear this gate, so this stays open until the product decides. Parts remains blocked on it, and per the shared-read package the Part Master LIST read must not be bounded until this is resolved, because three surfaces depend on full-catalog client-side substring search today."
+    },
+    {
+      "id": "X-SHARED-READ-SCOPING-PACKAGE",
+      "phase": "6",
+      "wave": "4",
+      "kind": "GATE",
+      "title": "Consolidated shared-read scoping decision package, both blockers together",
+      "domain": "metadata",
+      "status": "COMPLETE",
+      "pr": 1257,
+      "mergeSha": "eb04007c",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Owner ruling on both, when they become the critical path.",
+      "notes": "docs/orchestration/metadata-program/shared-read-scoping-decisions.md, presenting BOTH together as directed rather than one at a time. Part Master: split an id-scoped directory primitive (three of eight callers only ever resolve known ids) from a bounded list read -- but do NOT bound the list half until the text-search gap is resolved, since three of those surfaces depend on full-catalog client-side substring search today; the parity/diagnostic aggregate stays unbounded. Dispatch: its six consumers need SIX DIFFERENT ANSWERS, not one cap -- board-scope, an aggregate/board split, a paginated disclosed list, a date-window query, a generous-cap roster, and a direct getDoc for a lookup that never needed a collection read at all. The lane also CORRECTED my dispatch framing rather than absorbing it: TechnicianDashboard does not consume the unbounded subscription (it already uses a bounded one) and neither flagged symbol appears in PartDetail -- I had passed both through from the earlier audit unchecked."
     }
   ]
 }
