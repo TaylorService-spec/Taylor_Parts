@@ -525,6 +525,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "stock_locations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "warehouseId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "binCode",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
