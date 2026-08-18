@@ -12,7 +12,42 @@ import {
   referencedRegistryIds, validateRegistryReferences, declaredActionCapabilities,
 } from "../src/metadata/registry.js";
 
+// LEDGER.md X-REGISTRY-VALIDATOR-NEVER-RUN — every real ListViewDefinition in the repo,
+// imported so validateRegistryReferences can be run against them below instead of only
+// against hand-built objects. These are plain data modules (no React, no firebase, no JSX)
+// so they import cleanly under plain `node --test`, unlike src/metadata/definitions/
+// accountPageComponents.js — see the "PageDefinition" block below for why that one real
+// registration module needs a different (vitest) test instead of one here.
+import { accountIndexList } from "../src/metadata/definitions/account.js";
+import { contactIndexList, contactRelatedList } from "../src/metadata/definitions/contact.js";
+import { employeeIndexList } from "../src/metadata/definitions/employee.js";
+import { equipmentIndexList } from "../src/metadata/definitions/equipment.js";
+import { equipmentModelIndexList } from "../src/metadata/definitions/equipmentModel.js";
+import { invoiceIndexList } from "../src/metadata/definitions/invoice.js";
+import { locationIndexList, locationRelatedList } from "../src/metadata/definitions/location.js";
+import { manufacturerIndexList } from "../src/metadata/definitions/manufacturer.js";
+import { opportunityIndexList, opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { partIndexList } from "../src/metadata/definitions/part.js";
+import { purchaseOrderIndexList } from "../src/metadata/definitions/purchaseOrder.js";
+import { salesOrderIndexList, salesOrderRelatedList } from "../src/metadata/definitions/salesOrder.js";
+import { supplierIndexList } from "../src/metadata/definitions/supplier.js";
+import { truckIndexList } from "../src/metadata/definitions/truck.js";
+import { warehouseIndexList } from "../src/metadata/definitions/warehouse.js";
+import { workOrderIndexList } from "../src/metadata/definitions/workOrder.js";
+
 const Noop = () => null;
+
+// Every real ListViewDefinition currently exported anywhere under src/metadata/definitions/
+// (verified by a repo-wide grep for `makeListViewDefinition(` at the time this was written —
+// 20 of them). Named individually, not globbed, so an id typo above fails loudly at import
+// time rather than silently narrowing what gets checked.
+const REAL_LIST_DEFINITIONS = [
+  accountIndexList, contactIndexList, contactRelatedList, employeeIndexList, equipmentIndexList,
+  equipmentModelIndexList, invoiceIndexList, locationIndexList, locationRelatedList,
+  manufacturerIndexList, opportunityIndexList, opportunityRelatedList, partIndexList,
+  purchaseOrderIndexList, salesOrderIndexList, salesOrderRelatedList, supplierIndexList,
+  truckIndexList, warehouseIndexList, workOrderIndexList,
+];
 
 beforeEach(() => {
   componentRegistry.__resetForTest();
@@ -172,3 +207,47 @@ test("unknown kinds are rejected on both registries", () => {
   assert.throws(() => componentRegistry.register({ id: "x", kind: "WIDGET", component: Noop }), /not a known COMPONENT_KIND/);
   assert.throws(() => actionRegistry.register({ id: "x", label: "X", kind: "MUTATE" }), /not a known ACTION_KIND/);
 });
+
+// --- X-REGISTRY-VALIDATOR-NEVER-RUN — run the validator over REAL definitions -----------
+//
+// Until now validateRegistryReferences' only caller anywhere in the repo was its own test
+// above, feeding it a hand-built object ("account.index" with a "currency"/"ghost" column).
+// No real definition had ever been passed through it. These tests are that missing run: the
+// same 20 real ListViewDefinition exports the app actually ships (imported above, not
+// reconstructed), checked with the SAME registries this file's beforeEach resets before every
+// test — i.e. this is not a permissive hand-built registry standing in for the real one,
+// it is the real (currently empty, for CELL_RENDERER/GOVERNED_COMMAND) registry state.
+//
+// HONEST SCOPE NOTE: as of this writing no real list definition declares a column `renderer`
+// or a non-empty `rowActions` (verified by a repo-wide grep) — nothing in
+// src/metadata/definitions/*.js currently registers a CELL_RENDERER or a GOVERNED_COMMAND/
+// NAVIGATION/DISCLOSURE action anywhere in application code either. So today these tests pass
+// vacuously (there is nothing referenced to be unregistered). Their value is forward-looking:
+// the moment ANY definition adds a renderer id or a row/section action id, this test fails
+// immediately unless something also registers it — closing exactly the gap this ledger item
+// names, for the shape of definition (ListViewDefinition: .columns[].renderer, .rowActions)
+// validateRegistryReferences already understands correctly.
+test("every real ListViewDefinition passes validateRegistryReferences", () => {
+  assert.equal(REAL_LIST_DEFINITIONS.length, 20, "the named import list drifted from definitions/*.js — update both");
+  for (const def of REAL_LIST_DEFINITIONS) {
+    const problems = validateRegistryReferences(def);
+    assert.deepEqual(problems, [], `${def.id}: ${problems.join("; ")}`);
+  }
+});
+
+// PageDefinition (accountPage.js's accountRecordPage) is NOT included above: registry.js's
+// validateRegistryReferences reads `def.regions`/`def.rowActions`/`def.actions`, but a
+// PageDefinition's real shape is `def.sections[].componentId` / `def.sections[].actions` /
+// `def.headerActions` (pageDefinition.js's makeSection/makePageDefinition) — calling
+// validateRegistryReferences directly on a PageDefinition silently finds zero references and
+// "passes" without checking anything, which would just relocate the hollow-assurance problem
+// rather than fix it. pageDefinition.js already exports the correctly-shaped sibling,
+// `pageRegistryReferences`, for exactly this — also never called outside its own unit test
+// until now (LEDGER.md X-UNCONSUMED-DECLARATION-PATTERN). Running accountRecordPage through
+// it, against the REAL registerAccountPageComponents() registration (not a hand-built
+// registry), requires importing src/metadata/definitions/accountPageComponents.js — which
+// pulls in React, react-router, and an extensionless `../../firebase/firebase` specifier.
+// Plain `node --test` cannot resolve any of that (verified: it throws ERR_MODULE_NOT_FOUND
+// before a single assertion runs), so that check lives in
+// test/metadataRegistryRealPageDefinition.test.jsx instead, run under vitest's jsdom
+// pipeline — see that file's header for the full account and its REGISTRATION_PENDING status.
