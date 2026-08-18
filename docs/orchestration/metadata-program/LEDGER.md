@@ -13,7 +13,7 @@ continues from the next executable item — without asking what happened.
 
 | Total routed surfaces | Accounted for | Unaccounted for |
 |---|---|---|
-| 52 | 41 | 11 |
+| 52 | 42 | 10 |
 
 ## Stale blocks — resolve before trusting "nothing executable"
 
@@ -38,7 +38,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 ## Next executable
 
-- **X-ACCOUNT-WIRE-CALLABLE-LISTS** (phase 6) — Wire Opportunities and Sales Orders now the CALLABLE path exists → Re-evaluate only the two sections whose blocker was the CALLABLE gap
+- **A-LIST-TIMESTAMP-AND-NAVIGATION** (phase 6) — Format TIMESTAMP cells and give related-list rows their declared navigation → Verify handoff against dispatch base before acceptance.
 - **X-RELATED-LIST-ACTIONS** (phase 6) — MetadataListGrid has no row actions or focus handoff → Add row-level action affordances and a post-create focus hook before wiring CRUD-bearing sections
 - **X-SECTION-CAPABILITY-GRANULARITY** (phase 6) — A section capability cannot express a partially-gated composition → Either finer-grained section capabilities, or split the composed section in two
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
@@ -48,7 +48,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
 | A-ENTITY-MASS-DEFINITION | 7 | Mass-definition of remaining business entities | — | — | — | — | — | NOT_APPLICABLE | Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running. |
-| X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Wire Opportunities and Sales Orders now the CALLABLE path exists | /customers/:accountId | — | — | — | — | NOT_APPLICABLE | Re-evaluate only the two sections whose blocker was the CALLABLE gap |
+| A-LIST-TIMESTAMP-AND-NAVIGATION | 6 | Format TIMESTAMP cells and give related-list rows their declared navigation | — | — | — | — | — | NOT_APPLICABLE | Verify handoff against dispatch base before acceptance. |
 
 ## READY
 
@@ -179,6 +179,8 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | A-EQL-V1 | 7 | EQL / Governed Query Architecture v1 | — | — | — | — | — | NOT_APPLICABLE | Design the surface syntax AFTER the shared query model it compiles into |
 | A-BULK-DATA-V1 | 7 | Bulk Data Architecture v1 (import + export) | — | — | — | — | — | NOT_APPLICABLE | Design after the query model - an export IS a governed query with a different sink |
 | A-ADMIN-METADATA-CONFIG | 7 | Admin metadata configuration / page designer | — | — | — | — | — | NOT_APPLICABLE | Design after entities are defined - there is nothing to configure until there is metadata to configure |
+| X-LIST-TIMESTAMP-FORMATTING | 6 | cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number | — | — | — | — | — | NOT_APPLICABLE | Reuse the existing display formatter; do not author a second date vocabulary. |
+| X-LIST-ROW-NAVIGATION | 6 | rowNavigationTo is declared by every list definition and consumed by nothing | — | — | — | — | — | NOT_APPLICABLE | Wire DefaultRelatedList to build onRowClick from rowNavigationTo; absent means no handler. |
 
 ## EXEMPT
 
@@ -214,6 +216,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | X-MERGE-AUTHORITY | 0 | Harness merge permission for gh pr merge | — | — | — | — | — | NOT_APPLICABLE | Resolved: merges are executing |
 | X-WRITE-ONLY-COLLECTIONS | 0 | Deny-all collections with no governed read path | — | — | — | — | — | NOT_APPLICABLE | None - recorded as a durable capability gap |
 | X-LANE-DURABILITY | 6 | A background agent outlives its dispatching context; absence of a branch is not death | — | — | — | — | — | NOT_APPLICABLE | Corrected. Check for running agents before concluding a lane is lost. |
+| X-ACCOUNT-WIRE-CALLABLE-LISTS | 6 | Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed | /customers/:accountId | — | #1202 | — | — | NOT_APPLICABLE | None. Both sections re-evaluated; neither wired, for new reasons recorded separately. |
 
 > **X-MERGE-AUTHORITY** blocked — gh pr merge denied by the harness permission classifier (observed on PR #1092). Architecture PRs are dependencies of every later phase, so a persistent denial serializes the program. · requires: Owner adds a scoped Bash permission rule for gh pr merge, or merges queued PRs
 

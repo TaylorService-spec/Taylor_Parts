@@ -2241,18 +2241,69 @@
       "phase": "6",
       "wave": "3",
       "kind": "SURFACE",
-      "title": "Wire Opportunities and Sales Orders now the CALLABLE path exists",
+      "title": "Re-evaluate Opportunities and Sales Orders after the CALLABLE gap closed",
       "domain": "crm",
       "entity": "Account",
       "route": "/customers/:accountId",
       "classification": "B_ENTITY_RECORD",
-      "status": "IMPLEMENTING",
+      "status": "COMPLETE",
       "branch": "feat/wire-callable-lists",
-      "nextAction": "Re-evaluate only the two sections whose blocker was the CALLABLE gap",
+      "nextAction": "None. Both sections re-evaluated; neither wired, for new reasons recorded separately.",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "notes": "Scoped deliberately to the TWO sections whose recorded blocker is now gone. The other four have unrelated blockers recorded separately, and the lane is told to leave them alone and report rather than act if it believes one is unblocked. Both sections declare capabilities registered active:false, so both will legitimately render DENIED for every current viewer - that is correct declared behaviour and not a reason to skip wiring, but the denied rendering must be honest and must not read as 'there are none'."
+      "notes": "Outcome: neither section wired, and that is the correct outcome rather than a shortfall. The CALLABLE blocker from X-ACCOUNT-CALLABLE-READ-GAP is genuinely closed -- proven against the real opportunity.js/salesOrder.js/account.js definitions rather than test doubles: correct accountId scoping, real reference numbers reaching the DOM, truncation disclosed honestly. Re-evaluating with that fixed surfaced two DIFFERENT blockers underneath it, both in the renderer and both outside this lane's writeScope: TIMESTAMP columns have no formatting branch (raw epoch millis would reach a user), and rowNavigationTo has zero consumers repo-wide (wiring Sales Orders would make rows inert and discard a working per-order route). The lane also checked whether section-level capability denial was a new problem, found it matched the already-accepted financials/activityAndNotes precedent, and reported it as unchanged rather than re-opening a settled decision. Four other sections left untouched per scope, with no claim any is newly unblocked.",
+      "pr": 1202
+    },
+    {
+      "id": "X-LIST-TIMESTAMP-FORMATTING",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "cellValue() has no TIMESTAMP branch -- a date column renders as an epoch number",
+      "domain": "metadata",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-TIMESTAMP-AND-NAVIGATION"
+      ],
+      "governing": [
+        "DECISIONS #106"
+      ],
+      "nextAction": "Reuse the existing display formatter; do not author a second date vocabulary.",
+      "notes": "listPresentation.js resolves ENUM and ENUM_SET through their label maps but has no TIMESTAMP or DATE branch anywhere in the repo, so a declared TIMESTAMP column renders the stored value directly. That is a machine value reaching a user -- the same class of defect enum resolution exists to prevent, one type over. Complicated by non-uniform storage: some entities store Firestore Timestamps, some epoch-millisecond numbers, and Opportunity does both across two fields of the same record."
+    },
+    {
+      "id": "X-LIST-ROW-NAVIGATION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "rowNavigationTo is declared by every list definition and consumed by nothing",
+      "domain": "metadata",
+      "status": "BLOCKED_DEPENDENCY",
+      "dependsOn": [
+        "A-LIST-TIMESTAMP-AND-NAVIGATION"
+      ],
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Wire DefaultRelatedList to build onRowClick from rowNavigationTo; absent means no handler.",
+      "notes": "makeListViewDefinition accepts rowNavigationTo as a route template and nothing in src/ reads it -- confirmed by repo-wide search, the sole hit is its own declaration. DefaultRelatedList passes MetadataListGrid no onRowClick, so metadata-rendered rows are inert. Wiring Sales Orders would therefore have discarded a real, currently-working per-order route. This is the same shape of problem as the readVia gap: metadata declaring something the runtime silently ignores. The document id must remain a ROUTING key -- it may reach a URL, never a cell."
+    },
+    {
+      "id": "A-LIST-TIMESTAMP-AND-NAVIGATION",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "Format TIMESTAMP cells and give related-list rows their declared navigation",
+      "domain": "metadata",
+      "status": "IMPLEMENTING",
+      "branch": "feat/list-timestamp-navigation",
+      "governing": [
+        "DECISIONS #106",
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Verify handoff against dispatch base before acceptance.",
+      "notes": "Closes both blockers found by X-ACCOUNT-WIRE-CALLABLE-LISTS. Instructed to REUSE the existing display formatter found in src/domain rather than author a second one, to report disagreeing formatters instead of silently choosing, and to render nothing for an uninterpretable timestamp rather than a raw number. writeScope is renderer + tests only; no definition, no shared registration resource."
     }
   ]
 }
