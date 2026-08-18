@@ -78,4 +78,14 @@ check("filters: All default; Active/Inactive by status; unknown -> All; counts m
   for (const f of WAREHOUSE_FILTERS) assert.equal(countForWarehouseFilter(rows, f.key), filterWarehouses(rows, f.key).length);
 });
 
+
+check("a warehouse with no name renders an em dash, never its document id", () => {
+  // DECISIONS #106: a missing name is not permission to display a record id. This view is
+  // currently unreferenced, which is exactly why the defect survived -- dead code with a live
+  // defect is a trap for whoever picks it up next.
+  const view = buildWarehousesView([{ id: "w9", status: "ACTIVE" }]);
+  assert.equal(view.rows[0].name, "—");
+  assert.equal(view.rows[0].id, "w9");
+});
+
 console.log(`\n${passed} passed, 0 failed`);

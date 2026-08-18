@@ -69,6 +69,10 @@ on:
       - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
       - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
       - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
+      - "field-ops-app-vite/test/warehousesSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
       - "field-ops-app-vite/src/hooks/useMetadataList.js"
       - "field-ops-app-vite/src/metadata/callableListSource.js"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
@@ -127,6 +131,10 @@ on:
       - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
       - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
       - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
+      - "field-ops-app-vite/test/warehousesSurface.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
       - "field-ops-app-vite/src/hooks/useMetadataList.js"
       - "field-ops-app-vite/src/metadata/callableListSource.js"
       - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
@@ -179,6 +187,12 @@ jobs:
         working-directory: field-ops-app-vite
       - name: List sources — readVia dispatch and the callable source (vitest)
         run: npx vitest run test/metadataUseMetadataListReadVia.test.jsx test/metadataCallableListSource.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Manufacturers surface on the metadata list runtime (vitest)
+        run: npx vitest run test/manufacturersMetadataList.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Warehouses surface on the metadata list runtime (vitest)
+        run: npx vitest run test/warehousesSurface.test.jsx
         working-directory: field-ops-app-vite
       - name: PageDefinition contract tests (node:test)
         run: node --test test/metadataPageDefinition.test.mjs
