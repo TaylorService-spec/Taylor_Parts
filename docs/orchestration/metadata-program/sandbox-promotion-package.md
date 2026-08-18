@@ -1071,3 +1071,187 @@ No sandbox data or configuration was mutated. No deploy, seed, rollback, or snap
 performed. The three live orphan indexes were not deleted. Production was not touched. Tranche 3 is
 not authorized. Two dry runs and read-only REST/callable reads are the entirety of the sandbox
 interaction.
+
+---
+
+# X-SALES-ORDER-NUMBER-BACKFILL — §9 addendum: environment guard applied, package re-issued
+
+Recorded 2026-08-18. **Still not executed.** Two corrections merged through the normal reviewed
+workflow; the plan was regenerated twice; nothing was written to the sandbox.
+
+## 9.1 What changed and why
+
+**#1277 — fail-closed environment guard.** Command-enforced targeting was insufficient while
+`.firebaserc` declares `"default": "taylor-parts"` (production) and the tool *accepted*
+`--project taylor-parts`. `--environment` is now required, the only accepted value is `sandbox`,
+and under it the only accepted `--project` is the single sandbox id **resolved from
+`config/environments.json`** — not hardcoded, so the two cannot drift. `--project`/`--confirm-project`
+remain mandatory and identical; the new check narrows further, it does not replace them.
+
+The guard lives inside `parseArgs`, which every caller runs **before** `buildProductionDeps()` — the
+only place `firebase-admin` is required. The tests assert `getApps().length === 0` after each
+rejected run, so a regression that moved the guard past initialization fails the suite rather than
+passing quietly. Five refusals verified independently, capturing node's real exit status:
+`taylor-parts`, missing `--environment`, `--environment production`, the near-miss
+`eos-platform-sandbox-2`, and a `--confirm-project` mismatch — **all exit 2**, and the evidence
+directory named on those runs **was never created**.
+
+**#1278 — the dry-run report named the wrong hash.** Found while regenerating the plan. The report
+printed the *operative* hash under the label "bind this to `--plan-sha256`", while `runExecute` binds
+`sha256(plan.json bytes)`. An operator following the artifact exactly would have hit
+`plan hash mismatch: refusing to execute (no writes)` — fail-closed, nothing at risk, but a false
+instruction on the artifact execution reads from. The report now prints **both**, each labelled;
+`plan.json` is serialized once and those exact bytes hashed, so report, `checksums.sha256` and file
+cannot disagree. The regression test drives `runExecute` to a completed transaction with the printed
+value, and was proven to fail (exit 1) against the old label.
+
+**Unchanged by both:** `--plan`/`--plan-sha256` pinning, `--execute` requiring
+`--acknowledge-production-write`, and every transaction-time counter-drift, record-fingerprint and
+collision check. `salesOrderNumberBackfill.ts` was not edited.
+
+## 9.2 Promotion identity
+
+| | |
+|---|---|
+| **Package commit** | **`6810aa83d81c61787f50f9be4c03cca4bad42c5b`** (tip of `main`) |
+| Previous package commit | `b237f652da490ac8880393c15bc6e17bdd6f9324` |
+
+The diff between them is documentation, `functions/scripts/salesOrderNumberBackfillCli.js` and its
+test. The deployed Functions entrypoint is `lib/index.js`, compiled from `src/`; the operator CLI
+under `scripts/` is not imported by it. **Deployed runtime behaviour is therefore identical to the
+Tranche 2R deployment** — no redeploy is implied or requested by this addendum. The commit of record
+still advances, and `--commit` must carry the new value.
+
+## 9.3 Two regenerations — result
+
+Both runs at `6810aa83`, read-only, exit 0.
+
+| | run 1 | run 2 |
+|---|---|---|
+| Operative plan hash | `01b4c39f…5297` | `01b4c39f…5297` — **identical** |
+| `plan.json` byte hash | `abec4e11…1c74` | `e33157cd…1d6f` |
+| Only differing JSON field | — | `generatedAt` |
+| Assignments | 14 | 14 — identical |
+
+**Assignments and the operative hash match each other.** The byte hashes differ *by design*: the
+plan file embeds `generatedAt`, so two runs seconds apart produce different bytes carrying identical
+content. That is exactly why the two hashes exist, and why §9.1's label correction mattered.
+
+**Difference from `e7a705…`, explained:** `e7a705…` was the operative hash at commit `b237f652`.
+The operative hash covers `projectId + governedCommit + assignments + collisions + blocked +
+counterSnapshot` — **`governedCommit` is inside it**. The commit advanced, so the hash had to change.
+Verified directly: the assignments, collisions, blocked list, counter snapshot and counts of the new
+plan are **byte-identical** to the `e7a705…` plan. The change is the commit pin and nothing else.
+
+Plan, unchanged across all four runs: 14 records, 14 to assign, **0 collisions, 0 blocked**,
+`SO-2026-000001` … `SO-2026-000014`, counter `sales_orders_2026` `sequenceBefore: 0`.
+
+## 9.4 Pre-execution snapshot — captured, read-only
+
+`sha256 440806d709ed398b434cdbb37521ebb8c7981215aed4e80262507db09dee6639`, 14 rows, held outside the
+tool's evidence directory so that directory's published checksums stay exact.
+
+Every row: `fieldPresent: false`, `originalValue: null`, plus the document's Firestore `updateTime`
+— the rollback precondition token. **This re-confirms at capture time what §2 established: the field
+is absent on all 14, not null.**
+
+## 9.5 Rollback — preserved exactly, as accepted
+
+No coded rollback mode. Accepted because execution is one all-or-nothing transaction, the original
+fields are absent, and rollback deletes those fields while conservatively leaving the counter
+advanced. §5's design stands unchanged; these are its literal commands and preconditions.
+
+**Preconditions — all must hold before any rollback write:**
+
+1. The execution evidence directory exists and records exactly the 14 assignments above.
+2. For each document, current `updateTime` equals the value recorded **after** the backfill. Any
+   document whose `updateTime` has moved since carries a legitimate later change and **must be
+   skipped**, not overwritten.
+3. Every value to be removed is byte-equal to the `SO-2026-0000NN` this plan assigned. A different
+   value means someone else numbered it — **skip**.
+4. `counters/sales_orders_2026` is inspected but, per the accepted design, **left advanced** unless
+   it is proven that no Sales Order has been numbered by the normal creation path since. Rewinding a
+   live counter risks reissuing numbers.
+
+**Rollback command** — save as `functions/rollback.local.mjs` and run from `functions/`, targeting
+the sandbox explicitly as at execute:
+
+    import admin from "firebase-admin";
+    import { readFileSync } from "node:fs";
+    admin.initializeApp({ projectId: "eos-platform-sandbox" });
+    const db = admin.firestore();
+    const rows = JSON.parse(readFileSync("<post-execution-evidence>/execution.json", "utf8")).assigned;
+    let removed = 0, skipped = 0;
+    for (const r of rows) {
+      const ref = db.collection("sales_orders").doc(r.salesOrderId);
+      const snap = await ref.get();
+      if (snap.get("salesOrderNumber") !== r.salesOrderNumber) { skipped++; continue; }  // precondition 3
+      await ref.update(                                                                   // precondition 2
+        { salesOrderNumber: admin.firestore.FieldValue.delete() },
+        { lastUpdateTime: snap.updateTime }
+      );
+      removed++;
+    }
+    console.log(JSON.stringify({ removed, skipped, counter: "left advanced (deliberate)" }));
+
+    node rollback.local.mjs
+
+`FieldValue.delete()` — **not** `null`. Null was never the stored state, and writing it would leave
+the documents in a condition they have never been in. The `lastUpdateTime` precondition makes the
+write fail rather than clobber if the document moved between read and write.
+
+**Verify rollback:** re-read all 14 and confirm `salesOrderNumber` is absent (not null) on every
+document the run reports as `removed`, and present-and-unchanged on every `skipped` one.
+
+## 9.6 Commands — re-issued at `6810aa83`
+
+Both name the project explicitly and twice, and now carry `--environment sandbox`. Run from
+`functions/`.
+
+**Dry run — executed twice above, read-only, zero Firestore writes:**
+
+    node scripts/salesOrderNumberBackfillCli.js \
+      --project eos-platform-sandbox \
+      --confirm-project eos-platform-sandbox \
+      --environment sandbox \
+      --commit 6810aa83d81c61787f50f9be4c03cca4bad42c5b \
+      --evidence-dir <fresh-dir> \
+      --operator <operator-id>
+
+**Execution — NOT RUN, requires separate authorization:**
+
+    node scripts/salesOrderNumberBackfillCli.js \
+      --project eos-platform-sandbox \
+      --confirm-project eos-platform-sandbox \
+      --environment sandbox \
+      --commit 6810aa83d81c61787f50f9be4c03cca4bad42c5b \
+      --evidence-dir <fresh-dir> \
+      --operator <operator-id> \
+      --execute \
+      --acknowledge-production-write \
+      --plan <reviewed-plan.json> \
+      --plan-sha256 <that file's byte hash, from its own plan-report.md / checksums.sha256>
+
+`--plan-sha256` binds the **byte hash of the specific plan file passed to `--plan`** — for run 1's
+artifact that is `abec4e1101c2d7faa41ccbe81024f2b9d0f67ce3e2b10300d013f495480a1c74`. It is
+deliberately **not** the operative hash `01b4c39f…`, which is the reproducibility value. Pairing a
+plan file with another run's byte hash fails closed with zero writes.
+
+`--acknowledge-production-write` is the tool's generic mutation acknowledgement; its name reflects the
+tool's original purpose and does **not** mean this run targets production. The guard now makes that
+structurally impossible.
+
+**Expected writes:** exactly **15 document writes in one transaction** — 14 `sales_orders` documents
+each gaining one `salesOrderNumber` field, plus `counters/sales_orders_2026` created with
+`sequence: 14`. No other field, document or collection is touched. §7's 20-check post-execution
+matrix is unchanged and still governs acceptance.
+
+## 9.7 Confirmation
+
+No sandbox data or configuration was mutated. Two dry runs, one read-only snapshot read, and
+read-only REST/callable reads are the entirety of the sandbox interaction. No deploy, no seed, no
+rollback, no activation change. The three live orphan indexes were not deleted. Production was not
+touched.
+
+`X-SALES-ORDER-NUMBER-BACKFILL: AUTHORIZATION REQUESTED — environment guard applied.`
+**Tranche 3 remains blocked.**
