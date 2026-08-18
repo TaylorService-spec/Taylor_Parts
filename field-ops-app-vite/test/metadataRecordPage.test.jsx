@@ -10,7 +10,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { buildRowHref } from "../src/metadata/listPresentation.js";
 import { makeSection, makePageDefinition } from "../src/metadata/pageDefinition.js";
-import { componentRegistry } from "../src/metadata/registry.js";
+import { componentRegistry, actionRegistry } from "../src/metadata/registry.js";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
 
@@ -40,6 +40,7 @@ const Gated = () => <p>gated content</p>;
 
 beforeEach(() => {
   componentRegistry.__resetForTest();
+  actionRegistry.__resetForTest();
   componentRegistry.register({ id: "record.lifecycle", kind: "RECORD_SECTION", component: Lifecycle });
   componentRegistry.register({ id: "record.blockers", kind: "RECORD_SECTION", component: Blockers });
   componentRegistry.register({ id: "record.gated", kind: "RECORD_SECTION", component: Gated });
@@ -572,6 +573,216 @@ describe("MetadataRecordPage", () => {
       renderWithList(listDef);
       await screen.findByText("Big Deal");
       expect(screen.queryByText("opp-1")).toBeNull();
+    });
+  });
+
+  // ── X-RELATED-LIST-ACTIONS — DefaultRelatedList resolves declared rowActions ───────
+  //
+  // listViewDefinition.js already accepts `rowActions` (registered action ids); nothing
+  // in the render path consumed it before this. DefaultRelatedList now resolves those
+  // ids through actionRegistry and the caller's `capabilityDecisions`, the same
+  // fail-closed rule MetadataRecordPage already applies to section visibility
+  // (applyVisibility/pageRuntime), applied here to a row instead of a whole section.
+
+  describe("X-RELATED-LIST-ACTIONS — DefaultRelatedList row actions", () => {
+    const accountEntity = makeEntityDefinition({
+      id: "account",
+      label: "Account",
+      readVia: "CLIENT_DIRECT",
+      collection: "accounts",
+      relationships: [
+        makeRelationshipDefinition({
+          id: "account.opportunities",
+          label: "Opportunities",
+          fromEntityId: "account",
+          toEntityId: "opportunity",
+          viaField: "accountId",
+          cardinality: "ONE_TO_MANY",
+        }),
+      ],
+    });
+    const opportunityEntity = makeEntityDefinition({
+      id: "opportunity",
+      label: "Opportunity",
+      readVia: "CLIENT_DIRECT",
+      collection: "opportunities",
+      fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
+    });
+    const accountPage = () =>
+      makePageDefinition({
+        id: "account.record",
+        entityId: "account",
+        label: "Account",
+        sections: [
+          makeSection({ id: "opps", kind: "RELATED_LIST", label: "Opportunities", region: "MAIN", order: 0, listId: "account.opportunities.related" }),
+        ],
+      });
+
+    const renderWithList = (listDef, capabilityDecisions) =>
+      render(
+        <MemoryRouter>
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            capabilityDecisions={capabilityDecisions}
+            listResolver={(id) => (id === "account.opportunities.related" ? listDef : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+
+    it("a list with no rowActions declared renders no actions column (unchanged)", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        // rowActions intentionally omitted.
+      });
+      renderWithList(listDef);
+      await screen.findByText("Big Deal");
+      expect(screen.queryByRole("button", { name: /edit/i })).toBeNull();
+    });
+
+    it("an ungated action resolves and dispatches to its registered handler with the row key", async () => {
+      const handler = vi.fn();
+      actionRegistry.register({ id: "opportunity.edit", label: "Edit", kind: "NAVIGATION", handler });
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowActions: ["opportunity.edit"],
+      });
+      renderWithList(listDef, {});
+      const editButton = await screen.findByRole("button", { name: /edit/i });
+      fireEvent.click(editButton);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0][0]).toBe("opp-1");
+    });
+
+    it("a GOVERNED_COMMAND row action with no matching decision fails closed — denied, not merely hidden", async () => {
+      const handler = vi.fn();
+      actionRegistry.register({
+        id: "opportunity.close",
+        label: "Close",
+        kind: "GOVERNED_COMMAND",
+        command: "closeOpportunity",
+        capabilityRequirement: "opportunity.write",
+        handler,
+      });
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowActions: ["opportunity.close"],
+      });
+      // Neither an absent decision, nor an explicit false, is a grant.
+      renderWithList(listDef, {});
+      const closeButton = await screen.findByRole("button", { name: /close/i });
+      expect(closeButton.disabled).toBe(true);
+      fireEvent.click(closeButton);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("an explicit true decision authorizes the same row action", async () => {
+      const handler = vi.fn();
+      actionRegistry.register({
+        id: "opportunity.close",
+        label: "Close",
+        kind: "GOVERNED_COMMAND",
+        command: "closeOpportunity",
+        capabilityRequirement: "opportunity.write",
+        handler,
+      });
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowActions: ["opportunity.close"],
+      });
+      renderWithList(listDef, { "opportunity.write": true });
+      const closeButton = await screen.findByRole("button", { name: /close/i });
+      expect(closeButton.disabled).toBe(false);
+      fireEvent.click(closeButton);
+      expect(handler).toHaveBeenCalledWith("opp-1", expect.objectContaining({ record: { id: "acct-1" } }));
+    });
+
+    it("an unregistered action id is dropped as a configuration gap, not rendered as a denied action", async () => {
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowActions: ["opportunity.nonexistent"],
+      });
+      renderWithList(listDef, {});
+      await screen.findByText("Big Deal");
+      expect(screen.queryByRole("button")).toBeNull();
+    });
+
+    // Local to this block — the DEFECT 2 describe above scopes its own LocationProbe to
+    // its own callback, so this is a second, identical probe rather than a shared one.
+    function LocationProbe() {
+      const location = useLocation();
+      return <p data-testid="location">{location.pathname}</p>;
+    }
+
+    it("activating a row action does not also navigate the row when rowNavigationTo is also declared", async () => {
+      const handler = vi.fn();
+      actionRegistry.register({ id: "opportunity.edit", label: "Edit", kind: "NAVIGATION", handler });
+      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      const listDef = makeListViewDefinition({
+        id: "account.opportunities.related",
+        entityId: "opportunity",
+        label: "Opportunities",
+        surface: "RELATED",
+        parentRelationshipId: "account.opportunities",
+        columns: [makeColumn({ fieldId: "name" })],
+        tiebreaker: "__name__",
+        rowActions: ["opportunity.edit"],
+        rowNavigationTo: "/sales/opportunities/:id",
+      });
+      render(
+        <MemoryRouter initialEntries={["/customers/acct-1"]}>
+          <LocationProbe />
+          <MetadataRecordPage
+            definition={accountPage()}
+            record={{ id: "acct-1" }}
+            capabilityDecisions={{}}
+            listResolver={(id) => (id === "account.opportunities.related" ? listDef : null)}
+            entityResolver={(id) => ({ account: accountEntity, opportunity: opportunityEntity }[id] ?? null)}
+          />
+        </MemoryRouter>
+      );
+      const editButton = await screen.findByRole("button", { name: /edit/i });
+      fireEvent.click(editButton);
+      expect(handler).toHaveBeenCalledTimes(1);
+      // The row is ALSO navigable (rowNavigationTo declared) — activating the action
+      // must not also fire that navigation.
+      expect((await screen.findByTestId("location")).textContent).toBe("/customers/acct-1");
     });
   });
 

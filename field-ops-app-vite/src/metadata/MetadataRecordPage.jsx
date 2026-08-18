@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { componentRegistry } from "./registry.js";
+import { componentRegistry, actionRegistry } from "./registry.js";
 import { buildCompositionPlan, applyVisibility } from "./pageRuntime.js";
 import { REGION } from "./pageDefinition.js";
 import { findField } from "./entityDefinition.js";
@@ -228,7 +228,66 @@ function useRelatedListPresentation({ listDef, entity, parentId, relationships }
   return { presentation, retry: () => setRetryNonce((n) => n + 1) };
 }
 
-function DefaultRelatedList({ section, record, definition, listResolver, entityResolver }) {
+/**
+ * X-RELATED-LIST-ACTIONS — resolves a list's declared `rowActions` (registered action
+ * ids, per listViewDefinition.js) into the concrete descriptors MetadataListGrid
+ * renders.
+ *
+ * §6 stays intact here the same way it does for section capabilities
+ * (declaredPageCapabilities / applyVisibility): `capabilityDecisions` is the caller's
+ * already-resolved map, never a resolver called from here. An action whose
+ * `capabilityRequirement` is not explicitly `true` in that map is DENIED — an unknown
+ * id, an unresolved decision, and a decision the resolver never returned all collapse
+ * to the same fail-closed outcome, because the only way to tell them apart from here
+ * would be to trust an absence, and an absence is not a grant.
+ *
+ * An action id the registry does not recognize is dropped rather than rendered denied:
+ * that is a configuration gap (the same one `validateRegistryReferences` in registry.js
+ * exists to catch before render), not a viewer being denied something real.
+ *
+ * The actual effect an activated action has is `entry.handler` — the one extension
+ * point registry.js documents as application-supplied code (ActionRegistry.validate:
+ * "handler, if present, must be a function supplied by application code"). No handler
+ * registered means the action has nothing to do when activated; it still renders (it is
+ * correctly configured and, if gated, correctly authorized) but activating it is a
+ * no-op rather than a silent crash.
+ */
+function resolveRowActions(listDef, record, capabilityDecisions, navigate) {
+  const ids = listDef?.rowActions ?? [];
+  if (!ids.length) return null;
+  const resolved = ids
+    .map((id) => (typeof id === "string" ? actionRegistry.resolve(id) : null))
+    .filter(Boolean)
+    .map((entry) => {
+      const capabilityRequirement = entry.capabilityRequirement ?? null;
+      const denied = !!capabilityRequirement && capabilityDecisions?.[capabilityRequirement] !== true;
+      return {
+        id: entry.id,
+        label: entry.label,
+        denied,
+        deniedReason: denied ? `You do not have access to "${entry.label}".` : null,
+        onActivate: (rowKey) => {
+          // Fails closed even if something upstream ever manages to invoke a denied
+          // action directly — MetadataListGrid already refuses to call onActivate for
+          // a denied entry, so this is a second, redundant gate, not the only one.
+          if (denied) return;
+          if (typeof entry.handler === "function") entry.handler(rowKey, { record, navigate, section: listDef });
+        },
+      };
+    });
+  return resolved.length ? resolved : null;
+}
+
+function DefaultRelatedList({
+  section,
+  record,
+  definition,
+  listResolver,
+  entityResolver,
+  capabilityDecisions,
+  focusRowKey,
+  onFocusHandled,
+}) {
   const navigate = useNavigate();
   const listDef = listResolver ? listResolver(section.listId) : null;
   const childEntity = listDef && entityResolver ? entityResolver(listDef.entityId) : null;
@@ -260,12 +319,35 @@ function DefaultRelatedList({ section, record, definition, listResolver, entityR
       }
     : undefined;
 
+  const rowActions = useMemo(
+    () => resolveRowActions(listDef, record, capabilityDecisions, navigate),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listDef, record, capabilityDecisions, navigate]
+  );
+
   return (
-    <MetadataListGrid presentation={presentation} onRetry={retry} onRowClick={onRowClick} caption={section.label ?? undefined} />
+    <MetadataListGrid
+      presentation={presentation}
+      onRetry={retry}
+      onRowClick={onRowClick}
+      caption={section.label ?? undefined}
+      rowActions={rowActions ?? undefined}
+      focusRowKey={focusRowKey ?? undefined}
+      onFocusHandled={onFocusHandled}
+    />
   );
 }
 
-function Section({ section, record, definition, listRenderer, listResolver, entityResolver }) {
+function Section({
+  section,
+  record,
+  definition,
+  listRenderer,
+  listResolver,
+  entityResolver,
+  capabilityDecisions,
+  relatedListFocus,
+}) {
   const entry = section.componentId ? componentRegistry.resolve(section.componentId) : null;
 
   if (section.kind === "RELATED_LIST") {
@@ -275,6 +357,10 @@ function Section({ section, record, definition, listRenderer, listResolver, enti
     // section differently still can); when none is supplied, DefaultRelatedList below is
     // the honest default rather than nothing.
     if (listRenderer) return listRenderer({ listId: section.listId, parentId: record?.id, section });
+    // Keyed by section id — a page can carry more than one RELATED_LIST section, and a
+    // post-create focus request belongs to whichever one just created a row, not to
+    // every related list on the page.
+    const focus = relatedListFocus?.[section.id];
     return (
       <DefaultRelatedList
         section={section}
@@ -282,6 +368,9 @@ function Section({ section, record, definition, listRenderer, listResolver, enti
         definition={definition}
         listResolver={listResolver}
         entityResolver={entityResolver}
+        capabilityDecisions={capabilityDecisions}
+        focusRowKey={focus?.rowKey ?? null}
+        onFocusHandled={focus?.onHandled}
       />
     );
   }
@@ -321,6 +410,14 @@ export default function MetadataRecordPage({
   // states it. Default false preserves every existing whole-page caller's behavior
   // unchanged.
   embedded = false,
+  // X-RELATED-LIST-ACTIONS — post-create focus handoff for RELATED_LIST sections
+  // rendered through DefaultRelatedList. Keyed by section id: `{ [sectionId]: { rowKey,
+  // onHandled } }`. Optional and empty by default so every existing caller (none of
+  // which supplies this yet — no caller creates a row through the default binding
+  // today) renders unchanged; a future create flow supplies the id of the row it just
+  // created and a callback to clear its own pending state once MetadataListGrid reports
+  // the handoff done, the same contract AccountDetail.jsx hand-rolls per section today.
+  relatedListFocus = {},
 }) {
   const plan = applyVisibility(buildCompositionPlan(definition, { listResolver }), capabilityDecisions);
 
@@ -374,6 +471,8 @@ export default function MetadataRecordPage({
                   listRenderer={listRenderer}
                   listResolver={listResolver}
                   entityResolver={entityResolver}
+                  capabilityDecisions={capabilityDecisions}
+                  relatedListFocus={relatedListFocus}
                 />
               </section>
             ))}
