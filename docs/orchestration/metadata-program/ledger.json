@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main f7a61306 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main 0f774fcd -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -210,12 +210,29 @@
       "kind": "ARCHITECTURE",
       "title": "An entity declares one readCallable, but INDEX and RELATED need different ones",
       "domain": "metadata",
+      "status": "MERGED",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Opportunity INDEX is now reachable. Sales Order INDEX needs a server-side unscoped read.",
+      "notes": "The runtime can now serve an unscoped CALLABLE read, and listOpportunityContext is a real unscoped governed read that genuinely takes no accountId. It is still unreachable for Opportunity and Sales Order because an ENTITY declares exactly one readCallable, and theirs is the account-scoped one their RELATED section needs. An INDEX list has no way to declare a different callable than a RELATED list on the same entity. This is the last blocker between the metadata runtime and the ~25 planned INDEX surface migrations. Note the shape: readVia and readCallable were modelled as properties of the ENTITY, but the read path is a property of the SURFACE -- the same entity is legitimately read two different ways depending on what is asking. Fixing this is a small contract change, not a workaround. RESOLVED. makeListViewDefinition accepts readCallable, resolving list ?? entity, and BOTH consumers honor it -- useMetadataList for INDEX and MetadataRecordPage for RELATED. Only one honoring it would have made this the ninth unconsumed declaration. validateListViewDefinition now rejects four cases at definition time: a callable on a CLIENT_DIRECT entity, an unrecognised name, a RELATED list naming an UNSCOPED callable, and an INDEX list naming a SCOPED one. The lane also found and fixed the mirror of an existing guard: fetchPage already threw for a scoped callable with no scope filter, but an UNSCOPED callable handed a parent scope would silently forward it and READ THE WRONG ROWS -- worse than failing, because a list returning the wrong set looks like it is working.",
+      "pr": 1231,
+      "mergeSha": "0f774fcd"
+    },
+    {
+      "id": "X-SALES-ORDER-NO-UNSCOPED-READ",
+      "phase": "6",
+      "wave": "3",
+      "kind": "AUDIT",
+      "title": "No unscoped Sales Order list read exists -- its INDEX surface stays unreachable",
+      "domain": "sales",
+      "entity": "SalesOrder",
       "status": "READY",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair.",
-      "notes": "The runtime can now serve an unscoped CALLABLE read, and listOpportunityContext is a real unscoped governed read that genuinely takes no accountId. It is still unreachable for Opportunity and Sales Order because an ENTITY declares exactly one readCallable, and theirs is the account-scoped one their RELATED section needs. An INDEX list has no way to declare a different callable than a RELATED list on the same entity. This is the last blocker between the metadata runtime and the ~25 planned INDEX surface migrations. Note the shape: readVia and readCallable were modelled as properties of the ENTITY, but the read path is a property of the SURFACE -- the same entity is legitimately read two different ways depending on what is asking. Fixing this is a small contract change, not a workaround."
+      "nextAction": "A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.",
+      "notes": "salesOrderReadService.ts exports only listSalesOrdersForAccount (account-scoped) and getSalesOrderContext (a single record by id). There is no unscoped list read, so salesOrderIndexList declares no readCallable and its INDEX surface remains genuinely unreachable -- pinned by a test asserting readCallable is null, so the absence is a checked fact rather than an oversight. The lane was explicitly told not to invent one and did not. Opportunity by contrast has listOpportunityContext, which genuinely exists, and its INDEX list now declares it."
     },
     {
       "id": "X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID",

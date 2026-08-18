@@ -7,7 +7,7 @@
 reads this, reconciles every claim against observed state, corrects what disagrees, and then
 continues from the next executable item — without asking what happened.
 
-**Baseline:** origin/main f7a61306 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
+**Baseline:** origin/main 0f774fcd -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.
 
 ## Surface conformance
 
@@ -39,7 +39,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 ## Next executable
 
 - **X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION** (phase 6) — actionRegistry.register() is never called in application source → Register real actions when a definition first declares one; until then rowActions is inert.
-- **X-ENTITY-SINGLE-READCALLABLE** (phase 6) — An entity declares one readCallable, but INDEX and RELATED need different ones → Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair.
+- **X-SALES-ORDER-NO-UNSCOPED-READ** (phase 6) — No unscoped Sales Order list read exists -- its INDEX surface stays unreachable → A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate.
 - **A-ENTITY-MASS-DEFINITION** (phase 7) — Mass-definition of remaining business entities → Employee leaf re-dispatched at e5172508 after the prior lane was lost unpushed; Account search lane running.
 
 ## IMPLEMENTING
@@ -52,7 +52,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 
 | id | phase | title | route | issue | PR | head | merge | deploy | next action |
 |---|---|---|---|---|---|---|---|---|---|
-| X-ENTITY-SINGLE-READCALLABLE | 6 | An entity declares one readCallable, but INDEX and RELATED need different ones | — | — | — | — | — | NOT_APPLICABLE | Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair. |
+| X-SALES-ORDER-NO-UNSCOPED-READ | 6 | No unscoped Sales Order list read exists -- its INDEX surface stays unreachable | — | — | — | — | — | NOT_APPLICABLE | A server-side unscoped Sales Order list read must exist before its INDEX surface can migrate. |
 | X-ACTION-REGISTRY-EMPTY-IN-PRODUCTION | 6 | actionRegistry.register() is never called in application source | — | — | — | — | — | NOT_APPLICABLE | Register real actions when a definition first declares one; until then rowActions is inert. |
 
 ## MERGED
@@ -63,6 +63,7 @@ Each needs a deliberate call: promote it to READY, or re-point it at what it act
 | S-CRM-CUSTOMERS | 4 | Customers (Accounts list) | /customers | #1097 | #1138 | — | abfd3ee7 | NOT_APPLICABLE | Merged. The accounts composite index is declared and pending deploy. |
 | S-CRM-ACCOUNT-RECORD | 6 | Customer/Account detail | /customers/:accountId | — | #1181 | — | 57694e5d | NOT_APPLICABLE | Definition merged. Wiring AccountDetail onto it, and the two recorded page gaps, are separate lanes. |
 | X-INDEX-SURFACE-CALLABLE-READ | 6 | No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch | — | — | #1229 | — | f7a61306 | NOT_APPLICABLE | Blocked no further at the runtime; the remaining gap is definition-level. |
+| X-ENTITY-SINGLE-READCALLABLE | 6 | An entity declares one readCallable, but INDEX and RELATED need different ones | — | — | #1231 | — | 0f774fcd | NOT_APPLICABLE | Opportunity INDEX is now reachable. Sales Order INDEX needs a server-side unscoped read. |
 | X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID | 6 | The Opportunities pipeline fell back to a raw account id -- LIVE, not latent | — | — | #1226 | — | 631170b5 | NOT_APPLICABLE | None. |
 | S-SVC-WORK-ORDERS | 8 | Work Orders list | /service | #1098 | #1141 | — | 47f46feb | NOT_APPLICABLE | Definitions merged. Surface rewiring is the next slice; no aggregate blocker was found. |
 | A-CONTRACT-CORE | 1 | Entity/Field/Relationship definition contracts | — | — | #1106 | 28338738 | 3a07e4d8 | NOT_APPLICABLE | Merged to origin/main; verified by mergeSha |
