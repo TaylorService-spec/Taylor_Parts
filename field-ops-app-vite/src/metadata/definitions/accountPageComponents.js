@@ -516,16 +516,13 @@ function mapLocationRow(location) {
 }
 
 /**
- * contact.js declares `isPrimary` as BOOLEAN, but listPresentation.js's `cellValue()` has
- * NO BOOLEAN branch (only ENUM/ENUM_SET/TIMESTAMP/DATE resolve; everything else returns the
- * raw value unchanged) and MetadataListGrid renders `{cell.value}` directly — React renders
- * neither `true` nor `false` as visible text, so an unmapped BOOLEAN column would render
- * BLANK for every row, primary and non-primary alike: indistinguishable, and therefore not
- * the human-meaningful value this wiring is required to produce. Mapped to a real string
- * ("Primary" / null, `null` rendering the grid's normal blank-cell case) before the row ever
- * reaches `cellValue()` — the same restraint contact.js's own field comment already takes
- * for `role` (free text, not invented), applied here to a rendering gap instead of a data
- * gap.
+ * `isPrimary` passes through as the real BOOLEAN it is. This lane originally mapped it to
+ * "Primary"/null here, because `cellValue()` had no BOOLEAN branch and React renders
+ * neither `true` nor `false` as text — every row came out blank, primary and non-primary
+ * alike. That gap is now fixed at the source (listPresentation.js renders the app's
+ * established "Yes"/"No"), so the local mapping is gone: a consumer working around a
+ * renderer gap leaves the gap in place for every other consumer, and pre-mapping a BOOLEAN
+ * column to a string would now be coerced by the very branch that fixed it.
  */
 function mapContactRow(contact) {
   return {
@@ -534,7 +531,7 @@ function mapContactRow(contact) {
     role: contact.role ?? null,
     email: contact.email ?? null,
     phone: contact.phone ?? null,
-    isPrimary: contact.isPrimary ? "Primary" : null,
+    isPrimary: contact.isPrimary ?? null,
   };
 }
 

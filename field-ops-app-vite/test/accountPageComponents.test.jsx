@@ -513,7 +513,7 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
 //      section-level Add/Import affordances survive, and the post-create keyboard-focus
 //      handoff this whole lane exists to prove still works end to end.
 describe("buildAccountRelatedListPresentation — contacts / locations against the REAL definitions", () => {
-  it("contacts: human-meaningful cells, never the document id, isPrimary mapped to a real string (cellValue has no BOOLEAN branch)", () => {
+  it("contacts: human-meaningful cells, never the document id, isPrimary renders through cellValue's BOOLEAN branch", () => {
     const presentation = buildAccountRelatedListPresentation({
       listId: "account.contacts",
       rows: [
@@ -531,9 +531,11 @@ describe("buildAccountRelatedListPresentation — contacts / locations against t
     expect(row1.cells.some((c) => c.value === "contact-doc-1")).toBe(false);
     expect(row1.cells.find((c) => c.fieldId === "name").value).toBe("Jane Doe");
     // BOOLEAN true -> a real, visible string, not `true` (which React would render as nothing).
-    expect(row1.cells.find((c) => c.fieldId === "isPrimary").value).toBe("Primary");
+    expect(row1.cells.find((c) => c.fieldId === "isPrimary").value).toBe("Yes");
     // BOOLEAN false -> null (the grid's normal blank-cell case), not the literal `false`.
-    expect(row2.cells.find((c) => c.fieldId === "isPrimary").value).toBeNull();
+    // "No", not blank. A non-primary contact and a contact whose primary status was
+    // never recorded are different claims, and a blank cell says neither.
+    expect(row2.cells.find((c) => c.fieldId === "isPrimary").value).toBe("No");
   });
 
   it("locations: the stored `address` map is flattened to the declared flat fieldIds, never blank", () => {

@@ -94,6 +94,13 @@ export function cellValue(column, row) {
     return raw.map((v) => column.enumLabels?.[v] ?? v).join(", ");
   }
   if (column.type === "TIMESTAMP" || column.type === "DATE") return formatTimestamp(raw, { unknown: null });
+  // BOOLEAN renders as text, using the app's established "Yes"/"No" vocabulary. Without
+  // this, React renders neither `true` nor `false` as a child, so a declared boolean
+  // column came out BLANK on every row -- indistinguishable from a missing value, and
+  // silent in exactly the way an unrendered enum was. A section that wants a more specific
+  // vocabulary ("Primary" rather than "Yes") can still map the value before it gets here;
+  // this is the honest default, not a replacement for one.
+  if (column.type === "BOOLEAN") return raw ? "Yes" : "No";
   return raw;
 }
 
