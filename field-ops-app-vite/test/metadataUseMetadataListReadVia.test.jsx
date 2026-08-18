@@ -135,3 +135,54 @@ describe("useMetadataList readVia dispatch", () => {
     await waitFor(() => expect(result.current.presentation.state).toBe("EMPTY"));
   });
 });
+
+// X-ENTITY-SINGLE-READCALLABLE — a list view's own `readCallable` override.
+//
+// Before this, the descriptor's readCallable was always the ENTITY's (buildQueryDescriptor
+// stamps `entity.readCallable` unconditionally, listRuntime.js). A list view declaring
+// nothing must still behave EXACTLY as every test above -- that is `indexDef`, reused
+// unchanged. A list view declaring its OWN readCallable must have it reach
+// callableListSource.fetchPage instead of being silently dropped -- the ninth unconsumed
+// declaration this change exists to not create.
+describe("useMetadataList honors a list view's declared readCallable override", () => {
+  const indexDefWithOverride = makeListViewDefinition({
+    id: "widget.index",
+    entityId: "widget",
+    label: "Widgets",
+    surface: "INDEX",
+    columns: [makeColumn({ fieldId: "name" })],
+    pageSize: 25,
+    readCallable: "listOpportunityContext",
+  });
+
+  it("a list view with no declared readCallable falls back to the entity's own — additive, unchanged", async () => {
+    fetchCallablePageMock.mockResolvedValue(page([{ id: "opp1" }]));
+    const entity = makeEntity({ readVia: "CALLABLE", readCallable: "listSalesOrdersForAccount" });
+    const { result } = renderHook(() => useMetadataList(indexDef, entity));
+    await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
+    const [descriptor] = fetchCallablePageMock.mock.calls[0];
+    expect(descriptor.readCallable).toBe("listSalesOrdersForAccount");
+  });
+
+  it("a list view's declared readCallable overrides the entity's own on the descriptor it actually reads through", async () => {
+    fetchCallablePageMock.mockResolvedValue(page([{ id: "opp1" }]));
+    // The entity's own readCallable is deliberately a DIFFERENT known callable, so a test
+    // that passed by accident (descriptor still carrying the entity's value) would fail.
+    const entity = makeEntity({ readVia: "CALLABLE", readCallable: "listSalesOrdersForAccount" });
+    const { result } = renderHook(() => useMetadataList(indexDefWithOverride, entity));
+    await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
+    expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
+    const [descriptor] = fetchCallablePageMock.mock.calls[0];
+    expect(descriptor.readCallable).toBe("listOpportunityContext");
+  });
+
+  it("routes to the callable source even when only the LIST VIEW declares a readCallable and the entity's own is absent", async () => {
+    fetchCallablePageMock.mockResolvedValue(page([{ id: "opp1" }]));
+    const entity = makeEntity({ readVia: "CALLABLE", readCallable: null });
+    const { result } = renderHook(() => useMetadataList(indexDefWithOverride, entity));
+    await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
+    expect(fetchFirestorePageMock).not.toHaveBeenCalled();
+    const [descriptor] = fetchCallablePageMock.mock.calls[0];
+    expect(descriptor.readCallable).toBe("listOpportunityContext");
+  });
+});

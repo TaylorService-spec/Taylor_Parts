@@ -17,7 +17,7 @@ vi.mock("firebase/functions", () => ({
 }));
 vi.mock("../src/firebase/firebase.js", () => ({ functions: { __fakeFunctions: true } }));
 
-const { fetchPage } = await import("../src/metadata/callableListSource.js");
+const { fetchPage, isKnownReadCallable, readCallableSourceInfo } = await import("../src/metadata/callableListSource.js");
 
 beforeEach(() => {
   httpsCallableMock.mockReset();
@@ -184,6 +184,48 @@ describe("callableListSource.fetchPage", () => {
       });
     });
   });
+});
+
+// X-ENTITY-SINGLE-READCALLABLE: the lookup helpers listViewDefinition.js's
+// validateListViewDefinition uses to check a list view's declared readCallable AT
+// DEFINITION TIME rather than letting it reach fetchPage unchecked.
+describe("isKnownReadCallable / readCallableSourceInfo", () => {
+  it("recognizes every real callable this module registers", () => {
+    expect(isKnownReadCallable("listOpportunitiesForAccount")).toBe(true);
+    expect(isKnownReadCallable("listSalesOrdersForAccount")).toBe(true);
+    expect(isKnownReadCallable("listOpportunityContext")).toBe(true);
+  });
+
+  it("rejects a name this module has never registered, including inherited-object noise", () => {
+    expect(isKnownReadCallable("someTypoedCallableName")).toBe(false);
+    // CALLABLE_SOURCES is a plain object; `toString`/`hasOwnProperty` etc. must not read as
+    // "known" just because they exist on Object.prototype.
+    expect(isKnownReadCallable("toString")).toBe(false);
+    expect(isKnownReadCallable(null)).toBe(false);
+    expect(isKnownReadCallable(undefined)).toBe(false);
+  });
+
+  it("reports the scope flag a validator needs to catch a RELATED/INDEX mismatch", () => {
+    expect(readCallableSourceInfo("listOpportunitiesForAccount")).toEqual({ listKey: "opportunities", scoped: true });
+    expect(readCallableSourceInfo("listSalesOrdersForAccount")).toEqual({ listKey: "salesOrders", scoped: true });
+    expect(readCallableSourceInfo("listOpportunityContext")).toEqual({ listKey: "opportunities", scoped: false });
+    expect(readCallableSourceInfo("someTypoedCallableName")).toBeNull();
+  });
+});
+
+// The other half of "scope must match": an unscoped callable must not be handed a scope it
+// cannot use. Silently forwarding it would read the caller's WHOLE authorized scope instead
+// of the parent-scoped rows a RELATED section promises -- worse than failing outright.
+it("an UNSCOPED callable handed a parent-scope filter throws rather than silently reading the wrong rows", async () => {
+  await expect(
+    fetchPage(
+      descriptor({
+        readCallable: "listOpportunityContext",
+        filters: [{ fieldId: "accountId", operator: "EQUALS", value: "acct-1" }],
+      })
+    )
+  ).rejects.toThrow(/is unscoped and cannot accept a parent-scope filter/);
+  expect(httpsCallableMock).not.toHaveBeenCalled();
 });
 
 // A truncated RELATED page must DISCLOSE its truncation. The default binding computed

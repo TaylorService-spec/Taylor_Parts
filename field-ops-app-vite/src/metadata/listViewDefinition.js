@@ -35,6 +35,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FIELD_OPERATOR, findField } from "./entityDefinition.js";
+import { isKnownReadCallable, readCallableSourceInfo } from "./callableListSource.js";
 
 /** Sort direction. */
 export const SORT_DIRECTION = Object.freeze(["ASC", "DESC"]);
@@ -117,6 +118,16 @@ export function makeListViewDefinition(input = {}) {
     rowNavigationTo: input.rowNavigationTo ?? null, // route template, e.g. /customers/:id
     rowActions: Object.freeze([...(input.rowActions ?? [])]), // REGISTERED action ids
     capabilityRequirement: input.capabilityRequirement ?? null,
+    // X-ENTITY-SINGLE-READCALLABLE: which callable THIS list reads through, when it needs
+    // one different from the entity's own `readCallable`. An entity can only name one
+    // (RELATED and INDEX legitimately need different reads of the same CALLABLE-read
+    // entity — an account-scoped one for a related section, an unscoped one for an index),
+    // so the override lives on the surface that actually knows which it needs: the list
+    // view. `null` (the default) means "defer to the entity's own readCallable" — the
+    // additive case every list view that declares nothing falls into, unchanged from
+    // before this field existed. Validated against `callableListSource.js`'s own registry
+    // by `validateListViewDefinition` below, never trusted un-checked.
+    readCallable: input.readCallable ?? null,
   });
 }
 
@@ -154,6 +165,49 @@ export function validateListViewDefinition(def, entity, relationships = []) {
     return problems;
   }
   if (def.entityId !== entity.id) problems.push(`${at}: entityId "${def.entityId}" does not match entity "${entity.id}"`);
+
+  // X-ENTITY-SINGLE-READCALLABLE — a list view's own readCallable override, checked HERE
+  // rather than left to fail wherever a caller happens to open the list
+  // (X-UNCONSUMED-DECLARATION-PATTERN: this program's most-repeated defect is a
+  // declaration nothing checks). Three ways this can lie:
+  //   1. naming a callable callableListSource.js has never heard of — a typo or a
+  //      not-yet-registered callable, never a live read to attempt;
+  //   2. naming one on a CLIENT_DIRECT entity — that entity reads Firestore directly and
+  //      has no business routing through a callable at all;
+  //   3. naming one whose SCOPE does not match the surface — a RELATED list always
+  //      supplies a parent-scope filter (buildQueryDescriptor prepends it unconditionally
+  //      for `surface === "RELATED"`), so an unscoped callable there would either throw at
+  //      runtime (callableListSource's own unscoped-cannot-accept-scope guard) or, worse,
+  //      silently read the caller's whole authorized scope instead of the parent's rows;
+  //      an INDEX list never supplies a parent scope, so a scoped callable there would
+  //      throw on every single request. Both are caught here instead of at the first user
+  //      who opens the list.
+  if (def.readCallable) {
+    if (entity.readVia === "CLIENT_DIRECT") {
+      problems.push(
+        `${at}: readCallable "${def.readCallable}" is declared but entity "${entity.id}" reads CLIENT_DIRECT — ` +
+          "a list view's readCallable only makes sense for a CALLABLE-read entity"
+      );
+    } else if (!isKnownReadCallable(def.readCallable)) {
+      problems.push(
+        `${at}: readCallable "${def.readCallable}" is not a known callable — see CALLABLE_SOURCES in callableListSource.js`
+      );
+    } else {
+      const info = readCallableSourceInfo(def.readCallable);
+      if (def.surface === "RELATED" && !info.scoped) {
+        problems.push(
+          `${at}: readCallable "${def.readCallable}" is unscoped, but a RELATED list always supplies a parent-scope ` +
+            "filter — declare a scoped callable, or leave readCallable undeclared to use the entity's own"
+        );
+      }
+      if (def.surface === "INDEX" && info.scoped) {
+        problems.push(
+          `${at}: readCallable "${def.readCallable}" requires a parent-scope filter, but an INDEX list never ` +
+            "supplies one — declare an unscoped callable"
+        );
+      }
+    }
+  }
 
   // Columns
   if (!def.columns?.length) problems.push(`${at}: at least one column is required`);

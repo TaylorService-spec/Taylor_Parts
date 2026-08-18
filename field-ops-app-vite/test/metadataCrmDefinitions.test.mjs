@@ -102,6 +102,16 @@ test("stage vocabulary comes from the domain module, not a copy", () => {
   assert.deepEqual({ ...stage.enumLabels }, { ...STAGE_LABEL });
 });
 
+test("opportunity.index declares its own readCallable, unscoped, distinct from the entity's account-scoped default (X-ENTITY-SINGLE-READCALLABLE)", () => {
+  // The RELATED section (account.opportunities) has none declared -- it defers to the
+  // entity's own account-scoped `listOpportunitiesForAccount`, which is exactly what a
+  // parent-scoped section needs. The INDEX surface names the real, already-registered
+  // unscoped read instead of the account-scoped one it cannot use.
+  assert.equal(opportunityRelatedList.readCallable, null);
+  assert.equal(opportunityIndexList.readCallable, "listOpportunityContext");
+  assert.notEqual(opportunityIndexList.readCallable, opportunityEntity.readCallable);
+});
+
 test("opportunity declares no rowNavigationTo, because no per-Opportunity route exists", () => {
   // A route template is a promise that the route exists. "/sales/opportunities/:id" was
   // declared here and matches nothing in App.jsx; it was harmless only while nothing read
