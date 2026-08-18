@@ -1,6 +1,6 @@
 {
   "program": "EOS Metadata-to-Platform Program",
-  "baseline": "origin/main 8d360889 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
+  "baseline": "origin/main f7a61306 -- 150 entries, every claim reconciled against git. MERGED 75, COMPLETE 14, EXEMPT 15, BLOCKED_DEPENDENCY 32, BLOCKED_PROTECTED 11, READY 2, IMPLEMENTING 1.",
   "governing": [
     "docs/governance/metadata-architecture-ip-boundary.md",
     "docs/DECISIONS.md #102",
@@ -194,12 +194,28 @@
       "kind": "ARCHITECTURE",
       "title": "No INDEX surface can read a CALLABLE entity -- useMetadataList has no readVia branch",
       "domain": "metadata",
+      "status": "MERGED",
+      "governing": [
+        "DECISIONS #102 section 6"
+      ],
+      "nextAction": "Blocked no further at the runtime; the remaining gap is definition-level.",
+      "notes": "The RELATED path learned readVia in #1200 (selectListSource in MetadataRecordPage.jsx). The INDEX path never did: hooks/useMetadataList.js imports fetchPage from firestoreListSource.js unconditionally. Any CALLABLE-read entity therefore CANNOT have an INDEX surface -- it would report permission-denied to every caller, including one genuinely entitled. This is the identical defect the program already fixed once, surviving on the surface nobody had wired yet. Also needs callableListSource.js to grow an unscoped read path (it hardcodes the account-scoped callable and throws without a parent filter) or an explicit 'INDEX + CALLABLE unsupported' contract that fails loudly. RESOLVED at the runtime. useMetadataList now carries the same three-branch dispatch as selectListSource, same order, same fail-loud null; the lane deliberately DUPLICATED five lines rather than importing from MetadataRecordPage.jsx, since a hook importing a page component is a worse layering violation than the duplication -- reasoning left in the code. Every failure mode (UNKNOWN readVia, missing readCallable, unmapped callable, scoped callable without a scope filter) fails before any invocation. CALLABLE_SOURCES now records scoped true/false and listOpportunityContext is registered as the first unscoped entry, proven by test. Integration also registered TWO test files that no workflow named -- the new one and metadataCallableListSource.test.jsx, unregistered since it was written; the metadata workflow names vitest files explicitly rather than globbing, so both would never have run in CI.",
+      "pr": 1229,
+      "mergeSha": "f7a61306"
+    },
+    {
+      "id": "X-ENTITY-SINGLE-READCALLABLE",
+      "phase": "6",
+      "wave": "3",
+      "kind": "ARCHITECTURE",
+      "title": "An entity declares one readCallable, but INDEX and RELATED need different ones",
+      "domain": "metadata",
       "status": "READY",
       "governing": [
         "DECISIONS #102 section 6"
       ],
-      "nextAction": "Give useMetadataList a readVia dispatch mirroring selectListSource, and callableListSource an unscoped path.",
-      "notes": "The RELATED path learned readVia in #1200 (selectListSource in MetadataRecordPage.jsx). The INDEX path never did: hooks/useMetadataList.js imports fetchPage from firestoreListSource.js unconditionally. Any CALLABLE-read entity therefore CANNOT have an INDEX surface -- it would report permission-denied to every caller, including one genuinely entitled. This is the identical defect the program already fixed once, surviving on the surface nobody had wired yet. Also needs callableListSource.js to grow an unscoped read path (it hardcodes the account-scoped callable and throws without a parent filter) or an explicit 'INDEX + CALLABLE unsupported' contract that fails loudly."
+      "nextAction": "Let a list view declare its own readCallable, or let an entity declare a scoped/unscoped pair.",
+      "notes": "The runtime can now serve an unscoped CALLABLE read, and listOpportunityContext is a real unscoped governed read that genuinely takes no accountId. It is still unreachable for Opportunity and Sales Order because an ENTITY declares exactly one readCallable, and theirs is the account-scoped one their RELATED section needs. An INDEX list has no way to declare a different callable than a RELATED list on the same entity. This is the last blocker between the metadata runtime and the ~25 planned INDEX surface migrations. Note the shape: readVia and readCallable were modelled as properties of the ENTITY, but the read path is a property of the SURFACE -- the same entity is legitimately read two different ways depending on what is asking. Fixing this is a small contract change, not a workaround."
     },
     {
       "id": "X-OPPORTUNITY-CUSTOMER-COLUMN-SHOWED-ID",
