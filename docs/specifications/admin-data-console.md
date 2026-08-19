@@ -84,6 +84,68 @@ filter. "Who exported the customer list, and when" must be answerable. Row caps 
 truncated export must say so on the artifact itself, not only on screen — a CSV that silently
 stops at 10,000 rows becomes someone's source of truth.
 
+### 3.1 Who may export what (Owner, 2026-08-19)
+
+**Admin: no restrictions.** Admin exports any object, all rows, all fields. Every export is still
+audited — "no restrictions" governs *what may be exported*, not *whether it is recorded*.
+
+**Sales: only what they own.** A sales role exports only records it owns, filtered server-side by
+the same resolver that authorizes the read. Ownership is never a client-side filter over a fuller
+result set, because a client filter means the data was already sent.
+
+#### What "own" means, per object
+
+Ownership already exists in the data model, keyed by **employeeId**, not uid:
+
+| Object | Ownership field | Notes |
+|---|---|---|
+| Account | `accountOwner.assignedToEmployeeId` | stored inside a Person Assignment map |
+| Opportunity | `ownerEmployeeId` | |
+| Sales Order | `ownerEmployeeId` | caller-supplied at creation |
+| Contact | — | owned *derivatively*, through its parent Account |
+| Location | — | owned *derivatively*, through its parent Account |
+| Part | **none** | Parts have no owner concept at all |
+
+Two consequences that must be decided rather than discovered during implementation:
+
+1. **Contacts and Locations have no owner of their own.** "What they own" can only mean "belonging
+   to an Account they own". That is a defensible reading and it is what this specification adopts
+   — but it is a derivation, not a field, and a Contact whose Account is reassigned silently
+   changes who can export it.
+2. **Parts have no owner.** "Only what they own" is therefore undefined for Parts, and the honest
+   result is that a sales role exports **no** Parts rather than all of them. Falling back to
+   "unowned means everyone" would turn an ownership rule into an open door on the one object the
+   duplicate work just widened write access to.
+
+#### The manager rollup is NOT specified here
+
+Whether a **sales manager** owns their team's records is the coverage/territory question the Owner
+recorded as a roadmap requirement and explicitly deferred ("record and preserve the seams, do not
+build during the runway"). This specification does not resolve it. Until it is resolved,
+`salesManager` exports what that person owns directly — the same rule as any other sales role —
+and any team rollup is a later, separate change. Inventing a rollup here would be building the
+deferred territory model by accident.
+
+#### An existing invariant this ruling collides with
+
+The permission catalog states, for saved report definitions:
+
+> ownership (`ownerUid` == the trusted actor) is enforced by the service itself … there is no
+> owner-override id here, matching "private by default, **no admin override**"
+
+So **admin deliberately cannot see another user's saved report definitions today.** Read
+literally, "admins have no restrictions" reverses that invariant.
+
+This specification does **not** apply the ruling there, because the two are different things: a
+saved report *definition* is a person's private working artifact, whereas the *records* the
+console exports are company data. The ruling is read as covering company records — Accounts,
+Contacts, Locations, Parts, Opportunities — and the report-definition privacy invariant stands
+unchanged.
+
+**If the Owner does intend admin to read others' saved report definitions, that is a separate
+decision and a separate change**, and it should be made deliberately rather than inherited from a
+sentence about exports.
+
 ### 4. Import and bulk edit — through governed commands only
 
 Generalizes today's Contact-only import across objects.
@@ -167,15 +229,17 @@ introduced that would need its own reversal.
 3. A caller lacking a field-level read capability receives that field from no surface — inspector,
    export, or error text.
 4. Export produces a CSV of the query result and writes an audit event naming who, object, fields,
-   row count and filter.
-5. A truncated export is marked as truncated in the file itself, not only on screen.
-6. Import performs a mandatory dry run showing creates, updates and rejects with reasons, before
+   row count and filter. Admin export is unrestricted in scope and still fully audited.
+5. A sales role's export returns only records it owns, filtered SERVER-SIDE. A sales role exporting
+   Parts -- which have no owner -- receives no rows, not all rows.
+6. A truncated export is marked as truncated in the file itself, not only on screen.
+7. Import performs a mandatory dry run showing creates, updates and rejects with reasons, before
    any write.
-7. Every imported record produces the same audit event as the equivalent UI action.
-8. Import honours duplicate rules per row: blocked rows are rejected with reasons, clean rows
+8. Every imported record produces the same audit event as the equivalent UI action.
+9. Import honours duplicate rules per row: blocked rows are rejected with reasons, clean rows
    import, and the file is never rejected wholesale for duplicates.
-9. No surface in this console writes to a collection except through an existing governed command.
-10. No bulk delete exists.
+10. No surface in this console writes to a collection except through an existing governed command.
+11. No bulk delete exists.
 
 ## Risks
 
@@ -189,9 +253,12 @@ introduced that would need its own reversal.
 
 ## Open questions
 
-1. **Which capabilities?** Proposed: `admin.console.metadata.read`, `admin.console.record.read`,
-   `admin.data.export`, `admin.data.import` — distinct ids so export can be granted without
-   import, and both without rule authoring. Who holds each?
+1. ~~Which capabilities, and who holds each?~~ **PARTLY ANSWERED (Owner, 2026-08-19): admin
+   holds all of them without restriction; sales holds export scoped to what it owns.** Ids remain
+   as proposed — `admin.console.metadata.read`, `admin.console.record.read`,
+   `admin.data.export`, `admin.data.import` — distinct so export can be granted without import.
+   Still open: whether `salesManager` differs from `salesManager`-as-individual once the
+   deferred coverage/territory model lands, and whether any non-admin role gets `admin.data.import`.
 2. **Export row cap**, and whether a large export needs approval rather than just an audit event.
 3. **Does bulk edit ship with import, or later?** Import alone is the smaller, safer first cut;
    bulk edit multiplies the blast radius of a bad mapping.
