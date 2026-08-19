@@ -57,7 +57,10 @@ async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds
   const db = getFirestore();
   const snap = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", ref));
   return sumLedgerEligibleOnHand(
-    snap.docs.map((d) => d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string } }),
+    snap.docs.map(
+      (d) =>
+        d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }
+    ),
     eligibleWarehouseIds
   );
 }
