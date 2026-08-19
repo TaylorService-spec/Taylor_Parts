@@ -500,3 +500,89 @@ the client transport flag remains gated separately).
 This is sharper than the rest of the M6 class: those comments misstate *deployment*, these misstate
 *authorization*. The two most natural files to check when asking "can an admin receive stock?" both
 answer no, and both are wrong.
+
+## Persona walks — what each role actually experiences
+
+Four persona scouts walked the whole product as one role each, live-verifying authorization with read
+callables. Two of them corrected earlier findings in this document.
+
+### The technician's day works end to end
+
+Assignment → travel → arrive → capture → consume parts → complete is reachable and correctly scoped.
+Live-verified as the technician persona: their own scoped Work Order query returns 10 documents, the
+unfiltered collection read returns 403, and every other business collection returns 403. No
+over-exposure anywhere.
+
+**This corrects M1's scope, again.** Probing `resolveEffectiveAccess` as a real ACTIVE technician
+returns `false` for all four `operationalRoleActive`-gated capabilities — but **no
+technician-reachable screen ever invokes them** (zero matches across the mobile, technicianDashboard
+and jobs modules). M1's blast radius is the `/inventory-role/*` homes, which a base technician cannot
+see, and those homes use the working Rules-side check anyway. M1 is real and should be fixed, but it
+does not degrade the technician experience at all.
+
+**H3 also does not propagate to the field.** All five `wo-c713-*` Work Orders resolve
+`getWorkOrderFieldContext` cleanly, because that projection derives from the Work Order's own
+`customerId`/`locationId` and never traverses the Sales Order.
+
+### H17 — Coordinated Visits and Coordinated Mission are inert for every persona, including owner
+
+`fulfillment.coordinatedVisit.read` is activated in sandbox but **granted to no Role anywhere**.
+Activation only lifts the catalog block; a Role grant is still required. Live-verified 403 for
+technician, dispatcher, admin **and owner**.
+
+Two nav-visible destinations can therefore never show data — and unlike the sibling case in
+`AvailableEquipment.jsx`, neither screen's copy tells the user this is expected. This is also the one
+surface built to show a dispatcher a customer's whole coordinated obligation across Work Orders, so
+its absence is the second half of why the Sales-Order-linked monitoring path is broken.
+
+### H18 — Administration cannot administer
+
+- The nav item labelled **"Employees" renders `Technicians.jsx`**, which writes `fieldops_technicians`
+  — a legacy collection disconnected from the governed `employees`/access model. The only
+  nav-reachable "add a person" affordance in the product creates a row that confers no Auth account,
+  no Role and no application access.
+- Enable/disable user and assign-role are both shipped permanently `disabled`.
+- Password reset is gated on an inactive capability that the client never even requests (H-ADMIN-1).
+- **No UI anywhere reads an audit event.** Permission Preview and Audit Logs are literal
+  "unavailable" stubs, and a repo-wide search finds no other client consumer of `auditEvents`. So the
+  audit records that *are* written — the Sales Order fulfillment write-back — are invisible too. "Who
+  touched this and when" is unanswerable from the product for every object type, which compounds the
+  audit gaps at H6, M9 and M11 rather than merely sitting alongside them.
+- There is no admin-reachable path to correct data or void a mistake.
+
+Every administrative action an admin might need is either wired to the wrong collection or disabled;
+the only working path is the CLI.
+
+### M28 — Two more capability asymmetries, both breaking "owner ≥ admin"
+
+- **Owner is denied `getCrmActivities` too**, not just admin — `crmActivityContributor` is a
+  per-persona role assignment outside the admin/dispatcher/owner composition, so owner's superset
+  property does not hold for it. M3 is broader than recorded.
+- **`workOrder.parts.plan` resolves true for dispatcher and false for admin** (live-verified). The
+  parts-plan editor works for one and not the other, with nothing in the UI indicating why. Same
+  shape as M3, second instance.
+
+### M29 — Dispatcher blind spots and a doomed control
+
+- **Create Transfer is enabled and wired for a dispatcher whose `inventory.transfer.create` resolves
+  false** — the form fills, submits, and is rejected server-side.
+- No screen tells a dispatcher whether parts are actually in stock before scheduling or dispatching a
+  job, whether a technician is genuinely free beyond a three-value status, or that a Work Order's
+  `salesOrderId` is broken.
+- **There is no intake object at all** — no ticket or request entity precedes a Work Order; the chain
+  begins at "create a Work Order".
+- Three independent technician-status vocabularies and three independent work-order-status
+  vocabularies are all dispatcher-visible; the same technician reads "Busy" on one board and "On job"
+  on another.
+- Control Tower's parts panel aggregates *planned demand*, not on-hand stock, and nothing labels it
+  as such next to Inventory's on-hand figures.
+
+### M30 — Operational-role gaps found by walking those roles
+
+- **PARTS_ASSOCIATE genuinely cannot read `parts`** — settled, and it is documented intent (DQ-B1),
+  not an oversight. The consequence is permanent: every reorder card shows raw part ids instead of
+  names, for every associate, forever, until that decision is revisited.
+- **PARTS_MANAGER holds a reorder-creation grant in Rules with no UI to exercise it** — the panel is
+  rendered without the `onRequestReorder` prop its sibling passes.
+- **The WAREHOUSE_MANAGER warehouse-scoped read grant has no consumer and no route** — that role can
+  never see the warehouses it is scoped to.
