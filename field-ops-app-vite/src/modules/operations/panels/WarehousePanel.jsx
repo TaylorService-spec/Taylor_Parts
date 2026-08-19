@@ -60,7 +60,17 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
       )}
 
       <h4>Reconciliation</h4>
-      {reconciliationReport.totalDiscrepancies === 0 ? (
+      {reconciliationReport.status === "CANNOT_EVALUATE" ? (
+        // M15: a structurally-unrunnable check must never render as a clean result. The
+        // ledger records what was consumed, not which warehouse it came from, so it cannot
+        // be checked against this warehouse's bin-level stock -- this is not "no
+        // discrepancies found," it is "the comparison could not be made."
+        <p className="fo-muted" role="status">
+          Reconciliation cannot run for this warehouse right now: inventory movements aren&rsquo;t currently
+          recorded per warehouse, so physical stock here can&rsquo;t be checked against it. This is not a clean
+          result -- it means the check didn&rsquo;t run.
+        </p>
+      ) : reconciliationReport.totalDiscrepancies === 0 ? (
         <p className="fo-muted">No discrepancies between physical stock and ledger-derived expectation.</p>
       ) : (
         <>
