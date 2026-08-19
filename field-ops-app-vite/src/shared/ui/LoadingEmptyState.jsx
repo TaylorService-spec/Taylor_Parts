@@ -21,11 +21,20 @@
 // applied to this simpler primitive. Checked before `isEmpty` so a caller that
 // (incorrectly) sets both still gets the honest failure state, never a silently
 // "empty" one -- no fallthrough-to-blank.
-import FailureState from "./FailureState";
+//
+// Visual-states migration -- the three branches now render through the same
+// LoadingState/EmptyState/FailureState primitives the rest of the app uses
+// (icon, heading, message) instead of a bare `<p className="fo-muted">`, so a
+// consumer still on this simpler primitive gets the same considered composition
+// for free. `loadingText`/`emptyText`/`failedText`/`children` keep their exact
+// meaning -- no caller has to change anything.
+import LoadingState from "./LoadingState.jsx";
+import EmptyState from "./EmptyState.jsx";
+import FailureState from "./FailureState.jsx";
 
 export default function LoadingEmptyState({ loading, isEmpty, failed, loadingText, emptyText, failedText, children }) {
-  if (loading) return <p className="fo-muted">{loadingText}</p>;
+  if (loading) return <LoadingState>{loadingText}</LoadingState>;
   if (failed) return <FailureState message={failedText ?? emptyText} />;
-  if (isEmpty) return <p className="fo-muted">{emptyText}</p>;
+  if (isEmpty) return <EmptyState message={emptyText} />;
   return children;
 }
