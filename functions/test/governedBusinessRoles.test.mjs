@@ -595,25 +595,66 @@ check("without any assignment, inventory.catalog.manage remains DENIED (grant re
   assert.equal(denied.decision, "DENY");
 });
 
-check("catalog write is confined to the two purpose-built catalog Roles -- no title-based Role grants it", () => {
-  // Was "only the temporary executor" before the durable
-  // inventoryCatalogAdministrator existed (Option A,
-  // docs/releases/supplier-master-promotion-package.md SS A). The invariant that
-  // actually matters is unchanged and is asserted more strictly here: catalog
-  // write stays OFF every title-based Role -- including admin and owner --
-  // and is carried ONLY by Roles created for that specific authority.
-  const CATALOG_WRITE_ROLES = ["inventoryCreateExecutor", "inventoryCatalogAdministrator"];
+// OWNER REVERSAL 2026-08-19. This check previously asserted that catalog WRITE stays off
+// every title-based Role -- "catalog write is a specific operational authority, not a
+// title-based one" (docs/releases/supplier-master-promotion-package.md SS A, which also
+// evaluated and REJECTED extending operationsManager as its Option B).
+//
+// The Owner reversed that after the risk was put to them explicitly: the duplicate-catalog
+// failure mode (TST-1234 vs "TST 1234" vs "Compressor Assy" as three Parts, with stock and
+// history split across all three) was stated, along with the fact that this system has NO
+// duplicate detection today. The ruling was that all three management Roles hold it and that
+// duplicate detection begins immediately as the mitigation, rather than the grant waiting on it.
+//
+// The check is INVERTED, not deleted, and the ACTIVATE half of the original invariant is
+// untouched and still enforced: lifecycle status remains confined to the purpose-built catalog
+// Role. So the reversal is exactly as wide as the ruling and no wider, and re-narrowing it later
+// -- once dedup exists, if the Owner then wants curation back with the catalog administrator --
+// is a decision someone makes here rather than a drift nobody notices.
+check("catalog MANAGE is held by the three management Roles plus the purpose-built catalog Roles; catalog ACTIVATE is still confined", () => {
+  const EXPECTED_MANAGE = [
+    "fieldManager",
+    "inventoryCatalogAdministrator",
+    "inventoryCreateExecutor",
+    "operationsManager",
+    "owner",
+  ];
   const granting = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
     (id) => resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
   );
-  assert.deepEqual(granting.sort(), [...CATALOG_WRITE_ROLES].sort());
-  for (const [id] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
-    if (CATALOG_WRITE_ROLES.includes(id)) continue;
-    assert.equal(resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
-  }
-  // owner is the strongest governed Role and still must not hold catalog write.
-  assert.equal(resolve("inventory.catalog.manage", "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  assert.deepEqual(granting.sort(), EXPECTED_MANAGE, "exactly these Roles may write the catalog");
+
+  // Owner holds MANAGE by composition through ADMIN_ROLE, not by its own grant.
+  assert.equal(resolve("inventory.catalog.manage", "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+
+  // ACTIVATE was NOT part of the reversal. Creating and correcting reference data is a
+  // different authority from changing its lifecycle status, and only the durable catalog
+  // administrator carries it -- owner included.
+  const activating = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
+    (id) => resolve("inventory.catalog.activate", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
+  );
+  assert.deepEqual(activating, ["inventoryCatalogAdministrator"], "activate stays confined");
   assert.equal(resolve("inventory.catalog.activate", "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+});
+
+check("the catalog MANAGE reversal did not leak to the operational Roles it was never meant to reach", () => {
+  // dispatcher and technician are the highest-headcount Roles in the product. The ruling named
+  // the three MANAGEMENT Roles; it did not name these, and the grant was placed so they cannot
+  // pick it up from the shared admin/dispatcher base.
+  for (const id of ["dispatcher", "technician"]) {
+    assert.equal(
+      (COMPATIBILITY_ROLES[id].permissions || []).includes("inventory.catalog.manage"),
+      false,
+      `${id} must not hold inventory.catalog.manage`,
+    );
+  }
+  for (const id of ["salesManager", "financeManager", "accountingManager", "officeManager", "generalEmployee"]) {
+    assert.equal(
+      resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision,
+      "DENY",
+      `${id} must not hold inventory.catalog.manage`,
+    );
+  }
 });
 
 // === Catalog administrator (durable) -- Option A of the accepted role design ===
