@@ -1802,3 +1802,86 @@ Tracked separately, unchanged by this section:
   those fields (§11.4).
 - Mounting `salesOrder.index` — its own reviewed UX slice.
 - Owner-driven authenticated Account-page check (§12.4).
+
+---
+
+# §14 — Targeted Functions repair: `getInventoryAnalytics` DEPLOYED
+
+**Deployed 2026-08-19T01:37:54Z. 12 of 12 post-deploy checks PASS. The live encoder error is gone.**
+Hosting untouched. No rollback required or performed.
+
+## 14.1 Pre-deploy gates — all four passed
+
+| Gate | Result |
+|---|---|
+| Working copy at the authorized commit | detached at `923ed5b1`, **tree clean** |
+| `npm run build` | exit **0** |
+| Hosting unmoved | `/version.json` = `0884e480` |
+| Rollback baseline captured | revision **`getinventoryanalytics-00010-hes`** |
+
+## 14.2 Deployment
+
+    npx firebase-tools deploy --only functions:getInventoryAnalytics --project eos-platform-sandbox --non-interactive
+
+The log confirms exactly one operation —
+`functions[getInventoryAnalytics(us-central1)] Successful update operation` — and **no Hosting,
+Rules, index, seed or activation lines**. New revision **`getinventoryanalytics-00011-sas`**, ACTIVE.
+Function count unchanged at **84**.
+
+## 14.3 Post-deploy matrix — 12 / 12
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Admin | **200**, 5 entries |
+| 2 | Dispatcher | **200**, 5 entries |
+| 3 | Technician | **403**, message byte-unchanged |
+| 4 | Unauthenticated | **401** |
+| 5 | Result validation | 5 entries; `PRT-1001` finite `-30`; four zero-usage parts **`null`**; the string `Infinity` appears **nowhere** in the payload |
+| 6 | `availableStock` still reservation-netted | `-2, 6, 12, 40, 3` — identical to the pre-deploy local replay |
+| 7 | No leakage | 3 error shapes probed, 0 leaky |
+| 8 | Governed-ledger boundary | `allocateSalesOrder` technician **403** |
+| 9 | Sibling inventory callables unchanged | see caveat |
+| 10 | Sales Order regression matrix | index **14 rows**, strictly descending; account read **14**; over-limit **400**; unauthenticated **401**; technician **403** |
+| 11 | Hosting untouched | `/version.json` `0884e480`, bundle still `index-BmuCD58g.js` |
+| 12 | Cloud Logging | **no encoder errors after the deploy** |
+
+**Check 5 is the repair itself.** The four zero-usage parts now return `daysRemaining: null` — the
+same value `estimatedStockoutDate` already carried for that condition — rather than an `Infinity`
+that could not cross the wire. The one part with usage history keeps its computed `-30` unchanged, so
+the projection did not flatten real values into nulls.
+
+**Check 12 is the proof the defect is gone, not merely masked.** The only errors in the trailing hour
+are from `00:55Z` — my own pre-deploy probes. Nothing after `01:37:54Z`, across roughly ten live
+invocations during this matrix. Before the deploy, every authorized call produced one.
+
+**Check 9 caveat, stated precisely.** `detectInventoryEffects` returns **400 invalid-argument** and
+`receiveInventoryStock` returns **400** for a technician. A 400 proves the callable is reachable and
+validating input; it does **not** prove the authorization outcome, because argument validation runs
+before the capability check. The authorization boundary is demonstrated directly by checks 3 and 8
+instead. No write was performed by any probe.
+
+## 14.4 Position
+
+The four conditions named for closeout are met:
+
+| Condition | Status |
+|---|---|
+| Live encoder error absent | **YES** — check 12 |
+| Authorized personas receive valid wire-safe results | **YES** — checks 1, 2, 5 |
+| Access boundaries hold | **YES** — checks 3, 4, 7, 8 |
+| Inventory and Sales Order regression matrices pass | **YES** — checks 6, 9, 10 |
+
+Deployed strictly within scope: one callable, one commit, explicit project. No Hosting, Rules,
+indexes, other Functions, seeds, activations, or production. **Negative available stock on
+`PRT-1001` was not remediated**, per the authorization — it remains an open observation.
+
+Still tracked separately and unchanged by this repair:
+
+- Sales Order `createdAtMillis`/`updatedAtMillis` projection — correct **before** any surface consumes
+  those fields (§11.4).
+- Mounting `salesOrder.index` — its own reviewed UX slice (§12.6).
+- Owner-driven authenticated Account-page check (§12.4) — the one acceptance item no automated
+  evidence in this program can supply, because signing in means entering a password.
+
+`TARGETED FUNCTIONS REPAIR: DEPLOYED AND VERIFIED — 12/12.`
+`SANDBOX PROMOTION CLOSEOUT: conditions met; closeout is the Owner's call.`
