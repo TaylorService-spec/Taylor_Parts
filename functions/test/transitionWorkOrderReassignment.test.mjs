@@ -155,6 +155,50 @@ test("DEFECT FIX: reassignment WITH a reason succeeds, reconciles both fields, a
   assert.ok(event.at, "the Audit Event records a server timestamp");
 });
 
+test("MERGE COMPOSITION (M9/H19 + H20): a reassigning Dispatch stages BOTH the generic transitionWorkOrder event AND the dedicated reassignWorkOrderTechnician event for the SAME call -- two meaningfully different facts, not a duplicate", async () => {
+  const dispatcherUid = id("u-dispatcher");
+  await seedDispatcher(dispatcherUid);
+
+  const techX = id("tech-x");
+  const techY = id("tech-y");
+  const woId = id("wo-composition");
+  await seedScheduledWorkOrder(woId, { scheduledTechId: techX, startMs: baseStart, endMs: baseEnd });
+
+  await transitionWorkOrder.run(
+    callRequest(
+      { workOrderId: woId, action: "Dispatch", assignedTechId: techY, reassignReason: "Coverage swap" },
+      dispatcherUid
+    )
+  );
+
+  const [genericEvents, reassignEvents] = await Promise.all([
+    latestAuditEventFor(woId, "transitionWorkOrder"),
+    latestAuditEventFor(woId, "reassignWorkOrderTechnician"),
+  ]);
+
+  assert.equal(genericEvents.length, 1, "the M9/H19 generic per-transition event still fires for this Dispatch");
+  assert.equal(reassignEvents.length, 1, "the H20 reassignment event ALSO fires for this same Dispatch");
+
+  // The generic event records the STATE TRANSITION (and, per the merge resolution, a short pointer to the
+  // reassignment) -- it must never be the only place the reason lives, since it structurally has no reason
+  // field of its own.
+  assert.ok(genericEvents[0].summary.includes("Dispatch"), "the generic event names the action");
+  assert.ok(genericEvents[0].summary.includes(techX) && genericEvents[0].summary.includes(techY),
+    "the generic event's summary points at the reassignment (prior -> new technician)");
+  assert.ok(!genericEvents[0].summary.includes("Coverage swap"),
+    "the generic event does not duplicate the full reason text -- that detail lives only in the dedicated event");
+
+  // The dedicated event carries the full, structured reassignment fact the generic one cannot express.
+  assert.ok(reassignEvents[0].summary.includes("Coverage swap"), "the dedicated event carries the reason");
+  assert.ok(reassignEvents[0].summary.includes(techX) && reassignEvents[0].summary.includes(techY),
+    "the dedicated event names both technicians");
+
+  // Both records describe the ONE Dispatch call and must attribute it identically.
+  assert.equal(genericEvents[0].actorUid, reassignEvents[0].actorUid, "both events attribute the same actor");
+  assert.equal(genericEvents[0].targetId, woId);
+  assert.equal(reassignEvents[0].targetId, woId);
+});
+
 test("DEFECT FIX: reassigning to a technician with a SCHEDULE conflict (overlapping window) is refused -- the gap H20 exploited", async () => {
   // Before the fix, findScheduleConflict ran ONLY at Schedule time against the originally-scheduled
   // technician's calendar. Dispatching to a DIFFERENT technician never re-checked that technician's own
