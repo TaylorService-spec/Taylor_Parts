@@ -166,7 +166,7 @@ export default function Dispatch() {
               key={job.id}
               className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}`}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div className="fo-dispatch__card-head">
                 <h3>{job.woNumber ?? job.id}</h3>
                 <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
               </div>
@@ -229,7 +229,7 @@ export default function Dispatch() {
                         aria-label="Reassignment reason"
                         rows={2}
                       />
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <div className="fo-dispatch__reassign-actions">
                         <button type="button" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
                           Confirm reassignment
                         </button>
