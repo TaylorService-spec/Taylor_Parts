@@ -53,6 +53,25 @@ const REGION_CLASS = {
   FOOTER: "fo-record-footer",
 };
 
+// X-SECTION-ARIA-LABEL-FALLBACK (H-A11) — `section.kind` (RELATED_LIST, ACTIVITY,
+// FIELD_GROUP, ...) is a small, shared enum: every RELATED_LIST section on a page falls
+// back to the SAME accessible name, so a page with two related lists (e.g. Account's
+// Opportunities and Sales Orders) announces "RELATED_LIST" for both — indistinguishable to
+// a screen-reader user, and not a human label either way. A definition SHOULD always
+// declare a real `label` (see accountPage.js's opportunities/salesOrders sections), but the
+// fallback itself must not be able to reproduce this failure for the sections that don't:
+// `section.id` is validated unique per page (`validatePageDefinition`'s "duplicate section
+// id" check), so humanizing it — camelCase -> "Camel Case" — guarantees a DISTINCT,
+// non-generic accessible name even when a definition omits `label`, without requiring every
+// caller to remember to set one.
+function humanizeSectionId(id) {
+  if (!id) return "Section";
+  return id
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase())
+    .trim();
+}
+
 /**
  * X-CAPABILITY-PARTS-FIELDGROUP-UNCONSUMED — maps each of a section's `capabilityParts`
  * fieldIds back to the owning part's id, so FieldGroup can tell which authority a given
@@ -617,7 +636,11 @@ export default function MetadataRecordPage({
         return (
           <div key={region} className={REGION_CLASS[region] ?? "fo-record-main"}>
             {sections.map((section) => (
-              <section key={section.id} className="fo-record-section" aria-label={section.label ?? section.kind}>
+              <section
+                key={section.id}
+                className="fo-record-section"
+                aria-label={section.label ?? humanizeSectionId(section.id)}
+              >
                 {section.label && <h3 className="fo-record-section-title">{section.label}</h3>}
                 <Section
                   section={section}
