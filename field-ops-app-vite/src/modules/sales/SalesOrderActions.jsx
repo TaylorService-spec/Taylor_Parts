@@ -84,6 +84,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ADVANCE" && (
         <ConfirmDialog
           title="Advance Sales Order"
+          destructive={false}
           consequence={`This moves ${orderLabel} from ${view.state} to ${nextState}.`}
           confirmLabel="Advance"
           onConfirm={async () => {
@@ -113,6 +114,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ALLOCATE" && (
         <ConfirmDialog
           title="Allocate Sales Order"
+          destructive={false}
           consequence={`This computes and records current availability against ${orderLabel}'s lines. It does not change pricing or quote terms.`}
           confirmLabel="Confirm allocate"
           onConfirm={async () => {
@@ -127,6 +129,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "SERVICE" && (
         <ConfirmDialog
           title="Create Service"
+          destructive={false}
           consequence={`This creates a Work Order to fulfill ${orderLabel}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
           confirmLabel="Confirm create Service"
           onConfirm={async () => {
