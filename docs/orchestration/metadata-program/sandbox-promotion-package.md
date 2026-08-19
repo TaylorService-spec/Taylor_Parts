@@ -1660,3 +1660,145 @@ seeds, backfills, or activation changes. Production untouched. No rollback perfo
 Open items: `getInventoryAnalytics` 500 (Functions redeploy candidate, unconsumed by any UI); the
 Sales Order read service's `createdAtMillis`/`updatedAtMillis` projection defect (§11.4); mounting a
 standalone Sales Order index route (future slice).
+
+---
+
+# §13 — `getInventoryAnalytics` investigation and narrow deploy plan (PREPARED, NOT AUTHORIZED)
+
+Hosting stays at `0884e480`. Nothing deployed. The repair is merged to `main` and awaits a separate
+Functions authorization.
+
+## 13.1 Root cause — the log named it exactly
+
+    Unhandled error Error: Data cannot be encoded in JSON: Infinity
+        at encode (firebase-functions/lib/common/providers/https.js:174:11)
+
+The analytics engine models "this part has no usage history, so it never runs out" as
+`daysRemaining: Infinity`. Correct **in process** — and the domain already had a wire-safe way to say
+it, because `estimatedStockoutDate` is `null` for exactly those entries. `Infinity` has no JSON
+representation, so firebase-functions throws **after** the handler returns and the caller receives a
+bare 500 naming no field.
+
+In the live sandbox, **4 of 5 parts have no usage history**, so 4 of 5 entries carried `Infinity`.
+One is enough to poison the whole response.
+
+The capability gate is unaffected and was never implicated: technician receives a clean **403** with
+the correct message, which is why the fault had to be after the gate.
+
+## 13.2 Deployed-vs-current identity — no drift
+
+The tranche opened on a drift hypothesis. There is none.
+
+| | |
+|---|---|
+| Deployed revision | `getinventoryanalytics-00010-hes`, ACTIVE, nodejs22, updated `2026-08-18T20:52:36Z` |
+| Deployed build | `builds/eb216d76-cb2d-44e2-993a-0d2650c6d765` from `getInventoryAnalytics/function-source.zip` |
+| `git diff b891fc68 HEAD` over the analytics path | **empty** |
+| Commits touching those files since | **none** |
+
+`inventoryAnalyticsCallables.ts`, `inventoryAnalyticsService.ts`, `ledgerNormalizer.ts` and
+`effectiveAccessFeed.ts` are byte-identical between the deployed build's commit and current `main`.
+**The deployed code is the current code, and the current code has the defect.**
+
+**Correcting my Tranche 3 report.** I recorded this as "not reproducible against live data with
+current repo code," and used that to argue deployed-vs-repo drift. That was wrong. I had replayed the
+data path locally and checked only that it did not *throw* — it doesn't; it returns fine, and what it
+returns cannot be transmitted. `JSON.stringify` does not catch it either: it silently converts
+`Infinity` to `null`. Only the real encoder rejects it, and I had not run the real encoder. The drift
+hypothesis was mine, and the evidence killed it.
+
+## 13.3 The repair — merged as #1283, `923ed5b1`
+
+A transport defect gets a transport fix, at the boundary:
+
+- The **engine is untouched.** Every in-process consumer, including the client's own mirror engine,
+  keeps existing semantics.
+- The callable projects `Infinity` to `null` — the same value `estimatedStockoutDate` already uses
+  for the same condition, so a consumer reads one consistent "not predicted" signal.
+- `NaN` and `-Infinity` are **not** mapped. Only a positive-infinite `daysRemaining` has a defined
+  meaning; anything else non-finite is a genuine computation bug, so `assertWireEncodable` throws
+  with the offending path (`result.health[0].recommendation.reorderPoint: NaN`) and logs
+  server-side, instead of shipping quiet nulls or repeating a fieldless 500.
+
+**Tests use the real encoder,** imported by relative path because the package's `exports` map hides
+the subpath — deliberately, so the assertion runs against the thing that actually rejected the
+payload rather than a re-implementation that could be wrong in the same way. The suite asserts the
+raw payload **is rejected** and the projected one **is accepted**, so it reproduces the defect rather
+than passing beside it. 9 tests pass; the existing emulator-backed suite still passes (exit 0);
+62 CI checks green.
+
+**Why CI missed it:** the analytics path had **no workflow path-filtering it** — a change to the
+callable or the engine ran no test at all, and the one existing test asserts what the numbers *are*,
+never that the result can be *transmitted*. #1283 adds `inventory-analytics-tests.yml` covering both
+source files and the new suite. It ran and passed on the PR.
+
+## 13.4 Live-data verification, read-only, no mutation
+
+Replayed the repaired path against the live sandbox collections (16 `inventory_transactions`, 5
+`stock_locations`) and pushed the result through the real encoder:
+
+    raw payload  -> REJECTED by encoder (reproduces the live 500)
+    wire payload -> ACCEPTED by encoder
+    PRT-1001: availableStock=-2  daysRemaining=-30   READY            urgency=CRITICAL
+    PRT-1003: availableStock=6   daysRemaining=null  NEEDS_PLANNING   urgency=null
+    PRT-1004: availableStock=12  daysRemaining=null  NEEDS_PLANNING   urgency=null
+    PRT-1005: availableStock=40  daysRemaining=null  NEEDS_PLANNING   urgency=null
+    PRT-1006: availableStock=3   daysRemaining=null  NEEDS_PLANNING   urgency=null
+
+The one part with usage history keeps its finite value; the four without return `null`. No write of
+any kind was performed.
+
+**Unrelated observation, deliberately not fixed here:** `PRT-1001` reports `availableStock: -2` — a
+negative on-hand. Reservation-netting can legitimately go negative, but it is worth its own look.
+
+## 13.5 Narrow deploy plan — NOT AUTHORIZED
+
+Single function. **No Hosting. No Rules. No indexes. No seeds. No activation changes. No other
+Functions.**
+
+    firebase deploy --only functions:getInventoryAnalytics --project eos-platform-sandbox --non-interactive
+
+`--project` is mandatory, not convenience: `.firebaserc` declares `"default": "taylor-parts"` —
+production. The deploy log's `Deploying to` line must be read back before any result is accepted.
+
+**Deploy commit:** `923ed5b1` (or the then-current `main`, provided the analytics path is unchanged
+from it).
+
+**Pre-deploy gates:**
+
+1. `/version.json` still reports `0884e480` — Hosting must not have moved.
+2. Working tree clean at the deploy commit; `npm run build` exit 0.
+3. Capture the rollback baseline revision (`getinventoryanalytics-00010-hes` today).
+
+**Post-deploy verification — required:**
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | Admin | **200** with a `health` array |
+| 2 | Dispatcher | **200** |
+| 3 | Technician | **403** with the unchanged message |
+| 4 | Unauthenticated | **401** |
+| 5 | Result validation | 5 entries; `PRT-1001` finite `daysRemaining`; the four zero-usage parts `null`, never `Infinity` or a string |
+| 6 | `availableStock` still reservation-netted | matches the local replay values above |
+| 7 | No leakage | error shapes carry no stack, path, or field values |
+| 8 | Governed-ledger smoke | `allocateSalesOrder` technician **403** |
+| 9 | Core inventory regression | sibling inventory callables unchanged |
+| 10 | Tranche 3 API checks | the 19-check Sales Order matrix still passes |
+| 11 | Tranche 3 UI check | `/version.json` still `0884e480`; served bundle hash unchanged |
+| 12 | Cloud Logging | no `cannot be encoded` errors after the deploy |
+
+**Failure and rollback:** any of 1–5 not matching, any regression in 8–11, or a new error class in
+12. Rollback target is the captured revision of `getInventoryAnalytics` **alone** — the other 83
+functions are untouched by this deploy.
+
+## 13.6 Status
+
+`SANDBOX PROMOTION CLOSEOUT: STILL BLOCKED` — the repair is merged but not deployed, so the live
+smoke still returns 500.
+
+Tracked separately, unchanged by this section:
+
+- Sales Order `createdAtMillis`/`updatedAtMillis` projection — correct **before** any surface consumes
+  those fields (§11.4).
+- Mounting `salesOrder.index` — its own reviewed UX slice.
+- Owner-driven authenticated Account-page check (§12.4).
