@@ -76,6 +76,12 @@ export interface Permission {
   // need is not inherently field-specific, but its first and, as of this
   // addition, only use is the `report.*` field-read/object-read
   // capability class below.
+  //
+  // "Active vocabulary": this is the canonical "Capability active"
+  // sense (enabled in that environment) -- distinct from Employee
+  // active, Role assignment active, and Record active. See
+  // docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+  // section 2.2a.
   active?: boolean;
 }
 
@@ -116,6 +122,13 @@ export interface Role {
   privileged?: boolean;
 }
 
+// "Active vocabulary": this is the canonical "Role assignment active"
+// sense (included in effective-access resolution) -- distinct from
+// Employee active (employmentStatus), Capability active
+// (PermissionDefinition.active / per-env overrides), and Record active
+// (generic master-data isActive/status). See
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a for the full vocabulary.
 export type RoleAssignmentStatus = "active" | "disabled";
 
 // Spec §5.3 -- binds a Role to a principal within a Scope. Creation/
@@ -326,7 +339,15 @@ export type AuditAction =
   // reviewing a submitted count now disposes of it as APPROVE (reconcileCycleCount, unchanged
   // above) or REJECT (this action) -- reject stages no ledger evidence, it only records the
   // decision, so it needed its own action rather than overloading reconcileCycleCount's meaning.
-  | "rejectCycleCount";
+  | "rejectCycleCount"
+  // Work Order transition audit trail (M9/H19 remediation) -- the trusted transitionWorkOrder callable's
+  // OWN Audit Event for every applied action (Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/
+  // Close/Cancel/MarkReady), not only the Complete-with-linked-Sales-Order write-back which already had
+  // its own separate salesOrderFulfillmentWriteBack action above. Deterministic Audit Event id (derived
+  // from workOrderId + action, see workOrderTransitionMath.ts) makes every applied transition traceable
+  // to a stable id -- collision-free without a caller-supplied idempotency key, because canTransition()
+  // already makes a given action apply to a given Work Order at most once across its whole lifecycle
+  | "transitionWorkOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

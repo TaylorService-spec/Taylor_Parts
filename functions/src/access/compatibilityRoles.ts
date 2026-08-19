@@ -110,6 +110,18 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
+  // Coordinated Operations fidelity fix, grant step (Owner ruling, grantable-governed-roles
+  // workstream). `fulfillment.coordinatedVisit.read` was registered active:false and ALREADY
+  // eligible for per-environment activation (environmentCapabilityOverrides.ts), but held by NO
+  // Role at all -- so Coordinated Visits (Service/Dispatch) and Coordinated Mission (Technician)
+  // stayed inert even where activation was on, for every principal including Owner. Owner's
+  // proposed grant set is exactly {owner, admin, operationsManager, fieldManager, dispatcher};
+  // granted here to the shared admin/dispatcher base so both compatibility Roles hold it AND
+  // Owner inherits it by composition (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...]) --
+  // operationsManager and fieldManager are granted directly in governedBusinessRoles.ts. Grant is
+  // NOT activation: this id stays active:false, so it denies everywhere the per-environment
+  // override is off (i.e. everywhere except platform-sandbox), exactly like the spine ids above.
+  "fulfillment.coordinatedVisit.read",
 ] as const;
 
 // reorder.purchaseOrder.void is double-gated in firestore.rules

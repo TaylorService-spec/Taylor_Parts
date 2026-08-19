@@ -159,7 +159,18 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
     "Technicians/dispatch/Work Orders: full Work Order lifecycle authority plus field-inventory read visibility. Equipment capabilities are a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"],
+  permissions: [
+    "workOrder.create",
+    "workOrder.transition",
+    "workOrder.cancel",
+    "inventory.transaction.read",
+    // Owner ruling (grantable-governed-roles workstream): Field Manager is one of the five roles
+    // named in Owner's proposed fulfillment.coordinatedVisit.read grant set ({owner, admin,
+    // operationsManager, fieldManager, dispatcher}) -- Coordinated Visits/Mission are a field/
+    // dispatch operational surface, matching this Role's existing Work Order lifecycle authority.
+    // Still active:false (grant is not activation); see compatibilityRoles.ts's own comment.
+    "fulfillment.coordinatedVisit.read",
+  ],
 }) as Role;
 
 // Spec §26.2/§27.4 -- cross-domain operational oversight (Customer,
@@ -190,6 +201,12 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     "warehouse.record.read",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
+    // Owner ruling (grantable-governed-roles workstream): Operations Manager is one of the five
+    // roles named in Owner's proposed fulfillment.coordinatedVisit.read grant set ({owner, admin,
+    // operationsManager, fieldManager, dispatcher}) -- cross-domain operational oversight is
+    // exactly the reader this coordinated-Work-Order projection is for. Still active:false (grant
+    // is not activation); see compatibilityRoles.ts's own comment.
+    "fulfillment.coordinatedVisit.read",
   ],
 }) as Role;
 

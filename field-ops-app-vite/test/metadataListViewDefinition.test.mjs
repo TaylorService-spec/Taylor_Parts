@@ -490,13 +490,59 @@ const opportunityRelationships = [
   }),
 ];
 
-test("no declared readCallable is fully additive — validates clean, same as before this field existed", () => {
+test("no declared readCallable is fully additive — validates clean when the INHERITED callable actually fits this surface", () => {
+  // callableEntity()'s own readCallable (listOpportunitiesForAccount) is scoped, and RELATED
+  // is the surface a scoped inherited callable fits -- this is the genuinely-clean case.
   assert.deepEqual(validateListViewDefinition(relatedOnCallable(), callableEntity(), opportunityRelationships), []);
-  assert.deepEqual(validateListViewDefinition(indexOnCallable(), callableEntity()), []);
   // The default itself is null, not undefined or omitted -- resolveReadCallable in both
   // consumers relies on this falling straight through to the entity's own value.
   assert.equal(relatedOnCallable().readCallable, null);
   assert.equal(indexOnCallable().readCallable, null);
+});
+
+// --- H4/M19: the INHERITED readCallable is exactly as checkable as an explicit override ---
+//
+// Before this fix, every check above lived inside `if (def.readCallable)` -- so a list view
+// that declares NO override (the common case: listRuntime.js falls back to
+// `entity.readCallable ?? null` whenever a list view is silent) was NEVER validated at all.
+// That is precisely how invoice.js's invoiceIndexList (INDEX surface, no override, entity's
+// readCallable scoped-only) passed validateListViewDefinition with zero problems for as long
+// as it existed, while every actual request from it would have thrown at runtime. These tests
+// pin the inherited path directly, independent of any one entity file, so this blind spot
+// cannot silently reopen.
+
+test("an INDEX list with NO override, inheriting a SCOPED entity readCallable, is rejected — this is the invoice.index shape exactly", () => {
+  // indexOnCallable() declares no readCallable of its own; callableEntity()'s readCallable
+  // (listOpportunitiesForAccount) is scoped:true. Before the H4/M19 fix this validated clean
+  // because the whole check lived inside `if (def.readCallable)`, which is false here.
+  const p = validateListViewDefinition(indexOnCallable(), callableEntity());
+  assert.ok(
+    p.some((x) => /inherited from entity "opportunity"/.test(x) && /requires a parent-scope filter/.test(x)),
+    `expected an inherited-callable/INDEX-scope problem, got: ${JSON.stringify(p)}`
+  );
+});
+
+test("an INDEX list with NO override, inheriting an UNKNOWN entity readCallable, is rejected at definition time — not left to throw at the first open", () => {
+  const typoEntity = callableEntity({ readCallable: "someTypoedCallableName" });
+  const p = validateListViewDefinition(indexOnCallable(), typoEntity);
+  assert.ok(
+    p.some((x) => /inherited from entity "opportunity"/.test(x) && /not a known callable/.test(x)),
+    `expected an inherited-callable/unknown-callable problem, got: ${JSON.stringify(p)}`
+  );
+});
+
+test("a RELATED list with NO override, inheriting an UNSCOPED entity readCallable, is rejected — a RELATED list always supplies a parent-scope filter", () => {
+  const unscopedEntity = callableEntity({ readCallable: "listOpportunityContext" });
+  const p = validateListViewDefinition(relatedOnCallable(), unscopedEntity, opportunityRelationships);
+  assert.ok(
+    p.some((x) => /inherited from entity "opportunity"/.test(x) && /unscoped, but a RELATED list always supplies a parent-scope/.test(x)),
+    `expected an inherited-callable/RELATED-scope problem, got: ${JSON.stringify(p)}`
+  );
+});
+
+test("an INDEX list with NO override, inheriting an UNSCOPED entity readCallable, validates clean — the real opportunity.index/salesOrder.index shape does this via its OWN override, but the inherited path must accept a genuinely compatible name too", () => {
+  const unscopedEntity = callableEntity({ readCallable: "listOpportunityContext" });
+  assert.deepEqual(validateListViewDefinition(indexOnCallable(), unscopedEntity), []);
 });
 
 test("a declared readCallable this module has never heard of is rejected at the definition, not at runtime", () => {

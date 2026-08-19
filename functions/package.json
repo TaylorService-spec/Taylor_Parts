@@ -51,7 +51,7 @@
     "test:createServiceForSalesOrderLineRefs": "npm run build && node --test test/createServiceForSalesOrderLineRefs.test.mjs",
     "test:accountScopedCommercialReadsEmulator": "npm run build && node --test test/opportunityAccountRead.test.mjs test/salesOrderAccountRead.test.mjs test/salesOrderIndexRead.test.mjs",
     "test:financeCallablesEmulator": "npm run build && node --test test/financeReadCallables.test.mjs test/invoiceCallables.test.mjs test/invoiceIssuanceEligibility.test.mjs test/paymentCallables.test.mjs test/refundCallables.test.mjs test/adjustmentCallables.test.mjs",
-    "test:fulfillment": "npm run build && node --test test/allocationProjection.test.mjs test/fulfillmentAvailability.test.mjs test/allocateSalesOrderAllocation.test.mjs test/equipmentAvailabilityContract.test.mjs test/equipmentModelResolution.test.mjs test/demandLineage.test.mjs test/coordinatedVisit.test.mjs test/coordinatedFieldMission.test.mjs test/billingEligibility.test.mjs test/inventoryControlLifecycle.test.mjs",
+    "test:fulfillment": "npm run build && node --test test/allocationProjection.test.mjs test/fulfillmentAvailability.test.mjs test/salesOrderLedgerAuthority.test.mjs test/allocateSalesOrderAllocation.test.mjs test/equipmentAvailabilityContract.test.mjs test/equipmentModelResolution.test.mjs test/demandLineage.test.mjs test/coordinatedVisit.test.mjs test/coordinatedFieldMission.test.mjs test/billingEligibility.test.mjs test/inventoryControlLifecycle.test.mjs",
     "test:inventoryEffectDetection": "npm run build && node test/inventoryEffectDetection.test.mjs",
     "test:csvMigrationAnalysis": "npm run build && node test/csvMigrationAnalysis.test.mjs",
     "test:migrationEvidence": "npm run build && node test/migrationEvidence.test.mjs",
@@ -109,6 +109,7 @@
     "test:supplierMigrationEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs",
     "test:supplierMigrationExecute": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteManifest.test.mjs",
     "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs",
+    "test:reorderRequestNumbering": "npm run build && node test/reorderRequestNumbering.test.mjs",
     "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs",
     "test:manufacturerCallables": "npm run build && node test/manufacturerCallablesExport.test.mjs && node test/manufacturerCallables.test.mjs",
     "test:manufacturerRead": "npm run build && node --test test/manufacturerReadService.test.mjs",
@@ -125,6 +126,7 @@
     "test:sandboxReceivingSource": "npm run build && node --test test/sandboxReceivingSourceFixture.test.mjs",
     "test:woAvailability": "npm run build && node --test test/woAvailabilityGovernedLedger.test.mjs",
     "test:salesOrderLedgerAuthority": "npm run build && node --test test/salesOrderLedgerAuthority.test.mjs",
+    "test:e2eEmulatorSuite": "npm run build && node scripts/runE2eEmulatorSuite.mjs",
     "test:seedOperationsDemoData": "node test/seedOperationsDemoData.test.mjs"
   },
   "dependencies": {

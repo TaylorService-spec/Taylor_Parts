@@ -34,3 +34,6 @@ functions/.operator-access-intents/
 firestore-debug.log
 firebase-debug.log
 .impeccable/
+
+# Emulator E2E harness — generated port-overridden firebase.json (functions/scripts/runE2eEmulatorSuite.mjs).
+.e2e-emulator-firebase.json

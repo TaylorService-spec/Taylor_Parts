@@ -8,19 +8,31 @@ import { memo } from "react";
 //
 // Bucket definitions, mapped from the real 11-value WorkOrderStatus
 // (no invented categories):
-//   Active     = WORK_IN_PROGRESS (actually being worked right now)
-//   Scheduled  = SCHEDULED or DISPATCHED (awaiting technician action)
-//   Traveling  = ACCEPTED, EN_ROUTE, or ARRIVED (en route to or at
-//                site, not yet started work)
+//   In Progress = WORK_IN_PROGRESS (actually being worked right now)
+//   Scheduled   = SCHEDULED or DISPATCHED (awaiting technician action)
+//   Traveling   = ACCEPTED, EN_ROUTE, or ARRIVED (en route to or at
+//                 site, not yet started work)
+//
+// NOTE on the "Active" vocabulary: this card intentionally does NOT
+// label the WORK_IN_PROGRESS-only count "Active." The Work Orders list
+// (WorkOrdersList.jsx) and the Technician Dashboard's ACTIVE_STATUSES
+// both use "Active" for a broader 5-status bucket (DISPATCHED,
+// ACCEPTED, EN_ROUTE, ARRIVED, WORK_IN_PROGRESS). A bare "Active" here
+// would silently disagree with those counts on the same data. See the
+// "Active" vocabulary note in docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// (this is the discovered 5th sense: Work Order "in progress," which
+// is distinct from the four canonical Employee/Role/Capability/Record
+// "active" concepts documented there). Do not rename this to "Active"
+// without also reconciling it with the other two buckets.
 const SCHEDULED_STATUSES = new Set(["SCHEDULED", "DISPATCHED"]);
 const TRAVELING_STATUSES = new Set(["ACCEPTED", "EN_ROUTE", "ARRIVED"]);
 
 function TechnicianCapacityCard({ technician, workOrders }) {
   const assigned = workOrders.filter((wo) => wo.assignedTechId === technician.id);
-  const active = assigned.filter((wo) => wo.status === "WORK_IN_PROGRESS").length;
+  const inProgress = assigned.filter((wo) => wo.status === "WORK_IN_PROGRESS").length;
   const scheduled = assigned.filter((wo) => SCHEDULED_STATUSES.has(wo.status)).length;
   const traveling = assigned.filter((wo) => TRAVELING_STATUSES.has(wo.status)).length;
-  const total = active + scheduled + traveling;
+  const total = inProgress + scheduled + traveling;
 
   // Bar width relative to a soft cap of 10 concurrent WOs -- purely a
   // visual proportion, not a real capacity limit (no such field exists
@@ -29,11 +41,11 @@ function TechnicianCapacityCard({ technician, workOrders }) {
 
   return (
     <div className="disp-capacity-card">
-      <div className="disp-capacity-bar-track" role="img" aria-label={`Workload: ${total} active work orders`}>
+      <div className="disp-capacity-bar-track" role="img" aria-label={`Workload: ${total} in-progress work orders`}>
         <div className="disp-capacity-bar-fill" style={{ width: `${barPct}%` }} />
       </div>
       <div className="fo-muted disp-capacity-counts">
-        Active: {active} &middot; Scheduled: {scheduled} &middot; Traveling: {traveling}
+        In Progress: {inProgress} &middot; Scheduled: {scheduled} &middot; Traveling: {traveling}
       </div>
     </div>
   );

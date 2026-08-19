@@ -184,6 +184,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision (reject, no
   // ledger evidence). Runtime mirror of the rejectCycleCount AuditAction union member.
   "rejectCycleCount",
+  // Work Order transition audit trail (M9/H19 remediation): runtime mirror of the transitionWorkOrder
+  // AuditAction union member (types/access.ts) -- one Audit Event per applied Work Order transition.
+  "transitionWorkOrder",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
