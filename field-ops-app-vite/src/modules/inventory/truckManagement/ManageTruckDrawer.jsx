@@ -89,11 +89,11 @@ export default function ManageTruckDrawer({
         {!writeReady && <WriteDisabledNotice />}
 
         {/* Read-only identity -- displayLabel/vehicleNumber are NOT editable in this gate. */}
-        <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: 0 }}>
-          <div><dt className="fo-muted">Display label</dt><dd style={{ margin: 0 }} data-testid="tm-displayLabel-readonly">{dash(record.displayLabel)}</dd></div>
-          <div><dt className="fo-muted">Vehicle number</dt><dd style={{ margin: 0 }} data-testid="tm-vehicleNumber-readonly">{dash(record.vehicleNumber)}</dd></div>
-          <div><dt className="fo-muted">Current status</dt><dd style={{ margin: 0 }} data-testid="tm-current-status">{truckStatusLabel(record.status)}</dd></div>
-          <div><dt className="fo-muted">Current driver</dt><dd style={{ margin: 0 }} data-testid="tm-current-driver">{dash(driverName)}</dd></div>
+        <dl className="fo-truck-summary-grid">
+          <div><dt className="fo-muted">Display label</dt><dd className="fo-dd-tight" data-testid="tm-displayLabel-readonly">{dash(record.displayLabel)}</dd></div>
+          <div><dt className="fo-muted">Vehicle number</dt><dd className="fo-dd-tight" data-testid="tm-vehicleNumber-readonly">{dash(record.vehicleNumber)}</dd></div>
+          <div><dt className="fo-muted">Current status</dt><dd className="fo-dd-tight" data-testid="tm-current-status">{truckStatusLabel(record.status)}</dd></div>
+          <div><dt className="fo-muted">Current driver</dt><dd className="fo-dd-tight" data-testid="tm-current-driver">{dash(driverName)}</dd></div>
         </dl>
 
         <OutcomeBanner outcome={outcome} onReload={onReconcile} />

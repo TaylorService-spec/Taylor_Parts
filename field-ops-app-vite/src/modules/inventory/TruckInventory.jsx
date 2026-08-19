@@ -115,7 +115,7 @@ export default function TruckInventory({
 
   const scanModal = scan && (
     <div className="fo-modal-overlay" role="presentation" onClick={() => setScan(null)}>
-      <div className="fo-panel" role="dialog" aria-modal="true" aria-label="Scan review" style={{ maxWidth: 480, margin: "10vh auto" }} onClick={(e) => e.stopPropagation()}>
+      <div className="fo-panel fo-scan-review-panel" role="dialog" aria-modal="true" aria-label="Scan review" onClick={(e) => e.stopPropagation()}>
         <h3>Scan review</h3>
         <p className="fo-muted">A scan <b>identifies</b> an item and opens this review — it never moves inventory on its own. Movement isn’t wired in this workspace.</p>
         <div className="fo-chip-row" role="group" aria-label="Scan outcomes">
@@ -299,7 +299,7 @@ function InventoryTab({ truck, options }) {
   const equipment = condition ? truck.serializedEquipment.filter((e) => e.condition === condition) : truck.serializedEquipment;
   return (
     <>
-      <div className="fo-btn-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+      <div className="fo-btn-row fo-btn-row--spread">
         <h4>Serialized Equipment</h4>
         <label>Condition<select value={condition} onChange={(e) => setCondition(e.target.value)}><option value="">All</option>{options.equipmentCondition.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
       </div>
@@ -386,11 +386,11 @@ function ReconciliationTab({ reconciliation }) {
   return (
     <div className="fo-panel">
       <h4>Expected vs Scanned</h4>
-      <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
-        <div><dt className="fo-muted">Serialized expected</dt><dd style={{ margin: 0 }}>{dash(r.expectedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Serialized scanned</dt><dd style={{ margin: 0 }}>{dash(r.scannedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Parts expected</dt><dd style={{ margin: 0 }}>{dash(r.expectedParts)}</dd></div>
-        <div><dt className="fo-muted">Parts scanned</dt><dd style={{ margin: 0 }}>{dash(r.scannedParts)}</dd></div>
+      <dl className="fo-reconciliation-summary">
+        <div><dt className="fo-muted">Serialized expected</dt><dd className="fo-dd-tight">{dash(r.expectedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Serialized scanned</dt><dd className="fo-dd-tight">{dash(r.scannedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Parts expected</dt><dd className="fo-dd-tight">{dash(r.expectedParts)}</dd></div>
+        <div><dt className="fo-muted">Parts scanned</dt><dd className="fo-dd-tight">{dash(r.scannedParts)}</dd></div>
       </dl>
       <h4>Missing</h4>
       {r.missing.length === 0 ? <p className="fo-muted">None reported.</p> : (

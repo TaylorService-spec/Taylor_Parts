@@ -3099,4 +3099,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    swaps to a static ring explicitly. */
 .fo-icon--spin { animation: fo-spin 0.9s linear infinite; }
 
+/* === inline-style elimination: inventory/truckManagement (TruckInventory,
+   ManageTruckDrawer, OutcomeBanner) ==========================================
+   Structural layout/spacing rules pulled out of style={{...}} attributes.
+   No new colours are introduced by this block, so no WCAG contrast check is
+   required. */
+.fo-scan-review-panel { max-width: 480px; margin: 10vh auto; }
+.fo-btn-row--spread { justify-content: space-between; align-items: center; }
+.fo-reconciliation-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
+.fo-truck-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin: 0; }
+.fo-dd-tight { margin: 0; }
+.fo-outcome-banner__reload { margin-left: var(--space-2); }
+
 
