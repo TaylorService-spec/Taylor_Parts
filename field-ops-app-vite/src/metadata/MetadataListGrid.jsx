@@ -2,6 +2,17 @@ import { useEffect, useRef } from "react";
 import LoadingState from "../shared/ui/LoadingState";
 import EmptyState from "../shared/ui/EmptyState";
 import FailureState from "../shared/ui/FailureState";
+import { Button } from "../shared/ui/primitives/index.js";
+
+// Cell types whose VALUES are numeric quantities (a count, a currency amount) rather
+// than text that happens to contain digits (an ENUM label, a formatted date). Only
+// these get the tabular-numerals treatment (--font-tabular-nums / .fo-tabular-nums,
+// index.css) -- fixed digit width so a column of quantities or amounts does not jitter
+// as rows load or values update, and so digits line up for scanning. Deliberately a
+// closed list read off the SAME column.type resolveColumns() already resolved
+// (listPresentation.js), never a guess from the formatted string -- a "STRING" column
+// that happens to render digits (e.g. an ID) must not silently pick up numeral styling.
+const NUMERIC_CELL_TYPES = new Set(["NUMBER", "CURRENCY_MINOR"]);
 
 // Renders a list presentation model. Thin by design, exactly like MetadataRecordPage:
 // buildListPresentation() already decided the state, the columns, the cell values and
@@ -59,9 +70,9 @@ function StateBody({ presentation, onRetry }) {
       // read, and a button that cannot work reads as a system that is merely broken.
       action={
         state === "UNAVAILABLE" && onRetry ? (
-          <button type="button" className="fo-button fo-button-secondary" onClick={onRetry}>
+          <Button variant="secondary" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
         ) : undefined
       }
     />
@@ -202,9 +213,18 @@ export default function MetadataListGrid({
                       : undefined
                   }
                 >
-                  {row.cells.map((cell) => (
-                    <td key={cell.fieldId}>{cell.value}</td>
-                  ))}
+                  {row.cells.map((cell, cellIndex) => {
+                    // Positional, not a second lookup by fieldId: buildListPresentation
+                    // (listPresentation.js) builds `cells` by mapping `columns` in order,
+                    // so index i of one is always index i of the other.
+                    const column = columns[cellIndex];
+                    const isNumeric = NUMERIC_CELL_TYPES.has(column?.type);
+                    return (
+                      <td key={cell.fieldId} className={isNumeric ? "fo-tabular-nums" : undefined}>
+                        {cell.value}
+                      </td>
+                    );
+                  })}
                   {actions && (
                     <td
                       className="fo-list-grid-actions"
@@ -217,10 +237,10 @@ export default function MetadataListGrid({
                       onKeyDown={(event) => event.stopPropagation()}
                     >
                       {actions.map((action) => (
-                        <button
+                        <Button
                           key={action.id}
-                          type="button"
-                          className="fo-button fo-button-secondary fo-list-grid-action"
+                          variant="secondary"
+                          className="fo-list-grid-action"
                           disabled={!!action.denied}
                           // A denied action stays VISIBLE and LABELED, with the reason it
                           // cannot be used — an unknown or missing capability decision
@@ -230,7 +250,7 @@ export default function MetadataListGrid({
                           // this one." disabled removes it from the tab order (there is
                           // nothing to activate), while the visible label and title keep
                           // it an honest, explained absence rather than a silent one.
-                          aria-disabled={action.denied ? "true" : undefined}
+                          // (aria-disabled tracks the primitive's own `disabled` prop.)
                           title={action.denied ? action.deniedReason ?? undefined : undefined}
                           onFocus={() => {
                             lastFocusedRowKeyRef.current = row.key;
@@ -256,7 +276,7 @@ export default function MetadataListGrid({
                           }}
                         >
                           {action.label}
-                        </button>
+                        </Button>
                       ))}
                     </td>
                   )}
@@ -271,18 +291,18 @@ export default function MetadataListGrid({
           there would quietly turn an embedded section into a second unbounded list, and
           the model already refuses to report hasMore for one. */}
       {hasMore && onLoadMore && (
-        <button type="button" className="fo-button fo-button-secondary" onClick={onLoadMore}>
+        <Button variant="secondary" onClick={onLoadMore}>
           Load more
-        </button>
+        </Button>
       )}
 
       {truncated && (
         <p className="fo-list-grid-truncation">
           Showing the most recent {rows.length}.{" "}
           {viewAllListId && onViewAll && (
-            <button type="button" className="fo-link-button" onClick={() => onViewAll(viewAllListId)}>
+            <Button variant="tertiary" className="fo-link-button" onClick={() => onViewAll(viewAllListId)}>
               View all
-            </button>
+            </Button>
           )}
         </p>
       )}
