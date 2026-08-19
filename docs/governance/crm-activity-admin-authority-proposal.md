@@ -1,6 +1,6 @@
 # Protected Change Proposal — `crm.activity.read` through canonical admin authority
 
-**Status:** PROPOSAL — NOT APPLIED. Awaiting Owner authorization.
+**Status:** RESOLVED — APPLIED 2026-08-19 (PR #1324). See "Disposition" at the end of this document.
 **Raised:** 2026-08-17, from the Account record page investigation.
 **Governance:** `metadata-architecture-ip-boundary.md` §12 stop-report format · `../DelegationCharter.md` (capability grants / role changes are protected) · Owner disposition 2026-08-17 §3.
 
@@ -110,3 +110,41 @@ proposed under either option.
 
 Per Owner disposition §4, Entity List Metadata v1 and the rest of the metadata/list work proceed
 independently of this decision. This proposal gates only the CRM activity surface.
+
+---
+
+## Disposition — Owner ruling 2026-08-19, applied in PR #1324
+
+**Decision: admin holds the FULL set — `crm.activity.create` AND `crm.activity.read`.**
+
+The document above framed `create` as a separate decision that could be deferred, with read
+alone restoring visibility. The Owner ruled on both together: admin gets create and read.
+
+**Implemented as proposed, on `ADMIN_ROLE`.** The "safer independent alternative" in §4 —
+assigning `crmActivityContributor` to the admin persona — was **not** used, consistent with
+Owner disposition 2026-08-17 §3 rejecting it as the durable fix. No temporary workaround was put
+in place, so there is no removal condition to track.
+
+**Scoped narrower than §3's file table implies.** The ids were added to `ADMIN_ROLE.permissions`
+directly and deliberately NOT to `SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS`, so **dispatcher
+gains nothing** from this change. Dispatcher continues to hold both ids only through its own
+governed, audited `crmActivityContributor` assignment, which remains the path for anyone else who
+needs them. Owner inherits both automatically via `OWNER_PERMISSIONS` composition, exactly as §3
+predicted — no separate owner change was needed.
+
+**`permissionCatalog.ts` was NOT changed.** §3 listed a possible `active` posture change as an
+open question. It was not required: both ids stay registered `active: false` and per-environment
+activated through `environmentCapabilityOverrides.ts`. Grant-is-not-activation is preserved, and
+**production remains triple-blocked** — role-keyed resolution, no override key on any production
+environment, and a test asserting it.
+
+**Test changes.** The "no OTHER governed Role carries these capabilities" invariant now exempts
+`owner`, which holds the ids by composition rather than by its own grant — the same exemption
+`fulfillment.coordinatedVisit.read` already required. A new check pins all three directions
+explicitly (admin direct, owner composed, dispatcher NOT via the shared base) so that exemption
+cannot silently widen later.
+
+**Why this document is merged rather than closed.** The finding it traces was a real
+inconsistency in the authority model, and the reasoning that rejected the obvious workaround is
+the part worth keeping. A protected-boundary decision with no record in the repository is a
+decision that gets re-litigated from scratch.
