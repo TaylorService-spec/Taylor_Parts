@@ -247,10 +247,10 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
           ))}
         </ol>
         {issues.blankIndexes.length > 0 && (
-          <p className="fo-error" role="alert">Every serial number is required.</p>
+          <p className="fo-form-error" role="alert">Every serial number is required.</p>
         )}
         {issues.duplicateIndexes.length > 0 && (
-          <p className="fo-error" role="alert">Duplicate serial numbers aren't allowed — each unit needs its own.</p>
+          <p className="fo-form-error" role="alert">Duplicate serial numbers aren't allowed — each unit needs its own.</p>
         )}
         <button type="button" className="scan-confirm" disabled={!issues.ok} onClick={() => setStep(RECEIVE_STEP.CONFIRM)}>
           Continue
