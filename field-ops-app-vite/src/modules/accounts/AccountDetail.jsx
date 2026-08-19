@@ -323,8 +323,19 @@ export default function AccountDetail() {
     );
   }
 
+  // On a blocked/denied write this THROWS so AccountForm's own catch keeps the
+  // edit form open with an honest saveError message (see accountSaveErrorMessage)
+  // -- same contract as handleAddLocation/handleAddContact below. Without this
+  // check a blocked write resolved `{ blocked: true }` (it does not reject) and
+  // fell straight through to setIsEditing(false), closing the form as if the
+  // save succeeded while silently discarding the user's edits.
   async function handleEditSubmit(values) {
-    await updateAccount(account.id, values);
+    const result = await updateAccount(account.id, values);
+    if (result?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
     setIsEditing(false);
   }
 
