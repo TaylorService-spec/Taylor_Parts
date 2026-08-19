@@ -9,7 +9,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import { allocateWorkOrderNumber } from "./woNumbering";
-import { auditEventDocRef, stageAuditEventWithId } from "./access/auditEventWriter";
+import { auditEventDocRef, stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
 import { createWorkOrderAuditId } from "./workOrderCreateMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import type { Priority, Severity, WorkOrderType, SalesOrderLineRef, InventorySnapshotItem } from "./types/workOrder";
@@ -131,9 +131,23 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
       }
     }
     const created = await createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint }, year);
-    // Stage the marker in the SAME transaction so the WO and its idempotency record commit atomically.
+    // Audit trail (M9/H19 remediation): EVERY create gets an Audit Event, staged in the SAME transaction so
+    // the WO and its Audit Event commit atomically -- no longer conditional on an optional idempotencyKey
+    // (a keyless legacy caller previously left no audit trail at all). When a key IS supplied, the event is
+    // ALSO the deterministic idempotency marker (stageAuditEventWithId, unchanged replay behavior above) --
+    // when no key is supplied, it is a plain auto-id Audit Event (stageAuditEvent) -- there is nothing to
+    // dedupe against, so it carries no replay semantics, only the record that this create happened.
     if (aid) {
       stageAuditEventWithId(tx, aid, {
+        actorUid,
+        action: "createWorkOrder",
+        targetType: "workOrder",
+        targetId: created.id,
+        outcome: "applied",
+        summary: `created work order ${created.woNumber}`,
+      });
+    } else {
+      stageAuditEvent(tx, {
         actorUid,
         action: "createWorkOrder",
         targetType: "workOrder",
