@@ -344,7 +344,11 @@ ok("the field experience consumes the SHARED readiness projection, never its own
 ok("duplicate-tap guard, pending state, and accessibility attributes present", () => {
   assert.match(fieldMode, /if \(pending\.id\) return/, "in-flight guard");
   assert.match(fieldMode, /disabled=\{!!pending\}/, "button disabled while pending");
-  assert.match(fieldMode, /aria-busy=\{busy\}/, "loading announced");
+  // Button primitive migration: `loading` now drives the primitive's own
+  // aria-busy internally (see shared/ui/primitives/Button.jsx) instead of the
+  // component setting aria-busy directly -- same announced-busy behavior,
+  // different call site.
+  assert.match(fieldMode, /loading=\{busy\}/, "loading announced");
   assert.match(fieldMode, /role="alert"/, "errors associated with the action");
 });
 

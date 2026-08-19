@@ -2,6 +2,7 @@ import { useState } from "react";
 import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 6 Phase 6.3 -- Field Execution Capture UI. This is NOT lifecycle
 // logic: nothing here calls transitionWorkOrder() or changes status/
@@ -100,12 +101,16 @@ export default function ExecutionCapture({ workOrder }) {
                 <span style={{ flex: 1 }}>
                   {displayName} -- {qtyUsed} / {item.qtyPlanned} used
                 </span>
-                <button type="button" disabled={busy || qtyUsed <= 0} onClick={() => adjustQty(item.sku, -1, item)}>
+                <Button
+                  variant="secondary"
+                  disabled={busy || qtyUsed <= 0}
+                  onClick={() => adjustQty(item.sku, -1, item)}
+                >
                   -
-                </button>
-                <button type="button" disabled={busy} onClick={() => adjustQty(item.sku, 1, item)}>
+                </Button>
+                <Button variant="secondary" disabled={busy} onClick={() => adjustQty(item.sku, 1, item)}>
                   +
-                </button>
+                </Button>
               </div>
             );
           })
@@ -122,9 +127,14 @@ export default function ExecutionCapture({ workOrder }) {
             onChange={(e) => setNoteText(e.target.value)}
             aria-label="Execution note"
           />
-          <button type="button" disabled={submittingNote || !noteText.trim()} onClick={submitNote}>
-            {submittingNote ? "Saving..." : "Add Note"}
-          </button>
+          <Button
+            variant="secondary"
+            disabled={!noteText.trim()}
+            loading={submittingNote}
+            onClick={submitNote}
+          >
+            Add Note
+          </Button>
         </div>
         {executionLog.length === 0 ? (
           <p className="fo-muted">No notes yet.</p>
