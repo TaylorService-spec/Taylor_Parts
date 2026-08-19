@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
+  LayoutDashboard,
+  Users,
+  Wrench,
+  ClipboardList,
+  Radar,
+  Package,
+  PackageCheck,
+  ShoppingCart,
+  BarChart3,
+  Settings,
+  DollarSign,
+} from "lucide-react";
+import {
   NAV_DOMAINS,
   isDomainVisible,
   isNavItemVisible,
@@ -8,6 +21,41 @@ import {
   findActiveServiceGroupKey,
 } from "./navConfig";
 import VerenwardMark from "../shared/brand/VerenwardMark";
+import Icon from "../shared/ui/Icon";
+
+// One glyph per operational domain, so the rail reads by shape as well as by
+// label -- a keyboard/mouse-agnostic scan aid, not a substitute for the text.
+// Kept here (not in navConfig.js) because navConfig is the pure, framework-free
+// nav-tree/permission source of truth; icon choice is presentation. Every
+// glyph goes through the Icon wrapper at the "nav" size token (20px, the scale
+// this system reserves specifically for rail/navigation icons) so every
+// domain row carries an icon of the exact same size -- never an ad-hoc one.
+const DOMAIN_ICONS = {
+  dashboard: LayoutDashboard,
+  customers: Users,
+  equipment: Wrench,
+  service: ClipboardList,
+  serviceOperations: Radar,
+  inventory: Package,
+  inventoryRole: PackageCheck,
+  purchasing: ShoppingCart,
+  reporting: BarChart3,
+  administration: Settings,
+  financials: DollarSign,
+};
+
+function DomainIcon({ domainKey }) {
+  const glyph = DOMAIN_ICONS[domainKey];
+  if (!glyph) return null;
+  // flexShrink:0 keeps the glyph at its fixed token size even when a long
+  // domain label is fighting it for space in the same flex row -- the row's
+  // own layout (display:flex, gap) already comes from .fo-rail__domain-row.
+  return (
+    <span style={{ display: "inline-flex", flexShrink: 0 }}>
+      <Icon icon={glyph} size="nav" />
+    </span>
+  );
+}
 
 /**
  * AppRail — Gate 2's unified navigation surface.
@@ -192,6 +240,7 @@ export default function AppRail({
                     `fo-rail__domain-row fo-rail__domain-row--leaf${isActive ? " fo-rail__domain-row--current" : ""}`
                   }
                 >
+                  <DomainIcon domainKey={domain.key} />
                   <span className="fo-rail__domain-label">{domain.label}</span>
                 </NavLink>
               ) : (
@@ -202,6 +251,7 @@ export default function AppRail({
                   aria-controls={panelId}
                   onClick={() => toggle(domain.path)}
                 >
+                  <DomainIcon domainKey={domain.key} />
                   {/* Rotates via CSS; purely decorative next to a labelled
                       button whose aria-expanded already carries the state. */}
                   <span className="fo-rail__chevron" aria-hidden="true" />
@@ -268,7 +318,12 @@ export function RailBrand() {
       <VerenwardMark variant="horizontal" tone="onDark" size={30} />
       <span className="fo-implementation">
         <span className="fo-implementation__name">Taylor Parts</span>
-        <span className="fo-implementation__context">Arizona Operations</span>
+        {/* Company context, per the ruled brand hierarchy (Parent brand =
+            Verenward, Platform = Enterprise Operations OS, Workspace = Taylor
+            Parts, Company context = Taylor Freezer of Arizona). This used to
+            read "Arizona Operations" -- a name that appears nowhere else in
+            the ruled hierarchy or the wider docs corpus. */}
+        <span className="fo-implementation__context">Taylor Freezer of Arizona</span>
       </span>
     </div>
   );
