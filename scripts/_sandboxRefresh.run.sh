@@ -23,7 +23,18 @@ node scripts/_sandboxDeployGuard.mjs
 firebase deploy --only functions --project eos-platform-sandbox --force
 
 echo "== [3/5] build frontend for platform-sandbox =="
-( cd field-ops-app-vite && VITE_ENVIRONMENT_ID=platform-sandbox VITE_BASE=/ npx vite build )
+# MUST use build:firebase, NOT `VITE_BASE=/`. Under Git Bash / MSYS on Windows a
+# bare `/` argument is rewritten to a Windows path before the process ever sees
+# it, so VITE_BASE arrived as the MSYS root and the build stamped base "/Git/".
+# Every asset URL in that artifact 404s against Hosting, which serves at "/".
+# `build:firebase` passes `--base=/` as a single --flag=value token, which MSYS
+# leaves alone, and it is the same script CI uses. Verified by verify:build-base.
+( cd field-ops-app-vite && VITE_ENVIRONMENT_ID=platform-sandbox npm run build:firebase )
+
+echo "== [3b/5] verify the built asset base BEFORE publishing it =="
+# Cheap and load-bearing: a wrong base is invisible until the deployed page loads
+# and every script tag 404s. Fail here rather than in front of a user.
+( cd field-ops-app-vite && npm run verify:build-base )
 
 echo "== [4/5] deploy Hosting -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs
