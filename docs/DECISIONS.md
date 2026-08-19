@@ -1577,3 +1577,115 @@ and any reconciliation that reports "3 unexpected live" is reporting this, not a
 path filters, so the D4 registry guard runs whenever the index file changes. The metadata program's
 own fleet-catalog suite now asserts that `equipmentModel` exports **no** ListViewDefinition, so a
 re-added index list fails on both sides of the boundary rather than only in D4's suite.
+
+## #109 — Phantom Sales Order links are repaired, with history preserved
+
+**Decision (Owner, 2026-08-19).** The four Work Orders that completed against `so-harbor-c713` — a
+Sales Order that never existed — are to be repaired rather than left. The repair must preserve
+history: an exact before/after manifest, correction of the invalid relationship, an appended audit
+event, and a documented rollback. **No write until separately authorized.**
+
+**Why this needed deciding.** `transitionWorkOrder` gated its Sales Order fulfillment write-back on
+`if (soSnap.exists)` and proceeded silently when the Sales Order was absent. Four Work Orders
+completed and consumed inventory with no record anywhere that the write-back was skipped. The
+completions are real; only the link is false. Deleting or rewriting them would destroy legitimate
+operational history to hide a referential defect.
+
+**Constraint on the repair.** The five affected Work Orders share `salesOrderId` as their coordination
+grouping key by design (see `seedSandboxCoordinatedInstall.js`). A repair that clears the field
+without replacing the grouping would break the coordinated-visit relationship it was standing in for.
+
+**Status.** Repair package prepared as tooling and evidence only. Execution is a separate protected
+authorization.
+
+## #110 — Dispatch may reassign away from the scheduled technician, with a recorded reason
+
+**Decision (Owner, 2026-08-19).** Reassignment at Dispatch is permitted and explicit. It requires a
+reason. The system records prior technician, new technician, actor, timestamp and reason; re-runs the
+schedule and conflict checks against the new technician; and notifies affected parties. Completed and
+cancelled work remains locked.
+
+**Why.** `transitionWorkOrder` accepted a caller-supplied `assignedTechId` with no comparison against
+`scheduledTechId` and never reconciled the two. The scheduling board keys on one field and the
+technician boards on the other, so two technicians could own the same job on two governed surfaces.
+The double-booking guard — otherwise rigorous, with a per-technician transactional lock — ran its
+conflict check once, at Schedule time, against the *original* technician's calendar, so the
+technician who actually received the job was never checked at all.
+
+The ruling treats reassignment as a legitimate operational act that must be accountable, rather than
+forbidding it or leaving it silent.
+
+**Note.** Whether a notification mechanism exists in this repository is to be established rather than
+assumed; if none exists, the requirement is recorded and the audit event emitted for a future
+notifier, not faked.
+
+## #111 — Cycle counts are blind, and a counter cannot approve their own material variance
+
+**Decision (Owner, 2026-08-19).** Expected quantity is hidden from the counter until submission. After
+submission, managers may see expected versus counted and approve or reject the variance. Material
+adjustments require separate authority, and **the counter cannot approve their own material
+variance.**
+
+**Why.** The UI rendered "Expected: N" directly above the count input. A cycle count exists to obtain
+an independent observation; showing the system's answer first anchors the counter to it and quietly
+converts the control into a confirmation step.
+
+The separation-of-duties half is the load-bearing part: it must be enforced server-side, where the
+authorization model lives. A client-side check would be a suggestion, not a control.
+
+**Materiality** is to be defined explicitly and configurably rather than as a buried constant, reusing
+an existing domain threshold if one exists.
+
+## #112 — "Active" names four distinct concepts and labels must say which
+
+**Decision (Owner, 2026-08-19).** The word is overloaded and the senses are not interchangeable:
+
+| Sense | Meaning |
+|---|---|
+| **Employee active** | currently eligible for operational assignment |
+| **Role assignment active** | included in effective-access resolution |
+| **Capability active** | enabled in that environment |
+| **Record active** | available for current business use; not deleted or retired |
+
+Labels must name the relevant concept wherever ambiguity is possible.
+
+**Why.** A review found "Active" naming a five-status set on the Work Orders list and a one-status set
+on the Dispatcher Board capacity card — the same technician showing different "Active" counts on two
+screens, with neither screen wrong on its own terms. The same word also spans authorization state,
+environment activation and record lifecycle, where confusing two senses is a governance error rather
+than a wording preference.
+
+**Scope.** User-facing labels are corrected now. Renaming persisted enum values or Firestore fields is
+a data migration and is explicitly NOT part of this decision; where an identifier is misleading, the
+rename and its migration cost are to be proposed separately.
+
+## #113 — All fifteen governed business roles become grantable, with owner protections preserved
+
+**Decision (Owner, 2026-08-19).**
+
+- All **15** governed business roles are to be grantable through trusted, audited, server-side
+  administration.
+- **Owner protections are preserved**, and **`owner ≥ admin`** must hold.
+- `fulfillment.coordinatedVisit.read` is granted to **owner, admin, operationsManager, fieldManager,
+  dispatcher**.
+- `inventoryCreateExecutor` is **not** assigned until its exact recipient and business need are
+  presented.
+- The two missing warehouse assignments are prepared with exact employee and warehouse ids before
+  authorization is requested.
+- **No provisioning or activation writes without a dry-run manifest and separate sandbox
+  authorization.**
+
+**Why.** Only 10 of 15 roles could be granted: `grantRole` and `assignApprovedRole` threw
+`UnknownRoleError` for the other eight, which were `owner` and the entire management layer —
+`operationsManager`, `officeManager`, `salesManager`, `accountingManager`, `financeManager`,
+`fieldManager`, `generalEmployee`. Authority that exists on paper and cannot be conferred is not
+authority. Live, no `owner` assignment exists at all, which is why Reporting is unreachable for every
+persona and why `owner ≥ admin` fails in practice today.
+
+`fulfillment.coordinatedVisit.read` was activated in sandbox but granted to **no role whatsoever**, so
+Coordinated Visits and Coordinated Mission were inert for every principal including owner —
+activation lifts the catalog gate but never substitutes for a grant.
+
+**Boundary.** This decision authorizes repository implementation and evidence preparation only. The
+role grants themselves, the warehouse record changes, capability activation, the Work Order repairs
+and any deployment remain protected actions requiring separate authorization.
