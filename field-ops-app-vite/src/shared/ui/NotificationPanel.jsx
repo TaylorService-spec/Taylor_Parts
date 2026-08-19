@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import FailureState from "./FailureState";
 import Icon from "./Icon.jsx";
-import { StatusIndicator } from "./primitives";
+import { Button, StatusIndicator } from "./primitives";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone";
 
@@ -79,8 +79,8 @@ export default function NotificationPanel({
 
   return (
     <div className="fo-notification-panel">
-      <button
-        type="button"
+      <Button
+        variant="tertiary"
         onClick={() => setOpen((v) => !v)}
         aria-label={error ? "Notifications, couldn't load" : "Notifications"}
       >
@@ -90,7 +90,7 @@ export default function NotificationPanel({
         ) : total > 0 ? (
           <span className="fo-tabular-nums">({total})</span>
         ) : null}
-      </button>
+      </Button>
       {open && (
         <div className="fo-notification-panel-dropdown">
           {error ? (
