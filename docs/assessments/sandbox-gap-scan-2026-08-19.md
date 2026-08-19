@@ -290,3 +290,166 @@ worse than useless on a document meant to drive triage.
 - The client lens was static only. A runtime-only dead end — a callable failing under specific live
   data, a CSS state hiding content, a race — is out of its reach and remains unverified. That is the
   same gap the outstanding Account-page UAT covers, and this scan does not substitute for it.
+
+---
+
+# Wave three — whole-site sweep
+
+Page-level scouts across every screen, then surface-type scouts (backend subsystems, Rules blocks,
+test suites, hooks, shared UI, operator scripts, CI coverage), then persona scouts. Each was given
+this document and told to skip what it already records.
+
+Items marked **[verified]** were re-checked independently before being recorded.
+
+## HIGH
+
+### H7 — Discovering a serialized part is missing INCREASES its available stock **[verified]**
+
+`inventoryService.ts` sums the ledger with `else if (t.type === "ADJUSTED") governed += t.quantity;`
+and no `trackingMode` check. A cycle count records a missing SERIAL-tracked unit as
+`ADJUSTED, quantity: 1` — SERIAL entries are forced to quantity 1 and cannot carry the negative sign
+that would encode a loss. So finding a unit missing adds 1 to reservable availability.
+
+Affects `getAvailableQuantity` (Work Order reservation) and `sumLedgerEligibleOnHand` (Sales Order
+available-to-promise). The correct pattern exists three files away — `mobileLocationPresenceProbe.ts`
+does `if (v.trackingMode !== "NONE") continue;` with a comment explaining why SERIAL custody must be
+excluded. It was not applied here.
+
+Related, same file: `RETURNED` and `SCRAPPED` are schema-legal ledger types that these two consumers
+omit while three others include them. Dormant until an RMA or scrap command ships, at which point
+those movements vanish from availability on day one.
+
+### H8 — Two migration CLIs validate a project they never bind to **[verified]**
+
+`warehouseGovernanceMigrationCli.js:123` and `warehouseBackupRestoreCli.js:113` both call bare
+`admin.initializeApp()`. Both parse `--project`, require `--confirm-project` to match, gate execution
+behind `--acknowledge-production-write`, and pin a content hash — then connect the Admin SDK to
+whatever ambient credentials resolve to. Every gate validates a string the write never uses, while
+presenting the operator with a careful confirmation flow.
+
+### H9 — A seed script writes to production with no guard of any kind **[verified]**
+
+`seedOperationsDemoData.js:22` — `initializeApp({ projectId: "taylor-parts" })` at module load. No
+flags, no dry run, no confirmation, no emulator check. Compare `salesOrderNumberBackfillCli.js`,
+which refuses before Firebase initialises unless `--environment sandbox` resolves the project from
+the registry.
+
+### H10 — A credited invoice permanently locks quantity on its Sales Order
+
+`billedQty` is only ever incremented; nothing decrements it. A credit memo or write-off zeroes the
+invoice balance but never touches the Sales Order, so an invoice issued in error and fully credited
+removes that quantity from the billable pool forever. Re-issuing fails `QTY_EXCEEDS_ELIGIBLE`. The
+customer was never charged and now cannot be billed properly; the only remedy is manual Firestore
+surgery outside any governed path.
+
+### H11 — The Sales chain cannot be walked past DECISION **[verified]**
+
+Three facts compose: `NewOpportunityForm` never collects lines; the section-edit save path needs an
+`onSaveSection` prop that `App.jsx:201` does not supply and no call site anywhere provides; and the
+backend refuses `WON` without at least one line. So lines can never be added and "Mark Won" fails for
+every Opportunity. Separately, `createSalesOrderFromOpportunity` has zero client call sites — a WON
+Opportunity has no UI path to its Sales Order either.
+
+### H12 — Work Order parts plans silently overwrite each other
+
+`setWorkOrderPartsPlan` replaces the whole plan array with no `expectedVersion` baseline — the input
+contract has no version field at all. A dispatcher saving from a stale draft resurrects a part
+another dispatcher removed, with no conflict surfaced. The repo's own equipment-compatibility
+commands already implement `expectedVersion`/`commandFingerprint`.
+
+### H13 — Reporting is unreachable by every persona, and fails silently **[verified]**
+
+Both Reporting nav items gate on capabilities only the `owner` Role carries. A live query returns
+**10 active role assignments across 9 roles — none `owner`**, and `owner` is one of the eight roles
+no grant path can confer (M2). `App.jsx` filters route generation by the same check, so routes are
+never mounted, and because neither subnav uses `path === ""` the "not available to your role"
+fallback never fires. `/reporting/builder` redirects to `/dashboard`, indistinguishable from a typo.
+
+The same query settles M3 exactly: `crmActivityContributor` is assigned to one persona, not admin.
+
+### H14 — Two hooks have no error channel at all
+
+`useWorkOrder` and `useLocation` register no `onSnapshot` error callback, so a denied read never
+resolves: the Work Order detail page spins on "Loading work order…" indefinitely with no recovery.
+No consumer can fix this. That same page also drops `useAccount`'s `error` and `loading`, which the
+hook does provide.
+
+### H15 — Governed write paths whose tests CI never runs
+
+`completeAssignedJob.ts` — a live callable — has a test file, and **no workflow references either**.
+The `supplierMaster` subsystem has **13 test files wired to no workflow**. Also uncovered:
+`reorderRequestNumbering`, `inventoryEffectCallables`, the client reorder domain modules, and
+`field-ops-app-vite/src/auth/`.
+
+The mis-filter pattern repeats too: `receiving-e2-verifier-tests.yml` exists to hash-verify the
+Firestore rules and omits `firestore.rules` from its own `paths:` filter — the same shape as the
+`firestore.indexes.json` gap that let the D4 breach through.
+
+### H16 — A second, less careful `toMillis` reintroduces the bug its canonical twin exists to prevent
+
+`schedulingWorkspace.js` defines its own `toMillis` alongside the canonical `timestampMillis.js`, and
+the past-due attention projection imports the *former*. Two divergences: a `0` timestamp returns
+`null` from the canonical helper (guarding exactly the "epoch read as a real date" regression it was
+written to kill) but `0` from this one, so an unset `scheduledStart` emits a PAST_DUE item dated
+1970; and string timestamps parse in the canonical helper but return `null` here, so a job can show a
+correct date on its detail page while never appearing in the dispatcher's past-due list.
+
+## MEDIUM (selected)
+
+- **M11** — The reorder lifecycle has no callable and no audit trail; Rules enforce all nine
+  transitions rigorously, but who did what survives only in mutable fields each transition overwrites.
+- **M12** — Quantity integrity request → PO → receipt: a PO can be recorded for any quantity with no
+  check against the approved request; no unit-of-measure field exists anywhere in the chain; receipt
+  captures no quantity, so partial, over- and under-receipt are indistinguishable from a full receipt.
+- **M13** — Creating supplier terms never verifies the supplier exists or is ACTIVE, and deactivating
+  a supplier does not cascade, so a part can keep a `preferred: true` item pointing at a dead supplier.
+- **M14** — `partId == SKU` is an observed data property, not an enforced invariant.
+- **M15** — Warehouse reconciliation reports "No discrepancies" without ever running: its fail-closed
+  guard fires whenever bin stock has a `warehouseId` and a ledger entry lacks one, and no ledger write
+  ever sets that field — it is not on the type. Correct behaviour, dishonest message.
+- **M16** — Allocation readiness is computed, stored, then discarded by both the read projection and
+  the UI, so the page can never explain why something is not ready.
+- **M17** — Technician availability is stale by construction: only `completeAssignedJob` writes
+  `fieldops_technicians.status`; `transitionWorkOrder` never does.
+- **M18** — `mapCommandError` is untested in every finance/salesOrder/opportunity write callable, so
+  the client-facing error contract ships unverified the day any grant activates.
+- **M19** — The `readCallable` validator still only covers the list-view override, never the
+  inherited-from-entity path.
+- **M20** — Work Order status renders three incompatible ways, and "Active" names a 5-status set on
+  one screen and a 1-status set on another, so the same technician shows different counts.
+- **M21** — A technician created in the UI has no `employeeId` or `uid` link and no in-app way to get
+  one; dispatchers can assign them work nobody can act on.
+- **M22** — The legacy `fieldops_jobs` write path is unreachable from the UI but still armed in code
+  and Rules, bypassing governance if ever re-imported.
+- **M23** — Blind-count integrity is defeated: Cycle Counts shows "Expected: N" above the count input.
+- **M24** — Free-text notes are lost without warning on navigation in Field Mode and the technician
+  dashboard. Quantity edits are safe — each is an awaited callable.
+- **M25** — `LoadingEmptyState` has no failure state, so seven consumers render permission-denied as
+  "empty". Its sibling `MetadataListGrid` routes DENIED and UNAVAILABLE correctly — the pattern exists.
+- **M26** — Transfer and cycle-count commands are the stated reference implementations for
+  transactional safety and have **no concurrent-writer test at all**; the Work Order concurrency suite
+  shows what that test should look like.
+- **M27** — PARTS_MANAGER holds a reorder-creation grant in Rules with no UI to exercise it, and the
+  WAREHOUSE_MANAGER warehouse-scoped read grant has no consumer or route at all.
+
+## Verified clean in wave three
+
+- **No privilege escalation exists in the identity Rules**, and none in the server-side access core
+  either — the permission resolver fails closed at every layer, activation overrides have no caller
+  seam, actor identity is always `request.auth.uid`, and `auditEvents` is unwritable by any client.
+- **No pre-authentication exposure**: no source maps deployed, the Firebase web config is correctly
+  public, zero Web Storage usage, no self-signup or access-request surface, and a no-role user gets an
+  honest denial distinct from a failed identity read.
+- **Finance arithmetic is sound** — integer minor units throughout, no float or rounding,
+  over-application and negative balances blocked, all four money writes transactional.
+- **The Part Master / Supplier family satisfies all six write guarantees**; its gaps are referential.
+- **Equipment-compatibility mirror parity is genuinely tested**, not merely claimed.
+- **Modal, ConfirmDialog and MetadataListGrid** are exemplary and should be the pattern others follow.
+- **Client UI wiring** and the **inventory/warehouse Rules blocks** each came back with no defects.
+
+## Coverage limits
+
+Several persona scouts were still running when this was written. The write-path review has covered
+roughly half of the 62 mutating callables in depth. No UI was driven in any wave — every finding is
+static or read-callable evidence, so runtime-only defects remain out of reach, which is what the
+outstanding Account-page UAT covers.
