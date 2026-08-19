@@ -106,6 +106,65 @@ Rules and Duplicate Rules are listed, created, edited, activated and deactivated
 criteria builder following the idiom the Report Builder already establishes — the same
 field-picker + operator + value shape people in this product already know.
 
+## Seeded rules — everything below is DATA, not code
+
+**No entity has compiled-in matching logic.** Every rule described in this specification ships as
+a **seeded record** in `matching_rules` / `duplicate_rules`, visible in Administration →
+Duplicate Rules, and editable, deactivatable and deletable there like any other rule. If a rule
+in this document cannot be changed from that screen, the implementation is wrong.
+
+This includes the Part decisions reached with the Owner on 2026-08-19 — they are recorded here as
+the *initial values* of editable rows, not as behaviour:
+
+| Entity | Criteria | Method | Action (Create / Edit) |
+|---|---|---|---|
+| Part | `internalPartNumber` | `normalized` | **block** / block |
+| Part | `manufacturerPartNumber` AND `manufacturerId` | `normalized` + `exact` | allow + alert + report |
+| Account | `name` | `companyName` | allow + alert + report |
+| Account | `billingAddress` OR `phone` | `address` / `phone` | allow + alert + report |
+| Contact | `email` | `email` | allow + alert + report |
+| Contact | `name` AND `phone` | `normalized` + `phone` | allow + alert + report |
+| Location | `street` AND `postalCode` | `address` + `exact` | allow + alert + report |
+| Opportunity | `accountId` AND `name` AND both open | `exact` + `normalized` | allow + alert + report |
+
+### Why Part blocks on `internalPartNumber` and not on `manufacturerPartNumber`
+
+The two fields make different claims. `internalPartNumber` is **this catalog's own** number — it
+is the `referenceField`, it is required, and `partMasterCommands.ts` already throws
+`AlreadyExistsError` when one is claimed by another Part. Blocking at the form therefore prevents
+nothing new; it converts a confusing post-submit failure into a clear pre-submit message.
+
+`manufacturerPartNumber` is **someone else's** number and carries no uniqueness claim. Two
+manufacturers can independently ship a part numbered `X-100`; those are two genuinely different
+Parts with two different `internalPartNumber`s, and matching on the manufacturer's number alone
+would flag them as duplicates when they are not. It only means something **paired with
+`manufacturerId`** — same manufacturer, same number, twice.
+
+### The case the alert text has to carry
+
+A Part is stored with `primaryManufacturerId`, and `part_supplier_items` is keyed by `partId` —
+so **one Part can be sourced from several manufacturers**. When the *same physical part* starts
+being made by a second company, the correct action is adding a supplier item to the existing
+Part, **not** creating a second Part. Someone creating a second Part record for it IS a duplicate
+worth catching, and the seeded alert text says what to do instead:
+
+> A part with this number already exists. If this is the same part from a new manufacturer, add a
+> supplier item to the existing part rather than creating a new one.
+
+That sentence is seeded data on the rule, not a string in a component — which is the whole point
+of the rule living in Admin.
+
+## Convergence: the existing CSV import rule
+
+`contactDuplicateKey` (`domain/contactCsvImport.js`) currently hardcodes the Contact rule —
+email, else name+phone — and CSV import is its only consumer. Once Contact matching is an
+editable rule, leaving that function as it is produces **two sources of truth**: an admin edits
+the Contact rule, interactive create honours it, and CSV import silently keeps the old behaviour.
+
+CSV import must therefore evaluate the same rules as every other path. The existing rule is
+seeded as the Contact rule's initial value so today's import behaviour is preserved exactly on
+day one, and diverges only if an admin deliberately changes it.
+
 ## Explicitly out of scope
 
 - **Merging.** What happens to the losing record's Work Orders, Sales Orders, stock and history
@@ -182,19 +241,24 @@ is opt-in, per rule, and deactivatable from Admin without a release.
 
 ## Acceptance criteria
 
-1. An admin can create and modify a Matching Rule for each of the five entities from the
+1. An admin can create and modify a Matching Rule for ANY registered object from the
    Administration page, without a code change or release.
-2. An admin can set, per entity and separately for Create and Edit, whether a match alerts,
+2. NO matching behaviour is compiled in. Every rule in "Seeded rules" above is a seeded record
+   that can be edited, deactivated or deleted from Administration -> Duplicate Rules. A rule that
+   cannot be changed from that screen is a defect, including the Part block.
+3. CSV import evaluates the SAME rules as interactive create -- `contactDuplicateKey` stops
+   being an independent source of truth.
+4. An admin can set, per entity and separately for Create and Edit, whether a match alerts,
    blocks, and reports.
-3. A create matching an active rule shows the admin-authored alert naming the existing record and
+5. A create matching an active rule shows the admin-authored alert naming the existing record and
    which criteria matched.
-4. Continuing past an alert succeeds and produces a queue entry recording that they proceeded.
-5. Editing a record into collision produces a queue entry.
-6. A pair marked `not-a-duplicate` never reappears.
-7. A `block` rule prevents the create and says why.
-8. Deactivating a rule immediately stops its alerts, with no release.
-9. No path silently merges or modifies an existing record.
-10. Rule authoring is capability-gated and every rule change is audited.
+6. Continuing past an alert succeeds and produces a queue entry recording that they proceeded.
+7. Editing a record into collision produces a queue entry.
+8. A pair marked `not-a-duplicate` never reappears.
+9. A `block` rule prevents the create and says why.
+10. Deactivating a rule immediately stops its alerts, with no release.
+11. No path silently merges or modifies an existing record.
+12. Rule authoring is capability-gated and every rule change is audited.
 
 ## Risks
 
@@ -209,10 +273,17 @@ is opt-in, per rule, and deactivatable from Admin without a release.
 
 ## Open questions
 
-1. **Who authors rules, and who works the queue?** Authoring is plausibly `admin` only. Working
-   the queue is broader and has no natural holder for Accounts/Contacts/Opportunities. Does this
-   need `duplicate.rule.manage` and `duplicate.queue.resolve` as distinct capabilities?
-2. **Which entity, if any, should default to `block`?** The Owner raised exact part-number
-   collisions specifically. This spec defaults everything to allow+alert; blocking Parts on an
-   exact part-number match is a one-line rule change if wanted at launch.
-3. **Merge** must be specified before queue items can be resolved rather than only dismissed.
+1. ~~Who authors rules, and who works the queue?~~ **ANSWERED (Owner, 2026-08-19): admin
+   authors, and duplicate rules are available for ALL objects, not only the five named here.**
+   The five are simply the ones with seeded rules; the rule shape is entity-agnostic and any
+   registered EntityDefinition can have one. Remaining sub-question: does working the queue need
+   a capability distinct from authoring, so someone can resolve duplicates without being able to
+   rewrite the rules that find them?
+2. ~~Which entity should default to block?~~ **ANSWERED (Owner, 2026-08-19): Part blocks on
+   `internalPartNumber`; everything else is allow+alert+report.** Reasoning recorded under
+   "Seeded rules" above -- `internalPartNumber` is this catalog own number and already throws
+   `AlreadyExistsError` in `partMasterCommands.ts`, so blocking prevents nothing new. The
+   manufacturer part-number case the Owner raised is explicitly NOT a block, because two
+   manufacturers can ship the same number on genuinely different parts.
+3. ~~Merge~~ **APPROVED to specify (Owner, 2026-08-19).** A separate specification follows;
+   until it ships, queue items can be dismissed but not resolved.
