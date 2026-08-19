@@ -51,6 +51,14 @@ const EXPECTED_IDS = [
   "generalEmployee",
   "officeManager",
   "salesManager",
+  "salesperson",
+  "generalManager",
+  "warehouseManager",
+  "warehouseAssociate",
+  "partsManager",
+  "partsAssociate",
+  "controller",
+  "supportStaff",
   "accountingManager",
   "financeManager",
   "fieldManager",
@@ -90,9 +98,28 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the fifteen ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor + the durable catalog administrator + the four capability-specific Roles added since)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-three ids (sixteen, plus the seven org-chart positions added 2026-08-19)", () => {
+  // The list is pinned so a Role cannot appear by accident. salesperson was added
+  // deliberately on the Owner clarification that "salesManager and Sales are
+  // different -- the manager is over the salesperson".
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 15);
+  assert.equal(ALL_GOVERNED_ROLES.length, 23);
+});
+
+check("salesperson and salesManager are intentionally identical in capability today", () => {
+  // The distinction between them is ORGANISATIONAL, not authorizational. A manager
+  // holds no authority over a report record, because that needs the coverage/
+  // territory model the Owner deferred. Pinned so a later widening of salesManager
+  // is a decision someone makes here, not a drift that quietly builds that model.
+  const sp = [...GOVERNED_BUSINESS_ROLES.salesperson.permissions].sort();
+  const sm = [...GOVERNED_BUSINESS_ROLES.salesManager.permissions].sort();
+  assert.deepEqual(sp, sm);
+  for (const id of ["opportunity.read", "opportunity.write"]) {
+    assert.ok(sp.includes(id), `salesperson must hold ${id}`);
+  }
+  // Converting a WON Opportunity into a Sales Order creates a different object and
+  // was not part of the ruling -- neither Role holds it.
+  assert.equal(sp.includes("opportunity.createSalesOrder"), false);
 });
 
 // Cycle Count segregation of duties. The counting authority and the approving authority are split
@@ -164,14 +191,14 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all fifteen governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all twenty-three governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   for (const id of EXPECTED_IDS) {
     assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    15,
-    "the governed allowlist must contain exactly the 15 declared governed business Roles",
+    23,
+    "the governed allowlist must contain exactly the 23 declared governed business Roles",
   );
 });
 
