@@ -280,7 +280,7 @@ function FieldGroups({ groups, selected, onToggle }) {
     <section aria-labelledby="rb-fields-h">
       <h3 id="rb-fields-h">Fields</h3>
       {groups.map((g) => (
-        <fieldset key={g.label} className="fo-fieldset" style={{ flexDirection: "column", alignItems: "stretch" }}>
+        <fieldset key={g.label} className="fo-fieldset fo-fieldset--stacked">
           <legend>{g.label}</legend>
           {g.fields.map((f) => (
             <label key={f.fieldId} className="fo-checkbox-label">
@@ -500,9 +500,9 @@ function ResultArea({ outcome, def }) {
 function ResultsTable({ caption, columns, rows }) {
   if (columns.length === 0) return null;
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div className="fo-table-scroll">
       <table className="fo-table">
-        <caption className="fo-muted" style={{ textAlign: "left", captionSide: "top", marginBottom: 4 }}>
+        <caption className="fo-muted fo-report-caption">
           {caption} — {rows.length} row{rows.length === 1 ? "" : "s"}
         </caption>
         <thead>
