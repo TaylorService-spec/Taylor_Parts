@@ -71,7 +71,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
     <Modal title="New opportunity" onClose={requestClose}>
       <form className="fo-sales-createform" onSubmit={handleSubmit}>
         {writeDisabled && (
-          <p className="fo-sales-lifecycle-note fo-muted" role="status">
+          <p id="new-opp-readiness" className="fo-sales-lifecycle-note fo-muted" role="status">
             {readiness?.reason}
           </p>
         )}
@@ -169,8 +169,12 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
             type="submit"
             variant={writeDisabled ? "protected" : "primary"}
             disabled={pending}
-            title={writeDisabled ? readiness?.reason : undefined}
-            reason={writeDisabled ? readiness?.reason : undefined}
+            // The reason is ALREADY on screen as the form's own notice above, so the
+            // Button must not render its own copy: passing `reason` here printed the
+            // same sentence a second time, and `title` added it a third time as a
+            // tooltip. Point the control at the existing notice instead -- one visible
+            // explanation, still programmatically tied to the button that is blocked.
+            aria-describedby={writeDisabled ? "new-opp-readiness" : undefined}
           >
             {pending ? "Creating…" : "Create opportunity"}
           </Button>

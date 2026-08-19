@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { routerBasenameFrom } from "./routerBasename";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
@@ -79,6 +79,7 @@ const previewHasPermission = createPermissionPreviewer(
 // separate deployment + Owner authorization.
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
+import LandingPage from "./navigation/LandingPage";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, deniedDomainIndexItem } from "./navigation/navConfig";
 import EmptyState from "./shared/ui/EmptyState.jsx";
 
@@ -122,33 +123,21 @@ const LEGACY_COMPONENTS = {
   technicianDashboard: TechnicianDashboard,
 };
 
-// Admin/dispatcher personalized landing (W5). Real role-aware home -- quick-access
-// cards to the primary operational surfaces both admin and dispatcher can reach --
-// replacing the prior "isn't built yet" placeholder. Technician gets the real
-// TechnicianDashboard. Every card links to a verified route; none is a dead link.
-const LANDING_AREAS = [
-  { to: "/dashboard/operations", label: "Inventory & Supply Overview", hint: "Cross-domain operational health" },
-  { to: "/service", label: "Work Orders", hint: "Browse and manage work orders" },
-  { to: "/service/dispatcher-board", label: "Dispatcher Board", hint: "Assign and dispatch work" },
-  { to: "/customers", label: "Customers", hint: "Accounts, contacts, and locations" },
-  { to: "/inventory", label: "Inventory", hint: "Parts and stock" },
-];
-
-function DashboardIndex({ role }) {
+// Role-aware landing. A technician has a real, data-backed home (TechnicianDashboard)
+// and keeps it. Everyone else used to get a hard-coded list of five links that was the
+// same for every non-technician: an admin without Reporting saw the identical five as
+// one with it, so the screen asserted access it had not checked. LandingPage computes
+// the destination set from isDomainVisible/isNavItemVisible -- the SAME functions the
+// rail and the route table use for this exact principal -- so it can neither show a
+// destination this person cannot open nor omit one they can.
+function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
   if (role === "technician") return <TechnicianDashboard />;
   return (
-    <div className="fo-panel">
-      <h2>My Dashboard</h2>
-      <p className="fo-muted">Quick access to your areas.</p>
-      <div className="fo-landing-grid">
-        {LANDING_AREAS.map((a) => (
-          <Link key={a.to} to={a.to} className="fo-landing-card">
-            <span className="fo-landing-card-title">{a.label}</span>
-            <span className="fo-muted">{a.hint}</span>
-          </Link>
-        ))}
-      </div>
-    </div>
+    <LandingPage
+      role={role}
+      allowedLegacyKeys={allowedLegacyKeys}
+      operationalContext={operationalContext}
+    />
   );
 }
 
@@ -201,9 +190,15 @@ function OpportunityWorkspaceConnected() {
   return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} />;
 }
 
-function renderSubnavItem(domain, item, role, operationalContext) {
+function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys) {
   if (domain.key === "dashboard" && item.key === "my") {
-    return <DashboardIndex role={role} />;
+    return (
+      <DashboardIndex
+        role={role}
+        allowedLegacyKeys={allowedLegacyKeys}
+        operationalContext={operationalContext}
+      />
+    );
   }
   // Sprint 2.0.2 -- Customer Foundation. Same special-case pattern as
   // DashboardIndex above: this item has no legacyKey (it's a brand
@@ -480,7 +475,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 key={item.key}
                 path={item.path || undefined}
                 index={item.path === ""}
-                element={renderSubnavItem(domain, item, role, operationalContext)}
+                element={renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys)}
               />
             ))}
           {/* Three independent missions landed on a blank page at /inventory and
