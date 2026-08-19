@@ -10,6 +10,7 @@ import {
   startOfWeekMillis,
   addWeeks,
 } from "../../domain/schedulingWorkspace";
+import { Button } from "../../shared/ui/primitives";
 
 // Service > Scheduling -- the WEEKLY dispatcher scheduling workspace (Enterprise Operations OS
 // platform-first; Taylor Parts flagship). A REAL operational planning surface, not a date/time form: it
@@ -67,11 +68,11 @@ function JobChip({ job, overlap, onOpen }) {
     overlap ? "fo-sched-chip--overlap" : "",
   ].filter(Boolean).join(" ");
   return (
-    <button type="button" className={cls} onClick={() => onOpen(job)} title={overlap ? "Overlaps another job" : undefined}>
+    <Button variant="tertiary" className={cls} onClick={() => onOpen(job)} title={overlap ? "Overlaps another job" : undefined}>
       <span className="fo-sched-chip__wo">{job.woNumber}</span>
       <span className="fo-sched-chip__time">{fmtTime(job.startMillis)}{job.endMillis ? `–${fmtTime(job.endMillis)}` : ""}</span>
       {overlap ? <span className="fo-sched-chip__flag" aria-label="Scheduling overlap">⚠</span> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -82,7 +83,7 @@ function JobDetail({ job, techName, onClose }) {
     <div className="fo-sched-detail" role="dialog" aria-label={`Work order ${job.woNumber}`}>
       <div className="fo-sched-detail__head">
         <strong>{job.woNumber}</strong>
-        <button type="button" className="fo-linkbtn" onClick={onClose}>Close</button>
+        <Button type="button" variant="tertiary" className="fo-linkbtn" onClick={onClose}>Close</Button>
       </div>
       <dl className="fo-sched-detail__grid">
         <dt>Status</dt><dd>{job.status}</dd>
@@ -158,20 +159,21 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
       {/* Week navigation + view toggle -- always available, in every view. */}
       <div className="fo-sched-toolbar">
         <div className="fo-sched-weeknav" role="group" aria-label="Week navigation">
-          <button type="button" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>‹ Previous week</button>
-          <button type="button" onClick={() => setWeekStart(startOfWeekMillis(now))}>This week</button>
-          <button type="button" onClick={() => setWeekStart((w) => addWeeks(w, 1))}>Next week ›</button>
+          <Button type="button" variant="tertiary" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>‹ Previous week</Button>
+          <Button type="button" variant="tertiary" onClick={() => setWeekStart(startOfWeekMillis(now))}>This week</Button>
+          <Button type="button" variant="tertiary" onClick={() => setWeekStart((w) => addWeeks(w, 1))}>Next week ›</Button>
           <span className="fo-sched-weeklabel">{fmtWeekRange(vm.weekStartMillis, vm.weekEndMillis)}</span>
         </div>
         <div className="fo-sched-viewtoggle" role="group" aria-label="View">
-          <button type="button" aria-pressed={view === "week"} onClick={() => setView("week")}>Week</button>
-          <button
+          <Button type="button" variant="tertiary" aria-pressed={view === "week"} onClick={() => setView("week")}>Week</Button>
+          <Button
             type="button"
+            variant="tertiary"
             aria-pressed={view === "day"}
             onClick={() => openDay(focusDayIndex ?? todayIndexOr(vm.days, 0))}
           >
             Day
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -200,7 +202,7 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
                     {wo.priority ? <span className="fo-muted"> · {workOrderPriorityLabel(wo.priority) ?? ""}</span> : null}
                     {wo.type ? <span className="fo-muted"> · {wo.type}</span> : null}
                   </div>
-                  <button type="button" onClick={() => setSchedulingWo(wo)}>Schedule</button>
+                  <Button type="button" onClick={() => setSchedulingWo(wo)}>Schedule</Button>
                 </li>
               ))}
             </ul>
@@ -223,9 +225,9 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
               <ul>
                 {attention.map((n) => (
                   <li key={`${n.kind}:${n.job.id}`}>
-                    <button type="button" className="fo-linkbtn" onClick={() => setOpenJob(n.job)}>
+                    <Button type="button" variant="tertiary" className="fo-linkbtn" onClick={() => setOpenJob(n.job)}>
                       {n.job.woNumber}
-                    </button>{" "}
+                    </Button>{" "}
                     <span className="fo-muted">{n.kind === "OVERLAP" ? "overlaps another job" : "scheduled in the past"}</span>
                   </li>
                 ))}
@@ -239,7 +241,7 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
               <ul>
                 {vm.unassignedScheduled.map((job) => (
                   <li key={job.id}>
-                    <button type="button" className="fo-linkbtn" onClick={() => setOpenJob(job)}>{job.woNumber}</button>{" "}
+                    <Button type="button" variant="tertiary" className="fo-linkbtn" onClick={() => setOpenJob(job)}>{job.woNumber}</Button>{" "}
                     <span className="fo-muted">{fmtTime(job.startMillis)}</span>
                   </li>
                 ))}
@@ -291,14 +293,15 @@ function WeekGrid({ vm, onOpenDay, onOpenJob }) {
       <div className="fo-sched-grid" style={{ "--fo-sched-days": vm.days.length }}>
         <div className="fo-sched-grid__corner">Technician</div>
         {vm.days.map((day) => (
-          <button
+          <Button
             key={day.index}
             type="button"
+            variant="tertiary"
             className={["fo-sched-grid__dayhead", day.isToday ? "is-today" : "", day.isWeekend ? "is-weekend" : ""].filter(Boolean).join(" ")}
             onClick={() => onOpenDay(day.index)}
           >
             {fmtDayHeading(day.dateMillis)}
-          </button>
+          </Button>
         ))}
 
         {vm.technicianRows.map((row) => (
@@ -342,7 +345,7 @@ function DayAgenda({ vm, day, onOpenJob, onBackToWeek }) {
     <div className="fo-sched-day">
       <div className="fo-sched-day__head">
         <strong>{new Date(day.dateMillis).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</strong>
-        <button type="button" className="fo-linkbtn" onClick={onBackToWeek}>Back to week</button>
+        <Button type="button" variant="tertiary" className="fo-linkbtn" onClick={onBackToWeek}>Back to week</Button>
       </div>
       {rowsWithJobs.length === 0 ? (
         <p className="fo-muted">No work scheduled on this day.</p>

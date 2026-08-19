@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAssignableEmployees } from "../../hooks/useAssignableEmployees";
+import { Button } from "../ui/primitives";
 
 // Phase 3 -- Platform Assignment Foundation (docs/specifications/
 // employee-foundation.md, PR 4: EmployeeAssignmentPicker Foundation).
@@ -221,8 +222,8 @@ export default function EmployeeAssignmentPicker({
             </div>
           ) : (
             results.map((employee, index) => (
-              <button
-                type="button"
+              <Button
+                variant="tertiary"
                 key={employee.employeeId}
                 id={optionId(employee.employeeId)}
                 role="option"
@@ -235,7 +236,7 @@ export default function EmployeeAssignmentPicker({
                 {employee.operationalRoles?.length > 0 && (
                   <span className="fo-muted"> -- {employee.operationalRoles.join(", ")}</span>
                 )}
-              </button>
+              </Button>
             ))
           )}
         </div>
