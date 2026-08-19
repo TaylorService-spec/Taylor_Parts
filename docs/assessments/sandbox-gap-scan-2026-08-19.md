@@ -453,3 +453,50 @@ Several persona scouts were still running when this was written. The write-path 
 roughly half of the 62 mutating callables in depth. No UI was driven in any wave — every finding is
 static or read-callable evidence, so runtime-only defects remain out of reach, which is what the
 outstanding Account-page UAT covers.
+
+## Correction to H1 — the Opportunity records did NOT bypass the governed path
+
+H1 states that because `opportunityNumber` is allocated on every governed create yet all 8 live
+records lack it, "those records were therefore written **outside the governed path**." **That
+inference was wrong.**
+
+Verified: `allocateOpportunityNumber` was introduced in commit `3fdf1ccf`
+(*feat(sales): Opportunity reference numbering (OPP-YYYY-######)*, #1120) on **2026-08-17**. The 8
+live Opportunities were created between **2026-08-14T18:38Z and 2026-08-14T20:07Z** — three days
+earlier. They were fully governed when written; the field did not exist yet.
+
+No seed script writes to `opportunities` at all: the collection appears in no seed, no fixture spec,
+and no manifest. The only writer in the repo is the governed `createOpportunity` callable.
+
+**The real defect is a process gap, and it generalises.** Sales Order numbering shipped with a
+backfill CLI, a runbook and a CI workflow. Transfer/Receiving/Reorder numbering shipped with
+`backfillOperationalNumbering.mjs`. Opportunity numbering shipped with **no backfill tool at all**,
+so its legacy records have no remediation path and nothing flagged it until this scan.
+
+The rule worth adopting: when a numbering or audit field is added to a governed create path, its
+backfill ships in the same PR or is explicitly recorded as deferred debt.
+
+The `name` half of H1 is unaffected and stands — no write path for it has ever existed.
+
+**H3 is likewise deliberate, not accidental.** `seedSandboxCoordinatedInstall.js:142` sets
+`salesOrderId: "so-harbor-c713"` on the five Work Orders, and the file's own header explains the
+choice: a set of Work Orders sharing one `salesOrderId` *is* the coordinated group, and seeding a
+real Sales Order was rejected as dishonest while the Sales-Order-linked capabilities were undeployed.
+That premise has since changed — `salesOrder.read` is now granted and its read UI is live — so this
+needs an Owner decision rather than a bug fix: seed a minimal governed Sales Order, or have the read
+services treat an unresolvable `salesOrderId` as "ungrouped" rather than a dangling reference.
+
+## Correction to the M6 class — a grant-state comment, not just a deploy-state one
+
+Four files state that `inventory.stock.receive` is "REGISTERED BUT UNGRANTED" and "denies every
+principal": `index.ts:181`, `permissionCatalog.ts:875-879`, `receivingCallableWiring.ts:3-4`, and
+`receivingCallables.ts:3-4`.
+
+It has been granted to admin, dispatcher and owner since **2026-08-06** — `compatibilityRoles.ts:79-86`
+grants it directly, DECISIONS #65 and #68 record the ratification, and both
+`receivingReadiness.js` and `SYSTEM_AUTHORITIES.md` already describe the correct state (grant done;
+the client transport flag remains gated separately).
+
+This is sharper than the rest of the M6 class: those comments misstate *deployment*, these misstate
+*authorization*. The two most natural files to check when asking "can an admin receive stock?" both
+answer no, and both are wrong.
