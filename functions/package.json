@@ -66,6 +66,7 @@
     "test:truckRegistryCallables": "npm run build && node test/truckRegistryCallables.test.mjs",
     "test:mobileLocationInventoryProbes": "npm run build && node test/mobileLocationInventoryProbes.test.mjs",
     "test:operationalReferenceProbe": "npm run build && node --test test/operationalReferenceProbe.test.mjs",
+    "test:inventoryAnalyticsWire": "node test/inventoryAnalyticsWireEncoding.test.mjs",
     "test:inventoryLedger": "npm run build && node test/operationalMovementLedger.test.mjs",
     "test:inventoryReceiving": "npm run build && node test/inventoryReceivingFoundation.test.mjs",
     "test:receiveInventoryStock": "npm run build && node test/receiveInventoryStockCommand.test.mjs",
