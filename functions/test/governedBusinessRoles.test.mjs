@@ -543,10 +543,34 @@ check("no OTHER governed Role carries these capabilities in its permission set",
     if (id !== "workOrderPartsPlanner") {
       assert.equal(role.permissions.includes("workOrder.parts.plan"), false, id);
     }
-    if (id !== "crmActivityContributor") {
+    // "owner" is exempted, not overlooked. Owner ruling 2026-08-19 granted CRM activity
+    // on ADMIN_ROLE (canonical admin authority), and OWNER_PERMISSIONS is composed from
+    // ADMIN_ROLE.permissions -- so owner holds these ids BY COMPOSITION, exactly the way
+    // it already inherits fulfillment.coordinatedVisit.read. The invariant this check
+    // protects is that no OTHER governed Role picks them up independently; that still
+    // holds, and a dedicated check below pins owner-via-composition explicitly.
+    if (id !== "crmActivityContributor" && id !== "owner") {
       assert.equal(role.permissions.includes("crm.activity.create"), false, id);
       assert.equal(role.permissions.includes("crm.activity.read"), false, id);
     }
+  }
+});
+
+// Owner ruling 2026-08-19 -- closes docs/governance/crm-activity-admin-authority-proposal.md.
+// Before this, exactly one Role carried these ids, so a dispatcher holding the operational
+// crmActivityContributor assignment could read CRM notes on an Account while the ADMIN could
+// not, and owner inherited the same gap. Pinned in both directions: admin holds them
+// directly, owner by composition, and dispatcher does NOT gain create as a side effect of
+// the shared admin/dispatcher base.
+check("CRM activity: admin holds create+read directly, owner by composition, dispatcher NOT via the shared base", () => {
+  for (const id of ["crm.activity.create", "crm.activity.read"]) {
+    assert.ok(ADMIN_ROLE.permissions.includes(id), `admin must hold ${id}`);
+    assert.ok(OWNER_ROLE.permissions.includes(id), `owner must inherit ${id} via OWNER_PERMISSIONS`);
+    assert.equal(
+      DISPATCHER_ROLE.permissions.includes(id),
+      false,
+      `dispatcher must NOT hold ${id} -- it was granted ADMIN-only, not on the shared base`,
+    );
   }
 });
 
