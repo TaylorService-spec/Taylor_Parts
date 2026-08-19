@@ -46,6 +46,10 @@ export const SANDBOX_PERSONAS = Object.freeze({
   salesManager: "salesmgr@sandbox.invalid",
   accountingManager: "acctmgr@sandbox.invalid",
   fieldManager: "fieldmgr@sandbox.invalid",
+  // Individual sales contributor, provisioned 2026-08-19 alongside the salesperson
+  // Role. Named here so tooling asks for the persona key rather than hardcoding an
+  // email -- the reason this map exists.
+  salesperson: "mikael@sandbox.invalid",
 });
 
 export class CredentialAccessError extends Error {
