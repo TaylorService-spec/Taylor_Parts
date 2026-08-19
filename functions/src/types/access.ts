@@ -343,6 +343,18 @@ export type AuditAction =
   // to a stable id -- collision-free without a caller-supplied idempotency key, because canTransition()
   // already makes a given action apply to a given Work Order at most once across its whole lifecycle
   | "transitionWorkOrder"
+  // H20 fix (dispatch reassignment) -- an ADDITIONAL, narrower event beside "transitionWorkOrder" above,
+  // same coexistence pattern as salesOrderFulfillmentWriteBack beside it for Complete: the generic event
+  // records the STATE TRANSITION (status A -> status B) and carries no technician-identity detail at all,
+  // so it cannot express a reassignment on its own. This event fires only for the narrow case where the
+  // technician actually being Dispatched differs from wo.scheduledTechId, and carries what the generic
+  // event structurally cannot -- prior technician, new technician, and the dispatcher-supplied reason
+  // (required for this case only). Two events describing the one Dispatch call, each meaningful on its
+  // own query ("every transition on this Work Order" vs. "every technician reassignment"), not a
+  // duplicate of the same fact twice. Traceability only, not an idempotency gate -- Dispatch is
+  // structurally once-per-Work-Order via canTransition (SCHEDULED -> DISPATCHED, same as every other
+  // action here).
+  | "reassignWorkOrderTechnician"
   // Phantom Sales Order link repair (functions/src/repair/phantomSalesOrderLinkRepair.ts) -- the operator
   // CLI's repair of a Work Order salesOrderId that points at a non-existent Sales Order. Two separate,
   // durable events: the repair itself (tombstones the link -- salesOrderId is never modified) and, only if
