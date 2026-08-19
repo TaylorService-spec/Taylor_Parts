@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
+import { Button } from "../../shared/ui/primitives";
 
 // Issue #232 unit E6 -- Equipment creation, on the same shared Modal + form-primitive
 // pattern as LocationCreateModal/ContactCreateModal (Issue #214 PR-2). Close paths are
@@ -148,7 +149,7 @@ export default function EquipmentCreateModal({ accountName, locations, locations
             <div className="fo-inline-error" role="alert" data-create-location-error>
               {locationsError}{" "}
               {onRetryLocations && (
-                <button type="button" className="fo-link-btn" onClick={onRetryLocations}>Retry</button>
+                <Button variant="tertiary" className="fo-link-btn" onClick={onRetryLocations}>Retry</Button>
               )}
             </div>
             <p className="fo-muted">Equipment can&apos;t be added until its locations load.</p>
@@ -221,8 +222,8 @@ export default function EquipmentCreateModal({ accountName, locations, locations
           {/* #324: no valid create is possible while locations failed to load -- a
               location is required and none can be chosen -- so the action is disabled
               rather than silently doing nothing on click. */}
-          <button type="submit" disabled={submitting || Boolean(locationsError)}>{submitting ? "Saving..." : "Add Equipment"}</button>
-          <button type="button" onClick={requestClose} disabled={submitting}>Cancel</button>
+          <Button type="submit" loading={submitting} disabled={Boolean(locationsError)}>Add Equipment</Button>
+          <Button type="button" variant="secondary" onClick={requestClose} disabled={submitting}>Cancel</Button>
         </FormActions>
       </form>
     </Modal>
