@@ -87,7 +87,7 @@ export default function Button({
         )}
       </button>
       {isProtected && reason ? (
-        <p id={describedById} className="fo-button__protected-reason fo-muted" style={{ fontSize: "12px", margin: "4px 0 0" }}>
+        <p id={describedById} className="fo-button__protected-reason fo-muted">
           {reason}
         </p>
       ) : null}

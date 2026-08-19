@@ -3223,3 +3223,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-parity__cell { padding: 2px 0; }
 .fo-parity__copy-btn { margin-top: var(--space-2); }
 .fo-parity__copied { margin-left: var(--space-2); color: var(--color-success); font-size: var(--font-size-xs); }
+
+/* === inline-style elimination: the primitive itself =======================
+   Button.jsx named .fo-button__protected-reason and then set its font-size and
+   margin inline, so the class it advertised did not exist and could not be
+   themed or overridden. The design system is the last place an inline style
+   belongs. Values are the ones it was already applying, now on the token scale
+   (4px -> --space-1; 12px sat between xs 11px and sm 12.5px, snapped to sm so
+   an explanation a blocked user must read never gets SMALLER by rounding).
+   Colour comes from .fo-muted,
+   unchanged, so no new contrast pair is introduced. */
+.fo-button__protected-reason {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+}
