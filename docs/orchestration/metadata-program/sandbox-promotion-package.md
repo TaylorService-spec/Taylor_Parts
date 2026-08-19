@@ -1530,3 +1530,133 @@ clean.
 
 `TRANCHE 3 — TIMESTAMP CONSUMER GATE: CLEAR.` No Functions repair required. Hosting authorization
 requested, with §11.5 on the record.
+
+---
+
+# Tranche 3 — Hosting: DEPLOYED
+
+**Deployed 2026-08-19. Live `/version.json` = `0884e480`, `environmentId: platform-sandbox`.**
+No Functions, Rules, indexes, seeds, backfills, activations, or production actions. No rollback
+performed — see §12.5 for the one acceptance item that did not pass and why it is not a deploy
+regression.
+
+## 12.1 What was built and shipped
+
+The artifact reviewed under the §11 gate was built with the **default** environment, whose manifest
+says `taylor-parts-production` and whose base is the GitHub Pages path. That artifact was correct to
+*inspect* — list definitions and columns are environment-independent — but **must never be
+deployed**: it would publish a sandbox surface that misreports its own environment, defeating D1/D2.
+
+`scripts/deployHosting.mjs` exists for exactly this failure and was used:
+
+    node scripts/deployHosting.mjs --environment platform-sandbox --dry-run   # verified, no deploy
+    node scripts/deployHosting.mjs --environment platform-sandbox             # deployed
+
+It injects `VITE_ENVIRONMENT_ID` from the resolved target, re-reads `dist/version.json` after the
+build, and **asserts the artifact's baked identity against the target before any upload**. It
+deploys with `--project eos-platform-sandbox` explicitly, and the log confirms
+`Deploying to 'eos-platform-sandbox'` with `hosting` as the only component.
+
+    Artifact identity verified: platform-sandbox @ 0884e480
+
+**Built at `0884e480`** — the authorized commit, checked out detached with a clean tree, not from the
+later `main`.
+
+## 12.2 The deployed artifact is the reviewed artifact
+
+Every served file hashed against the local build:
+
+| File | Result |
+|---|---|
+| `index.html` | identical |
+| `assets/index-BmuCD58g.js` | **identical** |
+| `assets/index-DdvObLuX.css` | identical |
+| `version.json` | identical |
+| `404.html`, `favicon.svg` | identical |
+
+The §11 gate findings were re-verified **on this bundle**, not only on the inspected one:
+`salesOrder.index` still declares 5 columns with no timestamp, the related Sales Orders list declares
+`salesOrderNumber, state, salesChannel, customerPO, sourceOpportunityNumber` — **no timestamp
+column** — and `AccountSalesOrders` (the dead timestamp-consuming section) appears **zero** times.
+
+## 12.3 Acceptance
+
+| Requirement | Result |
+|---|---|
+| `/version.json` identifies the artifact | **PASS** — `0884e480`, `platform-sandbox`, base `/` |
+| Related Sales Orders shows all expected records | **PASS** — `listSalesOrdersForAccount` 200, **14 of 14** |
+| Focused E2E matrix on changed surfaces | **PASS** — 19 checks; see below |
+| Governed-ledger boundary | **PASS** — `allocateSalesOrder` technician **403** |
+| 27 activation overrides intact | **PASS** — all 27 evaluate live |
+| No timestamp columns on the related Sales Orders list | **PASS** — statically proven on the served bundle |
+| Core inventory smoke | **FAIL** — pre-existing, §12.5 |
+| App boots without error | **PASS** — login screen renders, **zero console errors** |
+
+The 20-check matrix re-run post-deploy: 19 pass. The twentieth asserted *"Hosting still
+`cd442727`"* — a pre-deploy invariant that this tranche deliberately changes. It now reads
+`0884e480`, which is the intended outcome, not a failure.
+
+Environment state after deploy: **84 Functions** (unchanged), **38 indexes** including the 3
+deliberate `equipment_models` orphans (unchanged), Rules untouched, activation overrides unchanged.
+
+**All 27 activation overrides confirmed live** by calling `resolveEffectiveAccessCallable` with the
+declared override set: 27 submitted, **27 evaluated**. (13 resolve `allowed` for the admin persona;
+the rest are denied by *role* grant, not by activation — the override makes a capability evaluable,
+the role still has to grant it.) Hosting cannot alter this set in any case: it is derived inside the
+Functions runtime from `GCLOUD_PROJECT`, with no caller seam.
+
+## 12.4 What is NOT proven — stated plainly
+
+Rendering was verified as far as it can be without signing in: the app boots clean, the served bundle
+is byte-identical to the reviewed one, and the callables behind the Account page and its related
+Sales Orders list return correct data live. **The authenticated UI was not driven**, because doing so
+requires entering a persona password into a login form, which I do not do. "The Account page renders
+those 14 rows" therefore rests on (a) the reviewed bundle being what is served and (b) its data
+source being correct — not on an observed screen. An Owner-driven pass would close that gap.
+
+## 12.5 The one failing acceptance item — pre-existing, not a deploy regression
+
+`getInventoryAnalytics` returns **500 INTERNAL**, deterministically, for both admin and dispatcher
+(4 attempts). The authorization boundary is intact — technician gets a clean **403
+PERMISSION_DENIED** with the correct message — so the fault is *after* the capability gate, in the
+deployed data path.
+
+Three facts make this a separate item rather than a rollback trigger:
+
+1. **Hosting cannot cause it.** Functions were not deployed in this tranche; the callable is byte-
+   unchanged from before it.
+2. **No UI calls it.** `getInventoryAnalytics` appears exactly **once** in the deployed bundle — inside
+   a permission-catalog *description string*, not a call site. It had no client caller at `cd442727`
+   either. Nothing a user can click reaches it.
+3. **Current repo code does not reproduce it.** Replaying the callable's exact data path locally
+   against the same live collections (16 `inventory_transactions`, 5 `stock_locations`) completes
+   successfully — normalization and dashboard generation both return. The sandbox runs an **older
+   Functions build** for this callable (only `listSalesOrderIndex` was redeployed in Tranche 2R), so
+   the evidence points at deployed-vs-repo drift, and a Functions redeploy is the likely remedy.
+
+That remedy is a **Functions deploy — outside this authorization**, so it was not taken. Recorded as
+an open item.
+
+Rolling Hosting back would not affect it, and there is no material UI regression: the deploy's
+observable effects are the reviewed bundle and a truthful manifest.
+
+## 12.6 Recorded, per the authorization
+
+`salesOrder.index` and its callable infrastructure are **deployed but not mounted**. The list view
+definition and its `listSalesOrderIndex` entry in `callableListSource.js` are both present in the
+served bundle, and the callable is live and healthy — but **no standalone Sales Order index route
+exists**. `salesOrder.index` appears twice in the bundle: its own definition, and the related list's
+`viewAllListId` pointer. The only Sales Order route remains the detail page.
+
+Mounting it is a separate future implementation slice and was **not** performed in this tranche.
+
+## 12.7 Confirmation
+
+Hosting only, `--project eos-platform-sandbox`, built at `0884e480`, artifact identity asserted
+before upload, served files byte-identical to the reviewed build. No Functions, Rules, indexes,
+seeds, backfills, or activation changes. Production untouched. No rollback performed or required.
+
+`TRANCHE 3 — HOSTING: DEPLOYED AND VERIFIED.`
+Open items: `getInventoryAnalytics` 500 (Functions redeploy candidate, unconsumed by any UI); the
+Sales Order read service's `createdAtMillis`/`updatedAtMillis` projection defect (§11.4); mounting a
+standalone Sales Order index route (future slice).
