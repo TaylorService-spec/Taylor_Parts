@@ -4,6 +4,7 @@ import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 6 Phase 6.2/6.3 -- the technician execution entry point.
 // Rendered inline within TechnicianDashboard.jsx when a Work Order is
@@ -33,9 +34,9 @@ export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
     <div className="fo-card work-order-card fo-touch-targets">
       <div className="disp-wo-card-header">
         <h3 style={{ margin: 0 }}>{workOrder.woNumber}</h3>
-        <button type="button" onClick={onClose}>
+        <Button variant="secondary" onClick={onClose}>
           Back to list
-        </button>
+        </Button>
       </div>
 
       <div className="fo-muted">
