@@ -23,7 +23,6 @@ import { accountIndexList } from "../src/metadata/definitions/account.js";
 import { contactIndexList, contactRelatedList } from "../src/metadata/definitions/contact.js";
 import { employeeIndexList } from "../src/metadata/definitions/employee.js";
 import { equipmentIndexList } from "../src/metadata/definitions/equipment.js";
-import { invoiceIndexList } from "../src/metadata/definitions/invoice.js";
 import { locationIndexList, locationRelatedList } from "../src/metadata/definitions/location.js";
 import { manufacturerIndexList } from "../src/metadata/definitions/manufacturer.js";
 import { opportunityIndexList, opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
