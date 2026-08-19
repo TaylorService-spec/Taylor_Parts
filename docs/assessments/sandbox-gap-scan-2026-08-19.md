@@ -171,3 +171,122 @@ deliberate later decision. Listed so the inventory is complete, not as work.
 M1 and M2 belong in this category by intent and in the HIGH-adjacent category by effect: the
 authority is real, documented, and unreachable. That is a decision to revisit, not a bug to patch
 blindly.
+
+---
+
+# Wave two — write paths, client wiring, Rules
+
+Three further lenses, each given this document and told to skip anything already in it. Two came back
+clean; one produced the most consequential findings of the scan. Same read-only mandate; the
+write-path lens was additionally forbidden from invoking anything at all.
+
+All four findings below were **spot-verified independently** before being recorded here — one of them
+turned out to be twice the size the scout reported.
+
+## HIGH
+
+### H5 — The busiest write surface in the product is invisible to the access model
+
+The Work Order Engine (`createWorkOrder.ts:110`, `updateWorkOrderExecutionData.ts:94`,
+`completeAssignedJob.ts:215`) and all nine Truck Registry callables
+(`truckRegistry/truckRegistryCommands.ts:137-143`, plus an inline `role !== "admin"` at line 431)
+authorize with **ad-hoc role comparisons** rather than resolving a capability through the catalog.
+`transitionWorkOrder.ts` layers its own bespoke permission matrix on top.
+
+Consequence: `resolveEffectiveAccess` — and anything built on it, including any future audit tooling
+— cannot answer "who may mutate `fieldops_wos`". Every Work Order create, transition and
+execution-update is outside the model that is supposed to describe authority.
+
+This exact normalization was already performed once, for `getInventoryAnalytics`
+(`permissionCatalog.ts:394` documents it), so there is a precedent to follow rather than a design to
+invent. The Truck Registry case is stated as a design choice in its `index.ts` header, but not framed
+as a deliberate catalog exemption — it needs an explicit decision either way.
+
+### H6 — `allocateSalesOrder` has no audit trail and no idempotency contract
+
+Verified directly: **0** occurrences of `stageAudit` / `idempotencyKey` / `mkAuditId` in
+`fulfillment/allocateSalesOrder.ts`, against **20** in its sibling `salesOrder/salesOrderCallables.ts`.
+
+Every other callable in the Sales→Cash spine — `createSalesOrder`, `transitionSalesOrder`,
+`createSalesOrderFromOpportunity`, `issueInvoice`, `applyPayment`, `recordRefund`,
+`recordInvoiceAdjustment` — requires an idempotency key, derives a deterministic audit id from it,
+and stages the audit event in the same transaction as the write. This one does none of that.
+
+Consequences, in order of seriousness:
+
+1. **No record of who allocated what quantity, or when** — on the collection Finance later invoices
+   against.
+2. **Replay safety rests on transaction conflict alone.** The write is safe against concurrent
+   double-submits, because Firestore optimistic concurrency re-reads `allocatedQty` on retry — but
+   there is no deterministic-id replay guard, so unlike every neighbour, the guarantee is a property
+   of the storage engine rather than an explicit, testable contract.
+
+## MEDIUM
+
+### M9 — Work Order state transitions are almost entirely unaudited
+
+`transitionWorkOrder.ts` contains exactly **one** `stageAuditEvent` call site (line 321), inside the
+Sales-Order fulfillment write-back branch. Schedule, Dispatch, Cancel, Hold and
+Complete-without-an-SO-link all write `fieldops_wos.status` with no audit event.
+
+`createWorkOrder.ts` stages an audit event only when the caller supplies an **optional**
+`idempotencyKey` (line 135) — and per the file's own comment, the deployed client does not send one
+by default. So the ordinary path creates a Work Order with no audit trail at all.
+
+The most heavily used state machine in the application has no reconstructible history, in contrast to
+every catalog-gated surface reviewed, which audits every applied write.
+
+### M10 — 26 sites convert a capability-resolver failure into a silent denial
+
+The scout reported "~13"; a full scan of `functions/src` found **26** catch blocks that set
+`allowed = false` with no logging of any kind. They span finance, opportunity, sales order, coverage,
+CRM activity, fulfillment, serialized asset, location display, manufacturer, account portfolio and
+`setWorkOrderPartsPlan`.
+
+Failing closed is correct and is consistently documented ("a throwing resolver is a denial, never an
+allow"). The defect is diagnostic, not behavioural: a malformed catalog entry, a Firestore transient,
+or a genuine bug inside `resolveEffectiveAccess` is **structurally indistinguishable from a
+legitimate permission denial** to anyone operating the system.
+
+This is the same mechanism that made the `getInventoryAnalytics` 500 undiagnosable until Cloud
+Logging was read directly — a masked catch is why a live failure left no usable trace. A single
+`console.error` inside each catch closes it while **changing no authorization outcome**.
+
+## Corrections to this document
+
+**The Rules-deployment risk is not currently real, and was checked rather than assumed.** The live
+sandbox ruleset was retrieved through the Firebase Rules REST API — release
+`cloud.firestore` → ruleset `c238f983-59aa-4e77-a506-52108366087d`, `updateTime 2026-08-16T08:13:41Z`
+— and byte-diffed against `git show origin/main:firestore.rules`: **identical**, SHA-256 `4605a7f0…`.
+Dual-copy parity also passes.
+
+A local diff appeared at first and was correctly diagnosed as CRLF-vs-LF from the Windows checkout,
+not content drift. Worth recording, because that artifact would otherwise read as drift on any future
+Windows check.
+
+## Verified clean in wave two
+
+- **Client UI wiring.** No empty or no-op handlers, no unexplained permanently-disabled controls, no
+  nav→route or route→nav mismatches, no form dropping a collected field, no spinner without an error
+  branch, no placeholder or lorem data. One suspicious case — two nav entries sharing
+  `legacyKey: "fieldMode"` — was chased down and resolves to two intentional projections of the same
+  data.
+- **Rules vs surfaces.** Every `readVia: "CLIENT_DIRECT"` entity has a matching `match /` block scoped
+  consistently with its declared audience; no client-direct read targets a deny-all collection; no
+  `readVia: "CALLABLE"` entity is read directly anywhere in the client; no
+  `allow read: if request.auth != null` on business data; no dead rule blocks (the deny-all ones are
+  consumed server-side through the Admin SDK by design).
+
+Both null results are recorded as findings in their own right. A lens that returns nothing after
+checking the right things is evidence, and the alternative — padding a list to look productive — is
+worse than useless on a document meant to drive triage.
+
+## Coverage limits, restated for wave two
+
+- The write-path lens reviewed **~24 of 62** callables in depth and named the ones it did not: the
+  Part Master / Supplier / Manufacturer / PartSupplierItem catalog family (11, spot-checked only at
+  their shared `requireCapabilityOrAudit` call sites), the six Saved-Definition CRUD callables, and
+  `runReportDefinitionCallable`.
+- The client lens was static only. A runtime-only dead end — a callable failing under specific live
+  data, a CSS state hiding content, a race — is out of its reach and remains unverified. That is the
+  same gap the outstanding Account-page UAT covers, and this scan does not substitute for it.
