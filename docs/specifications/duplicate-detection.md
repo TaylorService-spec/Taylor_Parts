@@ -276,9 +276,25 @@ is opt-in, per rule, and deactivatable from Admin without a release.
 1. ~~Who authors rules, and who works the queue?~~ **ANSWERED (Owner, 2026-08-19): admin
    authors, and duplicate rules are available for ALL objects, not only the five named here.**
    The five are simply the ones with seeded rules; the rule shape is entity-agnostic and any
-   registered EntityDefinition can have one. Remaining sub-question: does working the queue need
-   a capability distinct from authoring, so someone can resolve duplicates without being able to
-   rewrite the rules that find them?
+   registered EntityDefinition can have one.
+
+   **The sub-question is also answered: admin works the queue.**
+
+   Implemented as TWO distinct capability ids -- `duplicate.rule.manage` (author rules) and
+   `duplicate.queue.resolve` (work the queue) -- with BOTH granted to admin today. They are
+   separate ids rather than one because that is what keeps a narrower grant possible later
+   without a code change. It is the same reasoning the permission catalog already applies to
+   `crm.activity.create` vs `crm.activity.read`, and it is why the Owner was able to rule on
+   CRM read alone when that came up. Splitting them later stays a grant decision; collapsing them
+   now would make it a refactor.
+
+   Worth noting for whoever implements it: this is the one place in the design where an admin can
+   both write the rule that detects a duplicate and dispose of what it finds. That is a
+   deliberate concentration, not an oversight -- the same separation-of-duties question the blind
+   cycle count work answered the other way (counter cannot approve their own variance). It is
+   acceptable here because resolving a duplicate is not a value-bearing write today: the queue
+   can only dismiss, not merge, until the merge specification ships. If merge later lets an admin
+   collapse two records and redirect their history, this concentration should be revisited.
 2. ~~Which entity should default to block?~~ **ANSWERED (Owner, 2026-08-19): Part blocks on
    `internalPartNumber`; everything else is allow+alert+report.** Reasoning recorded under
    "Seeded rules" above -- `internalPartNumber` is this catalog own number and already throws
