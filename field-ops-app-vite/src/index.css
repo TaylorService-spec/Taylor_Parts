@@ -3107,5 +3107,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-controltower-panel__header { display: flex; align-items: center; justify-content: space-between; }
 .fo-controltower-attention-row { display: block; }
 .fo-controltower-attention-row__title { display: flex; align-items: center; gap: var(--space-2); }
+/* === inline-style elimination: dispatch ================================= */
+.fo-dispatch__card-head { display: flex; align-items: center; justify-content: space-between; }
+.fo-dispatch__reassign-actions { display: flex; gap: var(--space-2); }
 
 
