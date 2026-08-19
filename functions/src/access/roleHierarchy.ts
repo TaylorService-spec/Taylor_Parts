@@ -184,20 +184,20 @@ export const ROLE_HIERARCHY: Readonly<Record<string, RoleHierarchyNode>> = Objec
     stated: true,
   }),
 
-  // --- unplaced by the chart ------------------------------------------------
+  // --- office branch --------------------------------------------------------
   officeManager: Object.freeze({
     roleId: "officeManager",
     parent: "admin",
     rationale:
-      "INFERRED. The chart does not show an Office Manager. Parented at admin rather than inside a branch, so it does not gain visibility over sales, operations or finance work by accident.",
-    stated: false,
+      "A fourth branch head at the same level as Sales, Operations and Finance. Sees the general employees beneath it and nothing in the other three branches.",
+    stated: true,
   }),
   generalEmployee: Object.freeze({
     roleId: "generalEmployee",
-    parent: "admin",
+    parent: "officeManager",
     rationale:
-      "INFERRED. A leaf with nobody beneath it, and no branch of its own on the chart. Parented at admin so it is visible to the top block and to nobody else.",
-    stated: false,
+      "Beneath the Office Manager. A leaf -- nobody reports to a general employee, so it sees no one.",
+    stated: true,
   }),
 });
 

@@ -98,6 +98,38 @@ check("the service chain is Service Manager -> Dispatcher -> Technician", () => 
   assert.equal(canSeeAcrossHierarchy("operationsManager", "technician"), true);
 });
 
+check("there are FOUR branch heads under admin, and each is blind to the others", () => {
+  // Sales, Operations, Finance and Office. Office was the last placement the Owner
+  // stated (2026-08-19); before that it sat at admin as an inference.
+  const heads = ["salesManager", "operationsManager", "financeManager", "officeManager"];
+  for (const head of heads) assert.equal(ROLE_HIERARCHY[head].parent, "admin", head);
+  // Exhaustive: no head may see anyone beneath any other head. This is the whole
+  // point of the model, so it is checked across every pair rather than sampled.
+  for (const viewer of heads) {
+    for (const other of heads) {
+      if (viewer === other) continue;
+      for (const subject of descendantsOf(other)) {
+        assert.equal(
+          canSeeAcrossHierarchy(viewer, subject),
+          false,
+          `${viewer} must not see ${subject}`,
+        );
+      }
+    }
+  }
+});
+
+check("EVERY placement in the tree is Owner-stated, not inferred", () => {
+  // The tree started with six inferred placements; all were replaced by the org
+  // chart and the clarifications that followed. An inferred placement silently
+  // grants or denies visibility, so none should remain -- and a future addition
+  // that is guessed rather than stated fails here until someone confirms it.
+  const inferred = Object.values(ROLE_HIERARCHY)
+    .filter((n) => !n.stated)
+    .map((n) => n.roleId);
+  assert.deepEqual(inferred, []);
+});
+
 check("each branch head sees its own branch, whole", () => {
   assert.deepEqual([...descendantsOf("salesManager")].sort(), ["salesperson"]);
   assert.deepEqual(
