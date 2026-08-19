@@ -98,9 +98,11 @@ export default function ManagerQueuePanel({
       <p className="fo-muted">{description}</p>
       <LoadingEmptyState
         loading={loading}
+        failed={!!error}
         isEmpty={queue.length === 0}
         loadingText={`Loading ${title}...`}
-        emptyText={error ? `Unable to load the ${title} right now. Try again shortly.` : "No requests awaiting assignment."}
+        failedText={`Unable to load the ${title} right now. Try again shortly.`}
+        emptyText="No requests awaiting assignment."
       >
         <OperationalCardGrid aria-label={title}>
           {queue.map((request) => (

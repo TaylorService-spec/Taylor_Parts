@@ -1126,7 +1126,11 @@ function InventoryActionsPanel({ partId }) {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const { data: recentActions, loading } = useInventoryActionsForPart(partId);
+  // W2 (hooks/useInventoryActions.js): the read preserves a failed read
+  // (permission-denied/unavailable/etc.) distinctly from a genuinely-empty log --
+  // `actionsError` is threaded to LoadingEmptyState below so a read failure no
+  // longer renders as "No inventory actions logged yet."
+  const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
   const isCorrectMistake = actionType === INVENTORY_ACTION_TYPE.CORRECT_MISTAKE;
@@ -1208,8 +1212,10 @@ function InventoryActionsPanel({ partId }) {
       <p className="fo-muted">Audit notes only -- none of these have been applied to stock.</p>
       <LoadingEmptyState
         loading={loading}
+        failed={!!actionsError}
         isEmpty={recentActions.length === 0}
         loadingText="Loading inventory action log..."
+        failedText="Unable to load the inventory action log right now. Try again shortly."
         emptyText="No inventory actions logged yet."
       >
         <table className="fo-table">
@@ -1444,19 +1450,20 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}
-          isEmpty
+          // M25 -- "not_found"/"mismatch" are genuine "this document does not exist
+          // for this part" facts (isEmpty is honest here); anything else is a real
+          // Firestore SDK read-error code (e.g. "permission-denied", "unavailable")
+          // preserved by useReorderRequestForPart() -- an access/read failure is a
+          // distinct fact from a genuinely-missing document and must render through
+          // the `failed` branch (role="alert"), never be reported as "not found".
+          isEmpty={reorderRequestError === "not_found" || reorderRequestError === "mismatch"}
+          failed={reorderRequestError !== "not_found" && reorderRequestError !== "mismatch"}
           emptyText={
             reorderRequestError === "not_found"
               ? "This reorder request could not be found."
-              : reorderRequestError === "mismatch"
-                ? "This reorder request does not belong to this part."
-                : // Site-work r4 C, Fix 2: any other error is now a real Firestore SDK
-                  // read-error code (e.g. "permission-denied", "unavailable"), preserved
-                  // by useReorderRequestForPart() instead of collapsed into "not_found" --
-                  // an access/read failure is a distinct fact from a genuinely-missing
-                  // document, and must not be reported as one.
-                  "This reorder request could not be loaded (access denied or a read error). Try again."
+              : "This reorder request does not belong to this part."
           }
+          failedText="This reorder request could not be loaded (access denied or a read error). Try again."
         />
       )}
 
