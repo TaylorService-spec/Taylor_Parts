@@ -29,12 +29,31 @@ echo "== [3/5] build frontend for platform-sandbox =="
 # Every asset URL in that artifact 404s against Hosting, which serves at "/".
 # `build:firebase` passes `--base=/` as a single --flag=value token, which MSYS
 # leaves alone, and it is the same script CI uses. Verified by verify:build-base.
-( cd field-ops-app-vite && VITE_ENVIRONMENT_ID=platform-sandbox npm run build:firebase )
+# The environment is passed as an ARGUMENT, never through the shell.
+#
+# The previous form -- `VITE_ENVIRONMENT_ID=platform-sandbox npm run build:firebase`
+# -- works in a plain bash shell and SILENTLY DOES NOT WORK when this script is
+# invoked from PowerShell via Git Bash on Windows: the variable is lost in the
+# PowerShell -> bash.exe -> npm.cmd -> vite chain. On 2026-08-19 that shipped a
+# build stamped `taylor-parts-production` to the SANDBOX, so the sandbox URL
+# served a client configured for the production Firebase project.
+#
+# It was invisible (build succeeded, base check passed, deploy targeted the right
+# project) and not reproducible in bash -- the machine that verifies disagreed with
+# the machine that deploys. buildForEnvironment.mjs sets it on the child process
+# directly and then asserts the artifact came out stamped as asked.
+( cd field-ops-app-vite && node scripts/buildForEnvironment.mjs platform-sandbox )
 
 echo "== [3b/5] verify the built asset base BEFORE publishing it =="
 # Cheap and load-bearing: a wrong base is invisible until the deployed page loads
 # and every script tag 404s. Fail here rather than in front of a user.
 ( cd field-ops-app-vite && npm run verify:build-base )
+
+echo "== [3c/5] verify the ARTIFACT belongs to this project =="
+# The last check before anything ships. _sandboxDeployGuard.mjs above proves the
+# TARGET is not production; this proves the ARTIFACT is not production either.
+# Those are different questions, and on 2026-08-19 only the first was being asked.
+node scripts/verifyDeployArtifact.mjs --projectId eos-platform-sandbox
 
 echo "== [4/5] deploy Hosting -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs
