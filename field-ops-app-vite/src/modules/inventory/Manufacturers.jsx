@@ -55,31 +55,29 @@ import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 
-const STATUS_TONE = {
-  ACTIVE: { background: "var(--color-success-surface)", color: "var(--color-success)" },
-  INACTIVE: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
+const STATUS_TONE_CLASS = {
+  ACTIVE: "fo-mfr__badge--active",
+  INACTIVE: "fo-mfr__badge--inactive",
 };
 // Still used by the Change Status dialog (not the list -- the list's own status cell now
 // renders through cellValue's ENUM branch, using manufacturerEntity's declared enumLabels,
 // same as every other migrated list's status column).
 function StatusBadge({ status }) {
-  const tone = STATUS_TONE[status] ?? STATUS_TONE.INACTIVE;
-  return <span style={{ ...tone, padding: "2px 8px", borderRadius: 12, fontSize: 12, fontWeight: 600 }}>{status}</span>;
+  const toneClass = STATUS_TONE_CLASS[status] ?? STATUS_TONE_CLASS.INACTIVE;
+  return <span className={`fo-mfr__badge ${toneClass}`}>{status}</span>;
 }
-const OUTCOME_TONE = {
-  applied: { background: "var(--color-success-surface)", color: "var(--color-success)" }, replayed: { background: "var(--color-surface-sunken)", color: "var(--color-info)" },
-  noop: { background: "var(--color-border)", color: "var(--color-text-primary)" }, denied: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
-  invalid: { background: "var(--color-warning-surface)", color: "var(--color-warning)" }, conflict: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
-  notFound: { background: "var(--color-danger-surface)", color: "var(--color-danger)" }, unavailable: { background: "var(--color-border)", color: "var(--color-text-primary)" },
-  error: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
+const OUTCOME_TONE_CLASS = {
+  applied: "fo-mfr__outcome--applied", replayed: "fo-mfr__outcome--replayed",
+  noop: "fo-mfr__outcome--noop", denied: "fo-mfr__outcome--denied",
+  invalid: "fo-mfr__outcome--invalid", conflict: "fo-mfr__outcome--conflict",
+  notFound: "fo-mfr__outcome--not-found", unavailable: "fo-mfr__outcome--unavailable",
+  error: "fo-mfr__outcome--error",
 };
 function OutcomeBanner({ outcome }) {
   if (!outcome) return null;
-  const tone = OUTCOME_TONE[outcome.kind] ?? OUTCOME_TONE.error;
-  return <div role="status" style={{ ...tone, padding: "8px 12px", borderRadius: 6, margin: "8px 0", fontSize: 13 }}>{outcome.message}</div>;
+  const toneClass = OUTCOME_TONE_CLASS[outcome.kind] ?? OUTCOME_TONE_CLASS.error;
+  return <div role="status" className={`fo-mfr__outcome ${toneClass}`}>{outcome.message}</div>;
 }
-const INPUT = { padding: 6, fontSize: 13, width: "100%", boxSizing: "border-box" };
-const LABEL = { display: "block", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 };
 
 // Preserves this workspace's own, more specific copy over buildListPresentation's generic
 // per-state defaults (emptyMessageFor, listPresentation.js) -- overriding is the same
@@ -181,17 +179,17 @@ export default function Manufacturers(props) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Manufacturers</h2>
+      <div className="fo-mfr__header">
+        <h2 className="fo-mfr__title">Manufacturers</h2>
         <Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>
       </div>
-      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
+      <p className="fo-mfr__hint">
         Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
         here; every change goes through the catalog administration service and is authorized server-side.
         {state.phase === "ready" && state.invalidCount > 0 ? ` ${state.invalidCount} malformed record(s) were excluded and need review.` : ""}
       </p>
       {!writeReady && (
-        <div style={{ background: "var(--color-border)", color: "var(--color-text-primary)", padding: "8px 12px", borderRadius: 6, fontSize: 13, marginBottom: 8 }}>
+        <div className="fo-mfr__notice">
           Editing isn’t enabled in this environment yet. You can review manufacturers; create/rename/status
           changes are activated with the catalog administration service (a governed deployment + grant).
         </div>
@@ -199,28 +197,28 @@ export default function Manufacturers(props) {
       {!panel && <OutcomeBanner outcome={outcome} />}
 
       {panel && (
-        <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, margin: "8px 0", background: "#fff" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0, fontSize: 15 }}>{panel.mode === "create" ? "New manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change status — ${panel.m.name}`}</h3>
-            <Button variant="tertiary" onClick={close} disabled={busy}>×</Button>
+        <div className="fo-mfr__panel">
+          <div className="fo-mfr__panel-header">
+            <h3 className="fo-mfr__panel-title">{panel.mode === "create" ? "New manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change status — ${panel.m.name}`}</h3>
+            <Button variant="tertiary" className="fo-mfr__close-btn" onClick={close} disabled={busy}>×</Button>
           </div>
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
             <div>
-              <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <p className="fo-mfr__status-desc">Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
+              <div className="fo-mfr__status-actions">
                 {allowedStatusTransitions(panel.m.status).map((s) => (
-                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</Button>
+                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady} className="fo-mfr__status-btn">→ {s}</Button>
                 ))}
               </div>
             </div>
           ) : (
-            <div style={{ maxWidth: 420 }}>
+            <div className="fo-mfr__form">
               {panel.mode === "create" && (
-                <div style={{ marginBottom: 10 }}><label style={LABEL}>Manufacturer ID</label><input style={INPUT} value={form.manufacturerId ?? ""} onChange={(e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }))} disabled={busy || !writeReady} /></div>
+                <div className="fo-mfr__field"><label className="fo-mfr__label">Manufacturer ID</label><input className="fo-mfr__input" value={form.manufacturerId ?? ""} onChange={(e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }))} disabled={busy || !writeReady} /></div>
               )}
-              <div style={{ marginBottom: 10 }}><label style={LABEL}>Name</label><input style={INPUT} value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="fo-mfr__field"><label className="fo-mfr__label">Name</label><input className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
+              <div className="fo-mfr__form-actions">
                 <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create manufacturer" : "Save name"}</Button>
                 <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
               </div>

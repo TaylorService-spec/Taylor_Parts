@@ -804,7 +804,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             </tbody>
           </table>
 
-          <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
+          <div className="disp-board-toolbar fo-parts__toolbar--end">
             <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
               Previous
             </button>
@@ -903,7 +903,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             </table>
           </div>
 
-          <div className="disp-board-toolbar" style={{ justifyContent: "center" }}>
+          <div className="disp-board-toolbar fo-parts__toolbar--center">
             {historyError ? (
               <p className="fo-muted">
                 Unable to load more History ({historyError}).{" "}

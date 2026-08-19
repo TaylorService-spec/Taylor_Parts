@@ -371,7 +371,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                 </table>
               </div>
 
-              <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
+              <div className="disp-board-toolbar disp-board-toolbar--end">
                 <Button type="button" variant="secondary" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
                   Previous
                 </Button>

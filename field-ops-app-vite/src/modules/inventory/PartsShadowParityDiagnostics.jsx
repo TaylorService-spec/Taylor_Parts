@@ -15,8 +15,6 @@ import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEv
 import { defaultReaders } from "./partsShadowParityReaders";
 import { Button } from "../../shared/ui/primitives/index.js";
 
-const box = { padding: 12, border: "1px solid var(--color-border)", borderRadius: 8, marginTop: 8 };
-
 export default function PartsShadowParityDiagnostics({ readers }) {
   const { role } = useAuth();
   const authorized = isDiagnosticsAuthorized(role);
@@ -65,11 +63,10 @@ export default function PartsShadowParityDiagnostics({ readers }) {
     }
   }
 
-  const cell = { padding: "2px 0" };
   return (
     <div>
       <h2>Parts shadow-parity (diagnostic — non-authoritative)</h2>
-      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
+      <p className="fo-parity__hint">
         Read-only comparison of the canonical Part identity model against the current static-backed
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
         Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
@@ -80,32 +77,37 @@ export default function PartsShadowParityDiagnostics({ readers }) {
       {v && v.invalid ? <p>Diagnostics unavailable (unrecognized result).</p> : null}
       {v && !v.invalid ? (
         <>
-          <div style={{ ...box, ...v.tone }}>
+          {/* v.tone (background/color) comes from the domain module's TONE map
+              (domain/partsShadowParityView.js, out of this migration's scope) and is a
+              genuinely per-run value keyed off the diagnostic outcome -- left inline rather
+              than duplicating that domain-owned color mapping into a second, driftable copy
+              in index.css. Only the structural box (padding/border/radius/spacing) is a class. */}
+          <div className="fo-parity__result-box" style={v.tone}>
             <strong>{v.tone.label}</strong>
             {v.reason ? <span> — {v.reason}</span> : null}
           </div>
           {/* Sanitized fields rendered for EVERY recognized result (— where absent). */}
-          <ul style={{ marginTop: 12, listStyle: "none", padding: 0, fontFamily: "monospace", fontSize: 13 }}>
-            <li style={cell}>status: {v.status}</li>
-            <li style={cell}>capturedAtStart: {m.capturedAtStart ?? "—"}</li>
-            <li style={cell}>capturedAtEnd: {m.capturedAtEnd ?? "—"}</li>
-            <li style={cell}>runId: {m.runId ?? "—"}</li>
-            <li style={cell}>buildId: {m.adapterCommit ?? "—"}</li>
-            <li style={cell}>staticCatalogHash: {m.staticCatalogHash ?? "—"}</li>
-            <li style={cell}>sourceCounts: {m.sourceCounts ? JSON.stringify(m.sourceCounts) : "—"}</li>
-            <li style={cell}>canonicalMatch: {c.canonicalMatch ?? "—"}</li>
-            <li style={cell}>staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
-            <li style={cell}>rowMissing: {c.rowMissing ?? "—"}</li>
-            <li style={cell}>fieldDivergence: {c.fieldDivergence ?? "—"}</li>
-            <li style={cell}>availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
-            <li style={cell}>workflowDivergence: {c.workflowDivergence ?? "—"}</li>
-            <li style={cell}>unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
-            <li style={cell}>structuralIssue: {c.structuralIssue ?? "—"}</li>
+          <ul className="fo-parity__list">
+            <li className="fo-parity__cell">status: {v.status}</li>
+            <li className="fo-parity__cell">capturedAtStart: {m.capturedAtStart ?? "—"}</li>
+            <li className="fo-parity__cell">capturedAtEnd: {m.capturedAtEnd ?? "—"}</li>
+            <li className="fo-parity__cell">runId: {m.runId ?? "—"}</li>
+            <li className="fo-parity__cell">buildId: {m.adapterCommit ?? "—"}</li>
+            <li className="fo-parity__cell">staticCatalogHash: {m.staticCatalogHash ?? "—"}</li>
+            <li className="fo-parity__cell">sourceCounts: {m.sourceCounts ? JSON.stringify(m.sourceCounts) : "—"}</li>
+            <li className="fo-parity__cell">canonicalMatch: {c.canonicalMatch ?? "—"}</li>
+            <li className="fo-parity__cell">staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
+            <li className="fo-parity__cell">rowMissing: {c.rowMissing ?? "—"}</li>
+            <li className="fo-parity__cell">fieldDivergence: {c.fieldDivergence ?? "—"}</li>
+            <li className="fo-parity__cell">availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
+            <li className="fo-parity__cell">workflowDivergence: {c.workflowDivergence ?? "—"}</li>
+            <li className="fo-parity__cell">unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
+            <li className="fo-parity__cell">structuralIssue: {c.structuralIssue ?? "—"}</li>
           </ul>
-          <Button variant="secondary" onClick={copyEvidence} style={{ marginTop: 8 }}>
+          <Button variant="secondary" onClick={copyEvidence} className="fo-parity__copy-btn">
             Copy sanitized evidence
           </Button>
-          {copied ? <span style={{ marginLeft: 8, color: "var(--color-success)", fontSize: 12 }}>copied</span> : null}
+          {copied ? <span className="fo-parity__copied">copied</span> : null}
         </>
       ) : null}
     </div>

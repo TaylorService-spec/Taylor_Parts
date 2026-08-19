@@ -33,7 +33,7 @@ export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
   return (
     <div className="fo-card work-order-card fo-touch-targets">
       <div className="disp-wo-card-header">
-        <h3 style={{ margin: 0 }}>{workOrder.woNumber}</h3>
+        <h3 className="fo-wo-detail__title">{workOrder.woNumber}</h3>
         <Button variant="secondary" onClick={onClose}>
           Back to list
         </Button>

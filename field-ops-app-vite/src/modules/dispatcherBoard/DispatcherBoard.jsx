@@ -237,7 +237,7 @@ export default function DispatcherBoard() {
             aria-label="Reassignment reason"
             rows={2}
           />
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div className="fo-dispatch__reassign-actions">
             <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
               Confirm reassignment
             </Button>
