@@ -321,7 +321,14 @@ export type AuditAction =
   | "createCycleCount"
   | "submitCycleCount"
   | "reconcileCycleCount"
-  | "cancelCycleCount";
+  | "cancelCycleCount"
+  // Phantom Sales Order link repair (functions/src/repair/phantomSalesOrderLinkRepair.ts) -- the operator
+  // CLI's repair of a Work Order salesOrderId that points at a non-existent Sales Order. Two separate,
+  // durable events: the repair itself (tombstones the link -- salesOrderId is never modified) and, only if
+  // an operator later reverts it, the paired rollback. Same verb+Noun convention, extending this SAME
+  // immutable Audit Event path -- no parallel audit system.
+  | "repairPhantomSalesOrderLink"
+  | "rollbackPhantomSalesOrderLinkRepair";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

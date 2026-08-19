@@ -181,6 +181,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "submitCycleCount",
   "reconcileCycleCount",
   "cancelCycleCount",
+  // Phantom Sales Order link repair -- see the matching entries on the AuditAction union (types/access.ts).
+  "repairPhantomSalesOrderLink",
+  "rollbackPhantomSalesOrderLinkRepair",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
