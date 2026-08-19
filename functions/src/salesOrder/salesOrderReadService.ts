@@ -196,7 +196,8 @@ export const listSalesOrdersForAccount = onCall({ region: "us-central1" }, async
       permissionIds: [SALES_ORDER_READ_CAPABILITY],
     });
     allowed = decisions[SALES_ORDER_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listSalesOrdersForAccount] capability resolution failed for ${SALES_ORDER_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Sales Orders.");
@@ -235,7 +236,8 @@ export const getSalesOrderContext = onCall({ region: "us-central1" }, async (req
       permissionIds: [SALES_ORDER_READ_CAPABILITY],
     });
     allowed = decisions[SALES_ORDER_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getSalesOrderContext] capability resolution failed for ${SALES_ORDER_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Sales Orders.");
@@ -523,7 +525,8 @@ export const listSalesOrderIndex = onCall({ region: "us-central1" }, async (requ
       permissionIds: [SALES_ORDER_READ_CAPABILITY],
     });
     allowed = decisions[SALES_ORDER_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listSalesOrderIndex] capability resolution failed for ${SALES_ORDER_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Sales Orders.");
