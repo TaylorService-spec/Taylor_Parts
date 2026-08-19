@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "field-ops-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "field-ops-app-vite", "--", "--port", "5199"],
+      "port": 5199
+    }
+  ]
+}
