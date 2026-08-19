@@ -40,6 +40,7 @@ import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives";
 
 const OBJECTS = availableObjects();
 
@@ -184,15 +185,16 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
               </div>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="primary"
               className="fo-btn-large"
               onClick={onRun}
               disabled={status !== "ready" || running}
-              aria-disabled={status !== "ready" || running}
+              loading={running}
             >
-              {running ? "Running…" : "Run report"}
-            </button>
+              Run report
+            </Button>
 
             <ResultArea outcome={outcome} def={def} />
           </>
@@ -243,14 +245,15 @@ function SaveControl({ saveName, setSaveName, saveState, onSave }) {
           onChange={(e) => setSaveName(e.target.value)}
           placeholder="Name this report"
         />
-        <button
+        <Button
           type="button"
-          className="fo-btn-secondary"
+          variant="secondary"
           onClick={onSave}
           disabled={saveState.status === "saving" || saveName.trim() === ""}
+          loading={saveState.status === "saving"}
         >
-          {saveState.status === "saving" ? "Saving…" : "Save as new report"}
-        </button>
+          Save as new report
+        </Button>
       </div>
       {saveState.status === "success" && (
         <p className="fo-state fo-tone-info fo-state-message" role="status" aria-live="polite">
@@ -307,7 +310,7 @@ function Filters({ def, selected, setDef }) {
           onRemove={() => setDef(removeFilter(def, i))}
         />
       ))}
-      <button type="button" className="fo-btn-secondary fo-link-btn" onClick={addBlank}>+ Add filter</button>
+      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add filter</Button>
     </section>
   );
 }
@@ -339,7 +342,7 @@ function FilterRow({ filter, filterable, onChange, onRemove }) {
         {comparators.map((op) => <option key={op} value={op}>{op}</option>)}
       </select>
       <FilterValueInput field={field} filter={filter} onChange={onChange} />
-      <button type="button" className="fo-btn-secondary" onClick={onRemove} aria-label="Remove filter">Remove</button>
+      <Button type="button" variant="secondary" onClick={onRemove} aria-label="Remove filter">Remove</Button>
     </div>
   );
 }
@@ -443,7 +446,7 @@ function SortBy({ def, selected, setDef }) {
             <select aria-label="Direction" value={s.direction} onChange={(e) => setDef(updateSort(def, i, { direction: e.target.value }))}>
               {SORT_DIRECTIONS.map((dir) => <option key={dir} value={dir}>{dir === "asc" ? "ascending" : "descending"}</option>)}
             </select>
-            <button type="button" className="fo-btn-secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove sort">Remove</button>
+            <Button type="button" variant="secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove sort">Remove</Button>
           </div>
         );
       })}

@@ -1,4 +1,5 @@
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
+import { Button } from "../../shared/ui/primitives";
 
 // Issue #226 Row 12 -- Admin mutation UI (Task 17), gated inert. Spec sec16's
 // in-scope MVP mutation "assign already-approved Roles" maps to the
@@ -56,9 +57,9 @@ export default function AdminRolesPermissions() {
           </option>
         ))}
       </select>{" "}
-      <button type="button" disabled aria-disabled="true">
+      <Button type="button" variant="secondary" disabled>
         Assign Role
-      </button>
+      </Button>
     </div>
   );
 }
