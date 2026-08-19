@@ -3099,4 +3099,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    swaps to a static ring explicitly. */
 .fo-icon--spin { animation: fo-spin 0.9s linear infinite; }
 
+/* === inline-style elimination: technician-dashboard ========================
+   ExecutionCapture.jsx + TechnicianWorkOrderDetail.jsx. All four were fixed
+   structural values (no per-render computed data), so all four convert.
+   .fo-btn-row already sets display:flex (see existing rule above); this only
+   adds the centering it lacked inline. --space-3 (12px) is an exact-value
+   match for the 12px margin-top literal. No new colour pairs introduced --
+   nothing here touches WCAG contrast. */
+.fo-execution-capture__part-row { align-items: center; }
+.fo-execution-capture__part-label { flex: 1; }
+.fo-execution-capture__notes { margin-top: var(--space-3); }
+.fo-wo-detail__title { margin: 0; }
+
 
