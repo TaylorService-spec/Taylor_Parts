@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { assertPanelProps } from "../../../domain/controlTower/types";
 import { snapshotPartName, snapshotPartSku } from "../../../domain/workOrderInventorySnapshot";
+import { Button } from "../../../shared/ui/primitives/index.js";
 
 // Epic 1.1 Inventory Visual Layer -- read-only, collapsible rollup of
 // planned parts demand across every currently-loaded Work Order's
@@ -45,9 +46,9 @@ export default function PartsOverviewPanel({ jobs, technicians, workOrders }) {
     <div className="tech-overview tech-overview--compact">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h3>🧰 Parts Overview</h3>
-        <button type="button" onClick={() => setCollapsed((c) => !c)}>
+        <Button variant="tertiary" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? "Show" : "Hide"}
-        </button>
+        </Button>
       </div>
 
       {!collapsed && (

@@ -5,6 +5,7 @@ import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in
@@ -92,6 +93,11 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
       ) : (
         top3.map((rec) => (
           <div key={rec.techId} className={`disp-rec-row${rec.rank === 1 ? " disp-rec-row--top" : ""}`}>
+            {/* Left as a raw <button> -- disp-rec-score-btn is a bespoke, full-width, left-aligned,
+                multi-line recommendation card (score line + a nested qualitative-summary div). The
+                Button primitive centers its content in a fixed inline-flex box with its own
+                padding/background; wrapping this card in fo-button classes would fight that layout
+                without an index.css change. See migration report. */}
             <button
               type="button"
               className="disp-rec-score-btn"
@@ -131,16 +137,17 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
               </option>
             ))}
           </select>
-          <button
-            type="button"
+          <Button
+            variant="primary"
             disabled={!pickerTechId || isDispatching}
+            loading={isDispatching}
             onClick={() => {
               onDispatchToTechnician(workOrder, pickerTechId);
               setPickerTechId("");
             }}
           >
-            {isDispatching ? "Dispatching..." : "Dispatch"}
-          </button>
+            Dispatch
+          </Button>
           {/* H20 fix: picking anyone other than who this Work Order was Scheduled for is a reassignment --
               flagged here BEFORE the dispatcher clicks Dispatch. onDispatchToTechnician (handleDispatchDrop
               in DispatcherBoard.jsx) still owns the actual reason prompt/confirmation for both this picker

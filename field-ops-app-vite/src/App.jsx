@@ -83,6 +83,7 @@ import PlaceholderPage from "./navigation/PlaceholderPage";
 import LandingPage from "./navigation/LandingPage";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, deniedDomainIndexItem } from "./navigation/navConfig";
 import EmptyState from "./shared/ui/EmptyState.jsx";
+import { Button } from "./shared/ui/primitives";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
 // Experience). Real URL-based routing via react-router-dom, replacing
@@ -717,7 +718,7 @@ export default function App() {
       <div className="fo-panel">
         <FailureState
           message={identityError}
-          action={<button type="button" className="fo-btn" onClick={retryIdentityResolution}>Retry</button>}
+          action={<Button type="button" variant="primary" onClick={retryIdentityResolution}>Retry</Button>}
         />
       </div>
     );
@@ -744,9 +745,9 @@ export default function App() {
           Ask an administrator to grant your account a role — giving them the email above
           helps them find it. Once access is granted, choose <strong>Check again</strong>.
         </p>
-        <button type="button" className="fo-btn" onClick={() => window.location.reload()}>
+        <Button type="button" variant="primary" onClick={() => window.location.reload()}>
           Check again
-        </button>
+        </Button>
       </div>
     );
   }

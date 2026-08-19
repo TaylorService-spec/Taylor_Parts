@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Dispatcher Activity Panel -- pure renderer for
 // hooks/useSessionActivityFeed.js's output. Session-only, collapsible,
@@ -19,9 +20,9 @@ function DispatcherActivityFeed({ entries }) {
     <div className="disp-activity-feed">
       <div className="disp-activity-feed-header">
         <h4>Recent Activity (this session)</h4>
-        <button type="button" onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed}>
+        <Button variant="tertiary" onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed}>
           {collapsed ? "Show" : "Hide"}
-        </button>
+        </Button>
       </div>
       {!collapsed && (
         <>
