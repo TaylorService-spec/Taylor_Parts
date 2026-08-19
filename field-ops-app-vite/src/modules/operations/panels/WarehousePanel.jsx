@@ -127,7 +127,7 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
         </p>
       )}
       {transferRows.length > 0 ? (
-        <div className="fo-table-scroll" style={{ overflowX: "auto" }}>
+        <div className="fo-table-scroll">
           <table className="fo-table">
             <thead>
               <tr>
