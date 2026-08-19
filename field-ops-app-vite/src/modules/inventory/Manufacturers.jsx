@@ -53,6 +53,7 @@ import { allowedStatusTransitions } from "../../domain/manufacturerWrite";
 import { manufacturerEntity, manufacturerIndexList } from "../../metadata/definitions/manufacturer.js";
 import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const STATUS_TONE = {
   ACTIVE: { background: "var(--color-success-surface)", color: "var(--color-success)" },
@@ -182,7 +183,7 @@ export default function Manufacturers(props) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Manufacturers</h2>
-        <button onClick={openCreate} disabled={busy} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: "var(--color-brand-secondary)", color: "white", cursor: "pointer" }}>New manufacturer</button>
+        <Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>
       </div>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
         Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
@@ -201,7 +202,7 @@ export default function Manufacturers(props) {
         <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, margin: "8px 0", background: "#fff" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{panel.mode === "create" ? "New manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change status — ${panel.m.name}`}</h3>
-            <button onClick={close} disabled={busy} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)" }}>×</button>
+            <Button variant="tertiary" onClick={close} disabled={busy}>×</Button>
           </div>
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
@@ -209,7 +210,7 @@ export default function Manufacturers(props) {
               <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {allowedStatusTransitions(panel.m.status).map((s) => (
-                  <button key={s} onClick={() => submitStatus(s)} disabled={busy || !writeReady} style={{ padding: "8px 14px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: writeReady ? "pointer" : "not-allowed" }}>→ {s}</button>
+                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</Button>
                 ))}
               </div>
             </div>
@@ -220,8 +221,8 @@ export default function Manufacturers(props) {
               )}
               <div style={{ marginBottom: 10 }}><label style={LABEL}>Name</label><input style={INPUT} value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={busy || !writeReady} style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: writeReady ? "var(--color-brand-secondary)" : "var(--color-info-surface)", color: "white", cursor: writeReady ? "pointer" : "not-allowed" }}>{busy ? "Saving…" : panel.mode === "create" ? "Create manufacturer" : "Save name"}</button>
-                <button onClick={close} disabled={busy} style={{ padding: "8px 16px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Cancel</button>
+                <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create manufacturer" : "Save name"}</Button>
+                <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
               </div>
             </div>
           )}

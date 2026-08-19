@@ -13,6 +13,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { captureShadowParity } from "../../domain/partsShadowParityCapture";
 import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const box = { padding: 12, border: "1px solid var(--color-border)", borderRadius: 8, marginTop: 8 };
 
@@ -73,9 +74,9 @@ export default function PartsShadowParityDiagnostics({ readers }) {
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
         Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
       </p>
-      <button type="button" onClick={run} disabled={running}>
-        {running ? "Running…" : "Run shadow-parity"}
-      </button>
+      <Button variant="primary" onClick={run} disabled={running} loading={running}>
+        Run shadow-parity
+      </Button>
       {v && v.invalid ? <p>Diagnostics unavailable (unrecognized result).</p> : null}
       {v && !v.invalid ? (
         <>
@@ -101,9 +102,9 @@ export default function PartsShadowParityDiagnostics({ readers }) {
             <li style={cell}>unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
             <li style={cell}>structuralIssue: {c.structuralIssue ?? "—"}</li>
           </ul>
-          <button type="button" onClick={copyEvidence} style={{ marginTop: 8 }}>
+          <Button variant="secondary" onClick={copyEvidence} style={{ marginTop: 8 }}>
             Copy sanitized evidence
-          </button>
+          </Button>
           {copied ? <span style={{ marginLeft: 8, color: "var(--color-success)", fontSize: 12 }}>copied</span> : null}
         </>
       ) : null}

@@ -21,6 +21,7 @@ import {
   truckStatusLabel,
 } from "../../../domain/truckManagement.js";
 import { TRUCK_DEACTIVATE_READY, TRUCK_DELETE_READY } from "../../../config/truckManagementReadiness.js";
+import { Button } from "../../../shared/ui/primitives/index.js";
 
 const dash = (v) => (v == null || v === "" ? "—" : v);
 
@@ -81,8 +82,6 @@ export default function ManageTruckDrawer({
     runAction("status", () => commands.changeStatus({ truckId: record.truckId, status: statusTarget, expectedVersion }));
   };
 
-  const busyLabel = (key, idle) => (busy === key ? "Working…" : idle);
-
   return (
     <Modal title={`Manage truck · ${record.truckId}`} onClose={onClose} closeLabel="Close">
       <div className="fo-create-modal-form" data-testid="manage-truck-drawer">
@@ -109,20 +108,23 @@ export default function ManageTruckDrawer({
           <div className="fo-btn-row">
             {hasDriver ? (
               <>
-                <button type="button" disabled={!writeReady || Boolean(busy) || !driver || driver === record.assignedDriverEmployeeId}
+                <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !driver || driver === record.assignedDriverEmployeeId}
+                  loading={busy === "reassign"}
                   onClick={() => runAction("reassign", () => commands.reassignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
-                  {busyLabel("reassign", "Reassign driver")}
-                </button>
-                <button type="button" className="fo-btn-secondary" disabled={!writeReady || Boolean(busy)}
+                  Reassign driver
+                </Button>
+                <Button type="button" variant="secondary" disabled={!writeReady || Boolean(busy)}
+                  loading={busy === "unassign"}
                   onClick={() => runAction("unassign", () => commands.unassignDriver({ truckId: record.truckId, expectedVersion }))}>
-                  {busyLabel("unassign", "Unassign driver")}
-                </button>
+                  Unassign driver
+                </Button>
               </>
             ) : (
-              <button type="button" disabled={!writeReady || Boolean(busy) || !driver}
+              <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !driver}
+                loading={busy === "assign"}
                 onClick={() => runAction("assign", () => commands.assignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
-                {busyLabel("assign", "Assign driver")}
-              </button>
+                Assign driver
+              </Button>
             )}
           </div>
         </fieldset>
@@ -142,29 +144,32 @@ export default function ManageTruckDrawer({
                 </p>
               )}
               <div className="fo-btn-row">
-                <button type="button" className="fo-btn-destructive" disabled={Boolean(busy) || !TRUCK_DEACTIVATE_READY}
+                <Button type="button" variant="destructive" disabled={Boolean(busy) || !TRUCK_DEACTIVATE_READY}
+                  loading={busy === "deactivate"}
                   onClick={() => runAction("deactivate", () => commands.deactivateTruck({ truckId: record.truckId, expectedVersion }))}>
-                  {busyLabel("deactivate", "Confirm deactivate")}
-                </button>
-                <button type="button" className="fo-btn-secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</button>
+                  Confirm deactivate
+                </Button>
+                <Button type="button" variant="secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</Button>
               </div>
             </div>
           ) : confirm?.action === "reactivate" ? (
             <div className="fo-warning" role="group" aria-label="Confirm reactivate">
               <p>Reactivate this truck to “{truckStatusLabel(confirm.targetStatus)}”?</p>
               <div className="fo-btn-row">
-                <button type="button" disabled={Boolean(busy)}
+                <Button type="button" variant="primary" disabled={Boolean(busy)}
+                  loading={busy === "reactivate"}
                   onClick={() => runAction("reactivate", () => commands.reactivateTruck({ truckId: record.truckId, targetStatus: confirm.targetStatus, expectedVersion }))}>
-                  {busyLabel("reactivate", "Confirm reactivate")}
-                </button>
-                <button type="button" className="fo-btn-secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</button>
+                  Confirm reactivate
+                </Button>
+                <Button type="button" variant="secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</Button>
               </div>
             </div>
           ) : (
             <div className="fo-btn-row">
-              <button type="button" disabled={!writeReady || Boolean(busy) || !statusTarget || statusTarget === record.status} onClick={onStatusUpdate}>
-                {busyLabel("status", "Update status")}
-              </button>
+              <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !statusTarget || statusTarget === record.status}
+                loading={busy === "status"} onClick={onStatusUpdate}>
+                Update status
+              </Button>
             </div>
           )}
           {record.status === DEACTIVATED_STATUS && (
@@ -181,10 +186,11 @@ export default function ManageTruckDrawer({
               placeholder="Select a warehouse…" emptyLabel="No warehouses available" disabled={!writeReady} />
           </Field>
           <div className="fo-btn-row">
-            <button type="button" disabled={!writeReady || Boolean(busy) || !warehouse || warehouse === record.homeWarehouseId}
+            <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !warehouse || warehouse === record.homeWarehouseId}
+              loading={busy === "warehouse"}
               onClick={() => runAction("warehouse", () => commands.changeHomeWarehouse({ truckId: record.truckId, homeWarehouseId: warehouse, expectedVersion }))}>
-              {busyLabel("warehouse", "Update home warehouse")}
-            </button>
+              Update home warehouse
+            </Button>
           </div>
         </fieldset>
 
@@ -203,16 +209,16 @@ export default function ManageTruckDrawer({
               </p>
             )}
             <div className="fo-btn-row">
-              <button type="button" className="fo-btn-destructive" data-testid="tm-delete-cie"
+              <Button type="button" variant="destructive" data-testid="tm-delete-cie"
                 disabled={!writeReady || Boolean(busy) || !TRUCK_DELETE_READY} onClick={() => setDeleteOpen(true)}>
                 Delete truck (created in error)
-              </button>
+              </Button>
             </div>
           </fieldset>
         )}
 
         <div className="fo-btn-row">
-          <button type="button" className="fo-btn-secondary" onClick={onClose} disabled={Boolean(busy)}>Close</button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={Boolean(busy)}>Close</Button>
         </div>
       </div>
 
