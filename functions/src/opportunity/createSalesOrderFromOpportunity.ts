@@ -211,7 +211,8 @@ async function requireCreateSalesOrderFromOpportunity(uid: string): Promise<void
       permissionIds: [OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireCreateSalesOrderFromOpportunity] capability resolution failed for ${OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY}`, err);
     allowed = false; // a throwing resolver is a denial, never an allow
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to create a Sales Order from an Opportunity.");

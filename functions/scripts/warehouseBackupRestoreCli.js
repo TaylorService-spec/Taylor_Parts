@@ -105,12 +105,26 @@ async function run(deps, argv) {
 }
 
 // Lazily build the real production deps -- firebase-admin required ONLY here, never at import time.
-function buildProductionDeps() {
+// X-TARGETING-GUARD: every gate above (--project == "taylor-parts", the 40-hex --commit, snapshot-sha256 /
+// expected-live-sha256 pins, --owner-rollback-authorization) validates the STRING the operator typed -- it
+// does nothing unless the Admin SDK actually binds to that same project. Passing `projectId` through to
+// `initializeApp({ projectId })`, then asserting the SDK's OWN resolved projectId matches it, closes that
+// gap: bare `admin.initializeApp()` lets ambient credentials (GOOGLE_APPLICATION_CREDENTIALS / gcloud ADC /
+// GCLOUD_PROJECT) pick the target, which can silently diverge from the confirmed --project. Mirrors
+// scripts/_sandboxDeployGuard.mjs's "assert the resolved identity, don't trust the input string" shape.
+function buildProductionDeps(projectId) {
   // eslint-disable-next-line global-require
   const admin = require("firebase-admin");
   const fs = require("node:fs");
   const codec = lib();
-  if (!admin.apps.length) admin.initializeApp();
+  if (!admin.apps.length) admin.initializeApp({ projectId });
+  const resolvedProjectId = admin.app().options.projectId;
+  if (resolvedProjectId !== projectId) {
+    throw new Error(
+      `firebase-admin resolved projectId '${resolvedProjectId}' does not match the confirmed --project ` +
+        `'${projectId}': refusing to proceed (ambient credentials must not silently pick a different target)`,
+    );
+  }
   const db = admin.firestore();
   const WAREHOUSES = "warehouses";
   return {
@@ -142,10 +156,22 @@ function buildProductionDeps() {
   };
 }
 
-module.exports = { parseArgs, runBackup, runRestore, run, buildProductionDeps };
+// Full entrypoint composition, extracted from the require.main IIFE so tests can invoke the SAME
+// argv -> parseArgs -> buildProductionDeps -> run() chain a real CLI invocation uses, and prove that a
+// rejected configuration fails BEFORE buildProductionDeps() (and therefore before firebase-admin is ever
+// required and before any Firestore connection, read, or write) runs. Previously `run(buildProductionDeps(), ...)`
+// evaluated buildProductionDeps() as a call argument BEFORE run() parsed argv at all -- so firebase-admin
+// initialized (with no projectId, letting ambient credentials pick the target) even for an invocation that
+// parseArgs would go on to reject. parseArgs() must run first.
+async function main(argv) {
+  const args = parseArgs(argv);
+  return run(buildProductionDeps(args.projectId), argv);
+}
+
+module.exports = { parseArgs, runBackup, runRestore, run, buildProductionDeps, main };
 
 if (require.main === module) {
-  run(buildProductionDeps(), process.argv.slice(2))
+  main(process.argv.slice(2))
     .then((r) => { console.log(JSON.stringify({ ok: true, ...r }, null, 2)); process.exitCode = 0; })
     .catch((err) => { console.error(`WAREHOUSE BACKUP/RESTORE CLI FAILURE: ${err.message}`); process.exitCode = 2; });
 }

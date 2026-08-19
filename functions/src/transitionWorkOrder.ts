@@ -238,11 +238,23 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       soRef: FirebaseFirestore.DocumentReference;
       nextLines: SalesOrderFulfillmentLine[];
       nextState?: string;
+      unmatchedSummary?: string;
     } | null = null;
+    // H19: when the linked Sales Order cannot be resolved, the write-back below is skipped -- Complete still
+    // proceeds (whether a missing SO should instead BLOCK completion is an Owner decision, out of this lane's
+    // scope). Captured here so the skip can be logged and staged as an Audit Event alongside the other writes,
+    // instead of vanishing with no trace (which is exactly what happened live for wo-c713-1,2,4,5 against the
+    // non-existent so-harbor-c713).
+    let soWriteBackSkipped: { salesOrderId: string; reason: string } | null = null;
     if (action === "Complete" && wo.salesOrderId) {
       const soRef = db.collection(SALES_ORDERS_COLLECTION).doc(wo.salesOrderId);
       const soSnap = await tx.get(soRef);
-      if (soSnap.exists) {
+      if (!soSnap.exists) {
+        soWriteBackSkipped = {
+          salesOrderId: wo.salesOrderId,
+          reason: `Sales Order ${wo.salesOrderId} does not exist.`,
+        };
+      } else {
         const so = soSnap.data() as { state?: string; lines?: SalesOrderFulfillmentLine[] };
         const currentLines = Array.isArray(so.lines) ? so.lines : [];
 
@@ -290,7 +302,20 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         const acceptances = [...derivedByKey.values()];
         if (acceptances.length > 0) {
           try {
-            const { nextLines } = applyFulfillmentAcceptance(currentLines, acceptances);
+            const { nextLines, unmatched } = applyFulfillmentAcceptance(currentLines, acceptances);
+            // Same silent-skip shape as the missing-SO case above, one level down: applyFulfillmentAcceptance
+            // (salesOrderFulfillmentWriteBack.ts) deliberately does NOT throw for an acceptance that matches no
+            // SO line -- by design it returns it in `unmatched` for the caller to decide what that means (its
+            // own header comment). Previously this caller discarded `unmatched` entirely, so a match-key miss
+            // (e.g. a part consumed that isn't actually an SO line) vanished the same way the missing-SO case
+            // did. Log + note it; it does not block Complete or the rest of the write-back.
+            if (unmatched.length > 0) {
+              console.error(
+                `transitionWorkOrder: Complete on Work Order ${workOrderId} had ${unmatched.length} fulfillment ` +
+                  `acceptance(s) that matched no line on Sales Order ${wo.salesOrderId}: ` +
+                  unmatched.map((u) => `${u.kind}:${u.ref}${u.lineId ? ` (lineId ${u.lineId})` : ""}`).join(", ")
+              );
+            }
             const autoAdvance = so.state === "IN_FULFILLMENT"
               ? checkTransition(so.state, "ADVANCE", { allLinesFulfilled: allLinesFulfilled(nextLines) })
               : null;
@@ -298,6 +323,12 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
               soRef,
               nextLines,
               ...(autoAdvance?.ok ? { nextState: autoAdvance.to } : {}),
+              ...(unmatched.length > 0
+                ? {
+                    unmatchedSummary: `${unmatched.length} acceptance(s) matched no SO line: ` +
+                      unmatched.map((u) => `${u.kind}:${u.ref}${u.lineId ? ` (lineId ${u.lineId})` : ""}`).join(", "),
+                  }
+                : {}),
             };
           } catch (err) {
             // Fail-closed (decision #2): never silently cap/clamp/fabricate an overage. Abort the WHOLE
@@ -340,7 +371,26 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         targetType: "salesOrder",
         targetId: wo.salesOrderId as string,
         outcome: "applied",
-        summary: `Work Order ${workOrderId} Complete wrote back fulfillment to Sales Order ${wo.salesOrderId}`,
+        summary: `Work Order ${workOrderId} Complete wrote back fulfillment to Sales Order ${wo.salesOrderId}` +
+          (soWriteBack.unmatchedSummary ? `; ${soWriteBack.unmatchedSummary}` : ""),
+      });
+    }
+    if (soWriteBackSkipped) {
+      // H19 fix: the write-back is still skipped (whether a missing SO should instead block Complete is an
+      // Owner decision, not this lane's to make) -- but the skip is now observable: a server-side log line
+      // naming both ids, plus a durable Audit Event so a query over auditEvents surfaces every occurrence
+      // instead of relying on someone noticing inventory moved with no matching SO fulfillment.
+      console.error(
+        `transitionWorkOrder: Complete on Work Order ${workOrderId} could not write back fulfillment -- ` +
+          `linked Sales Order ${soWriteBackSkipped.salesOrderId} was not found. ${soWriteBackSkipped.reason}`
+      );
+      stageAuditEvent(tx, {
+        actorUid,
+        action: "salesOrderFulfillmentWriteBack",
+        targetType: "salesOrder",
+        targetId: soWriteBackSkipped.salesOrderId,
+        outcome: "uncertain",
+        summary: `Work Order ${workOrderId} Complete skipped Sales Order fulfillment write-back: ${soWriteBackSkipped.reason} The Work Order still completed.`,
       });
     }
     return { id: workOrderId, status: nextStatus };

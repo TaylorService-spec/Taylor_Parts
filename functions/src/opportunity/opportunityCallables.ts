@@ -126,7 +126,8 @@ async function requireOpportunityWrite(uid: string): Promise<void> {
       permissionIds: [OPPORTUNITY_WRITE_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_WRITE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireOpportunityWrite] capability resolution failed for ${OPPORTUNITY_WRITE_CAPABILITY}`, err);
     allowed = false; // a throwing resolver is a denial, never an allow
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to write Opportunities.");
