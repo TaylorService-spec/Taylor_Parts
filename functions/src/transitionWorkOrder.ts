@@ -26,7 +26,8 @@ import {
 import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
-import { stageAuditEvent } from "./access/auditEventWriter";
+import { stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
+import { transitionWorkOrderAuditId } from "./workOrderTransitionMath";
 import {
   applyFulfillmentAcceptance,
   type FulfillmentAcceptance,
@@ -312,6 +313,21 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       tx.set(lockRef, { technicianId: lockRef.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     tx.update(woRef, payload);
+
+    // M9/H19 remediation: EVERY applied transition gets its own Audit Event, staged in this SAME transaction
+    // as the status write above -- not only Complete-with-a-linked-Sales-Order (the salesOrderFulfillmentWriteBack
+    // event below is a separate, additional record about the SO write-back, not a substitute for this one).
+    // Deterministic id (workOrderId + action) -- see workOrderTransitionMath.ts's header comment for why this
+    // is collision-free without a caller-supplied idempotency key.
+    stageAuditEventWithId(tx, transitionWorkOrderAuditId(workOrderId, action), {
+      actorUid,
+      action: "transitionWorkOrder",
+      targetType: "workOrder",
+      targetId: workOrderId,
+      outcome: "applied",
+      summary: `${caller.role ?? "unknown"} ${actorUid} performed ${action} on Work Order ${workOrderId} (${wo.status} -> ${nextStatus})`,
+    });
+
     if (soWriteBack) {
       tx.update(soWriteBack.soRef, {
         lines: soWriteBack.nextLines,

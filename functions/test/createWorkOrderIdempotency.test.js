@@ -61,14 +61,23 @@ test("a DIFFERENT idempotencyKey mints a new Work Order with a new number", asyn
   assert.equal(await woCountFor(customerId), 2);
 });
 
-test("keyless legacy create still works (deploy-safe) and writes no idempotency marker", async () => {
+test("keyless legacy create still works (deploy-safe), writes an audit record, but no REPLAYABLE idempotency marker", async () => {
   const uid = id("uid"), customerId = id("cust"), locationId = id("loc");
   await seedAdmin(uid);
   const r = await createWorkOrder.run(callRequest({ customerId, locationId, priority: 3, complaint: "y" }, uid));
   assert.ok(r.id && r.woNumber);
   assert.notEqual(r.replayed, true);
+  // M9/H19 remediation: audit is now UNCONDITIONAL -- a keyless create still gets exactly one Audit Event,
+  // it just isn't addressable at a deterministic id (auto-id, so it cannot gate a retry the way the keyed
+  // path's deterministic marker does).
   const markers = await db.collection(AUDIT).where("action", "==", "createWorkOrder").where("targetId", "==", r.id).get();
-  assert.equal(markers.size, 0, "no key -> no idempotency marker (legacy behavior preserved)");
+  assert.equal(markers.size, 1, "keyless create still gets exactly one audit record");
+  assert.equal(markers.docs[0].data().outcome, "applied");
+
+  // Proves this record is NOT a replay gate: a second keyless call with the SAME customer/location mints a
+  // SECOND Work Order (no dedup), unlike the keyed path above.
+  const r2 = await createWorkOrder.run(callRequest({ customerId, locationId, priority: 3, complaint: "y" }, uid));
+  assert.notEqual(r2.id, r.id, "keyless creates are never deduped against each other");
 });
 
 test("empty idempotencyKey is rejected", async () => {
