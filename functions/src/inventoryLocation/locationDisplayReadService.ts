@@ -118,7 +118,8 @@ export const getLocationDisplay = onCall({ region: "us-central1" }, async (reque
       permissionIds: [INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY],
     });
     allowed = decisions[INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getLocationDisplay] capability resolution failed for ${INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read the location display registry.");

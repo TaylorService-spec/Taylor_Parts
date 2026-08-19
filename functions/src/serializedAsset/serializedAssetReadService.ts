@@ -121,7 +121,8 @@ export const getAvailableEquipment = onCall({ region: "us-central1" }, async (re
       permissionIds: [INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY],
     });
     allowed = decisions[INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getAvailableEquipment] capability resolution failed for ${INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read the Available Equipment registry.");

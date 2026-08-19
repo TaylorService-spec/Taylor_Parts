@@ -112,7 +112,8 @@ async function requireCrmActivityRead(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [CRM_ACTIVITY_READ_CAPABILITY] });
     allowed = decisions[CRM_ACTIVITY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireCrmActivityRead] capability resolution failed for ${CRM_ACTIVITY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read CRM Activities.");

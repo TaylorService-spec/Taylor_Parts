@@ -166,7 +166,8 @@ export const listCoordinatedOperations = onCall({ region: "us-central1" }, async
       permissionIds: [COORDINATED_VISIT_READ_CAPABILITY],
     });
     allowed = decisions[COORDINATED_VISIT_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listCoordinatedOperations] capability resolution failed for ${COORDINATED_VISIT_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read coordinated operations.");

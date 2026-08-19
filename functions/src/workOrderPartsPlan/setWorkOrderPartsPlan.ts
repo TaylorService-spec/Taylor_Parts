@@ -195,7 +195,8 @@ export const setWorkOrderPartsPlan = onCall({ region: "us-central1" }, async (re
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: request.auth.uid, permissionIds: [PLAN_CAPABILITY] });
     allowed = decisions[PLAN_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[setWorkOrderPartsPlan] capability resolution failed for ${PLAN_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to plan parts for a Work Order.");

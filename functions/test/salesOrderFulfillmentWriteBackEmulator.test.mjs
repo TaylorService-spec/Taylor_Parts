@@ -244,6 +244,42 @@ test("Complete on a NON-SO-linked WO writes no sales_orders doc (fully no-op)", 
   assert.equal(auditAfter.size, auditBefore.size, "no write-back Audit Event for a non-SO-linked Work Order");
 });
 
+test("H19: Complete on a WO whose salesOrderId does not resolve to any Sales Order still completes, and stages an audit record naming both ids (silent-skip visibility)", async () => {
+  const techUid = id("u-tech");
+  const techId = id("tech");
+  await seedTechnician(techUid, techId);
+
+  // Deliberately never seeded -- this is the "so-harbor-c713 does not exist" shape from the live sandbox.
+  const missingSoId = id("so-missing");
+
+  const woId = id("wo-orphaned-so");
+  await seedWorkOrder(woId, {
+    status: "WORK_IN_PROGRESS",
+    assignedTechId: techId,
+    salesOrderId: missingSoId,
+    inventorySnapshot: [{ sku: "IPN-ORPHAN", partId: "P-ORPHAN", qtyUsed: 1 }],
+  });
+
+  const result = await transitionWorkOrder.run(callRequest({ workOrderId: woId, action: "Complete" }, techUid));
+  assert.equal(result.status, "COMPLETED", "Complete must still succeed -- a missing SO is visibility-only, not a block (Owner decision, out of this lane)");
+
+  // No Sales Order document was created as a side effect of completing against a missing id.
+  const soSnap = await db.collection(SOS).doc(missingSoId).get();
+  assert.equal(soSnap.exists, false, "completing must never fabricate the missing Sales Order document");
+
+  // The skip is recorded: an Audit Event naming both the Work Order and the unresolvable Sales Order id.
+  const auditSnap = await db
+    .collection(AUDIT)
+    .where("action", "==", "salesOrderFulfillmentWriteBack")
+    .where("targetId", "==", missingSoId)
+    .get();
+  assert.equal(auditSnap.empty, false, "a missing linked Sales Order must still stage an Audit Event recording the skip");
+  const auditDoc = auditSnap.docs[0].data();
+  assert.equal(auditDoc.outcome, "uncertain", "a skipped write-back is neither applied nor denied -- uncertain");
+  assert.match(auditDoc.summary, new RegExp(woId), "the audit summary must name the Work Order id");
+  assert.match(auditDoc.summary, new RegExp(missingSoId), "the audit summary must name the unresolvable Sales Order id");
+});
+
 test("pass4 B-2: TWO duplicate-ref PART lines on one SO -- completing the WO credits EACH line's own fulfilledQty by lineId (no false overage, no deadlock), SO reaches FULFILLED", async () => {
   // Reproduces the site-work pass4 B-2 deadlock: a SO with two lines that share the same ref+kind (a SUPPORTED,
   // tested scenario -- see allocateSalesOrderAllocation.test.mjs's duplicate-ref-lines coverage). Before this

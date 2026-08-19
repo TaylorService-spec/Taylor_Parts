@@ -1,4 +1,6 @@
 import { makeSection, makePageDefinition } from "../pageDefinition.js";
+import { opportunityRelatedList } from "./opportunity.js";
+import { salesOrderRelatedList } from "./salesOrder.js";
 
 // accountRecordPage — the Account record's PageDefinition.
 //
@@ -138,11 +140,21 @@ export const accountRecordPage = makePageDefinition({
 
     // MAIN (PRIMARY column) — in AccountDetail.jsx's actual top-to-bottom order:
     // Opportunities, Sales Orders, Financials, Activity & Notes, Service Activity, Contacts.
+    // H-A11: label is READ OFF opportunityRelatedList/salesOrderRelatedList rather than
+    // retyped, so this heading can never drift from the list-view's own "Opportunities" /
+    // "Sales Orders" (the label a viewer already sees on the "view all" index page) —
+    // one string, one owner, instead of a second copy that silently goes stale here while
+    // the list view is renamed. Without an explicit label, makeSection defaults to null,
+    // MetadataRecordPage renders no <h3>, and BOTH sections' aria-label degraded to the
+    // same generic "RELATED_LIST" (H-A11) — indistinguishable to a screen-reader user and
+    // the reason this regressed silently when these replaced AccountOpportunitiesSection.jsx
+    // (`<h4>Opportunities</h4>`) and AccountSalesOrdersSection.jsx (`<h4>Sales Orders</h4>`).
     makeSection({
       id: "opportunities",
       kind: "RELATED_LIST",
       region: "MAIN",
       order: 10,
+      label: opportunityRelatedList.label, // "Opportunities"
       listId: "account.opportunities", // definitions/opportunity.js: opportunityRelatedList
       capabilityRequirement: "opportunity.read",
     }),
@@ -151,6 +163,7 @@ export const accountRecordPage = makePageDefinition({
       kind: "RELATED_LIST",
       region: "MAIN",
       order: 20,
+      label: salesOrderRelatedList.label, // "Sales Orders"
       listId: "account.salesOrders", // definitions/salesOrder.js: salesOrderRelatedList
       capabilityRequirement: "salesOrder.read",
     }),
