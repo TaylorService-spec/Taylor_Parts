@@ -24,7 +24,7 @@ export default function OutcomeBanner({ outcome, successMessage = "Saved.", onRe
     <div className={KIND_CLASS[outcome.kind] || "fo-warning"} role={isOk ? "status" : "alert"} data-testid="truck-command-outcome">
       <span>{text}</span>
       {isConflict && typeof onReload === "function" && (
-        <button type="button" className="fo-btn-secondary" style={{ marginLeft: 8 }} onClick={onReload}>
+        <button type="button" className="fo-btn-secondary fo-outcome-banner__reload" onClick={onReload}>
           Reload
         </button>
       )}
