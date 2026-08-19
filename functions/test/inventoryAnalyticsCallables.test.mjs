@@ -30,9 +30,29 @@ let seq = 0;
 const id = (p) => `${p}-${now}-${(seq += 1)}`;
 const req = (data, authUid) => ({ data, auth: authUid !== undefined ? { uid: authUid, token: {} } : undefined });
 
+// AUTHORITY NORMALIZATION (2026-08-17). getInventoryAnalytics used to authorize with a
+// direct `caller.role === "admin"` comparison, so seeding a raw role field on the user
+// document was enough. It now resolves inventory.analytics.read through the capability
+// catalog like every sibling read service, so the test must grant the capability the way
+// the platform actually grants it: an active roleAssignment to the compatibility `admin`
+// Role, which carries inventory.analytics.read via
+// SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS.
+//
+// The effective audience is unchanged -- admin and dispatcher, as before. What changed is
+// that the test now exercises the real authorization path instead of a shortcut that no
+// longer reflects how the callable decides.
 async function seedAdmin() {
   const u = id("actor");
-  await db.collection("users").doc(u).set({ role: "admin" });
+  await db.collection("users").doc(u).set({ role: "admin", accessVersion: 1 });
+  await db.collection("roleAssignments").doc(id("assignment")).set({
+    principalUid: u,
+    roleId: "admin",
+    scope: { type: "global" },
+    grantedBy: "test",
+    grantedAt: admin.firestore.Timestamp.now(),
+    status: "active",
+    accessVersionAtGrant: 1,
+  });
   return u;
 }
 

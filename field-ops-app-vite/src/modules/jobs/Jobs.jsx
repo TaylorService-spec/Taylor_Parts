@@ -5,6 +5,18 @@ import { fieldPhaseTone } from "../../domain/fieldWorkOrder";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import Button from "../../shared/ui/primitives/Button.jsx";
+import { useAuth } from "../../auth/AuthContext";
+import { createPermissionPreviewer } from "../../access/navPermissionPreview";
+import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
+import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
+import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
+
+const previewHasPermission = createPermissionPreviewer(
+  resolveEffectivePermission,
+  COMPATIBILITY_ROLES,
+  CAPABILITY_ACTIVATION_OVERRIDE_SET,
+);
 
 // F0 -- this surface now READS the governed Work Order Engine (fieldops_wos)
 // instead of the legacy fieldops_jobs collection.
@@ -38,9 +50,27 @@ export default function Jobs() {
     }
   }, [focusRowId, jobs]);
 
+  const { role } = useAuth();
+  // Row 43 fix -- this button must stay in lockstep with App.jsx's own gate on the
+  // /service/work-orders/new route (same permission id + same admin/dispatcher
+  // fallback). Without this, a technician (who reaches this page via the "jobs"
+  // legacyKey in ROLE_NAV_ACCESS) sees a live-looking primary action that matches
+  // no mounted route and silently bounces them to /dashboard via the catch-all.
+  const canCreateWorkOrder = previewHasPermission("workOrder.create", role, {
+    fallback: role === "admin" || role === "dispatcher",
+  });
+
   const actions = (
     <ActionRail
-      primary={<Link className="fo-btn-link" to="/service/work-orders/new">New Work Order</Link>}
+      primary={
+        canCreateWorkOrder ? (
+          <Link className="fo-btn-link" to="/service/work-orders/new">New Work Order</Link>
+        ) : (
+          <Button variant="protected" reason="Requires admin or dispatcher role">
+            New Work Order
+          </Button>
+        )
+      }
     />
   );
 

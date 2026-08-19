@@ -1,0 +1,57 @@
+name: Reorder Request Tests
+
+# functions/src/reorderRequest/reorderRequestNumbering.ts had a test file with no workflow
+# path-filtering it: a change here ran no test in CI at all. The test is offline/pure (a fake
+# transaction, no emulator).
+#
+# reorderRequestsRules.test.js (the reorder_requests create-rule Rules regression) is NOT wired
+# up here -- it is already covered by firestore-rules-regression.yml, whose
+# `functions/test/**Rules*.test.js` filter catches it and whose `npm run test:rules` runs it as
+# part of the registered rulesRegressionRunner suite list. Wiring it again here would be a
+# duplicate, not a fix.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/reorderRequest/**"
+      - "functions/src/index.ts"
+      - "functions/test/reorderRequestNumbering.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/reorder-request-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/reorderRequest/**"
+      - "functions/src/index.ts"
+      - "functions/test/reorderRequestNumbering.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/reorder-request-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reorder-request-numbering-offline-tests:
+    name: Reorder Request numbering -- offline pure tests (no emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Reorder Request numbering allocator tests (build + run)
+        run: npm run test:reorderRequestNumbering
+        working-directory: functions

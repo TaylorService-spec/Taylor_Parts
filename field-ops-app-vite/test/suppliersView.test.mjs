@@ -72,4 +72,14 @@ check("filters: All default; Active/Inactive/Ungoverned buckets; unknown -> All;
   for (const f of SUPPLIER_FILTERS) assert.equal(countForSupplierFilter(rows, f.key), filterSuppliers(rows, f.key).length);
 });
 
+
+check("a supplier with no name renders an em dash, never its document id", () => {
+  // DECISIONS #106: a missing name is not permission to display a record id. This one was
+  // LIVE, not latent -- supplierPicker.js consumes buildSuppliersView, so the id could reach
+  // a picker label.
+  const { rows } = buildSuppliersView([{ id: "s9", status: "ACTIVE" }]);
+  assert.equal(rows[0].name, "—");
+  assert.equal(rows[0].id, "s9");
+});
+
 console.log(`\n${passed} passed, 0 failed`);

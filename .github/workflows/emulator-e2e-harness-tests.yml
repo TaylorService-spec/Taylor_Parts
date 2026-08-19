@@ -1,0 +1,104 @@
+name: Emulator E2E Harness Tests
+
+# Build-lane harness (functions/test/e2e/): drives real Firestore-emulator callables end-to-end for the
+# Work Order lifecycle chain (createWorkOrder -> setWorkOrderPartsPlan -> transitionWorkOrder ->
+# updateWorkOrderExecutionData), asserting on the resulting Work Order status, inventory_transactions
+# ledger entries, and auditEvents -- plus edge-case fixtures (empty parts plan, a terminal/CLOSED Work
+# Order, a cancelled-after-Dispatch Work Order). Firestore-emulator only: NO production, NO deployment,
+# NO grant. See functions/test/e2e/README.md for the harness pattern and how to add the next chain.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/workOrderCreateMath.ts"
+      - "functions/src/workOrderExecutionMath.ts"
+      - "functions/src/workOrderPartsPlan/**"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/access/**"
+      - "functions/src/partMaster/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/index.ts"
+      - "functions/test/e2e/**"
+      - "functions/scripts/runE2eEmulatorSuite.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - "firestore.rules"
+      - ".github/workflows/emulator-e2e-harness-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/workOrderCreateMath.ts"
+      - "functions/src/workOrderExecutionMath.ts"
+      - "functions/src/workOrderPartsPlan/**"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/access/**"
+      - "functions/src/partMaster/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/index.ts"
+      - "functions/test/e2e/**"
+      - "functions/scripts/runE2eEmulatorSuite.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - "firestore.rules"
+      - ".github/workflows/emulator-e2e-harness-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-e2e-harness:
+    name: Work Order lifecycle chain (Firestore + Auth emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Run the emulator E2E suite
+        # `firebase emulators:exec` (invoked by scripts/runE2eEmulatorSuite.mjs) waits for the emulators
+        # itself and tears them down after -- no manual background-start/log-poll/kill needed. The
+        # runner's own process exit code IS the pass/fail signal (see functions/test/e2e/README.md);
+        # CI trusts that exit code, not a grep of the emulator log.
+        run: npm run test:e2eEmulatorSuite
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-e2e-harness-logs
+          path: |
+            firestore-debug.log
+            firebase-debug.log
+          if-no-files-found: ignore

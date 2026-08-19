@@ -6,8 +6,9 @@
 // command service; these adapters add NO write authority and are deliberately thin so both stay
 // independently testable. There is ONE Part authority (partMasterCommands) -- this is not a second one.
 //
-// "Export is not deployment/grant": exporting these from functions/src/index.ts does NOT deploy or
-// grant them. NO App Check requirement (matching every other callable here). Authorization is enforced
+// Exported from functions/src/index.ts and deployed to eos-platform-sandbox under the per-environment
+// activation program; NOT deployed to the production project, and NOT capability-granted. NO App Check
+// requirement (matching every other callable here). Authorization is enforced
 // INSIDE the command against the actor's real governed roles: inventory.catalog.manage for
 // create/update, inventory.catalog.activate for status change (the accepted catalog authority, carried
 // by the future durable inventoryCatalogAdministrator role). NO capability is granted here; catalog

@@ -18,8 +18,13 @@
 // exactly: a NEW governed capability (`inventory.location.display.read`), registered `active:false`
 // and granted to NO Role, so resolveEffectivePermission() denies every principal until a later,
 // separately authorized grant + activation gate. No client-direct `warehouses` widening (the existing
-// warehouses Rules are unchanged) and no client-direct `mobile_locations` read at all (that collection
-// has no Rules match block -- default deny, unchanged).
+// warehouses Rules are unchanged) and this service introduces no client-direct `mobile_locations`
+// widening. NOTE, corrected 2026-08-17: this comment previously asserted that `mobile_locations` has
+// no Rules match block and is default-deny. That is no longer true -- firestore.rules:1235-1238
+// (the Truck Registry block) grants `allow read: if isAdminOrDispatcher()` and denies all client
+// writes, and services/truckRegistryQueries.js reads it client-direct on that basis. The claim was
+// presumably accurate when written and was not revisited when the Truck Registry block landed. What
+// remains true, and is the point of the original sentence, is that THIS service adds no widening.
 //
 // BOUNDED BY DESIGN: this is a targeted point-read (`getAll` on the exact ids requested), never a
 // collection scan/query -- so it needs no new Firestore index and cannot be used to enumerate
@@ -113,7 +118,8 @@ export const getLocationDisplay = onCall({ region: "us-central1" }, async (reque
       permissionIds: [INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY],
     });
     allowed = decisions[INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getLocationDisplay] capability resolution failed for ${INVENTORY_LOCATION_DISPLAY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read the location display registry.");

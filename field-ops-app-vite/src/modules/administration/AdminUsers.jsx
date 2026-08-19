@@ -36,6 +36,7 @@
 // revocation -- D-ROUTINE-REVOKE = NO).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { Button } from "../../shared/ui/primitives";
 import { adminPasswordResetClient } from "../../access/adminPasswordResetClient";
 import {
   createAdminResetController,
@@ -148,12 +149,12 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
         read exists yet for this action, and no principal currently holds the access-record grant
         every real call requires -- not because the backend is unbuilt.
       </p>
-      <button type="button" disabled aria-disabled="true">
+      <Button type="button" variant="secondary" disabled>
         Enable user
-      </button>{" "}
-      <button type="button" disabled aria-disabled="true">
+      </Button>{" "}
+      <Button type="button" variant="secondary" disabled>
         Disable user
-      </button>
+      </Button>
 
       {/* Fail-closed: the ENTIRE password-reset surface renders only when the
           session effectively holds admin.credentialReset.initiate. Hidden (and
@@ -186,9 +187,9 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
                   <span>{row.displayName || row.uid}</span>
                   {row.role ? <span className="fo-muted"> — {row.role}</span> : null}{" "}
                   {row.eligible ? (
-                    <button type="button" onClick={() => openConfirm(row)} disabled={inFlight}>
+                    <Button type="button" variant="secondary" onClick={() => openConfirm(row)} disabled={inFlight}>
                       {RESET_ACTION_LABEL}
-                    </button>
+                    </Button>
                   ) : (
                     <span className="fo-muted" title={row.ineligibleReasonCopy || undefined}>
                       (not eligible)
@@ -207,12 +208,12 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
                 {selected.role ? <span className="fo-muted"> ({selected.role})</span> : null}?
               </p>
               <div>
-                <button type="button" onClick={confirmSend} disabled={inFlight}>
-                  {inFlight ? "Sending…" : "Confirm"}
-                </button>{" "}
-                <button type="button" onClick={cancel} disabled={inFlight}>
+                <Button type="button" variant="primary" onClick={confirmSend} disabled={inFlight} loading={inFlight}>
+                  Confirm
+                </Button>{" "}
+                <Button type="button" variant="secondary" onClick={cancel} disabled={inFlight}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           )}

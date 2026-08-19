@@ -5,8 +5,9 @@
 // mapping the typed command errors to safe public HttpsErrors that never leak
 // internal paths or reasons; (3) requiring request.auth.
 //
-// "Export is not deployment": exporting these from index.ts does NOT deploy
-// them. The AUTH-UI-3 Admin surface calls them only against the emulator; no
+// Deployed to eos-platform-sandbox under the per-environment activation program;
+// NOT deployed to the production project. The AUTH-UI-3 Admin surface calls them
+// only against the emulator; no
 // native sender is configured (NOT_CONFIGURED_NATIVE_SEND below) until a
 // SEPARATE, later Owner production authorization is issued. As wired the command
 // FAILS CLOSED on the unconfigured send capability -- it performs ZERO Auth side
@@ -71,10 +72,13 @@ function requireAuthUid(request: CallableRequest): string {
 
 // Resolve the guard facts for a target from Auth + Firestore (AUTH-PR-3.5).
 // Conservative/fail-safe: if a fact cannot be determined it defaults to the
-// SAFE side (e.g. final-active-admin protection defaults to protect). The exact
-// production fact sources (employees reciprocal-link field, break-glass marker,
-// active-admin authority) are VERIFIED at the AUTH-PROD-1 gate against the real
-// project -- this adapter is emulator/repository-only and NOT deployed/enabled.
+// SAFE side (e.g. final-active-admin protection defaults to protect). This IS the
+// deployed production adapter wired into `initiateAdminPasswordReset` below (see
+// `adminSdkDeps()`) -- deployed to eos-platform-sandbox under the per-environment
+// activation program, not a test-only stand-in. What remains unverified is the exact
+// PRODUCTION fact sources (employees reciprocal-link field, break-glass marker,
+// active-admin authority) behaving correctly against the real project's data --
+// that is checked at the AUTH-PROD-1 gate, not deployment of this code itself.
 export async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFacts> {
   const authUser = await getAuth().getUser(targetUid).catch(() => null);
   const authExists = authUser !== null;
@@ -149,10 +153,13 @@ export async function resolveTargetFacts(targetUid: string): Promise<commands.Ta
 // resolveTargetFacts' sourcing but for the AUTHENTICATED ACTOR -- the uid comes
 // only from the callable context (never client data). Fail-safe: an
 // undeterminable fact defaults to the DENY side; the command additionally fails
-// closed if this resolver throws. The exact production fact sources (active
-// account state, employees reciprocal-link field, governed admin authority) are
-// VERIFIED at the AUTH-PROD-1 gate against the real project -- this adapter is
-// emulator/repository-only and NOT deployed/enabled.
+// closed if this resolver throws. This IS the deployed production adapter (see
+// `actorAuthorizationDeps()` below, wired into both exported callables) -- deployed
+// to eos-platform-sandbox under the per-environment activation program. What remains
+// unverified is the exact PRODUCTION fact sources (active account state, employees
+// reciprocal-link field, governed admin authority) behaving correctly against the
+// real project's data -- that is checked at the AUTH-PROD-1 gate, not deployment of
+// this code itself.
 export async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthorizationFacts> {
   const authUser = await getAuth().getUser(actorUid).catch(() => null);
   const authExists = authUser !== null;

@@ -17,6 +17,7 @@ import {
 } from "../../domain/equipmentCompatibilitySection";
 import { inertEquipmentCompatibilitySource } from "../../services/equipmentCompatibilitySource";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const PAGE_SIZE = 10; // OD-D
 
@@ -193,9 +194,9 @@ export default function UsedInEquipmentSection({ hasCapability, partId, accessVe
             <p className="fo-muted" role="alert">Couldn't load more right now. The records above are still shown.</p>
           )}
           {current && current.hasMore && (
-            <button type="button" className="fo-btn-secondary" onClick={showMore} disabled={loading}>
-              {loading ? "Loading…" : "Show more"}
-            </button>
+            <Button type="button" variant="secondary" onClick={showMore} disabled={loading} loading={loading}>
+              Show more
+            </Button>
           )}
           {cleanComplete && <p className="fo-muted fo-equipment-compat-complete">No more records to load.</p>}
         </>

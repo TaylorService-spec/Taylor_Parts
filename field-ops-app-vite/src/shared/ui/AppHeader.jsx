@@ -5,6 +5,7 @@ import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssig
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../../domain/partsAttentionProjection.js";
 import NotificationPanel from "./NotificationPanel";
+import Button from "./primitives/Button.jsx";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
@@ -152,7 +153,7 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
           />
         )}
         <span className="fo-appheader-email">{user?.email}</span>
-        <button onClick={logout}>Logout</button>
+        <Button variant="tertiary" onClick={logout}>Logout</Button>
       </div>
     </div>
   );

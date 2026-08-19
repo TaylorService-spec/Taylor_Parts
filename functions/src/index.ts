@@ -10,9 +10,11 @@ export { transitionWorkOrder } from "./transitionWorkOrder";
 export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
 export { detectInventoryEffects } from "./inventoryEffectCallables";
 export { getInventoryAnalytics } from "./inventoryAnalyticsCallables";
-// WO Parts Planning Phase 2 -- the governed PLANNED producer. "export is not deployment": not deployed to
-// the live project and no client calls it, and its capability (workOrder.parts.plan) is registered
-// active:false (fail-closed for everyone) until a separate Owner deploy + grant gate.
+export { getAccountPortfolioSummary } from "./account/accountPortfolioSummary";
+// WO Parts Planning Phase 2 -- the governed PLANNED producer. Deployed to eos-platform-sandbox under the
+// per-environment activation program; NOT deployed to the production project. No client calls it, and its
+// capability (workOrder.parts.plan) is registered active:false (fail-closed for everyone) until a separate
+// Owner grant gate.
 export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPlan";
 // Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
@@ -26,7 +28,7 @@ export { listOpportunityContext, listOpportunitiesForAccount } from "./opportuni
 export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
-export { getSalesOrderContext, listSalesOrdersForAccount } from "./salesOrder/salesOrderReadService";
+export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.
@@ -77,19 +79,18 @@ export { recordRefund } from "./finance/refundCallables";
 export { getWorkOrderFieldContext } from "./getWorkOrderFieldContext";
 
 // --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
-// Same "export is not deployment" posture as the surfaces below: not
-// deployed to the live project, and no client calls it (Field Mode's
-// integration is PR-B, a separate Owner gate) until Gate D1's Owner
-// production authorization. Until then the legacy client completion path
-// remains permitted by the interim Firestore Rules; the Rules that deny it
-// land in PR-C and deploy at Gate D2, strictly after D1.
+// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until
+// Gate D1's Owner production authorization. Until then the legacy client completion path remains
+// permitted by the interim Firestore Rules; the Rules that deny it land in PR-C and deploy at Gate D2,
+// strictly after D1.
 export { completeAssignedJob } from "./completeAssignedJob";
 
 // --- Issue #226 surface: Enterprise Access & Administration Platform ---
 // Exactly these six -- see docs/deployment/enterprise-access-deployment-
-// manifest.md Section B. Not deployed, and no client calls them, until a
-// separate, later Owner production authorization (Implementation Plan
-// Row 19+) is issued.
+// manifest.md Section B. Deployed to eos-platform-sandbox under the per-environment activation program;
+// NOT deployed to the production project. No client calls them until a separate, later Owner production
+// authorization (Implementation Plan Row 19+) is issued.
 export {
   grantRole,
   revokeRole,
@@ -100,8 +101,8 @@ export {
 } from "./access/accessCommandCallables";
 
 // --- Issue #325 / ADR-007 D-FN surface: trusted report execution ---
-// Same "export is not deployment" posture as the six commands above:
-// not deployed to the live project, and no client calls it (the client
+// Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. No client calls it (the client
 // run seam, field-ops-app-vite/src/domain/reporting/
 // reportExecutionSeam.js, is unchanged and still unconditionally
 // unavailable) until a separate, later Owner production authorization.
@@ -114,8 +115,8 @@ export { runReportDefinitionCallable } from "./reporting/runReportDefinitionCall
 
 // --- Issue #325 / ADR-007 D-RULES CORRECTED surface: trusted saved-
 // definition CRUD ---
-// Same "export is not deployment" posture as the surfaces above: not
-// deployed to the live project, and no client calls these (Customer
+// Same posture as the surfaces above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. No client calls these (Customer
 // persistence integration is explicitly out of scope for this task)
 // until a separate, later Owner production authorization. firestore.
 // rules denies ALL direct client read/write on reportDefinitions
@@ -133,8 +134,8 @@ export {
 } from "./reporting/savedDefinitionCallables";
 
 // --- Issue #226 surface: trusted effective-access feed ---
-// Same "export is not deployment" posture as the surfaces above: not
-// deployed to the live project, and no client calls it (Customer's own
+// Same posture as the surfaces above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. No client calls it (Customer's own
 // W1 UI integration is a separate, later, explicitly out-of-scope step
 // for this PR) until a separate, later Owner production authorization.
 // Read-only, mutates nothing, writes no Audit Event -- see
@@ -145,9 +146,9 @@ export { resolveEffectiveAccessCallable } from "./access/effectiveAccessFeedCall
 
 // --- AUTH-PR-3 surface: admin-initiated password reset (Authentication
 // Modernization; extends Issue #226) ---
-// Same "export is not deployment" posture as every surface above: NOT deployed
-// to the live project, NO Admin UI wired to call them, and NO email provider
-// configured (adminCredentialCallables wires NOT_CONFIGURED_DELIVERY) until a
+// Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. NO Admin UI wired to call them, and NO
+// email provider configured (adminCredentialCallables wires NOT_CONFIGURED_DELIVERY) until a
 // SEPARATE, later Owner production authorization. As deployed today the command
 // FAILS CLOSED on the unconfigured delivery capability -- ZERO Auth side effects
 // (no reset-link generation, no email, no session revocation).
@@ -157,9 +158,10 @@ export {
 } from "./access/adminCredentialCallables";
 
 // --- EI Truck Registry surface (ADR-010 / Decision #60): trusted write callables ---
-// Same "export is not deployment" posture as every surface above: NOT deployed to the live
-// project, NO Admin UI wired to call them, NO App Check requirement (matching every other
-// callable here), and the governed inventory predicate does NOT exist yet -- so
+// Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. NO Admin UI wired to call them, NO App
+// Check requirement (matching every other callable here), and the governed inventory predicate does NOT
+// exist yet -- so
 // deactivateTruck FAILS CLOSED (INVENTORY_STATE_UNKNOWN) until a separate, later gate injects a
 // real predicate. Authorization is admin/dispatcher (users/{uid}.role), enforced in the service.
 export {
@@ -175,11 +177,14 @@ export {
 } from "./truckRegistry/truckRegistryCallables";
 
 // --- EI Phase-2 Receiving surface (E1): trusted Receiving callables ---
-// "Export is not deployment/grant": NOT deployed to the live project, NO Admin/Customer UI wired to
-// call them, NO App Check requirement (matching every other callable here). Both require the governed
-// inventory.stock.receive capability, which is REGISTERED BUT UNGRANTED -- so every real user is denied
-// until a separate grant gate. The receive callable runs the pinned §3A ACTIVE-warehouse resolver; the
-// option callable serves sanitized eligible options from the trusted backend (no client warehouses read).
+// Deployed and live in eos-platform-sandbox (2026-08-06, Decision #63). The governed
+// inventory.stock.receive capability is GRANTED to admin, dispatcher and owner (compatibilityRoles.ts,
+// Decisions #65/#68) -- it is NOT ungranted. The remaining gate is client transport readiness:
+// RECEIVING_TRANSPORT_READY (field-ops-app-vite/src/config/receivingReadiness.js) stays false until a
+// separate Owner authorization releases the Hosting bundle, so no client UI calls these today even
+// though the backend accepts calls from a granted principal. NO App Check requirement (matching every
+// other callable here). The receive callable runs the pinned §3A ACTIVE-warehouse resolver; the option
+// callable serves sanitized eligible options from the trusted backend (no client warehouses read).
 // Firebase deploys each callable under its exported index property name, so these MUST be the exact
 // frozen public names (no "Callable" suffix). The suffixed implementation consts are aliased here and are
 // NOT otherwise exposed as callable surfaces.
@@ -211,7 +216,8 @@ export {
 } from "./cycleCount/cycleCountCallables";
 
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
-// "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them, NO App
+// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project. NO UI wired to call them, NO App
 // Check requirement (matching every other callable here). Authorization is enforced INSIDE the command
 // against the actor's real governed roles -- inventory.catalog.manage for create/update,
 // inventory.catalog.activate for activate/deactivate. NO capability is granted here; activate/deactivate
@@ -227,7 +233,8 @@ export {
 } from "./supplierMaster/supplierMasterCallables";
 
 // --- Part Master (ADR-009 G2): trusted Part command callables ---
-// "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them yet, NO
+// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project. NO UI wired to call them yet, NO
 // App Check requirement (matching every other callable here). Authorization is enforced INSIDE the
 // command against the actor's real governed roles -- inventory.catalog.manage for create/update,
 // inventory.catalog.activate for changePartStatus (the accepted catalog authority / future durable
@@ -242,7 +249,8 @@ export {
 } from "./partMaster/partMasterCallables";
 
 // --- Manufacturer (catalog reference object): trusted Manufacturer command callables ---
-// "Export is not deployment/grant": NOT deployed, NO UI wired yet, NO App Check. Authorization enforced
+// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project. NO UI wired yet, NO App Check. Authorization enforced
 // INSIDE the command against real governed roles -- inventory.catalog.manage for create/update,
 // inventory.catalog.activate for status (the SAME catalog authority Part/Supplier use; future durable
 // inventoryCatalogAdministrator). NO capability granted here; catalog capabilities are carried by no
@@ -257,7 +265,8 @@ export {
 } from "./partMaster/manufacturerCallables";
 
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
-// "Export is not deployment/grant": NOT deployed, NO UI wired yet, NO capability granted, NO App Check.
+// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project. NO UI wired yet, NO capability granted, NO App Check.
 // Authorization enforced INSIDE the command against real governed roles -- inventory.catalog.manage for
 // create/update/setPreferred, inventory.catalog.activate for status (the SAME catalog authority the rest of
 // the catalog uses). All four fail closed until a deferred protected grant. Closes the procure-to-stock

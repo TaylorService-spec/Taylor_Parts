@@ -18,6 +18,9 @@ on:
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
+      - "scripts/listIndexCoverage.mjs"
+      - "field-ops-app-vite/src/metadata/**"
+      - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
       - "field-ops-app-vite/src/firebase/firebase.js"
@@ -35,6 +38,9 @@ on:
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
+      - "scripts/listIndexCoverage.mjs"
+      - "field-ops-app-vite/src/metadata/**"
+      - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
       - "field-ops-app-vite/src/firebase/firebase.js"
@@ -68,6 +74,21 @@ jobs:
       # O-4 — a repo-driven index deploy must never silently delete a live index.
       - name: Index drift guard (O-4)
         run: node --test scripts/indexDriftGuard.test.mjs
+
+      - name: List index coverage (metadata filters vs declared indexes)
+        run: node --test scripts/listIndexCoverage.test.mjs
+      # Running the tool's own tests proves the TOOL works. It does not ask the
+      # question the tool exists to answer -- whether THIS repository's list
+      # definitions demand a composite index nobody declared. Those are different
+      # checks, and only the second one fails when someone adds a filter and
+      # forgets the index.
+      #
+      # Today it prints "idle, not passing" because no definition is registered
+      # yet. That wording is deliberate and the step is worth adding anyway: it
+      # becomes load-bearing the moment the first definition lands, which is
+      # precisely the moment a missing gate would stop being noticed.
+      - name: List index coverage gate (this repository's own definitions)
+        run: node scripts/listIndexCoverage.mjs --check
       # Gate 1 D1 finding -- a deploy must never resolve its target implicitly,
       # and an artifact that misidentifies its environment must be refused
       # BEFORE it ships, not discovered afterwards in the live manifest.

@@ -6,8 +6,9 @@
 // the command service; these adapters add NO write authority and are deliberately thin so both stay
 // independently testable.
 //
-// "Export is not deployment": exporting these from functions/src/index.ts does NOT deploy or activate
-// them. As wired here there is NO App Check requirement (matching every other callable in this repo),
+// Exported from functions/src/index.ts and deployed to eos-platform-sandbox under the per-environment
+// activation program; NOT deployed to the production project. As wired here there is NO App Check
+// requirement (matching every other callable in this repo),
 // and NO capability is granted -- authorization is enforced INSIDE the command against the actor's
 // real governed roles (inventory.catalog.manage for create/update, inventory.catalog.activate for
 // activate/deactivate). NOTE (production gap, see docs/releases/supplier-master-rc-1.md): no STANDING

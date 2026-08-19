@@ -40,6 +40,7 @@ import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives";
 
 const OBJECTS = availableObjects();
 
@@ -173,8 +174,18 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
 
             {/* 3c. save -- persists the definition built above via the same trusted create()
                 callable Saved Reports' "New" uses. No server-side update path exists yet, so this
-                always creates a NEW saved report (never claims to overwrite one). */}
-            <SaveControl saveName={saveName} setSaveName={setSaveName} saveState={saveState} onSave={onSave} />
+                always creates a NEW saved report (never claims to overwrite one). Gated on the same
+                F2 `status === "ready"` the Run button uses -- the server's createSavedDefinition
+                runs the identical validateReportDefinition and would reject an invalid definition
+                with a generic "check the name" message that misdescribes a missing-field/grouping
+                error, so Save must never be reachable while the definition is invalid. */}
+            <SaveControl
+              saveName={saveName}
+              setSaveName={setSaveName}
+              saveState={saveState}
+              onSave={onSave}
+              disabled={status !== "ready"}
+            />
 
             {/* 4. validation + run */}
             {errors.length > 0 && (
@@ -184,15 +195,16 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
               </div>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="primary"
               className="fo-btn-large"
               onClick={onRun}
               disabled={status !== "ready" || running}
-              aria-disabled={status !== "ready" || running}
+              loading={running}
             >
-              {running ? "Running…" : "Run report"}
-            </button>
+              Run report
+            </Button>
 
             <ResultArea outcome={outcome} def={def} />
           </>
@@ -230,7 +242,7 @@ function OpenBanner({ openState }) {
   );
 }
 
-function SaveControl({ saveName, setSaveName, saveState, onSave }) {
+function SaveControl({ saveName, setSaveName, saveState, onSave, disabled }) {
   return (
     <section aria-labelledby="rb-save-h">
       <h3 id="rb-save-h">Save</h3>
@@ -243,14 +255,15 @@ function SaveControl({ saveName, setSaveName, saveState, onSave }) {
           onChange={(e) => setSaveName(e.target.value)}
           placeholder="Name this report"
         />
-        <button
+        <Button
           type="button"
-          className="fo-btn-secondary"
+          variant="secondary"
           onClick={onSave}
-          disabled={saveState.status === "saving" || saveName.trim() === ""}
+          disabled={disabled || saveState.status === "saving" || saveName.trim() === ""}
+          loading={saveState.status === "saving"}
         >
-          {saveState.status === "saving" ? "Saving…" : "Save as new report"}
-        </button>
+          Save as new report
+        </Button>
       </div>
       {saveState.status === "success" && (
         <p className="fo-state fo-tone-info fo-state-message" role="status" aria-live="polite">
@@ -269,7 +282,7 @@ function FieldGroups({ groups, selected, onToggle }) {
     <section aria-labelledby="rb-fields-h">
       <h3 id="rb-fields-h">Fields</h3>
       {groups.map((g) => (
-        <fieldset key={g.label} className="fo-fieldset" style={{ flexDirection: "column", alignItems: "stretch" }}>
+        <fieldset key={g.label} className="fo-fieldset fo-fieldset--stacked">
           <legend>{g.label}</legend>
           {g.fields.map((f) => (
             <label key={f.fieldId} className="fo-checkbox-label">
@@ -307,7 +320,7 @@ function Filters({ def, selected, setDef }) {
           onRemove={() => setDef(removeFilter(def, i))}
         />
       ))}
-      <button type="button" className="fo-btn-secondary fo-link-btn" onClick={addBlank}>+ Add filter</button>
+      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add filter</Button>
     </section>
   );
 }
@@ -339,7 +352,7 @@ function FilterRow({ filter, filterable, onChange, onRemove }) {
         {comparators.map((op) => <option key={op} value={op}>{op}</option>)}
       </select>
       <FilterValueInput field={field} filter={filter} onChange={onChange} />
-      <button type="button" className="fo-btn-secondary" onClick={onRemove} aria-label="Remove filter">Remove</button>
+      <Button type="button" variant="secondary" onClick={onRemove} aria-label="Remove filter">Remove</Button>
     </div>
   );
 }
@@ -443,7 +456,7 @@ function SortBy({ def, selected, setDef }) {
             <select aria-label="Direction" value={s.direction} onChange={(e) => setDef(updateSort(def, i, { direction: e.target.value }))}>
               {SORT_DIRECTIONS.map((dir) => <option key={dir} value={dir}>{dir === "asc" ? "ascending" : "descending"}</option>)}
             </select>
-            <button type="button" className="fo-btn-secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove sort">Remove</button>
+            <Button type="button" variant="secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove sort">Remove</Button>
           </div>
         );
       })}
@@ -489,9 +502,9 @@ function ResultArea({ outcome, def }) {
 function ResultsTable({ caption, columns, rows }) {
   if (columns.length === 0) return null;
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div className="fo-table-scroll">
       <table className="fo-table">
-        <caption className="fo-muted" style={{ textAlign: "left", captionSide: "top", marginBottom: 4 }}>
+        <caption className="fo-muted fo-report-caption">
           {caption} — {rows.length} row{rows.length === 1 ? "" : "s"}
         </caption>
         <thead>

@@ -145,7 +145,7 @@
       },
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
-        "TRUCK_MANAGEMENT_WRITE_READY": true,
+        "TRUCK_MANAGEMENT_WRITE_READY": false,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": false,

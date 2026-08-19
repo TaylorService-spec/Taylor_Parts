@@ -1,4 +1,5 @@
 import StatusPill from "./StatusPill.jsx";
+import CompactMetric from "./primitives/CompactMetric.jsx";
 
 // Peer Operational Card (Wave-4 composition primitive) — the ONE shared card for a meaningful,
 // bounded peer object in a browseable collection: a truck, a work order, a part, an equipment
@@ -76,10 +77,19 @@ export default function OperationalCard({
     <p className="fo-op-card__placeholder">{unavailableMessage}</p>
   ) : (
     <>
+      {/* State-before-text: the status indicator is the FIRST thing in the head, ahead of the
+          identity line, so an operator's eye lands on "what state is this" before "what is
+          this" -- the scan order the design brief calls for. The title then owns the remaining
+          width as a single, non-wrapping identity line (ellipsis rather than a second line,
+          which would fight the status indicator for vertical space). */}
       <div className="fo-op-card__head">
-        {title != null && <span className="fo-op-card__title">{title}</span>}
         {status && (
           <StatusPill tone={status.tone ?? "unknown"} asText={status.asText} label={status.label} />
+        )}
+        {title != null && (
+          <span className="fo-op-card__title">
+            {title}
+          </span>
         )}
       </div>
 
@@ -87,19 +97,24 @@ export default function OperationalCard({
 
       {attention && <div className="fo-op-card__attention">{attention}</div>}
 
+      {/* Primary metric routes through the shared CompactMetric primitive (tabular numerals
+          baked in) instead of ad hoc markup, so a card's one headline number lines up with
+          every other compact metric in the system. */}
       {metric && (
         <div className="fo-op-card__metric">
-          <span className="fo-op-card__metric-value">{metric.value}</span>
-          <span className="fo-op-card__metric-label">{metric.label}</span>
+          <CompactMetric value={metric.value} label={metric.label} />
         </div>
       )}
 
+      {/* Scannable body: metadata values are tabular-numeral so a column of figures (qty,
+          value, counts) lines up digit-for-digit instead of jittering with proportional
+          numerals. */}
       {metadata.length > 0 && (
         <dl className="fo-op-card__metadata">
           {metadata.map((m, i) => (
             <div className="fo-op-card__metadata-item" key={m.key ?? i}>
               <dt>{m.label}</dt>
-              <dd>{m.value ?? "—"}</dd>
+              <dd className="fo-tabular-nums">{m.value ?? "—"}</dd>
             </div>
           ))}
         </dl>

@@ -7,6 +7,7 @@ import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { orderWorkflowActions } from "../../domain/workflowActionOrder";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 2 Phase 2B -- Work Order Lifecycle UI (dispatcher side only; see
 // WorkOrderDetail.jsx's former "Phase 2 TODO" comment this replaces).
@@ -141,25 +142,25 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
 
       <div className="fo-btn-row wo-action-row">
         {primaryActions.map((action) => (
-          <button
+          <Button
             key={action}
-            type="button"
+            variant="secondary"
             disabled={submitting}
             onClick={() => handleActionClick(action)}
           >
             {ACTION_LABEL[action] ?? action}
-          </button>
+          </Button>
         ))}
         {cancelAllowed && (
-          <button
+          <Button
             key="Cancel"
-            type="button"
-            className="fo-btn-destructive wo-action-destructive"
+            variant="destructive"
+            className="wo-action-destructive"
             disabled={submitting}
             onClick={() => handleActionClick("Cancel")}
           >
             {ACTION_LABEL.Cancel}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -203,12 +204,12 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
                 </option>
               ))}
           </select>
-          <button type="button" disabled={submitting || !selectedTechId} onClick={confirmDispatch}>
+          <Button variant="primary" disabled={submitting || !selectedTechId} onClick={confirmDispatch}>
             Confirm Dispatch
-          </button>
-          <button type="button" disabled={submitting} onClick={() => setShowTechPicker(false)}>
+          </Button>
+          <Button variant="secondary" disabled={submitting} onClick={() => setShowTechPicker(false)}>
             Back
-          </button>
+          </Button>
         </div>
       )}
     </div>

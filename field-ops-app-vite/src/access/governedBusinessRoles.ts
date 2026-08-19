@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- eight
 // governed business Role definitions, added per Owner direction on
 // Issue #226 (two comments dated 2026-07-16, main head
@@ -23,9 +29,10 @@
 // existing id, that is recorded as a catalog gap in Spec §26.4, not
 // granted here via a substitute id (see that section for the full list).
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/governedBusinessRoles.ts. If either
-// file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
 import { ADMIN_ROLE } from "./compatibilityRoles";
 import { PERMISSION_CATALOG } from "./permissionCatalog";
@@ -110,22 +117,42 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     "Customer/CRM read/create/update. Quote, sales-pipeline, and reporting capabilities are a recorded permission-catalog gap (Spec §26.4), not yet grantable.",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read", "account.record.create", "account.record.update"],
+  permissions: [
+    "account.record.read",
+    "account.record.create",
+    "account.record.update",
+    // Owner ruling 2026-08-18: a Sales Manager who cannot see the committed order
+    // their pipeline produced, or whether the parts exist to fill it, is reading
+    // only half the transaction. salesOrder.read is registered active:false -- the
+    // grant is recorded now and stays inert until per-environment activation.
+    "salesOrder.read",
+    "inventory.transaction.read",
+  ],
 }) as Role;
 
-// Spec §26.2 -- read-only customer visibility only; invoice/payment/
-// credit/accounting-reporting capabilities do not exist in the catalog
-// (Spec §26.4). Deliberately holds no write permission and no overlap
-// with Finance Manager's account.governedField.write, preserving the
-// Owner's explicit "remain distinct" requirement.
+// Spec §26.2 -- invoice/payment/credit/accounting-reporting capabilities
+// still do not exist in the catalog (Spec §26.4).
+//
+// OWNER REVERSAL 2026-08-18: "accountingManager should be like financeManager
+// for now." This DELIBERATELY supersedes the earlier Owner requirement that the
+// two Roles "remain distinct". That distinction was drawn from the one id that
+// happened to differentiate them, not from a described difference in the two
+// jobs, and the Owner has since decided they do the same work here. The two sets
+// are now intentionally identical, and the pinning test was inverted to assert
+// exactly that -- so a future divergence has to be a decision, not a drift.
 export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
   id: "accountingManager",
   name: "Accounting Manager",
   description:
-    "Read-only Customer visibility today. Invoice/payment/credit/accounting-reporting capabilities are a recorded permission-catalog gap (Spec §26.4) -- distinct from Finance Manager, which holds no accounting-operations id either.",
+    "Customer visibility, governed commercial-field write, Sales Order and Purchase Order read. Intentionally identical to Finance Manager (Owner ruling 2026-08-18). Invoice/payment/credit/accounting-reporting capabilities are a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read"],
+  permissions: [
+    "account.record.read",
+    "account.governedField.write",
+    "salesOrder.read",
+    "reorder.purchaseOrder.read",
+  ],
 }) as Role;
 
 // Spec §26.2 -- financial oversight/policy authority via the one
@@ -138,10 +165,18 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   id: "financeManager",
   name: "Finance Manager",
   description:
-    "Financial oversight/policy: Customer read visibility plus governed commercial-field write authority (Issue #175). Margin/cost visibility and finance-specific reporting are a recorded permission-catalog gap (Spec §26.4) -- distinct from Accounting Manager, which holds no policy-write id.",
+    "Financial oversight/policy: Customer read visibility, governed commercial-field write authority (Issue #175), and both sides of the committed-money picture -- Sales Orders out, Purchase Orders in. Margin/cost visibility and finance-specific reporting are a recorded permission-catalog gap (Spec §26.4). Intentionally identical to Accounting Manager (Owner ruling 2026-08-18).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read", "account.governedField.write"],
+  permissions: [
+    "account.record.read",
+    "account.governedField.write",
+    // Owner ruling 2026-08-18: finance sees what was committed to customers and
+    // what was committed to suppliers. READ on both -- no create/void on either
+    // side. salesOrder.read is active:false and stays inert until activation.
+    "salesOrder.read",
+    "reorder.purchaseOrder.read",
+  ],
 }) as Role;
 
 // Spec §26.2 -- full existing Work Order lifecycle authority
@@ -158,7 +193,21 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
     "Technicians/dispatch/Work Orders: full Work Order lifecycle authority plus field-inventory read visibility. Equipment capabilities are a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"],
+  permissions: [
+    // Owner ruling 2026-08-18, "they all should see accounts": every manager Role
+    // gets Customer read. A Work Order without its customer is an address.
+    "account.record.read",
+    "workOrder.create",
+    "workOrder.transition",
+    "workOrder.cancel",
+    "inventory.transaction.read",
+    // Owner ruling (grantable-governed-roles workstream): Field Manager is one of the five roles
+    // named in Owner's proposed fulfillment.coordinatedVisit.read grant set ({owner, admin,
+    // operationsManager, fieldManager, dispatcher}) -- Coordinated Visits/Mission are a field/
+    // dispatch operational surface, matching this Role's existing Work Order lifecycle authority.
+    // Still active:false (grant is not activation); see compatibilityRoles.ts's own comment.
+    "fulfillment.coordinatedVisit.read",
+  ],
 }) as Role;
 
 // Spec §26.2/§27.4 -- cross-domain operational oversight (Customer,
@@ -174,11 +223,16 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
   id: "operationsManager",
   name: "Operations Manager",
   description:
-    "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse, and Purchasing. No role administration, no governed-field write, no reorder decision authority.",
+    "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse, and Purchasing. Can open a Customer record but not amend one. No role administration, no governed-field write, no reorder decision authority.",
   systemSeed: true,
   compatibility: false,
   permissions: [
     "account.record.read",
+    // Owner ruling 2026-08-18: "operationsManager should be able to create accounts also".
+    // CREATE only -- account.record.update and account.governedField.write stay DENIED, so
+    // this Role can open a new Customer but cannot amend an existing one. That asymmetry is
+    // intentional and pinned by test; it is not an oversight to be "completed" later.
+    "account.record.create",
     "workOrder.create",
     "workOrder.transition",
     "workOrder.cancel",
@@ -189,6 +243,12 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     "warehouse.record.read",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
+    // Owner ruling (grantable-governed-roles workstream): Operations Manager is one of the five
+    // roles named in Owner's proposed fulfillment.coordinatedVisit.read grant set ({owner, admin,
+    // operationsManager, fieldManager, dispatcher}) -- cross-domain operational oversight is
+    // exactly the reader this coordinated-Work-Order projection is for. Still active:false (grant
+    // is not activation); see compatibilityRoles.ts's own comment.
+    "fulfillment.coordinatedVisit.read",
   ],
 }) as Role;
 

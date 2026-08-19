@@ -57,10 +57,32 @@ export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?:
 // WAREHOUSE ELIGIBILITY PRESERVED. Only movements at an eligible (status==ACTIVE) WAREHOUSE location count.
 // MOBILE/truck stock is deliberately excluded: it is real inventory, but it is not sellable warehouse stock.
 //
+// SERIAL-TRACKED ROWS ARE EXCLUDED (H7 fix). A SERIAL-tracked Part's unit count is not aggregable
+// quantity math -- each serial is exactly one unit, tracked individually by the serialized_assets
+// registry, never by summing ledger quantities. A Cycle Count reconciling a MISSING SERIAL-tracked
+// unit writes "ADJUSTED, quantity: 1" (SERIAL quantity is always exactly 1 and cannot carry a negative
+// sign), which this function used to sum exactly like a NONE-mode receipt -- discovering a unit
+// missing INCREASED its reservable availability. The correct pattern already exists in
+// inventoryLedger/mobileLocationPresenceProbe.ts's probeNoneStockPresentAtLocation
+// (`if (v.trackingMode !== "NONE") continue;`, "SERIAL custody is authoritative via serialized_assets,
+// not via quantity math"); this function follows that precedent for the QUANTITY math specifically. A
+// SERIAL/LOT row still counts as "physical movement evidence exists" (sawAnyPhysical/sawEligible) --
+// it genuinely is a movement, just not one this function aggregates by quantity -- so an eligible
+// warehouse with ONLY SERIAL evidence still resolves to a known 0 (a real, if empty, answer) rather
+// than a fabricated UNKNOWN. A row with NO trackingMode field is treated as NONE (included) -- safe
+// because trackingMode is a REQUIRED, validated field on every governed operational-movement write
+// (operationalMovementValidation.ts's isTrackingMode check), so a row carrying a governed type can
+// never legitimately lack it; the default only matters for rows predating the field (never a genuine
+// SERIAL row).
+//
+// RETURNED/SCRAPPED are now summed here too (H7 secondary finding): schema-legal operational movement
+// types (RMA / Scrap source objects) that transferOrderCommand.ts, cycleCountExpectedQuantity.ts and
+// mobileLocationPresenceProbe.ts already sum, but that this consumer previously omitted entirely.
+//
 // Returns null (UNKNOWN) when the part has no physical movement evidence at all -- never treated as 0, matching
 // the previous contract. Floored at 0 so a malformed ledger can never produce negative sellable stock.
 export function sumLedgerEligibleOnHand(
-  rows: Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string } }>,
+  rows: Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
   eligibleWarehouseIds: Set<string>
 ): number | null {
   // Two distinct facts, exactly as the previous stock_locations contract drew them:
@@ -70,15 +92,17 @@ export function sumLedgerEligibleOnHand(
   let sawAnyPhysical = false;
   let sawEligible = false;
   let onHand = 0;
-  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED"]);
+  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED", "RETURNED", "SCRAPPED"]);
   for (const r of rows) {
+    const isNoneModeQuantity = r.trackingMode === undefined || r.trackingMode === "NONE";
     if (PHYSICAL.has(r.type)) sawAnyPhysical = true;
     const loc = r.location;
     if (!loc || loc.type !== "WAREHOUSE" || typeof loc.locationId !== "string") continue;
     if (!eligibleWarehouseIds.has(loc.locationId)) continue;
+    if (!isNoneModeQuantity) { sawEligible = true; continue; } // SERIAL/LOT: evidence counted, quantity excluded (H7)
     const q = num0(r.quantity);
-    if (r.type === "RECEIVED" || r.type === "TRANSFER_IN") { sawEligible = true; onHand += q; }
-    else if (r.type === "TRANSFER_OUT") { sawEligible = true; onHand -= q; }
+    if (r.type === "RECEIVED" || r.type === "TRANSFER_IN" || r.type === "RETURNED") { sawEligible = true; onHand += q; }
+    else if (r.type === "TRANSFER_OUT" || r.type === "SCRAPPED") { sawEligible = true; onHand -= q; }
     else if (r.type === "ADJUSTED") {
       // ADJUSTED carries its own sign (negative when a reconciled Cycle Count came up short), so num0()'s
       // positive-only guard would silently drop the shortage. Read the raw value.

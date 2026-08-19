@@ -140,15 +140,39 @@ check("every governed business Role's own .id matches its map key", () => {
 // === Assignability gate (trustedWriterCommands.ts GOVERNED_ASSIGNABLE_ROLES) ===
 //
 // Declaring a Role does NOT make it assignable -- a second, deliberate allowlist controls which
-// governed Roles the trusted-writer grant path will accept. These tests pin the two properties that
+// governed Roles the trusted-writer grant path will accept. These tests pin the properties that
 // gate actually exists to protect.
 
-// The load-bearing one. The privileged two-person rule (self-approval ban, distinct approverUid)
-// only means anything if no privileged Role can be quietly slipped into the assignable set.
-check("no privileged Role is assignable through the governed allowlist", () => {
+// Owner ruling (grantable-governed-roles workstream): ALL 15 governed business Roles are now
+// governed-assignable, including the privileged `owner` Role. The invariant that actually matters
+// is narrower than "no privileged Role is assignable" (that was true only because no privileged
+// governed Role existed on the allowlist before): the two-person rule (self-approval ban, distinct
+// approverUid, approver-must-independently-hold-a-privileged-Role) is keyed off `role.privileged`
+// inside grantRole/revokeRole themselves, not off which allowlist a Role came from, so it protects
+// `owner` automatically. What this test pins instead is that `owner` is the ONLY privileged entry --
+// nothing else can quietly become grant-target-privileged without the two-person rule waking up for
+// it too, which would be a silent, untested change to who needs a second approver.
+check("owner is the only privileged Role on the governed allowlist; every other entry is non-privileged", () => {
+  const privilegedIds = [];
   for (const [id, role] of Object.entries(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST)) {
-    assert.equal(role.privileged, false, `${id} is privileged and must not be governed-assignable`);
+    if (role.privileged) {
+      privilegedIds.push(id);
+    }
   }
+  assert.deepEqual(privilegedIds, ["owner"], "owner must be the ONLY privileged governed-assignable Role");
+});
+
+// Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
+// matching Owner's explicit direction ("make all 15 governed business roles grantable").
+check("all fifteen governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+  for (const id of EXPECTED_IDS) {
+    assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
+  }
+  assert.equal(
+    Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
+    15,
+    "the governed allowlist must contain exactly the 15 declared governed business Roles",
+  );
 });
 
 // Every entry must be a real governed Role, identical to its catalog definition -- not a lookalike
@@ -258,22 +282,42 @@ check("Office Manager: Customer read/create/update + Work Order create; no gover
   }
 });
 
-check("Sales Manager: Customer read/create/update only", () => {
-  for (const id of ["account.record.read", "account.record.create", "account.record.update"]) {
+check("Sales Manager: Customer read/create/update + inventory visibility; still no governed-field write", () => {
+  for (const id of ["account.record.read", "account.record.create", "account.record.update", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   assert.equal(resolve("account.governedField.write", "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY");
 });
 
-check("Accounting Manager: Customer read-only, no governed-field write", () => {
-  assert.equal(resolve("account.record.read", "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
-  for (const id of ["account.record.create", "account.record.update", "account.governedField.write"]) {
+// Owner ruling 2026-08-18: salesOrder.read granted to Sales Manager. It is registered
+// active:false, so the GRANT is recorded while every resolve still DENIES on
+// inactivePermission -- grant is not activation. Asserting both halves is the point:
+// the day someone activates the id this Role gains the read with no further change,
+// and until then no amount of grant can open it.
+check("Sales Manager: holds the salesOrder.read grant, which still resolves DENY/inactivePermission", () => {
+  assert.ok(GOVERNED_BUSINESS_ROLES.salesManager.permissions.includes("salesOrder.read"));
+  const r = resolve("salesOrder.read", "salesManager", GOVERNED_BUSINESS_ROLES);
+  assert.equal(r.decision, "DENY");
+  assert.equal(r.reason, "inactivePermission");
+});
+
+check("Sales Manager: no write authority over orders or purchasing came with the reads", () => {
+  for (const id of ["salesOrder.write", "salesOrder.fulfill", "reorder.purchaseOrder.create", "inventory.action.create"]) {
+    assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Accounting Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
+  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
+    assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of ["account.record.create", "account.record.update"]) {
     assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
 
-check("Finance Manager: Customer read + governed-field write; no ordinary Customer create/update", () => {
-  for (const id of ["account.record.read", "account.governedField.write"]) {
+check("Finance Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
+  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
     assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   for (const id of ["account.record.create", "account.record.update"]) {
@@ -281,20 +325,82 @@ check("Finance Manager: Customer read + governed-field write; no ordinary Custom
   }
 });
 
-check("Accounting Manager and Finance Manager remain distinct (Owner's explicit requirement)", () => {
-  const accountingSet = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
-  const financeSet = new Set(FINANCE_MANAGER_ROLE.permissions);
-  assert.equal(accountingSet.has("account.governedField.write"), false, "Accounting Manager must not hold the Finance-distinguishing permission");
-  assert.equal(financeSet.has("account.governedField.write"), true, "Finance Manager must hold its distinguishing permission");
-  assert.notDeepEqual([...accountingSet].sort(), [...financeSet].sort(), "the two Roles' grant sets must not be identical");
+// Both money Roles read the committed order, and neither can write it or void a PO.
+check("Finance/Accounting Manager: Sales Order read is granted-but-inactive, and neither Role gained write authority", () => {
+  for (const roleId of ["financeManager", "accountingManager"]) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[roleId].permissions.includes("salesOrder.read"), roleId);
+    const r = resolve("salesOrder.read", roleId, GOVERNED_BUSINESS_ROLES);
+    assert.equal(r.decision, "DENY", roleId);
+    assert.equal(r.reason, "inactivePermission", roleId);
+    for (const id of ["salesOrder.write", "salesOrder.fulfill", "reorder.purchaseOrder.create", "reorder.purchaseOrder.void"]) {
+      assert.equal(resolve(id, roleId, GOVERNED_BUSINESS_ROLES).decision, "DENY", roleId + "/" + id);
+    }
+  }
 });
 
-check("Field Manager: full Work Order lifecycle + field-inventory read; no reorder/purchasing execution", () => {
-  for (const id of ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
+// OWNER REVERSAL 2026-08-18 ("accountingManager should be like financeManager for
+// now") replaces the earlier "remain distinct" requirement this test used to pin.
+// The assertion is inverted rather than deleted so the parity stays a stated
+// decision: if the two sets ever diverge again, that has to be someone's choice.
+check("Accounting Manager and Finance Manager are deliberately IDENTICAL (Owner ruling 2026-08-18, superseding the earlier distinctness requirement)", () => {
+  const accountingSet = [...new Set(ACCOUNTING_MANAGER_ROLE.permissions)].sort();
+  const financeSet = [...new Set(FINANCE_MANAGER_ROLE.permissions)].sort();
+  assert.deepEqual(accountingSet, financeSet, "the two Roles' grant sets are intentionally the same set");
+  assert.ok(accountingSet.includes("account.governedField.write"), "parity was reached by RAISING Accounting to Finance, not by lowering Finance");
+});
+
+check("Field Manager: full Work Order lifecycle + field-inventory read + Customer read; no reorder/purchasing execution", () => {
+  for (const id of ["account.record.read", "workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   for (const id of ["reorder.request.assign", "reorder.purchaseOrder.create", "inventory.action.create"]) {
     assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+// === Owner ruling (grantable-governed-roles workstream): fulfillment.coordinatedVisit.read grant ===
+//
+// Proposed grant set is exactly {owner, admin, operationsManager, fieldManager, dispatcher}. Was
+// granted to NO Role before this change, so Coordinated Visits/Mission were inert for everyone,
+// including Owner. GRANT IS NOT ACTIVATION: the id stays registered active:false, so every check
+// here resolves DENY with reason "inactivePermission" (never "noQualifyingGrant") for a role that
+// DOES hold it, and DENY for any reason at all for a role that does not.
+check("fulfillment.coordinatedVisit.read: Field Manager and Operations Manager hold the grant (inactivePermission DENY, not noQualifyingGrant)", () => {
+  for (const id of ["fieldManager", "operationsManager"]) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[id].permissions.includes("fulfillment.coordinatedVisit.read"), id);
+    const result = resolve("fulfillment.coordinatedVisit.read", id, GOVERNED_BUSINESS_ROLES);
+    assert.equal(result.decision, "DENY", id);
+    assert.equal(result.reason, "inactivePermission", `${id} must be denied by the active:false gate, not by lacking the grant`);
+  }
+});
+
+check("fulfillment.coordinatedVisit.read: Owner inherits it by composition (through ADMIN_ROLE.permissions), same inactivePermission reason", () => {
+  assert.ok(OWNER_ROLE.permissions.includes("fulfillment.coordinatedVisit.read"));
+  const result = resolve("fulfillment.coordinatedVisit.read", "owner", GOVERNED_BUSINESS_ROLES);
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("fulfillment.coordinatedVisit.read: admin and dispatcher (compatibility Roles) hold the grant too -- the full five-role set is {owner, admin, operationsManager, fieldManager, dispatcher}", () => {
+  for (const id of ["admin", "dispatcher"]) {
+    assert.ok(COMPATIBILITY_ROLES[id].permissions.includes("fulfillment.coordinatedVisit.read"), id);
+    const result = resolveEffectivePermission({
+      permissionId: "fulfillment.coordinatedVisit.read",
+      assignments: [grant(id, COMPATIBILITY_ROLES)],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: { scope: { type: "global" }, condition: {} },
+    });
+    assert.equal(result.decision, "DENY");
+    assert.equal(result.reason, "inactivePermission");
+  }
+});
+
+check("fulfillment.coordinatedVisit.read: no OTHER Role (compatibility or governed) carries it -- the grant is exactly the five named roles", () => {
+  assert.equal(COMPATIBILITY_ROLES.technician.permissions.includes("fulfillment.coordinatedVisit.read"), false);
+  for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    if (id === "operationsManager" || id === "fieldManager" || id === "owner") continue;
+    assert.equal(role.permissions.includes("fulfillment.coordinatedVisit.read"), false, `${id} must not hold fulfillment.coordinatedVisit.read`);
   }
 });
 
@@ -314,8 +420,11 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
   ]) {
     assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
+  // Owner ruling 2026-08-18: create is now granted. Update and governed-field write are
+  // NOT -- this Role can open a Customer but cannot amend one, which is the deliberate
+  // asymmetry, not a half-finished grant.
+  assert.equal(resolve("account.record.create", "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
   for (const id of [
-    "account.record.create",
     "account.record.update",
     "account.governedField.write",
     "admin.userStatus.write",
@@ -434,10 +543,34 @@ check("no OTHER governed Role carries these capabilities in its permission set",
     if (id !== "workOrderPartsPlanner") {
       assert.equal(role.permissions.includes("workOrder.parts.plan"), false, id);
     }
-    if (id !== "crmActivityContributor") {
+    // "owner" is exempted, not overlooked. Owner ruling 2026-08-19 granted CRM activity
+    // on ADMIN_ROLE (canonical admin authority), and OWNER_PERMISSIONS is composed from
+    // ADMIN_ROLE.permissions -- so owner holds these ids BY COMPOSITION, exactly the way
+    // it already inherits fulfillment.coordinatedVisit.read. The invariant this check
+    // protects is that no OTHER governed Role picks them up independently; that still
+    // holds, and a dedicated check below pins owner-via-composition explicitly.
+    if (id !== "crmActivityContributor" && id !== "owner") {
       assert.equal(role.permissions.includes("crm.activity.create"), false, id);
       assert.equal(role.permissions.includes("crm.activity.read"), false, id);
     }
+  }
+});
+
+// Owner ruling 2026-08-19 -- closes docs/governance/crm-activity-admin-authority-proposal.md.
+// Before this, exactly one Role carried these ids, so a dispatcher holding the operational
+// crmActivityContributor assignment could read CRM notes on an Account while the ADMIN could
+// not, and owner inherited the same gap. Pinned in both directions: admin holds them
+// directly, owner by composition, and dispatcher does NOT gain create as a side effect of
+// the shared admin/dispatcher base.
+check("CRM activity: admin holds create+read directly, owner by composition, dispatcher NOT via the shared base", () => {
+  for (const id of ["crm.activity.create", "crm.activity.read"]) {
+    assert.ok(ADMIN_ROLE.permissions.includes(id), `admin must hold ${id}`);
+    assert.ok(OWNER_ROLE.permissions.includes(id), `owner must inherit ${id} via OWNER_PERMISSIONS`);
+    assert.equal(
+      DISPATCHER_ROLE.permissions.includes(id),
+      false,
+      `dispatcher must NOT hold ${id} -- it was granted ADMIN-only, not on the shared base`,
+    );
   }
 });
 

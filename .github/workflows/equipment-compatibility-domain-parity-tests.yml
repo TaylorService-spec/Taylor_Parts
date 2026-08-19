@@ -9,6 +9,11 @@ on:
   pull_request:
     paths:
       - "functions/src/equipmentCompatibility/**"
+      # firestore.indexes.json IS a D4 surface: equipmentCompatibilityRegistry.test.mjs asserts
+      # that no D4-governed collection acquires a compound index. Without this path, a change to
+      # the index file could breach that boundary without ever running the guard -- which is
+      # exactly how three equipment_models composites were declared and deployed unnoticed.
+      - "firestore.indexes.json"
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
@@ -31,6 +36,11 @@ on:
     branches: [main]
     paths:
       - "functions/src/equipmentCompatibility/**"
+      # firestore.indexes.json IS a D4 surface: equipmentCompatibilityRegistry.test.mjs asserts
+      # that no D4-governed collection acquires a compound index. Without this path, a change to
+      # the index file could breach that boundary without ever running the guard -- which is
+      # exactly how three equipment_models composites were declared and deployed unnoticed.
+      - "firestore.indexes.json"
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"

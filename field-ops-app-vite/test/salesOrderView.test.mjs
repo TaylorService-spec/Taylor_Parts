@@ -72,8 +72,73 @@ test("salesOrderStateTone covers every lifecycle state and fails closed to unkno
   assert.equal(salesOrderStateTone(undefined), "unknown");
 });
 
+// The governed business reference must pass through, and the document id must never be used
+// as a stand-in when it is absent (DECISIONS #106).
+test("salesOrderNumber passes through when present", () => {
+  const view = salesOrderView({
+    result: {
+      status: "ready",
+      salesOrder: { id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [], salesOrderNumber: "SO-2026-000123" },
+    },
+  });
+  assert.equal(view.salesOrderNumber, "SO-2026-000123");
+});
+
+test("salesOrderNumber is honestly null on a legacy Sales Order predating numbering -- never the document id", () => {
+  const view = salesOrderView({
+    result: {
+      status: "ready",
+      salesOrder: { id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [] },
+    },
+  });
+  assert.equal(view.salesOrderNumber, null);
+  assert.notEqual(view.salesOrderNumber, view.id);
+  assert.equal(view.id, "so-doc-id", "the id is still available for routing, just never as a label");
+});
+
 test("an empty lines array yields allLinesFulfilled false, never a false-positive on zero lines", () => {
   const view = salesOrderView({ result: { status: "ready", salesOrder: { id: "SO-3", lines: [] } } });
   assert.equal(view.allLinesFulfilled, false);
   assert.deepEqual(view.lines, []);
+});
+
+// #1099 — the Originating Opportunity link must not be labelled with a document id.
+//
+// The reference is DENORMALIZED onto the Sales Order at creation rather than joined at
+// read time, and that is an authorization decision rather than a performance one:
+// getSalesOrderContext is gated on salesOrder.read, so returning Opportunity data through
+// it would hand a caller fields governed by opportunity.read. A read must not become a
+// side door around the capability guarding what it returns.
+test("#1099 — the Opportunity reference is carried through for the lineage link", () => {
+  const view = salesOrderView({
+    loading: false,
+    errorStatus: null,
+    result: {
+      status: "ready",
+      salesOrder: {
+        id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [],
+        sourceOpportunityId: "opp-doc-id", sourceOpportunityNumber: "OPP-2026-000042",
+      },
+    },
+  });
+  assert.equal(view.sourceOpportunityNumber, "OPP-2026-000042");
+  assert.notEqual(view.sourceOpportunityNumber, view.sourceOpportunityId, "the reference is not the document id");
+});
+
+test("#1099 — a Sales Order predating Opportunity identity reports null, not a guess", () => {
+  // Honest absence. The UI renders "Originating opportunity" for these — a true statement
+  // that a link exists — rather than backfilling a value nobody allocated.
+  const view = salesOrderView({
+    loading: false,
+    errorStatus: null,
+    result: {
+      status: "ready",
+      salesOrder: {
+        id: "so-doc-id", accountId: "acct-1", state: "CONFIRMED", lines: [],
+        sourceOpportunityId: "opp-doc-id",
+      },
+    },
+  });
+  assert.equal(view.sourceOpportunityNumber, null);
+  assert.equal(view.sourceOpportunityId, "opp-doc-id", "the id is still available for routing, just never as a label");
 });

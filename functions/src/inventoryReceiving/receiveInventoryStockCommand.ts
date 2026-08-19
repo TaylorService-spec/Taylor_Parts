@@ -21,6 +21,7 @@ import { stageOperationalMovement } from "../inventoryLedger/operationalMovement
 import { RECEIVING_ORDERS_COLLECTION, type ReceivingActor } from "./receivingTypes.js";
 import { validateReceivingOrderInput } from "./receivingValidation.js";
 import { stageReceivingOrder, receivingOrderDocId, deserializeReceivingOrder, type ReceivingIdempotencyStore } from "./receivingRepository.js";
+import { allocateReceivingOrderNumber } from "./receivingOrderNumbering.js";
 
 const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
 const REORDER_REQUESTS_COLLECTION = "reorder_requests";
@@ -131,7 +132,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
   return deps.db.runTransaction(async (txn) => {
     const now = deps.now();
     // Buffered writes: created/updated only AFTER all reads (Firestore requires reads-before-writes).
-    const writes: Array<{ op: "create" | "update"; ref: DocumentReference; data: Record<string, unknown> }> = [];
+    const writes: Array<{ op: "create" | "update" | "set"; ref: DocumentReference; data: Record<string, unknown> }> = [];
     const bufferedStore = (collection: string): ReceivingIdempotencyStore => ({
       async read(docId) { const snap = await txn.get(deps.db.collection(collection).doc(docId)); return snap.exists ? (snap.data() ?? {}) : null; },
       create(docId, data) { writes.push({ op: "create", ref: deps.db.collection(collection).doc(docId), data }); },
@@ -197,7 +198,22 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     const occurredAtMillis = existingReceiving === null ? now.getTime() : deserializeReceivingOrder(existingReceiving).createdAt;
 
     // ---- 8. stage the Receiving Order (reads idempotency doc; buffers create if applying) ----
+    const receivingWriteIndex = writes.length;
     const receivingOutcome = await stageReceivingOrder(receivingStore, request, authority, { actor, now });
+
+    // ---- 8b. RECEIVING ORDER REFERENCE NUMBER (RO-YYYY-######) -- allocated ONLY on a genuine new
+    // create, never on replay (a replayed receipt keeps its original number; nothing new is ever
+    // issued for the same idempotencyKey). allocateReceivingOrderNumber performs a READ ONLY here --
+    // see receivingOrderNumbering.ts's module header for why its counter WRITE is deferred rather than
+    // committed immediately (this command buffers every write and flushes them together at the very
+    // end, after the SERIAL identity reads below, so a real write here would break that ordering). The
+    // counter's pending write is pushed onto this command's own write buffer so it flushes atomically
+    // with the Receiving Order create, the ledger event(s), and any Serialized Asset activations.
+    if (receivingOutcome.outcome === "applied") {
+      const allocated = await allocateReceivingOrderNumber(txn, now.getUTCFullYear());
+      writes[receivingWriteIndex].data.receivingOrderNumber = allocated.receivingOrderNumber;
+      writes.push({ op: "set", ref: allocated.counterWrite.ref, data: allocated.counterWrite.data });
+    }
 
     // ---- 9. stage the RECEIVED ledger effect(s) (reads ledger idempotency docs; buffers creates) ----
     //
@@ -303,6 +319,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     // all-or-nothing (the enclosing runTransaction). ----
     for (const w of writes) {
       if (w.op === "create") txn.create(w.ref, w.data);
+      else if (w.op === "set") txn.set(w.ref, w.data);
       else txn.update(w.ref, w.data);
     }
     return { outcome: "applied", receivingId, ledgerEventId, ledgerEventIds, ...(isSerial ? { serializedAssetIds } : {}) };

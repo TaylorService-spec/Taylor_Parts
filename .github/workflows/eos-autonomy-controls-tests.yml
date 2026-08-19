@@ -10,6 +10,7 @@ on:
       - "docs/orchestration/lib/ownerCapacityReserve*.mjs"
       - "docs/orchestration/lib/progressDetection*.mjs"
       - "docs/orchestration/lib/autonomyPolicy*.mjs"
+      - "docs/orchestration/lib/writerLanes*.mjs"
       - ".github/workflows/eos-autonomy-controls-tests.yml"
   push:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - "docs/orchestration/lib/ownerCapacityReserve*.mjs"
       - "docs/orchestration/lib/progressDetection*.mjs"
       - "docs/orchestration/lib/autonomyPolicy*.mjs"
+      - "docs/orchestration/lib/writerLanes*.mjs"
 
 jobs:
   test:
@@ -25,4 +27,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: node --test docs/orchestration/lib/ownerCapacityReserve.test.mjs docs/orchestration/lib/progressDetection.test.mjs docs/orchestration/lib/autonomyPolicy.test.mjs
+      - run: node --test docs/orchestration/lib/ownerCapacityReserve.test.mjs docs/orchestration/lib/progressDetection.test.mjs docs/orchestration/lib/autonomyPolicy.test.mjs docs/orchestration/lib/writerLanes.test.mjs

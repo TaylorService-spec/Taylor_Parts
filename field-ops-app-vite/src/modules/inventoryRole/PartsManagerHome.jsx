@@ -99,13 +99,16 @@ export default function PartsManagerHome({ accessVersion } = {}) {
         Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
         here.
       </p>
-      {healthError ? (
-        <p className="fo-muted">Unable to load inventory health right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState loading={healthLoading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
-          <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
-        </LoadingEmptyState>
-      )}
+      <LoadingEmptyState
+        loading={healthLoading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading inventory health..."
+        failedText="Unable to load inventory health right now. Try again shortly."
+        emptyText=""
+      >
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+      </LoadingEmptyState>
 
       <ManagerQueuePanel queue={queue} resolveName={resolveName} loading={queueLoading} error={queueError} />
 
@@ -127,37 +130,35 @@ export default function PartsManagerHome({ accessVersion } = {}) {
 
       <h3>Relevant History</h3>
       <p className="fo-muted">Reorder Requests you personally approved, rejected, or assigned, now at a terminal status.</p>
-      {historyError ? (
-        <p className="fo-muted" role="alert">Unable to load Relevant History right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState
-          loading={historyLoading}
-          isEmpty={history.length === 0}
-          loadingText="Loading Relevant History..."
-          emptyText="No terminal Reorder Requests you reviewed or assigned yet."
-        >
-          <table className="fo-table">
-            <thead>
-              <tr>
-                <th>Part</th>
-                <th>Qty</th>
-                <th>Status</th>
-                <th>Date</th>
+      <LoadingEmptyState
+        loading={historyLoading}
+        failed={!!historyError}
+        isEmpty={history.length === 0}
+        loadingText="Loading Relevant History..."
+        failedText="Unable to load Relevant History right now. Try again shortly."
+        emptyText="No terminal Reorder Requests you reviewed or assigned yet."
+      >
+        <table className="fo-table">
+          <thead>
+            <tr>
+              <th>Part</th>
+              <th>Qty</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((request) => (
+              <tr key={request.id}>
+                <td>{resolveName(request.partId)}</td>
+                <td>{getDisplayQty(request)}</td>
+                <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
+                <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
               </tr>
-            </thead>
-            <tbody>
-              {history.map((request) => (
-                <tr key={request.id}>
-                  <td>{resolveName(request.partId)}</td>
-                  <td>{getDisplayQty(request)}</td>
-                  <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
-                  <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </LoadingEmptyState>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </LoadingEmptyState>
     </WorkspaceShell>
   );
 }

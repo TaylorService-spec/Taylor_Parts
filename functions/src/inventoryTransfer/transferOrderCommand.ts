@@ -49,6 +49,7 @@ import {
 } from "./transferOrderTypes.js";
 import { validateCreateTransferInput } from "./transferOrderValidation.js";
 import { transferOrderDocId, fingerprintTransferOrder, serializeTransferOrder, deserializeTransferOrder, transitionFields } from "./transferOrderRepository.js";
+import { allocateTransferOrderNumber } from "./transferOrderNumbering.js";
 
 // Re-exported for callers/tests that import the error taxonomy alongside the command functions
 // (mirrors receiveInventoryStockCommand.ts, which defines its errors locally; here they live in
@@ -223,8 +224,17 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
       if (onHand < value.quantity) throw new InsufficientStockError(`origin on-hand (${onHand}) is less than the requested quantity (${value.quantity})`);
     }
 
+    // ---- 5b. allocate the TO-YYYY-###### reference number ----
+    //
+    // This is the transaction's LAST read (transferOrderNumbering.ts's allocateTransferOrderNumber does
+    // one txn.get + one txn.set on the shared per-year counter doc) — it must run only after every other
+    // read above (part/idempotency/location/stock-sufficiency) has completed, because its own tx.set is
+    // a real write and Firestore requires all reads before any writes in a transaction. Everything after
+    // this point is either a buffered write (flushed below) or deps.stageAudit's own immediate write.
+    const { transferOrderNumber } = await allocateTransferOrderNumber(txn, now.getUTCFullYear());
+
     // ---- 6. stage the create ----
-    writes.push({ op: "create", ref: deps.db.collection(TRANSFER_ORDERS_COLLECTION).doc(transferOrderId), data: serializeTransferOrder(value, actor, now, fingerprint) });
+    writes.push({ op: "create", ref: deps.db.collection(TRANSFER_ORDERS_COLLECTION).doc(transferOrderId), data: serializeTransferOrder(value, actor, now, fingerprint, transferOrderNumber) });
 
     // ---- 7. audit ----
     deps.stageAudit(txn, {
@@ -242,7 +252,7 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
       if (w.op === "create") txn.create(w.ref, w.data);
       else txn.update(w.ref, w.data);
     }
-    return { outcome: "applied", transferOrderId, fingerprint };
+    return { outcome: "applied", transferOrderId, fingerprint, transferOrderNumber };
   });
 }
 

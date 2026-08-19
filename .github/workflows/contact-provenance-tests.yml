@@ -1,0 +1,51 @@
+name: Contact Provenance Tests
+
+# Contact provenance convergence -- CI coverage for the three Contact write paths
+# (single create, single update, CSV import) converging on the platform provenance
+# invariant (metadata/v2/provenance.js's createdAt/createdBy/updatedAt/updatedBy).
+# Contact is a client-direct write (no callable, gated by firestore.rules'
+# isAdminOrDispatcher()), so the test mocks firebase entirely -- no emulator, deploy,
+# or secrets. Runs the vitest + jsdom write-path test and lint over exactly the files
+# this change touches.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/contacts.js"
+      - "field-ops-app-vite/src/domain/contactImport.js"
+      - "field-ops-app-vite/test/contactProvenance.test.jsx"
+      - ".github/workflows/contact-provenance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/contacts.js"
+      - "field-ops-app-vite/src/domain/contactImport.js"
+      - "field-ops-app-vite/test/contactProvenance.test.jsx"
+      - ".github/workflows/contact-provenance-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contact-provenance-tests:
+    name: Contact provenance (vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Contact write-path provenance tests (vitest + jsdom)
+        run: npx vitest run test/contactProvenance.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/contacts.js src/domain/contactImport.js
+        working-directory: field-ops-app-vite

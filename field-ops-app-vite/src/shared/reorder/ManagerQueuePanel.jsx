@@ -6,6 +6,7 @@ import LoadingEmptyState from "../ui/LoadingEmptyState.jsx";
 import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import { Button } from "../ui/primitives/index.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A: Parts -> WORK becomes the
 // primary actionable Parts workspace; extract/reuse the existing actionable components
@@ -48,9 +49,9 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
     <div className="fo-card">
       <div className="fo-workspace-header">
         <h3 className="fo-workspace-header-title">Assign -- {partName}</h3>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <form className="fo-form" onSubmit={handleAssign}>
         {error && <p className="fo-muted">{error}</p>}
@@ -63,9 +64,9 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
           placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <button type="submit" disabled={submitting || !assignedToUserId}>
-            {submitting ? "Assigning..." : "Assign"}
-          </button>
+          <Button type="submit" loading={submitting} disabled={!assignedToUserId}>
+            Assign
+          </Button>
         </div>
       </form>
     </div>
@@ -98,9 +99,11 @@ export default function ManagerQueuePanel({
       <p className="fo-muted">{description}</p>
       <LoadingEmptyState
         loading={loading}
+        failed={!!error}
         isEmpty={queue.length === 0}
         loadingText={`Loading ${title}...`}
-        emptyText={error ? `Unable to load the ${title} right now. Try again shortly.` : "No requests awaiting assignment."}
+        failedText={`Unable to load the ${title} right now. Try again shortly.`}
+        emptyText="No requests awaiting assignment."
       >
         <OperationalCardGrid aria-label={title}>
           {queue.map((request) => (
@@ -117,8 +120,9 @@ export default function ManagerQueuePanel({
                   { key: "approved", label: "Approved", value: formatTimestamp(request.reviewedAt, { unknown: "—" }) },
                 ]}
                 actions={
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     aria-label={`Assign ${resolveName(request.partId)}`}
                     onClick={(e) => {
                       lastTriggerRef.current = e.currentTarget;
@@ -126,7 +130,7 @@ export default function ManagerQueuePanel({
                     }}
                   >
                     Assign
-                  </button>
+                  </Button>
                 }
               />
             </li>

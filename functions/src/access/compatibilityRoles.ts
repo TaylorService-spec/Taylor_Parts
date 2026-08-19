@@ -28,9 +28,10 @@
 // dispatcher). `audit.event.read` remains deferred to Row 11 (the Admin
 // Portal's own read surface), since Row 7 does not consume it.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at field-ops-app-vite/src/access/compatibilityRoles.ts. If
-// either file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
 
 const PARTS_MANAGER_ONLY = { role: "PARTS_MANAGER" };
@@ -67,6 +68,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "reorder.purchaseOrder.read",
   "reorder.purchaseOrder.create",
   "reorder.purchaseOrder.void",
+  "inventory.analytics.read",
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",
@@ -108,6 +110,18 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
+  // Coordinated Operations fidelity fix, grant step (Owner ruling, grantable-governed-roles
+  // workstream). `fulfillment.coordinatedVisit.read` was registered active:false and ALREADY
+  // eligible for per-environment activation (environmentCapabilityOverrides.ts), but held by NO
+  // Role at all -- so Coordinated Visits (Service/Dispatch) and Coordinated Mission (Technician)
+  // stayed inert even where activation was on, for every principal including Owner. Owner's
+  // proposed grant set is exactly {owner, admin, operationsManager, fieldManager, dispatcher};
+  // granted here to the shared admin/dispatcher base so both compatibility Roles hold it AND
+  // Owner inherits it by composition (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...]) --
+  // operationsManager and fieldManager are granted directly in governedBusinessRoles.ts. Grant is
+  // NOT activation: this id stays active:false, so it denies everywhere the per-environment
+  // override is off (i.e. everywhere except platform-sandbox), exactly like the spine ids above.
+  "fulfillment.coordinatedVisit.read",
 ] as const;
 
 // reorder.purchaseOrder.void is double-gated in firestore.rules
@@ -152,6 +166,26 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "finance.adjustment.record",
     "finance.refund.record",
     "finance.read",
+    // CRM activity -- Owner ruling 2026-08-19, closing the finding in
+    // docs/governance/crm-activity-admin-authority-proposal.md. Exactly one Role
+    // carried these ids (crmActivityContributor), so canonical admin authority did
+    // not include them: a dispatcher holding that operational Role could read CRM
+    // notes on an Account while the admin could not, and OWNER inherited the same
+    // gap through OWNER_PERMISSIONS composition. The proposal explicitly REJECTED
+    // assigning crmActivityContributor to admin as the durable fix -- that turns
+    // canonical authority into accumulated operational-role workarounds. Granting
+    // on ADMIN_ROLE is the durable form, and Owner ruled admin holds the full set,
+    // not read alone.
+    //
+    // ADMIN-only (NOT the shared base) so DISPATCHER does not gain crm.activity.create
+    // as a side effect -- dispatcher already holds both by its own governed
+    // crmActivityContributor assignment, which stays the audited path for anyone else.
+    // Owner inherits both automatically via OWNER_PERMISSIONS composition.
+    //
+    // GRANT != ACTIVATION, unchanged: both ids remain per-environment activated
+    // (environmentCapabilityOverrides.ts) and production stays triple-blocked.
+    "crm.activity.create",
+    "crm.activity.read",
   ],
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;

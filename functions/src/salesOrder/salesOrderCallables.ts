@@ -21,6 +21,7 @@ import {
   type SalesOrderDocState, type BuiltSalesOrder,
 } from "./salesOrderCommands";
 import type { SalesOrderTransition } from "./salesOrderLifecycle";
+import { allocateSalesOrderNumber } from "./salesOrderNumbering";
 
 export const SALES_ORDER_WRITE_CAPABILITY = "salesOrder.write";
 
@@ -100,8 +101,17 @@ export async function persistCreatedSalesOrder(
   const oppRef = built.sourceOpportunityId
     ? await verifySourceOpportunity(db, tx, built.sourceOpportunityId, built.accountId, built.lines)
     : null;
+
+  // HUMAN IDENTITY. Allocated inside the caller's transaction, alongside the document write, so a
+  // reference is never issued without its Sales Order appearing and a Sales Order never appears
+  // without one. Server-authoritative: `built` (from the pure `buildCreateSalesOrder`) never carries
+  // a salesOrderNumber, so there is nothing here for a client-supplied value to override.
+  //
+  // Immutable by construction: set here at creation and no transition path writes it.
+  const { salesOrderNumber } = await allocateSalesOrderNumber(tx, new Date().getUTCFullYear());
+
   const ref = db.collection(SALES_ORDERS_COLLECTION).doc();
-  tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  tx.set(ref, { ...fields, salesOrderNumber, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createSalesOrder", targetType: "salesOrder", targetId: ref.id, outcome: "applied", summary: `created sales order for account ${built.accountId}` });
   if (oppRef) tx.update(oppRef, { salesOrderId: ref.id });
   return { success: true as const, replayed: false as const, salesOrderId: ref.id, state: built.state };
@@ -141,7 +151,8 @@ async function requireSalesOrderWrite(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [SALES_ORDER_WRITE_CAPABILITY] });
     allowed = decisions[SALES_ORDER_WRITE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireSalesOrderWrite] capability resolution failed for ${SALES_ORDER_WRITE_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to write Sales Orders.");

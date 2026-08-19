@@ -6,8 +6,9 @@ import assert from "node:assert/strict";
 import {
   money, zeroMoney, isMoney, fromMajorString, addMoney, subtractMoney, negateMoney,
   multiplyMoneyByQuantity, roundedDiv, multiplyMoneyByRate, rateFromBasisPoints, allocateMoney,
-  compareMoney, isZeroMoney, isNegativeMoney, sumMoney, formatMoneyMajor, MoneyError, currencyExponent,
+  compareMoney, isZeroMoney, isNegativeMoney, sumMoney, formatMoneyMajor, formatMinorUnits, MoneyError, currencyExponent,
 } from "../src/domain/money.js";
+import { formatMinor } from "../src/domain/accountArView.js";
 
 test("construction requires safe integer minor units + a currency", () => {
   const m = money(1234, "USD");
@@ -92,4 +93,28 @@ test("compare / zero / negative / sum / format", () => {
   assert.equal(formatMoneyMajor(money(1234, "USD")), "12.34");
   assert.equal(formatMoneyMajor(money(-9, "USD")), "-0.09");
   assert.equal(formatMoneyMajor(money(1000, "JPY")), "1000");
+});
+
+// --- X-MONEY-FORMATTER-DISAGREEMENT: one shared exponent-aware core, no more divergence ---
+
+test("formatMinorUnits is the exact-integer-math core: exponent-aware, never toFixed float rounding", () => {
+  assert.equal(formatMinorUnits(1234, "USD"), "12.34");
+  assert.equal(formatMinorUnits(-9, "USD"), "-0.09");
+  assert.equal(formatMinorUnits(1000, "JPY"), "1000"); // JPY exponent 0 -- no decimal point at all
+  assert.equal(formatMinorUnits(0, "USD"), "0.00"); // zero is a real amount, renders as zero
+  assert.equal(formatMinorUnits(NaN, "USD"), "—");
+  assert.equal(formatMinorUnits(undefined, "USD"), "—");
+});
+
+test("formatMoneyMajor delegates to formatMinorUnits -- same output, no re-derived math", () => {
+  assert.equal(formatMoneyMajor(money(1234, "USD")), formatMinorUnits(1234, "USD"));
+  assert.equal(formatMoneyMajor(money(1000, "JPY")), formatMinorUnits(1000, "JPY"));
+});
+
+test("the historical disagreement is closed: money.js's formatMoneyMajor and accountArView.js's formatMinor now agree on a non-2-exponent currency (JPY)", () => {
+  // Before the fix, formatMinor hardcoded /100 and would have rendered "10.00" for 1000
+  // JPY minor units -- wrong, since JPY's minor unit IS the major unit (exponent 0).
+  assert.equal(formatMoneyMajor(money(1000, "JPY")), "1000");
+  assert.equal(formatMinor(1000, "JPY"), "JPY 1000");
+  assert.equal(formatMinor(1000, "JPY").replace(/^JPY /, ""), formatMoneyMajor(money(1000, "JPY")));
 });

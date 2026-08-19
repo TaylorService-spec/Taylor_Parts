@@ -46,7 +46,13 @@ export default function ExecutionInsightsPanel({ consumptionSnapshot, technician
             <tr>
               <th>Technician</th>
               <th>Completed</th>
-              <th>Active</th>
+              {/* "Active vocabulary" note: this is the 5th (Work Order
+                  in-progress) sense, and a THIRD distinct population
+                  from WorkOrdersList's "Dispatched+" tab and
+                  TechnicianCapacityCard's "In Progress" count -- it
+                  counts all non-terminal statuses (8), not 5 or 1. See
+                  docs/architecture/ADR-012-persona-authority-composition-and-scope.md */}
+              <th>Open Work Orders</th>
             </tr>
           </thead>
           <tbody>

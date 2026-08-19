@@ -21,6 +21,7 @@ import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { OPPORTUNITIES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { buildCreateSalesOrder, SalesOrderCommandError, type BuiltSalesOrder, type SalesOrderLineInput } from "../salesOrder/salesOrderCommands";
+import { allocateSalesOrderNumber } from "../salesOrder/salesOrderNumbering";
 import { isChannel, type SalesChannel } from "./opportunityLifecycle";
 
 export const OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY = "opportunity.createSalesOrder";
@@ -44,6 +45,7 @@ interface OpportunityLineDoc {
 }
 
 interface OpportunityDoc {
+  opportunityNumber?: string | null;
   outcome?: string | null;
   accountId?: string;
   lines?: OpportunityLineDoc[];
@@ -157,7 +159,36 @@ export async function persistSalesOrderFromOpportunity(
   // [P1.6] Persist the Sales Order AND the Opportunity back-link atomically — same transaction, same commit.
   const soRef = db.collection(SALES_ORDERS_COLLECTION).doc();
   const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
-  tx.set(soRef, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+
+  // HUMAN IDENTITY, same contract as the direct createSalesOrder callable (persistCreatedSalesOrder):
+  // allocated inside this transaction, alongside the document write, never client-supplied, and never
+  // rewritten by any later transition path.
+  const { salesOrderNumber } = await allocateSalesOrderNumber(tx, new Date().getUTCFullYear());
+
+  // LINEAGE IDENTITY, denormalized deliberately rather than joined at read time.
+  //
+  // Sales Order detail shows an "Originating Opportunity" link and had nothing to label it
+  // with but the raw document id. The obvious fix — have getSalesOrderContext read the
+  // Opportunity — would be wrong: that callable is gated on salesOrder.read, and returning
+  // Opportunity data through it would hand a caller fields governed by opportunity.read.
+  // A read must not become a side door around the capability that guards what it returns.
+  //
+  // So the reference is copied here instead, by the governed command that is ALREADY
+  // authorized to read this Opportunity and has already loaded it in this transaction. No
+  // extra read, no cross-capability leak.
+  //
+  // Denormalization is safe for this specific value because the reference is IMMUTABLE —
+  // written once at creation and never updated. A copy of an immutable value cannot go
+  // stale. The Opportunity's human NAME is deliberately NOT copied for the opposite
+  // reason: it is editable, so a copy would drift and the Sales Order would eventually
+  // display a name the Opportunity no longer has.
+  tx.set(soRef, {
+    ...fields,
+    salesOrderNumber,
+    sourceOpportunityNumber: opp.opportunityNumber ?? null,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   tx.update(opportunityRef, { salesOrderId: soRef.id, updatedAt: FieldValue.serverTimestamp() });
 
   stageAuditEventWithId(tx, aid, {
@@ -180,7 +211,8 @@ async function requireCreateSalesOrderFromOpportunity(uid: string): Promise<void
       permissionIds: [OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireCreateSalesOrderFromOpportunity] capability resolution failed for ${OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY}`, err);
     allowed = false; // a throwing resolver is a denial, never an allow
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to create a Sales Order from an Opportunity.");

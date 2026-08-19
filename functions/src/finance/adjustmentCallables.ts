@@ -41,7 +41,8 @@ async function requireAdjustmentRecord(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [FINANCE_ADJUSTMENT_RECORD_CAPABILITY] });
     allowed = decisions[FINANCE_ADJUSTMENT_RECORD_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireAdjustmentRecord] capability resolution failed for ${FINANCE_ADJUSTMENT_RECORD_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to record invoice adjustments.");

@@ -36,8 +36,8 @@ function sourceStatusNote(label, status) {
 
 function AttentionRow({ item }) {
   return (
-    <Link to={item.deepLink} className="work-order-card" style={{ display: "block" }}>
-      <h4 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+    <Link to={item.deepLink} className="work-order-card fo-attention-row">
+      <h4 className="fo-attention-row__title">
         {item.domain === "ar" ? item.invoiceNumber : item.woNumber}
         {item.attentionType === ACCOUNT_ATTENTION_TYPE.ACTION_ITEM ? (
           <StatusPill tone="attention" label="Action needed" />

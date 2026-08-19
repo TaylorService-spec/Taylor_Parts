@@ -5,7 +5,7 @@ import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
 // derived from the operational phase rather than legacy JOB_STATUS literals.
 import { EVENT_TYPE } from "./eventTypes";
 import { normalizeEvent, sortEvents } from "./eventModel";
-import { computeWorkOrderState } from "./workOrderLifecycle";
+import { computeWorkOrderState, mapWoStatusToLifecycleState, isGovernedWorkOrderStatus } from "./workOrderLifecycle";
 // A governed Work Order's createdAt is a Firestore Timestamp; legacy jobs carried epoch
 // millis. Coerce to millis so job events carry a usable number AND work-order-level events
 // stop being silently dropped by the numeric filter below. Pure (duck-types the Timestamp);
@@ -108,6 +108,26 @@ const STATE_EVENT_TYPE = {
 // full transition history: with only createdAt available, there's no
 // way to know when a work order actually became READY vs BLOCKED in the
 // past, only what it is now.
+// computeWorkOrderState() only understands legacy lowercase JOB_STATUS
+// values -- a governed Work Order's status is always one of the 11
+// uppercase fieldops_wos values, which can never equal them, so feeding a
+// governed doc straight to computeWorkOrderState() always falls through to
+// its BLOCKED default (see that function's own comment) regardless of the
+// Work Order's real state. When every doc in the group carries a governed
+// status, derive state from it directly via mapWoStatusToLifecycleState()
+// (the same map WorkOrderDetail/ControlTower already use) instead. Falls
+// back to the legacy aggregate only for genuine legacy Job groups.
+function deriveWorkOrderState(jobs) {
+  if (jobs.length > 0 && jobs.every((j) => isGovernedWorkOrderStatus(j.status))) {
+    const states = jobs.map((j) => mapWoStatusToLifecycleState(j.status).state);
+    if (states.every((s) => s === WORK_ORDER_STATE.COMPLETED)) return WORK_ORDER_STATE.COMPLETED;
+    if (states.some((s) => s === WORK_ORDER_STATE.IN_PROGRESS)) return WORK_ORDER_STATE.IN_PROGRESS;
+    if (states.some((s) => s === WORK_ORDER_STATE.READY)) return WORK_ORDER_STATE.READY;
+    return WORK_ORDER_STATE.BLOCKED;
+  }
+  return computeWorkOrderState(jobs);
+}
+
 function workOrderEvents(workOrderId, jobs) {
   if (jobs.length === 0) return [];
 
@@ -126,7 +146,7 @@ function workOrderEvents(workOrderId, jobs) {
     }),
   ];
 
-  const state = computeWorkOrderState(jobs);
+  const state = deriveWorkOrderState(jobs);
   const stateEventType = STATE_EVENT_TYPE[state];
 
   if (stateEventType) {
@@ -143,10 +163,17 @@ function workOrderEvents(workOrderId, jobs) {
   return events;
 }
 
+// A legacy Job record carries its own `workOrderId` FK, so several Jobs
+// legitimately group under the same key. A governed Work Order doc has no
+// such field -- it IS the work order -- so grouping every governed doc
+// under the shared "unassigned" fallback collapsed the entire fleet into
+// one bucket and made every Work Order's real state invisible to
+// workOrderEvents(). Fall back to the doc's own id instead, so each
+// governed Work Order remains its own group.
 function groupJobsByWorkOrder(jobs) {
   const groups = {};
   jobs.forEach((job) => {
-    const id = job.workOrderId || "unassigned";
+    const id = job.workOrderId || job.id || "unassigned";
     if (!groups[id]) groups[id] = [];
     groups[id].push(job);
   });

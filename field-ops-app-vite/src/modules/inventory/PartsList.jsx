@@ -25,6 +25,7 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
@@ -134,6 +135,55 @@ import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversig
 // statuses those personal queues already read, just without the
 // per-user filter -- via useReorderRequestsByStatuses(), not a third read
 // implementation.
+// S-INV-PARTS (metadata program ledger) -- INVESTIGATED, NOT MIGRATED onto the metadata
+// list runtime (useMetadataList/MetadataListGrid over partIndexList/partEntity,
+// src/metadata/definitions/part.js), unlike Warehouses.jsx and Suppliers.jsx. This is a
+// reported DECLINE, not a skipped item -- three independent blockers, none resolvable
+// from this file alone (writeScope for this lane is this module + one test file; the
+// fixes below all live in src/domain/** or the metadata registry itself, out of scope):
+//
+// 1. THE DATA ALREADY FLOWING HERE DOES NOT CARRY partIndexList'S COLUMNS.
+//    domain/partsCatalogView.js's buildPartsCatalogRows() -- the ONE governed read this
+//    page performs for catalog identity (fetchPartMasterList, unbounded, composed with
+//    the static catalog) -- flattens each row to exactly { sku, name, category,
+//    warehouseQty, identityState }. partIndexList declares internalPartNumber, name,
+//    status, stockingClass, stockingUnit, controlType: four of those six fields
+//    (internalPartNumber, status, stockingClass, controlType) are read off the raw Part
+//    document by the adapter and then DROPPED before they ever reach this component.
+//    Rendering those columns honestly would require either a second live read of `parts`
+//    (forbidden -- "do not double-read; reuse data already flowing") or editing
+//    domain/partsCatalogView.js to carry them through, which is out of this lane's
+//    writeScope. Reported precisely rather than rendering blank columns.
+//
+// 2. SEARCH CANNOT BE PRESERVED THROUGH THE RUNTIME. shared/search/searchProviders.js's
+//    `parts` provider substring-matches sku/name/category against the FULL catalog
+//    (catalogRows, from the same unbounded fetchPartMasterList read) -- true substring
+//    matching over every Part in the collection. The metadata list runtime has no
+//    free-text/CONTAINS filter operator anywhere in its contract (listViewDefinition.js
+//    declares only EQUALS/IN/ARRAY_CONTAINS/ARRAY_CONTAINS_ANY), and useMetadataList
+//    pages via cursor (partIndexList.pageSize: 50) rather than reading everything at
+//    once. Backing this page's search off the runtime's rows would either silently
+//    narrow every search to whatever page(s) happen to be loaded (a real regression in
+//    what a query matches, not merely a UX one) or require a second, redundant read to
+//    keep a full-catalog copy around for search alone. Per this lane's explicit
+//    instruction, a weaker search is a stop condition, not a tradeoff to ship quietly.
+//
+// 3. THE CATALOG ROW SET ITSELF IS A GOVERNED RECONCILIATION, NOT A PLAIN LIST.
+//    domain/partsCatalogView.js's composeGovernedPartsWorkspace() enforces a
+//    full-accounting invariant (every canonical Part must resolve to exactly one row;
+//    any identity ambiguity BLOCKs the whole catalog rather than silently dropping or
+//    duplicating a Part) that has no equivalent in the generic metadata list runtime --
+//    a plain INDEX read has no concept of reconciling two sources. resolveName (used
+//    throughout this page: the operational queue, the manager/associate queues, History)
+//    depends on this same composed, CANONICAL_MATCH-filtered row set via
+//    canonicalNameBySku(). Classifying this surface as a plain A_ENTITY_LIST undersells
+//    what it actually does; it is closer in shape to S-INV-TRANSFERS's "lifecycle
+//    composite, not a list" reclassification than to Warehouses/Suppliers.
+//
+// No code below this comment changed as a result of this investigation -- forcing a
+// partial move that silently dropped columns, weakened search, or duplicated the read
+// would each violate a stated non-negotiable, and the reconciliation logic that would
+// need to move (or be duplicated) for a real fix lives outside this lane's writeScope.
 const ALL_ASSIGNED_WORK_STATUSES = [
   REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
   REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
@@ -317,7 +367,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     loading: employeeDirectoryLoading,
     error: employeeDirectoryError,
   } = useEmployeeDirectory();
-  const { healthEntries, loading } = useInventoryLedger();
+  const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
   // fetchPartMasterList; no new query surface). null until the first read
@@ -558,9 +608,9 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         <ActionRail
           start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
           primary={
-            <button type="button" className="fo-btn-primary" onClick={() => setNewPartOpen(true)}>
+            <Button variant="primary" onClick={() => setNewPartOpen(true)}>
               New Part
-            </button>
+            </Button>
           }
         />
       }
@@ -594,7 +644,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       </p>
       <FilterBar options={queueFilterOptionsWithCounts} activeKey={queueFilter} onChange={setQueueFilter} />
       {reorderError && <p className="fo-muted">{reorderError}</p>}
-      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading operational queue..."
+        failedText="Unable to load the operational queue right now. Try again shortly."
+        emptyText=""
+      >
         <InventoryHealthPanel
           healthEntries={queueEntries}
           title="Needs Reorder"
@@ -634,9 +691,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       <h4>Waiting</h4>
       <LoadingEmptyState
         loading={partsAssociateWaitingLoading}
+        failed={!!partsAssociateWaitingError}
         isEmpty={partsAssociateWaiting.length === 0}
         loadingText="Loading your assigned requests..."
-        emptyText={partsAssociateWaitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
+        failedText="Unable to load your assigned requests right now. Try again shortly."
+        emptyText="No requests currently waiting on you."
       >
         <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
@@ -644,9 +703,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       <h4>In Progress</h4>
       <LoadingEmptyState
         loading={partsAssociateInProgressLoading}
+        failed={!!partsAssociateInProgressError}
         isEmpty={partsAssociateInProgress.length === 0}
         loadingText="Loading your in-progress purchasing..."
-        emptyText={partsAssociateInProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
+        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
+        emptyText="No purchasing currently in progress."
       >
         <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
@@ -698,7 +759,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
 
       <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
-      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading stock position..." emptyText="">
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading stock position..."
+        failedText="Unable to load stock position right now. Try again shortly."
+        emptyText=""
+      >
         <>
           <table className="fo-table">
             <thead>
@@ -736,7 +804,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             </tbody>
           </table>
 
-          <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
+          <div className="disp-board-toolbar fo-parts__toolbar--end">
             <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
               Previous
             </button>
@@ -835,7 +903,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             </table>
           </div>
 
-          <div className="disp-board-toolbar" style={{ justifyContent: "center" }}>
+          <div className="disp-board-toolbar fo-parts__toolbar--center">
             {historyError ? (
               <p className="fo-muted">
                 Unable to load more History ({historyError}).{" "}

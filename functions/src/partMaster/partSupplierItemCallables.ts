@@ -6,7 +6,8 @@
 // single-transaction, and the atomic ≤1-ACTIVE-preferred invariant -- lives INSIDE the command service;
 // these adapters add NO write authority and no parallel validator/status vocabulary.
 //
-// "Export is not deployment/grant": exported from functions/src/index.ts but NOT deployed, NO capability
+// Exported from functions/src/index.ts and deployed to eos-platform-sandbox under the per-environment
+// activation program; NOT deployed to the production project. NO capability
 // granted, NO App Check. Authorization enforced INSIDE the command against real governed roles --
 // inventory.catalog.manage for create/update/setPreferred, inventory.catalog.activate for status change
 // (the SAME catalog authority Part/Supplier/Manufacturer use; the future inventoryCatalogAdministrator

@@ -38,6 +38,11 @@ function deps({ client, fetchParts } = {}) {
   };
 }
 
+// Every test below exercises the EDITING workflow, so it needs the trusted-feed capability check to
+// resolve ALLOW -- otherwise "Edit parts plan" never renders (see the dedicated capability-gating
+// tests further down, which cover the fail-closed default and the resolving/denied states).
+const GRANTED = Object.freeze({ hasCapability: () => true, resolving: false });
+
 // Entering edit mode kicks off the catalog read. Flush it inside act() so the resulting state
 // update is not reported as an unwrapped update, and so assertions see a settled component.
 async function beginEdit() {
@@ -48,7 +53,7 @@ async function beginEdit() {
 
 describe("WorkOrderPartsPlanEditor", () => {
   it("renders the persisted plan read-only until editing begins", async () => {
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={GRANTED} />);
     expect(screen.getByText("Filter")).toBeTruthy();
     expect(screen.getByText("SKU-1")).toBeTruthy();
     expect(screen.getByRole("button", { name: /edit parts plan/i })).toBeTruthy();
@@ -57,13 +62,13 @@ describe("WorkOrderPartsPlanEditor", () => {
   });
 
   it("shows an honest empty state when nothing is planned", async () => {
-    render(<WorkOrderPartsPlanEditor workOrder={wo({ inventorySnapshot: [] })} deps={deps()} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo({ inventorySnapshot: [] })} deps={deps()} capability={GRANTED} />);
     expect(screen.getByText(/no parts planned/i)).toBeTruthy();
   });
 
   it("offers NO edit affordance on a terminal Work Order, and says why", async () => {
     for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
-      const { unmount } = render(<WorkOrderPartsPlanEditor workOrder={wo({ status })} deps={deps()} />);
+      const { unmount } = render(<WorkOrderPartsPlanEditor workOrder={wo({ status })} deps={deps()} capability={GRANTED} />);
       expect(screen.queryByRole("button", { name: /edit parts plan/i })).toBeNull();
       expect(screen.getByText(/can no longer be changed/i)).toBeTruthy();
       unmount();
@@ -78,6 +83,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           inventorySnapshot: [{ partId: "P-1", sku: "SKU-1", name: "Filter", qtyPlanned: 2, qtyUsed: 1 }],
         })}
         deps={d}
+        capability={GRANTED}
       />,
     );
     await beginEdit();
@@ -101,6 +107,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           inventorySnapshot: [{ partId: "P-1", sku: "SKU-1", name: "Filter", qtyPlanned: 2, qtyUsed: 3 }],
         })}
         deps={d}
+        capability={GRANTED}
       />,
     );
     await beginEdit();
@@ -120,6 +127,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           inventorySnapshot: [{ partId: "P-1", sku: "SKU-1", name: "Filter", qtyPlanned: 2, qtyUsed: 3 }],
         })}
         deps={d}
+        capability={GRANTED}
       />,
     );
     await beginEdit();
@@ -132,7 +140,7 @@ describe("WorkOrderPartsPlanEditor", () => {
 
   it("adds a catalog part by search and plans it", async () => {
     const d = deps();
-    render(<WorkOrderPartsPlanEditor workOrder={wo({ inventorySnapshot: [] })} deps={d} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo({ inventorySnapshot: [] })} deps={d} capability={GRANTED} />);
     await beginEdit();
     await waitFor(() => expect(d.fetchParts).toHaveBeenCalled());
 
@@ -146,7 +154,7 @@ describe("WorkOrderPartsPlanEditor", () => {
 
   it("reports a catalog permission denial honestly instead of showing 'no matching part'", async () => {
     const d = deps({ fetchParts: vi.fn().mockResolvedValue({ ok: false, code: "permission-denied" }) });
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} capability={GRANTED} />);
     await beginEdit();
     expect(await screen.findByText(/do not have permission to read the parts catalog/i)).toBeTruthy();
     expect(screen.getByLabelText(/add a part/i).disabled).toBe(true);
@@ -155,7 +163,7 @@ describe("WorkOrderPartsPlanEditor", () => {
   it("reports a command permission denial without claiming success", async () => {
     const denied = Object.assign(new Error("nope"), { code: "functions/permission-denied" });
     const d = deps({ client: vi.fn().mockRejectedValue(denied) });
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} capability={GRANTED} />);
     await beginEdit();
     fireEvent.change(screen.getByLabelText(/planned quantity for Filter/i), { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: /save parts plan/i }));
@@ -167,7 +175,7 @@ describe("WorkOrderPartsPlanEditor", () => {
   it("reports an undeployed command as unavailable, not as a permission problem", async () => {
     const missing = Object.assign(new Error("not found"), { code: "functions/not-found" });
     const d = deps({ client: vi.fn().mockRejectedValue(missing) });
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} capability={GRANTED} />);
     await beginEdit();
     fireEvent.change(screen.getByLabelText(/planned quantity for Filter/i), { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: /save parts plan/i }));
@@ -177,7 +185,7 @@ describe("WorkOrderPartsPlanEditor", () => {
   });
 
   it("does not enable save until the plan actually changed", async () => {
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={GRANTED} />);
     await beginEdit();
     expect(screen.getByRole("button", { name: /save parts plan/i }).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/planned quantity for Filter/i), { target: { value: "3" } });
@@ -185,7 +193,7 @@ describe("WorkOrderPartsPlanEditor", () => {
   });
 
   it("cancel discards the draft and restores the persisted plan", async () => {
-    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} />);
+    render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={GRANTED} />);
     await beginEdit();
     fireEvent.change(screen.getByLabelText(/planned quantity for Filter/i), { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
@@ -207,6 +215,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           ],
         })}
         deps={d}
+        capability={GRANTED}
       />,
     );
     // The legacy row is shown -- hiding it would misrepresent the plan.
@@ -229,6 +238,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           ],
         })}
         deps={deps()}
+        capability={GRANTED}
       />,
     );
     expect(screen.getByRole("button", { name: /edit parts plan/i })).toBeTruthy();
@@ -247,6 +257,7 @@ describe("WorkOrderPartsPlanEditor", () => {
           ],
         })}
         deps={deps()}
+        capability={GRANTED}
       />,
     );
     expect(screen.getByText("RECORDED-A")).toBeTruthy();
@@ -261,7 +272,7 @@ describe("WorkOrderPartsPlanEditor", () => {
 
   it("after a successful save, renders the PERSISTED plan rather than optimistic client state", async () => {
     const d = deps();
-    const { rerender } = render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} />);
+    const { rerender } = render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} capability={GRANTED} />);
     await beginEdit();
     fireEvent.change(screen.getByLabelText(/planned quantity for Filter/i), { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: /save parts plan/i }));
@@ -269,10 +280,66 @@ describe("WorkOrderPartsPlanEditor", () => {
 
     // The live document listener has not yet delivered the new value; the component must show what
     // is persisted (2), never the value it optimistically hoped for (7).
-    rerender(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} />);
+    rerender(<WorkOrderPartsPlanEditor workOrder={wo()} deps={d} capability={GRANTED} />);
     await waitFor(() => expect(screen.queryByLabelText(/planned quantity/i)).toBeNull());
     const row = screen.getByRole("row", { name: /Filter/ });
     expect(row.textContent).toContain("2");
     expect(row.textContent).not.toContain("7");
+  });
+
+  // KNOWN DEFECT (survived three adversarial reviews): `workOrder.parts.plan` is registered
+  // active:false in permissionCatalog.ts and granted to no Role, so a Save was ALWAYS rejected -- yet
+  // "Edit parts plan" rendered live for every admin/dispatcher regardless, letting them run a full
+  // search/add/remove/quantity session before discovering the guaranteed denial only at Save. These
+  // prove the fix: the affordance is now gated on the same trusted effective-access feed already used
+  // for Opportunity write, fails closed with no `capability` prop injected, and tells the truth about
+  // WHY instead of silently doing nothing or crashing.
+  describe("parts-planning capability gating", () => {
+    it("hides Edit parts plan and explains why when no capability is granted (fail-closed default)", () => {
+      render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} />);
+      expect(screen.queryByRole("button", { name: /edit parts plan/i })).toBeNull();
+      expect(screen.getByText(/not yet enabled for your role/i)).toBeTruthy();
+    });
+
+    it("hides Edit parts plan and explains why when the feed explicitly denies the capability", () => {
+      const denied = { hasCapability: () => false, resolving: false };
+      render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={denied} />);
+      expect(screen.queryByRole("button", { name: /edit parts plan/i })).toBeNull();
+      expect(screen.getByText(/not yet enabled for your role/i)).toBeTruthy();
+    });
+
+    it("shows a neutral 'checking access' state -- never the button, never the denial copy -- while resolving", () => {
+      const resolving = { hasCapability: () => false, resolving: true };
+      render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={resolving} />);
+      expect(screen.queryByRole("button", { name: /edit parts plan/i })).toBeNull();
+      expect(screen.getByText(/checking parts-planning access/i)).toBeTruthy();
+      expect(screen.queryByText(/not yet enabled for your role/i)).toBeNull();
+    });
+
+    it("renders the live Edit parts plan button once the feed grants the capability", () => {
+      render(<WorkOrderPartsPlanEditor workOrder={wo()} deps={deps()} capability={GRANTED} />);
+      expect(screen.getByRole("button", { name: /edit parts plan/i })).toBeTruthy();
+      expect(screen.queryByText(/not yet enabled for your role/i)).toBeNull();
+    });
+
+    it("a denied capability never bypasses the existing unresolved-legacy-row refusal", () => {
+      const denied = { hasCapability: () => false, resolving: false };
+      render(
+        <WorkOrderPartsPlanEditor
+          workOrder={wo({
+            inventorySnapshot: [
+              { partId: "P-1", sku: "SKU-1", name: "Filter", qtyPlanned: 2 },
+              { sku: "LEGACY-9", qtyPlanned: 4 },
+            ],
+          })}
+          deps={deps()}
+          capability={denied}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /edit parts plan/i })).toBeNull();
+      expect(screen.getByText(/cannot be edited here without risking their removal/i)).toBeTruthy();
+      // The legacy-row message takes precedence -- it must not be replaced by the capability-denied copy.
+      expect(screen.queryByText(/not yet enabled for your role/i)).toBeNull();
+    });
   });
 });

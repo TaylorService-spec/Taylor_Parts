@@ -4,6 +4,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import { buildOpportunityPipeline, channelLabel, stageProgress } from "../../domain/opportunityLifecycle.js";
@@ -40,6 +41,72 @@ import NewOpportunityForm from "./NewOpportunityForm.jsx";
 // circular import); re-exported here so the existing `import { isoDate, parseLocalDate } from
 // ".../SalesWorkspace.jsx"` call site (test/salesWorkspaceDate.test.jsx) is unchanged.
 export { isoDate, parseLocalDate };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-CRM-OPPORTUNITIES — metadata list runtime migration EVALUATED, DECLINED.
+//
+// The task: render this pipeline's table through the metadata list runtime
+// (metadata/listPresentation.js's buildListPresentation + metadata/MetadataListGrid.jsx),
+// driven by the real `opportunityIndexList` (metadata/definitions/opportunity.js). Investigated
+// in full before writing anything; three independent, compounding blockers were found, any ONE
+// of which is disqualifying on its own, and none fixable from inside this file's writeScope
+// (only this module + its test file):
+//
+// BLOCKER 1 — no INDEX-surface hook can drive a CALLABLE-read entity at all.
+// hooks/useMetadataList.js (the hook every migrated INDEX surface uses, e.g.
+// modules/accounts/AccountsList.jsx) imports `fetchPage` ONLY from metadata/firestoreListSource.js
+// — it has no readVia branch. opportunityEntity declares `readVia: "CALLABLE"` (opportunity.js's
+// own header: "opportunities is deny-all in Firestore Rules"). Running this workspace's list
+// through useMetadataList would issue a raw client `getDocs` against a deny-all collection —
+// permission-denied for 100% of callers, including one holding the real `opportunity.read`
+// capability. Only metadata/MetadataRecordPage.jsx's DefaultRelatedList branches by readVia
+// (selectListSource); no INDEX-surface equivalent exists. Fixing this means editing
+// hooks/useMetadataList.js, which is shared list-runtime infrastructure other lanes' surfaces
+// already depend on (e.g. S-CRM-CUSTOMERS) — out of this lane's writeScope.
+//
+// BLOCKER 2 — even a CALLABLE-aware INDEX hook could not serve this list as declared.
+// metadata/callableListSource.js hardcodes a SINGLE response-key mapping
+// (listOpportunitiesForAccount -> "opportunities") and THROWS without a parent-scope filter to
+// send as that callable's `accountId` argument (`descriptor.filters[0]`) — it is built for a
+// RELATED section scoped to one Account, not an unscoped INDEX. The real governed unscoped read
+// this workspace already uses is a DIFFERENT callable, `listOpportunityContext`
+// (access/opportunitySource.js's governedOpportunitySource — "returns the caller's whole
+// authorized scope with no accountId filter"), which callableListSource.js has no mapping for.
+// Fixing this also means editing shared list-runtime files, not this one.
+//
+// BLOCKER 3 — even reusing this workspace's OWN existing governed read (no double-read; the
+// same sanctioned pattern accountPageComponents.js's buildAccountRelatedListPresentation
+// established for Contacts/Locations: feed already-loaded rows into buildListPresentation
+// purely for rendering) would still drop real, currently-shown information:
+//   (a) opportunityIndexList's declared columns (opportunityNumber, accountId, stage,
+//       salesChannel, expectedValue, expectedCloseAt) have no "Attention / next action" column
+//       — this pipeline's actual triage signal (buildOpportunityPipeline's attention derivation
+//       + the raw `nextAction` field, both rendered by PipelineRow below). opportunity.js
+//       deliberately does NOT declare `nextAction` as a field ("read but never written [...]
+//       NOT declared here") — there is no column declaration this migration could even ask for.
+//       Rendering through the declared list as-is would silently remove that column: a real,
+//       confirmed regression, not a hypothetical one.
+//   (b) accountId is REFERENCE with nothing to resolve it TO without a second live read.
+//       listOpportunityContext's own projection deliberately returns accountId only — no
+//       denormalized name ("does NOT copy Customer name/PII into the Opportunity for
+//       rendering", opportunityReadService.ts) — and mapOpportunityReadResult
+//       (access/opportunitySource.js) hard-codes `accountNameById: {}` for every REAL governed
+//       result; only the synthetic fixture source populates it. A real `resolveReference` here
+//       would have to issue a per-row Account read — exactly the N+1 pattern this task's own
+//       instructions forbid. (This also means today's hand-written "Customer" column silently
+//       falls back to the raw `accountId` document id once real governed data replaces the
+//       synthetic fixtures — domain/opportunityLifecycle.js's `buildPipelineRow`:
+//       `accountNameById[opp.accountId] ?? opp.customerName ?? opp.accountId ?? "—"` — a
+//       pre-existing defect in a file outside this lane's writeScope, reported rather than
+//       fixed here.)
+//
+// This pipeline therefore stays hand-rendered — the metadata list runtime cannot yet reproduce
+// its master-detail selection, attention-sorted triage column, editable sections, lifecycle
+// actions, or create flow, and forcing just the table through `opportunityIndexList` as declared
+// today would be a confirmed functional regression (dropped Attention/next column), not a
+// faithful migration. Recorded on docs/orchestration/metadata-program/LEDGER.md as
+// S-CRM-OPPORTUNITIES declined-for-cause, matching the two prior declines in this program.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const currency = (v) =>
   typeof v === "number" ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "—";
@@ -131,10 +198,10 @@ function LineEditor({ lines, onChange }) {
             onChange={(e) => update(i, { ref: e.target.value })} />
           <input className="fo-input fo-sales-lineedit__qty" aria-label="Quantity" type="number" min="1" step="1" value={l.qty ?? 1}
             onChange={(e) => update(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-          <button type="button" className="fo-btn-ghost" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</button>
+          <Button type="button" variant="tertiary" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</Button>
         </div>
       ))}
-      <button type="button" className="fo-btn-ghost" onClick={add}>Add line</button>
+      <Button type="button" variant="tertiary" onClick={add}>Add line</Button>
     </div>
   );
 }
@@ -177,8 +244,15 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
         </div>
       ))}
       <div className="fo-sales-editform__actions">
-        <button type="submit" className="fo-btn-primary" disabled={!canSave} title={saveReason}>Save</button>
-        <button type="button" className="fo-btn-ghost" onClick={onCancel}>Cancel</button>
+        <Button
+          type="submit"
+          variant={canSave ? "primary" : "protected"}
+          title={saveReason}
+          reason={canSave ? undefined : saveReason}
+        >
+          Save
+        </Button>
+        <Button type="button" variant="tertiary" onClick={onCancel}>Cancel</Button>
         {!canSave && <span className="fo-muted fo-sales-editform__note">{saveReason}</span>}
       </div>
     </form>
@@ -186,27 +260,37 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
 }
 
 // A detail SECTION. Reads by default. Editable-by-design sections carry a contextual Edit affordance in the
-// header (disabled + honest when readiness is off — same fail-closed posture as the lifecycle actions and the
-// inert create control). Entering edit swaps the read body for the section form; only one section edits at a
-// time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit affordance.
+// header (disabled + honest when EITHER readiness is off OR no governed save command is wired — same
+// fail-closed posture as the lifecycle actions and the inert create control; today's production mount passes
+// no onSaveSection, so Edit stays disabled+honest there even for a real write-capable caller, rather than
+// opening a form whose Save can never succeed). Entering edit swaps the read body for the section form; only
+// one section edits at a time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit
+// affordance.
 function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness, onSave }) {
   const showEdit = section.editable;
-  const editDisabled = !readiness.enabled;
+  const saveWired = typeof onSave === "function";
+  const editDisabled = !readiness.enabled || !saveWired;
+  const editReason = !readiness.enabled
+    ? readiness.reason
+    : !saveWired
+      ? "The governed save command is not wired in this build."
+      : undefined;
   return (
     <section className="fo-sales-detail__block" aria-label={section.title} data-dataclass={section.dataClass}>
       <div className="fo-sales-detail__block-head">
         <h4>{section.title}</h4>
         {showEdit && !editing && (
-          <button
+          <Button
             type="button"
-            className="fo-btn-ghost fo-sales-detail__edit"
-            disabled={editDisabled}
-            title={editDisabled ? readiness.reason : undefined}
-            aria-label={editDisabled ? `Edit ${section.title} — ${readiness.reason}` : `Edit ${section.title}`}
-            onClick={() => onEnterEdit(section.id)}
+            variant={editDisabled ? "protected" : "tertiary"}
+            className="fo-sales-detail__edit"
+            title={editDisabled ? editReason : undefined}
+            reason={editDisabled ? editReason : undefined}
+            aria-label={editDisabled ? `Edit ${section.title} — ${editReason}` : `Edit ${section.title}`}
+            onClick={editDisabled ? undefined : () => onEnterEdit(section.id)}
           >
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {editing ? (
@@ -409,16 +493,16 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
   const actions = (
     <ActionRail
       primary={
-        <button
+        <Button
           type="button"
-          className="fo-btn-primary"
-          disabled={!createEnabled}
+          variant={createEnabled ? "primary" : "protected"}
           aria-label={createEnabled ? "New opportunity" : `New opportunity — ${writeReadiness.reason}`}
           title={createEnabled ? undefined : writeReadiness.reason}
+          reason={createEnabled ? undefined : writeReadiness.reason}
           onClick={createEnabled ? () => setCreating(true) : undefined}
         >
           New opportunity
-        </button>
+        </Button>
       }
     />
   );

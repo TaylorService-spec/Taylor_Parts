@@ -4,6 +4,7 @@ import { LOW_STOCK_THRESHOLD } from "../../demo/inventoryData";
 import { HERO_IDS } from "../../demo/heroConfig";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Sprint 3.6.2: Inventory screen -- Warehouse stock, Truck stock, and a
 // Warehouse -> Truck transfer control. Visual/demo layer only: all state
@@ -130,7 +131,7 @@ export default function Inventory() {
             value={transferQty}
             onChange={(e) => setTransferQty(e.target.value)}
           />
-          <button type="submit">Transfer to Truck</button>
+          <Button type="submit">Transfer to Truck</Button>
         </form>
       </section>
     </WorkspaceShell>

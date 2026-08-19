@@ -106,6 +106,143 @@
 
   --rail-width: 252px;
   --rail-drawer-max: 899.98px;
+
+  /* ==========================================================================
+     DESIGN-SYSTEM FOUNDATION (PR 1) — tokens + primitives, additive only.
+     No existing token above this line changed value or meaning. Everything
+     below is NEW: typography, spacing, an operational-component radius,
+     elevation/focus/motion primitives, and self-hosted font families. Nothing
+     here is consumed by an existing screen yet — later PRs migrate consumers.
+     ========================================================================== */
+
+  /* --- Fonts (self-hosted, see ./assets/fonts + @font-face below) ---------- */
+  --font-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-interface: "Inter", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+  /* --- Type scale. Interface font unless noted; line-heights tuned for
+     operational density (short labels, tables, status text). --------------- */
+  --font-size-xs:   11px;
+  --font-size-sm:   12.5px;
+  --font-size-base: 14px;
+  --font-size-md:   16px;
+  --font-size-lg:   18px;
+  --font-size-xl:   22px;
+  --font-size-2xl:  28px;
+  --font-size-display-sm: clamp(22px, 2.4vw, 26px);
+  --font-size-display-md: clamp(28px, 3.4vw, 36px);
+  --font-size-display-lg: clamp(36px, 4.6vw, 48px);
+
+  --line-height-tight:  1.2;
+  --line-height-normal: 1.45;
+  --line-height-relaxed: 1.65;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+  --font-weight-extrabold: 800;
+
+  /* --- Spacing scale. 4px base, named rather than numbered so a later density
+     pass can retune the ramp without renaming every consumer. -------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* --- Radius. --radius-sm/md/lg above are preserved unchanged; --radius-control
+     names the same 6px cut for the specific "operational component" use (buttons,
+     inputs, chips) the program brief calls out, and --radius-pill covers the
+     existing 999px pill cut used by status pills/chips. ---------------------- */
+  --radius-control: 6px;
+  --radius-pill: 999px;
+
+  /* --- Borders. --color-border/--color-border-strong above are the COLOURS;
+     these are the two widths used across primitives. ------------------------ */
+  --border-width-hairline: 1px;
+  --border-width-thick: 2px;
+
+  /* --- Elevation. --shadow-rest/--shadow-lift above are preserved; this adds
+     the "no shadow" and "overlay" steps the primitives need, in the same
+     warm-tinted (evergreen) family so elevation keeps reading as part of the
+     palette. Sparing by design -- most surfaces stay flat. ------------------ */
+  --shadow-none: none;
+  --shadow-overlay: 0 8px 32px rgba(16, 43, 36, 0.18);
+
+  /* --- Focus ring. ONE focus treatment for every interactive primitive,
+     colour-only (never relies on colour alone for STATE -- focus is always
+     paired with the browser's default outline geometry, just recoloured). --- */
+  --focus-ring-color: var(--color-focus);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* --- Motion. --duration-fast/base + --ease-out above govern existing shell
+     chrome (drawer slide, hover) and are UNCHANGED. --duration-control is the
+     new token primitives use for their own hover/press/loading transitions --
+     120-180ms per the brief, deliberately shorter than the shell's 240ms base
+     so a button never feels slower to respond than the chrome around it. No
+     bounce/overshoot easing anywhere in this system. ------------------------ */
+  --duration-control: 150ms;
+  --ease-standard: var(--ease-out);
+
+  /* --- Icon sizing scale (paired with src/shared/ui/Icon.jsx). ------------- */
+  --icon-size-dense:  16px;
+  --icon-size-button: 18px;
+  --icon-size-nav:    20px;
+  --icon-size-action: 24px;
+  --icon-size-empty:  32px;
+  --icon-stroke-width: 1.75;
+}
+
+/* Self-hosted fonts -- no runtime CDN dependency. Subset to latin, vendored
+   under ./assets/fonts. font-display: swap so first paint is never blocked
+   on the font request; the fallback stacks above (--font-display/--font-interface)
+   already cover the swap period acceptably. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/inter-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-800.woff2") format("woff2");
+}
+
+/* Tabular numerals -- for operational numbers that sit in a column or update
+   in place (quantities, counts, currency): fixed digit width stops the
+   surrounding layout from jittering as digits change. */
+.fo-tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* Honour the platform reduced-motion preference globally rather than relying on
@@ -216,7 +353,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   position: absolute; left: -9999px; top: 0; z-index: 100;
   background: var(--color-brand-primary); color: var(--color-text-inverse);
   padding: 12px 18px; border-radius: 0 0 var(--radius-sm) 0;
-  font-size: 14px; font-weight: 600; text-decoration: none;
+  font-size: var(--font-size-base); font-weight: 600; text-decoration: none;
 }
 .fo-skip-link:focus { left: 0; color: var(--color-text-inverse); }
 
@@ -253,7 +390,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: transparent; border: none; text-align: left;
   color: var(--verenward-moon);
-  font-size: 14px; font-weight: 600; letter-spacing: 0.015em; font-family: inherit;
+  font-size: var(--font-size-base); font-weight: 600; letter-spacing: 0.015em; font-family: inherit;
   padding: 9px 10px; border-radius: var(--radius-sm);
   cursor: pointer; text-decoration: none;
   transition: background var(--duration-fast) var(--ease-out),
@@ -282,6 +419,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 }
 .fo-rail__domain-row--current:hover { background: rgba(255, 255, 255, 0.11); }
 .fo-rail__domain-label { min-width: 0; overflow-wrap: anywhere; }
+/* Icon wrapper: kept at its fixed token size (never squeezed by a long domain label
+   fighting it for space in the same flex row); the row's own layout (display:flex, gap)
+   comes from .fo-rail__domain-row above. */
+.fo-rail__domain-icon { display: inline-flex; flex-shrink: 0; }
 /* A leaf row is an <a>, a button row is a <button>: without this they compute
    different widths. Persona review measured the leaf at 270px inside a 252px
    rail -- overflowing and clipping -- with its label 3px off every sibling.
@@ -291,13 +432,19 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   padding-left: 10px;
 }
 .fo-rail__domain-row--leaf::before {
-  content: ""; flex: none; width: 10px; margin-left: 2px;  /* chevron-width spacer */
+  content: ""; flex: none; box-sizing: border-box; width: 10px; margin-left: 2px;  /* chevron-width spacer */
 }
 
 /* Subtle disclosure. Rotation is the only affordance -- no icon set, per the
-   "no decorative icon overload" constraint. */
+   "no decorative icon overload" constraint.
+   box-sizing: border-box -- without it, the 1.5px border-right/border-bottom used to draw the
+   chevron glyph ADD to the declared 10px width/height (default content-box), so this element's
+   real layout footprint was 11.5px, ~1.5-2px wider than the leaf row's borderless 10px spacer
+   above. That drifted the leaf and expandable domain-row labels out of alignment with each
+   other even though both rules declared "10px". border-box keeps the border inside the
+   declared 10px box, matching the spacer's footprint exactly. */
 .fo-rail__chevron {
-  flex: none; width: 10px; height: 10px; margin-left: 2px;
+  flex: none; box-sizing: border-box; width: 10px; height: 10px; margin-left: 2px;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg); opacity: 0.55;
   transition: transform var(--duration-fast) var(--ease-out);
@@ -314,7 +461,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   border-left: 1px solid rgba(185, 193, 190, 0.18);
   color: var(--verenward-moon); text-decoration: none;
   /* Clearly subordinate to a domain row: lighter weight, deeper indent. */
-  font-size: 13px; font-weight: 400; line-height: 1.35;
+  font-size: var(--font-size-sm); font-weight: 400; line-height: 1.35;
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
@@ -333,7 +480,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-rail__item--d2 { padding-left: 30px; }
 
 /* Group label — organisational hierarchy, not a destination. Quiet by design. */
-.fo-rail__group { margin-top: 8px; }
+.fo-rail__group { margin-top: var(--space-2); }
 .fo-rail__group-label {
   margin: 0 0 3px; padding-left: 22px; margin-left: 10px;
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
@@ -373,14 +520,15 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 }
 .fo-drawer:focus { outline: none; }
 .fo-drawer__head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);
   padding: 16px 16px 14px; border-bottom: 1px solid rgba(185, 193, 190, 0.14);
 }
 .fo-drawer__head .fo-rail__brand { padding: 0; border-bottom: none; }
 .fo-drawer__close {
+  display: inline-flex; align-items: center; gap: 6px;
   flex: none; background: transparent; color: var(--verenward-moon);
   border: 1px solid rgba(185, 193, 190, 0.30); border-radius: var(--radius-sm);
-  min-height: 44px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+  min-height: 44px; padding: var(--space-2) 14px; font-size: var(--font-size-sm); cursor: pointer; font-family: inherit;
 }
 .fo-drawer__close:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
 @keyframes fo-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -468,6 +616,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    `style={{margin:0}}` pair duplicated across AccountsList.jsx/
    WorkOrdersList.jsx/PartsList.jsx. Same layout those inline styles
    already produced -- now a real class instead of a per-screen override. */
+/* No longer used by shared/ui/WorkspaceHeader.jsx (migrated onto the PageHeader primitive) --
+   DO NOT DELETE. Still consumed as a generic title-row pattern by:
+     shared/reorder/ManagerQueuePanel.jsx, shared/reorder/AssociateRequestPanel.jsx,
+     modules/inventoryRole/WarehouseManagerHome.jsx. */
 .fo-workspace-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .fo-workspace-header-title { margin: 0; }
 
@@ -481,7 +633,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    during Sprint 2.1.1's validation: light-gray-on-white and a
    white-tinted hover overlay are both close to invisible on a light
    background. These are separate, light-panel-appropriate colors. */
-.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+/* max-width/overflow-x: a second line of defence beneath flex-wrap so a single
+   unbreakable label can never push the page itself into horizontal scroll. */
+.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
+.fo-filter-btn__check-icon { vertical-align: -3px; margin-right: var(--space-1); }
 .fo-filter-btn { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
 .fo-filter-btn:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
 .fo-filter-btn:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
@@ -495,7 +650,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    is tuned for the dark .fo-header nav bar and would have the same
    low-contrast problem already fixed elsewhere in this file). */
 .fo-notification-panel { position: relative; }
-.fo-notification-panel > button { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.fo-notification-panel > button { display: inline-flex; align-items: center; gap: 6px; background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
 .fo-notification-panel > button:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
 .fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
 .fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: var(--color-brand-primary); font-size: 14px; }
@@ -641,11 +796,18 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-create-modal-form { display: flex; flex-direction: column; gap: 16px; }
 
-.fo-form-field { display: flex; flex-direction: column; gap: 4px; }
-.fo-wizard-field-label { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+/* ConfirmDialog (shared/ui/ConfirmDialog.jsx) -- shared destructive/consequential
+   confirmation. Severity line: icon + accent + colour together (see Icon.jsx's
+   "no colour-alone" convention), never colour alone. */
+.fo-confirm-severity { display: flex; align-items: center; gap: 6px; margin: 0; }
+.fo-confirm-consequence { border-left: 3px solid var(--color-info); padding-left: 10px; margin: 0; }
+.fo-confirm-consequence--destructive { border-left-color: var(--color-danger); }
+
+.fo-form-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.fo-wizard-field-label { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-secondary); }
 .fo-field-required { font-weight: 400; color: var(--color-text-muted); }
-.fo-wizard-hint { margin: 0; font-size: 12px; color: var(--color-text-muted); }
-.fo-wizard-error { margin: 0; font-size: 12px; }
+.fo-wizard-hint { margin: 0; font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.fo-wizard-error { margin: 0; font-size: var(--font-size-xs); }
 
 .fo-wizard-control {
   width: 100%; box-sizing: border-box;
@@ -657,7 +819,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-wizard-control:disabled { background: var(--color-surface-sunken); color: var(--color-text-muted); cursor: not-allowed; }
 .fo-wizard-control[aria-invalid="true"] { border-color: var(--color-danger); }
 
-.fo-wizard-actions { margin-top: 4px; }
+.fo-wizard-actions { margin-top: var(--space-1); }
 
 /* Inline label+control pairs used in filter bars/toolbars (distinct from the stacked .fo-form-field
    used inside modals -- same underlying .fo-wizard-control styling either way). */
@@ -716,7 +878,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-btn-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .fo-btn-row .fo-btn-large { margin-top: 8px; }
 
@@ -1012,12 +1174,14 @@ button:hover {
    MEDIUM=yellow, LOW=neutral gray -- "HIGH" and "CRITICAL" always mean
    the same thing visually regardless of which panel is rendering them. */
 .fo-signal-badge {
-  display: inline-block;
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 
 .fo-signal-badge--low {
@@ -1389,6 +1553,14 @@ button:hover {
 .fo-landing-card { display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; text-decoration: none; color: inherit; background: var(--color-surface-elevated); transition: border-color 0.15s, box-shadow 0.15s; }
 .fo-landing-card:hover { border-color: var(--color-brand-secondary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 .fo-landing-card-title { font-weight: 600; color: var(--color-brand-secondary); }
+
+/* feat/visual-today-page -- LandingPage.jsx's per-domain groups above the existing
+   .fo-landing-grid/.fo-landing-card cards (unchanged; reused as-is). Additive only --
+   spacing/colour come from the token layer, nothing above is renamed or retired. */
+.fo-landing-group { margin-top: var(--space-7); }
+.fo-landing-group:first-of-type { margin-top: 0; }
+.fo-landing-group__title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.fo-landing-group__title .fo-icon { color: var(--color-text-muted); }
 
 /* ============================================================================
    VERENWARD BRAND LOCKUP  (shared/brand/VerenwardMark.jsx)
@@ -1830,11 +2002,27 @@ button:hover {
 .fo-btn-primary:hover { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
 .fo-btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid transparent; }
 .fo-btn-ghost:hover { color: var(--color-brand-primary); background: var(--color-surface-sunken); }
+/* Destructive -- same danger treatment as .fo-button--destructive below (Button primitive's
+   `destructive` variant) so a raw <button className="fo-btn-destructive"> and a migrated
+   <Button variant="destructive"> read as the same control. 5.86:1 white-on-danger
+   (#B23B3B / var(--color-danger)), same pair the primitive documents -- passes WCAG AA (>= 4.5:1
+   text). Added because 5 call sites (SalesOrderActions, ConfirmDialog's own doc comment,
+   PartDetail, ManageTruckDrawer x2, WorkOrderActions) referenced this class with no definition,
+   so a Cancel/Delete confirm rendered as an unstyled native button indistinguishable from the
+   ghost/secondary button beside it. */
+.fo-btn-destructive { background: var(--color-danger); color: var(--color-text-inverse); border: 1px solid var(--color-danger); }
+.fo-btn-destructive:hover { background: #962f2f; border-color: #962f2f; }
 
 /* Semantic Status Pill — ONE pill, tone-driven (domain maps state -> tone). Use sparingly. */
-.fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+.fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-sm); font-weight: 600;
   padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; letter-spacing: .01em; }
-.fo-status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* No colour-alone ::before dot: StatusPill (shared/ui/StatusPill.jsx) renders a tone glyph
+   (Icon icon={toneIcon(tone)}) on every non-text render path -- toneIcon() always resolves
+   (falls back to the "neutral" HelpCircle glyph, never null/undefined), and StatusPill is this
+   class's ONLY consumer (grep confirms no other component renders "fo-status-pill" directly).
+   The dot was therefore a second, redundant colour-only signal sitting beside an icon that
+   already carries the same information non-colour-dependently. Removed 2026-08-18; if a future
+   consumer of this class ever renders without the icon, the dot must come back FIRST. */
 .fo-status-pill--positive { color: var(--color-success); background: var(--color-success-surface); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
 .fo-status-pill--attention { color: var(--color-warning); background: var(--color-warning-surface); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
 .fo-status-pill--critical { color: var(--color-danger); background: var(--color-danger-surface); border-color: color-mix(in srgb, var(--color-danger) 30%, transparent); }
@@ -1882,12 +2070,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    not just one edge of it. */
 .fo-op-card--attention { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning-surface) 55%, var(--color-surface-elevated)); }
 
-.fo-op-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fo-op-card__title { font-weight: 600; }
+.fo-op-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* Identity line: fixed to one line (ellipsis, not wrap) so it never fights the leading
+   StatusPill for vertical space; flex:1 1 auto lets it own the row's remaining width. */
+.fo-op-card__title {
+  font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); line-height: var(--line-height-tight);
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .fo-op-card__subtitle { margin-top: 2px; font-size: 13px; color: var(--color-text-muted); }
 .fo-op-card__attention { margin-top: 6px; font-size: 13px; color: var(--color-warning); }
 .fo-op-card__foot { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); }
-.fo-op-card__metric { margin-top: 10px; display: flex; align-items: baseline; gap: 6px; }
+/* display:block, not flex -- the metric wraps the shared CompactMetric primitive, which now
+   owns its own internal layout; a flex wrapper around a flex child fought CompactMetric's own
+   alignment. Sole consumer is OperationalCard.jsx. */
+.fo-op-card__metric { margin-top: 10px; display: block; }
 .fo-op-card__metric-value { font-size: 20px; font-weight: 700; }
 .fo-op-card__metric-label { font-size: 12px; color: var(--color-text-muted); }
 .fo-op-card__metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 0; }
@@ -2089,7 +2285,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-stagetrack__bars { display: inline-flex; gap: 2px; }
 .fo-stagetrack__bar { width: 14px; height: 3px; border-radius: 2px; background: var(--color-border); }
 .fo-stagetrack__bar.is-complete { background: var(--color-success); }
-.fo-stagetrack__bar.is-current { background: var(--color-brand-primary); }
+/* current: filled bar + a marker ring, so it does not read as just "another complete bar"
+   once colour is gone -- solid vs. ringed/hollow survives greyscale and colour-blindness. */
+.fo-stagetrack__bar.is-current { background: var(--color-brand-primary); box-shadow: 0 0 0 1px var(--color-brand-primary); height: 5px; }
+/* future: hollow outlined bar, the third shape in the complete/current/future family. */
+.fo-stagetrack__bar.is-future { background: transparent; border: 1px solid var(--color-border); }
 .fo-stagetrack__summary { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
 /* A closed Opportunity reads as its outcome: every bar takes the terminal tone so a scanning eye
    sees "finished", not "still in Decision". */
@@ -2101,6 +2301,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-chevrons__step { display: flex; align-items: center; }
 .fo-chevrons__step:not(:last-child)::after { content: "›"; margin: 0 4px; color: var(--color-text-muted); }
 .fo-chevrons__label, .fo-chevrons__btn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4;
 }
 .fo-chevrons__label { color: var(--color-text-muted); background: var(--color-surface-sunken); }
@@ -2112,6 +2313,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-chevrons__step.is-complete .fo-chevrons__label { color: var(--color-success); background: transparent; }
 .fo-chevrons__step.is-current .fo-chevrons__label { color: var(--color-text-primary); background: var(--color-info-surface); font-weight: 700; }
 .fo-chevrons__terminal {
+  display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-left: 2px;
 }
 .fo-chevrons__terminal--positive { color: var(--color-success); background: var(--color-success-surface); }
@@ -2276,6 +2478,25 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    no separate mobile component, so there is one source of truth for the composition. */
 .fo-account-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 18px; align-items: start; }
 .fo-account-primary, .fo-account-secondary { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* Metadata record-page regions. MetadataRecordPage renders each region as its own
+   wrapper, so a region's sections are no longer direct children of .fo-account-primary
+   and stopped inheriting its 16px gap -- sections rendered through the metadata path
+   sat flush against each other while hand-rendered ones did not. Same value, so a
+   section looks identical whichever path renders it; a metadata-rendered page must not
+   be recognisable by its spacing. */
+.fo-record-header, .fo-record-highlights, .fo-record-main, .fo-record-footer {
+  min-width: 0; display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Related-list row actions. The grid ships the class hooks; without these rules the
+   buttons stack at full width and the actions cell has no separation from the last data
+   column -- a metadata-rendered row must not be recognisable by its spacing. A disabled
+   action stays visible and readable rather than fading out of notice: it is deliberately
+   presented as unavailable-with-a-reason, not as absent. */
+.fo-list-grid-actions { display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
+.fo-list-grid-action[disabled] { opacity: 0.6; cursor: not-allowed; }
+.fo-list-grid:focus-visible { outline: 2px solid var(--fo-focus, #2563eb); outline-offset: 2px; }
 .fo-account-health { margin: 12px 0 18px; }
 .fo-stat-label { font-size: 0.85em; }
 .fo-stat-value { font-size: 1.15em; font-weight: 600; }
@@ -2283,4 +2504,736 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 @media (max-width: 900px) {
   .fo-account-layout { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   AUTH SURFACE -- the sign-in and password-recovery screens.
+
+   WHY THIS BLOCK EXISTS. Sign-in previously reused `.fo-form`, which is
+   `display:flex` with `input { flex: 1 }`. That utility is right for the inline
+   row-filters and table-cell actions it was built for, and wrong for a
+   page-level auth form: it stretched email, password and the submit button into
+   one full-viewport row on an otherwise empty page. This is not a restyle of
+   `.fo-form` (untouched, still doing its job elsewhere) -- it is the
+   composition this surface always needed.
+
+   Every value comes from the existing Verenward tokens. The front door was the
+   one surface not speaking the visual language the rest of the product uses.
+   ========================================================================= */
+
+.eos-auth {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: var(--color-surface-page);
+}
+
+.eos-auth__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 452px;
+  align-items: stretch;
+  width: 100%;
+  max-width: 1000px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--color-surface-elevated);
+  /* Offset + soft blur: a real light source, not a zero-offset halo. */
+  box-shadow: 0 1px 2px rgba(16, 43, 36, 0.05), 0 18px 48px -18px rgba(16, 43, 36, 0.22);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .eos-auth__layout {
+    /* One authored moment, from an already-visible default: it settles, it does
+       not fade in from nothing. */
+    animation: eos-auth-settle 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes eos-auth-settle {
+    from { transform: translateY(7px); opacity: 0.75; }
+    to   { transform: none;            opacity: 1; }
+  }
+}
+
+/* --- brand panel (desktop only) ------------------------------------------ */
+
+.eos-auth__brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 44px 40px;
+  color: var(--color-text-inverse);
+  background: var(--color-brand-primary);
+  /* A quiet structural field rather than a decorative gradient: the same
+     converging-lane geometry as the mark, at low contrast. */
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 46%),
+    repeating-linear-gradient(115deg, rgba(232, 226, 214, 0.05) 0 1px, transparent 1px 21px);
+}
+
+.eos-auth__pitch { display: flex; flex-direction: column; gap: 10px; }
+
+/* Approved headline. Uses the display face once the foundation PR lands and
+   falls back to a condensed system stack until then, so this reads correctly
+   today and improves automatically rather than needing a second edit. */
+.eos-auth__headline {
+  margin: 0;
+  font-family: var(--font-display, "Barlow Condensed", "Arial Narrow", Arial, sans-serif);
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: 0.005em;
+  color: var(--color-text-inverse);
+}
+
+.eos-auth__supporting {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--verenward-stone);
+}
+
+.eos-auth__brand-foot { display: flex; align-items: center; }
+
+/* --- card ---------------------------------------------------------------- */
+
+.eos-auth__card {
+  display: flex;
+  flex-direction: column;
+  padding: 44px 40px 32px;
+  background: var(--color-surface-elevated);
+}
+
+.eos-auth__identity { display: flex; align-items: center; gap: 10px; }
+.eos-auth__identity--compact { display: none; margin-bottom: 26px; }
+
+.eos-auth__mark { display: block; flex: none; color: var(--color-brand-primary); }
+
+.eos-auth__wordmark {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--color-brand-primary);
+}
+
+.eos-auth__descriptor {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+
+.eos-auth__title {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.eos-auth__intro {
+  margin: 7px 0 26px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.eos-auth__notice {
+  margin: 0 0 18px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+/* --- fields -------------------------------------------------------------- */
+
+.eos-auth__form { display: flex; flex-direction: column; gap: 17px; }
+.eos-auth__field { display: flex; flex-direction: column; gap: 6px; }
+
+.eos-auth__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.eos-auth__input {
+  /* The app does not set a global border-box, so an inherited content-box turns
+     min-height into the CONTENT height: 46 + 22 padding + 2 border rendered as
+     70px, and width:100% + horizontal padding overflows its container. Both are
+     scoped away here rather than by changing the global, which other surfaces
+     depend on. */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--color-text-primary);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  caret-color: var(--color-brand-primary);
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.eos-auth__input::placeholder { color: var(--color-text-muted); }
+
+.eos-auth__input:focus {
+  outline: none;
+  border-color: var(--color-brand-primary);
+  box-shadow: 0 0 0 3px rgba(16, 43, 36, 0.13);
+}
+
+.eos-auth__input-wrap { position: relative; display: flex; }
+.eos-auth__input--with-affordance { padding-right: 46px; }
+
+.eos-auth__reveal {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.eos-auth__reveal:hover { color: var(--color-brand-primary); }
+.eos-auth__reveal:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+
+/* --- actions ------------------------------------------------------------- */
+
+.eos-auth__submit {
+  min-height: 48px;
+  margin-top: 3px;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-inverse);
+  background: var(--color-brand-primary);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.eos-auth__submit:hover:not(:disabled) { background: var(--verenward-evergreen-hover); }
+.eos-auth__submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.eos-auth__secondary {
+  align-self: flex-start;
+  margin-top: 18px;
+  padding: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--color-border-strong);
+}
+
+.eos-auth__secondary:hover:not(:disabled) { color: var(--color-brand-primary); }
+.eos-auth__secondary:disabled { color: var(--color-text-muted); cursor: not-allowed; text-decoration: none; }
+
+/* --- error --------------------------------------------------------------- */
+
+.eos-auth__error {
+  display: flex;
+  gap: 8px;
+  margin: 17px 0 0;
+  padding: 11px 13px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--color-danger);
+  background: var(--color-danger-surface);
+  border: 1px solid rgba(178, 59, 59, 0.24);
+  border-radius: 8px;
+}
+
+.eos-auth__error svg { flex: none; margin-top: 1px; }
+
+/* --- footer -------------------------------------------------------------- */
+
+.eos-auth__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-border);
+}
+
+.eos-auth__support { margin: 0; font-size: 12.5px; color: var(--color-text-muted); }
+.eos-auth__meta { display: inline-flex; align-items: center; gap: 10px; }
+.eos-auth__build { font-size: 11.5px; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+
+.eos-auth__workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: 6px;
+}
+
+/* The implementation always shows; the environment half only appears when this
+   is NOT production, so its presence always means "not live". */
+.eos-auth__workspace--onLight {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+}
+
+.eos-auth__workspace--onDark {
+  color: var(--verenward-stone);
+  background: rgba(232, 226, 214, 0.12);
+  border: 1px solid rgba(232, 226, 214, 0.28);
+}
+
+.eos-auth__workspace-sep { opacity: 0.55; }
+.eos-auth__workspace-env { color: inherit; }
+.eos-auth__workspace-compact { display: none; }
+
+.eos-auth__env-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* --- narrow: drop the brand panel rather than stack it into a dead banner -- */
+
+@media (max-width: 860px) {
+  .eos-auth { padding: 28px 18px; }
+  .eos-auth__layout { grid-template-columns: minmax(0, 1fr); max-width: 452px; }
+  .eos-auth__brand { display: none; }
+  .eos-auth__identity--compact { display: flex; }
+  .eos-auth__workspace-compact { display: inline-flex; }
+  .eos-auth__card { padding: 34px 28px 26px; }
+}
+
+@media (max-width: 420px) {
+  .eos-auth { padding: 40px 14px 20px; place-items: start center; }
+  .eos-auth__card { padding: 28px 22px 22px; }
+  .eos-auth__title { font-size: 22px; }
+}
+/* ===========================================================================
+   DESIGN-SYSTEM FOUNDATION (PR 1) -- PRIMITIVES
+   ---------------------------------------------------------------------------
+   New surfaces only. Nothing here is consumed by an existing screen -- no
+   className below is used by any component outside src/shared/ui/primitives/
+   until a later PR migrates a consumer. Existing fo-btn-primary/fo-btn-ghost
+   (Action Rail, 19 consumers) are UNCHANGED; fo-button below is a parallel,
+   fuller primitive for new work, not a replacement for those call sites.
+   All colour values reference the semantic tokens already defined above --
+   no new raw hex was introduced except where WCAG contrast math required a
+   value not already in the ramp (documented inline; every pair is >= AA).
+   ========================================================================= */
+
+/* --- Button --------------------------------------------------------------
+   One base class + a variant modifier + a state matrix. Every state is
+   expressed through colour/border/icon together, never colour alone, and
+   every interactive state has a focus-visible ring using --focus-ring-*.
+   ------------------------------------------------------------------------- */
+.fo-button {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: 40px; padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  border: var(--border-width-hairline) solid transparent;
+  font-family: var(--font-interface);
+  font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); line-height: 1;
+  white-space: nowrap; cursor: pointer; text-decoration: none;
+  transition: background-color var(--duration-control) var(--ease-standard),
+              border-color var(--duration-control) var(--ease-standard),
+              color var(--duration-control) var(--ease-standard),
+              box-shadow var(--duration-control) var(--ease-standard);
+}
+.fo-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+/* Pressed. A visible depth cue distinct from hover so keyboard/mouse activation
+   both register -- :active covers mouse press; JS-driven `data-pressed` is
+   available for a toggle-style consumer that must hold the pressed look. */
+.fo-button:active, .fo-button[data-pressed="true"] { transform: translateY(0.5px); }
+
+/* Primary -- one per view. 15.07:1 white-on-evergreen. */
+.fo-button--primary {
+  background: var(--color-brand-primary); border-color: var(--color-brand-primary);
+  color: var(--color-text-inverse);
+}
+.fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+
+/* Secondary -- outlined, guardian. 10.59:1 text; 10.59:1 border against white
+   (non-text components need only 3:1; this clears it with margin). */
+.fo-button--secondary {
+  background: var(--color-surface-elevated); border-color: var(--color-brand-secondary);
+  color: var(--color-brand-secondary);
+}
+.fo-button--secondary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
+
+/* Tertiary -- quiet text button for a subordinate action beside a primary one. */
+.fo-button--tertiary {
+  background: transparent; border-color: transparent;
+  color: var(--color-text-secondary);
+}
+.fo-button--tertiary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
+
+/* Destructive -- 5.86:1 white-on-danger. Reserved for actions that discard or
+   remove; label text always states the consequence (this primitive does not
+   infer it). */
+.fo-button--destructive {
+  background: var(--color-danger); border-color: var(--color-danger);
+  color: var(--color-text-inverse);
+}
+.fo-button--destructive:hover:not(:disabled):not([aria-disabled="true"]) { background: #962f2f; border-color: #962f2f; }
+
+/* Protected -- explains capability unavailability rather than hiding the
+   control. Always rendered disabled (this primitive never grants capability --
+   that stays with the authorization layer). 5.89:1 text, 12.35:1 icon. */
+.fo-button--protected {
+  background: var(--color-surface-sunken); border-color: var(--color-border-strong);
+  border-style: dashed;
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+}
+.fo-button--protected .fo-icon { color: var(--color-brand-primary); }
+
+/* Icon -- square, icon-only. Always paired with an accessible name (aria-label)
+   supplied by the caller; IconButton below is the preferred entry point and
+   enforces that contract. */
+.fo-button--icon {
+  min-width: 40px; padding: 0; gap: 0;
+}
+
+.fo-button:disabled, .fo-button[aria-disabled="true"] {
+  cursor: not-allowed; opacity: 0.55;
+}
+.fo-button--primary:disabled, .fo-button--primary[aria-disabled="true"],
+.fo-button--destructive:disabled, .fo-button--destructive[aria-disabled="true"] {
+  background: var(--color-text-muted); border-color: var(--color-text-muted); color: var(--color-text-inverse);
+}
+
+/* Success / error -- a transient result state applied AFTER an action settles
+   (not a variant a caller sets up front). Icon + colour together, and the
+   label text is expected to change too ("Saved" / "Failed") -- colour is
+   never the only signal. 5.33:1 / 5.86:1 white text. */
+.fo-button--success { background: var(--color-success); border-color: var(--color-success); color: var(--color-text-inverse); }
+.fo-button--error { background: var(--color-danger); border-color: var(--color-danger); color: var(--color-text-inverse); }
+
+/* Loading. The label is hidden with visibility (not display:none) so it keeps
+   reserving its layout box -- the button's width never changes between idle
+   and loading. A spinner overlays in its place. `aria-busy` + `disabled`
+   together are what actually prevent a duplicate submission; the visual
+   state is a consequence of that, not the mechanism. */
+.fo-button--loading { cursor: wait; }
+.fo-button--loading .fo-button__label { visibility: hidden; }
+.fo-button__spinner {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+}
+.fo-button__spinner-glyph {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: fo-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The global reduced-motion rule above already floors animation-duration to
+     0.01ms, which would make this spin imperceptibly fast rather than stop --
+     for a looping indicator specifically, stop it and fall back to a static
+     ring plus the button's aria-busy state for the actual signal. */
+  .fo-button__spinner-glyph { animation: none; border-top-color: currentColor; opacity: 0.6; }
+}
+@keyframes fo-spin { to { transform: rotate(360deg); } }
+
+.fo-button__label { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+
+/* --- Icon Button -----------------------------------------------------------
+   Icon-only control with a mandatory accessible name AND a visible tooltip
+   (label text shown on hover/focus, not only exposed to assistive tech).
+   40px control meets the 44px target when the caller's touch spacing allows
+   it to combine with surrounding padding; dense contexts may opt into the
+   36px `--compact` size only where a mouse/desktop-only surface guarantees
+   it (never on a touch surface). */
+.fo-icon-button {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; min-width: 44px; min-height: 44px;
+  padding: 0; border-radius: var(--radius-control);
+  border: var(--border-width-hairline) solid var(--color-border-strong);
+  background: var(--color-surface-elevated); color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--duration-control) var(--ease-standard),
+              color var(--duration-control) var(--ease-standard),
+              border-color var(--duration-control) var(--ease-standard);
+}
+.fo-icon-button:hover:not(:disabled) { background: var(--color-surface-sunken); color: var(--color-brand-primary); border-color: var(--color-brand-secondary); }
+.fo-icon-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.fo-icon-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* Tooltip -- CSS-only, shows on hover AND keyboard focus (never hover-only).
+   role="tooltip" + aria-describedby is wired in IconButton.jsx; this is the
+   visual half only. */
+.fo-icon-button__tooltip {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%) translateY(-2px);
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium);
+  white-space: nowrap; padding: 4px 8px; border-radius: var(--radius-sm);
+  pointer-events: none; opacity: 0; z-index: 30;
+  transition: opacity var(--duration-control) var(--ease-standard), transform var(--duration-control) var(--ease-standard);
+}
+.fo-icon-button:hover .fo-icon-button__tooltip,
+.fo-icon-button:focus-visible .fo-icon-button__tooltip {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fo-icon-button__tooltip { transition: none; }
+}
+
+/* --- Page header / Section header -----------------------------------------
+   Page header = one per screen, display type. Section header = repeatable
+   within a screen, interface type, quieter. */
+.fo-page-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.fo-page-header__text { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.fo-page-header__eyebrow {
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted);
+}
+.fo-page-header__title {
+  margin: 0; font-family: var(--font-display); font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-display-sm); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-page-header__description {
+  margin: 0; font-family: var(--font-interface); font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed); color: var(--color-text-secondary);
+  max-width: 68ch;
+}
+.fo-page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; flex-wrap: wrap; }
+
+.fo-section-header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.fo-section-header__title {
+  margin: 0; font-family: var(--font-interface); font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-lg); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-section-header__description {
+  margin: 2px 0 0; font-family: var(--font-interface); font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.fo-section-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+
+/* --- Status indicator -------------------------------------------------------
+   Icon + text + colour, together, always. This is distinct from StatusPill
+   (shared/ui/StatusPill.jsx, the existing tone-driven pill primitive) -- it
+   adds a glyph so the signal survives a colour-blind or greyscale render, and
+   is meant for a standalone line (e.g. a sync/connection state), not an
+   inline table badge. Reuses the SAME tone vocabulary as StatusPill/tone.js
+   so a tone means one thing everywhere. */
+.fo-status-indicator {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-interface); font-size: var(--font-size-base); font-weight: var(--font-weight-medium);
+}
+.fo-status-indicator--positive { color: var(--color-success); }
+.fo-status-indicator--attention { color: var(--color-warning); }
+.fo-status-indicator--critical { color: var(--color-danger); }
+.fo-status-indicator--info { color: var(--color-info); }
+.fo-status-indicator--unknown, .fo-status-indicator--neutral { color: var(--color-text-secondary); }
+.fo-status-indicator--muted { color: var(--color-text-muted); }
+
+/* --- Compact metric ---------------------------------------------------------
+   A small labelled number for a dense summary row (distinct from the larger
+   .fo-stat/.fo-stat-value pairing already in this file, which is card-scale).
+   Tabular numerals so a row of these never jitters as values update. */
+.fo-compact-metric { display: flex; flex-direction: column; gap: 1px; }
+.fo-compact-metric__value {
+  font-family: var(--font-interface); font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-compact-metric__label {
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);
+}
+
+/* --- Loading / empty / error primitives ------------------------------------
+   Icon-bearing companions to the existing text-only LoadingState/EmptyState/
+   FailureState components (shared/ui/*.jsx, unchanged by this PR). These new
+   classes style an OPTIONAL icon inside those existing components without
+   altering their markup contract -- a later PR may wire the icon prop through;
+   this PR only adds the capability. */
+.fo-state--iconic { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; padding: var(--space-7) var(--space-4); }
+.fo-state--iconic .fo-icon { color: var(--color-text-muted); }
+.fo-state--iconic .fo-state-title { margin: 0; font-family: var(--font-interface); font-weight: var(--font-weight-semibold); font-size: var(--font-size-md); color: var(--color-text-primary); }
+.fo-state--iconic .fo-state-message { margin: 0; max-width: 48ch; }
+.fo-state--iconic.fo-state--error .fo-icon { color: var(--color-danger); }
+
+/* Spinning icon utility (e.g. Loader2 in LoadingState) -- honours reduced
+   motion via the global rule at the top of this file, which floors
+   animation-duration to 0.01ms; that reads as "stopped" here since a spinner
+   carries no information at rest, unlike the button spinner above which
+   swaps to a static ring explicitly. */
+.fo-icon--spin { animation: fo-spin 0.9s linear infinite; }
+
+/* === inline-style elimination: controlTower/panels ============================
+   Structural layout rules lifted from inline style={{...}} in
+   ActivityTimelinePanel.jsx, AtRiskPanel.jsx, PartsOverviewPanel.jsx, and
+   WorkOrderAttentionPanel.jsx. No color/typography values introduced, so no
+   new WCAG contrast pairs to check. */
+.fo-controltower-panel__header { display: flex; align-items: center; justify-content: space-between; }
+.fo-controltower-attention-row { display: block; }
+.fo-controltower-attention-row__title { display: flex; align-items: center; gap: var(--space-2); }
+/* === inline-style elimination: dispatch ================================= */
+.fo-dispatch__card-head { display: flex; align-items: center; justify-content: space-between; }
+.fo-dispatch__reassign-actions { display: flex; gap: var(--space-2); }
+/* === inline-style elimination: inventory/truckManagement (TruckInventory,
+   ManageTruckDrawer, OutcomeBanner) ==========================================
+   Structural layout/spacing rules pulled out of style={{...}} attributes.
+   No new colours are introduced by this block, so no WCAG contrast check is
+   required. */
+.fo-scan-review-panel { max-width: 480px; margin: 10vh auto; }
+.fo-btn-row--spread { justify-content: space-between; align-items: center; }
+.fo-reconciliation-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
+.fo-truck-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin: 0; }
+.fo-dd-tight { margin: 0; }
+.fo-outcome-banner__reload { margin-left: var(--space-2); }
+/* === inline-style elimination: misc-surfaces (reporting/scheduling/accounts/inventoryRole/operations) === */
+/* ReportBuilder.jsx FieldGroups fieldset: was style={{ flexDirection: "column", alignItems: "stretch" }}.
+   .fo-fieldset already sets display:flex; this variant stacks the checkboxes full-width instead of
+   wrapping them inline, unchanged from the original inline values. */
+.fo-fieldset--stacked { flex-direction: column; align-items: stretch; }
+/* === inline-style elimination: technician-dashboard ========================
+   ExecutionCapture.jsx + TechnicianWorkOrderDetail.jsx. All four were fixed
+   structural values (no per-render computed data), so all four convert.
+   .fo-btn-row already sets display:flex (see existing rule above); this only
+   adds the centering it lacked inline. --space-3 (12px) is an exact-value
+   match for the 12px margin-top literal. No new colour pairs introduced --
+   nothing here touches WCAG contrast. */
+.fo-execution-capture__part-row { align-items: center; }
+.fo-execution-capture__part-label { flex: 1; }
+.fo-execution-capture__notes { margin-top: var(--space-3); }
+.fo-wo-detail__title { margin: 0; }
+
+
+/* ReportBuilder.jsx ResultsTable wrapper: was style={{ overflowX: "auto" }} -- identical behaviour to
+   the existing .fo-table-scroll utility (defined earlier in this file), reused rather than duplicated. */
+
+/* ReportBuilder.jsx ResultsTable caption: was style={{ textAlign: "left", captionSide: "top",
+   marginBottom: 4 }}. marginBottom:4 matches --space-1 (4px) exactly. */
+.fo-report-caption { text-align: left; caption-side: top; margin-bottom: var(--space-1); }
+
+/* AccountAttentionSection.jsx AttentionRow: Link was style={{ display: "block" }}; the h4 title row was
+   style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}. gap:0.5rem (8px) matches --space-2. */
+.fo-attention-row { display: block; }
+.fo-attention-row__title { display: flex; align-items: center; gap: var(--space-2); }
+
+/* WarehouseManagerHome.jsx pager toolbar: was style={{ justifyContent: "flex-end" }} layered on the
+   existing .disp-board-toolbar (display:flex already defined earlier in this file). */
+.disp-board-toolbar--end { justify-content: flex-end; }
+
+
+
+
+
+/* === inline-style elimination: inventory-core (Manufacturers/PartMasterList/PartsList/
+   PartsShadowParityDiagnostics) ==========================================================
+   Rewiring pass only -- every rule below reproduces the literal inline value it replaces
+   (or the nearest design token within ~1px), no re-spacing. Color pairs reuse existing
+   token pairings already shipped elsewhere in this file (STATUS_TONE/OUTCOME_TONE mirrors
+   the success/warning/danger/info surface+ink pairs used throughout index.css), so no new
+   contrast ratio is introduced here. */
+
+/* -- Manufacturers.jsx -- */
+.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.fo-mfr__title { margin: 0; }
+.fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+.fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.fo-mfr__notice { background: var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--font-size-sm); margin-bottom: var(--space-2); }
+
+.fo-mfr__badge { padding: 2px var(--space-2); border-radius: 12px; font-size: var(--font-size-sm); font-weight: 600; }
+.fo-mfr__badge--active { background: var(--color-success-surface); color: var(--color-success); } /* 4.5:1+, same pairing used repo-wide */
+.fo-mfr__badge--inactive { background: var(--color-warning-surface); color: var(--color-warning); } /* 4.5:1+, same pairing used repo-wide */
+
+.fo-mfr__outcome { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; font-size: var(--font-size-sm); }
+.fo-mfr__outcome--applied { background: var(--color-success-surface); color: var(--color-success); }
+.fo-mfr__outcome--replayed { background: var(--color-surface-sunken); color: var(--color-info); }
+.fo-mfr__outcome--noop { background: var(--color-border); color: var(--color-text-primary); }
+.fo-mfr__outcome--denied { background: var(--color-danger-surface); color: var(--color-danger); }
+.fo-mfr__outcome--invalid { background: var(--color-warning-surface); color: var(--color-warning); }
+.fo-mfr__outcome--conflict { background: var(--color-warning-surface); color: var(--color-warning); }
+.fo-mfr__outcome--not-found { background: var(--color-danger-surface); color: var(--color-danger); }
+.fo-mfr__outcome--unavailable { background: var(--color-border); color: var(--color-text-primary); }
+.fo-mfr__outcome--error { background: var(--color-danger-surface); color: var(--color-danger); }
+
+.fo-mfr__panel { border: 1px solid var(--color-border); border-radius: 8px; padding: var(--space-4); margin: var(--space-2) 0; background: var(--color-surface-elevated); }
+.fo-mfr__panel-header { display: flex; justify-content: space-between; align-items: center; }
+.fo-mfr__panel-title { margin: 0; font-size: var(--font-size-base); }
+.fo-mfr__close-btn { border: none; background: none; cursor: pointer; font-size: var(--font-size-lg); color: var(--color-text-secondary); }
+
+.fo-mfr__status-desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.fo-mfr__status-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.fo-mfr__status-btn { padding: var(--space-2) 14px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
+.fo-mfr__status-btn--disabled { cursor: not-allowed; }
+
+.fo-mfr__form { max-width: 420px; }
+.fo-mfr__field { margin-bottom: 10px; }
+.fo-mfr__label { display: block; font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1); }
+.fo-mfr__input { padding: 6px; font-size: var(--font-size-sm); width: 100%; box-sizing: border-box; }
+.fo-mfr__form-actions { display: flex; gap: var(--space-2); }
+.fo-mfr__btn-submit { padding: var(--space-2) 16px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+.fo-mfr__btn-submit--disabled { background: var(--color-info-surface); cursor: not-allowed; }
+.fo-mfr__btn-secondary { padding: var(--space-2) 16px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
+
+/* -- PartMasterList.jsx -- */
+.fo-pml__part-number { font-family: monospace; }
+.fo-pml__actions { white-space: nowrap; }
+
+/* -- PartsList.jsx -- */
+.fo-parts__toolbar--end { justify-content: flex-end; }
+.fo-parts__toolbar--center { justify-content: center; }
+
+/* -- PartsShadowParityDiagnostics.jsx -- */
+.fo-parity__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.fo-parity__result-box { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: 8px; margin-top: var(--space-2); }
+.fo-parity__list { margin-top: var(--space-3); list-style: none; padding: 0; font-family: monospace; font-size: var(--font-size-sm); }
+.fo-parity__cell { padding: 2px 0; }
+.fo-parity__copy-btn { margin-top: var(--space-2); }
+.fo-parity__copied { margin-left: var(--space-2); color: var(--color-success); font-size: var(--font-size-xs); }
+
+/* === inline-style elimination: the primitive itself =======================
+   Button.jsx named .fo-button__protected-reason and then set its font-size and
+   margin inline, so the class it advertised did not exist and could not be
+   themed or overridden. The design system is the last place an inline style
+   belongs. Values are the ones it was already applying, now on the token scale
+   (4px -> --space-1; 12px sat between xs 11px and sm 12.5px, snapped to sm so
+   an explanation a blocked user must read never gets SMALLER by rounding).
+   Colour comes from .fo-muted,
+   unchanged, so no new contrast pair is introduced. */
+.fo-button__protected-reason {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
 }

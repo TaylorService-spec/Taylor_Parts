@@ -29,3 +29,11 @@ netwatch.log
 # principal UIDs -- they must never be committed.
 functions/.operator-access-intents/
 .operator-access-intents/
+
+# Emulator debug output — generated at runtime, never a repo artifact.
+firestore-debug.log
+firebase-debug.log
+.impeccable/
+
+# Emulator E2E harness — generated port-overridden firebase.json (functions/scripts/runE2eEmulatorSuite.mjs).
+.e2e-emulator-firebase.json

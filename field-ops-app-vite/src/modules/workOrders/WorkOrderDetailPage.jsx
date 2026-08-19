@@ -7,8 +7,10 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
+import { Button } from "../../shared/ui/primitives";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
+import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -28,20 +30,37 @@ import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
-  const { role } = useAuth();
-  const { workOrder, loading } = useWorkOrder(workOrderId);
-  const { account } = useAccount(workOrder?.customerId ?? null);
-  const { location } = useLocationDoc(workOrder?.locationId ?? null);
-  const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { role, user } = useAuth();
+  const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
+  const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
+  const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
+  const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
+  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading work order…</LoadingState></div>;
+
+  // H14 -- a denied/failed Work Order read used to leave `loading` true
+  // forever (no error, no recovery). It now resolves with a distinct
+  // failure, never conflated with the CONFIRMED-absence "could not be
+  // found" message below, which only applies to a successful read that
+  // found no such Work Order.
+  if (error) {
+    return (
+      <div className="fo-panel">
+        <FailureState
+          message={error}
+          action={<Button variant="secondary" onClick={retry}>Retry</Button>}
+        />
+      </div>
+    );
+  }
 
   if (!workOrder) {
     return (
       <div className="fo-panel">
         <FailureState
           message="This work order could not be found."
-          action={<button type="button" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</button>}
+          action={<Button variant="secondary" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</Button>}
         />
       </div>
     );
@@ -56,9 +75,21 @@ export default function WorkOrderDetailPage() {
 
   return (
     <div className="fo-panel">
-      <button type="button" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
+      <Button variant="tertiary" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
         &larr; Back to Work Orders
-      </button>
+      </Button>
+      {/* H14 -- these two reads used to be dropped entirely (no error, no
+          loading) even though useAccount.js/useFirestoreCollection.js
+          already exposed them. A denied Account read rendered a blank/
+          raw-id customer name with no indication anything failed; a denied
+          Technicians read rendered as an empty list, indistinguishable from
+          "no technicians exist". Both now render a visible failure instead
+          of silently falling back. */}
+      {accountError && <FailureState message={accountError} />}
+      {locationError && <FailureState message={locationError} />}
+      {techniciansError && (
+        <FailureState message="You don't have access to the technician list. Some assignment info may be missing." />
+      )}
       <WorkOrderDetail
         workOrder={workOrder}
         jobs={jobsForThisWorkOrder}
@@ -72,7 +103,7 @@ export default function WorkOrderDetailPage() {
           pure presentation component. No refresh prop is needed: useWorkOrder is an onSnapshot
           listener, so a saved plan re-renders from the persisted document rather than from optimistic
           client state. */}
-      <WorkOrderPartsPlanEditor workOrder={workOrder} />
+      <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
     </div>
   );
 }

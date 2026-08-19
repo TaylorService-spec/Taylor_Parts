@@ -4,6 +4,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import SalesWorkspace from "../src/modules/sales/SalesWorkspace.jsx";
+import { opportunityEntity, opportunityIndexList } from "../src/metadata/definitions/opportunity.js";
 
 afterEach(cleanup);
 
@@ -141,8 +142,22 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("entering a section edit (readiness enabled) swaps read for a compact form; Cancel returns to read", () => {
-    render(<SalesWorkspace readiness={ENABLED} />);
+  // Regression for the confirmed defect: write-readiness alone used to be enough to render Edit as fully
+  // live, even though SectionEditForm's own Save is inert without a wired onSaveSection command (App.jsx's
+  // production mount never passes one). A capability-holding user could open a section, edit fields, and only
+  // discover on submit that Save was disabled. Edit must be gated on BOTH readiness AND a wired save command.
+  it("readiness enabled but NO governed save command wired: Edit itself stays disabled + honest (does not invite a dead-end edit)", () => {
+    render(<SalesWorkspace readiness={ENABLED} />); // no onSaveSection — mirrors the real production mount
+    const editNeed = screen.getByRole("button", { name: /edit customer need/i });
+    expect(editNeed.disabled).toBe(true);
+    expect(editNeed.title).toMatch(/governed save command is not wired/i);
+    // clicking a disabled Edit must not open the section form
+    fireEvent.click(editNeed);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("entering a section edit (readiness enabled AND a wired save command) swaps read for a compact form; Cancel returns to read", () => {
+    render(<SalesWorkspace readiness={ENABLED} onSaveSection={() => {}} />);
     // Customer need is an editable section; enter its edit mode
     const editNeed = screen.getByRole("button", { name: /edit customer need/i });
     expect(editNeed.disabled).toBe(false);
@@ -156,17 +171,10 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
   });
 
   it("only one section edits at a time (section-level editing, not a whole-detail form)", () => {
-    render(<SalesWorkspace readiness={ENABLED} />);
+    render(<SalesWorkspace readiness={ENABLED} onSaveSection={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
     // while the need edits, other sections still show their Edit affordance (not all forced into edit)
     expect(screen.getByRole("button", { name: /edit commercial details/i })).toBeTruthy();
-  });
-
-  it("save stays inert when readiness is enabled but no governed command is wired", () => {
-    render(<SalesWorkspace readiness={ENABLED} />); // no onSaveSection
-    fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
-    const save = screen.getByRole("button", { name: /^save$/i });
-    expect(save.disabled).toBe(true); // command not wired => honest, inert
   });
 
   it("with readiness enabled AND a wired command, saving hands the section draft to the governed command", () => {
@@ -277,4 +285,30 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
     await screen.findByText(/Freezer replacement/i);
   });
 
+});
+
+// S-CRM-OPPORTUNITIES — metadata list runtime migration EVALUATED, DECLINED (see the header
+// comment block in SalesWorkspace.jsx for the full reasoning: three compounding blockers, any
+// one disqualifying on its own). These tests do NOT exercise a migration — they lock the two
+// facts of the real `opportunityIndexList`/`opportunityEntity` declarations that this decline
+// depends on, so a future change to either definition that would remove the blocker fails here
+// loudly and prompts re-evaluation, rather than the decline silently going stale.
+describe("SalesWorkspace (metadata list runtime migration — declined, blocking facts locked)", () => {
+  it("opportunityIndexList has no Attention/next-action column — this pipeline's real triage signal is not representable through the declared list", () => {
+    const fieldIds = opportunityIndexList.columns.map((c) => c.fieldId);
+    expect(fieldIds).not.toContain("nextAction");
+    expect(fieldIds).not.toContain("attention");
+  });
+
+  it("opportunityEntity does not declare a nextAction field at all — there is no column this migration could even ask for", () => {
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("nextAction");
+  });
+
+  it("opportunityEntity's accountId REFERENCE column has no denormalized name field beside it — a real resolveReference would require a second, per-row live read", () => {
+    const accountIdField = opportunityEntity.fields.find((f) => f.id === "accountId");
+    expect(accountIdField?.type).toBe("REFERENCE");
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("accountName");
+  });
 });

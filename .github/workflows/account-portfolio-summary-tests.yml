@@ -1,0 +1,59 @@
+name: Account Portfolio Summary Tests
+
+# The governed AGGREGATE read behind the Customers headline numbers.
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this repo
+# runs per-subsystem workflows on PRs, so a suite named in no workflow simply never runs.
+#
+# What this guards is the distinction the Owner ruling fixed: total/active/prospect/
+# inactive/archived are claims about the WHOLE book of business, and an aggregate whose
+# input is bounded returns a number smaller than the truth while still being labelled
+# "Total". It also guards the status-integrity rule -- records whose status the enum does
+# not recognise are counted and REPORTED rather than silently dropped from a total that
+# still calls itself complete, which matters because the production status audit is open.
+#
+# Offline: the tests use a Firestore double, so no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/account/**"
+      - "functions/test/accountPortfolioSummary.test.mjs"
+      - "functions/src/index.ts"
+      - ".github/workflows/account-portfolio-summary-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/account/**"
+      - "functions/test/accountPortfolioSummary.test.mjs"
+      - "functions/src/index.ts"
+      - ".github/workflows/account-portfolio-summary-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-portfolio-summary-tests:
+    name: Account portfolio aggregate (build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      # The tests import the COMPILED output, the same pattern every other functions suite
+      # uses -- nothing here reads a .ts file directly.
+      - name: Build functions
+        run: npm run build
+        working-directory: functions
+      - name: Account portfolio summary tests (node:test)
+        run: node --test test/accountPortfolioSummary.test.mjs
+        working-directory: functions

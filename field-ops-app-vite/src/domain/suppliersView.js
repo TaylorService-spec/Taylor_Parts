@@ -54,7 +54,12 @@ export function buildSuppliersView(suppliers) {
     if (!isPlainObject(s) || typeof s.id !== "string" || s.id.length === 0) continue;
     rows.push({
       id: s.id,
-      name: str(s.name) ?? s.id,
+      // A record id is NOT a name. This fell back to `s.id`, putting a Firestore document
+      // id in front of a user whenever a supplier had no name -- DECISIONS #106, which has
+      // no "unless nothing else is available" clause. Live rather than latent: supplierPicker.js
+      // consumes this view, so the id could reach a picker label. The em dash makes the missing
+      // name visible instead of disguising it as data.
+      name: str(s.name) ?? "—",
       status: str(s.status),
       vendorNumber: str(s.vendorNumber),
       contact: contactLine(s),

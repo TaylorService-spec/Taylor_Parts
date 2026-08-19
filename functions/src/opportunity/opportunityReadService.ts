@@ -30,6 +30,14 @@ export const OPPORTUNITY_READ_CAPABILITY = "opportunity.read";
 // number|null; unknown/invalid stage or outcome is dropped to null rather than trusted.
 export interface OpportunityProjection {
   id: string;
+  // HUMAN IDENTITY, projected so no reader has to fall back to the document id.
+  //
+  // Both are nullable and that is deliberate: Opportunities created before this existed
+  // carry neither, and a projection that invented a value would be lying about identity.
+  // A reader that finds both null has learned something true — this record predates
+  // identity — which is more useful than a fabricated label.
+  name: string | null;
+  opportunityNumber: string | null;
   accountId: string | null;
   salesChannel: string | null;
   ownerEmployeeId: string | null;
@@ -69,6 +77,8 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     .filter((l): l is { kind: string; ref: string; qty?: number } => l !== null);
   return {
     id,
+    name: str(data.name),
+    opportunityNumber: str(data.opportunityNumber),
     accountId: str(data.accountId),
     salesChannel: str(data.salesChannel),
     ownerEmployeeId: str(data.ownerEmployeeId),
@@ -89,6 +99,11 @@ export interface OpportunityReadResult {
   status: OpportunityReadStatus;
   opportunities: OpportunityProjection[];
   skipped: number; // docs that failed projection (drives the `degraded` status, honestly surfaced)
+  // BOUNDED-READ HONESTY. True when more documents matched than were returned. Deliberately NOT
+  // folded into `status`: `degraded` already means "some docs failed projection", and a truncated
+  // page of perfectly good documents is a different fact. Optional because the account-scoped read
+  // sets it explicitly while other callers may not.
+  truncated?: boolean;
 }
 
 // Pure: turn a set of {id,data} docs into the read result, marking `degraded` when any doc had to be skipped.
@@ -166,7 +181,8 @@ export const listOpportunitiesForAccount = onCall({ region: "us-central1" }, asy
       permissionIds: [OPPORTUNITY_READ_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listOpportunitiesForAccount] capability resolution failed for ${OPPORTUNITY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
@@ -181,6 +197,15 @@ export const listOpportunitiesForAccount = onCall({ region: "us-central1" }, asy
 
 // The trusted read callable. Returns the projected result; maps failures to HttpsError so the client can
 // distinguish denied (permission-denied) from unavailable (internal). Empty and degraded ride the payload.
+/**
+ * Cap for the whole-authorized-scope Opportunity read.
+ *
+ * Not the 50/200 of the account-scoped reads: those bound ONE account's Opportunities, while this
+ * bounds every Opportunity a principal may see. Sized against resolveCoverageForContext's own
+ * unscoped two-collection precedent rather than guessed.
+ */
+const OPPORTUNITY_CONTEXT_LIMIT = 1000;
+
 export const listOpportunityContext = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
 
@@ -191,16 +216,34 @@ export const listOpportunityContext = onCall({ region: "us-central1" }, async (r
       permissionIds: [OPPORTUNITY_READ_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listOpportunityContext] capability resolution failed for ${OPPORTUNITY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
 
   try {
     const db = getFirestore();
-    const snap = await db.collection(OPPORTUNITIES_COLLECTION).get();
-    const result = summarizeReadResult(snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> })));
-    return { status: result.status, opportunities: result.opportunities, skipped: result.skipped };
+    // BOUNDED READ. This is the caller's WHOLE authorized scope, so there is no accountId to
+    // narrow it -- which is exactly why it needs a cap rather than deserving an exemption from
+    // one. An unbounded .get() over `opportunities` is a client-side dataset-ownership
+    // assumption on the server side of the wire, and it grows without limit.
+    //
+    // Sized like listCoordinatedOperations rather than like the account-scoped reads: 50/200
+    // are calibrated for one account's Opportunities, not for every Opportunity a principal can
+    // see. There is deliberately NO client-supplied limit, because nothing about this call is
+    // per-caller parameterized yet.
+    //
+    // Truncation is reported as a separate `truncated` flag rather than by downgrading status,
+    // because OpportunityReadStatus is "ready" | "degraded" and `degraded` already means
+    // something specific and different (some documents failed projection). Overloading it would
+    // silently redefine that word for a consumer already interpreting it. This mirrors
+    // readOpportunitiesForAccount in this same file.
+    const snap = await db.collection(OPPORTUNITIES_COLLECTION).limit(OPPORTUNITY_CONTEXT_LIMIT + 1).get();
+    const truncated = snap.size > OPPORTUNITY_CONTEXT_LIMIT;
+    const docs = snap.docs.slice(0, OPPORTUNITY_CONTEXT_LIMIT);
+    const result = summarizeReadResult(docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> })));
+    return { status: result.status, opportunities: result.opportunities, skipped: result.skipped, truncated };
   } catch {
     // A read failure is UNAVAILABLE, distinct from denied/empty — surfaced as internal so the client seam
     // can render an honest "not connected / unavailable" state rather than "you have zero opportunities".

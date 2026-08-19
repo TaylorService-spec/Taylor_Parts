@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // R1-A — Legacy authorization surface corpus (Issue #226 readiness).
 //
 // The measured, per-collection inventory of every place `firestore.rules`
@@ -26,9 +32,10 @@
 // removed or deliberately recorded here -- the surface cannot silently grow
 // while convergence is in progress. That drift gate is the point.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this repo)
-// at functions/src/access/legacyAuthorizationSurface.ts. If either
-// file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 
 /** The Issue #226 implementation-plan row that owns a domain's cutover. */
 export type CutoverRow = "row23" | "row24" | "row25" | "row26" | "unassigned";

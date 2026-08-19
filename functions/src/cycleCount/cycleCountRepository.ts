@@ -8,11 +8,13 @@ import {
   CYCLE_COUNT_STATUSES,
   CYCLE_COUNT_SCHEMA_VERSION,
   CYCLE_COUNT_SUPPORTED_TRACKING_MODES,
+  CYCLE_COUNT_REVIEW_DECISIONS,
   CycleCountMalformedStoredRecordError,
   type CycleCountActor,
   type CycleCountIdentity,
   type CycleCountLocationRef,
   type CycleCountStatus,
+  type CycleCountReviewDecision,
   type CycleCountTrackingMode,
   type CycleCountValue,
   type DeserializedCycleCount,
@@ -74,7 +76,9 @@ export function serializeCycleCount(value: CycleCountValue, actor: CycleCountAct
 }
 
 // Build the fields for the submitCycleCount transition (OPEN -> COUNTED): records counted values +
-// computed variance evidence. Never touches the create-time snapshot fields.
+// computed variance evidence. Never touches the create-time snapshot fields. `submittedBy` is written
+// independently of `updatedBy` -- the separation-of-duties guard in reconcileCycleCount needs to know
+// who submitted THIS count even after a later reconcile/reject call overwrites `updatedBy`.
 export function submitFields(
   nextVersion: number,
   actor: CycleCountActor,
@@ -89,6 +93,7 @@ export function submitFields(
     version: nextVersion,
     updatedAt: Timestamp.fromDate(now),
     updatedBy: actor.id,
+    submittedBy: actor.id,
     ...(countedQuantity === undefined ? {} : { countedQuantity }),
     ...(countedSerialNumbers === undefined ? {} : { countedSerialNumbers: [...countedSerialNumbers] }),
     ...(variance === undefined ? {} : { variance }),
@@ -96,19 +101,25 @@ export function submitFields(
   };
 }
 
-// Build the fields for the reconcileCycleCount transition (COUNTED -> RECONCILED).
+// Build the fields for the reconcileCycleCount transition (COUNTED -> RECONCILED, `decision` APPROVE)
+// or (COUNTED -> REJECTED, `decision` REJECT). Both are a manager's terminal disposition of a submitted
+// count, sharing the same "reviewed at/by" bookkeeping -- only the resulting status/ledgerEventIds
+// differ (REJECT always carries an empty ledgerEventIds; reconcileCycleCount enforces that it never
+// stages ledger writes on the reject path).
 export function reconcileFields(
   nextVersion: number,
   actor: CycleCountActor,
   now: Date,
   reason: string | null,
   ledgerEventIds: readonly string[],
+  decision: CycleCountReviewDecision,
 ): Record<string, unknown> {
   return {
-    status: "RECONCILED" as CycleCountStatus,
+    status: (decision === "REJECT" ? "REJECTED" : "RECONCILED") as CycleCountStatus,
     version: nextVersion,
     updatedAt: Timestamp.fromDate(now),
     updatedBy: actor.id,
+    reviewDecision: decision,
     ...(reason === null ? {} : { reconciliationReason: reason }),
     reconciledAt: Timestamp.fromDate(now),
     reconciledBy: actor.id,
@@ -123,8 +134,8 @@ export function cancelFields(nextVersion: number, actor: CycleCountActor, now: D
 const STORED_KEYS = new Set([
   "schemaVersion", "partId", "trackingMode", "location", "expectedQuantity", "expectedSerialNumbers",
   "status", "version", "idempotencyKey", "actor", "createdAt", "createdBy", "updatedAt", "updatedBy",
-  "fingerprint", "countedQuantity", "countedSerialNumbers", "variance", "serialVariance",
-  "reconciliationReason", "reconciledAt", "reconciledBy", "ledgerEventIds",
+  "fingerprint", "countedQuantity", "countedSerialNumbers", "variance", "serialVariance", "submittedBy",
+  "reviewDecision", "reconciliationReason", "reconciledAt", "reconciledBy", "ledgerEventIds",
 ]);
 
 // Fail-closed deserialize of a stored cycle_counts record. Never normalizes malformed data into
@@ -208,6 +219,18 @@ export function deserializeCycleCount(docId: string, data: unknown): Deserialize
     }
     serialVariance = { missing: [...(sv.missing as string[])], unexpected: [...(sv.unexpected as string[])] };
   }
+  let submittedBy: string | undefined;
+  if (data.submittedBy !== undefined) {
+    if (!isNonEmptyString(data.submittedBy)) throw new CycleCountMalformedStoredRecordError("stored submittedBy invalid");
+    submittedBy = data.submittedBy;
+  }
+  let reviewDecision: CycleCountReviewDecision | undefined;
+  if (data.reviewDecision !== undefined) {
+    if (typeof data.reviewDecision !== "string" || !(CYCLE_COUNT_REVIEW_DECISIONS as readonly string[]).includes(data.reviewDecision)) {
+      throw new CycleCountMalformedStoredRecordError("stored reviewDecision invalid");
+    }
+    reviewDecision = data.reviewDecision as CycleCountReviewDecision;
+  }
   let reconciliationReason: string | undefined;
   if (data.reconciliationReason !== undefined) {
     if (!isNonEmptyString(data.reconciliationReason)) throw new CycleCountMalformedStoredRecordError("stored reconciliationReason invalid");
@@ -246,6 +269,8 @@ export function deserializeCycleCount(docId: string, data: unknown): Deserialize
     ...(countedSerialNumbers === undefined ? {} : { countedSerialNumbers }),
     ...(variance === undefined ? {} : { variance }),
     ...(serialVariance === undefined ? {} : { serialVariance }),
+    ...(submittedBy === undefined ? {} : { submittedBy }),
+    ...(reviewDecision === undefined ? {} : { reviewDecision }),
     ...(reconciliationReason === undefined ? {} : { reconciliationReason }),
     ...(reconciledAt === undefined ? {} : { reconciledAt }),
     ...(reconciledBy === undefined ? {} : { reconciledBy }),

@@ -18,8 +18,9 @@
 // established for this program (accessCommandCallables.ts,
 // runReportDefinitionCallable.ts): exporting this callable from
 // functions/src/index.ts is not itself a deployment or activation
-// action. It is not deployed, and no client calls it, until a separate,
-// later Owner production authorization.
+// action. It is deployed to eos-platform-sandbox under the per-environment
+// activation program; it is NOT deployed to the production project, and no
+// client calls it, until a separate, later Owner production authorization.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import {
   resolveEffectiveAccess,
