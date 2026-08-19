@@ -106,6 +106,143 @@
 
   --rail-width: 252px;
   --rail-drawer-max: 899.98px;
+
+  /* ==========================================================================
+     DESIGN-SYSTEM FOUNDATION (PR 1) — tokens + primitives, additive only.
+     No existing token above this line changed value or meaning. Everything
+     below is NEW: typography, spacing, an operational-component radius,
+     elevation/focus/motion primitives, and self-hosted font families. Nothing
+     here is consumed by an existing screen yet — later PRs migrate consumers.
+     ========================================================================== */
+
+  /* --- Fonts (self-hosted, see ./assets/fonts + @font-face below) ---------- */
+  --font-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-interface: "Inter", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+  /* --- Type scale. Interface font unless noted; line-heights tuned for
+     operational density (short labels, tables, status text). --------------- */
+  --font-size-xs:   11px;
+  --font-size-sm:   12.5px;
+  --font-size-base: 14px;
+  --font-size-md:   16px;
+  --font-size-lg:   18px;
+  --font-size-xl:   22px;
+  --font-size-2xl:  28px;
+  --font-size-display-sm: clamp(22px, 2.4vw, 26px);
+  --font-size-display-md: clamp(28px, 3.4vw, 36px);
+  --font-size-display-lg: clamp(36px, 4.6vw, 48px);
+
+  --line-height-tight:  1.2;
+  --line-height-normal: 1.45;
+  --line-height-relaxed: 1.65;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+  --font-weight-extrabold: 800;
+
+  /* --- Spacing scale. 4px base, named rather than numbered so a later density
+     pass can retune the ramp without renaming every consumer. -------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* --- Radius. --radius-sm/md/lg above are preserved unchanged; --radius-control
+     names the same 6px cut for the specific "operational component" use (buttons,
+     inputs, chips) the program brief calls out, and --radius-pill covers the
+     existing 999px pill cut used by status pills/chips. ---------------------- */
+  --radius-control: 6px;
+  --radius-pill: 999px;
+
+  /* --- Borders. --color-border/--color-border-strong above are the COLOURS;
+     these are the two widths used across primitives. ------------------------ */
+  --border-width-hairline: 1px;
+  --border-width-thick: 2px;
+
+  /* --- Elevation. --shadow-rest/--shadow-lift above are preserved; this adds
+     the "no shadow" and "overlay" steps the primitives need, in the same
+     warm-tinted (evergreen) family so elevation keeps reading as part of the
+     palette. Sparing by design -- most surfaces stay flat. ------------------ */
+  --shadow-none: none;
+  --shadow-overlay: 0 8px 32px rgba(16, 43, 36, 0.18);
+
+  /* --- Focus ring. ONE focus treatment for every interactive primitive,
+     colour-only (never relies on colour alone for STATE -- focus is always
+     paired with the browser's default outline geometry, just recoloured). --- */
+  --focus-ring-color: var(--color-focus);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* --- Motion. --duration-fast/base + --ease-out above govern existing shell
+     chrome (drawer slide, hover) and are UNCHANGED. --duration-control is the
+     new token primitives use for their own hover/press/loading transitions --
+     120-180ms per the brief, deliberately shorter than the shell's 240ms base
+     so a button never feels slower to respond than the chrome around it. No
+     bounce/overshoot easing anywhere in this system. ------------------------ */
+  --duration-control: 150ms;
+  --ease-standard: var(--ease-out);
+
+  /* --- Icon sizing scale (paired with src/shared/ui/Icon.jsx). ------------- */
+  --icon-size-dense:  16px;
+  --icon-size-button: 18px;
+  --icon-size-nav:    20px;
+  --icon-size-action: 24px;
+  --icon-size-empty:  32px;
+  --icon-stroke-width: 1.75;
+}
+
+/* Self-hosted fonts -- no runtime CDN dependency. Subset to latin, vendored
+   under ./assets/fonts. font-display: swap so first paint is never blocked
+   on the font request; the fallback stacks above (--font-display/--font-interface)
+   already cover the swap period acceptably. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/inter-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-800.woff2") format("woff2");
+}
+
+/* Tabular numerals -- for operational numbers that sit in a column or update
+   in place (quantities, counts, currency): fixed digit width stops the
+   surrounding layout from jittering as digits change. */
+.fo-tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* Honour the platform reduced-motion preference globally rather than relying on
@@ -2627,3 +2764,274 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .eos-auth__card { padding: 28px 22px 22px; }
   .eos-auth__title { font-size: 22px; }
 }
+/* ===========================================================================
+   DESIGN-SYSTEM FOUNDATION (PR 1) -- PRIMITIVES
+   ---------------------------------------------------------------------------
+   New surfaces only. Nothing here is consumed by an existing screen -- no
+   className below is used by any component outside src/shared/ui/primitives/
+   until a later PR migrates a consumer. Existing fo-btn-primary/fo-btn-ghost
+   (Action Rail, 19 consumers) are UNCHANGED; fo-button below is a parallel,
+   fuller primitive for new work, not a replacement for those call sites.
+   All colour values reference the semantic tokens already defined above --
+   no new raw hex was introduced except where WCAG contrast math required a
+   value not already in the ramp (documented inline; every pair is >= AA).
+   ========================================================================= */
+
+/* --- Button --------------------------------------------------------------
+   One base class + a variant modifier + a state matrix. Every state is
+   expressed through colour/border/icon together, never colour alone, and
+   every interactive state has a focus-visible ring using --focus-ring-*.
+   ------------------------------------------------------------------------- */
+.fo-button {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: 40px; padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  border: var(--border-width-hairline) solid transparent;
+  font-family: var(--font-interface);
+  font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); line-height: 1;
+  white-space: nowrap; cursor: pointer; text-decoration: none;
+  transition: background-color var(--duration-control) var(--ease-standard),
+              border-color var(--duration-control) var(--ease-standard),
+              color var(--duration-control) var(--ease-standard),
+              box-shadow var(--duration-control) var(--ease-standard);
+}
+.fo-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+/* Pressed. A visible depth cue distinct from hover so keyboard/mouse activation
+   both register -- :active covers mouse press; JS-driven `data-pressed` is
+   available for a toggle-style consumer that must hold the pressed look. */
+.fo-button:active, .fo-button[data-pressed="true"] { transform: translateY(0.5px); }
+
+/* Primary -- one per view. 15.07:1 white-on-evergreen. */
+.fo-button--primary {
+  background: var(--color-brand-primary); border-color: var(--color-brand-primary);
+  color: var(--color-text-inverse);
+}
+.fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+
+/* Secondary -- outlined, guardian. 10.59:1 text; 10.59:1 border against white
+   (non-text components need only 3:1; this clears it with margin). */
+.fo-button--secondary {
+  background: var(--color-surface-elevated); border-color: var(--color-brand-secondary);
+  color: var(--color-brand-secondary);
+}
+.fo-button--secondary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
+
+/* Tertiary -- quiet text button for a subordinate action beside a primary one. */
+.fo-button--tertiary {
+  background: transparent; border-color: transparent;
+  color: var(--color-text-secondary);
+}
+.fo-button--tertiary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
+
+/* Destructive -- 5.86:1 white-on-danger. Reserved for actions that discard or
+   remove; label text always states the consequence (this primitive does not
+   infer it). */
+.fo-button--destructive {
+  background: var(--color-danger); border-color: var(--color-danger);
+  color: var(--color-text-inverse);
+}
+.fo-button--destructive:hover:not(:disabled):not([aria-disabled="true"]) { background: #962f2f; border-color: #962f2f; }
+
+/* Protected -- explains capability unavailability rather than hiding the
+   control. Always rendered disabled (this primitive never grants capability --
+   that stays with the authorization layer). 5.89:1 text, 12.35:1 icon. */
+.fo-button--protected {
+  background: var(--color-surface-sunken); border-color: var(--color-border-strong);
+  border-style: dashed;
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+}
+.fo-button--protected .fo-icon { color: var(--color-brand-primary); }
+
+/* Icon -- square, icon-only. Always paired with an accessible name (aria-label)
+   supplied by the caller; IconButton below is the preferred entry point and
+   enforces that contract. */
+.fo-button--icon {
+  min-width: 40px; padding: 0; gap: 0;
+}
+
+.fo-button:disabled, .fo-button[aria-disabled="true"] {
+  cursor: not-allowed; opacity: 0.55;
+}
+.fo-button--primary:disabled, .fo-button--primary[aria-disabled="true"],
+.fo-button--destructive:disabled, .fo-button--destructive[aria-disabled="true"] {
+  background: var(--color-text-muted); border-color: var(--color-text-muted); color: var(--color-text-inverse);
+}
+
+/* Success / error -- a transient result state applied AFTER an action settles
+   (not a variant a caller sets up front). Icon + colour together, and the
+   label text is expected to change too ("Saved" / "Failed") -- colour is
+   never the only signal. 5.33:1 / 5.86:1 white text. */
+.fo-button--success { background: var(--color-success); border-color: var(--color-success); color: var(--color-text-inverse); }
+.fo-button--error { background: var(--color-danger); border-color: var(--color-danger); color: var(--color-text-inverse); }
+
+/* Loading. The label is hidden with visibility (not display:none) so it keeps
+   reserving its layout box -- the button's width never changes between idle
+   and loading. A spinner overlays in its place. `aria-busy` + `disabled`
+   together are what actually prevent a duplicate submission; the visual
+   state is a consequence of that, not the mechanism. */
+.fo-button--loading { cursor: wait; }
+.fo-button--loading .fo-button__label { visibility: hidden; }
+.fo-button__spinner {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+}
+.fo-button__spinner-glyph {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: fo-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The global reduced-motion rule above already floors animation-duration to
+     0.01ms, which would make this spin imperceptibly fast rather than stop --
+     for a looping indicator specifically, stop it and fall back to a static
+     ring plus the button's aria-busy state for the actual signal. */
+  .fo-button__spinner-glyph { animation: none; border-top-color: currentColor; opacity: 0.6; }
+}
+@keyframes fo-spin { to { transform: rotate(360deg); } }
+
+.fo-button__label { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+
+/* --- Icon Button -----------------------------------------------------------
+   Icon-only control with a mandatory accessible name AND a visible tooltip
+   (label text shown on hover/focus, not only exposed to assistive tech).
+   40px control meets the 44px target when the caller's touch spacing allows
+   it to combine with surrounding padding; dense contexts may opt into the
+   36px `--compact` size only where a mouse/desktop-only surface guarantees
+   it (never on a touch surface). */
+.fo-icon-button {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; min-width: 44px; min-height: 44px;
+  padding: 0; border-radius: var(--radius-control);
+  border: var(--border-width-hairline) solid var(--color-border-strong);
+  background: var(--color-surface-elevated); color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--duration-control) var(--ease-standard),
+              color var(--duration-control) var(--ease-standard),
+              border-color var(--duration-control) var(--ease-standard);
+}
+.fo-icon-button:hover:not(:disabled) { background: var(--color-surface-sunken); color: var(--color-brand-primary); border-color: var(--color-brand-secondary); }
+.fo-icon-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.fo-icon-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* Tooltip -- CSS-only, shows on hover AND keyboard focus (never hover-only).
+   role="tooltip" + aria-describedby is wired in IconButton.jsx; this is the
+   visual half only. */
+.fo-icon-button__tooltip {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%) translateY(-2px);
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium);
+  white-space: nowrap; padding: 4px 8px; border-radius: var(--radius-sm);
+  pointer-events: none; opacity: 0; z-index: 30;
+  transition: opacity var(--duration-control) var(--ease-standard), transform var(--duration-control) var(--ease-standard);
+}
+.fo-icon-button:hover .fo-icon-button__tooltip,
+.fo-icon-button:focus-visible .fo-icon-button__tooltip {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fo-icon-button__tooltip { transition: none; }
+}
+
+/* --- Page header / Section header -----------------------------------------
+   Page header = one per screen, display type. Section header = repeatable
+   within a screen, interface type, quieter. */
+.fo-page-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.fo-page-header__text { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.fo-page-header__eyebrow {
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted);
+}
+.fo-page-header__title {
+  margin: 0; font-family: var(--font-display); font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-display-sm); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-page-header__description {
+  margin: 0; font-family: var(--font-interface); font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed); color: var(--color-text-secondary);
+  max-width: 68ch;
+}
+.fo-page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; flex-wrap: wrap; }
+
+.fo-section-header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.fo-section-header__title {
+  margin: 0; font-family: var(--font-interface); font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-lg); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-section-header__description {
+  margin: 2px 0 0; font-family: var(--font-interface); font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.fo-section-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+
+/* --- Status indicator -------------------------------------------------------
+   Icon + text + colour, together, always. This is distinct from StatusPill
+   (shared/ui/StatusPill.jsx, the existing tone-driven pill primitive) -- it
+   adds a glyph so the signal survives a colour-blind or greyscale render, and
+   is meant for a standalone line (e.g. a sync/connection state), not an
+   inline table badge. Reuses the SAME tone vocabulary as StatusPill/tone.js
+   so a tone means one thing everywhere. */
+.fo-status-indicator {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-interface); font-size: var(--font-size-base); font-weight: var(--font-weight-medium);
+}
+.fo-status-indicator--positive { color: var(--color-success); }
+.fo-status-indicator--attention { color: var(--color-warning); }
+.fo-status-indicator--critical { color: var(--color-danger); }
+.fo-status-indicator--info { color: var(--color-info); }
+.fo-status-indicator--unknown, .fo-status-indicator--neutral { color: var(--color-text-secondary); }
+.fo-status-indicator--muted { color: var(--color-text-muted); }
+
+/* --- Compact metric ---------------------------------------------------------
+   A small labelled number for a dense summary row (distinct from the larger
+   .fo-stat/.fo-stat-value pairing already in this file, which is card-scale).
+   Tabular numerals so a row of these never jitters as values update. */
+.fo-compact-metric { display: flex; flex-direction: column; gap: 1px; }
+.fo-compact-metric__value {
+  font-family: var(--font-interface); font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl); line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+.fo-compact-metric__label {
+  font-family: var(--font-interface); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);
+}
+
+/* --- Loading / empty / error primitives ------------------------------------
+   Icon-bearing companions to the existing text-only LoadingState/EmptyState/
+   FailureState components (shared/ui/*.jsx, unchanged by this PR). These new
+   classes style an OPTIONAL icon inside those existing components without
+   altering their markup contract -- a later PR may wire the icon prop through;
+   this PR only adds the capability. */
+.fo-state--iconic { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; padding: var(--space-7) var(--space-4); }
+.fo-state--iconic .fo-icon { color: var(--color-text-muted); }
+.fo-state--iconic .fo-state-title { margin: 0; font-family: var(--font-interface); font-weight: var(--font-weight-semibold); font-size: var(--font-size-md); color: var(--color-text-primary); }
+.fo-state--iconic .fo-state-message { margin: 0; max-width: 48ch; }
+.fo-state--iconic.fo-state--error .fo-icon { color: var(--color-danger); }
+
+/* Spinning icon utility (e.g. Loader2 in LoadingState) -- honours reduced
+   motion via the global rule at the top of this file, which floors
+   animation-duration to 0.01ms; that reads as "stopped" here since a spinner
+   carries no information at rest, unlike the button spinner above which
+   swaps to a static ring explicitly. */
+.fo-icon--spin { animation: fo-spin 0.9s linear infinite; }
+
+

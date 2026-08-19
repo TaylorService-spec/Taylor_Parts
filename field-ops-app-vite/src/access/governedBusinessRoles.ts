@@ -117,22 +117,42 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     "Customer/CRM read/create/update. Quote, sales-pipeline, and reporting capabilities are a recorded permission-catalog gap (Spec §26.4), not yet grantable.",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read", "account.record.create", "account.record.update"],
+  permissions: [
+    "account.record.read",
+    "account.record.create",
+    "account.record.update",
+    // Owner ruling 2026-08-18: a Sales Manager who cannot see the committed order
+    // their pipeline produced, or whether the parts exist to fill it, is reading
+    // only half the transaction. salesOrder.read is registered active:false -- the
+    // grant is recorded now and stays inert until per-environment activation.
+    "salesOrder.read",
+    "inventory.transaction.read",
+  ],
 }) as Role;
 
-// Spec §26.2 -- read-only customer visibility only; invoice/payment/
-// credit/accounting-reporting capabilities do not exist in the catalog
-// (Spec §26.4). Deliberately holds no write permission and no overlap
-// with Finance Manager's account.governedField.write, preserving the
-// Owner's explicit "remain distinct" requirement.
+// Spec §26.2 -- invoice/payment/credit/accounting-reporting capabilities
+// still do not exist in the catalog (Spec §26.4).
+//
+// OWNER REVERSAL 2026-08-18: "accountingManager should be like financeManager
+// for now." This DELIBERATELY supersedes the earlier Owner requirement that the
+// two Roles "remain distinct". That distinction was drawn from the one id that
+// happened to differentiate them, not from a described difference in the two
+// jobs, and the Owner has since decided they do the same work here. The two sets
+// are now intentionally identical, and the pinning test was inverted to assert
+// exactly that -- so a future divergence has to be a decision, not a drift.
 export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
   id: "accountingManager",
   name: "Accounting Manager",
   description:
-    "Read-only Customer visibility today. Invoice/payment/credit/accounting-reporting capabilities are a recorded permission-catalog gap (Spec §26.4) -- distinct from Finance Manager, which holds no accounting-operations id either.",
+    "Customer visibility, governed commercial-field write, Sales Order and Purchase Order read. Intentionally identical to Finance Manager (Owner ruling 2026-08-18). Invoice/payment/credit/accounting-reporting capabilities are a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read"],
+  permissions: [
+    "account.record.read",
+    "account.governedField.write",
+    "salesOrder.read",
+    "reorder.purchaseOrder.read",
+  ],
 }) as Role;
 
 // Spec §26.2 -- financial oversight/policy authority via the one
@@ -145,10 +165,18 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   id: "financeManager",
   name: "Finance Manager",
   description:
-    "Financial oversight/policy: Customer read visibility plus governed commercial-field write authority (Issue #175). Margin/cost visibility and finance-specific reporting are a recorded permission-catalog gap (Spec §26.4) -- distinct from Accounting Manager, which holds no policy-write id.",
+    "Financial oversight/policy: Customer read visibility, governed commercial-field write authority (Issue #175), and both sides of the committed-money picture -- Sales Orders out, Purchase Orders in. Margin/cost visibility and finance-specific reporting are a recorded permission-catalog gap (Spec §26.4). Intentionally identical to Accounting Manager (Owner ruling 2026-08-18).",
   systemSeed: true,
   compatibility: false,
-  permissions: ["account.record.read", "account.governedField.write"],
+  permissions: [
+    "account.record.read",
+    "account.governedField.write",
+    // Owner ruling 2026-08-18: finance sees what was committed to customers and
+    // what was committed to suppliers. READ on both -- no create/void on either
+    // side. salesOrder.read is active:false and stays inert until activation.
+    "salesOrder.read",
+    "reorder.purchaseOrder.read",
+  ],
 }) as Role;
 
 // Spec §26.2 -- full existing Work Order lifecycle authority
@@ -166,6 +194,9 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
+    // Owner ruling 2026-08-18, "they all should see accounts": every manager Role
+    // gets Customer read. A Work Order without its customer is an address.
+    "account.record.read",
     "workOrder.create",
     "workOrder.transition",
     "workOrder.cancel",
@@ -192,11 +223,16 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
   id: "operationsManager",
   name: "Operations Manager",
   description:
-    "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse, and Purchasing. No role administration, no governed-field write, no reorder decision authority.",
+    "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse, and Purchasing. Can open a Customer record but not amend one. No role administration, no governed-field write, no reorder decision authority.",
   systemSeed: true,
   compatibility: false,
   permissions: [
     "account.record.read",
+    // Owner ruling 2026-08-18: "operationsManager should be able to create accounts also".
+    // CREATE only -- account.record.update and account.governedField.write stay DENIED, so
+    // this Role can open a new Customer but cannot amend an existing one. That asymmetry is
+    // intentional and pinned by test; it is not an oversight to be "completed" later.
+    "account.record.create",
     "workOrder.create",
     "workOrder.transition",
     "workOrder.cancel",
