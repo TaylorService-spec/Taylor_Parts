@@ -165,6 +165,31 @@ CSV import must therefore evaluate the same rules as every other path. The exist
 seeded as the Contact rule's initial value so today's import behaviour is preserved exactly on
 day one, and diverges only if an admin deliberately changes it.
 
+### Import rejects ROWS, never the file (Owner, 2026-08-19)
+
+Today `validateRows` already does the right thing: a duplicate row is pushed to `rejected` with
+a human reason and the clean rows still import. The **only** whole-file rejection is the row-limit
+case, which is a different concern.
+
+Introducing a `block` action must not regress that. `block` is evaluated **per row** in an
+import: matching rows are rejected with the rule's message and reported to the queue, and every
+non-matching row imports normally. A single bad row must never cost someone a 400-row file — that
+is how people start editing CSVs to defeat the check, which is worse than having no check.
+
+Two behaviours in the current implementation are requirements, not incidental, and must survive
+the migration to rule-driven matching:
+
+- **Duplicates are detected against existing records AND within the file itself.** `seen` is
+  seeded from the existing contacts and then accumulates as rows are read, so a file containing
+  the same person twice rejects the second occurrence. Rule-driven matching must compare each row
+  against both sets.
+- **An existing record is never overwritten by an import.** Import can add; it cannot silently
+  update, which is the import-shaped case of the "no silent merge" prohibition.
+
+The rejection reason shown to the user comes from the rule's admin-authored alert text, so the
+wording is editable like everything else rather than the hardcoded
+`"Duplicate — already exists"` string it is today.
+
 ## Explicitly out of scope
 
 - **Merging.** What happens to the losing record's Work Orders, Sales Orders, stock and history
@@ -248,17 +273,21 @@ is opt-in, per rule, and deactivatable from Admin without a release.
    cannot be changed from that screen is a defect, including the Part block.
 3. CSV import evaluates the SAME rules as interactive create -- `contactDuplicateKey` stops
    being an independent source of truth.
-4. An admin can set, per entity and separately for Create and Edit, whether a match alerts,
+4. A CSV import rejects only the ROWS that match a blocking rule, with a per-row reason, and
+   imports every clean row. No duplicate ever causes a whole-file rejection. Duplicates are
+   detected both against existing records and within the file, and an import never overwrites an
+   existing record.
+5. An admin can set, per entity and separately for Create and Edit, whether a match alerts,
    blocks, and reports.
-5. A create matching an active rule shows the admin-authored alert naming the existing record and
+6. A create matching an active rule shows the admin-authored alert naming the existing record and
    which criteria matched.
-6. Continuing past an alert succeeds and produces a queue entry recording that they proceeded.
-7. Editing a record into collision produces a queue entry.
-8. A pair marked `not-a-duplicate` never reappears.
-9. A `block` rule prevents the create and says why.
-10. Deactivating a rule immediately stops its alerts, with no release.
-11. No path silently merges or modifies an existing record.
-12. Rule authoring is capability-gated and every rule change is audited.
+7. Continuing past an alert succeeds and produces a queue entry recording that they proceeded.
+8. Editing a record into collision produces a queue entry.
+9. A pair marked `not-a-duplicate` never reappears.
+10. A `block` rule prevents the create and says why.
+11. Deactivating a rule immediately stops its alerts, with no release.
+12. No path silently merges or modifies an existing record.
+13. Rule authoring is capability-gated and every rule change is audited.
 
 ## Risks
 
