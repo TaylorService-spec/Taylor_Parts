@@ -15,6 +15,7 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { WORK_ORDER_STATUS_VALUES, workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -237,12 +238,12 @@ export default function DispatcherBoard() {
             rows={2}
           />
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
+            <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
               Confirm reassignment
-            </button>
-            <button type="button" onClick={cancelReassignment}>
+            </Button>
+            <Button variant="secondary" onClick={cancelReassignment}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
