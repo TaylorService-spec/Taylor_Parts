@@ -1,0 +1,64 @@
+name: Reorder Domain Client Tests
+
+# The client reorder domain modules (field-ops-app-vite/src/domain/inventoryReorderRequests.js,
+# reorderPurchaseOrders.js, reorderRequestCancelGuard.js, reorderRequestPayload.js) had NO workflow
+# path-filtering them: a change here ran no test in CI at all. inventoryReorderRequests.js and
+# reorderPurchaseOrders.js import firebase/firebase.js (build-time-injected config) and cannot run
+# under this project's plain `node test/*.test.mjs` runner, so their pure decision logic is factored
+# out into reorderRequestCancelGuard.js and reorderRequestPayload.js -- this workflow covers exactly
+# that logic, offline. The writer functions themselves (the Firestore transaction bodies in
+# inventoryReorderRequests.js / reorderPurchaseOrders.js) remain untested; see PR description.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/inventoryReorderRequests.js"
+      - "field-ops-app-vite/src/domain/reorderPurchaseOrders.js"
+      - "field-ops-app-vite/src/domain/reorderRequestCancelGuard.js"
+      - "field-ops-app-vite/src/domain/reorderRequestPayload.js"
+      - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
+      - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/reorder-domain-client-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/inventoryReorderRequests.js"
+      - "field-ops-app-vite/src/domain/reorderPurchaseOrders.js"
+      - "field-ops-app-vite/src/domain/reorderRequestCancelGuard.js"
+      - "field-ops-app-vite/src/domain/reorderRequestPayload.js"
+      - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
+      - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/reorder-domain-client-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reorder-domain-client-tests:
+    name: Reorder domain client -- pure decision-logic tests (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Reorder cancel-guard + create-payload builder tests
+        run: |
+          node test/inventoryReorderRequestsCancelGuard.test.mjs
+          node test/reorderRequestPayload.test.mjs
+        working-directory: field-ops-app-vite

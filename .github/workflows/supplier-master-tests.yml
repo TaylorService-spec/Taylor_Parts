@@ -1,0 +1,195 @@
+name: Supplier Master Tests
+
+# The Supplier Master subsystem (functions/src/supplierMaster/** -- governed Supplier commands,
+# callables, validation, and the reorder-PO supplier-linkage migration tooling -- plus the closely
+# related Part<->Supplier item surface in functions/src/partMaster/partSupplierItem*.ts) had 13 test
+# files with no workflow path-filtering any of them: a change here ran no test in CI at all.
+#
+# partSupplierItemRules.test.js (part_supplier_items deny-all) is NOT one of the 12 files below --
+# it is already covered by firestore-rules-regression.yml, whose `functions/test/**Rules*.test.js`
+# filter catches it and whose `npm run test:rules` runs it as part of the registered rulesRegressionRunner
+# suite list. Wiring it again here would be a duplicate, not a fix.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/supplierMaster/**"
+      - "functions/src/partMaster/partSupplierItemCallables.ts"
+      - "functions/src/partMaster/partSupplierItemProjections.ts"
+      - "functions/src/partMaster/partSupplierItems.ts"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterCallables.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/index.ts"
+      - "functions/test/partSupplierItemCallables.test.mjs"
+      - "functions/test/partSupplierItemCallablesExport.test.mjs"
+      - "functions/test/partSupplierItemProjections.test.mjs"
+      - "functions/test/partSupplierItems.test.mjs"
+      - "functions/test/supplierMasterCallables.test.mjs"
+      - "functions/test/supplierMasterCallablesExport.test.mjs"
+      - "functions/test/supplierMasterCommands.test.mjs"
+      - "functions/test/supplierMasterValidation.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierLinkage.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationExecuteManifest.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/supplier-master-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/supplierMaster/**"
+      - "functions/src/partMaster/partSupplierItemCallables.ts"
+      - "functions/src/partMaster/partSupplierItemProjections.ts"
+      - "functions/src/partMaster/partSupplierItems.ts"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterCallables.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/index.ts"
+      - "functions/test/partSupplierItemCallables.test.mjs"
+      - "functions/test/partSupplierItemCallablesExport.test.mjs"
+      - "functions/test/partSupplierItemProjections.test.mjs"
+      - "functions/test/partSupplierItems.test.mjs"
+      - "functions/test/supplierMasterCallables.test.mjs"
+      - "functions/test/supplierMasterCallablesExport.test.mjs"
+      - "functions/test/supplierMasterCommands.test.mjs"
+      - "functions/test/supplierMasterValidation.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierLinkage.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs"
+      - "functions/test/reorderPurchaseOrderSupplierMigrationExecuteManifest.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/supplier-master-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  supplier-master-offline-tests:
+    name: Supplier Master -- offline pure tests (no emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Supplier validation + linkage-compatibility + migration-manifest tests (build + run)
+        run: |
+          npm run test:supplierMaster
+          npm run test:supplierLinkage
+          npm run test:supplierMigrationExecute
+        working-directory: functions
+
+  supplier-master-emulator-tests:
+    name: Supplier Master -- Firestore-emulator command + migration + Part-item tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/supplier-master-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/supplier-master-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/supplier-master-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Supplier Master command + reorder-PO migration emulator tests (build + run)
+        # Deliberately NOT combined with test:supplierMasterCallables here: both this
+        # command-layer test and the callable-layer test create a supplier literally named
+        # "Acme Supply" (no per-run stamp) to exercise dedup DETECTION -- run in the same
+        # Firestore instance, the second file's create trips the first file's leftover
+        # document and fails a dedup assertion that has nothing to do with the change under
+        # test. supplierMasterCallables gets its own job below for a byte-clean emulator.
+        run: |
+          npm run test:supplierMasterCommands
+          npm run test:supplierMigrationEmulator
+          npm run test:supplierMigrationExecuteEmulator
+        working-directory: functions
+
+      - name: Part<->Supplier item callable + command emulator tests (build + run)
+        run: |
+          npm run test:partSupplierItemCallables
+          npm run test:partSupplierItems
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-master-emulator-logs
+          path: /tmp/supplier-master-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  supplier-master-callables-emulator-tests:
+    name: Supplier Master -- Firestore-emulator callable tests (isolated emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/supplier-master-callables-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/supplier-master-callables-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/supplier-master-callables-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Supplier Master callable emulator tests (build + run)
+        run: npm run test:supplierMasterCallables
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-master-callables-emulator-logs
+          path: /tmp/supplier-master-callables-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
