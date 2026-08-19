@@ -872,11 +872,11 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     active: false,
   }),
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
-  // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
-  // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so
-  // resolveEffectivePermission() denies `noQualifyingGrant` for every principal until a later,
-  // separately-authorized grant gate. The trusted command's authorization is an injected seam;
-  // nothing invokes it in production. Same ungranted posture as the inventory.catalog.* entries above.
+  // GRANTED to the governed admin, dispatcher and owner Roles since 2026-08-06 (compatibilityRoles.ts
+  // grants it directly to admin + dispatcher; owner inherits by composition -- Decisions #65/#68).
+  // resolveEffectivePermission() therefore allows those three Roles; it still denies `noQualifyingGrant`
+  // for technician and other ungranted principals. Client transport readiness (whether the UI actually
+  // calls it) is a SEPARATE, still-gated concern -- see field-ops-app-vite/src/config/receivingReadiness.js.
   Object.freeze({
     id: "inventory.stock.receive",
     description: "Receive inbound stock into an inventory location against a reorder purchase order (trusted Receiving service).",

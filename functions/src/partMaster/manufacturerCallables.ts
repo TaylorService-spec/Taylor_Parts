@@ -7,8 +7,9 @@
 // authority. There is ONE Manufacturer authority (partMasterCommands) -- this is not a second one, and no
 // second model / parallel validator / parallel status vocabulary is introduced.
 //
-// "Export is not deployment/grant": exporting these from functions/src/index.ts does NOT deploy or grant
-// them. NO App Check requirement (matching every other callable here). Authorization is enforced INSIDE the
+// Exported from functions/src/index.ts and deployed to eos-platform-sandbox under the per-environment
+// activation program; NOT deployed to the production project, and NOT capability-granted. NO App Check
+// requirement (matching every other callable here). Authorization is enforced INSIDE the
 // command against the actor's real governed roles -- inventory.catalog.manage for create/update,
 // inventory.catalog.activate for status change (the SAME catalog authority Part/Supplier use; the accepted
 // future inventoryCatalogAdministrator role). NO capability is granted here; catalog capabilities are carried

@@ -5,9 +5,12 @@
 // to unify them, so if either file's transition table or permission
 // matrix changes, change the other to match.
 //
-// Has no caller yet in this pass -- Phase 2's action buttons
-// (WorkOrderDetail.jsx) will call getAllowedActions() to decide which
-// buttons to show/enable. That's expected, not dead code to prune.
+// getAllowedActions() has multiple live callers today: domain/fieldWorkOrder.js,
+// modules/controlTower/WorkOrderActions.jsx, modules/dispatch/Dispatch.jsx,
+// modules/dispatcherBoard/DispatcherBoard.jsx, modules/dispatcherBoard/TechnicianBoard.jsx,
+// modules/dispatcherBoard/WorkOrderPreview.jsx, and
+// modules/technicianDashboard/TechnicianWorkOrderActions.jsx all call it to decide which
+// action buttons to show/enable. Not dead code.
 
 // Same linear table as transitionEngine.ts's TRANSITIONS, with
 // CANCELLED as an explicit literal entry per non-terminal status rather

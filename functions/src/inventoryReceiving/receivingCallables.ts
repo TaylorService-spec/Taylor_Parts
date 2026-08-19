@@ -1,7 +1,9 @@
 // Receiving Phase-2 E1: the trusted Receiving CALLABLES (receiveInventoryStock, listReceivingLocationOptions)
-// and their exact, sanitized request/response/error contracts. firebase-functions v2 onCall. The actor is
-// derived ONLY from request.auth.uid; authorization is the merged governed resolver for the UNGRANTED
-// inventory.stock.receive capability (so every real user is denied). The receive callable runs the pinned
+// and their exact, sanitized request/response/error contracts. Deployed and live in eos-platform-sandbox
+// (2026-08-06, Decision #63). firebase-functions v2 onCall. The actor is derived ONLY from
+// request.auth.uid; authorization is the merged governed resolver for the GRANTED inventory.stock.receive
+// capability (admin, dispatcher, owner -- Decisions #65/#68; every other principal is still denied). The
+// receive callable runs the pinned
 // production composition (concrete §3A resolver); the option callable runs the merged trusted option
 // service. Errors map to a bounded public HttpsError matrix -- no raw Firestore path/value/code/reason
 // escapes. Handlers are exported for focused tests; the exported onCall symbols pin the real production
