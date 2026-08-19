@@ -181,7 +181,8 @@ export const listOpportunitiesForAccount = onCall({ region: "us-central1" }, asy
       permissionIds: [OPPORTUNITY_READ_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listOpportunitiesForAccount] capability resolution failed for ${OPPORTUNITY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
@@ -215,7 +216,8 @@ export const listOpportunityContext = onCall({ region: "us-central1" }, async (r
       permissionIds: [OPPORTUNITY_READ_CAPABILITY],
     });
     allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[listOpportunityContext] capability resolution failed for ${OPPORTUNITY_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
