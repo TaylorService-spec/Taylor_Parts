@@ -45,7 +45,8 @@ async function requirePaymentApply(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [FINANCE_PAYMENT_APPLY_CAPABILITY] });
     allowed = decisions[FINANCE_PAYMENT_APPLY_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requirePaymentApply] capability resolution failed for ${FINANCE_PAYMENT_APPLY_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to apply payments.");
