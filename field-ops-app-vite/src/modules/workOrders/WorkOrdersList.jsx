@@ -9,6 +9,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
 // Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
@@ -112,7 +113,7 @@ export default function WorkOrdersList() {
                   <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
                 </td>
                 <td>
-                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{wo.status}</span>
+                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{workOrderStatusLabel(wo.status)}</span>
                 </td>
                 <td className="fo-muted">{customerNames.get(wo.customerId) ?? wo.customerId}</td>
                 <td className="fo-muted">{wo.type}</td>

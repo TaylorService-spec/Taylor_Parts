@@ -4,6 +4,7 @@ import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import TechnicianCapacityCard from "./TechnicianCapacityCard";
 import { technicianStatusLabel } from "./technicianStatusLabel";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Epic 2 Phase 2C -- right pane, drop targets for drag-and-drop
 // dispatch. Ranking display only -- onDropTechnician (passed down from
@@ -79,7 +80,7 @@ function TechnicianBoard({ technicians, selectedWorkOrder, recommendations, allW
       {!selectedWorkOrder && <p className="fo-muted">Select a Work Order to see rankings and enable drop targets.</p>}
       {selectedWorkOrder && !canDispatch && (
         <p className="fo-muted">
-          {selectedWorkOrder.woNumber} is {selectedWorkOrder.status} -- only SCHEDULED work orders can be dispatched by drag-and-drop.
+          {selectedWorkOrder.woNumber} is {workOrderStatusLabel(selectedWorkOrder.status)} -- only SCHEDULED work orders can be dispatched by drag-and-drop.
         </p>
       )}
       {technicians.map((tech) => {
