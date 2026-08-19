@@ -42,6 +42,7 @@ import { distinctLocationIds, applyLocationDisplay } from "../../domain/location
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives";
 
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
@@ -121,7 +122,7 @@ export default function AvailableEquipment() {
         {select("status", "Condition / status", options.statuses)}
         {select("location", "Location", options.locations)}
         {filtersActive && (
-          <button type="button" onClick={clearFilters}>Clear filters</button>
+          <Button variant="secondary" onClick={clearFilters}>Clear filters</Button>
         )}
       </div>
 
