@@ -260,12 +260,21 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
 }
 
 // A detail SECTION. Reads by default. Editable-by-design sections carry a contextual Edit affordance in the
-// header (disabled + honest when readiness is off — same fail-closed posture as the lifecycle actions and the
-// inert create control). Entering edit swaps the read body for the section form; only one section edits at a
-// time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit affordance.
+// header (disabled + honest when EITHER readiness is off OR no governed save command is wired — same
+// fail-closed posture as the lifecycle actions and the inert create control; today's production mount passes
+// no onSaveSection, so Edit stays disabled+honest there even for a real write-capable caller, rather than
+// opening a form whose Save can never succeed). Entering edit swaps the read body for the section form; only
+// one section edits at a time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit
+// affordance.
 function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness, onSave }) {
   const showEdit = section.editable;
-  const editDisabled = !readiness.enabled;
+  const saveWired = typeof onSave === "function";
+  const editDisabled = !readiness.enabled || !saveWired;
+  const editReason = !readiness.enabled
+    ? readiness.reason
+    : !saveWired
+      ? "The governed save command is not wired in this build."
+      : undefined;
   return (
     <section className="fo-sales-detail__block" aria-label={section.title} data-dataclass={section.dataClass}>
       <div className="fo-sales-detail__block-head">
@@ -275,9 +284,9 @@ function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness,
             type="button"
             variant={editDisabled ? "protected" : "tertiary"}
             className="fo-sales-detail__edit"
-            title={editDisabled ? readiness.reason : undefined}
-            reason={editDisabled ? readiness.reason : undefined}
-            aria-label={editDisabled ? `Edit ${section.title} — ${readiness.reason}` : `Edit ${section.title}`}
+            title={editDisabled ? editReason : undefined}
+            reason={editDisabled ? editReason : undefined}
+            aria-label={editDisabled ? `Edit ${section.title} — ${editReason}` : `Edit ${section.title}`}
             onClick={editDisabled ? undefined : () => onEnterEdit(section.id)}
           >
             Edit
