@@ -110,23 +110,40 @@ describe("PageHeader / SectionHeader", () => {
   });
 });
 
-describe("LoadingState / EmptyState / FailureState -- additive icon props", () => {
-  it("LoadingState renders unchanged when withIcon is omitted", () => {
+// SUPERSEDED DEFAULTS. The foundation PR introduced `icon`/`withIcon` as OPT-IN
+// specifically so that merging tokens and primitives changed no existing screen's
+// output -- and these assertions pinned that promise. The migration PR that follows
+// it is the point at which consumers are meant to pick the new composition up, and
+// it flipped these three defaults ON so that all 36 existing call sites gain
+// icon + heading + message without each one being edited.
+//
+// The assertions are INVERTED rather than deleted, so the new default stays an
+// asserted decision: each state still proves it renders an icon by default AND that
+// a caller can still suppress it per instance. A future change back to opt-in would
+// have to be a choice someone makes here, not a drift nobody notices.
+describe("LoadingState / EmptyState / FailureState -- icon composition", () => {
+  it("LoadingState shows a spinning icon by default, and withIcon={false} opts out", () => {
     const { container } = render(<LoadingState />);
-    expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByText("Loading…")).toBeTruthy();
-  });
-  it("LoadingState renders a spinning icon when withIcon is passed", () => {
-    const { container } = render(<LoadingState withIcon>Loading parts…</LoadingState>);
     expect(container.querySelector("svg.fo-icon--spin")).toBeTruthy();
+    expect(screen.getByText("Loading…")).toBeTruthy();
+    cleanup();
+    const plain = render(<LoadingState withIcon={false} />);
+    expect(plain.container.querySelector("svg")).toBeNull();
   });
-  it("EmptyState renders unchanged when icon is omitted", () => {
+  it("EmptyState shows a variant-appropriate icon by default, and icon={null} opts out", () => {
     const { container } = render(<EmptyState title="No results" />);
-    expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector("svg")).toBeTruthy();
+    cleanup();
+    const plain = render(<EmptyState title="No results" icon={null} />);
+    expect(plain.container.querySelector("svg")).toBeNull();
   });
-  it("FailureState renders unchanged when icon is omitted, and role=alert either way", () => {
+  it("FailureState shows an icon by default, keeps role=alert, and icon={null} opts out", () => {
     const { container } = render(<FailureState message="Could not load" />);
-    expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector("svg")).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    cleanup();
+    const plain = render(<FailureState message="Could not load" icon={null} />);
+    expect(plain.container.querySelector("svg")).toBeNull();
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 });
