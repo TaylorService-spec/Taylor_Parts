@@ -166,6 +166,26 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "finance.adjustment.record",
     "finance.refund.record",
     "finance.read",
+    // CRM activity -- Owner ruling 2026-08-19, closing the finding in
+    // docs/governance/crm-activity-admin-authority-proposal.md. Exactly one Role
+    // carried these ids (crmActivityContributor), so canonical admin authority did
+    // not include them: a dispatcher holding that operational Role could read CRM
+    // notes on an Account while the admin could not, and OWNER inherited the same
+    // gap through OWNER_PERMISSIONS composition. The proposal explicitly REJECTED
+    // assigning crmActivityContributor to admin as the durable fix -- that turns
+    // canonical authority into accumulated operational-role workarounds. Granting
+    // on ADMIN_ROLE is the durable form, and Owner ruled admin holds the full set,
+    // not read alone.
+    //
+    // ADMIN-only (NOT the shared base) so DISPATCHER does not gain crm.activity.create
+    // as a side effect -- dispatcher already holds both by its own governed
+    // crmActivityContributor assignment, which stays the audited path for anyone else.
+    // Owner inherits both automatically via OWNER_PERMISSIONS composition.
+    //
+    // GRANT != ACTIVATION, unchanged: both ids remain per-environment activated
+    // (environmentCapabilityOverrides.ts) and production stays triple-blocked.
+    "crm.activity.create",
+    "crm.activity.read",
   ],
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
