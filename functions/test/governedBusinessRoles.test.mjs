@@ -282,22 +282,42 @@ check("Office Manager: Customer read/create/update + Work Order create; no gover
   }
 });
 
-check("Sales Manager: Customer read/create/update only", () => {
-  for (const id of ["account.record.read", "account.record.create", "account.record.update"]) {
+check("Sales Manager: Customer read/create/update + inventory visibility; still no governed-field write", () => {
+  for (const id of ["account.record.read", "account.record.create", "account.record.update", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   assert.equal(resolve("account.governedField.write", "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY");
 });
 
-check("Accounting Manager: Customer read-only, no governed-field write", () => {
-  assert.equal(resolve("account.record.read", "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
-  for (const id of ["account.record.create", "account.record.update", "account.governedField.write"]) {
+// Owner ruling 2026-08-18: salesOrder.read granted to Sales Manager. It is registered
+// active:false, so the GRANT is recorded while every resolve still DENIES on
+// inactivePermission -- grant is not activation. Asserting both halves is the point:
+// the day someone activates the id this Role gains the read with no further change,
+// and until then no amount of grant can open it.
+check("Sales Manager: holds the salesOrder.read grant, which still resolves DENY/inactivePermission", () => {
+  assert.ok(GOVERNED_BUSINESS_ROLES.salesManager.permissions.includes("salesOrder.read"));
+  const r = resolve("salesOrder.read", "salesManager", GOVERNED_BUSINESS_ROLES);
+  assert.equal(r.decision, "DENY");
+  assert.equal(r.reason, "inactivePermission");
+});
+
+check("Sales Manager: no write authority over orders or purchasing came with the reads", () => {
+  for (const id of ["salesOrder.write", "salesOrder.fulfill", "reorder.purchaseOrder.create", "inventory.action.create"]) {
+    assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Accounting Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
+  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
+    assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of ["account.record.create", "account.record.update"]) {
     assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
 
-check("Finance Manager: Customer read + governed-field write; no ordinary Customer create/update", () => {
-  for (const id of ["account.record.read", "account.governedField.write"]) {
+check("Finance Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
+  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
     assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   for (const id of ["account.record.create", "account.record.update"]) {
@@ -305,16 +325,32 @@ check("Finance Manager: Customer read + governed-field write; no ordinary Custom
   }
 });
 
-check("Accounting Manager and Finance Manager remain distinct (Owner's explicit requirement)", () => {
-  const accountingSet = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
-  const financeSet = new Set(FINANCE_MANAGER_ROLE.permissions);
-  assert.equal(accountingSet.has("account.governedField.write"), false, "Accounting Manager must not hold the Finance-distinguishing permission");
-  assert.equal(financeSet.has("account.governedField.write"), true, "Finance Manager must hold its distinguishing permission");
-  assert.notDeepEqual([...accountingSet].sort(), [...financeSet].sort(), "the two Roles' grant sets must not be identical");
+// Both money Roles read the committed order, and neither can write it or void a PO.
+check("Finance/Accounting Manager: Sales Order read is granted-but-inactive, and neither Role gained write authority", () => {
+  for (const roleId of ["financeManager", "accountingManager"]) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[roleId].permissions.includes("salesOrder.read"), roleId);
+    const r = resolve("salesOrder.read", roleId, GOVERNED_BUSINESS_ROLES);
+    assert.equal(r.decision, "DENY", roleId);
+    assert.equal(r.reason, "inactivePermission", roleId);
+    for (const id of ["salesOrder.write", "salesOrder.fulfill", "reorder.purchaseOrder.create", "reorder.purchaseOrder.void"]) {
+      assert.equal(resolve(id, roleId, GOVERNED_BUSINESS_ROLES).decision, "DENY", roleId + "/" + id);
+    }
+  }
 });
 
-check("Field Manager: full Work Order lifecycle + field-inventory read; no reorder/purchasing execution", () => {
-  for (const id of ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
+// OWNER REVERSAL 2026-08-18 ("accountingManager should be like financeManager for
+// now") replaces the earlier "remain distinct" requirement this test used to pin.
+// The assertion is inverted rather than deleted so the parity stays a stated
+// decision: if the two sets ever diverge again, that has to be someone's choice.
+check("Accounting Manager and Finance Manager are deliberately IDENTICAL (Owner ruling 2026-08-18, superseding the earlier distinctness requirement)", () => {
+  const accountingSet = [...new Set(ACCOUNTING_MANAGER_ROLE.permissions)].sort();
+  const financeSet = [...new Set(FINANCE_MANAGER_ROLE.permissions)].sort();
+  assert.deepEqual(accountingSet, financeSet, "the two Roles' grant sets are intentionally the same set");
+  assert.ok(accountingSet.includes("account.governedField.write"), "parity was reached by RAISING Accounting to Finance, not by lowering Finance");
+});
+
+check("Field Manager: full Work Order lifecycle + field-inventory read + Customer read; no reorder/purchasing execution", () => {
+  for (const id of ["account.record.read", "workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   for (const id of ["reorder.request.assign", "reorder.purchaseOrder.create", "inventory.action.create"]) {
@@ -384,8 +420,11 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
   ]) {
     assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
+  // Owner ruling 2026-08-18: create is now granted. Update and governed-field write are
+  // NOT -- this Role can open a Customer but cannot amend one, which is the deliberate
+  // asymmetry, not a half-finished grant.
+  assert.equal(resolve("account.record.create", "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
   for (const id of [
-    "account.record.create",
     "account.record.update",
     "account.governedField.write",
     "admin.userStatus.write",
