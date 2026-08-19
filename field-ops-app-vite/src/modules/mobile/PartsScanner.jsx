@@ -116,6 +116,10 @@ export default function PartsScanner({ technicianId }) {
   const resolve = useCallback((raw) => {
     setPhase(STATE.RESOLVING);
     setNotice(null);
+    // Every new scan starts from a known default. Without this, a qty bumped
+    // on the PREVIOUS result (e.g. wrong part scanned, corrected by scanning
+    // again) survives onto this one's card and can be submitted unreviewed.
+    setQty(1);
     const result = resolveScannedIdentity(raw, candidates);
     setIdentity(result);
     setPhase(STATE.DONE);
