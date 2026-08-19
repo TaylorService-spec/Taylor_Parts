@@ -1,0 +1,53 @@
+name: Seed Operations Demo Data Guard Tests
+
+# X-TARGETING-GUARD: offline unit tests for functions/scripts/seedOperationsDemoData.js's fail-closed
+# --projectId environment guard. Previously this script had NO tests and NO CI coverage -- it
+# unconditionally initialized firebase-admin against the production project ("taylor-parts") at module
+# load with zero flags or confirmation. No firebase-admin app, no emulator, no production, no deployment:
+# every check proves a rejected configuration fails BEFORE firebase-admin is ever required.
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/seedOperationsDemoData.js"
+      - "functions/test/seedOperationsDemoData.test.mjs"
+      - "config/environments.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/seed-operations-demo-data-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/seedOperationsDemoData.js"
+      - "functions/test/seedOperationsDemoData.test.mjs"
+      - "config/environments.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/seed-operations-demo-data-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-operations-demo-data-tests:
+    name: Seed Operations demo-data guard tests (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline environment-guard unit tests
+        run: npm run test:seedOperationsDemoData
+        working-directory: functions
