@@ -83,7 +83,6 @@ export default function NotificationPanel({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={error ? "Notifications, couldn't load" : "Notifications"}
-        style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
       >
         <span>Notifications</span>
         {error ? (

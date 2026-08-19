@@ -43,7 +43,6 @@ export default function FilterBar({ options, activeKey, onChange, label = "Filte
       className="fo-filter-bar"
       role="group"
       aria-label={label}
-      style={{ maxWidth: "100%", overflowX: "auto" }}
     >
       {options.map((option) => {
         const isActive = option.key === activeKey;
@@ -59,7 +58,7 @@ export default function FilterBar({ options, activeKey, onChange, label = "Filte
               <Icon
                 icon={Check}
                 size="dense"
-                style={{ verticalAlign: "-3px", marginRight: "var(--space-1)" }}
+                className="fo-filter-btn__check-icon"
               />
             )}
             {option.label}

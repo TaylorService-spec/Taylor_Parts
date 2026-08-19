@@ -353,7 +353,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   position: absolute; left: -9999px; top: 0; z-index: 100;
   background: var(--color-brand-primary); color: var(--color-text-inverse);
   padding: 12px 18px; border-radius: 0 0 var(--radius-sm) 0;
-  font-size: 14px; font-weight: 600; text-decoration: none;
+  font-size: var(--font-size-base); font-weight: 600; text-decoration: none;
 }
 .fo-skip-link:focus { left: 0; color: var(--color-text-inverse); }
 
@@ -390,7 +390,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: transparent; border: none; text-align: left;
   color: var(--verenward-moon);
-  font-size: 14px; font-weight: 600; letter-spacing: 0.015em; font-family: inherit;
+  font-size: var(--font-size-base); font-weight: 600; letter-spacing: 0.015em; font-family: inherit;
   padding: 9px 10px; border-radius: var(--radius-sm);
   cursor: pointer; text-decoration: none;
   transition: background var(--duration-fast) var(--ease-out),
@@ -419,6 +419,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 }
 .fo-rail__domain-row--current:hover { background: rgba(255, 255, 255, 0.11); }
 .fo-rail__domain-label { min-width: 0; overflow-wrap: anywhere; }
+/* Icon wrapper: kept at its fixed token size (never squeezed by a long domain label
+   fighting it for space in the same flex row); the row's own layout (display:flex, gap)
+   comes from .fo-rail__domain-row above. */
+.fo-rail__domain-icon { display: inline-flex; flex-shrink: 0; }
 /* A leaf row is an <a>, a button row is a <button>: without this they compute
    different widths. Persona review measured the leaf at 270px inside a 252px
    rail -- overflowing and clipping -- with its label 3px off every sibling.
@@ -428,13 +432,19 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   padding-left: 10px;
 }
 .fo-rail__domain-row--leaf::before {
-  content: ""; flex: none; width: 10px; margin-left: 2px;  /* chevron-width spacer */
+  content: ""; flex: none; box-sizing: border-box; width: 10px; margin-left: 2px;  /* chevron-width spacer */
 }
 
 /* Subtle disclosure. Rotation is the only affordance -- no icon set, per the
-   "no decorative icon overload" constraint. */
+   "no decorative icon overload" constraint.
+   box-sizing: border-box -- without it, the 1.5px border-right/border-bottom used to draw the
+   chevron glyph ADD to the declared 10px width/height (default content-box), so this element's
+   real layout footprint was 11.5px, ~1.5-2px wider than the leaf row's borderless 10px spacer
+   above. That drifted the leaf and expandable domain-row labels out of alignment with each
+   other even though both rules declared "10px". border-box keeps the border inside the
+   declared 10px box, matching the spacer's footprint exactly. */
 .fo-rail__chevron {
-  flex: none; width: 10px; height: 10px; margin-left: 2px;
+  flex: none; box-sizing: border-box; width: 10px; height: 10px; margin-left: 2px;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg); opacity: 0.55;
   transition: transform var(--duration-fast) var(--ease-out);
@@ -451,7 +461,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   border-left: 1px solid rgba(185, 193, 190, 0.18);
   color: var(--verenward-moon); text-decoration: none;
   /* Clearly subordinate to a domain row: lighter weight, deeper indent. */
-  font-size: 13px; font-weight: 400; line-height: 1.35;
+  font-size: var(--font-size-sm); font-weight: 400; line-height: 1.35;
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
@@ -470,7 +480,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-rail__item--d2 { padding-left: 30px; }
 
 /* Group label — organisational hierarchy, not a destination. Quiet by design. */
-.fo-rail__group { margin-top: 8px; }
+.fo-rail__group { margin-top: var(--space-2); }
 .fo-rail__group-label {
   margin: 0 0 3px; padding-left: 22px; margin-left: 10px;
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
@@ -510,14 +520,15 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 }
 .fo-drawer:focus { outline: none; }
 .fo-drawer__head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);
   padding: 16px 16px 14px; border-bottom: 1px solid rgba(185, 193, 190, 0.14);
 }
 .fo-drawer__head .fo-rail__brand { padding: 0; border-bottom: none; }
 .fo-drawer__close {
+  display: inline-flex; align-items: center; gap: 6px;
   flex: none; background: transparent; color: var(--verenward-moon);
   border: 1px solid rgba(185, 193, 190, 0.30); border-radius: var(--radius-sm);
-  min-height: 44px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+  min-height: 44px; padding: var(--space-2) 14px; font-size: var(--font-size-sm); cursor: pointer; font-family: inherit;
 }
 .fo-drawer__close:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
 @keyframes fo-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -605,6 +616,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    `style={{margin:0}}` pair duplicated across AccountsList.jsx/
    WorkOrdersList.jsx/PartsList.jsx. Same layout those inline styles
    already produced -- now a real class instead of a per-screen override. */
+/* No longer used by shared/ui/WorkspaceHeader.jsx (migrated onto the PageHeader primitive) --
+   DO NOT DELETE. Still consumed as a generic title-row pattern by:
+     shared/reorder/ManagerQueuePanel.jsx, shared/reorder/AssociateRequestPanel.jsx,
+     modules/inventoryRole/WarehouseManagerHome.jsx. */
 .fo-workspace-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .fo-workspace-header-title { margin: 0; }
 
@@ -618,7 +633,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    during Sprint 2.1.1's validation: light-gray-on-white and a
    white-tinted hover overlay are both close to invisible on a light
    background. These are separate, light-panel-appropriate colors. */
-.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+/* max-width/overflow-x: a second line of defence beneath flex-wrap so a single
+   unbreakable label can never push the page itself into horizontal scroll. */
+.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
+.fo-filter-btn__check-icon { vertical-align: -3px; margin-right: var(--space-1); }
 .fo-filter-btn { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
 .fo-filter-btn:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
 .fo-filter-btn:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
@@ -632,7 +650,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    is tuned for the dark .fo-header nav bar and would have the same
    low-contrast problem already fixed elsewhere in this file). */
 .fo-notification-panel { position: relative; }
-.fo-notification-panel > button { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.fo-notification-panel > button { display: inline-flex; align-items: center; gap: 6px; background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
 .fo-notification-panel > button:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
 .fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
 .fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: var(--color-brand-primary); font-size: 14px; }
@@ -778,11 +796,18 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-create-modal-form { display: flex; flex-direction: column; gap: 16px; }
 
-.fo-form-field { display: flex; flex-direction: column; gap: 4px; }
-.fo-wizard-field-label { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+/* ConfirmDialog (shared/ui/ConfirmDialog.jsx) -- shared destructive/consequential
+   confirmation. Severity line: icon + accent + colour together (see Icon.jsx's
+   "no colour-alone" convention), never colour alone. */
+.fo-confirm-severity { display: flex; align-items: center; gap: 6px; margin: 0; }
+.fo-confirm-consequence { border-left: 3px solid var(--color-info); padding-left: 10px; margin: 0; }
+.fo-confirm-consequence--destructive { border-left-color: var(--color-danger); }
+
+.fo-form-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.fo-wizard-field-label { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-secondary); }
 .fo-field-required { font-weight: 400; color: var(--color-text-muted); }
-.fo-wizard-hint { margin: 0; font-size: 12px; color: var(--color-text-muted); }
-.fo-wizard-error { margin: 0; font-size: 12px; }
+.fo-wizard-hint { margin: 0; font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.fo-wizard-error { margin: 0; font-size: var(--font-size-xs); }
 
 .fo-wizard-control {
   width: 100%; box-sizing: border-box;
@@ -794,7 +819,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-wizard-control:disabled { background: var(--color-surface-sunken); color: var(--color-text-muted); cursor: not-allowed; }
 .fo-wizard-control[aria-invalid="true"] { border-color: var(--color-danger); }
 
-.fo-wizard-actions { margin-top: 4px; }
+.fo-wizard-actions { margin-top: var(--space-1); }
 
 /* Inline label+control pairs used in filter bars/toolbars (distinct from the stacked .fo-form-field
    used inside modals -- same underlying .fo-wizard-control styling either way). */
@@ -853,7 +878,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-btn-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .fo-btn-row .fo-btn-large { margin-top: 8px; }
 
@@ -1149,12 +1174,14 @@ button:hover {
    MEDIUM=yellow, LOW=neutral gray -- "HIGH" and "CRITICAL" always mean
    the same thing visually regardless of which panel is rendering them. */
 .fo-signal-badge {
-  display: inline-block;
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 
 .fo-signal-badge--low {
@@ -1975,11 +2002,27 @@ button:hover {
 .fo-btn-primary:hover { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
 .fo-btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid transparent; }
 .fo-btn-ghost:hover { color: var(--color-brand-primary); background: var(--color-surface-sunken); }
+/* Destructive -- same danger treatment as .fo-button--destructive below (Button primitive's
+   `destructive` variant) so a raw <button className="fo-btn-destructive"> and a migrated
+   <Button variant="destructive"> read as the same control. 5.86:1 white-on-danger
+   (#B23B3B / var(--color-danger)), same pair the primitive documents -- passes WCAG AA (>= 4.5:1
+   text). Added because 5 call sites (SalesOrderActions, ConfirmDialog's own doc comment,
+   PartDetail, ManageTruckDrawer x2, WorkOrderActions) referenced this class with no definition,
+   so a Cancel/Delete confirm rendered as an unstyled native button indistinguishable from the
+   ghost/secondary button beside it. */
+.fo-btn-destructive { background: var(--color-danger); color: var(--color-text-inverse); border: 1px solid var(--color-danger); }
+.fo-btn-destructive:hover { background: #962f2f; border-color: #962f2f; }
 
 /* Semantic Status Pill — ONE pill, tone-driven (domain maps state -> tone). Use sparingly. */
-.fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+.fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-sm); font-weight: 600;
   padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; letter-spacing: .01em; }
-.fo-status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* No colour-alone ::before dot: StatusPill (shared/ui/StatusPill.jsx) renders a tone glyph
+   (Icon icon={toneIcon(tone)}) on every non-text render path -- toneIcon() always resolves
+   (falls back to the "neutral" HelpCircle glyph, never null/undefined), and StatusPill is this
+   class's ONLY consumer (grep confirms no other component renders "fo-status-pill" directly).
+   The dot was therefore a second, redundant colour-only signal sitting beside an icon that
+   already carries the same information non-colour-dependently. Removed 2026-08-18; if a future
+   consumer of this class ever renders without the icon, the dot must come back FIRST. */
 .fo-status-pill--positive { color: var(--color-success); background: var(--color-success-surface); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
 .fo-status-pill--attention { color: var(--color-warning); background: var(--color-warning-surface); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
 .fo-status-pill--critical { color: var(--color-danger); background: var(--color-danger-surface); border-color: color-mix(in srgb, var(--color-danger) 30%, transparent); }
@@ -2027,12 +2070,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    not just one edge of it. */
 .fo-op-card--attention { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning-surface) 55%, var(--color-surface-elevated)); }
 
-.fo-op-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fo-op-card__title { font-weight: 600; }
+.fo-op-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* Identity line: fixed to one line (ellipsis, not wrap) so it never fights the leading
+   StatusPill for vertical space; flex:1 1 auto lets it own the row's remaining width. */
+.fo-op-card__title {
+  font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); line-height: var(--line-height-tight);
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .fo-op-card__subtitle { margin-top: 2px; font-size: 13px; color: var(--color-text-muted); }
 .fo-op-card__attention { margin-top: 6px; font-size: 13px; color: var(--color-warning); }
 .fo-op-card__foot { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); }
-.fo-op-card__metric { margin-top: 10px; display: flex; align-items: baseline; gap: 6px; }
+/* display:block, not flex -- the metric wraps the shared CompactMetric primitive, which now
+   owns its own internal layout; a flex wrapper around a flex child fought CompactMetric's own
+   alignment. Sole consumer is OperationalCard.jsx. */
+.fo-op-card__metric { margin-top: 10px; display: block; }
 .fo-op-card__metric-value { font-size: 20px; font-weight: 700; }
 .fo-op-card__metric-label { font-size: 12px; color: var(--color-text-muted); }
 .fo-op-card__metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 0; }
@@ -2234,7 +2285,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-stagetrack__bars { display: inline-flex; gap: 2px; }
 .fo-stagetrack__bar { width: 14px; height: 3px; border-radius: 2px; background: var(--color-border); }
 .fo-stagetrack__bar.is-complete { background: var(--color-success); }
-.fo-stagetrack__bar.is-current { background: var(--color-brand-primary); }
+/* current: filled bar + a marker ring, so it does not read as just "another complete bar"
+   once colour is gone -- solid vs. ringed/hollow survives greyscale and colour-blindness. */
+.fo-stagetrack__bar.is-current { background: var(--color-brand-primary); box-shadow: 0 0 0 1px var(--color-brand-primary); height: 5px; }
+/* future: hollow outlined bar, the third shape in the complete/current/future family. */
+.fo-stagetrack__bar.is-future { background: transparent; border: 1px solid var(--color-border); }
 .fo-stagetrack__summary { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
 /* A closed Opportunity reads as its outcome: every bar takes the terminal tone so a scanning eye
    sees "finished", not "still in Decision". */
@@ -2246,6 +2301,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-chevrons__step { display: flex; align-items: center; }
 .fo-chevrons__step:not(:last-child)::after { content: "›"; margin: 0 4px; color: var(--color-text-muted); }
 .fo-chevrons__label, .fo-chevrons__btn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4;
 }
 .fo-chevrons__label { color: var(--color-text-muted); background: var(--color-surface-sunken); }
@@ -2257,6 +2313,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-chevrons__step.is-complete .fo-chevrons__label { color: var(--color-success); background: transparent; }
 .fo-chevrons__step.is-current .fo-chevrons__label { color: var(--color-text-primary); background: var(--color-info-surface); font-weight: 700; }
 .fo-chevrons__terminal {
+  display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-left: 2px;
 }
 .fo-chevrons__terminal--positive { color: var(--color-success); background: var(--color-success-surface); }

@@ -86,7 +86,7 @@ export default function ConfirmDialog({
     <Modal title={title} onClose={requestClose} closeLabel="Close">
       <div className="fo-confirm-dialog fo-create-modal-form">
         {destructive && (
-          <p className="fo-warning fo-confirm-severity" style={{ display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
+          <p className="fo-warning fo-confirm-severity">
             <Icon icon={AlertTriangle} size="dense" />
             <span>Destructive action</span>
           </p>
@@ -94,12 +94,7 @@ export default function ConfirmDialog({
 
         {consequence && (
           <p
-            className="fo-confirm-consequence"
-            style={{
-              borderLeft: `3px solid ${destructive ? "var(--color-danger)" : "var(--color-info)"}`,
-              paddingLeft: "10px",
-              margin: 0,
-            }}
+            className={`fo-confirm-consequence${destructive ? " fo-confirm-consequence--destructive" : ""}`}
           >
             {consequence}
           </p>

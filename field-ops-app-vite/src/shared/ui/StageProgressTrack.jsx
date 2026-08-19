@@ -18,11 +18,10 @@
 // ACCESSIBILITY: the segments are decorative (aria-hidden) because a screen reader user must not have
 // to count bars. The real information is one text label -- "Qualified, stage 2 of 4" or "Won" -- which
 // is exactly what the visual conveys, so the two channels stay in step.
-const BAR_SHAPE_STYLE = {
-  current: { boxShadow: "0 0 0 1px var(--color-brand-primary)", height: "5px" },
-  future: { background: "transparent", border: "1px solid var(--color-border)" },
-};
-
+//
+// The current/future shape treatment lives in index.css (.fo-stagetrack__bar.is-current /
+// .is-future) via the `is-${status}` class already applied below -- no per-status inline style
+// needed.
 export default function StageProgressTrack({ steps, terminal = null }) {
   const list = steps ?? [];
   if (list.length === 0) return null;
@@ -45,7 +44,6 @@ export default function StageProgressTrack({ steps, terminal = null }) {
           <span
             key={s.key}
             className={`fo-stagetrack__bar is-${s.status}`}
-            style={BAR_SHAPE_STYLE[s.status]}
           />
         ))}
       </span>

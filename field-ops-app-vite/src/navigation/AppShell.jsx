@@ -143,7 +143,6 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
                 type="button"
                 className="fo-drawer__close"
                 onClick={closeDrawer}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 {/* Icon is decorative -- "Close" is still the button's whole
                     accessible name, unchanged. */}

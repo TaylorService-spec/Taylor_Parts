@@ -82,24 +82,12 @@ export default function OperationalCard({
           this" -- the scan order the design brief calls for. The title then owns the remaining
           width as a single, non-wrapping identity line (ellipsis rather than a second line,
           which would fight the status indicator for vertical space). */}
-      <div className="fo-op-card__head" style={{ gap: "var(--space-2)" }}>
+      <div className="fo-op-card__head">
         {status && (
           <StatusPill tone={status.tone ?? "unknown"} asText={status.asText} label={status.label} />
         )}
         {title != null && (
-          <span
-            className="fo-op-card__title"
-            style={{
-              fontSize: "var(--font-size-md)",
-              fontWeight: "var(--font-weight-semibold)",
-              lineHeight: "var(--line-height-tight)",
-              flex: "1 1 auto",
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
+          <span className="fo-op-card__title">
             {title}
           </span>
         )}
@@ -113,7 +101,7 @@ export default function OperationalCard({
           baked in) instead of ad hoc markup, so a card's one headline number lines up with
           every other compact metric in the system. */}
       {metric && (
-        <div className="fo-op-card__metric" style={{ display: "block" }}>
+        <div className="fo-op-card__metric">
           <CompactMetric value={metric.value} label={metric.label} />
         </div>
       )}

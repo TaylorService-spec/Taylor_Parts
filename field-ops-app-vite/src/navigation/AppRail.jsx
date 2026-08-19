@@ -51,7 +51,7 @@ function DomainIcon({ domainKey }) {
   // domain label is fighting it for space in the same flex row -- the row's
   // own layout (display:flex, gap) already comes from .fo-rail__domain-row.
   return (
-    <span style={{ display: "inline-flex", flexShrink: 0 }}>
+    <span className="fo-rail__domain-icon">
       <Icon icon={glyph} size="nav" />
     </span>
   );

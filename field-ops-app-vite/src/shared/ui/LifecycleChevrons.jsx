@@ -16,8 +16,10 @@ import { stepIcon, toneIcon } from "./tone.js";
 // Every step's colour (complete/current/future, via CSS) is paired with a glyph from tone.js's
 // shared STEP_ICONS — a check for done, a filled ring for current, a hollow ring for not-yet — the
 // same glyph set StageProgressTrack uses, so the two controls speak one visual language.
-const LABEL_STYLE = { display: "inline-flex", alignItems: "center", gap: "4px" };
-
+//
+// The icon+label layout (inline-flex, centered, 4px gap) lives in index.css on
+// .fo-chevrons__label / .fo-chevrons__btn / .fo-chevrons__terminal directly -- no per-instance
+// inline style needed.
 export default function LifecycleChevrons({ steps, terminal = null, ariaLabel }) {
   return (
     <ol className="fo-chevrons" aria-label={ariaLabel}>
@@ -31,7 +33,6 @@ export default function LifecycleChevrons({ steps, terminal = null, ariaLabel })
             <button
               type="button"
               className="fo-chevrons__btn"
-              style={LABEL_STYLE}
               disabled={!step.actionable}
               title={!step.actionable ? step.disabledReason : undefined}
               onClick={step.onActivate}
@@ -40,7 +41,7 @@ export default function LifecycleChevrons({ steps, terminal = null, ariaLabel })
               {step.label}
             </button>
           ) : (
-            <span className="fo-chevrons__label" style={LABEL_STYLE}>
+            <span className="fo-chevrons__label">
               <Icon icon={stepIcon(step.status)} size="dense" />
               {step.label}
             </span>
@@ -50,7 +51,6 @@ export default function LifecycleChevrons({ steps, terminal = null, ariaLabel })
       {terminal && (
         <li
           className={`fo-chevrons__terminal fo-chevrons__terminal--${terminal.tone}`}
-          style={LABEL_STYLE}
           key={terminal.key}
         >
           <Icon icon={toneIcon(terminal.tone)} size="dense" />

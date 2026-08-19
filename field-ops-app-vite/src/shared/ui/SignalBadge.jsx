@@ -14,10 +14,7 @@ import { severityIcon } from "./tone.js";
 export default function SignalBadge({ severity, children }) {
   const key = severity.toLowerCase();
   return (
-    <span
-      className={`fo-signal-badge fo-signal-badge--${key}`}
-      style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-    >
+    <span className={`fo-signal-badge fo-signal-badge--${key}`}>
       <Icon icon={severityIcon(severity)} size="dense" />
       {children}
     </span>
