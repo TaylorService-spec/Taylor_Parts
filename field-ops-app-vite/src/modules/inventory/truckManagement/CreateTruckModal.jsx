@@ -14,6 +14,7 @@ import BoundedSelect from "./BoundedSelect";
 import WriteDisabledNotice from "./WriteDisabledNotice";
 import OutcomeBanner from "./OutcomeBanner";
 import { validateCreateInput, TRUCK_COMMAND_OUTCOME } from "../../../domain/truckManagement.js";
+import { Button } from "../../../shared/ui/primitives/index.js";
 
 const EMPTY = { truckId: "", vehicleNumber: "", displayLabel: "", locationId: "", homeWarehouseId: "", status: "", assignedDriverEmployeeId: "" };
 
@@ -102,10 +103,10 @@ export default function CreateTruckModal({
         <FormStatus visible={submitting}>{submitting ? "Adding truck…" : ""}</FormStatus>
 
         <FormActions>
-          <button type="submit" disabled={!writeReady || submitting}>
-            {submitting ? "Adding…" : "Add truck"}
-          </button>
-          <button type="button" className="fo-btn-secondary" onClick={onClose} disabled={submitting}>Cancel</button>
+          <Button type="submit" variant="primary" disabled={!writeReady} loading={submitting}>
+            Add truck
+          </Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
         </FormActions>
       </form>
     </Modal>

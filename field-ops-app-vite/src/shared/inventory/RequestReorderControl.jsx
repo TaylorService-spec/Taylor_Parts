@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { OPERATIONAL_ROLE, ROLES } from "../../domain/constants";
+import { Button } from "../ui/primitives/index.js";
 
 // Zero-history reorder behavior sprint, PR 3
 // (docs/specifications/inventory-zero-history-reorder-behavior.md).
@@ -30,9 +31,9 @@ export default function RequestReorderControl({ recommendation, onSubmit, submit
 
   if (recommendation.recommendationStatus === "READY") {
     return (
-      <button type="button" onClick={() => onSubmit()} disabled={submitting}>
-        {submitting ? "Requesting..." : "Request Reorder"}
-      </button>
+      <Button type="button" variant="primary" onClick={() => onSubmit()} disabled={submitting} loading={submitting}>
+        Request Reorder
+      </Button>
     );
   }
 
@@ -61,9 +62,9 @@ export default function RequestReorderControl({ recommendation, onSubmit, submit
         disabled={submitting}
         aria-label="Manual reorder quantity"
       />
-      <button type="button" onClick={() => onSubmit(parsedQty)} disabled={submitting || !isValidQty}>
-        {submitting ? "Requesting..." : "Request Reorder"}
-      </button>
+      <Button type="button" variant="primary" onClick={() => onSubmit(parsedQty)} disabled={submitting || !isValidQty} loading={submitting}>
+        Request Reorder
+      </Button>
     </div>
   );
 }

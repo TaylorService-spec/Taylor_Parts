@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SEARCH_PROVIDERS } from "./searchProviders";
+import { Button } from "../ui/primitives";
 
 // Sprint 2.0.2 -- reusable search component, provider-pattern per the
 // approved design. AccountsList.jsx's search bar IS this component
@@ -60,15 +61,15 @@ export default function GlobalSearch({ providerKeys, context, placeholder = "Sea
             <div className="fo-muted fo-global-search-empty">No matches for "{debounced}"</div>
           ) : (
             results.map((result) => (
-              <button
-                type="button"
+              <Button
+                variant="tertiary"
                 key={`${result.entityType}-${result.id}`}
                 className="fo-global-search-result"
                 onClick={() => handleSelect(result)}
               >
                 <span>{result.primaryText}</span>
                 {result.secondaryText && <span className="fo-muted"> -- {result.secondaryText}</span>}
-              </button>
+              </Button>
             ))
           )}
         </div>

@@ -7,6 +7,7 @@ import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import PartsScanner from "./PartsScanner";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // F1 -- Field shell + Technician Home + Current Job.
 //
@@ -107,7 +108,7 @@ export default function FieldMode() {
         <p className="fo-muted" role="alert">
           Your technician profile could not be loaded. {technicianError}
         </p>
-        <button type="button" onClick={retryTechnician}>Retry</button>
+        <Button variant="secondary" onClick={retryTechnician}>Retry</Button>
       </div>
     );
   }
@@ -170,14 +171,14 @@ export default function FieldMode() {
       )}
 
       <section className="fo-field__section">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           className="fo-field__tool-toggle"
           onClick={() => setScannerOpen((open) => !open)}
           aria-expanded={scannerOpen}
         >
           Parts Scanner <span aria-hidden="true">{scannerOpen ? "▲" : "▼"}</span>
-        </button>
+        </Button>
         {scannerOpen && <PartsScanner technicianId={technicianId} />}
       </section>
     </div>
@@ -336,14 +337,14 @@ function NextAction({ job, pending, failure, onAdvance }) {
   const busy = pending === next.action;
   return (
     <div className="fo-job__next">
-      <button
+      <Button
         className="fo-btn-field"
         onClick={() => onAdvance(job.workOrderId, next.action)}
         disabled={!!pending}
-        aria-busy={busy}
+        loading={busy}
       >
-        {busy ? "Recording…" : next.label}
-      </button>
+        {next.label}
+      </Button>
       {failure && (
         <p role="alert" className="fo-job__failure">{failure.message}</p>
       )}

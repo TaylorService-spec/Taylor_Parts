@@ -9,6 +9,7 @@ import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // F0 -- this IS now the canonical Work Order dispatch surface. It reads
 // fieldops_wos and assigns by invoking the governed `Dispatch` transition
@@ -230,12 +231,12 @@ export default function Dispatch() {
                         rows={2}
                       />
                       <div className="fo-dispatch__reassign-actions">
-                        <button type="button" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
+                        <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
                           Confirm reassignment
-                        </button>
-                        <button type="button" onClick={cancelReassignment}>
+                        </Button>
+                        <Button variant="secondary" onClick={cancelReassignment}>
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}

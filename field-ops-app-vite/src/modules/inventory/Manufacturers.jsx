@@ -53,6 +53,7 @@ import { allowedStatusTransitions } from "../../domain/manufacturerWrite";
 import { manufacturerEntity, manufacturerIndexList } from "../../metadata/definitions/manufacturer.js";
 import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const STATUS_TONE_CLASS = {
   ACTIVE: "fo-mfr__badge--active",
@@ -180,7 +181,7 @@ export default function Manufacturers(props) {
     <div>
       <div className="fo-mfr__header">
         <h2 className="fo-mfr__title">Manufacturers</h2>
-        <button onClick={openCreate} disabled={busy} className="fo-mfr__btn-primary">New manufacturer</button>
+        <Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>
       </div>
       <p className="fo-mfr__hint">
         Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
@@ -199,7 +200,7 @@ export default function Manufacturers(props) {
         <div className="fo-mfr__panel">
           <div className="fo-mfr__panel-header">
             <h3 className="fo-mfr__panel-title">{panel.mode === "create" ? "New manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change status — ${panel.m.name}`}</h3>
-            <button onClick={close} disabled={busy} className="fo-mfr__close-btn">×</button>
+            <Button variant="tertiary" className="fo-mfr__close-btn" onClick={close} disabled={busy}>×</Button>
           </div>
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
@@ -207,7 +208,7 @@ export default function Manufacturers(props) {
               <p className="fo-mfr__status-desc">Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
               <div className="fo-mfr__status-actions">
                 {allowedStatusTransitions(panel.m.status).map((s) => (
-                  <button key={s} onClick={() => submitStatus(s)} disabled={busy || !writeReady} className={`fo-mfr__status-btn${writeReady ? "" : " fo-mfr__status-btn--disabled"}`}>→ {s}</button>
+                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady} className="fo-mfr__status-btn">→ {s}</Button>
                 ))}
               </div>
             </div>
@@ -218,8 +219,8 @@ export default function Manufacturers(props) {
               )}
               <div className="fo-mfr__field"><label className="fo-mfr__label">Name</label><input className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
               <div className="fo-mfr__form-actions">
-                <button onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={busy || !writeReady} className={`fo-mfr__btn-submit${writeReady ? "" : " fo-mfr__btn-submit--disabled"}`}>{busy ? "Saving…" : panel.mode === "create" ? "Create manufacturer" : "Save name"}</button>
-                <button onClick={close} disabled={busy} className="fo-mfr__btn-secondary">Cancel</button>
+                <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create manufacturer" : "Save name"}</Button>
+                <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
               </div>
             </div>
           )}

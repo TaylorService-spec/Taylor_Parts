@@ -13,6 +13,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { captureShadowParity } from "../../domain/partsShadowParityCapture";
 import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 export default function PartsShadowParityDiagnostics({ readers }) {
   const { role } = useAuth();
@@ -70,9 +71,9 @@ export default function PartsShadowParityDiagnostics({ readers }) {
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
         Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
       </p>
-      <button type="button" onClick={run} disabled={running}>
-        {running ? "Running…" : "Run shadow-parity"}
-      </button>
+      <Button variant="primary" onClick={run} disabled={running} loading={running}>
+        Run shadow-parity
+      </Button>
       {v && v.invalid ? <p>Diagnostics unavailable (unrecognized result).</p> : null}
       {v && !v.invalid ? (
         <>
@@ -103,9 +104,9 @@ export default function PartsShadowParityDiagnostics({ readers }) {
             <li className="fo-parity__cell">unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
             <li className="fo-parity__cell">structuralIssue: {c.structuralIssue ?? "—"}</li>
           </ul>
-          <button type="button" onClick={copyEvidence} className="fo-parity__copy-btn">
+          <Button variant="secondary" onClick={copyEvidence} className="fo-parity__copy-btn">
             Copy sanitized evidence
-          </button>
+          </Button>
           {copied ? <span className="fo-parity__copied">copied</span> : null}
         </>
       ) : null}

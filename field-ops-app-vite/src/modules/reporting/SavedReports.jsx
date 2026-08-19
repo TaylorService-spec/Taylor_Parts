@@ -31,6 +31,7 @@ import { REPORT_DEFINITION_CAPABILITIES as CAP } from "../../access/reportAccess
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives";
 
 // A minimal valid definition for a brand-new saved report. (Saving the CURRENT builder definition is
 // a later wiring; here "New" persists a valid starter so create/rename/duplicate/delete are usable.)
@@ -127,7 +128,7 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
 
         {can(CAP.create) && (
           <div className="fo-form">
-            <button type="button" className="fo-btn-large" onClick={onNew} disabled={busy}>New saved report</button>
+            <Button type="button" variant="primary" className="fo-btn-large" onClick={onNew} disabled={busy}>New saved report</Button>
           </div>
         )}
 
@@ -135,7 +136,7 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
         {actionError && (
           <div className="fo-state fo-tone-warning" role="alert">
             <p className="fo-warning fo-state-message">{actionError.message}</p>
-            <button type="button" className="fo-btn-secondary" onClick={load} disabled={busy}>Refresh</button>
+            <Button type="button" variant="secondary" onClick={load} disabled={busy}>Refresh</Button>
           </div>
         )}
 
@@ -168,7 +169,7 @@ function ListArea(props) {
       <div className="fo-state fo-tone-warning" role="alert">
         <p className="fo-state-title">Couldn't load saved reports</p>
         <p className="fo-warning fo-state-message">{message}</p>
-        <button type="button" className="fo-btn-secondary" onClick={onRetry}>Try again</button>
+        <Button type="button" variant="secondary" onClick={onRetry}>Try again</Button>
       </div>
     );
   }
@@ -195,8 +196,8 @@ function SavedReportRow({
           <input id={`rename-${report.id}`} type="text" value={renameText} autoFocus
             onChange={(e) => setRenameText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") cancelRename(); }} />
-          <button type="submit" className="fo-btn-secondary" disabled={busy}>Save</button>
-          <button type="button" className="fo-btn-secondary" onClick={cancelRename}>Cancel</button>
+          <Button type="submit" variant="secondary" disabled={busy}>Save</Button>
+          <Button type="button" variant="secondary" onClick={cancelRename}>Cancel</Button>
         </form>
       </li>
     );
@@ -209,16 +210,16 @@ function SavedReportRow({
           {report.updatedAtMillis ? `Updated ${new Date(report.updatedAtMillis).toLocaleDateString()}` : ""}
         </span>
         <span className="fo-btn-row">
-          <button type="button" className="fo-btn-secondary" onClick={() => onOpen(report)} aria-label={`Open ${report.name}`}>Open</button>
-          {can(CAP.rename) && <button type="button" className="fo-btn-secondary" onClick={() => startRename(report)} disabled={busy} aria-label={`Rename ${report.name}`}>Rename</button>}
-          {can(CAP.duplicate) && <button type="button" className="fo-btn-secondary" onClick={() => onDuplicate(report.id)} disabled={busy} aria-label={`Duplicate ${report.name}`}>Duplicate</button>}
+          <Button type="button" variant="secondary" onClick={() => onOpen(report)} aria-label={`Open ${report.name}`}>Open</Button>
+          {can(CAP.rename) && <Button type="button" variant="secondary" onClick={() => startRename(report)} disabled={busy} aria-label={`Rename ${report.name}`}>Rename</Button>}
+          {can(CAP.duplicate) && <Button type="button" variant="secondary" onClick={() => onDuplicate(report.id)} disabled={busy} aria-label={`Duplicate ${report.name}`}>Duplicate</Button>}
           {can(CAP.delete) && (confirmingDeleteId === report.id ? (
             <>
-              <button type="button" className="fo-btn-secondary fo-warning" onClick={() => onDelete(report.id)} disabled={busy} aria-label={`Confirm delete ${report.name}`}>Confirm delete</button>
-              <button type="button" className="fo-btn-secondary" onClick={() => setConfirmingDeleteId(null)}>Cancel</button>
+              <Button type="button" variant="destructive" onClick={() => onDelete(report.id)} disabled={busy} aria-label={`Confirm delete ${report.name}`}>Confirm delete</Button>
+              <Button type="button" variant="secondary" onClick={() => setConfirmingDeleteId(null)}>Cancel</Button>
             </>
           ) : (
-            <button type="button" className="fo-btn-secondary" onClick={() => setConfirmingDeleteId(report.id)} disabled={busy} aria-label={`Delete ${report.name}`}>Delete</button>
+            <Button type="button" variant="secondary" onClick={() => setConfirmingDeleteId(report.id)} disabled={busy} aria-label={`Delete ${report.name}`}>Delete</Button>
           ))}
         </span>
       </div>
@@ -234,7 +235,7 @@ function OpenStatus({ openState, onDismiss }) {
     <div className="fo-state fo-tone-warning" role="alert">
       <p className="fo-state-title">“{name}” can’t be opened</p>
       <p className="fo-state-message fo-muted">{result.reason}</p>
-      <button type="button" className="fo-btn-secondary" onClick={onDismiss}>Dismiss</button>
+      <Button type="button" variant="secondary" onClick={onDismiss}>Dismiss</Button>
     </div>
   );
 }

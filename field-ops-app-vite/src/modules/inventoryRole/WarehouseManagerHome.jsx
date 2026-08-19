@@ -16,6 +16,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -91,9 +92,9 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
     <div className="fo-card">
       <div className="fo-workspace-header">
         <h3 className="fo-workspace-header-title">Part Activity -- {partName}</h3>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <LoadingEmptyState
         loading={loading}
@@ -351,8 +352,9 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                             )}
                           </td>
                           <td>
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
                               aria-label={`View Activity for ${part.name}`}
                               onClick={(e) => {
                                 lastTriggerRef.current = e.currentTarget;
@@ -360,7 +362,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                               }}
                             >
                               View Activity
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -370,15 +372,15 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
               </div>
 
               <div className="disp-board-toolbar disp-board-toolbar--end">
-                <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
+                <Button type="button" variant="secondary" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
                   Previous
-                </button>
+                </Button>
                 <span className="fo-muted">
                   Page {currentPage + 1} of {pageCount}
                 </span>
-                <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
+                <Button type="button" variant="secondary" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
                   Next
-                </button>
+                </Button>
               </div>
             </>
           </LoadingEmptyState>

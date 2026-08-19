@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import { selectableActiveSuppliers, rankSupplierMatches } from "../../domain/supplierPicker";
+import { Button } from "../ui/primitives";
 
 // Governed Supplier entity selector. Replaces free-text supplier entry: the caller passes the governed
 // Supplier read state ({ loading, error, suppliers } from useSuppliers) and receives the SELECTED ACTIVE
@@ -38,7 +39,7 @@ export default function SupplierPicker({ loading, error, suppliers, selected, on
           <strong>{selected.name}</strong>{" "}
           <span className="fo-sup-status fo-sup-status--done">Active</span>
         </div>
-        <button type="button" className="fo-linkbtn" onClick={() => { setQuery(""); onSelect(null); }}>Change supplier</button>
+        <Button variant="tertiary" className="fo-linkbtn" onClick={() => { setQuery(""); onSelect(null); }}>Change supplier</Button>
       </div>
     );
   }
@@ -71,10 +72,10 @@ export default function SupplierPicker({ loading, error, suppliers, selected, on
         ) : (
           results.map((s) => (
             <li key={s.id} role="option">
-              <button type="button" className="fo-supplier-option" onClick={() => onSelect(s)}>
+              <Button variant="tertiary" className="fo-supplier-option" onClick={() => onSelect(s)}>
                 <span>{s.name}</span>
                 {s.vendorNumber ? <span className="fo-muted"> · {s.vendorNumber}</span> : null}
-              </button>
+              </Button>
             </li>
           ))
         )}

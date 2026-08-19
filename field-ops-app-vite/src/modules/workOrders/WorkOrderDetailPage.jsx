@@ -7,6 +7,7 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
+import { Button } from "../../shared/ui/primitives";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
@@ -48,7 +49,7 @@ export default function WorkOrderDetailPage() {
       <div className="fo-panel">
         <FailureState
           message={error}
-          action={<button type="button" onClick={retry}>Retry</button>}
+          action={<Button variant="secondary" onClick={retry}>Retry</Button>}
         />
       </div>
     );
@@ -59,7 +60,7 @@ export default function WorkOrderDetailPage() {
       <div className="fo-panel">
         <FailureState
           message="This work order could not be found."
-          action={<button type="button" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</button>}
+          action={<Button variant="secondary" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</Button>}
         />
       </div>
     );
@@ -74,9 +75,9 @@ export default function WorkOrderDetailPage() {
 
   return (
     <div className="fo-panel">
-      <button type="button" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
+      <Button variant="tertiary" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
         &larr; Back to Work Orders
-      </button>
+      </Button>
       {/* H14 -- these two reads used to be dropped entirely (no error, no
           loading) even though useAccount.js/useFirestoreCollection.js
           already exposed them. A denied Account read rendered a blank/
