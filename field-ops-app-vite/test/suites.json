@@ -562,6 +562,14 @@
       "runner": "node"
     },
     {
+      "file": "test/cycleCountCommandRequest.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/cycleCountActionResult.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/navPlaceholderHonesty.test.mjs",
       "runner": "node"
     },

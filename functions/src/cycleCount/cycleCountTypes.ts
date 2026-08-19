@@ -17,12 +17,28 @@
 // on the count-sheet side, and ADJUSTED's first live producer for count-driven reconciliation):
 //   createCycleCount    : (none) -> OPEN        (snapshots expected quantity/serials at creation time)
 //   submitCycleCount    : OPEN -> COUNTED        (records counted quantity/serials, computes variance)
-//   reconcileCycleCount : COUNTED -> RECONCILED  (stages ADJUSTED ledger evidence; reason required on
-//                                                  non-zero variance; never overwrites stock truth)
+//   reconcileCycleCount : COUNTED -> RECONCILED  (manager APPROVES; stages ADJUSTED ledger evidence;
+//                                                  reason required on non-zero variance; never
+//                                                  overwrites stock truth)
+//   reconcileCycleCount : COUNTED -> REJECTED    (manager REJECTS the same submitted count via the same
+//                                                  callable's `decision: "REJECT"`; stages NO ledger
+//                                                  evidence -- the expected-quantity authority is left
+//                                                  untouched, the count is simply recorded as disputed)
 //   cancelCycleCount    : OPEN -> CANCELLED       (domain-safe only -- before any count is submitted)
+//
+// M23 BLIND-COUNT REMEDIATION (Owner ruling, 2026-08-18): the counter no longer sees expectedQuantity
+// before submitting (field-ops-app-vite/src/modules/inventory/CycleCounts.jsx), and a manager now
+// disposes of every submitted count as APPROVE or REJECT. SEPARATION OF DUTIES is enforced HERE, at the
+// only place a variance can be dispositioned: reconcileCycleCount refuses (CycleCountSelfApprovalError)
+// when the disposing actor is the SAME principal recorded as `submittedBy` AND the variance is material
+// (cycleCountMateriality.ts). This is a server-side authorization check inside the transaction that
+// reads and writes the record -- a client cannot bypass it by omitting a button or hiding a UI state.
 
-export const CYCLE_COUNT_STATUSES = ["OPEN", "COUNTED", "RECONCILED", "CANCELLED"] as const;
+export const CYCLE_COUNT_STATUSES = ["OPEN", "COUNTED", "RECONCILED", "REJECTED", "CANCELLED"] as const;
 export type CycleCountStatus = (typeof CYCLE_COUNT_STATUSES)[number];
+
+export const CYCLE_COUNT_REVIEW_DECISIONS = ["APPROVE", "REJECT"] as const;
+export type CycleCountReviewDecision = (typeof CYCLE_COUNT_REVIEW_DECISIONS)[number];
 
 export const CYCLE_COUNT_SCHEMA_VERSION = 1;
 
@@ -83,12 +99,16 @@ export interface DeserializedCycleCount {
   readonly updatedBy: string;
   readonly schemaVersion: number;
   readonly fingerprint: string;
-  // Present once submitCycleCount has run (status COUNTED or RECONCILED).
+  // Present once submitCycleCount has run (status COUNTED or RECONCILED/REJECTED). submittedBy is the
+  // separation-of-duties anchor: the principal who submitted THIS count, captured independently of
+  // updatedBy (which reconcile/reject would otherwise overwrite) so it survives to the review step.
   readonly countedQuantity?: number; // NONE mode
   readonly countedSerialNumbers?: readonly string[]; // SERIAL mode
   readonly variance?: number; // NONE mode: countedQuantity - expectedQuantity
   readonly serialVariance?: SerialVariance; // SERIAL mode
-  // Present once reconcileCycleCount has run (status RECONCILED).
+  readonly submittedBy?: string;
+  // Present once reconcileCycleCount has run (status RECONCILED or REJECTED).
+  readonly reviewDecision?: CycleCountReviewDecision;
   readonly reconciliationReason?: string;
   readonly reconciledAt?: number;
   readonly reconciledBy?: string;
@@ -124,12 +144,21 @@ export interface CycleCountActionOutcome {
   readonly countedSerialNumbers?: readonly string[];
   readonly variance?: number;
   readonly serialVariance?: SerialVariance;
+  // M23 blind-count remediation: submitCycleCount's outcome now echoes the expected snapshot back to
+  // the caller for the FIRST time -- deliberately never present on createCycleCount's outcome (that
+  // would let the counter read it off the network response before typing a count, defeating the blind
+  // count even if the UI never renders it). By the time submitCycleCount responds, the counted
+  // value has already left the counter's hands in the SAME request, so there is nothing left to anchor.
+  readonly expectedQuantity?: number;
+  readonly expectedSerialNumbers?: readonly string[];
+  readonly reviewDecision?: CycleCountReviewDecision;
   readonly reconciliationReason?: string;
 }
 
 // -------- sanitized, class-per-reason failure taxonomy (mirrors Receiving/Transfer precedent) --------
 export type CycleCountCommandFailureCode =
   | "PERMISSION_DENIED"
+  | "SEPARATION_OF_DUTIES"
   | "CYCLE_COUNT_NOT_FOUND"
   | "LOCATION_INVALID"
   | "PART_INVALID"
@@ -152,6 +181,17 @@ export class CycleCountCommandError extends Error {
 export class UnauthorizedCycleCountError extends CycleCountCommandError {
   constructor(m = "actor is not authorized to perform this cycle count action") {
     super("PERMISSION_DENIED", m);
+  }
+}
+// M23 blind-count remediation -- separation-of-duties guard. Distinct from UnauthorizedCycleCountError
+// (which means "this principal never holds the capability at all"): this principal DOES hold
+// inventory.cycleCount.reconcile, but is the same principal who submitted THIS specific count, and the
+// variance is material (cycleCountMateriality.ts) -- a self-review, not a missing grant. Still maps to
+// HTTP permission-denied at the callable boundary (the caller may not perform this specific action),
+// but is kept as its own failure code so a UI/test can tell the two apart.
+export class CycleCountSelfApprovalError extends CycleCountCommandError {
+  constructor(m = "the actor who submitted this count cannot approve or reject its own material variance") {
+    super("SEPARATION_OF_DUTIES", m);
   }
 }
 export class CycleCountNotFoundError extends CycleCountCommandError {

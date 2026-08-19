@@ -181,6 +181,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "submitCycleCount",
   "reconcileCycleCount",
   "cancelCycleCount",
+  // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision (reject, no
+  // ledger evidence). Runtime mirror of the rejectCycleCount AuditAction union member.
+  "rejectCycleCount",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

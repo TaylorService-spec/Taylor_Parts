@@ -321,7 +321,12 @@ export type AuditAction =
   | "createCycleCount"
   | "submitCycleCount"
   | "reconcileCycleCount"
-  | "cancelCycleCount";
+  | "cancelCycleCount"
+  // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision. A manager
+  // reviewing a submitted count now disposes of it as APPROVE (reconcileCycleCount, unchanged
+  // above) or REJECT (this action) -- reject stages no ledger evidence, it only records the
+  // decision, so it needed its own action rather than overloading reconcileCycleCount's meaning.
+  | "rejectCycleCount";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
