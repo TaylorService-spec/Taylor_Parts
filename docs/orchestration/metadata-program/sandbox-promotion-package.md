@@ -1398,3 +1398,135 @@ not touched. Tranche 3 was not entered.
 
 `X-SALES-ORDER-NUMBER-BACKFILL: EXECUTED AND VERIFIED — 20/20.`
 **Tranche 3 (Hosting) requires separate authorization.**
+
+---
+
+# §11 — Timestamp consumer gate (read-only)
+
+**Result: neither `createdAtMillis` nor `updatedAtMillis` is consumed by any Sales Order surface in
+the built Hosting artifact.** No callable repair is required before Hosting. One separate finding
+about the INDEX surface itself is recorded at §11.5 and does change what Tranche 3 delivers.
+
+Nothing was deployed. The only action taken was a local production build and static inspection of it.
+
+## 11.1 The artifact inspected
+
+Built from `main` at `0884e480` (`npm run build`, exit 0). Output is a **single** JS chunk,
+`dist/assets/index-BzYeQU86.js`, plus one CSS file — so "is it in the bundle" is answerable by
+inspecting one file, with no lazy chunk able to hide a consumer.
+
+## 11.2 The Sales Order INDEX surface, as built
+
+Recovered verbatim from the bundle:
+
+    id: "salesOrder.index", entityId: "salesOrder", surface: "INDEX",
+    readCallable: "listSalesOrderIndex",
+    columns: [salesOrderNumber (sortable), accountId, state (sortable), salesChannel, customerPO],
+    filters: [state], defaultSort: [salesOrderNumber DESC], pageSize: 50
+
+**Five columns, none a timestamp. One filter, not a timestamp. Sort by `salesOrderNumber`, not a
+timestamp.** The related Sales Orders list under an Account is the same story:
+`salesOrderNumber, state, salesChannel, customerPO, sourceOpportunityNumber`.
+
+Nothing else in the pipeline could reach the fields implicitly:
+
+- **Rendering.** `listPresentation.js` formats a value through the timestamp formatter only when a
+  column declares `type: "TIMESTAMP"` or `"DATE"`. This list declares neither, so no cell reads a
+  timestamp.
+- **Sorting.** `defaultSort` names `salesOrderNumber`; the two sortable columns are
+  `salesOrderNumber` and `state`.
+- **Export.** There is **no list export path in the artifact.** The single `text/csv` occurrence is
+  the Contact *import* modal's file picker.
+- **Saved views.** `salesOrder.index` declares a `RECENTLY_VIEWED` default view, which might be
+  expected to sort by recency — but `savedView.kind` has **no runtime consumer anywhere in the
+  source**. It is a declaration, not behaviour, so it reads no timestamp either.
+
+## 11.3 Where the fields *are* consumed — and why neither is a Sales Order surface
+
+Five occurrences of each name in the bundle, all accounted for:
+
+| Consumer | Field | Source of the value |
+|---|---|---|
+| CRM Activity view | `createdAtMillis` | `crmActivityReadService.ts` — `toMillis(data.createdAt)` |
+| Saved Reports list | `updatedAtMillis` | computed client-side, `toMillis(rec.updatedAt)` |
+
+Both derive millis from a real stored timestamp, so both are correct and unaffected.
+
+**A dead consumer exists in source and is worth naming, because a grep of `src/` alone would suggest
+otherwise.** `src/domain/accountSalesOrdersView.js` maps `so.updatedAtMillis` and
+`src/modules/accounts/AccountSalesOrdersSection.jsx` formats it for display — a genuine Sales Order
+timestamp consumer. It is **not in the artifact**: `AccountDetail.jsx` replaced those hand-rendered
+sections with the metadata list resolver, nothing imports them any more, and `AccountSalesOrders`
+appears **zero times** in the built bundle. It would have displayed a blank column had it survived;
+it did not survive.
+
+## 11.4 Root cause — field naming and projection, not serialization
+
+Confirmed by reading both sides of the write/read pair:
+
+**Write** (`salesOrderCallables.ts`, `persistCreatedSalesOrder`) explicitly *strips* the millis
+fields and stores real server timestamps:
+
+    const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
+    tx.set(ref, { ...fields, salesOrderNumber,
+                  createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+
+**Read** (`salesOrderReadService.ts`) projects fields with those stripped names:
+
+    createdAtMillis: num(data.createdAtMillis),
+    updatedAtMillis: num(data.updatedAtMillis),
+
+`data.createdAtMillis` is `undefined` on every document — nothing writes it — so `num()` yields
+`null`. The stored `createdAt`/`updatedAt` Timestamps are never read.
+
+**It is therefore projection logic reading the wrong field names — not Firestore timestamp
+serialization.** Serialization is provably fine: the backfill's pre-state fingerprint (which hashes
+`createdAt`) reproduced from live data on all 14 documents in §10.3, which requires reading those
+Timestamps correctly.
+
+The correct pattern already exists one directory over, in `crmActivityReadService.ts`:
+`createdAtMillis: toMillis(data.createdAt)` — read the stored Timestamp, convert at the projection
+boundary. The Sales Order read service simply never did this.
+
+This was a **known** gap, not a new discovery: `salesOrder.js`'s list-view comment states that the
+write path stores Timestamps while the read projection reads names "nothing writes," and cites that
+as the reason it sorts by `salesOrderNumber`. The defect and the surface's avoidance of it were
+authored together — which is why no consumer exists to break.
+
+## 11.5 Separate finding — the INDEX surface has no page
+
+`salesOrder.index` appears **twice** in the bundle: its own definition, and the related list's
+`viewAllListId` pointer to it. **Nothing renders it.**
+
+The only Sales Order route in `App.jsx` is the detail page
+(`opportunities/sales-order/:salesOrderId` → `SalesOrderDetail`). There is no route, nav entry, or
+page definition that mounts `salesOrder.index`; the only metadata page definition in the app is the
+Account record page.
+
+So the list view, its `listSalesOrderIndex` wiring in `callableListSource.js`, and the now-populated
+callable are all present and correct — but **deploying Hosting today would not put a Sales Order
+INDEX page in front of any user.** The 14 rows the backfill made visible are visible to the
+*callable*, and through the related Sales Orders list under an Account; not through an index page,
+because none is mounted.
+
+That does not make Hosting unsafe — it makes its user-visible effect smaller than the promotion
+narrative assumed, and it is the honest precondition for authorizing it.
+
+## 11.6 Position
+
+| Gate item | Result |
+|---|---|
+| Inspect the INDEX surface in the built artifact | Done — §11.2 |
+| Does it display / sort / filter / export the fields? | **No — none of the four** |
+| Neither consumed → record evidence, return for authorization | This section |
+| Either consumed → repair the callable first | **Not triggered** |
+| Serialization, naming, or projection? | **Naming + projection** — §11.4 |
+| Deploy Hosting or make unrelated changes | Neither |
+
+The timestamp mapping defect is real and should be fixed, but it is **not a user-exposure risk on
+this artifact** because no surface reads it. Recorded for the next Sales Order read slice rather than
+patched here, since a callable repair now would be an unrelated change to a gate that came back
+clean.
+
+`TRANCHE 3 — TIMESTAMP CONSUMER GATE: CLEAR.` No Functions repair required. Hosting authorization
+requested, with §11.5 on the record.
