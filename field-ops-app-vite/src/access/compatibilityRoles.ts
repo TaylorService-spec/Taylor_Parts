@@ -192,6 +192,23 @@ export const ADMIN_ROLE: Role = Object.freeze({
     // (environmentCapabilityOverrides.ts) and production stays triple-blocked.
     "crm.activity.create",
     "crm.activity.read",
+    // Catalog curation -- Owner ruling 2026-08-19. inventory.catalog.manage creates and
+    // edits the canonical Part and Manufacturer records every stock movement, Work Order
+    // line and Purchase Order keys off. Before this, exactly two Roles carried it:
+    // inventoryCatalogAdministrator (durable) and inventoryCreateExecutor (a one-run
+    // temporary elevation) -- so canonical admin authority did NOT include the ability to
+    // fix a catalog record, while a Parts Manager holding the operational Role did.
+    //
+    // ADMIN-only, deliberately NOT on SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS: dispatcher
+    // gains nothing. Owner inherits via OWNER_PERMISSIONS composition.
+    //
+    // MANAGE only, NOT inventory.catalog.activate. Creating and correcting reference data
+    // is a different authority from changing its lifecycle status, and activate stays with
+    // inventoryCatalogAdministrator. admin already holds inventory.catalog.read through the
+    // shared base, so read+manage is a coherent pair -- curating a Part against a
+    // manufacturer list you cannot see is not (the same reasoning that added the read to
+    // inventoryCatalogAdministrator).
+    "inventory.catalog.manage",
   ],
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;

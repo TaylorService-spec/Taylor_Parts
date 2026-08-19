@@ -228,6 +228,21 @@ authority and mint symmetry-only structure that R-1 would want to retire.
 **Not the answer:** `inventoryCreateExecutor` (transitional, `.manage`-only, no `.activate`, meant to be
 revoked), and `admin`/`owner` (deliberately excluded from catalog write).
 
+> **SUPERSEDED IN PART, 2026-08-19 (Owner ruling).** The "catalog write stays off title-based
+> Roles" posture recorded above no longer holds. `inventory.catalog.manage` is now carried by
+> `admin`, `operationsManager` and `fieldManager` -- and by `owner` through composition. That is
+> Option B below, applied more widely than Option B itself proposed.
+>
+> The duplicate-catalog risk this section implies was put to the Owner explicitly before the
+> ruling, together with the fact that **no duplicate detection exists in this system today**. The
+> decision was to grant now and begin duplicate detection immediately as the mitigation, rather
+> than hold the grant until the defence exists.
+>
+> **`inventory.catalog.activate` was NOT part of the reversal.** It remains confined to
+> `inventoryCatalogAdministrator` exactly as recommended here, owner included. Option A's durable
+> Role stands, and changing a record's lifecycle status is still a separate authority from
+> creating or correcting one.
+
 ### Recommendation
 
 **Adopt Option A** — define a durable `inventoryCatalogAdministrator` role carrying exactly

@@ -201,6 +201,20 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
     // dispatch operational surface, matching this Role's existing Work Order lifecycle authority.
     // Still active:false (grant is not activation); see compatibilityRoles.ts's own comment.
     "fulfillment.coordinatedVisit.read",
+    // Catalog curation -- Owner ruling 2026-08-19. A field/service manager standing in front
+    // of a machine is the highest-volume place a new Part gets created, and therefore the
+    // likeliest source of duplicate catalog rows: TST-1234 vs "TST 1234" vs "Compressor Assy"
+    // as three separate Parts, with stock, purchase history and Work Order usage split across
+    // all three, and every resulting count wrong.
+    //
+    // That risk was raised before this grant and the Owner ruled all three management Roles
+    // hold it, with duplicate detection starting immediately as the mitigation rather than the
+    // grant waiting on it. Recorded here so the sequencing stays visible: the inlet was opened
+    // deliberately, on the stated condition that the defence follows.
+    //
+    // MANAGE only, NOT inventory.catalog.activate -- lifecycle status stays with
+    // inventoryCatalogAdministrator.
+    "inventory.catalog.manage",
   ],
 }) as Role;
 
@@ -243,6 +257,21 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     // exactly the reader this coordinated-Work-Order projection is for. Still active:false (grant
     // is not activation); see compatibilityRoles.ts's own comment.
     "fulfillment.coordinatedVisit.read",
+    // Catalog curation -- Owner ruling 2026-08-19, same ruling that granted it to admin.
+    // Cross-domain operational oversight includes fixing a wrong Part or Manufacturer
+    // record rather than escalating it to whoever holds inventoryCatalogAdministrator.
+    //
+    // MANAGE only, NOT activate: lifecycle status stays with inventoryCatalogAdministrator.
+    // This Role already holds inventory.transaction.read and inventory.action.read, and
+    // catalog READ resolves for it through the compatibility layer, so the curation pair is
+    // coherent.
+    //
+    // DELIBERATELY NOT granted to fieldManager. The Owner held that one back: catalog.manage
+    // mints canonical Parts, and a field/service role creating new Part records at the point
+    // of a repair is how duplicate catalog rows start. There is no duplicate detection in
+    // this system today, so the inlet stays closed until there is. Revisit with dedup, not
+    // before.
+    "inventory.catalog.manage",
   ],
 }) as Role;
 
