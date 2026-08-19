@@ -183,6 +183,8 @@ export default function Dispatch() {
                 <div className="fo-muted">
                   {job.assignedTechId
                     ? `Assigned to ${technicianName(job.assignedTechId) ?? job.assignedTechId}`
+                    : job.status === "CANCELLED"
+                    ? "This work order was cancelled before it was dispatched — no further action is needed."
                     : "Not ready to dispatch — this work order must be scheduled first."}
                 </div>
               ) : !job.assignedTechId ? (
