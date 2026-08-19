@@ -13,6 +13,7 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants.js";
 import StatusPill from "../ui/StatusPill.jsx";
 import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import FailureState from "../ui/FailureState";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A). Extracted from
 // PartsAssociateHome.jsx's own RequestCards + AssignedRequestDetail (StartPurchasingCard/
@@ -257,7 +258,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
 }
 
 function OrderedCard({ request, resolveName }) {
-  const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -313,6 +314,12 @@ function OrderedCard({ request, resolveName }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- a denied/failed read used to render the
+        // SAME "details unavailable" copy as a genuine not-yet-recorded PO.
+        // Fail visibly instead: "you cannot see it" is not "there is
+        // nothing to see".
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -331,7 +338,9 @@ function OrderedCard({ request, resolveName }) {
 }
 
 function TerminalCard({ request, resolveName }) {
-  const { data: voidRecord } = useReorderPurchaseOrderVoid(request.status === REORDER_REQUEST_STATUS.VOIDED ? request.id : null);
+  const { data: voidRecord, error: voidRecordError } = useReorderPurchaseOrderVoid(
+    request.status === REORDER_REQUEST_STATUS.VOIDED ? request.id : null
+  );
 
   return (
     <div className="fo-card">
@@ -364,6 +373,12 @@ function TerminalCard({ request, resolveName }) {
             </tr>
           </tbody>
         </table>
+      )}
+      {request.status === REORDER_REQUEST_STATUS.VOIDED && voidRecordError && voidRecordError !== "not_found" && !voidRecord && (
+        // H14 (reorder pair) -- the void record read failing is masked whenever
+        // request.voidReason already has a value (the common case), so this
+        // only needs to surface when there is truly nothing else to show.
+        <FailureState message="You don't have permission to view the full void record." />
       )}
       {request.status === REORDER_REQUEST_STATUS.RECEIVED && (
         <table className="fo-table">
