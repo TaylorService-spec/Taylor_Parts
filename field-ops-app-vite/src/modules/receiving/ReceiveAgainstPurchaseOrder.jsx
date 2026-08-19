@@ -21,6 +21,7 @@ import {
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Receive-against-Purchase-Order (A1) — the ONE canonical governed receive workflow, and the
 // single source of truth for receiving. It lives in the capability home modules/receiving/ and is
@@ -156,12 +157,12 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
         <ul className="fo-receive-candidates">
           {candidates.map((c) => (
             <li key={c.reorderRequestId}>
-              <button type="button" className="fo-receive-candidate" onClick={() => chooseCandidate(c)}>
+              <Button type="button" variant="tertiary" className="fo-receive-candidate" onClick={() => chooseCandidate(c)}>
                 <strong>{c.partId}</strong>
                 <span className="fo-muted">
                   {c.supplierName ? `${c.supplierName} · ` : ""}PO {c.externalPoNumber ?? c.reorderRequestId} · qty {c.orderedQuantity}
                 </span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -206,9 +207,9 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
             ))}
           </select>
         </label>
-        <button type="button" className="scan-confirm" disabled={!locationId} onClick={continueFromLocation}>
+        <Button type="button" className="scan-confirm" disabled={!locationId} onClick={continueFromLocation}>
           Continue
-        </button>
+        </Button>
       </Frame>
     );
   }
@@ -252,9 +253,9 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
         {issues.duplicateIndexes.length > 0 && (
           <p className="fo-error" role="alert">Duplicate serial numbers aren't allowed — each unit needs its own.</p>
         )}
-        <button type="button" className="scan-confirm" disabled={!issues.ok} onClick={() => setStep(RECEIVE_STEP.CONFIRM)}>
+        <Button type="button" className="scan-confirm" disabled={!issues.ok} onClick={() => setStep(RECEIVE_STEP.CONFIRM)}>
           Continue
-        </button>
+        </Button>
       </Frame>
     );
   }
@@ -275,9 +276,9 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
           )}
         </dl>
         <p className="fo-muted">Receiving records the full ordered quantity. This is a governed transaction.</p>
-        <button type="button" className="scan-confirm" disabled={submitting} onClick={submit}>
-          {submitting ? "Receiving…" : "Confirm receipt"}
-        </button>
+        <Button type="button" className="scan-confirm" loading={submitting} onClick={submit}>
+          Confirm receipt
+        </Button>
       </Frame>
     );
   }
@@ -292,9 +293,9 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
       </div>
       <div className="fo-receive-actions">
         {!outcome.terminal && !isReceivingUnavailable(result) && (
-          <button type="button" onClick={restart}>Try again</button>
+          <Button type="button" variant="secondary" onClick={restart}>Try again</Button>
         )}
-        <button type="button" className="scan-confirm" onClick={() => onDone?.()}>Done</button>
+        <Button type="button" className="scan-confirm" onClick={() => onDone?.()}>Done</Button>
       </div>
     </Frame>
   );
@@ -305,7 +306,7 @@ function Frame({ children, onBack }) {
     <section className="fo-receive-po" aria-label="Receive against a purchase order">
       <div className="fo-receive-header">
         <h3>Receive a purchase order</h3>
-        {onBack && <button type="button" className="fo-receive-back" onClick={onBack}>← Back</button>}
+        {onBack && <Button type="button" variant="tertiary" className="fo-receive-back" onClick={onBack}>← Back</Button>}
       </div>
       {children}
     </section>
