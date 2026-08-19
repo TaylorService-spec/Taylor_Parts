@@ -20,6 +20,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
 import TransferOrderForm from "./TransferOrderForm";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Inventory > Transfers -- the operating workspace for the governed Transfer command family
 // (functions/src/inventoryTransfer/*). It REUSES the shared read (useTransferOrders ->
@@ -114,9 +115,9 @@ export default function Transfers({ accessVersion }) {
     <div className="fo-panel">
       <WorkspaceHeader title="Transfers">
         {!showForm && (
-          <button type="button" className="fo-btn-primary" onClick={() => setShowForm(true)}>
+          <Button variant="primary" onClick={() => setShowForm(true)}>
             New transfer
-          </button>
+          </Button>
         )}
       </WorkspaceHeader>
       {intro}

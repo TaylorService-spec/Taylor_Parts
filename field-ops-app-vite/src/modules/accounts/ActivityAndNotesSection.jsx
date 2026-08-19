@@ -6,6 +6,7 @@ import { crmActivityView, CRM_ACTIVITY_VIEW_STATE } from "../../domain/crmActivi
 import { CRM_ACTIVITY_TYPES, crmActivityTypeLabel } from "../../domain/crmActivityTypes.js";
 import Modal from "../../shared/ui/Modal.jsx";
 import FailureState from "../../shared/ui/FailureState";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4) -- the governed replacement path for the
 // single free-text `account.notes` blob. Reads via the trusted getCrmActivities callable, writes via the
@@ -143,9 +144,9 @@ function AddNoteForm({ accountId, onClose, onCreated }) {
           <button type="button" className="fo-btn-secondary" onClick={handleClose} disabled={pending}>
             Cancel
           </button>
-          <button type="submit" className="fo-btn-primary" disabled={pending || body.trim().length === 0}>
+          <Button type="submit" variant="primary" disabled={pending || body.trim().length === 0}>
             {pending ? "Saving…" : "Save Note"}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

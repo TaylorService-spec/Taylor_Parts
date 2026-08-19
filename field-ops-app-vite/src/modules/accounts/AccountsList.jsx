@@ -9,6 +9,7 @@ import { useAccountSearch } from "../../hooks/useAccountSearch";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import Modal from "../../shared/ui/Modal";
 import AccountForm from "./AccountForm";
 
@@ -112,7 +113,7 @@ export default function AccountsList() {
 
   const actions = (
     <ActionRail
-      primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>+ New Customer</button>}
+      primary={<Button variant="primary" onClick={() => setShowCreate(true)}>+ New Customer</Button>}
     />
   );
 
