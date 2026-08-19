@@ -1,5 +1,4 @@
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../entityDefinition.js";
-import { makeColumn, makeListViewDefinition, makeSort } from "../listViewDefinition.js";
 import { INVOICE_STATES } from "../../domain/commercialFinance.js";
 
 // Invoice — Finance / Billing / AR (A-ENTITY-BILLING-DEFINITIONS). The immutable issued invoice
@@ -88,6 +87,25 @@ import { INVOICE_STATES } from "../../domain/commercialFinance.js";
 // ever render on its own. `lines` is an embedded array (InvoiceLineRecord[]) on the document, not
 // a flat column any list here could render — the same restraint salesOrder.js applies to its own
 // `lines`.
+//
+// NO invoiceIndexList IS DECLARED (H4/M19 fix). One used to exist here, INDEX surface, with no
+// readCallable override — which meant it silently inherited the entity's own readCallable at
+// runtime (listRuntime.js, `entity.readCallable ?? null`). That inherited callable,
+// listAccountInvoiceAr, is REQUIRED-scoped (functions/src/finance/financeReadCallables.ts —
+// `.where("accountId", "==", accountId)`, HttpsError("invalid-argument") if accountId is
+// missing), and an INDEX list never supplies a parent-scope filter (buildQueryDescriptor only
+// prepends one for `surface === "RELATED"`) — so this list would have thrown on the FIRST
+// request from every single user who opened it, forever, because no scope it could ever supply
+// would satisfy the callable. Registering listAccountInvoiceAr in CALLABLE_SOURCES does not fix
+// this — the mismatch is structural (scoped callable, unscoped surface), not a missing
+// registration, and no unscoped invoice read exists anywhere in functions/src to swap in (unlike
+// opportunity.index's listOpportunityContext / salesOrder.index's listSalesOrderIndex, both
+// purpose-built unscoped siblings of their account-scoped callable). No route or component
+// imported this list (verified: `grep -rl invoiceIndexList src` outside this file returned
+// nothing), so removing it breaks no live surface. The entity's own readCallable stays declared
+// (readVia CALLABLE genuinely applies — invoices is deny-all in Rules) and is now registered in
+// CALLABLE_SOURCES for when the real consumer — a RELATED list under account.js, scoped by the
+// accountId this callable actually requires — gets built; see REGISTRATION_PENDING.
 
 export const invoiceEntity = makeEntityDefinition({
   id: "invoice",
@@ -158,10 +176,9 @@ export const invoiceEntity = makeEntityDefinition({
       // plain number; DATE resolves through the same shared formatter as TIMESTAMP
       // (listPresentation.js's cellValue -> domain/displayTimestamp.js's formatTimestamp), which
       // already coerces an epoch-millisecond NUMBER, so no storage-shape change is implied. Not
-      // filtered or sorted by anywhere in this file (invoiceIndexList's own default sort is
-      // invoiceNumber DESC, and there are no declared filters) so this retype changes no FILTER/SORT
-      // meaning and demands no new composite index — requiredIndexes(invoiceIndexList, invoiceEntity)
-      // is confirmed still [] in the test file.
+      // filtered or sorted by anywhere in this file (no list view is declared here at all — see
+      // the file header's account of why invoiceIndexList was removed) so this retype changes no
+      // FILTER/SORT meaning and demands no composite index.
       type: "DATE",
       sortable: true,
       description: "Ms epoch, carried (not computed) at issuance — AR aging begins here. A plain number in storage, never a Firestore Timestamp (invoiceCommands.ts's isInt guard), but a DATE by kind — see cellValue's DATE/TIMESTAMP handling.",
@@ -270,37 +287,3 @@ export const invoiceEntity = makeEntityDefinition({
   // is outside this lane's writeScope. See REGISTRATION_PENDING in the handoff.
 });
 
-/**
- * The Invoice index. NO STANDALONE ROUTE RENDERS THIS YET — a definition is not a surface, the
- * same restraint purchaseOrder.index and employee.index apply.
- *
- * NO RELATED LIST IS DECLARED here for the same reason: a RELATED list needs its parent edge
- * declared on account.js, which is outside this lane's writeScope.
- *
- * NO FILTERS ARE DECLARED. listAccountInvoiceAr accepts only { accountId, limit } — no state (or
- * any other) filter parameter exists to promise here, unlike salesOrder.index's own state filter.
- * defaultSort is invoiceNumber DESC (monotonic per-company sequence, most recent first — the same
- * choice salesOrder.index makes for the identical reason: no reliably-populated timestamp is
- * guaranteed present on every row, since issuedAt/updatedAt are not in the current read
- * projection). A single sort field with zero filters needs no composite index (requiredIndexes()
- * confirms this in the test file), so this list makes NO net-new demand against
- * firestore.indexes.json.
- */
-export const invoiceIndexList = makeListViewDefinition({
-  id: "invoice.index",
-  entityId: "invoice",
-  label: "Invoices",
-  surface: "INDEX",
-  columns: [
-    makeColumn({ fieldId: "invoiceNumber", sortable: true }),
-    makeColumn({ fieldId: "accountId" }),
-    makeColumn({ fieldId: "state" }),
-    makeColumn({ fieldId: "totalMinor" }),
-    makeColumn({ fieldId: "outstandingMinor" }),
-    makeColumn({ fieldId: "dueDate" }),
-  ],
-  filters: [],
-  defaultSort: [makeSort({ fieldId: "invoiceNumber", direction: "DESC" })],
-  pageSize: 50,
-  capabilityRequirement: "finance.read",
-});

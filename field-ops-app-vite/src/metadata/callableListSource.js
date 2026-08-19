@@ -90,6 +90,34 @@ const CALLABLE_SOURCES = Object.freeze({
   // index are different reads with different authority shapes, and reusing one for the other
   // was explicitly ruled out.
   listSalesOrderIndex: { listKey: "salesOrders", scoped: false },
+  // functions/src/partMaster/manufacturerReadService.ts getManufacturerCatalog -- reads the
+  // WHOLE manufacturers collection unbounded/unfiltered (`.get()`, no accountId or any other
+  // scope argument), so `scoped: false` is not a guess but a direct read of the query it
+  // actually runs. Response envelope is { status, manufacturers, excludedCount } (verified in
+  // manufacturerReadService.ts), hence `listKey: "manufacturers"`. NOTE: unlike the account-
+  // scoped pair above, this callable has no `truncated` flag and no `limit` parameter it
+  // honors — it always returns the entire collection in one page. fetchPage's generic
+  // truncation-sentinel logic (`data?.truncated`) will simply never fire for this callable,
+  // which is correct here (there is nothing to truncate) but is a real difference from the
+  // other entries in this table, recorded rather than left to be discovered later.
+  getManufacturerCatalog: { listKey: "manufacturers", scoped: false },
+  // functions/src/finance/financeReadCallables.ts listAccountInvoiceAr -- account-scoped,
+  // REQUIRES accountId (`.where("accountId", "==", accountId)`, HttpsError("invalid-argument")
+  // if missing), so `scoped: true` is a direct read of that requirement, not a guess.
+  // `listKey: "invoices"` matches the real response envelope { status, invoices, summary }
+  // (readAccountInvoiceAr). NOTE: that envelope uses `status: "ready" | "unavailable"`, NOT
+  // the `truncated: boolean` shape the account-scoped opportunity/salesOrder pair above use —
+  // an "unavailable" (the account's rows exceed the requested limit) response carries an EMPTY
+  // `invoices` array, which fetchPage's generic unwrap would silently read as "zero rows"
+  // rather than "read failed / truncated". This callable is currently registered for
+  // correctness (invoice.js's readCallable, and any future RELATED list under account.js, need
+  // a truthful CALLABLE_SOURCES entry to validate against) but has NO CALLABLE-served list view
+  // consuming it today — invoice.index was removed for being INDEX-surface over a
+  // scoped-only callable (X-ENTITY-SINGLE-READCALLABLE would reject any INDEX list that
+  // inherited it, since an INDEX list never supplies the parent scope this callable requires).
+  // Whoever adds the eventual account.js RELATED list should also close the status/truncated
+  // envelope gap noted here before relying on truncation detection.
+  listAccountInvoiceAr: { listKey: "invoices", scoped: true },
 });
 
 /**
