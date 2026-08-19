@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { workOrderPriorityText, workOrderPriorityLabel } from "../../domain/workOrderPriority";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Epic 2 Phase 2C -- left pane. Pure renderer: takes already-computed
 // recommendations (from DispatcherBoard.jsx) and already-loaded
@@ -58,11 +59,11 @@ function WorkOrderQueue({ workOrders, customerNames, recommendationsByWorkOrderI
             onClick={() => onSelect(wo.id)}
             role="option"
             aria-selected={isSelected}
-            aria-label={`Work Order ${wo.woNumber}, status ${wo.status}, priority ${workOrderPriorityLabel(wo.priority) ?? "not set"}`}
+            aria-label={`Work Order ${wo.woNumber}, status ${workOrderStatusLabel(wo.status)}, priority ${workOrderPriorityLabel(wo.priority) ?? "not set"}`}
             tabIndex={-1}
           >
             <div className="disp-wo-card-header">
-              <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{wo.status}</span>
+              <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{workOrderStatusLabel(wo.status)}</span>
               <span className="fo-muted">{workOrderPriorityText(wo.priority) ?? "Priority not set"}</span>
             </div>
             <div>{wo.woNumber}</div>

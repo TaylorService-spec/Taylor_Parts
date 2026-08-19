@@ -728,6 +728,10 @@
     {
       "file": "test/metadataInventoryActionDefinitions.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/workOrderStatusLabelConformance.test.mjs",
+      "runner": "node"
     }
   ]
 }
