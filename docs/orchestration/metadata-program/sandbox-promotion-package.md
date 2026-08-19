@@ -1255,3 +1255,146 @@ touched.
 
 `X-SALES-ORDER-NUMBER-BACKFILL: AUTHORIZATION REQUESTED — environment guard applied.`
 **Tranche 3 remains blocked.**
+
+---
+
+# X-SALES-ORDER-NUMBER-BACKFILL — §10: EXECUTED
+
+**Authorized, executed, and verified 2026-08-19. 20 of 20 acceptance checks PASS.** No deploy. No
+Hosting change. Tranche 3 not entered.
+
+## 10.1 Execution
+
+| | |
+|---|---|
+| Tooling SHA | `6810aa83d81c61787f50f9be4c03cca4bad42c5b` — working copy detached at it, tree clean |
+| Project | `eos-platform-sandbox` |
+| Bound plan | run 1 `plan.json`, byte hash `abec4e11…1c74` — matched the authorized value before the run |
+| Command | §9.6 execute form, verbatim |
+| Result | `{ "ok": true, "mode": "execute" }` — **14 assigned, 0 skipped** |
+| Executed at | `2026-08-19T00:08:31.499Z` |
+
+Evidence published atomically: `execution-result.json`
+(`4389ce4a96712c2c03266e1b380656aa634c44d8a13a146caa7dfa38dbd82beb`), `execution-report.md`
+(`26d098e94fdff802ddc5578bd43adcd5a16e49318f2a76ad6882811ea1884d5a`), `checksums.sha256`. The
+report records the bound plan hash, which is the value the authorization named.
+
+## 10.2 Pre-mutation revalidation — 9 checks, all PASS
+
+Run read-only against live sandbox immediately before execute:
+
+| Check | Result |
+|---|---|
+| Population size | 14 live, 14 planned |
+| Every planned document exists | missing 0 |
+| `salesOrderNumber` absent on all 14 | present 0 |
+| Pre-state fingerprints match the plan | mismatch 0 |
+| `updateTime` unchanged since the snapshot | moved 0 |
+| Assigned numbers unique | 14 |
+| Collision / blocked state | 0 / 0 |
+| Counter snapshot matches live | live absent (0) = planned `sequenceBefore` 0 |
+| No live document already holds a planned number | holders 0 |
+
+The environment guard was re-probed at the authorized SHA in the same session: `taylor-parts` and a
+missing `--environment` both **exit 2**, and the evidence directory named on those runs was not
+created.
+
+These are in addition to — not instead of — the tool's own in-transaction re-checks, which recompute
+every fingerprint and the counter inside the transaction and abort the whole write on any drift.
+
+## 10.3 Data verification — 10 checks
+
+| Check | Result |
+|---|---|
+| Population unchanged | 14 |
+| All 14 carry a non-null `salesOrderNumber` | 14 |
+| Values equal the authorized plan exactly | `SO-2026-000001` … `SO-2026-000014` |
+| No duplicates | 14 unique |
+| Format | all match `SO-2026-\d{6}` |
+| `createdAt` untouched | 14/14 — the pre-state fingerprint still reproduces from live `createdAt` |
+| Exactly one write per document since the snapshot | moved 14, unmoved 0 |
+| **One atomic transaction** | **all 14 share a single `updateTime`** — `2026-08-19T00:08:31.499Z` |
+| Counter | `counters/sales_orders_2026` created, `sequence: 14` |
+| Field shapes | see below |
+
+**15 writes, exactly as planned** — 14 documents plus one counter, and the single shared `updateTime`
+across all 14 is the direct evidence that they landed in one transaction rather than a sequence.
+
+`createdAt` deserves its own note: the plan's fingerprint covers `salesOrderNumber + createdAt`, so
+recomputing it from live data with `salesOrderNumber` treated as absent reproduces the recorded
+pre-state hash only if `createdAt` is byte-unchanged. It reproduced on all 14.
+
+**Field-shape check, stated honestly.** My first pass flagged 4 distinct field shapes (16/17/18
+fields) as a possible non-target change. It is not: the variation is the optional `currency` and
+`serviceWorkOrderIds` fields, distributed across the population exactly as before. The check that
+matters passed — `salesOrderNumber` is now in the set of keys **common to all 14**, and nothing else
+entered that set. Firestore keeps no document history, so "no non-target field changed" is
+established by the transaction's own write set (only `salesOrderNumber` plus the counter), the
+single-`updateTime` evidence, and the `createdAt` fingerprint reproduction — not by a full pre-image
+diff, which was never captured.
+
+## 10.4 Live acceptance matrix — 20 / 20 PASS
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Unfiltered completeness | **200, 14 rows — was 0 before** |
+| 2 | Strictly descending with real data | `SO-2026-000014` → `000001` |
+| 3 | No duplicates in page | 14 unique ids |
+| 4 | Pagination covers the population | 3 pages, 14 ids, 0 duplicates |
+| 5 | Cursor terminates | final cursor null |
+| 6 | Paged order == single-page order | identical sequences |
+| 7 | Cursor stability | same cursor twice → identical page |
+| 8 | Filter `CONFIRMED` | 200, 8 rows, every row matches |
+| 9 | Filter `CLOSED` | 200, 0 rows — empty is a result |
+| 10 | Filter `CANCELLED` | 200, 0 rows |
+| 11 | Over-limit `9999` | **400 INVALID_ARGUMENT** |
+| 12 | Unauthenticated | **401** |
+| 13 | Technician | **403** |
+| 14 | Authorized admin | **200** |
+| 15 | `listSalesOrdersForAccount` consistent | 200, 14 rows |
+| 16 | `getAccountPortfolioSummary` | 200 |
+| 17 | `listOpportunityContext` | 200 |
+| 18 | Governed allocation boundary | `allocateSalesOrder` technician **403** |
+| 19 | No internal detail leaks | 4 error shapes probed, 0 leaky |
+| 20 | Hosting untouched | `/version.json` still **`cd442727`** |
+
+**Checks 2, 4, 6 and 7 are the ones that could not be satisfied before this backfill.** With zero
+visible rows, ordering, pagination and cursor behaviour were proven only by the emulator suite — and
+the emulator does not enforce composite-index requirements, which is exactly how the Tranche 2 `500`
+reached live. They are now proven against real sandbox data.
+
+Correction worth recording: checks 3 and 4 failed on my first pass because my probe read
+`salesOrderId` while the callable returns `id`. That was a defect in the probe, not the data;
+re-run with the correct field, both pass. The response shape is `id`, not `salesOrderId`.
+
+Inventory reachability was not re-probed. This transaction wrote only `sales_orders` and one counter
+document, and Tranche 2R already established inventory and ledger reachability at the same deployed
+runtime, which this change does not alter.
+
+## 10.5 Observation, not a blocker
+
+`listSalesOrderIndex` returns `createdAtMillis: null` and `updatedAtMillis: null` on every row, while
+the underlying documents carry `createdAt` and `updatedAt` (the fingerprint check above depends on
+`createdAt` being present and unchanged). A surface that renders those columns would show blanks for
+records that do have timestamps. Out of scope for this authorization; recorded for the Tranche 3
+assessment.
+
+## 10.6 Rollback position
+
+Rollback is **not** required — nothing regressed. The tokens for it are captured:
+`post-execution-snapshot.json` holds each document's `salesOrderId`, assigned `salesOrderNumber`, and
+post-write `updateTime`, which is the `lastUpdateTime` precondition §9.5's procedure requires. Every
+row carries the shared `2026-08-19T00:08:31.499Z` stamp, so any later divergence is detectable
+per-document.
+
+Per the accepted design, a rollback would delete the field (never write null) and leave
+`counters/sales_orders_2026` advanced at 14.
+
+## 10.7 Confirmation
+
+One transaction, 15 writes, inside the authorized boundary. No deploy, no Hosting change, no Rules
+change, no seed, no activation change. The three live orphan indexes were not deleted. Production was
+not touched. Tranche 3 was not entered.
+
+`X-SALES-ORDER-NUMBER-BACKFILL: EXECUTED AND VERIFIED — 20/20.`
+**Tranche 3 (Hosting) requires separate authorization.**
