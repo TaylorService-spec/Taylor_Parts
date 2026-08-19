@@ -31,10 +31,23 @@
  * it. Read credentials through scripts/sandboxCredentials.mjs; never parse the
  * file yourself.
  *
+ * ACTIVATING A NEW PERSONA MUST NOT COST THE EXISTING ONES. --rotate is
+ * all-or-nothing by design, which is right when you mean it and wrong as the only
+ * way to give a newly provisioned account a password: it would invalidate every
+ * working persona in order to fix the one that never worked. --activate-missing
+ * is the narrow tool for that case. It sets a password ONLY on personas that have
+ * none, leaves every usable persona untouched, and MERGES into the existing
+ * credential file rather than replacing it -- so the Owner's saved copy and any
+ * running mission survive. A persona that already works is never a candidate.
+ *
  * Usage:
  *   cd functions
  *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
  *     --out ../.sandbox-credentials.local.json
+ *
+ *   # give newly provisioned accounts a password without disturbing the rest:
+ *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
+ *     --activate-missing --out <the operator's credential file>
  */
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
@@ -72,6 +85,12 @@ async function main() {
   catch (err) { console.error(err.message); process.exitCode = 1; return; }
 
   const rotate = args.rotate === "true";
+  const activateMissing = args["activate-missing"] === "true";
+  if (rotate && activateMissing) {
+    console.error("REFUSING: --rotate and --activate-missing mean opposite things. Pick one.");
+    process.exitCode = 1;
+    return;
+  }
   const outPath = args.out && args.out !== "true"
     ? path.resolve(process.cwd(), args.out)
     : path.resolve(__dirname, "../../sandbox-credentials.local.json");
@@ -85,6 +104,45 @@ async function main() {
   const auth = getAuth();
   const list = await auth.listUsers(1000);
   const personas = list.users.filter((u) => u.email && u.email.endsWith(SANDBOX_EMAIL_SUFFIX));
+
+  if (activateMissing) {
+    const missing = personas.filter((u) => !u.passwordHash);
+    if (missing.length === 0) {
+      console.log(`Every one of the ${personas.length} personas in '${env.id}' already has a password. Nothing to do.`);
+      return;
+    }
+
+    // MERGE, never replace. Reading the existing file here is deliberate and is
+    // the one place this script reads it: writing a fresh file would silently drop
+    // the working personas' passwords, which is the exact harm this mode exists to
+    // avoid. Values are copied, never inspected, compared or logged.
+    let existing = {};
+    if (fs.existsSync(outPath)) {
+      try {
+        existing = JSON.parse(fs.readFileSync(outPath, "utf8"));
+      } catch {
+        console.error(`REFUSING: '${outPath}' exists but is not parseable JSON. Refusing to overwrite a file whose contents cannot be preserved.`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    const activated = [];
+    for (const u of missing) {
+      const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
+      await auth.updateUser(u.uid, { password, emailVerified: true });
+      existing[u.email] = password;
+      activated.push(u.email);
+    }
+    fs.writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
+
+    console.log(`Activated ${activated.length} persona(s) in '${env.id}' that previously had no password:`);
+    for (const email of activated) console.log(`  ${email}`);
+    console.log(`\nEvery other persona's password is UNCHANGED -- ${personas.length - activated.length} left alone.`);
+    console.log(`Credential file merged in place: ${outPath}`);
+    console.log("Gitignored. Never commit or share it outside the sandbox.");
+    return;
+  }
 
   if (!rotate) {
     // THE DEFAULT CHANGES NOTHING. Anyone reaching for this script during an

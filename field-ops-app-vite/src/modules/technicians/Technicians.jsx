@@ -6,6 +6,7 @@ import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import NewTechnicianModal from "./NewTechnicianModal";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
 
@@ -67,7 +68,7 @@ export default function Technicians() {
 
   const actions = (
     <ActionRail
-      primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>New Technician</button>}
+      primary={<Button variant="primary" onClick={() => setShowCreate(true)}>New Technician</Button>}
     />
   );
 

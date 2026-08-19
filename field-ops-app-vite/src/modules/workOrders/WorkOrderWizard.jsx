@@ -12,6 +12,7 @@ import {
 } from "../../domain/workOrderWizard";
 import CustomerPicker from "./CustomerPicker";
 import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
+import { Button } from "../../shared/ui/primitives";
 
 // Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped
 // directly to createWorkOrder()'s actual validated input
@@ -181,7 +182,7 @@ export default function WorkOrderWizard() {
           {locationsError ? (
             <div className="fo-inline-error" role="alert" data-location-error>
               {locationsError}{" "}
-              <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
+              <Button variant="tertiary" className="fo-link-btn" onClick={retryLocations}>Retry</Button>
             </div>
           ) : locations.length > 0 && (
             <div className="fo-wizard-field">
@@ -210,10 +211,10 @@ export default function WorkOrderWizard() {
               the exact false fact #291 exists to remove. Next stays blocked either way. */}
           {!locationsError && <StepHint reason={step2Reason} />}
           <div className="fo-wizard-actions">
-            <button type="button" onClick={() => setStep(1)}>Back</button>
-            <button type="button" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
+            <Button variant="tertiary" onClick={() => setStep(1)}>Back</Button>
+            <Button variant="primary" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -271,10 +272,10 @@ export default function WorkOrderWizard() {
 
           <StepHint reason={step3Reason} />
           <div className="fo-wizard-actions">
-            <button type="button" onClick={() => setStep(2)}>Back</button>
-            <button type="button" disabled={Boolean(step3Reason)} onClick={() => setStep(4)}>
+            <Button variant="tertiary" onClick={() => setStep(2)}>Back</Button>
+            <Button variant="primary" disabled={Boolean(step3Reason)} onClick={() => setStep(4)}>
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -316,12 +317,12 @@ export default function WorkOrderWizard() {
           )}
 
           <div className="fo-wizard-actions">
-            <button type="button" onClick={() => setStep(3)} disabled={submitting}>
+            <Button variant="tertiary" onClick={() => setStep(3)} disabled={submitting}>
               Back
-            </button>
-            <button type="button" onClick={handleCreate} disabled={submitting}>
-              {submitting ? "Creating..." : "Create Work Order"}
-            </button>
+            </Button>
+            <Button variant="primary" onClick={handleCreate} loading={submitting}>
+              Create Work Order
+            </Button>
           </div>
         </div>
       )}

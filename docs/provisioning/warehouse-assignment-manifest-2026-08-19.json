@@ -1,0 +1,22 @@
+{
+  "$comment": [
+    "OWNER-DECIDED manifest, 2026-08-19. Copied from warehouse-assignment-manifest.template.json",
+    "(template left unfilled in place, as its own header requires).",
+    "Owner decision: 'Phoenix is Main Warehouse'. Resolved to the only ACTIVE warehouse whose name",
+    "contains 'Main' -- Main Distribution Center (wh-main). The other ACTIVE candidates are North",
+    "Service Depot, Central Distribution and North Satellite; Legacy Overflow Store is INACTIVE and",
+    "was never a candidate."
+  ],
+  "entries": [
+    {
+      "employeeId": "sbx-partsmgr",
+      "warehouseId": "wh-main",
+      "rationale": "Owner decision 2026-08-19: Parts Manager works out of Phoenix, which is Main Distribution Center. Without an assigned warehouse every warehouse-scoped Rules predicate denies this role, so the operational-role home cannot exercise the authority it already holds."
+    },
+    {
+      "employeeId": "sbx-partsassoc",
+      "warehouseId": "wh-main",
+      "rationale": "Owner decision 2026-08-19: Parts Associate works out of Phoenix, which is Main Distribution Center. Note this does NOT address the separate documented decision (DQ-B1) withholding the parts read from PARTS_ASSOCIATE, so part names will still render as ids for this role."
+    }
+  ]
+}

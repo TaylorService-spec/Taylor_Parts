@@ -49,6 +49,7 @@ import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
 import { MANUFACTURER_CATALOG_VIEW_STATE, manufacturerCatalogViewState, manufacturerNameById } from "../../domain/manufacturerCatalogView";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search.
@@ -199,7 +200,7 @@ function CancelReorderRequestAction({ request, onCancelled }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="disp-board-toolbar">
-      <button type="button" onClick={() => setOpen(true)}>Cancel Reorder Request</button>
+      <Button type="button" variant="secondary" onClick={() => setOpen(true)}>Cancel Reorder Request</Button>
       {open && (
         <ConfirmDialog
           title="Cancel Reorder Request"
@@ -237,7 +238,7 @@ function VoidPurchaseOrderAction({ request, onVoided }) {
 
   return (
     <div className="disp-board-toolbar">
-      <button type="button" onClick={() => setOpen(true)}>Void Purchase Order</button>
+      <Button type="button" variant="secondary" onClick={() => setOpen(true)}>Void Purchase Order</Button>
       {open && (
         <ConfirmDialog
           title="Void Purchase Order"
@@ -327,12 +328,12 @@ function ReorderRequestReview({ request, onReviewed }) {
       <FormError role="alert">{error}</FormError>
 
       <div className="disp-board-toolbar">
-        <button type="button" onClick={handleApprove} disabled={submitting}>
+        <Button type="button" variant="primary" onClick={handleApprove} disabled={submitting}>
           Approve
-        </button>
-        <button type="button" className="fo-btn-destructive" onClick={() => { setError(null); setConfirmingReject(true); }} disabled={submitting}>
+        </Button>
+        <Button type="button" variant="destructive" onClick={() => { setError(null); setConfirmingReject(true); }} disabled={submitting}>
           Reject
-        </button>
+        </Button>
       </div>
 
       {confirmingReject && (
@@ -442,9 +443,9 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <button type="submit" disabled={submitting || !assignedToUserId}>
+          <Button type="submit" variant="primary" disabled={submitting || !assignedToUserId}>
             Assign
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -513,9 +514,9 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
 
       {isAssignee ? (
         <div className="disp-board-toolbar">
-          <button type="button" onClick={handleStart} disabled={submitting}>
+          <Button type="button" variant="primary" onClick={handleStart} disabled={submitting}>
             Start Purchasing
-          </button>
+          </Button>
         </div>
       ) : (
         <p className="fo-muted">Waiting for the assigned Parts Associate to start purchasing.</p>
@@ -631,9 +632,9 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
             onChange={(e) => setExpectedAvailabilityDate(e.target.value)}
           />
           <div className="disp-board-toolbar">
-            <button type="submit" disabled={submitting}>
+            <Button type="submit" variant="primary" disabled={submitting}>
               Post Update
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
@@ -760,9 +761,9 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
 
         <div className="disp-board-toolbar">
           {/* Submit is disabled until an ACTIVE governed supplier is selected -- no free-text bypass. */}
-          <button type="submit" disabled={submitting || !isSelectableSupplier(selectedSupplier)}>
+          <Button type="submit" variant="primary" disabled={submitting || !isSelectableSupplier(selectedSupplier)}>
             Record Purchase Order
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -876,9 +877,9 @@ function ReorderRequestMarkReceived({ request, onReceived }) {
       </p>
       {error && <p className="fo-muted">{error}</p>}
       <div className="disp-board-toolbar">
-        <button type="button" onClick={handleReceive} disabled={submitting}>
+        <Button type="button" variant="primary" onClick={handleReceive} disabled={submitting}>
           Mark Received
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1222,9 +1223,9 @@ function InventoryActionsPanel({ partId }) {
         {error && <p className="fo-muted">{error}</p>}
 
         <div className="disp-board-toolbar">
-          <button type="submit" disabled={submitting}>
+          <Button type="submit" variant="primary" disabled={submitting}>
             Log Action
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -1432,12 +1433,12 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       secondary={
         canonicalPart && (
           <>
-            <button type="button" className="fo-btn-secondary" onClick={() => setMasterDataPanel("edit")}>
+            <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("edit")}>
               Edit Part Details
-            </button>{" "}
-            <button type="button" className="fo-btn-secondary" onClick={() => setMasterDataPanel("status")}>
+            </Button>{" "}
+            <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")}>
               Change Status
-            </button>
+            </Button>
           </>
         )
       }

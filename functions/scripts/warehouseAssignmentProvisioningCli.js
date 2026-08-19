@@ -284,6 +284,8 @@ async function runDryRun(deps, args) {
       after: [entry.warehouseId],
       preStateFingerprint,
       employeeUpdateTimeMillis: employee.updateTimeMillis,
+      employeeUpdateTimeSeconds: employee.updateTimeSeconds,
+      employeeUpdateTimeNanos: employee.updateTimeNanos,
     });
   }
 
@@ -350,7 +352,9 @@ async function runExecute(deps, args) {
       updateTimeMillis: employee.updateTimeMillis,
     }));
     if (fingerprint !== a.preStateFingerprint) throw new Error(`STALE_PRESTATE: employee '${a.employeeId}' fingerprint mismatch`);
-    verified.push(a);
+    // Bind the precondition to the stamp just READ, at full precision -- not to
+    // the truncated value recorded in the plan.
+    verified.push({ ...a, preconditionSeconds: employee.updateTimeSeconds, preconditionNanos: employee.updateTimeNanos });
   }
 
   const writeResults = await deps.writeAssignmentsBatch(verified);
@@ -360,6 +364,8 @@ async function runExecute(deps, args) {
     before: a.before,
     after: a.after,
     newUpdateTimeMillis: writeResults[i].updateTimeMillis,
+    newUpdateTimeSeconds: writeResults[i].updateTimeSeconds,
+    newUpdateTimeNanos: writeResults[i].updateTimeNanos,
   }));
   const execEvidence = {
     kind: "warehouse-assignment-provisioning-execution",
@@ -409,6 +415,8 @@ async function runRollback(deps, args) {
     employeeId: a.employeeId,
     restoredTo: a.before,
     newUpdateTimeMillis: writeResults[i].updateTimeMillis,
+    newUpdateTimeSeconds: writeResults[i].updateTimeSeconds,
+    newUpdateTimeNanos: writeResults[i].updateTimeNanos,
   }));
   const rollbackEvidence = {
     kind: "warehouse-assignment-provisioning-rollback",
@@ -458,6 +466,15 @@ function buildProductionDeps(projectId) {
         operationalRoles: snap.get("operationalRoles"),
         assignedWarehouseIds: snap.get("assignedWarehouseIds"),
         updateTimeMillis: snap.updateTime ? snap.updateTime.toMillis() : null,
+        // FULL PRECISION, carried separately. Firestore stores updateTime with
+        // MICROSECOND resolution; toMillis() truncates it. Rebuilding a
+        // precondition from the truncated value produced a required base version
+        // that could never equal the stored one (…850000 vs …850792), so both
+        // --execute and --rollback failed FAILED_PRECONDITION every time. The
+        // millis value is kept for the drift check and fingerprint, where coarse
+        // is fine; the precondition must use these.
+        updateTimeSeconds: snap.updateTime ? snap.updateTime.seconds : null,
+        updateTimeNanos: snap.updateTime ? snap.updateTime.nanoseconds : null,
         updateTime: snap.updateTime,
       };
     },
@@ -475,12 +492,17 @@ function buildProductionDeps(projectId) {
         batch.update(
           ref,
           { assignedWarehouseIds: a.after, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-          { lastUpdateTime: admin.firestore.Timestamp.fromMillis(a.employeeUpdateTimeMillis) }
+          { lastUpdateTime: new admin.firestore.Timestamp(a.preconditionSeconds, a.preconditionNanos) }
         );
       }
       await batch.commit();
       const fresh = await Promise.all(refs.map((r) => r.get()));
-      return fresh.map((s) => ({ updateTimeMillis: s.updateTime.toMillis() }));
+      // Full precision, so a later --rollback can bind an exact precondition.
+      return fresh.map((s) => ({
+        updateTimeMillis: s.updateTime.toMillis(),
+        updateTimeSeconds: s.updateTime.seconds,
+        updateTimeNanos: s.updateTime.nanoseconds,
+      }));
     },
     async rollbackAssignmentsBatch(entries) {
       const batch = db.batch();
@@ -491,12 +513,17 @@ function buildProductionDeps(projectId) {
         batch.update(
           ref,
           { assignedWarehouseIds: a.before, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-          { lastUpdateTime: admin.firestore.Timestamp.fromMillis(a.newUpdateTimeMillis) }
+          { lastUpdateTime: new admin.firestore.Timestamp(a.newUpdateTimeSeconds, a.newUpdateTimeNanos) }
         );
       }
       await batch.commit();
       const fresh = await Promise.all(refs.map((r) => r.get()));
-      return fresh.map((s) => ({ updateTimeMillis: s.updateTime.toMillis() }));
+      // Full precision, so a later --rollback can bind an exact precondition.
+      return fresh.map((s) => ({
+        updateTimeMillis: s.updateTime.toMillis(),
+        updateTimeSeconds: s.updateTime.seconds,
+        updateTimeNanos: s.updateTime.nanoseconds,
+      }));
     },
     fs: {
       stamp: String(process.pid),

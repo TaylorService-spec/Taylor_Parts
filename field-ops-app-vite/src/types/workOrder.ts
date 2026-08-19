@@ -77,6 +77,15 @@ export interface WorkOrder {
   scheduledEnd?: Timestamp;
   scheduledTechId?: string;
 
+  // H20 fix (dispatch reassignment): denormalized snapshot of the most recent Dispatch that
+  // sent this Work Order to a technician OTHER than who it was scheduled for. See
+  // functions/src/types/workOrder.ts for the full contract; the durable record of record is
+  // the "reassignWorkOrderTechnician" Audit Event, not this snapshot.
+  reassignedFromTechId?: string;
+  reassignedAt?: Timestamp;
+  reassignedReason?: string;
+  reassignedByUid?: string;
+
   // Execution (immutable once set)
   dispatchedAt?: Timestamp;
   acceptedAt?: Timestamp;

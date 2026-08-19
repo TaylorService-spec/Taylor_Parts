@@ -11,6 +11,7 @@ import {
   loadVerifiedLabel, loadVerifiedTone,
 } from "../../domain/coordinatedFieldMission.js";
 import { visitReadinessLabel } from "../../domain/coordinatedVisit.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Technician — COORDINATED FIELD MISSION. The user-consumable read of the already-built coordinatedFieldMission
 // projection (functions/src/fulfillment/coordinatedFieldMission.ts). The technician understands ONE customer
@@ -105,17 +106,17 @@ export default function CoordinatedMissionView({ source } = {}) {
   const switcher = visits.length > 1 ? (
     <div className="fo-mission-switch">
       {visits.map((v) => (
-        <button
+        <Button
           key={v.salesOrderId}
-          type="button"
-          className={`fo-btn-ghost ${selectedVisit?.salesOrderId === v.salesOrderId ? "is-active" : ""}`.trim()}
+          variant="tertiary"
+          className={selectedVisit?.salesOrderId === v.salesOrderId ? "is-active" : ""}
           onClick={() => setSelectedId(v.salesOrderId)}
         >
           {nameOr(ctx.accountNameById, v.customerId)}
           {/* A technician saw a SAMPLE "unit 3 COMPLETED" beside their real "unit 3 Working".
               Same model, same unit number, opposite status. The tab must say which is which. */}
           {synthetic && <span className="fo-sample-badge">SAMPLE</span>}
-        </button>
+        </Button>
       ))}
     </div>
   ) : null;

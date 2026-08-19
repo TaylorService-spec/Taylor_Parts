@@ -32,7 +32,7 @@ export default function ActivityTimelinePanel({ jobs, technicians, workOrders })
 
   return (
     <div className="tech-overview tech-overview--compact">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="fo-controltower-panel__header">
         <h3>Activity Timeline</h3>
         <select value={filter} onChange={(e) => setFilter(e.target.value)}>
           {FILTERS.map((f) => (

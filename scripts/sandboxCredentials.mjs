@@ -38,6 +38,14 @@ export const SANDBOX_PERSONAS = Object.freeze({
   partsManager: "partsmgr@sandbox.invalid",
   partsAssociate: "partsassoc@sandbox.invalid",
   restricted: "restricted@sandbox.invalid",
+  // Manager layer, provisioned 2026-08-18. These accounts were created
+  // passwordless by the governed provisionEmployeeAccess.js and activated
+  // separately; naming them here is what lets tooling ask for them by persona key
+  // instead of hardcoding an email, which is the whole point of this map.
+  operationsManager: "opsmgr@sandbox.invalid",
+  salesManager: "salesmgr@sandbox.invalid",
+  accountingManager: "acctmgr@sandbox.invalid",
+  fieldManager: "fieldmgr@sandbox.invalid",
 });
 
 export class CredentialAccessError extends Error {

@@ -195,8 +195,12 @@ function toReadyRow(wo) {
 //     -- one row per technician, in name order; each day's jobs sorted by start.
 //   unassignedScheduled: job[]  -- scheduled work whose techId matches no known technician (data gap)
 //   readyToSchedule: readyRow[] -- status === READY_TO_DISPATCH (priority then woNumber)
-//   needsAttention: [{ kind, job }] -- past-due-scheduled (scheduledStart before today and still pre-Dispatch)
-//                                       and overlap (a job that overlaps another on the same tech/day)
+//   needsAttention: [{ kind, job }] -- past-due-scheduled (scheduledStart before today and still pre-Dispatch,
+//                                       checked across ALL of workOrders, not just the viewed week -- a stuck
+//                                       job must never vanish from this list just because the dispatcher paged
+//                                       away from its original week) and overlap (a job that overlaps another
+//                                       on the same tech/day, which IS week-scoped since overlap is computed
+//                                       per rendered day cell)
 //   totals: { scheduledThisWeek, readyToSchedule, technicians }
 export function buildWeeklySchedule({ workOrders = [], technicians = [], weekStartMillis, nowMillis } = {}) {
   const weekStart = weekStartMillis ?? startOfWeekMillis(nowMillis ?? 0);
@@ -222,15 +226,18 @@ export function buildWeeklySchedule({ workOrders = [], technicians = [], weekSta
   for (const wo of workOrders) {
     const job = toScheduledJob(wo);
     if (!job) continue;
-    const dayIndex = dayIndexInWeek(job.startMillis, days);
-    if (dayIndex === -1) continue; // scheduled, but not in the viewed week
-    scheduledThisWeekCount += 1;
 
     // Past-due: scheduled before today and still not dispatched (pre-Dispatch statuses that carry a
-    // schedule are SCHEDULED). A past SCHEDULED job needs dispatcher attention.
+    // schedule are SCHEDULED). A past SCHEDULED job needs dispatcher attention -- checked GLOBALLY
+    // (independent of the currently-viewed week) so a stuck job from a prior week is never silently
+    // dropped from "Needs attention" just because the dispatcher has since paged to "This week".
     if (todayStart != null && job.startMillis < todayStart && job.status === "SCHEDULED") {
       needsAttention.push({ kind: "PAST_DUE", job });
     }
+
+    const dayIndex = dayIndexInWeek(job.startMillis, days);
+    if (dayIndex === -1) continue; // scheduled, but not in the viewed week -- board/board-only, not attention
+    scheduledThisWeekCount += 1;
 
     const row = job.techId ? rowByTechId.get(job.techId) : null;
     if (!row) {

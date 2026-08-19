@@ -3,8 +3,10 @@
 // dispatcher-board toolbar class and the scattered inline `justifyContent` hacks. Callers pass rendered
 // controls into slots; the rail owns alignment + hierarchy, not the buttons' behavior.
 //
-// Use the shared button variant classes for weight: `fo-btn-primary` (dominant, once per rail),
-// `fo-btn-secondary` (existing quiet), `fo-linkbtn`/ghost for utility.
+// Slot content is the Button primitive (src/shared/ui/primitives/Button.jsx): `variant="primary"`
+// (dominant, once per rail), `variant="secondary"`/`fo-btn-secondary` (existing quiet), `variant="tertiary"`
+// for ghost/utility actions, `variant="protected"` for a permission-gated action that should explain why
+// it is unavailable rather than silently doing nothing.
 export default function ActionRail({ primary = null, secondary = null, start = null, className = "" }) {
   return (
     <div className={`fo-action-rail ${className}`.trim()}>

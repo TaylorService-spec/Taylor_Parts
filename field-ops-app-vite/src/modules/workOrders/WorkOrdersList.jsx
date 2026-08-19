@@ -9,6 +9,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { Button } from "../../shared/ui/primitives";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
@@ -82,7 +83,7 @@ export default function WorkOrdersList() {
       <WorkspaceHeader title="Work Orders">
         <GlobalSearch providerKeys={["workOrders"]} context={{ workOrders }} placeholder="Search work orders..." />
         <Link to="/service/work-orders/new">
-          <button type="button">+ New Work Order</button>
+          <Button variant="primary">+ New Work Order</Button>
         </Link>
       </WorkspaceHeader>
 

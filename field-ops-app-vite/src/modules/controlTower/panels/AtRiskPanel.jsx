@@ -28,7 +28,7 @@ export default function AtRiskPanel({ jobs, technicians, workOrders }) {
 
   return (
     <div className="tech-overview tech-overview--compact">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="fo-controltower-panel__header">
         <h3>At Risk Jobs</h3>
         <select value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="severity">Sort: Severity</option>

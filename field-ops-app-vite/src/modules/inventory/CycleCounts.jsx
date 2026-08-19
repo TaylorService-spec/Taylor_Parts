@@ -6,6 +6,7 @@ import { normalizeScanToken, resolveScannedIdentity, SCAN_RESOLUTION } from "../
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Enterprise Inventory -- Cycle Count operating authority: the Cycle Counts workspace
 // (functions/src/cycleCount/*). Create a count against an active WAREHOUSE/MOBILE(truck) location +
@@ -107,9 +108,9 @@ function CreateCycleCountForm({ warehouseOptions, truckOptions, submitting, onCa
         {errors.locationId && <span className="fo-form-error">{errors.locationId}</span>}
       </label>
       <div className="fo-form-actions">
-        <button type="submit" className="fo-btn-primary" disabled={submitting}>
+        <Button type="submit" variant="primary" disabled={submitting}>
           {submitting ? "Starting…" : "Start count"}
-        </button>
+        </Button>
         <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={submitting}>
           Cancel
         </button>
@@ -204,14 +205,13 @@ function SerialCountEntry({ count, busy, onSubmit }) {
           ))}
         </ul>
       )}
-      <button
-        type="button"
-        className="fo-btn-primary"
+      <Button
+        variant="primary"
         disabled={busy}
         onClick={() => onSubmit({ countedSerialNumbers: counted })}
       >
         {busy ? "Recording…" : "Record count"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -279,12 +279,12 @@ function ManagerReviewForm({ count, busy, onSubmit }) {
         </label>
       )}
       <div className="fo-form-actions">
-        <button type="button" className="fo-btn-primary" disabled={busy || reasonMissing} onClick={() => onSubmit(reason, "APPROVE")}>
-          {busy ? "Working…" : "Approve"}
-        </button>
-        <button type="button" className="fo-btn-secondary" disabled={busy || reasonMissing} onClick={() => onSubmit(reason, "REJECT")}>
-          {busy ? "Working…" : "Reject"}
-        </button>
+        <Button type="button" variant="primary" disabled={busy || reasonMissing} loading={busy} onClick={() => onSubmit(reason, "APPROVE")}>
+          Approve
+        </Button>
+        <Button type="button" variant="secondary" disabled={busy || reasonMissing} loading={busy} onClick={() => onSubmit(reason, "REJECT")}>
+          Reject
+        </Button>
       </div>
     </form>
   );
@@ -377,9 +377,9 @@ export default function CycleCounts() {
     <div className="fo-panel">
       <WorkspaceHeader title="Cycle Counts">
         {!showForm && (
-          <button type="button" className="fo-btn-primary" onClick={() => setShowForm(true)}>
+          <Button variant="primary" onClick={() => setShowForm(true)}>
             New count
-          </button>
+          </Button>
         )}
       </WorkspaceHeader>
       {intro}

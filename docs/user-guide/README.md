@@ -16,9 +16,9 @@ Every guide is tagged so you're never misled about what actually works:
 
 ## Getting started
 
-- [Sign in to Field Ops](getting-started/sign-in.md) — **live** — Sign in with your work email and password; covers the login form, error message, No access state, and demo banner.
-- [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the app frame plus the role-specific My Dashboard (live technician dashboard; placeholder for admin/dispatcher, who use Operations Dashboard).
-- [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the top area tabs and sub-tabs, what each role sees, and an honest note that many sub-sections are not-yet-built placeholders.
+- [Sign in to Field Ops](getting-started/sign-in.md) — **live** — Sign in with your work email and password on the two-panel sign-in screen; covers the login form, the self-service password reset flow, error messages, No access state, and demo banner.
+- [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the navigation rail plus header strip, and the role-specific My Dashboard (live technician dashboard; a real, access-aware "What needs you right now" destination list for admin/dispatcher).
+- [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the left navigation rail's expandable areas, what each role sees, and an honest note that a few sections are not-yet-built placeholders.
 - [Sign out of Field Ops](getting-started/sign-out.md) — **live** — Use the Logout button in the top-right to end your session, especially on shared devices.
 
 ## Work orders

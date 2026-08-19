@@ -64,6 +64,12 @@ interface TransitionWorkOrderInput {
   // actually being dispatched (distinct from scheduledTechId, which was
   // only a planning-stage placeholder that may have changed since).
   assignedTechId?: string;
+  // H20 fix (dispatch reassignment): required ONLY when a Dispatch call's assignedTechId
+  // differs from the Work Order's current scheduledTechId -- i.e. the dispatcher is sending
+  // this job to someone other than who it was scheduled for. A same-technician Dispatch
+  // (assignedTechId === scheduledTechId, the ordinary case) never requires or records this.
+  // See transitionWorkOrder()'s Dispatch branch for the enforcement.
+  reassignReason?: string;
   // P1.1 (Sales->Cash fulfillment spine): Complete-only. Explicit technician-declared acceptance for
   // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). PART actuals
   // are derived solely from governed inventorySnapshot (qtyUsed when recorded, else qtyPlanned -- completion
@@ -96,6 +102,14 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
   }
   if (input.action === "Dispatch" && !input.assignedTechId) {
     throw new HttpsError("invalid-argument", "Dispatch requires assignedTechId.");
+  }
+  if (input.reassignReason !== undefined) {
+    if (input.action !== "Dispatch") {
+      throw new HttpsError("invalid-argument", "reassignReason is only valid for the Dispatch action.");
+    }
+    if (typeof input.reassignReason !== "string" || input.reassignReason.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "reassignReason must be a non-empty string when present.");
+    }
   }
   if (input.fulfillmentAccepted !== undefined) {
     if (input.action !== "Complete") {
@@ -139,7 +153,7 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
   }
 
   assertValidInput(request.data);
-  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted } =
+  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted, reassignReason } =
     request.data;
 
   const caller = await getCallerContext(request.auth.uid);
@@ -182,6 +196,10 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     // puts it in this transaction's write set too, forcing contention with any other concurrent transition for
     // this same technician.
     let lockRef: ReturnType<typeof techLockRef> | null = null;
+    // H20 fix: set only when Dispatch reassigns away from wo.scheduledTechId -- staged as its own Audit
+    // Event (reassignWorkOrderTechnician) alongside the WO write below, in the SAME transaction, so the
+    // audit record and the business mutation commit atomically (or neither does).
+    let reassignmentAudit: { priorTechId: string; newTechId: string; reason: string } | null = null;
     if (action === "Schedule") {
       lockRef = techLockRef(db, scheduledTechId as string);
       await tx.get(lockRef);
@@ -204,6 +222,20 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       payload.scheduledEnd = Timestamp.fromMillis(scheduledEnd as number);
       payload.scheduledTechId = scheduledTechId;
     } else if (action === "Dispatch") {
+      // H20 fix: a dispatcher MAY send this Work Order to a technician other than the one it was
+      // Scheduled for (wo.scheduledTechId) -- but doing so is a distinct, audited event, not a silent
+      // side effect of an ordinary Dispatch. A reason is required ONLY in that case; dispatching to the
+      // same technician the WO was scheduled for (the ordinary path) needs none.
+      const priorScheduledTechId = wo.scheduledTechId;
+      const isReassignment = !!priorScheduledTechId && priorScheduledTechId !== assignedTechId;
+      if (isReassignment && (!reassignReason || !reassignReason.trim())) {
+        throw new HttpsError(
+          "failed-precondition",
+          `A reason is required to dispatch Work Order ${workOrderId} to a technician other than ` +
+            `${priorScheduledTechId}, who it was scheduled for.`
+        );
+      }
+
       // Double-booking guard: a technician actively assigned to another Work Order cannot be dispatched to this
       // one. Read (inside the transaction, before the write) the technician's other Work Orders and reject if any
       // is in an occupying status. This closes the availability gap the legacy dispatch path enforced.
@@ -221,8 +253,72 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
           `Technician ${assignedTechId} is already assigned to active Work Order ${conflict}; cannot double-book.`
         );
       }
+
+      // H20 fix: the SCHEDULE conflict guard (time-window overlap) previously ran exactly once, at Schedule
+      // time, against the ORIGINALLY scheduled technician's calendar. When Dispatch sends the job to a
+      // DIFFERENT technician, that technician's calendar was never checked at all -- the double-booking guard
+      // was silently bypassed for the person who actually gets the job. Re-run it here, against the technician
+      // actually being dispatched, using this Work Order's own already-committed scheduledStart/scheduledEnd
+      // window (Dispatch does not accept a caller-supplied window -- only Schedule does).
+      const scheduledStartMs = wo.scheduledStart?.toMillis?.();
+      const scheduledEndMs = wo.scheduledEnd?.toMillis?.();
+      if (typeof scheduledStartMs === "number" && typeof scheduledEndMs === "number") {
+        const scheduleOtherSnap = await tx.get(
+          db.collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", assignedTechId)
+        );
+        const scheduleOthers = scheduleOtherSnap.docs.map((d) => {
+          const data = d.data() as WorkOrder;
+          return {
+            id: d.id,
+            scheduledTechId: data.scheduledTechId,
+            scheduledStart: data.scheduledStart,
+            scheduledEnd: data.scheduledEnd,
+            status: data.status,
+          };
+        });
+        const scheduleConflict = findScheduleConflict(
+          assignedTechId as string,
+          workOrderId,
+          scheduledStartMs,
+          scheduledEndMs,
+          scheduleOthers
+        );
+        if (scheduleConflict) {
+          throw new HttpsError(
+            "failed-precondition",
+            `Technician ${assignedTechId} is already scheduled for overlapping Work Order ${scheduleConflict}.`
+          );
+        }
+      }
+
       payload.assignedTechId = assignedTechId;
+      // H20 fix (field reconciliation): assignedTechId is authoritative for WHO IS ACTUALLY DOING THE JOB
+      // from Dispatch onward -- it is what the technician-facing boards key on, and it is what Dispatch
+      // itself exists to set. scheduledTechId is authoritative only pre-Dispatch (the SCHEDULED planning
+      // stage, before any assignedTechId exists). Writing scheduledTechId here too, on every Dispatch (not
+      // only a reassignment), keeps the two fields in agreement going forward: the scheduling board's
+      // overlap query (findScheduleConflict, keyed on scheduledTechId) stops reserving the ORIGINAL
+      // technician's slot the moment the job is actually dispatched to someone else, and starts correctly
+      // reflecting the technician who is now really on the hook for this time window. Before this fix the
+      // two fields could disagree indefinitely: the scheduling board kept showing the original technician
+      // occupied while the technician board showed the reassigned one -- exactly the H20 defect.
+      payload.scheduledTechId = assignedTechId;
       payload.dispatchedAt = FieldValue.serverTimestamp();
+
+      if (isReassignment) {
+        payload.reassignedFromTechId = priorScheduledTechId;
+        payload.reassignedAt = FieldValue.serverTimestamp();
+        payload.reassignedReason = reassignReason;
+        payload.reassignedByUid = actorUid;
+      }
+
+      reassignmentAudit = isReassignment
+        ? {
+            priorTechId: priorScheduledTechId as string,
+            newTechId: assignedTechId as string,
+            reason: reassignReason as string,
+          }
+        : null;
     } else {
       const timestampField = ACTION_TIMESTAMP_FIELD[action];
       if (timestampField) {
@@ -350,14 +446,51 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     // event below is a separate, additional record about the SO write-back, not a substitute for this one).
     // Deterministic id (workOrderId + action) -- see workOrderTransitionMath.ts's header comment for why this
     // is collision-free without a caller-supplied idempotency key.
+    //
+    // H20 fix (merge note): this generic event records the STATE TRANSITION only (status A -> status B) --
+    // it carries no technician-identity detail and structurally cannot express a reassignment on its own.
+    // When this Dispatch IS a reassignment, its summary gets a short pointer to that fact so a reader
+    // scanning only this per-Work-Order trail isn't left wondering why the assignee changed; the full
+    // prior-tech/new-tech/reason detail lives in the dedicated reassignWorkOrderTechnician event below,
+    // staged in this SAME transaction -- one Audit Event per meaningfully distinct fact about this call,
+    // not a duplicate record of the same fact twice.
     stageAuditEventWithId(tx, transitionWorkOrderAuditId(workOrderId, action), {
       actorUid,
       action: "transitionWorkOrder",
       targetType: "workOrder",
       targetId: workOrderId,
       outcome: "applied",
-      summary: `${caller.role ?? "unknown"} ${actorUid} performed ${action} on Work Order ${workOrderId} (${wo.status} -> ${nextStatus})`,
+      summary: `${caller.role ?? "unknown"} ${actorUid} performed ${action} on Work Order ${workOrderId} (${wo.status} -> ${nextStatus})` +
+        (reassignmentAudit
+          ? ` -- reassigned from technician ${reassignmentAudit.priorTechId} to ${reassignmentAudit.newTechId} (see reassignWorkOrderTechnician event for the reason).`
+          : ""),
     });
+
+    if (reassignmentAudit) {
+      // H20 fix: an ADDITIONAL event beside "transitionWorkOrder" above (same coexistence pattern as
+      // salesOrderFulfillmentWriteBack beside it for Complete) -- the durable record of prior technician,
+      // new technician, actor, and timestamp (actorUid/`at` are always captured by stageAuditEvent itself),
+      // plus the dispatcher's reason in `summary`. Staged in the SAME transaction as the WO write above, so
+      // the audit trail and the reassignment commit atomically together.
+      //
+      // NOTIFICATION: this repo has no notification/messaging delivery mechanism today (no push, email, or
+      // in-app "notify this technician" pipeline exists anywhere in functions/src or field-ops-app-vite --
+      // NotificationPanel.jsx is a reorder-request-only projection, unrelated). Per the Owner ruling this
+      // fix does NOT invent one. This Audit Event is the intended integration point: a future notifier
+      // would subscribe to `reassignWorkOrderTechnician` events (or auditEvents generally) and notify the
+      // prior technician (no longer on this job), the new technician (now on it), and the dispatcher of
+      // record. Notification delivery remains UNIMPLEMENTED and needs its own, separately authorized slice.
+      stageAuditEvent(tx, {
+        actorUid,
+        action: "reassignWorkOrderTechnician",
+        targetType: "workOrder",
+        targetId: workOrderId,
+        outcome: "applied",
+        summary: `Work Order ${workOrderId} dispatch reassigned from technician ${reassignmentAudit.priorTechId} ` +
+          `to ${reassignmentAudit.newTechId}. Reason: ${reassignmentAudit.reason} ` +
+          `(Notification not yet implemented -- see this event for the future notifier trigger.)`,
+      });
+    }
 
     if (soWriteBack) {
       tx.update(soWriteBack.soRef, {

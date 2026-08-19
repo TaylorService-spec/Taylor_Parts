@@ -6,6 +6,7 @@ import {
   EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull, canonicalEquipmentStatus,
 } from "../../domain/equipment";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
+import { Button } from "../../shared/ui/primitives";
 
 // Issue #232 unit E8 -- ordinary Equipment editing, on the same shared Modal +
 // form-primitive pattern as EquipmentCreateModal (E6). Close paths are ignored and a
@@ -212,7 +213,7 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
             An administrator needs to repair the record before it can be edited.
           </p>
           <FormActions>
-            <button type="button" onClick={requestClose}>Close</button>
+            <Button type="button" variant="secondary" onClick={requestClose}>Close</Button>
           </FormActions>
         </div>
       </Modal>
@@ -326,8 +327,8 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
         <FormStatus>{submitting ? "Saving changes..." : ""}</FormStatus>
 
         <FormActions>
-          <button type="submit" disabled={submitting}>{submitting ? "Saving..." : "Save Changes"}</button>
-          <button type="button" onClick={requestClose} disabled={submitting}>Cancel</button>
+          <Button type="submit" loading={submitting}>Save Changes</Button>
+          <Button type="button" variant="secondary" onClick={requestClose} disabled={submitting}>Cancel</Button>
         </FormActions>
       </form>
     </Modal>

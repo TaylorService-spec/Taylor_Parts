@@ -26,6 +26,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { useAuth } from "../../auth/AuthContext";
@@ -254,7 +255,7 @@ export default function AccountDetail() {
   const { user } = useAuth() ?? {};
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
-  const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
+  const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
   // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
@@ -322,8 +323,19 @@ export default function AccountDetail() {
     );
   }
 
+  // On a blocked/denied write this THROWS so AccountForm's own catch keeps the
+  // edit form open with an honest saveError message (see accountSaveErrorMessage)
+  // -- same contract as handleAddLocation/handleAddContact below. Without this
+  // check a blocked write resolved `{ blocked: true }` (it does not reject) and
+  // fell straight through to setIsEditing(false), closing the form as if the
+  // save succeeded while silently discarding the user's edits.
   async function handleEditSubmit(values) {
-    await updateAccount(account.id, values);
+    const result = await updateAccount(account.id, values);
+    if (result?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
     setIsEditing(false);
   }
 
@@ -385,6 +397,7 @@ export default function AccountDetail() {
             loading: contactsLoading,
             error: contactsError,
           })}
+          onRetry={retryContacts}
           focusRowKey={pendingContactFocus}
           onFocusHandled={() => setPendingContactFocus(null)}
           announcement={contactAnnouncement}
@@ -423,7 +436,7 @@ export default function AccountDetail() {
   const actions = (
     <ActionRail
       start={<button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">&larr; Back to Customers</button>}
-      primary={!isEditing ? <button type="button" className="fo-btn-primary" onClick={() => setIsEditing(true)}>Edit</button> : null}
+      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit</Button> : null}
     />
   );
 

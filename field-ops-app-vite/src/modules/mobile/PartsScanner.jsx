@@ -8,6 +8,7 @@ import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates
 import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
 import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 /**
  * F2 — the field scanner, rebuilt on the entity resolution boundary.
@@ -116,6 +117,10 @@ export default function PartsScanner({ technicianId }) {
   const resolve = useCallback((raw) => {
     setPhase(STATE.RESOLVING);
     setNotice(null);
+    // Every new scan starts from a known default. Without this, a qty bumped
+    // on the PREVIOUS result (e.g. wrong part scanned, corrected by scanning
+    // again) survives onto this one's card and can be submitted unreviewed.
+    setQty(1);
     const result = resolveScannedIdentity(raw, candidates);
     setIdentity(result);
     setPhase(STATE.DONE);
@@ -203,9 +208,9 @@ export default function PartsScanner({ technicianId }) {
         className="fo-scan__entry"
         onSubmit={(e) => { e.preventDefault(); resolve(query); }}
       >
-        <button type="button" className="fo-scan__camera" onClick={openCamera}>
+        <Button variant="secondary" className="fo-scan__camera" onClick={openCamera}>
           Scan a code
-        </button>
+        </Button>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -213,7 +218,7 @@ export default function PartsScanner({ technicianId }) {
           aria-label="Part or work order code"
           enterKeyHint="search"
         />
-        <button type="submit" className="fo-scan__find">Find</button>
+        <Button type="submit" className="fo-scan__find">Find</Button>
       </form>
 
       {cameraOpen && (
@@ -221,7 +226,7 @@ export default function PartsScanner({ technicianId }) {
           <div>
             <video ref={videoRef} autoPlay playsInline muted />
             <p>Point the camera at the code</p>
-            <button type="button" onClick={closeCamera}>Cancel</button>
+            <Button variant="secondary" onClick={closeCamera}>Cancel</Button>
           </div>
         </div>
       )}
@@ -321,21 +326,30 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, pendingA
             <li key={a.id}>
               {a.id === SCAN_ACTIONS.RECORD_PART_USAGE && a.enabled && (
                 <div className="fo-scan__qty">
-                  <button type="button" onClick={() => onQty(Math.max(1, qty - 1))} aria-label="Fewer">−</button>
+                  <Button variant="secondary" onClick={() => onQty(Math.max(1, qty - 1))} aria-label="Fewer">−</Button>
                   <span aria-live="polite">{qty}</span>
-                  <button type="button" onClick={() => onQty(qty + 1)} aria-label="More">+</button>
+                  <Button variant="secondary" onClick={() => onQty(qty + 1)} aria-label="More">+</Button>
                 </div>
               )}
-              <button
-                type="button"
-                className="fo-btn-field"
-                disabled={!a.enabled || !!pendingAction}
-                onClick={() => onInvoke(a)}
-              >
-                {pendingAction === a.id ? "Recording…" : a.label}
-              </button>
-              {/* Disabled actions explain themselves rather than vanishing. */}
-              {!a.enabled && a.reason && <p className="fo-scan__reason">{a.reason}</p>}
+              {!a.enabled && a.reason ? (
+                // The reason already exists on the derived action (mirrors the server's
+                // three enablement conditions, see domain/scanActions.js) -- this is
+                // exactly the "unavailable because of X" case variant="protected" exists
+                // for, and it replaces the manual disabled-button + sibling-paragraph
+                // pattern with the primitive's own reason presentation.
+                <Button variant="protected" reason={a.reason} className="fo-btn-field">
+                  {a.label}
+                </Button>
+              ) : (
+                <Button
+                  className="fo-btn-field"
+                  disabled={!!pendingAction}
+                  loading={pendingAction === a.id}
+                  onClick={() => onInvoke(a)}
+                >
+                  {a.label}
+                </Button>
+              )}
             </li>
           ))}
         </ul>

@@ -5,6 +5,7 @@ import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in
@@ -76,6 +77,13 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
           support call without ever presenting it as the name. */}
       <div className="fo-muted">Customer: <CustomerIdentity identity={customerIdentity} showReference /></div>
 
+      {/* H20 fix: name who this Work Order was actually Scheduled for, visibly, on the surface where a
+          dispatcher picks (or drags) a technician to Dispatch to -- so sending it to someone else is a
+          choice made with the fact in view, not an accident discoverable only on the Scheduling board. */}
+      {workOrder.scheduledTechId && (
+        <div className="fo-muted">Scheduled for: {techName(workOrder.scheduledTechId)}</div>
+      )}
+
       <h4>Assigned Technician</h4>
       <div>{workOrder.assignedTechId ? techName(workOrder.assignedTechId) : "Unassigned"}</div>
 
@@ -85,6 +93,11 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
       ) : (
         top3.map((rec) => (
           <div key={rec.techId} className={`disp-rec-row${rec.rank === 1 ? " disp-rec-row--top" : ""}`}>
+            {/* Left as a raw <button> -- disp-rec-score-btn is a bespoke, full-width, left-aligned,
+                multi-line recommendation card (score line + a nested qualitative-summary div). The
+                Button primitive centers its content in a fixed inline-flex box with its own
+                padding/background; wrapping this card in fo-button classes would fight that layout
+                without an index.css change. See migration report. */}
             <button
               type="button"
               className="disp-rec-score-btn"
@@ -124,16 +137,27 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
               </option>
             ))}
           </select>
-          <button
-            type="button"
+          <Button
+            variant="primary"
             disabled={!pickerTechId || isDispatching}
+            loading={isDispatching}
             onClick={() => {
               onDispatchToTechnician(workOrder, pickerTechId);
               setPickerTechId("");
             }}
           >
-            {isDispatching ? "Dispatching..." : "Dispatch"}
-          </button>
+            Dispatch
+          </Button>
+          {/* H20 fix: picking anyone other than who this Work Order was Scheduled for is a reassignment --
+              flagged here BEFORE the dispatcher clicks Dispatch. onDispatchToTechnician (handleDispatchDrop
+              in DispatcherBoard.jsx) still owns the actual reason prompt/confirmation for both this picker
+              and the drag-and-drop path below, so both routes share one enforcement point. */}
+          {pickerTechId && workOrder.scheduledTechId && pickerTechId !== workOrder.scheduledTechId && (
+            <p className="fo-muted" role="alert">
+              This reassigns the job from {techName(workOrder.scheduledTechId)} to {techName(pickerTechId)} --
+              a reason will be required.
+            </p>
+          )}
         </div>
       )}
     </div>

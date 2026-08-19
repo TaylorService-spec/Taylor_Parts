@@ -11,6 +11,7 @@ import {
   MAX_IMPORT_ROWS,
 } from "../../domain/contactCsvImport";
 import { importContacts } from "../../domain/contactImport";
+import { Button } from "../../shared/ui/primitives";
 
 // Customer Contact CSV import (Issue #209). An accessible, three-step flow inside
 // the shared PR #201 Modal: select a .csv, map columns to the supported Contact
@@ -227,8 +228,8 @@ export default function ContactImportModal({ accountId, accountName, existingCon
             </div>
 
             <div className="fo-wizard-actions">
-              <button type="button" onClick={() => setStep("select")}>Back</button>
-              <button type="button" disabled={!mappingCheck.valid} onClick={handleValidate}>Validate</button>
+              <Button type="button" variant="tertiary" onClick={() => setStep("select")}>Back</Button>
+              <Button type="button" disabled={!mappingCheck.valid} onClick={handleValidate}>Validate</Button>
             </div>
           </>
         )}
@@ -267,14 +268,15 @@ export default function ContactImportModal({ accountId, accountName, existingCon
             {saveError && <div className="fo-warning fo-contact-import-save-error" role="alert">{saveError}</div>}
 
             <div className="fo-wizard-actions">
-              <button type="button" onClick={() => setStep("map")} disabled={importing}>Back</button>
-              <button
+              <Button type="button" variant="tertiary" onClick={() => setStep("map")} disabled={importing}>Back</Button>
+              <Button
                 type="button"
                 onClick={handleConfirm}
-                disabled={importing || validation.overLimit || validation.accepted.length === 0}
+                loading={importing}
+                disabled={validation.overLimit || validation.accepted.length === 0}
               >
-                {importing ? "Importing…" : `Import ${validation.accepted.length} contact${validation.accepted.length === 1 ? "" : "s"}`}
-              </button>
+                {`Import ${validation.accepted.length} contact${validation.accepted.length === 1 ? "" : "s"}`}
+              </Button>
             </div>
           </>
         )}

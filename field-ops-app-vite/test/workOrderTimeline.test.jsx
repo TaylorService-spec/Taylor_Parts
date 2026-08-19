@@ -27,3 +27,42 @@ describe("Operational timeline coerces governed Work Order timestamps", () => {
     expect(events.every((e) => e.timestamp === ms)).toBe(true);
   });
 });
+
+// Regression: ControlTower.jsx feeds buildTimeline() an array of governed
+// Work Order docs (see ControlTower.jsx's <ActivityTimelinePanel jobs={workOrders} .../>
+// and jobsForWorkOrder()) -- real fieldops_wos docs, which unlike legacy Job
+// records carry no `workOrderId` FK and use the 11-value uppercase governed
+// status vocabulary, never the legacy lowercase JOB_STATUS one.
+describe("Operational timeline over governed Work Order docs (no workOrderId, no legacy status)", () => {
+  it("does not collapse every Work Order into one 'unassigned' bucket", () => {
+    const events = buildTimeline([
+      { id: "wo-a", status: "COMPLETED", createdAt: ms },
+      { id: "wo-b", status: "CLOSED", createdAt: ms },
+    ]);
+    const woLevelIds = events
+      .filter((e) => e.entity.type === "WORK_ORDER")
+      .map((e) => e.entity.id);
+    expect(woLevelIds).not.toContain("unassigned");
+    expect(new Set(woLevelIds)).toEqual(new Set(["wo-a", "wo-b"]));
+  });
+
+  it("never fabricates a WORK_ORDER_BLOCKED event for a COMPLETED/CLOSED governed Work Order", () => {
+    const events = buildTimeline([
+      { id: "wo-a", status: "COMPLETED", createdAt: ms },
+      { id: "wo-b", status: "CLOSED", createdAt: ms },
+    ]);
+    expect(events.some((e) => e.type === EVENT_TYPE.WORK_ORDER_BLOCKED)).toBe(false);
+    expect(events.filter((e) => e.entity.id === "wo-a")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: EVENT_TYPE.WORK_ORDER_COMPLETED })])
+    );
+    expect(events.filter((e) => e.entity.id === "wo-b")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: EVENT_TYPE.WORK_ORDER_COMPLETED })])
+    );
+  });
+
+  it("reports WORK_ORDER_READY, not BLOCKED, for a DISPATCHED governed Work Order", () => {
+    const events = buildTimeline([{ id: "wo-c", status: "DISPATCHED", createdAt: ms }]);
+    expect(events.some((e) => e.entity.id === "wo-c" && e.type === EVENT_TYPE.WORK_ORDER_READY)).toBe(true);
+    expect(events.some((e) => e.entity.id === "wo-c" && e.type === EVENT_TYPE.WORK_ORDER_BLOCKED)).toBe(false);
+  });
+});

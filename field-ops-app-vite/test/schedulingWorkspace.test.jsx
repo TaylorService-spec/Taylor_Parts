@@ -113,4 +113,27 @@ describe("SchedulingWorkspace honest states + week board", () => {
     fireEvent.click(screen.getByRole("button", { name: /Next week/i }));
     expect(screen.queryByText("WO-100")).toBeNull();
   });
+
+  it("opening a job's detail renders an accessible modal -- aria-modal, focus moved in, Escape closes", () => {
+    const technicians = [{ id: "t1", name: "Alpha Tech" }];
+    const workOrders = [
+      { id: "w1", woNumber: "WO-100", status: "SCHEDULED", scheduledTechId: "t1", scheduledStart: at(2026, 8, 5, 9, 0), scheduledEnd: at(2026, 8, 5, 10, 0), priority: 3, type: "PM" },
+    ];
+    setData({ technicians, workOrders });
+    render(<SchedulingWorkspace nowMillis={WED_NOON} initialWeekStart={MONDAY} />);
+
+    // Open the job's inline detail from its chip.
+    fireEvent.click(screen.getByRole("button", { name: /WO-100/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "WO-100" });
+    // aria-modal must be present (a bare role="dialog" with no aria-modal is not a real
+    // modal to assistive tech).
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    // Focus must move INTO the dialog on open, not stay wherever it was on the page.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    // Escape closes it -- the detail disappears from the document entirely.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "WO-100" })).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import React from "react";
 import FailureState from "../shared/ui/FailureState.jsx";
+import Button from "../shared/ui/primitives/Button.jsx";
 
 // Root error boundary (mounted in main.jsx ABOVE AuthProvider and App, so it catches
 // every render crash in the application).
@@ -67,12 +68,12 @@ export default class ErrorBoundary extends React.Component {
           }
           action={
             <>
-              <button type="button" onClick={this.handleRetry}>
+              <Button variant="primary" onClick={this.handleRetry}>
                 Try again
-              </button>
-              <button type="button" onClick={this.handleReload}>
+              </Button>
+              <Button variant="secondary" onClick={this.handleReload}>
                 Reload
-              </button>
+              </Button>
             </>
           }
         />

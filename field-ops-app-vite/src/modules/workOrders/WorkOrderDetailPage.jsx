@@ -7,8 +7,10 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
+import { Button } from "../../shared/ui/primitives";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
+import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -28,7 +30,8 @@ import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
@@ -46,7 +49,7 @@ export default function WorkOrderDetailPage() {
       <div className="fo-panel">
         <FailureState
           message={error}
-          action={<button type="button" onClick={retry}>Retry</button>}
+          action={<Button variant="secondary" onClick={retry}>Retry</Button>}
         />
       </div>
     );
@@ -57,7 +60,7 @@ export default function WorkOrderDetailPage() {
       <div className="fo-panel">
         <FailureState
           message="This work order could not be found."
-          action={<button type="button" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</button>}
+          action={<Button variant="secondary" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</Button>}
         />
       </div>
     );
@@ -72,9 +75,9 @@ export default function WorkOrderDetailPage() {
 
   return (
     <div className="fo-panel">
-      <button type="button" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
+      <Button variant="tertiary" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
         &larr; Back to Work Orders
-      </button>
+      </Button>
       {/* H14 -- these two reads used to be dropped entirely (no error, no
           loading) even though useAccount.js/useFirestoreCollection.js
           already exposed them. A denied Account read rendered a blank/
@@ -100,7 +103,7 @@ export default function WorkOrderDetailPage() {
           pure presentation component. No refresh prop is needed: useWorkOrder is an onSnapshot
           listener, so a saved plan re-renders from the persisted document rather than from optimistic
           client state. */}
-      <WorkOrderPartsPlanEditor workOrder={workOrder} />
+      <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
     </div>
   );
 }

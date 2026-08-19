@@ -19,6 +19,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
@@ -133,9 +134,9 @@ export default function EquipmentDetail() {
       primary={
         // Available, so it is a live control -- kept alongside the asset's identity
         // rather than among the #15-gated lifecycle actions below.
-        <button type="button" className="fo-btn-primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
+        <Button variant="primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
           Edit
-        </button>
+        </Button>
       }
     />
   );

@@ -3,6 +3,7 @@
 // conflict outcome is the reload-required state and offers a Reload control that re-reads
 // the registry so the operator can retry against the current version.
 import { TRUCK_COMMAND_OUTCOME } from "../../../domain/truckManagement.js";
+import { Button } from "../../../shared/ui/primitives/index.js";
 
 const KIND_CLASS = {
   [TRUCK_COMMAND_OUTCOME.OK]: "fo-outcome-banner--ok",
@@ -24,9 +25,9 @@ export default function OutcomeBanner({ outcome, successMessage = "Saved.", onRe
     <div className={KIND_CLASS[outcome.kind] || "fo-warning"} role={isOk ? "status" : "alert"} data-testid="truck-command-outcome">
       <span>{text}</span>
       {isConflict && typeof onReload === "function" && (
-        <button type="button" className="fo-btn-secondary" style={{ marginLeft: 8 }} onClick={onReload}>
+        <Button variant="secondary" className="fo-outcome-banner__reload" onClick={onReload}>
           Reload
-        </button>
+        </Button>
       )}
     </div>
   );

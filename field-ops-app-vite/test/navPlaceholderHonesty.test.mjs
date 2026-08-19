@@ -53,7 +53,12 @@ check("the specific destinations audited as having no real route are hidden", ()
     "quotes",          // no governed RFQ / supplier-quote authority exists
     "demandPlanning",  // buildable from existing signals, but not built
     "notifications",   // notification HISTORY is unbuilt (the bell is the real surface)
-    "vehicles", "regions", "companySettings", "integrations",
+    "vehicles", "regions", "companySettings",
+    // "integrations" was REMOVED from this list deliberately, which is the act this
+    // comment block asks for. It is no longer a placeholder: App.jsx routes
+    // administration/integrations explicitly to IntegrationsFaq (a real, static
+    // informational screen), so it does NOT fall through to PlaceholderPage and
+    // hiding it made a built screen unreachable from the rail.
   ];
   const byKey = new Map(destinations().map((d) => [d.key, d]));
   for (const key of mustBeHidden) {

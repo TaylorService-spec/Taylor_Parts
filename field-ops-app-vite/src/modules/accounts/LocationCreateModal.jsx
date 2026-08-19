@@ -4,6 +4,7 @@ import AddressFields from "../../shared/address/AddressFields";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
 import { locationSaveErrorMessage } from "../../domain/accountChildSaveErrors";
+import { Button } from "../../shared/ui/primitives";
 
 // Issue #214 PR-2 -- Location creation moved out of the inline form below the live
 // Locations list into the same shared Modal pattern as ContactCreateModal, on the
@@ -105,8 +106,8 @@ export default function LocationCreateModal({ accountName, onCreate, onClose }) 
         <FormStatus>{submitting ? "Saving location..." : ""}</FormStatus>
 
         <FormActions>
-          <button type="submit" disabled={submitting}>{submitting ? "Saving..." : "Add Location"}</button>
-          <button type="button" onClick={requestClose} disabled={submitting}>Cancel</button>
+          <Button type="submit" loading={submitting}>Add Location</Button>
+          <Button type="button" variant="tertiary" onClick={requestClose} disabled={submitting}>Cancel</Button>
         </FormActions>
       </form>
     </Modal>

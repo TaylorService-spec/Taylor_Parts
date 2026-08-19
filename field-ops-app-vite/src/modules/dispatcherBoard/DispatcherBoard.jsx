@@ -15,6 +15,7 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { WORK_ORDER_STATUS_VALUES, workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -52,7 +53,7 @@ export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
-  const { data: technicians, loading: techniciansLoading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading: techniciansLoading, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
   const [selectedId, setSelectedId] = useState(null);
@@ -61,6 +62,14 @@ export default function DispatcherBoard() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [dispatchError, setDispatchError] = useState(null);
   const [dispatchingWorkOrderId, setDispatchingWorkOrderId] = useState(null);
+  // H20 fix: reassigning a Work Order away from the technician it was Scheduled for is a distinct,
+  // audited, reason-required action (Owner ruling) -- never a silent side effect of a drag-drop or a
+  // picker selection. Both handleDispatchDrop call sites (WorkOrderPreview's picker button AND
+  // TechnicianBoard's drag-and-drop) funnel through this ONE function, so this is the single place that
+  // decides whether to dispatch immediately or hold for a reason -- {workOrder, technicianId} awaiting a
+  // typed reason, or null when nothing is pending.
+  const [pendingReassignment, setPendingReassignment] = useState(null);
+  const [reassignReasonInput, setReassignReasonInput] = useState("");
   const queueRef = useRef(null);
 
   // Debounced search -- no shared debounce hook exists on main (only
@@ -98,19 +107,15 @@ export default function DispatcherBoard() {
     [filteredWorkOrders, technicians, workOrders]
   );
 
-  async function handleDispatchDrop(workOrder, technicianId) {
-    if (dispatchingWorkOrderId === workOrder.id) return;
-    setDispatchError(null);
-    const allowed = getAllowedActions(workOrder.status, role, false);
-    if (!allowed.includes("Dispatch")) {
-      setDispatchError(
-        `Cannot dispatch ${workOrder.woNumber ?? workOrder.id}: only SCHEDULED work orders can be dispatched (current status: ${workOrder.status}).`
-      );
-      return;
-    }
+  // H20 fix: extracted so both the immediate (same-technician) path below AND confirmReassignment() share
+  // the exact same transitionWorkOrder() call and error handling -- one dispatch code path, not two.
+  async function dispatch(workOrder, technicianId, reassignReason) {
     setDispatchingWorkOrderId(workOrder.id);
     try {
-      await transitionWorkOrder(workOrder.id, "Dispatch", { assignedTechId: technicianId });
+      await transitionWorkOrder(workOrder.id, "Dispatch", {
+        assignedTechId: technicianId,
+        ...(reassignReason ? { reassignReason } : {}),
+      });
     } catch (err) {
       console.error(err);
       // site-work r3 L: previously surfaced err.message verbatim, leaking raw
@@ -121,6 +126,41 @@ export default function DispatcherBoard() {
     } finally {
       setDispatchingWorkOrderId((id) => (id === workOrder.id ? null : id));
     }
+  }
+
+  // H20 fix: the single entry point both WorkOrderPreview's picker button AND TechnicianBoard's drag-drop
+  // call. The server is the real authority on whether this is a reassignment (it compares against
+  // wo.scheduledTechId at the moment Dispatch runs) -- this client-side check only decides whether to hold
+  // for a reason before calling dispatch(); the server still enforces the requirement itself regardless.
+  async function handleDispatchDrop(workOrder, technicianId) {
+    if (dispatchingWorkOrderId === workOrder.id) return;
+    setDispatchError(null);
+    const allowed = getAllowedActions(workOrder.status, role, false);
+    if (!allowed.includes("Dispatch")) {
+      setDispatchError(
+        `Cannot dispatch ${workOrder.woNumber ?? workOrder.id}: only SCHEDULED work orders can be dispatched (current status: ${workOrder.status}).`
+      );
+      return;
+    }
+    if (workOrder.scheduledTechId && workOrder.scheduledTechId !== technicianId) {
+      setPendingReassignment({ workOrder, technicianId });
+      setReassignReasonInput("");
+      return;
+    }
+    await dispatch(workOrder, technicianId);
+  }
+
+  async function confirmReassignment() {
+    if (!pendingReassignment || !reassignReasonInput.trim()) return;
+    const { workOrder, technicianId } = pendingReassignment;
+    setPendingReassignment(null);
+    await dispatch(workOrder, technicianId, reassignReasonInput.trim());
+    setReassignReasonInput("");
+  }
+
+  function cancelReassignment() {
+    setPendingReassignment(null);
+    setReassignReasonInput("");
   }
 
   // Keyboard navigation (Priority 4 accessibility + Priority 2 UX):
@@ -178,6 +218,36 @@ export default function DispatcherBoard() {
         </div>
       )}
 
+      {/* H20 fix: a dispatcher MAY reassign a Work Order away from the technician it was Scheduled for,
+          but a reason is REQUIRED (Owner ruling) -- this blocks the drag-drop/picker dispatch until one is
+          typed, so a reassignment is always a visible, deliberate, accountable choice, never an accident. */}
+      {pendingReassignment && (
+        <div className="fo-form disp-reassign-confirm" role="group" aria-label="Reassignment reason required">
+          <p role="alert">
+            Reassigning {pendingReassignment.workOrder.woNumber ?? pendingReassignment.workOrder.id} from{" "}
+            {technicians.find((t) => t.id === pendingReassignment.workOrder.scheduledTechId)?.name ??
+              pendingReassignment.workOrder.scheduledTechId}{" "}
+            to {technicians.find((t) => t.id === pendingReassignment.technicianId)?.name ?? pendingReassignment.technicianId} —
+            a reason is required.
+          </p>
+          <textarea
+            value={reassignReasonInput}
+            onChange={(e) => setReassignReasonInput(e.target.value)}
+            placeholder="Why is this job being reassigned?"
+            aria-label="Reassignment reason"
+            rows={2}
+          />
+          <div className="fo-dispatch__reassign-actions">
+            <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
+              Confirm reassignment
+            </Button>
+            <Button variant="secondary" onClick={cancelReassignment}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p className="fo-muted">Loading dispatcher board...</p>
       ) : workOrdersError ? (
@@ -187,6 +257,16 @@ export default function DispatcherBoard() {
         // indication anything failed.
         <p className="fo-muted" role="alert">
           {loadErrorMessage(workOrdersError, { entity: "work orders" })}
+        </p>
+      ) : techniciansError ? (
+        // Same fail-visibly fix as workOrdersError above, applied to the
+        // technicians read: a denied/unavailable technicians listener used to
+        // fall through to TechnicianBoard's "No technicians exist yet" empty
+        // state -- a dispatcher would read that as "there are no technicians"
+        // rather than "this read failed," with no recommendations, no drop
+        // targets, and no indication anything is wrong.
+        <p className="fo-muted" role="alert">
+          {loadErrorMessage(techniciansError, { entity: "technicians" })}
         </p>
       ) : workOrders.length === 0 ? (
         <p className="fo-muted">No work orders exist yet. Create one from the Work Orders tab to see it here.</p>

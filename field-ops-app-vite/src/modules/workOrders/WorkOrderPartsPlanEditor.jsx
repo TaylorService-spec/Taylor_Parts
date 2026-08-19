@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import { useWorkOrderPartsPlan, PLAN_OUTCOME } from "../../hooks/useWorkOrderPartsPlan";
+import { WORK_ORDER_PARTS_PLAN_CAPABILITY } from "../../access/workOrderPartsPlanCapabilityAccess.js";
 import {
   planLinesFromSnapshot,
   planRemovals,
@@ -14,6 +15,7 @@ import {
   snapshotPartCategory,
   snapshotPartUnit,
 } from "../../domain/workOrderInventorySnapshot";
+import { Button } from "../../shared/ui/primitives";
 
 // WO Parts Planning -- the operational planning surface for a single Work Order.
 //
@@ -55,9 +57,15 @@ function PlanMessage({ tone, children }) {
   return <div className={tone === "error" ? "fo-error" : "fo-muted"}>{children}</div>;
 }
 
-export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps }) {
+// Fail-closed default: with no `capability` prop injected, the "Edit parts plan" affordance never
+// renders as live -- matching the server's own default deny for the (today ungranted) capability.
+const DEFAULT_CAPABILITY = { hasCapability: () => false, resolving: false };
+
+export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps, capability }) {
   const workOrderId = workOrder?.id ?? workOrder?.workOrderId ?? null;
   const editableStatus = isPlanEditableStatus(workOrder?.status);
+  const cap = capability ?? DEFAULT_CAPABILITY;
+  const canEdit = typeof cap.hasCapability === "function" && cap.hasCapability(WORK_ORDER_PARTS_PLAN_CAPABILITY);
 
   const persistedLines = useMemo(
     () => planLinesFromSnapshot(workOrder?.inventorySnapshot),
@@ -236,14 +244,14 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps 
                   {editing && (
                     <td>
                       {line.editable ? (
-                        <button
-                          type="button"
+                        <Button
+                          variant="tertiary"
                           onClick={() => removeLine(line.partId)}
                           disabled={blocked}
                           title={blocked ? "This part has recorded usage and cannot be un-planned." : undefined}
                         >
                           Remove
-                        </button>
+                        </Button>
                       ) : (
                         <span className="fo-muted">Legacy record</span>
                       )}
@@ -256,11 +264,26 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps 
         </table>
       )}
 
-      {!editing && editableStatus && !unresolved && (
-        <button type="button" onClick={beginEditing}>
+      {/* Gated on the trusted effective-access feed (access/useWorkOrderPartsPlanCapability), not just
+          on Work Order status: `workOrder.parts.plan` is registered active:false in permissionCatalog.ts
+          (fail-closed for every caller until a separate Owner grant), so rendering the edit affordance
+          on status alone let every admin/dispatcher run a full add/remove/quantity session that could
+          only ever be rejected at Save. This mirrors the fix already shipped for Opportunity write
+          (access/useOpportunityCapabilities.js / opportunityWriteReadiness.js). */}
+      {!editing && editableStatus && !unresolved && canEdit && (
+        <Button variant="secondary" onClick={beginEditing}>
           Edit parts plan
-        </button>
+        </Button>
       )}
+
+      {!editing && editableStatus && !unresolved && !canEdit && (
+        <PlanMessage tone={cap.resolving ? undefined : "error"}>
+          {cap.resolving
+            ? "Checking parts-planning access…"
+            : "Parts planning is not yet enabled for your role."}
+        </PlanMessage>
+      )}
+
 
       {!editing && editableStatus && unresolved && (
         <PlanMessage tone="error">
@@ -304,9 +327,9 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps 
             <ul>
               {candidates.map((p) => (
                 <li key={p.partId}>
-                  <button type="button" onClick={() => addPart(p)}>
+                  <Button variant="tertiary" onClick={() => addPart(p)}>
                     Add {p.name} ({p.internalPartNumber})
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -326,12 +349,17 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps 
             </PlanMessage>
           )}
 
-          <button type="button" onClick={onSave} disabled={saving || !dirty || blockedPartIds.length > 0}>
-            {saving ? "Saving…" : "Save parts plan"}
-          </button>
-          <button type="button" onClick={cancelEditing} disabled={saving}>
+          <Button
+            variant="primary"
+            onClick={onSave}
+            loading={saving}
+            disabled={!dirty || blockedPartIds.length > 0}
+          >
+            Save parts plan
+          </Button>
+          <Button variant="tertiary" onClick={cancelEditing} disabled={saving}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
 
