@@ -378,7 +378,12 @@ export const NAV_DOMAINS = [
       { key: "vehicles", label: "Vehicles", path: "vehicles", navHidden: true },
       { key: "regions", label: "Regions", path: "regions", navHidden: true },
       { key: "companySettings", label: "Company Settings", path: "company-settings", navHidden: true },
-      { key: "integrations", label: "Integrations", path: "integrations", navHidden: true },
+      // Issue #226 sweep -- IntegrationsFaq.jsx (App.jsx line ~355) is a real, complete
+      // screen, not a placeholder; unlike vehicles/regions/companySettings above it must
+      // stay reachable from the rail per this module's own README (Administration ->
+      // Integrations). navHidden was left on from the original placeholder batch edit;
+      // removed so the nav matches the built screen.
+      { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],
   },
