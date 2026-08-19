@@ -20,14 +20,18 @@ import SalesOrderActions from "./SalesOrderActions.jsx";
 // `actionDeps` is an injectable test-only seam (mirrors PartWriteModal's `writeDeps`): passed straight
 // through to SalesOrderActions -> useSalesOrderActions so tests can supply a MOCKED command client
 // without touching `firebase`. Production routing never supplies it, so it defaults to the real client.
-export default function SalesOrderDetail({ actionDeps } = {}) {
+// `hasCapability` is the REAL trusted write-capability signal (access/useSalesOrderCapabilities),
+// passed straight through to SalesOrderActions so it can render Advance/Cancel/Allocate/Create Service
+// as live only for a principal actually granted salesOrder.write/.fulfill/.service -- fail-closed
+// (protected + disabled + honest) when omitted, same posture as every other write-readiness seam.
+export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   const { salesOrderId } = useParams();
   const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
   const view = salesOrderView({ loading, errorStatus, result });
 
   const actions =
     view.kind === SALES_ORDER_VIEW_STATE.READY
-      ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} />
+      ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} hasCapability={hasCapability} />
       : null;
 
   // The page title is the governed business reference, never the Firestore document id
