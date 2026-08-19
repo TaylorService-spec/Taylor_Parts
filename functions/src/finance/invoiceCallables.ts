@@ -47,7 +47,8 @@ async function requireInvoiceIssue(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [FINANCE_INVOICE_ISSUE_CAPABILITY] });
     allowed = decisions[FINANCE_INVOICE_ISSUE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireInvoiceIssue] capability resolution failed for ${FINANCE_INVOICE_ISSUE_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to issue invoices.");

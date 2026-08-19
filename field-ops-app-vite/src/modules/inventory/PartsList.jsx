@@ -366,7 +366,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     loading: employeeDirectoryLoading,
     error: employeeDirectoryError,
   } = useEmployeeDirectory();
-  const { healthEntries, loading } = useInventoryLedger();
+  const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
   // fetchPartMasterList; no new query surface). null until the first read
@@ -643,7 +643,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       </p>
       <FilterBar options={queueFilterOptionsWithCounts} activeKey={queueFilter} onChange={setQueueFilter} />
       {reorderError && <p className="fo-muted">{reorderError}</p>}
-      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading operational queue..."
+        failedText="Unable to load the operational queue right now. Try again shortly."
+        emptyText=""
+      >
         <InventoryHealthPanel
           healthEntries={queueEntries}
           title="Needs Reorder"
@@ -683,9 +690,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       <h4>Waiting</h4>
       <LoadingEmptyState
         loading={partsAssociateWaitingLoading}
+        failed={!!partsAssociateWaitingError}
         isEmpty={partsAssociateWaiting.length === 0}
         loadingText="Loading your assigned requests..."
-        emptyText={partsAssociateWaitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
+        failedText="Unable to load your assigned requests right now. Try again shortly."
+        emptyText="No requests currently waiting on you."
       >
         <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
@@ -693,9 +702,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       <h4>In Progress</h4>
       <LoadingEmptyState
         loading={partsAssociateInProgressLoading}
+        failed={!!partsAssociateInProgressError}
         isEmpty={partsAssociateInProgress.length === 0}
         loadingText="Loading your in-progress purchasing..."
-        emptyText={partsAssociateInProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
+        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
+        emptyText="No purchasing currently in progress."
       >
         <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
       </LoadingEmptyState>
@@ -747,7 +758,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
 
       <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
-      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading stock position..." emptyText="">
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading stock position..."
+        failedText="Unable to load stock position right now. Try again shortly."
+        emptyText=""
+      >
         <>
           <table className="fo-table">
             <thead>

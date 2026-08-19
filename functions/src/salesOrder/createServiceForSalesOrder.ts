@@ -123,7 +123,8 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: request.auth.uid, permissionIds: [SALES_ORDER_SERVICE_CAPABILITY] });
     allowed = decisions[SALES_ORDER_SERVICE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[createServiceForSalesOrder] capability resolution failed for ${SALES_ORDER_SERVICE_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to create Service for Sales Orders.");

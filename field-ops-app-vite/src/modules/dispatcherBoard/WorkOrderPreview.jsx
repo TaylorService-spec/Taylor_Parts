@@ -4,6 +4,7 @@ import { useAccountNames } from "../../hooks/useAccountNames";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in
@@ -64,7 +65,7 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
     <div className="disp-pane disp-pane--preview">
       <h3>{workOrder.woNumber}</h3>
       <div>
-        <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrder.status}</span>
+        <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrderStatusLabel(workOrder.status)}</span>
       </div>
       <div className="fo-muted">
         Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"} | Type: {workOrder.type}

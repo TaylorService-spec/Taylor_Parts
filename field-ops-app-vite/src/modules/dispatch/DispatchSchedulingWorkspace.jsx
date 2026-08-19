@@ -8,7 +8,7 @@ import { useSchedulingData } from "../../hooks/useSchedulingData";
 import { workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import { workOrderStatusTone } from "../../domain/coordinatedVisit";
 import { technicianStatusTone } from "../../domain/technicianStatusTone";
-import { TECH_STATUS } from "../../domain/constants";
+import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import {
@@ -304,7 +304,7 @@ function TechRow({ row, isDropTarget, dropOffsetFraction, onDragOver, onDrop, on
       <div className="fo-dboard-row__tech">
         <span className="fo-dboard-row__techname">{tech.name ?? tech.id}</span>
         {tech.status ? (
-          <StatusPill tone={technicianStatusTone(tech.status)} label={tech.status === TECH_STATUS.OFF_SHIFT ? "Off shift" : tech.status === TECH_STATUS.ON_JOB ? "On job" : "Available"} asText />
+          <StatusPill tone={technicianStatusTone(tech.status)} label={technicianStatusLabel(tech.status)} asText />
         ) : null}
       </div>
       <div

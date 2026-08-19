@@ -35,6 +35,7 @@ import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import FailureState from "../../shared/ui/FailureState";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
@@ -774,7 +775,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
 function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
-  const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
     <div className="fo-card">
@@ -821,6 +822,11 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- a denied/failed read used to render the SAME
+        // "details unavailable" copy as a genuine not-yet-recorded PO. Fail
+        // visibly instead: "you cannot see it" is not "there is nothing to see".
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -948,8 +954,16 @@ function ReorderRequestCancelled({ request, employeeDirectory }) {
 //   - hooks/useReorderPurchaseOrderVoids.js's useReorderPurchaseOrderVoid()
 //     -- the separate, append-only void record itself.
 function ReorderRequestVoided({ request, employeeDirectory }) {
-  const { data: purchaseOrder, loading: purchaseOrderLoading } = usePurchaseOrderForReorderRequest(request.id);
-  const { data: voidRecord, loading: voidRecordLoading } = useReorderPurchaseOrderVoid(request.id);
+  const {
+    data: purchaseOrder,
+    loading: purchaseOrderLoading,
+    error: purchaseOrderError,
+  } = usePurchaseOrderForReorderRequest(request.id);
+  const {
+    data: voidRecord,
+    loading: voidRecordLoading,
+    error: voidRecordError,
+  } = useReorderPurchaseOrderVoid(request.id);
 
   return (
     <div className="fo-card">
@@ -1001,6 +1015,10 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- see ReorderRequestOrdered above: a denied/failed
+        // read must not render the same copy as a genuinely absent record.
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -1020,6 +1038,8 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
             </tr>
           </tbody>
         </table>
+      ) : voidRecordError && voidRecordError !== "not_found" ? (
+        <FailureState message="You don't have permission to view the void record." />
       ) : (
         <p className="fo-muted">Void record unavailable.</p>
       )}
@@ -1126,7 +1146,11 @@ function InventoryActionsPanel({ partId }) {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const { data: recentActions, loading } = useInventoryActionsForPart(partId);
+  // W2 (hooks/useInventoryActions.js): the read preserves a failed read
+  // (permission-denied/unavailable/etc.) distinctly from a genuinely-empty log --
+  // `actionsError` is threaded to LoadingEmptyState below so a read failure no
+  // longer renders as "No inventory actions logged yet."
+  const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
   const isCorrectMistake = actionType === INVENTORY_ACTION_TYPE.CORRECT_MISTAKE;
@@ -1208,8 +1232,10 @@ function InventoryActionsPanel({ partId }) {
       <p className="fo-muted">Audit notes only -- none of these have been applied to stock.</p>
       <LoadingEmptyState
         loading={loading}
+        failed={!!actionsError}
         isEmpty={recentActions.length === 0}
         loadingText="Loading inventory action log..."
+        failedText="Unable to load the inventory action log right now. Try again shortly."
         emptyText="No inventory actions logged yet."
       >
         <table className="fo-table">
@@ -1444,19 +1470,20 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}
-          isEmpty
+          // M25 -- "not_found"/"mismatch" are genuine "this document does not exist
+          // for this part" facts (isEmpty is honest here); anything else is a real
+          // Firestore SDK read-error code (e.g. "permission-denied", "unavailable")
+          // preserved by useReorderRequestForPart() -- an access/read failure is a
+          // distinct fact from a genuinely-missing document and must render through
+          // the `failed` branch (role="alert"), never be reported as "not found".
+          isEmpty={reorderRequestError === "not_found" || reorderRequestError === "mismatch"}
+          failed={reorderRequestError !== "not_found" && reorderRequestError !== "mismatch"}
           emptyText={
             reorderRequestError === "not_found"
               ? "This reorder request could not be found."
-              : reorderRequestError === "mismatch"
-                ? "This reorder request does not belong to this part."
-                : // Site-work r4 C, Fix 2: any other error is now a real Firestore SDK
-                  // read-error code (e.g. "permission-denied", "unavailable"), preserved
-                  // by useReorderRequestForPart() instead of collapsed into "not_found" --
-                  // an access/read failure is a distinct fact from a genuinely-missing
-                  // document, and must not be reported as one.
-                  "This reorder request could not be loaded (access denied or a read error). Try again."
+              : "This reorder request does not belong to this part."
           }
+          failedText="This reorder request could not be loaded (access denied or a read error). Try again."
         />
       )}
 

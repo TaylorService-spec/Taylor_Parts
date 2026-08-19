@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
+import { getApps } from "firebase-admin/app";
 import {
   warehouseGovernanceFingerprint,
   classifyWarehouse,
@@ -278,6 +279,29 @@ check("evidence: dry-run evidence is sanitized (no raw name/location leak) + sec
   const text = JSON.stringify(ev);
   assert.ok(!text.includes("SECRET-NAME") && !text.includes("SECRET-LOC"), "raw fields not in evidence");
   assert.equal(scanForSecrets(text).length, 0);
+});
+
+// ---- X-TARGETING-GUARD: cli.main() fails closed BEFORE buildProductionDeps() (and therefore before
+// firebase-admin is ever required and before any Firestore connection, read, or write) ----
+// `getApps()` (firebase-admin/app) reads the SAME global app registry buildProductionDeps() would register
+// into via admin.initializeApp() -- so its length staying 0 after a rejected cli.main() call is direct proof
+// the rejection happened before Firebase touched anything. Technique copied from
+// functions/test/salesOrderNumberBackfill.test.mjs's environment-guard tests.
+assert.equal(getApps().length, 0, "precondition: no Firebase app has been initialized by anything else in this offline test file");
+await acheck("cli.main(): missing --project never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(cli.main(["--commit", "c".repeat(40), "--evidence-dir", "/ev"]), /--project is required/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --project is missing");
+});
+await acheck("cli.main(): missing --commit never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(cli.main(["--project", "taylor-parts", "--evidence-dir", "/ev"]), /--commit is required/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --commit is missing");
+});
+await acheck("cli.main(): --execute without --acknowledge-production-write never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(
+    cli.main(["--project", "taylor-parts", "--commit", "c".repeat(40), "--evidence-dir", "/ev", "--execute"]),
+    /acknowledge-production-write/,
+  );
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --execute lacks --acknowledge-production-write");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

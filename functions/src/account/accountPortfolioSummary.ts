@@ -119,7 +119,8 @@ export const getAccountPortfolioSummary = onCall({ region: "us-central1" }, asyn
       permissionIds: [ACCOUNT_PORTFOLIO_READ_CAPABILITY],
     });
     allowed = decisions[ACCOUNT_PORTFOLIO_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getAccountPortfolioSummary] capability resolution failed for ${ACCOUNT_PORTFOLIO_READ_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "Not authorized to read customers.");

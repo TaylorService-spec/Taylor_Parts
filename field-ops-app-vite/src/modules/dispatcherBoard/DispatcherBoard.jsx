@@ -14,6 +14,7 @@ import TechnicianBoard from "./TechnicianBoard";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { WORK_ORDER_STATUS_VALUES, workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -161,13 +162,11 @@ export default function DispatcherBoard() {
         />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status">
           <option value="ALL">All statuses</option>
-          {["CREATED", "READY_TO_DISPATCH", "SCHEDULED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS", "COMPLETED", "CLOSED", "CANCELLED"].map(
-            (s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            )
-          )}
+          {WORK_ORDER_STATUS_VALUES.map((s) => (
+            <option key={s} value={s}>
+              {workOrderStatusLabel(s)}
+            </option>
+          ))}
         </select>
       </div>
 

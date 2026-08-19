@@ -45,6 +45,53 @@ const RESERVATION_LOCKS_COLLECTION = "inventory_reservation_locks";
 // transaction's ledger query result and forces Firestore to retry it.
 const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS_COLLECTION).doc(partId);
 
+// Pure summation of the GOVERNED (physical, quantity-summed) portion of the ledger for one part,
+// across ALL locations -- exported and unit-tested WITHOUT the Firestore emulator (see
+// test/inventoryServiceGovernedLedger.test.mjs), mirroring how sumLedgerEligibleOnHand
+// (fulfillment/fulfillmentAvailability.ts) is tested offline from the same shape of rows.
+//
+// H7 FIX -- SERIAL-tracked ADJUSTED entries must NEVER move this sum. A SERIAL-tracked Part's unit
+// count is not aggregable quantity math: each serial is exactly one unit, tracked individually by the
+// serialized_assets registry (currentLocationId/inventoryState), never by summing ledger quantities.
+// When a Cycle Count on a SERIAL-tracked part reconciles a MISSING unit, it writes an ADJUSTED entry
+// with quantity forced to 1 (SERIAL-mode quantity is always exactly 1, and CANNOT carry a negative
+// sign -- there is no "quantity -1 of one specific serial", only "this serial is present or it isn't").
+// Before this fix, that "ADJUSTED, quantity: 1" record was summed into `governed` exactly like a
+// NONE-mode receipt: DISCOVERING A UNIT MISSING INCREASED ITS RESERVABLE AVAILABILITY -- the exact
+// inverse of what a cycle count finding a shortage means.
+//
+// The correct pattern already exists in inventoryLedger/mobileLocationPresenceProbe.ts's
+// probeNoneStockPresentAtLocation (`if (v.trackingMode !== "NONE") continue;`, with the comment "SERIAL
+// custody is authoritative via serialized_assets, not via quantity math"). This function follows that
+// precedent: only trackingMode "NONE" rows are quantity-summed here; SERIAL (and any future LOT) rows
+// are excluded, exactly as transferOrderCommand.ts's computeNoneOnHandThroughTxn and
+// cycleCount/cycleCountExpectedQuantity.ts's computeExpectedQuantityThroughTxn are ALREADY gated to
+// NONE-mode Parts by their callers before they ever sum a row.
+//
+// LEGACY-SCHEMA DEFAULT (documented, not silently resolved): a row with NO trackingMode field at all
+// is treated as NONE (included), not excluded. This is safe, not merely convenient: `trackingMode` is
+// a REQUIRED, validated field on every governed operational-movement write (see
+// operationalMovementValidation.ts's isTrackingMode check and operationalMovementRepository.ts, which
+// always stores it) -- a document with a governed type (RECEIVED/TRANSFER_IN/TRANSFER_OUT/ADJUSTED/
+// RETURNED/SCRAPPED) can therefore never legitimately lack trackingMode; only the DISJOINT legacy WO
+// types (RESERVED/RELEASED/CONSUMED, which never reach this branch) lack the field. So this default
+// is never actually exercised by a real SERIAL entry -- it exists only so pre-existing rows/fixtures
+// that predate the trackingMode field are not silently zeroed out.
+//
+// RETURNED/SCRAPPED are added here too (H7 secondary finding): schema-legal operational movement
+// types that transferOrderCommand.ts / cycleCountExpectedQuantity.ts / mobileLocationPresenceProbe.ts
+// already sum, but that this consumer previously omitted entirely.
+export function sumGovernedLedger(rows: Array<{ type: string; quantity: number; trackingMode?: string }>): number {
+  let governed = 0;
+  for (const t of rows) {
+    if (t.trackingMode !== undefined && t.trackingMode !== "NONE") continue; // SERIAL/LOT: not aggregable quantity math
+    if (t.type === "RECEIVED" || t.type === "TRANSFER_IN" || t.type === "RETURNED") governed += t.quantity;
+    else if (t.type === "TRANSFER_OUT" || t.type === "SCRAPPED") governed -= t.quantity;
+    else if (t.type === "ADJUSTED") governed += t.quantity; // ADJUSTED already carries its own sign
+  }
+  return governed;
+}
+
 // available = warehouseQty - (grossReserved - released). CONSUMED is
 // deliberately NOT subtracted again here: consuming a part converts an
 // existing reservation into a permanent removal without changing
@@ -68,16 +115,16 @@ async function getAvailableQuantity(tx: Transaction, partId: string): Promise<nu
   //
   // Summed across ALL locations, matching this function's warehouse-wide contract (a transfer
   // between two locations nets to zero here, which is correct -- it moved stock, it did not
-  // create or destroy it). ADJUSTED already carries its sign.
-  let governed = 0;
+  // create or destroy it). ADJUSTED already carries its sign. SERIAL-tracked rows are excluded from
+  // this quantity sum -- see sumGovernedLedger() above for why (H7 fix).
+  const rows: Array<{ type: string; quantity: number; trackingMode?: string }> = [];
   snap.forEach((doc) => {
     const t = doc.data() as InventoryTransaction;
     if (t.type === "RESERVED") grossReserved += t.quantity;
     else if (t.type === "RELEASED") released += t.quantity;
-    else if (t.type === "RECEIVED" || t.type === "TRANSFER_IN") governed += t.quantity;
-    else if (t.type === "TRANSFER_OUT") governed -= t.quantity;
-    else if (t.type === "ADJUSTED") governed += t.quantity;
+    else rows.push({ type: t.type, quantity: t.quantity, trackingMode: t.trackingMode });
   });
+  const governed = sumGovernedLedger(rows);
 
   // CONSUMED remains deliberately absent, exactly as before: consuming converts an existing
   // reservation into a permanent removal, and that quantity left availability when it was RESERVED.

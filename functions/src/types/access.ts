@@ -321,7 +321,15 @@ export type AuditAction =
   | "createCycleCount"
   | "submitCycleCount"
   | "reconcileCycleCount"
-  | "cancelCycleCount";
+  | "cancelCycleCount"
+  // Work Order transition audit trail (M9/H19 remediation) -- the trusted transitionWorkOrder callable's
+  // OWN Audit Event for every applied action (Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/
+  // Close/Cancel/MarkReady), not only the Complete-with-linked-Sales-Order write-back which already had
+  // its own separate salesOrderFulfillmentWriteBack action above. Deterministic Audit Event id (derived
+  // from workOrderId + action, see workOrderTransitionMath.ts) makes every applied transition traceable
+  // to a stable id -- collision-free without a caller-supplied idempotency key, because canTransition()
+  // already makes a given action apply to a given Work Order at most once across its whole lifecycle
+  | "transitionWorkOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

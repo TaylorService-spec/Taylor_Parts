@@ -6,20 +6,32 @@
 // document; Payment has NO read path of any kind (readVia UNKNOWN) and no server-allocated
 // reference, so its identity leans on the one real, if frequently-null, human-facing field
 // (externalRef) instead. Honest about both gaps rather than papering over either.
+//
+// NO invoiceIndexList EXISTS (H4/M19 fix, docs/... backfill). It used to declare an INDEX
+// surface with no readCallable override, which silently inherited the entity's scoped-only
+// listAccountInvoiceAr at runtime — a combination that would throw on every single request
+// (an INDEX list never supplies the parent-scope filter that callable requires). See
+// definitions/invoice.js's own header for the full account. This file no longer asserts
+// anything about a list view that does not exist.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateEntityDefinition, findField } from "../src/metadata/entityDefinition.js";
-import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
-import { invoiceEntity, invoiceIndexList } from "../src/metadata/definitions/invoice.js";
+import { invoiceEntity } from "../src/metadata/definitions/invoice.js";
 import { paymentEntity } from "../src/metadata/definitions/payment.js";
 import { INVOICE_STATES } from "../src/domain/commercialFinance.js";
 
 // ── Invoice ──────────────────────────────────────────────────────────────────────────────────
 
-test("the Invoice entity is valid, and so is its index list", () => {
+test("the Invoice entity is valid", () => {
   assert.deepEqual(validateEntityDefinition(invoiceEntity), []);
-  assert.deepEqual(validateListViewDefinition(invoiceIndexList, invoiceEntity), []);
+});
+
+test("no list view is declared for Invoice -- the only registered callable is scoped and cannot back an INDEX list", async () => {
+  // Only the entity is exported from invoice.js; no invoiceIndexList-style export exists,
+  // the same restraint payment.js already applies to itself (see the mirrored test below).
+  const invoiceModuleKeys = Object.keys(await import("../src/metadata/definitions/invoice.js"));
+  assert.deepEqual(invoiceModuleKeys, ["invoiceEntity"]);
 });
 
 test("Invoice collection is invoices, deny-all in Rules, read only via the trusted callable", () => {
@@ -97,12 +109,6 @@ test("dueDate is DATE -- stored as ms epoch (invoiceCommands.ts's isInt guard), 
   assert.notEqual(dueDate.type, "NUMBER");
 });
 
-test("dueDate's retype changes no FILTER/SORT and demands no new composite index -- it is neither filtered nor sorted anywhere in the index list", () => {
-  assert.equal(invoiceIndexList.filters.length, 0);
-  assert.ok(!invoiceIndexList.defaultSort.some((s) => s.fieldId === "dueDate"));
-  assert.deepEqual(requiredIndexes(invoiceIndexList, invoiceEntity), []);
-});
-
 test("provenance: issuedAt/issuedAtMillis/updatedAt exist; createdBy and updatedBy do NOT, anywhere", () => {
   const issuedAt = findField(invoiceEntity, "issuedAt");
   const issuedAtMillis = findField(invoiceEntity, "issuedAtMillis");
@@ -131,22 +137,6 @@ test("the derived AR read-only fields (arPosition, daysOverdue) are never declar
 
 test("no outbound relationships are declared -- account.invoices belongs on account.js, outside this lane", () => {
   assert.equal(invoiceEntity.relationships.length, 0);
-});
-
-test("the index list declares no filters -- listAccountInvoiceAr accepts only { accountId, limit }", () => {
-  assert.deepEqual(invoiceIndexList.filters, []);
-});
-
-test("the index list demands no composite index -- one sort field, zero filters", () => {
-  assert.deepEqual(requiredIndexes(invoiceIndexList, invoiceEntity), []);
-});
-
-test("default sort is invoiceNumber DESC, most recent first, with the __name__ tiebreaker", () => {
-  assert.deepEqual(
-    invoiceIndexList.defaultSort.map((s) => [s.fieldId, s.direction]),
-    [["invoiceNumber", "DESC"]]
-  );
-  assert.equal(invoiceIndexList.tiebreaker, "__name__");
 });
 
 // ── Payment ──────────────────────────────────────────────────────────────────────────────────
