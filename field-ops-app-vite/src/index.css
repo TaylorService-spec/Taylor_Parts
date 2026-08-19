@@ -1527,6 +1527,14 @@ button:hover {
 .fo-landing-card:hover { border-color: var(--color-brand-secondary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 .fo-landing-card-title { font-weight: 600; color: var(--color-brand-secondary); }
 
+/* feat/visual-today-page -- LandingPage.jsx's per-domain groups above the existing
+   .fo-landing-grid/.fo-landing-card cards (unchanged; reused as-is). Additive only --
+   spacing/colour come from the token layer, nothing above is renamed or retired. */
+.fo-landing-group { margin-top: var(--space-7); }
+.fo-landing-group:first-of-type { margin-top: 0; }
+.fo-landing-group__title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.fo-landing-group__title .fo-icon { color: var(--color-text-muted); }
+
 /* ============================================================================
    VERENWARD BRAND LOCKUP  (shared/brand/VerenwardMark.jsx)
    The glyph reads its three strokes from tone-scoped variables, so the same
