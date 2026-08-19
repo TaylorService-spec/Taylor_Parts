@@ -43,7 +43,7 @@ export default function PartsOverviewPanel({ jobs, technicians, workOrders }) {
 
   return (
     <div className="tech-overview tech-overview--compact">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="fo-controltower-panel__header">
         <h3>🧰 Parts Overview</h3>
         <button type="button" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? "Show" : "Hide"}
