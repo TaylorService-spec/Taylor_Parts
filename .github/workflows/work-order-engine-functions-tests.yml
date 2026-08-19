@@ -25,6 +25,7 @@ on:
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
       - "functions/test/inventoryService.test.mjs"
+      - "functions/test/woAvailabilityGovernedLedger.test.mjs"
       - "functions/test/salesOrderFulfillmentWriteBack.test.mjs"
       - "functions/test/salesOrderFulfillmentWriteBackEmulator.test.mjs"
       - "functions/package.json"
@@ -49,6 +50,7 @@ on:
       - "functions/src/types/workOrder.ts"
       - "functions/test/workOrderEngineFunctions.test.js"
       - "functions/test/inventoryService.test.mjs"
+      - "functions/test/woAvailabilityGovernedLedger.test.mjs"
       - "functions/test/salesOrderFulfillmentWriteBack.test.mjs"
       - "functions/test/salesOrderFulfillmentWriteBackEmulator.test.mjs"
       - "functions/package.json"
@@ -97,6 +99,10 @@ jobs:
 
       - name: Inventory ledger (inventoryService.ts) behavioral tests (build + run)
         run: npm run build && node --test test/inventoryService.test.mjs
+        working-directory: functions
+
+      - name: Inventory ledger governed-sum arithmetic (offline, no emulator)
+        run: npm run build && node --test test/woAvailabilityGovernedLedger.test.mjs
         working-directory: functions
 
       - name: Sales Order fulfillment write-back tests (unit + emulator)
