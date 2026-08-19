@@ -3100,3 +3100,68 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-icon--spin { animation: fo-spin 0.9s linear infinite; }
 
 
+
+/* === inline-style elimination: inventory-core (Manufacturers/PartMasterList/PartsList/
+   PartsShadowParityDiagnostics) ==========================================================
+   Rewiring pass only -- every rule below reproduces the literal inline value it replaces
+   (or the nearest design token within ~1px), no re-spacing. Color pairs reuse existing
+   token pairings already shipped elsewhere in this file (STATUS_TONE/OUTCOME_TONE mirrors
+   the success/warning/danger/info surface+ink pairs used throughout index.css), so no new
+   contrast ratio is introduced here. */
+
+/* -- Manufacturers.jsx -- */
+.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.fo-mfr__title { margin: 0; }
+.fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+.fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.fo-mfr__notice { background: var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--font-size-sm); margin-bottom: var(--space-2); }
+
+.fo-mfr__badge { padding: 2px var(--space-2); border-radius: 12px; font-size: var(--font-size-sm); font-weight: 600; }
+.fo-mfr__badge--active { background: var(--color-success-surface); color: var(--color-success); } /* 4.5:1+, same pairing used repo-wide */
+.fo-mfr__badge--inactive { background: var(--color-warning-surface); color: var(--color-warning); } /* 4.5:1+, same pairing used repo-wide */
+
+.fo-mfr__outcome { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; font-size: var(--font-size-sm); }
+.fo-mfr__outcome--applied { background: var(--color-success-surface); color: var(--color-success); }
+.fo-mfr__outcome--replayed { background: var(--color-surface-sunken); color: var(--color-info); }
+.fo-mfr__outcome--noop { background: var(--color-border); color: var(--color-text-primary); }
+.fo-mfr__outcome--denied { background: var(--color-danger-surface); color: var(--color-danger); }
+.fo-mfr__outcome--invalid { background: var(--color-warning-surface); color: var(--color-warning); }
+.fo-mfr__outcome--conflict { background: var(--color-warning-surface); color: var(--color-warning); }
+.fo-mfr__outcome--not-found { background: var(--color-danger-surface); color: var(--color-danger); }
+.fo-mfr__outcome--unavailable { background: var(--color-border); color: var(--color-text-primary); }
+.fo-mfr__outcome--error { background: var(--color-danger-surface); color: var(--color-danger); }
+
+.fo-mfr__panel { border: 1px solid var(--color-border); border-radius: 8px; padding: var(--space-4); margin: var(--space-2) 0; background: var(--color-surface-elevated); }
+.fo-mfr__panel-header { display: flex; justify-content: space-between; align-items: center; }
+.fo-mfr__panel-title { margin: 0; font-size: var(--font-size-base); }
+.fo-mfr__close-btn { border: none; background: none; cursor: pointer; font-size: var(--font-size-lg); color: var(--color-text-secondary); }
+
+.fo-mfr__status-desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.fo-mfr__status-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.fo-mfr__status-btn { padding: var(--space-2) 14px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
+.fo-mfr__status-btn--disabled { cursor: not-allowed; }
+
+.fo-mfr__form { max-width: 420px; }
+.fo-mfr__field { margin-bottom: 10px; }
+.fo-mfr__label { display: block; font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1); }
+.fo-mfr__input { padding: 6px; font-size: var(--font-size-sm); width: 100%; box-sizing: border-box; }
+.fo-mfr__form-actions { display: flex; gap: var(--space-2); }
+.fo-mfr__btn-submit { padding: var(--space-2) 16px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+.fo-mfr__btn-submit--disabled { background: var(--color-info-surface); cursor: not-allowed; }
+.fo-mfr__btn-secondary { padding: var(--space-2) 16px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
+
+/* -- PartMasterList.jsx -- */
+.fo-pml__part-number { font-family: monospace; }
+.fo-pml__actions { white-space: nowrap; }
+
+/* -- PartsList.jsx -- */
+.fo-parts__toolbar--end { justify-content: flex-end; }
+.fo-parts__toolbar--center { justify-content: center; }
+
+/* -- PartsShadowParityDiagnostics.jsx -- */
+.fo-parity__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.fo-parity__result-box { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: 8px; margin-top: var(--space-2); }
+.fo-parity__list { margin-top: var(--space-3); list-style: none; padding: 0; font-family: monospace; font-size: var(--font-size-sm); }
+.fo-parity__cell { padding: 2px 0; }
+.fo-parity__copy-btn { margin-top: var(--space-2); }
+.fo-parity__copied { margin-left: var(--space-2); color: var(--color-success); font-size: var(--font-size-xs); }

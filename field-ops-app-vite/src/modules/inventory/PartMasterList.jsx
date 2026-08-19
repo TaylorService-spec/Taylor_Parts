@@ -206,14 +206,14 @@ export default function PartMasterList(props) {
             <tbody>
               {parts.map((part) => (
                 <tr key={part.partId}>
-                  <td style={{ fontFamily: "monospace" }}>{part.internalPartNumber}</td>
+                  <td className="fo-pml__part-number">{part.internalPartNumber}</td>
                   <td>{part.name}</td>
                   <td>{part.category || "—"}</td>
                   <td>{part.controlType}</td>
                   <td>{part.stockingClass}</td>
                   <td>{part.stockingUnit}</td>
                   <td><StatusPill tone={partStatusTone(part.status)} label={part.status} /></td>
-                  <td style={{ whiteSpace: "nowrap" }}>
+                  <td className="fo-pml__actions">
                     <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}
                     <button type="button" onClick={() => openStatus(part)} disabled={busy} className="fo-btn-secondary">Status</button>
                   </td>
