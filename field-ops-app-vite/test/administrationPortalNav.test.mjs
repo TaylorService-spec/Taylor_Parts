@@ -96,8 +96,20 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly ten Administration subnav items now exist (eight original + Overview + Permission Preview)", () => {
-  assert.equal(adminDomain.subnav.length, 10);
+ok("exactly eleven Administration subnav items now exist (eight original + Overview + Permission Preview + Duplicate Rules)", () => {
+  // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
+  // was added deliberately (Owner, 2026-08-19) as its own tab under Administration.
+  assert.equal(adminDomain.subnav.length, 11);
+});
+
+ok("Duplicate Rules is a visible Administration tab, not hidden", () => {
+  const item = adminDomain.subnav.find((i) => i.key === "duplicateRules");
+  assert.ok(item, "duplicateRules subnav item must exist");
+  assert.equal(item.path, "duplicate-rules");
+  assert.equal(item.label, "Duplicate Rules");
+  // navHidden would make it routed-but-unreachable -- the exact defect sweep R1-19
+  // found on the Integrations item.
+  assert.notEqual(item.navHidden, true);
 });
 
 console.log(`\n${passed} passed, 0 failed`);
