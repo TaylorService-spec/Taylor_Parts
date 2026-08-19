@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import Icon from "./Icon.jsx";
 
 // Shared modal overlay -- the REFERENCE creation-overlay pattern (Customer
 // Creation Overlay). Renders into a portal on document.body so it escapes the
@@ -139,7 +141,7 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
         <div className="fo-modal-header">
           <h2 id={titleId} className="fo-modal-title">{title}</h2>
           <button type="button" className="fo-modal-close" aria-label={closeLabel} onClick={requestClose}>
-            &times;
+            <Icon icon={X} size="button" />
           </button>
         </div>
         <div className="fo-modal-body">{children}</div>
