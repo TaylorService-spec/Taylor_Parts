@@ -1,0 +1,111 @@
+{
+  "$comment": [
+    "OWNER-AUTHORIZED manager role grants, sandbox only. Prepared 2026-08-19.",
+    "",
+    "Owner authorization (verbatim, 2026-08-19): 'make this happen Mike -> operationsManager .",
+    "Santana -> salesManager . Erik -> accountingManager . Jake -> fieldManager', subsequently",
+    "CORRECTED by the Owner to: 'Santaana should be sales manager role. Erik should be finance",
+    "manager role, jake should be service manager role.'",
+    "",
+    "Owner ruling #113 (2026-08-19) requires this manifest to exist before any provisioning write:",
+    "'No provisioning or activation writes without a dry-run manifest and separate sandbox",
+    "authorization.' This file is that manifest. It does NOT perform the grant -- assignApprovedRole",
+    "/ grantRole are deployed Cloud Functions and calling them is a separate protected action.",
+    "",
+    "TWO NAMING DISCREPANCIES ARE RESOLVED HERE, DELIBERATELY, AND NEITHER IS A SILENT SUBSTITUTION:",
+    "",
+    "1. Erik. The Owner's first message said accountingManager; the correction said financeManager.",
+    "   The correction governs, so financeManager is what this manifest grants. Note the two Roles",
+    "   are now INTENTIONALLY IDENTICAL in capability (DECISIONS #114, PR #1314), so this choice",
+    "   changes nothing about what Erik can do today -- it only records which Role he holds. His Auth",
+    "   displayName is still 'Erik Accounting Manager', which now disagrees with his Role; renaming a",
+    "   display name is a separate write and is NOT included here.",
+    "",
+    "2. Jake. The Owner asked for 'service manager role'. There is NO serviceManager among the 15",
+    "   governed business Roles. fieldManager IS that Role: it carries the full Work Order lifecycle",
+    "   (workOrder.create/transition/cancel) plus inventory.transaction.read, coordinated-visit read,",
+    "   and account.record.read. This was confirmed with the Owner before implementation, after an",
+    "   earlier report of fieldManager's contents was found to be wrong (a grep pattern that excluded",
+    "   camelCase capability ids). Granting fieldManager is the faithful reading of the instruction,",
+    "   not a substitution made for convenience.",
+    "",
+    "PRECONDITIONS VERIFIED LIVE against eos-platform-sandbox on 2026-08-19, read-only:",
+    "  - all four employee documents exist",
+    "  - all four users documents exist and resolve to the principalUid recorded below",
+    "  - NONE of the four already holds the Role being granted (no duplicate/no-op writes)",
+    "  - 10 active roleAssignments exist before this change; 14 expected after",
+    "",
+    "GRANT IS NOT ACTIVATION. Several capabilities these Roles carry are registered active:false",
+    "(salesOrder.read, fulfillment.coordinatedVisit.read). Granting the Role records the authority;",
+    "those ids still resolve DENY until per-environment activation. Nothing here activates anything.",
+    "",
+    "SCOPE. Sandbox only. These four principals exist only in eos-platform-sandbox. This manifest",
+    "confers no production authority and must never be replayed against taylor-parts."
+  ],
+  "environment": {
+    "environmentId": "platform-sandbox",
+    "projectId": "eos-platform-sandbox",
+    "role": "sandbox"
+  },
+  "authorizationReference": "Owner instruction 2026-08-19 ('make this happen') as corrected same day; Owner ruling #113 (docs/DECISIONS.md) authorising all 15 governed business Roles to be grantable",
+  "approvedBy": "Owner (Rudy DiGiorgio)",
+  "preparedBy": "Claude Opus 5, repository prepare-lane only (no write performed)",
+  "expectedActiveAssignmentsBefore": 10,
+  "expectedActiveAssignmentsAfter": 14,
+  "grants": [
+    {
+      "roleId": "operationsManager",
+      "recipient": {
+        "employeeId": "sbx-opsmgr",
+        "principalUid": "Mhbm3PH94nb3HE10e6sNJue8gAA3",
+        "displayName": "Mike Operations Manager",
+        "email": "opsmgr@sandbox.invalid"
+      },
+      "businessNeed": "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse and Purchasing. Owner-named operations manager for the sandbox evaluation. Carries no role administration, no governed-field write and no reorder decision authority; can open a Customer but not amend one (deliberate asymmetry, DECISIONS #114).",
+      "scope": { "type": "global" },
+      "alreadyHeld": false
+    },
+    {
+      "roleId": "salesManager",
+      "recipient": {
+        "employeeId": "sbx-salesmgr",
+        "principalUid": "VuYX7VoevgRNZDNRNhORy1OSUID2",
+        "displayName": "Santana Sales Manager",
+        "email": "salesmgr@sandbox.invalid"
+      },
+      "businessNeed": "Customer/CRM read, create and update, plus Sales Order read and inventory visibility (Owner ruling 2026-08-19). Owner-named sales manager. salesOrder.read is registered active:false and remains inert until per-environment activation.",
+      "scope": { "type": "global" },
+      "alreadyHeld": false
+    },
+    {
+      "roleId": "financeManager",
+      "recipient": {
+        "employeeId": "sbx-acctmgr",
+        "principalUid": "anKfqN34GSS1RKCgF00nWTse6062",
+        "displayName": "Erik Accounting Manager",
+        "email": "acctmgr@sandbox.invalid"
+      },
+      "businessNeed": "Financial oversight: Customer read, governed commercial-field write (Issue #175), and both sides of the committed-money picture -- Sales Orders out and Purchase Orders in (Owner ruling 2026-08-19). Owner corrected the Role from accountingManager to financeManager; the two are intentionally identical in capability per DECISIONS #114.",
+      "scope": { "type": "global" },
+      "alreadyHeld": false
+    },
+    {
+      "roleId": "fieldManager",
+      "recipient": {
+        "employeeId": "sbx-fieldmgr",
+        "principalUid": "4gZ7I5V9XKYP6WTKQoTCdsWVpRL2",
+        "displayName": "Jake Field Manager",
+        "email": "fieldmgr@sandbox.invalid"
+      },
+      "businessNeed": "Technicians, dispatch and Work Orders: full Work Order lifecycle authority (create/transition/cancel), field-inventory read, coordinated-visit read and Customer read. This is the Role the Owner meant by 'service manager'; no serviceManager Role exists.",
+      "scope": { "type": "global" },
+      "alreadyHeld": false
+    }
+  ],
+  "notIncluded": [
+    "inventoryCreateExecutor -- Owner ruling #113 withholds it until an exact recipient and business need are presented. Owner answered 'Non one' when asked. Not granted.",
+    "owner -- no owner roleAssignment exists for any principal, which is why Reporting is unreachable and owner >= admin does not hold in practice. Granting it is privileged and requires a second distinct approver (two-person rule); it is deliberately NOT bundled into this manifest.",
+    "Display-name corrections -- Erik's Auth displayName still reads 'Accounting Manager' against a financeManager Role. Cosmetic, a separate write, not included.",
+    "Warehouse assignments -- tracked separately in warehouse-assignment-manifest-2026-08-19.json; no employee currently has one, so every warehouse-scoped predicate still denies for everyone."
+  ]
+}
