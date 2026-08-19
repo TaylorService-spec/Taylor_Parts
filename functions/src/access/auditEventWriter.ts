@@ -184,6 +184,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Work Order transition audit trail (M9/H19 remediation): runtime mirror of the transitionWorkOrder
   // AuditAction union member (types/access.ts) -- one Audit Event per applied Work Order transition.
   "transitionWorkOrder",
+  // Phantom Sales Order link repair -- see the matching entries on the AuditAction union (types/access.ts).
+  "repairPhantomSalesOrderLink",
+  "rollbackPhantomSalesOrderLinkRepair",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
