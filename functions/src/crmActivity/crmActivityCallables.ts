@@ -83,7 +83,8 @@ async function requireCrmActivityCreate(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [CRM_ACTIVITY_CREATE_CAPABILITY] });
     allowed = decisions[CRM_ACTIVITY_CREATE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireCrmActivityCreate] capability resolution failed for ${CRM_ACTIVITY_CREATE_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to create CRM Activities.");

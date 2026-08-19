@@ -493,6 +493,51 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     const wiredIds = accountRecordPageMainSubset.sections.map((s) => s.id);
     expect(wiredIds).toEqual(["opportunities", "salesOrders", "financials", "activityAndNotes", "serviceActivity"]);
   });
+
+  // H-A11 — before this fix, neither section declared `label`, so makeSection defaulted it
+  // to null: no <h3> heading rendered at all, and MetadataRecordPage's aria-label fallback
+  // was `section.label ?? section.kind` — IDENTICAL for both sections ("RELATED_LIST"),
+  // making them indistinguishable to a screen-reader user despite sitting in the same MAIN
+  // column. This is the assertion the prior test file (this one) never made — no test here
+  // ever checked for a heading or an accessible name — which is exactly why the regression
+  // shipped silently when these replaced AccountOpportunitiesSection.jsx's `<h4>Opportunities</h4>`
+  // and AccountSalesOrdersSection.jsx's `<h4>Sales Orders</h4>`.
+  it("H-A11: Opportunities and Sales Orders each render a real, distinct, meaningful accessible name — never the generic \"RELATED_LIST\" kind", async () => {
+    fetchCallablePageMock.mockResolvedValue({ rows: [], hasMore: false, nextCursorDoc: null });
+    const bothSections = {
+      ...accountRecordPage,
+      sections: accountRecordPage.sections.filter((s) => s.id === "opportunities" || s.id === "salesOrders"),
+    };
+    render(
+      <MemoryRouter>
+        <MetadataRecordPage
+          definition={bothSections}
+          record={{ id: "acct-42" }}
+          capabilityDecisions={{ "opportunity.read": true, "salesOrder.read": true }}
+          listResolver={accountPageListResolver}
+          entityResolver={accountPageEntityResolver}
+        />
+      </MemoryRouter>
+    );
+    // Wait for both related lists to settle so their empty-state copy is present too.
+    await screen.findByText(/no opportunities yet/i);
+    await screen.findByText(/no sales orders yet/i);
+
+    // Each section is a distinctly-named accessible region — getByRole throws if a name is
+    // missing, ambiguous, or shared, so this alone would fail against the pre-fix null label.
+    const opportunitiesRegion = screen.getByRole("region", { name: "Opportunities" });
+    const salesOrdersRegion = screen.getByRole("region", { name: "Sales Orders" });
+    expect(opportunitiesRegion).not.toBe(salesOrdersRegion);
+
+    // A visible heading renders for each — not just an aria-label with no on-screen text.
+    expect(screen.getByRole("heading", { name: "Opportunities" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sales Orders" })).toBeTruthy();
+
+    // The regression's exact symptom: the generic section KIND must never surface as an
+    // accessible name, for either section.
+    expect(screen.queryByRole("region", { name: "RELATED_LIST" })).toBeNull();
+    expect(document.body.textContent).not.toContain("RELATED_LIST");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
