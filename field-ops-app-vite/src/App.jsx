@@ -16,6 +16,7 @@ import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
+import { useSalesOrderCapabilities } from "./access/useSalesOrderCapabilities.js";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
@@ -188,6 +189,21 @@ function OpportunityWorkspaceConnected() {
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
   return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} />;
+}
+
+// Fixes the known defect (SalesOrderActions.jsx) where the Sales Order Advance/Cancel/Allocate/
+// Create Service buttons rendered live from the client-side STATE mirror alone, with no capability
+// check -- so a principal holding salesOrder.read but not salesOrder.write/.fulfill/.service
+// (salesManager, accountingManager, financeManager) saw fully enabled action buttons and only learned
+// they were unauthorized after confirming and hitting the server's denial. This is the one production
+// call site that feeds SalesOrderDetail's `hasCapability` prop the REAL trusted
+// resolveEffectiveAccessCallable decision (access/useSalesOrderCapabilities) -- mirrors
+// OpportunityWorkspaceConnected above exactly. Every unit/component test still gets the fail-closed
+// default (no `hasCapability` injected).
+function SalesOrderDetailConnected() {
+  const { user } = useAuth();
+  const { hasCapability } = useSalesOrderCapabilities(user);
+  return <SalesOrderDetail hasCapability={hasCapability} />;
 }
 
 function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys) {
@@ -534,7 +550,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
-              <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetail />} />
+              <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>
           )}
