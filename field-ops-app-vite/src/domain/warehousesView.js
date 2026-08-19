@@ -9,6 +9,17 @@
 // mirror of a backend authority, not a second authority.
 export const WAREHOUSE_STATUSES = Object.freeze(["ACTIVE", "INACTIVE"]);
 
+// "Active vocabulary": this ACTIVE/INACTIVE status is the canonical
+// "Record active" sense (available for current business use; not
+// deleted or retired) -- the generic master-data pattern reused across
+// Warehouse/Supplier/Equipment/Part/Truck/etc. registries. Distinct
+// from Employee active, Role assignment active, and Capability active.
+// The bare "Active" label is safe here because it always renders on a
+// page whose title already names the record type (e.g. "Warehouses"),
+// so there is no cross-screen ambiguity. See
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a for the full vocabulary and when a bare "Active" label
+// stops being safe.
 export const WAREHOUSE_STATUS_META = Object.freeze({
   ACTIVE: { label: "Active", tone: "done" },
   INACTIVE: { label: "Inactive", tone: "muted" },

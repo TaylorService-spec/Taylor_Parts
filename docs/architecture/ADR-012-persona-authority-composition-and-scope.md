@@ -62,6 +62,25 @@ Three rules follow, and they are the ones most likely to be violated under deliv
 - **Effective Access must never become an independently writable source of authority.** It is derived, cacheable and explainable — never an input.
 - **Agent authority ≤ Persona authority.** An agent representing a persona never exceeds what that persona holds, and never receives Admin-SDK bypass because it is "the system".
 
+### 2.2a "Active" vocabulary
+
+*Added 2026-08-18, feat/active-vocabulary (Owner ruling on an "Active" naming sweep). Not a rename of any repository concept — a naming-discipline record for a word already in heavy use across `functions/src` and `field-ops-app-vite/src`.*
+
+The word "active" (in identifiers, enum values, comments, and — most importantly — user-facing labels) covers **four distinct, legitimate concepts** in this codebase. A screen or a code comment that says bare "Active" without naming which one it means is ambiguous whenever two senses could plausibly apply on the same surface or to the same entity (e.g. a technician's Work Order count on two different screens).
+
+| # | Concept | Answers | Canonical definition |
+|---|---|---|---|
+| 1 | **Employee active** | Is this Employee currently eligible for operational assignment? | `EMPLOYMENT_STATUS.ACTIVE` — `field-ops-app-vite/src/domain/constants.js`; mirrored server-side by `employmentStatus === "ACTIVE"` checks (e.g. `functions/src/access/operationalRoleContext.ts`, firestore.rules `isActiveOperationalRole`) |
+| 2 | **Role assignment active** | Is this Role→Principal binding currently included in effective-access resolution? | `RoleAssignmentStatus` (`"active" \| "disabled"`) — `functions/src/types/access.ts` |
+| 3 | **Capability active** | Is this Permission/capability enabled in this environment? | `Permission.active?: boolean` — `functions/src/types/access.ts`; per-environment overrides in `functions/src/access/environmentCapabilityOverrides.ts` |
+| 4 | **Record active** | Is this generic master-data record available for current business use (not deleted or retired)? | the recurring `status: "ACTIVE" \| "INACTIVE"` / `isActive` pattern on Warehouse, Supplier, Equipment, Part, Truck, and similar registries (e.g. `WAREHOUSE_STATUS_META` in `field-ops-app-vite/src/domain/warehousesView.js`) |
+
+**A fifth sense exists and is explicitly NOT one of the four canonical concepts above**: a Work Order being "in progress." This sense is inconsistently scoped across the app today — the Work Orders list's tab (`field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx`) counts a 5-status bucket, the Dispatcher Board's Technician Capacity Card (`field-ops-app-vite/src/modules/dispatcherBoard/TechnicianCapacityCard.jsx`) counts a 1-status (`WORK_IN_PROGRESS`-only) bucket, and the Operations Execution Insights panel (`field-ops-app-vite/src/modules/operations/panels/ExecutionInsightsPanel.jsx`) counts an 8-status (all-non-terminal) bucket. **Reconciling which bucket definition is "correct" is a separate, already-reported workstream and out of scope here** — this ADR only records that the labels must say which bucket they mean (e.g. "In Progress," "Dispatched+," "Open Work Orders"), not bare "Active."
+
+**Rule of thumb — when is a bare "Active" label safe?** It is safe only when the surrounding page/section title already pins the record type unambiguously and no second "active" sense could apply to the same rendered number on another screen a user is likely to compare against (e.g. a "Warehouses" list's "Active" filter chip is fine; a technician-scoped count that could be read two different ways on two different screens is not). When in doubt, name the concept: "Active Employees," "In Progress," "Enabled," etc.
+
+**Test coverage.** `field-ops-app-vite/test/activeLabelConformance.test.jsx` enforces this going forward using the same allowlist-burn-down pattern as `compositionConformance.test.jsx`'s `LEGACY_BADGE_ALLOWLIST` — any new bare, unqualified "Active" JSX text/label outside the allowlist fails the build.
+
 ### 2.3 Scope is a first-class, generalized concept
 
 Authorization must **not** be hard-coded to a single hierarchy such as Business Unit.

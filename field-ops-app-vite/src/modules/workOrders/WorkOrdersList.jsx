@@ -26,10 +26,20 @@ import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 // of a locally-hand-rolled copy. No behavior change -- the filter bar
 // previously reused fo-nav-btn (tuned for the dark header nav); it now
 // uses FilterBar's own light-panel-appropriate styling instead.
+// "Active" vocabulary note: this tab's key stays "ACTIVE" (internal,
+// not persisted) but its user-facing label is deliberately NOT bare
+// "Active." This 5-status bucket (dispatched through work-in-progress)
+// is a different population than the Dispatcher Board capacity card's
+// "In Progress" count (TechnicianCapacityCard.jsx, WORK_IN_PROGRESS
+// only) and the Operations panel's 8-status "Active" column
+// (ExecutionInsightsPanel.jsx). All three are variants of the
+// discovered 5th "active" sense (Work Order in-progress) documented
+// in docs/architecture/ADR-012-persona-authority-composition-and-scope.md.
+// Counts are intentionally unchanged here -- only the label.
 const STATUS_GROUPS = [
   { key: "ALL", label: "All", statuses: null },
   { key: "OPEN", label: "Open", statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] },
-  { key: "ACTIVE", label: "Active", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
+  { key: "ACTIVE", label: "Dispatched+", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
   { key: "DONE", label: "Done", statuses: ["COMPLETED", "CLOSED"] },
   { key: "CANCELLED", label: "Cancelled", statuses: ["CANCELLED"] },
 ];

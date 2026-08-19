@@ -76,6 +76,12 @@ export interface Permission {
   // need is not inherently field-specific, but its first and, as of this
   // addition, only use is the `report.*` field-read/object-read
   // capability class below.
+  //
+  // "Active vocabulary": this is the canonical "Capability active"
+  // sense (enabled in that environment) -- distinct from Employee
+  // active, Role assignment active, and Record active. See
+  // docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+  // section 2.2a.
   active?: boolean;
 }
 
@@ -116,6 +122,13 @@ export interface Role {
   privileged?: boolean;
 }
 
+// "Active vocabulary": this is the canonical "Role assignment active"
+// sense (included in effective-access resolution) -- distinct from
+// Employee active (employmentStatus), Capability active
+// (PermissionDefinition.active / per-env overrides), and Record active
+// (generic master-data isActive/status). See
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a for the full vocabulary.
 export type RoleAssignmentStatus = "active" | "disabled";
 
 // Spec §5.3 -- binds a Role to a principal within a Scope. Creation/
