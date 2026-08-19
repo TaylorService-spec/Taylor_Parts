@@ -9,6 +9,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
+import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -28,7 +29,8 @@ import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
@@ -100,7 +102,7 @@ export default function WorkOrderDetailPage() {
           pure presentation component. No refresh prop is needed: useWorkOrder is an onSnapshot
           listener, so a saved plan re-renders from the persisted document rather than from optimistic
           client state. */}
-      <WorkOrderPartsPlanEditor workOrder={workOrder} />
+      <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
     </div>
   );
 }

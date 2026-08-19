@@ -6,11 +6,19 @@ import { useSalesOrder } from "../src/hooks/useSalesOrder.js";
 
 vi.mock("../src/hooks/useSalesOrder.js", () => ({ useSalesOrder: vi.fn() }));
 
+// Defaults `hasCapability` to grant-all -- most tests in this file exercise the STATE mirror
+// (domain/salesOrderActions.js), not the write-capability gate, so they keep the pre-existing
+// "an authorized actor" premise unless a test explicitly overrides `hasCapability` to exercise the
+// capability gate itself (see the "write-capability gating" describe block below).
 function renderAt(salesOrderId, props = {}) {
+  const { hasCapability = () => true, ...rest } = props;
   return render(
     <MemoryRouter initialEntries={[`/customers/opportunities/sales-order/${salesOrderId}`]}>
       <Routes>
-        <Route path="/customers/opportunities/sales-order/:salesOrderId" element={<SalesOrderDetail {...props} />} />
+        <Route
+          path="/customers/opportunities/sales-order/:salesOrderId"
+          element={<SalesOrderDetail hasCapability={hasCapability} {...rest} />}
+        />
       </Routes>
     </MemoryRouter>
   );
@@ -322,5 +330,90 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
 
     await screen.findByText(/not authorized to perform this action/i);
     expect(state.refetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("SalesOrderDetail -- write-capability gating (regression: read-only principal saw live write buttons)", () => {
+  // A principal holding salesOrder.read but none of salesOrder.write/.fulfill/.service
+  // (salesManager, accountingManager, financeManager per
+  // functions/src/access/governedBusinessRoles.ts) must NEVER see a live, clickable action button --
+  // the buttons must render disabled/protected with an honest reason, not hidden and not live.
+  it("with NO capability signal injected (fail-closed default), every offered action is disabled and honest -- clicking does nothing", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder());
+    const client = mockCommandClient();
+    // No `hasCapability` prop at all -- this is what production renders before the connected
+    // wrapper's real feed resolves, and what any caller that forgets to wire capabilities gets.
+    render(
+      <MemoryRouter initialEntries={["/customers/opportunities/sales-order/SO-42"]}>
+        <Routes>
+          <Route
+            path="/customers/opportunities/sales-order/:salesOrderId"
+            element={<SalesOrderDetail actionDeps={{ client }} />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const advanceBtn = screen.getByRole("button", { name: /Move to In Fulfillment/i });
+    const cancelBtn = screen.getByRole("button", { name: /Cancel order/i });
+    const allocateBtn = screen.getByRole("button", { name: /^Allocate$/i });
+    const serviceBtn = screen.getByRole("button", { name: /Create Service/i });
+
+    for (const btn of [advanceBtn, cancelBtn, allocateBtn, serviceBtn]) {
+      expect(btn.disabled).toBe(true);
+    }
+    expect(screen.getAllByText(/You are not authorized to perform this action on this Sales Order\./i).length).toBe(4);
+
+    // Clicking a disabled/protected action button must never open its confirm dialog.
+    fireEvent.click(advanceBtn);
+    expect(screen.queryByText(/This moves Sales Order/)).toBeNull();
+    fireEvent.click(allocateBtn);
+    expect(screen.queryByText(/This computes and records current availability/)).toBeNull();
+
+    expect(client.transitionSalesOrder).not.toHaveBeenCalled();
+    expect(client.allocateSalesOrder).not.toHaveBeenCalled();
+    expect(client.createServiceForSalesOrder).not.toHaveBeenCalled();
+  });
+
+  it("a read-only principal (salesOrder.read granted, write/fulfill/service NOT granted) sees the same honest-disabled buttons", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder());
+    const client = mockCommandClient();
+    // Mirrors what the real resolveEffectiveAccessCallable feed returns for salesManager /
+    // accountingManager / financeManager: salesOrder.read decides elsewhere (the read already
+    // succeeded, which is why this component mounted at all); none of the write capabilities decide
+    // true here.
+    const hasCapability = (id) => false;
+    renderAt("SO-42", { actionDeps: { client }, hasCapability });
+
+    expect(screen.getByRole("button", { name: /Move to In Fulfillment/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Cancel order/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /^Allocate$/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Create Service/i }).disabled).toBe(true);
+  });
+
+  it("a principal granted ONLY salesOrder.fulfill sees Allocate live but Advance/Cancel/Create Service still protected", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder());
+    const client = mockCommandClient();
+    const hasCapability = (id) => id === "salesOrder.fulfill";
+    renderAt("SO-42", { actionDeps: { client }, hasCapability });
+
+    expect(screen.getByRole("button", { name: /^Allocate$/i }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /Move to In Fulfillment/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Cancel order/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Create Service/i }).disabled).toBe(true);
+  });
+
+  it("a principal granted every write capability sees all offered actions live, and Advance still works end to end", async () => {
+    useSalesOrder.mockReturnValue(readySalesOrder());
+    const client = mockCommandClient();
+    client.transitionSalesOrder.mockResolvedValue({ result: { success: true, replayed: false, salesOrderId: "SO-42", state: "IN_FULFILLMENT" } });
+    const hasCapability = () => true;
+    renderAt("SO-42", { actionDeps: { client }, hasCapability });
+
+    const advanceBtn = screen.getByRole("button", { name: /Move to In Fulfillment/i });
+    expect(advanceBtn.disabled).toBe(false);
+    fireEvent.click(advanceBtn);
+    fireEvent.click(await screen.findByRole("button", { name: /^Advance$/i }));
+    await waitFor(() => expect(client.transitionSalesOrder).toHaveBeenCalledTimes(1));
   });
 });

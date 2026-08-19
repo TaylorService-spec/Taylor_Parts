@@ -201,7 +201,7 @@ export function computeJobRisk(job, context = {}, now = Date.now()) {
     id: job.id,
     score: breakdown.score,
     severity: breakdown.severity,
-    label: `${job.customer || job.id} (${job.status})`,
+    label: `${job.woNumber || job.id} (${job.status})`,
     metadata: {
       ageHours: breakdown.ageHours,
       status: job.status,

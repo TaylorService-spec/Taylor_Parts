@@ -173,8 +173,18 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
 
             {/* 3c. save -- persists the definition built above via the same trusted create()
                 callable Saved Reports' "New" uses. No server-side update path exists yet, so this
-                always creates a NEW saved report (never claims to overwrite one). */}
-            <SaveControl saveName={saveName} setSaveName={setSaveName} saveState={saveState} onSave={onSave} />
+                always creates a NEW saved report (never claims to overwrite one). Gated on the same
+                F2 `status === "ready"` the Run button uses -- the server's createSavedDefinition
+                runs the identical validateReportDefinition and would reject an invalid definition
+                with a generic "check the name" message that misdescribes a missing-field/grouping
+                error, so Save must never be reachable while the definition is invalid. */}
+            <SaveControl
+              saveName={saveName}
+              setSaveName={setSaveName}
+              saveState={saveState}
+              onSave={onSave}
+              disabled={status !== "ready"}
+            />
 
             {/* 4. validation + run */}
             {errors.length > 0 && (
@@ -230,7 +240,7 @@ function OpenBanner({ openState }) {
   );
 }
 
-function SaveControl({ saveName, setSaveName, saveState, onSave }) {
+function SaveControl({ saveName, setSaveName, saveState, onSave, disabled }) {
   return (
     <section aria-labelledby="rb-save-h">
       <h3 id="rb-save-h">Save</h3>
@@ -247,7 +257,8 @@ function SaveControl({ saveName, setSaveName, saveState, onSave }) {
           type="button"
           className="fo-btn-secondary"
           onClick={onSave}
-          disabled={saveState.status === "saving" || saveName.trim() === ""}
+          disabled={disabled || saveState.status === "saving" || saveName.trim() === ""}
+          aria-disabled={disabled || saveState.status === "saving" || saveName.trim() === ""}
         >
           {saveState.status === "saving" ? "Saving…" : "Save as new report"}
         </button>

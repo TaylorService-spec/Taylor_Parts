@@ -173,7 +173,7 @@ export default function Suppliers({ accessVersion }) {
       <MetadataListGrid presentation={gridPresentation} caption="Suppliers" onLoadMore={loadMore} onRetry={retry} />
 
       <p className="fo-muted fo-sup-footnote">
-        Purchase orders placed with these suppliers appear under <Link to="/dashboard/purchasing">Purchase Orders</Link>.
+        Purchase orders placed with these suppliers appear under <Link to="/purchasing">Purchase Orders</Link>.
       </p>
     </div>
   );

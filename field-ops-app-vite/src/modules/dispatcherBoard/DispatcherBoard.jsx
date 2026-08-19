@@ -52,7 +52,7 @@ export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
-  const { data: technicians, loading: techniciansLoading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading: techniciansLoading, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
   const [selectedId, setSelectedId] = useState(null);
@@ -256,6 +256,16 @@ export default function DispatcherBoard() {
         // indication anything failed.
         <p className="fo-muted" role="alert">
           {loadErrorMessage(workOrdersError, { entity: "work orders" })}
+        </p>
+      ) : techniciansError ? (
+        // Same fail-visibly fix as workOrdersError above, applied to the
+        // technicians read: a denied/unavailable technicians listener used to
+        // fall through to TechnicianBoard's "No technicians exist yet" empty
+        // state -- a dispatcher would read that as "there are no technicians"
+        // rather than "this read failed," with no recommendations, no drop
+        // targets, and no indication anything is wrong.
+        <p className="fo-muted" role="alert">
+          {loadErrorMessage(techniciansError, { entity: "technicians" })}
         </p>
       ) : workOrders.length === 0 ? (
         <p className="fo-muted">No work orders exist yet. Create one from the Work Orders tab to see it here.</p>

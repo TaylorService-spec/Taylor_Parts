@@ -75,6 +75,15 @@ export function mapWoStatusToLifecycleState(woStatus) {
   };
 }
 
+// True when `status` is one of the 11 governed fieldops_wos values (as opposed
+// to a legacy lowercase JOB_STATUS literal). timelineBuilder.js uses this to
+// tell a governed Work Order doc apart from a legacy Job record so it derives
+// state from the real status instead of comparing it against JOB_STATUS
+// literals it can never equal.
+export function isGovernedWorkOrderStatus(status) {
+  return Object.prototype.hasOwnProperty.call(WO_STATUS_TO_LIFECYCLE_STATE, status);
+}
+
 // Real-doc analog of the retired explainWorkOrderState(jobs) -- same return
 // shape ({ state, reasons, metrics }), but derived purely from a
 // fieldops_wos doc's own fields, never a jobs array.

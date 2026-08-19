@@ -71,7 +71,15 @@ function priorityChip(job) {
   return atRisk ? { label: "At risk", tone: "emergency" } : { label: "Scheduled", tone: "scheduled" };
 }
 
+// PHASE_BY_STATUS (domain/fieldWorkOrder.js) deliberately folds COMPLETED, CLOSED, and
+// CANCELLED into the single FIELD_PHASE.FINISHED bucket -- phase only answers "is there
+// still field work to do", not "what happened to this job". Reading the chip off phase
+// alone therefore renders a cancelled job with the identical green "Completed" chip as a
+// job that actually finished, with no way for a dispatcher to tell them apart. Cancelled
+// is checked against the real governed status here, ahead of the phase projection, so it
+// gets its own label and a tone (danger, not success) instead of borrowing "Completed"'s.
 function statusChipFor(job) {
+  if (job?.status === "CANCELLED") return { label: "Cancelled", tone: "emergency" };
   return PHASE_CHIP[fieldPhase(job)] ?? priorityChip(job);
 }
 
@@ -175,6 +183,8 @@ export default function Dispatch() {
                 <div className="fo-muted">
                   {job.assignedTechId
                     ? `Assigned to ${technicianName(job.assignedTechId) ?? job.assignedTechId}`
+                    : job.status === "CANCELLED"
+                    ? "This work order was cancelled before it was dispatched — no further action is needed."
                     : "Not ready to dispatch — this work order must be scheduled first."}
                 </div>
               ) : !job.assignedTechId ? (

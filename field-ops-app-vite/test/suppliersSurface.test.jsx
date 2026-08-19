@@ -151,6 +151,12 @@ describe("Suppliers surface", () => {
     expect(loadMoreSpy).toHaveBeenCalled();
   });
 
+  it("the footnote links to the actual mounted Purchase Orders route, not a nonexistent /dashboard/purchasing", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: "Purchase Orders" });
+    expect(link.getAttribute("href")).toBe("/purchasing");
+  });
+
   it("re-runs the read when accessVersion changes, the inventory/purchasing convention", () => {
     const { rerender } = render(
       <MemoryRouter>

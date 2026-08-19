@@ -138,8 +138,8 @@ export function computeDispatchRecommendations(jobs, technicians, now = Date.now
       id: job.id,
       score: recommended?.score ?? 0,
       label: recommended
-        ? `${job.customer || job.id} → ${recommended.technicianId}`
-        : `${job.customer || job.id}: no eligible technician`,
+        ? `${job.woNumber || job.id} → ${recommended.technicianId}`
+        : `${job.woNumber || job.id}: no eligible technician`,
       metadata: {
         job,
         recommended,

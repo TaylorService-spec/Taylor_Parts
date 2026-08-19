@@ -101,4 +101,26 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
     expect(screen.getByText(/no work orders exist yet\./i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  // A denied/failed technicians read used to fall through to
+  // TechnicianBoard's "No technicians exist yet." empty state -- a
+  // dispatcher would read that as "there are genuinely no technicians"
+  // rather than "this read just failed," with no recommendations, no drop
+  // targets, and no indication anything is wrong.
+  it("renders an alert, not the technicians empty state, when useFirestoreCollection(technicians) returns an error", () => {
+    useWorkOrders.mockReturnValue({
+      data: [{ id: "wo1", woNumber: "WO-1", status: "SCHEDULED", customerId: "c1" }],
+      loading: false,
+      error: null,
+    });
+    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    render(
+      <MemoryRouter>
+        <DispatcherBoard />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.queryByText(/no technicians exist yet\./i)).toBeNull();
+  });
 });

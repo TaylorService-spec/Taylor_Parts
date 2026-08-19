@@ -3,6 +3,7 @@ import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
+import Modal from "../../shared/ui/Modal";
 import { useSchedulingData } from "../../hooks/useSchedulingData";
 import { workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import {
@@ -77,13 +78,14 @@ function JobChip({ job, overlap, onOpen }) {
 
 // Inline detail for an opened Work Order (the drill-down "open" affordance). Read-only -- editing/dispatch
 // stays in the governed Work Order surfaces; this honestly shows what the schedule knows.
+//
+// Rendered through the shared Modal (src/shared/ui/Modal.jsx) rather than a bare
+// role="dialog" div -- a screen-reader/keyboard user who activates a job chip needs
+// aria-modal, focus moved into the dialog, a Tab-trap, Escape-to-close, and focus
+// restored to the chip on close, which only the shared component actually provides.
 function JobDetail({ job, techName, onClose }) {
   return (
-    <div className="fo-sched-detail" role="dialog" aria-label={`Work order ${job.woNumber}`}>
-      <div className="fo-sched-detail__head">
-        <strong>{job.woNumber}</strong>
-        <button type="button" className="fo-linkbtn" onClick={onClose}>Close</button>
-      </div>
+    <Modal title={job.woNumber} onClose={onClose} closeLabel="Close">
       <dl className="fo-sched-detail__grid">
         <dt>Status</dt><dd>{job.status}</dd>
         <dt>When</dt><dd>{new Date(job.startMillis).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}{job.endMillis ? ` – ${fmtTime(job.endMillis)}` : ""}</dd>
@@ -96,7 +98,7 @@ function JobDetail({ job, techName, onClose }) {
       <p className="fo-muted fo-sched-detail__note">
         Re-timing a scheduled job is a governed follow-on; open the Work Order in Service to dispatch or cancel it.
       </p>
-    </div>
+    </Modal>
   );
 }
 
