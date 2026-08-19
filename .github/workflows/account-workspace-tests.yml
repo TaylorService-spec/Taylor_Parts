@@ -86,10 +86,10 @@ jobs:
       # Pure view model: which metrics exist, and that an unavailable source never becomes a number.
       - name: Account health strip (offline)
         run: node test/accountHealthStrip.test.mjs
+        working-directory: field-ops-app-vite
 
       - name: Account AR in-flight sharing (#1095)
         run: node test/accountArInFlightSharing.test.mjs
-        working-directory: field-ops-app-vite
         working-directory: field-ops-app-vite
 
       # Locks the repetition regression: the unconfigured-provider sentence must not return 4x.
