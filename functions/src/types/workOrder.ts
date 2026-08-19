@@ -103,6 +103,18 @@ export interface WorkOrder {
   scheduledEnd?: Timestamp;
   scheduledTechId?: string;
 
+  // H20 fix (dispatch reassignment): only set when a Dispatch call sends a Work Order to a
+  // technician OTHER than the one it was Scheduled for (wo.scheduledTechId at the moment
+  // Dispatch runs). A denormalized snapshot of the most recent reassignment for cheap UI
+  // display on both boards -- the durable, append-only record of record is the matching
+  // "reassignWorkOrderTechnician" Audit Event (auditEventWriter.ts), which also carries the
+  // actor uid and server timestamp. Never set by Schedule, never set when Dispatch confirms
+  // the technician it was already scheduled for (that is not a reassignment).
+  reassignedFromTechId?: string;
+  reassignedAt?: Timestamp;
+  reassignedReason?: string;
+  reassignedByUid?: string;
+
   // Execution (immutable once set -- only transitionWorkOrder() writes these)
   dispatchedAt?: Timestamp;
   acceptedAt?: Timestamp;

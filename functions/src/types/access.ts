@@ -321,7 +321,13 @@ export type AuditAction =
   | "createCycleCount"
   | "submitCycleCount"
   | "reconcileCycleCount"
-  | "cancelCycleCount";
+  | "cancelCycleCount"
+  // H20 fix (dispatch reassignment) -- the trusted transitionWorkOrder Dispatch-action audit event for the
+  // narrow case where the technician actually being dispatched differs from wo.scheduledTechId. Records
+  // prior technician, new technician, actor, timestamp, and the dispatcher-supplied reason (required for
+  // this case only). Traceability only, not an idempotency gate -- Dispatch is structurally once-per-Work-
+  // Order via canTransition (SCHEDULED -> DISPATCHED, same as every other action here).
+  | "reassignWorkOrderTechnician";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

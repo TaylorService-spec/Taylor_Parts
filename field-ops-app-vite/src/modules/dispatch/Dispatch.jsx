@@ -79,6 +79,12 @@ export default function Dispatch() {
   const { data: jobs, loading, error } = useWorkOrders();
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const [dispatchError, setDispatchError] = useState(null);
+  // H20 fix: reassigning a job away from the technician it was Scheduled for is a distinct, audited,
+  // reason-required action (Owner ruling) -- never a silent side effect of picking someone else from this
+  // select. `pendingReassignment` holds the {job, technicianId} pair awaiting a typed reason; nothing is
+  // dispatched until the dispatcher confirms with a reason.
+  const [pendingReassignment, setPendingReassignment] = useState(null);
+  const [reassignReasonInput, setReassignReasonInput] = useState("");
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
 
@@ -86,17 +92,46 @@ export default function Dispatch() {
   // CREATED/READY_TO_DISPATCH/SCHEDULED -> DISPATCHED transition and the
   // admin/dispatcher permission, and writes the timestamp. Nothing about the
   // assignment is decided client-side.
-  async function assign(job, technicianId) {
+  async function assign(job, technicianId, reassignReason) {
     if (!technicianId) return;
     setDispatchError(null);
     const technician = technicians.find((t) => t.id === technicianId);
     if (!technician) return;
     try {
-      await transitionWorkOrder(job.id, "Dispatch", { assignedTechId: technicianId });
+      await transitionWorkOrder(job.id, "Dispatch", {
+        assignedTechId: technicianId,
+        ...(reassignReason ? { reassignReason } : {}),
+      });
     } catch (err) {
       console.error(err);
       setDispatchError(workflowActionErrorMessage(err));
     }
+  }
+
+  // H20 fix: the server is the only authority on whether this is actually a reassignment (it compares
+  // against wo.scheduledTechId at the moment Dispatch runs) -- this client-side check only decides whether
+  // to show the reason prompt before calling assign(); the server still enforces the requirement itself
+  // regardless of what this UI does.
+  function handleSelectTechnician(job, technicianId) {
+    if (!technicianId) return;
+    if (job.scheduledTechId && job.scheduledTechId !== technicianId) {
+      setPendingReassignment({ job, technicianId });
+      setReassignReasonInput("");
+      return;
+    }
+    assign(job, technicianId);
+  }
+
+  function confirmReassignment() {
+    if (!pendingReassignment || !reassignReasonInput.trim()) return;
+    assign(pendingReassignment.job, pendingReassignment.technicianId, reassignReasonInput.trim());
+    setPendingReassignment(null);
+    setReassignReasonInput("");
+  }
+
+  function cancelReassignment() {
+    setPendingReassignment(null);
+    setReassignReasonInput("");
   }
 
   return (
@@ -143,18 +178,58 @@ export default function Dispatch() {
                     : "Not ready to dispatch — this work order must be scheduled first."}
                 </div>
               ) : !job.assignedTechId ? (
-                <select defaultValue="" onChange={(e) => assign(job, e.target.value)}>
-                  <option value="" disabled>
-                    Select technician…
-                  </option>
-                  {technicians
-                    .filter((t) => t.status === TECH_STATUS.AVAILABLE)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                </select>
+                <>
+                  {/* H20 fix: make who this job was Scheduled for a visible fact on the dispatch surface
+                      itself, not something only discoverable by cross-referencing the Scheduling board.
+                      Picking anyone else in the select below is then a visible choice, not an accident. */}
+                  {job.scheduledTechId && (
+                    <div className="fo-muted">
+                      Scheduled for: {technicianName(job.scheduledTechId) ?? job.scheduledTechId}
+                    </div>
+                  )}
+                  <select
+                    value={pendingReassignment?.job.id === job.id ? pendingReassignment.technicianId : ""}
+                    onChange={(e) => handleSelectTechnician(job, e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Select technician…
+                    </option>
+                    {technicians
+                      .filter((t) => t.status === TECH_STATUS.AVAILABLE || t.id === job.scheduledTechId)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                  {/* H20 fix: dispatching to anyone OTHER than job.scheduledTechId is a reassignment --
+                      the Owner ruling requires a reason before it can be confirmed. Same-technician
+                      dispatch never reaches this prompt (handleSelectTechnician dispatches it immediately). */}
+                  {pendingReassignment?.job.id === job.id && (
+                    <div className="fo-form" role="group" aria-label="Reassignment reason required">
+                      <p className="fo-muted">
+                        Reassigning from {technicianName(job.scheduledTechId) ?? job.scheduledTechId} to{" "}
+                        {technicianName(pendingReassignment.technicianId) ?? pendingReassignment.technicianId} —
+                        a reason is required.
+                      </p>
+                      <textarea
+                        value={reassignReasonInput}
+                        onChange={(e) => setReassignReasonInput(e.target.value)}
+                        placeholder="Why is this job being reassigned?"
+                        aria-label="Reassignment reason"
+                        rows={2}
+                      />
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button type="button" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
+                          Confirm reassignment
+                        </button>
+                        <button type="button" onClick={cancelReassignment}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="fo-muted">Assigned to {technicianName(job.assignedTechId) ?? job.assignedTechId}</div>
               )}

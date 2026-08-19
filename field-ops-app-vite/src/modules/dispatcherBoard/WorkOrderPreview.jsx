@@ -76,6 +76,13 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
           support call without ever presenting it as the name. */}
       <div className="fo-muted">Customer: <CustomerIdentity identity={customerIdentity} showReference /></div>
 
+      {/* H20 fix: name who this Work Order was actually Scheduled for, visibly, on the surface where a
+          dispatcher picks (or drags) a technician to Dispatch to -- so sending it to someone else is a
+          choice made with the fact in view, not an accident discoverable only on the Scheduling board. */}
+      {workOrder.scheduledTechId && (
+        <div className="fo-muted">Scheduled for: {techName(workOrder.scheduledTechId)}</div>
+      )}
+
       <h4>Assigned Technician</h4>
       <div>{workOrder.assignedTechId ? techName(workOrder.assignedTechId) : "Unassigned"}</div>
 
@@ -134,6 +141,16 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
           >
             {isDispatching ? "Dispatching..." : "Dispatch"}
           </button>
+          {/* H20 fix: picking anyone other than who this Work Order was Scheduled for is a reassignment --
+              flagged here BEFORE the dispatcher clicks Dispatch. onDispatchToTechnician (handleDispatchDrop
+              in DispatcherBoard.jsx) still owns the actual reason prompt/confirmation for both this picker
+              and the drag-and-drop path below, so both routes share one enforcement point. */}
+          {pickerTechId && workOrder.scheduledTechId && pickerTechId !== workOrder.scheduledTechId && (
+            <p className="fo-muted" role="alert">
+              This reassigns the job from {techName(workOrder.scheduledTechId)} to {techName(pickerTechId)} --
+              a reason will be required.
+            </p>
+          )}
         </div>
       )}
     </div>

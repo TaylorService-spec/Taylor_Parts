@@ -47,6 +47,9 @@ interface TransitionWorkOrderExtra {
   scheduledEnd?: number;
   scheduledTechId?: string;
   assignedTechId?: string;
+  // H20 fix (dispatch reassignment): required only when Dispatch's assignedTechId differs from the Work
+  // Order's current scheduledTechId. See functions/src/transitionWorkOrder.ts's TransitionWorkOrderInput.
+  reassignReason?: string;
 }
 
 interface TransitionWorkOrderResult {

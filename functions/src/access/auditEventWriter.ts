@@ -181,6 +181,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "submitCycleCount",
   "reconcileCycleCount",
   "cancelCycleCount",
+  // H20 fix (dispatch reassignment): runtime mirror of the reassignWorkOrderTechnician AuditAction union member.
+  "reassignWorkOrderTechnician",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
