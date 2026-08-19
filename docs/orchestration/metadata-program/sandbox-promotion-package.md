@@ -1885,3 +1885,58 @@ Still tracked separately and unchanged by this repair:
 
 `TARGETED FUNCTIONS REPAIR: DEPLOYED AND VERIFIED — 12/12.`
 `SANDBOX PROMOTION CLOSEOUT: conditions met; closeout is the Owner's call.`
+
+---
+
+# §15 — SANDBOX PROMOTION COMPLETE (QUALIFIED)
+
+Owner-declared 2026-08-19. **No rollback warranted.** This section is the closing state of record for
+the promotion; anything below the line is follow-up work, not unfinished deployment.
+
+## 15.1 Final environment state
+
+| | |
+|---|---|
+| Hosting | **`0884e480`** — `environmentId: platform-sandbox`, served bundle `index-BmuCD58g.js` |
+| Functions | **84 ACTIVE** — `listSalesOrderIndex` at `b237f652`, `getInventoryAnalytics` at `923ed5b1` (revision `00011-sas`) |
+| Indexes | **38 READY**, including the 3 deliberate `equipment_models` orphans |
+| Rules | unchanged, never deployed in this promotion |
+| Activation overrides | **27**, unchanged |
+| Sales Order data | 14 records numbered `SO-2026-000001`…`000014`; counter `sales_orders_2026` at 14 |
+| Production | **untouched throughout** |
+
+## 15.2 What the promotion took, end to end
+
+Tranche 1 indexes · Tranche 2 Functions (**stopped** on a `500`) · governance correction (#1273) and
+Sales Order read fix (#1272) · Tranche 2R targeted repair · the Sales Order number backfill —
+authorization withheld once for a missing environment guard (#1277), a plan-hash label defect found
+and fixed during re-verification (#1278), then executed as one atomic transaction, 15 writes ·
+Tranche 3 Hosting, gated first on a timestamp-consumer review (§11) · and a targeted
+`getInventoryAnalytics` repair (#1283) after the acceptance matrix surfaced a live `500`.
+
+Two stops were the Owner's, and both were right: the environment guard, and the timestamp consumer
+gate. Two defects were mine and are recorded as such: merging #1204 without rebasing onto #1202, and
+reporting the analytics failure as "not reproducible with current code" after checking only that the
+code did not throw.
+
+## 15.3 The qualification
+
+The authenticated Account-page screen check was **not performed**. It is a manual UAT item rather
+than a deployment blocker: the served bundle is byte-identical to the reviewed artifact, and its
+governed data source returns all 14 records correctly. What remains unobserved is the rendering
+itself.
+
+## 15.4 Follow-up register — separate items, not promotion work
+
+| # | Item | Note |
+|---|---|---|
+| 1 | Owner-driven authenticated Account-page UAT | the one check no automated evidence here can supply |
+| 2 | Investigate `PRT-1001` negative available stock (`-2`) | surfaced by §13.4; reservation-netting can legitimately go negative, but it warrants its own look |
+| 3 | Correct the Sales Order timestamp projection | `salesOrderReadService.ts` reads `createdAtMillis`/`updatedAtMillis`, names nothing writes; the write path stores `createdAt`/`updatedAt` Timestamps. **Fix before any surface consumes those fields** (§11.4) |
+| 4 | Mount `salesOrder.index` | only through a separate reviewed UX slice; the list view, its callable wiring and the callable itself are deployed and healthy, but no route mounts it (§12.6) |
+
+Item 3 has a standing precondition rather than a schedule: today no consumer exists, which is the
+only reason the defect is harmless. The moment a column, sort, filter or export reads those fields,
+it stops being harmless.
+
+`SANDBOX PROMOTION: COMPLETE — QUALIFIED.`
