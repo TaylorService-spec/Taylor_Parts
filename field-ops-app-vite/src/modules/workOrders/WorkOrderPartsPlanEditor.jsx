@@ -284,6 +284,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
         </PlanMessage>
       )}
 
+
       {!editing && editableStatus && unresolved && (
         <PlanMessage tone="error">
           This plan contains parts recorded before canonical part identity, so it cannot be edited here
