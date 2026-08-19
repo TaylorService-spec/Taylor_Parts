@@ -586,3 +586,60 @@ the only working path is the CLI.
   rendered without the `onRequestReorder` prop its sibling passes.
 - **The WAREHOUSE_MANAGER warehouse-scoped read grant has no consumer and no route** — that role can
   never see the warehouses it is scoped to.
+
+## H19 — Four Work Orders already completed against a Sales Order that never existed **[verified]**
+
+H3 recorded five Work Orders pointing at a non-existent `so-harbor-c713`. The consequence is worse
+than a dangling reference, and it has already happened. Verified live:
+
+    wo-c713-1  COMPLETED   PRT-1002 qtyUsed=1
+    wo-c713-2  COMPLETED   PRT-1002 qtyUsed=1
+    wo-c713-3  CANCELLED   PRT-1002 qtyUsed=0
+    wo-c713-4  COMPLETED   PRT-1002 qtyUsed=1
+    wo-c713-5  COMPLETED   PRT-1002 qtyUsed=1
+    so-harbor-c713 exists: false
+
+`transitionWorkOrder.ts:241-309` gates the entire Sales Order fulfillment write-back on
+`if (soSnap.exists)`. When the Sales Order is missing, `soWriteBack` stays null and **the transaction
+proceeds normally** — no error, no rollback, and no audit event, because the only `stageAuditEvent`
+call in the file sits inside that same `if`.
+
+So four completions consumed governed inventory against a Sales Order that does not exist, and left
+**no record anywhere that the write-back was skipped**. This is not a future risk; it is
+already-executed state that no replay can reconstruct, because the evidence of the skip was never
+written.
+
+It also answers the question M9 left open: a failed write-back does not roll back the completion. It
+diverges silently.
+
+## H20 — Dispatch can reassign a scheduled Work Order to a different technician, unchecked
+
+`transitionWorkOrder.ts:205-224` writes `assignedTechId` from a caller-supplied value with **no check
+against `wo.scheduledTechId`**, and never updates `scheduledTechId` to match. The dispatcher's
+technician picker shows every available technician with no reference to who the job was scheduled for.
+
+A dispatcher can Schedule for technician X and Dispatch to technician Y entirely through the shipped
+UI, with no warning. The weekly scheduling board keys on `scheduledTechId` and keeps the slot
+reserved under X; the technician board and dashboard key on `assignedTechId` and show it under Y.
+Two technicians own the same Work Order on two governed surfaces.
+
+Worse, `findScheduleConflict` ran once, at Schedule time, against **X's** calendar. Y's calendar is
+never checked for that window, so the double-booking guard — which is otherwise rigorous, with a
+per-technician transactional lock — is simply bypassed for the technician who actually gets the job.
+
+## M31 — `completeAssignedJob` is a deployed, technician-invokable door back into the retired model
+
+Its only client wrapper has zero importers, and so does its read hook. Both technician surfaces that
+once used the legacy `fieldops_jobs`/`fieldops_technicians` pair were migrated to the governed Work
+Order Engine. But the callable stays deployed and technician-invokable with a real write cascade into
+both legacy collections — and it is the sole writer of `fieldops_technicians.status` (M17). A future
+PR adding a caller would resurrect the parallel system F0/F1 retired, and the comments in
+`WorkOrderActions.jsx` and `completeAssignedJob.ts` still describe that coexistence as current.
+
+## Verified clean in the Work Order engine
+
+The per-technician lock is correct: written only to force write-write contention inside the
+transaction, never read as a gate, so an aborted transaction cannot strand a technician. `executionLog`
+has a single writer, appends via `arrayUnion`, and stamps `at`/`byTechnicianId` from the authenticated
+caller — it cannot be reordered, overwritten or misattributed. All 11 statuses are reachable, the only
+trap states are the three intended terminals, and every status has a label.
