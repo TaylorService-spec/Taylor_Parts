@@ -7,6 +7,7 @@ import NewTechnicianModal from "./NewTechnicianModal";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import FailureState from "../../shared/ui/FailureState";
 
 // A technician is: { id, name, phone, status }
 // status is one of "available" | "on_job" | "off_shift"
@@ -32,7 +33,7 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 // create flow are unchanged.
 
 export default function Technicians() {
-  const { data: technicians, loading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading, error } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const [showCreate, setShowCreate] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   // Stable tabIndex=-1 on the new row (focusRowId not cleared) so focusing it
@@ -80,6 +81,12 @@ export default function Technicians() {
 
       {loading ? (
         <p className="fo-muted">Loading technicians…</p>
+      ) : error ? (
+        // Fail VISIBLY -- the exact bug Jobs.jsx was fixed for (site-work
+        // #3), sitting in its sibling: a denied/failed Technicians read
+        // used to render identically to the genuinely-empty "No technicians
+        // yet." state, hiding a real roster from an admin whose read failed.
+        <FailureState message="You don't have access to the technician list. Please try again." />
       ) : technicians.length === 0 ? (
         <p className="fo-muted">No technicians yet.</p>
       ) : (

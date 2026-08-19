@@ -322,6 +322,14 @@ export type AuditAction =
   | "submitCycleCount"
   | "reconcileCycleCount"
   | "cancelCycleCount"
+  // Work Order transition audit trail (M9/H19 remediation) -- the trusted transitionWorkOrder callable's
+  // OWN Audit Event for every applied action (Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/
+  // Close/Cancel/MarkReady), not only the Complete-with-linked-Sales-Order write-back which already had
+  // its own separate salesOrderFulfillmentWriteBack action above. Deterministic Audit Event id (derived
+  // from workOrderId + action, see workOrderTransitionMath.ts) makes every applied transition traceable
+  // to a stable id -- collision-free without a caller-supplied idempotency key, because canTransition()
+  // already makes a given action apply to a given Work Order at most once across its whole lifecycle
+  | "transitionWorkOrder"
   // Phantom Sales Order link repair (functions/src/repair/phantomSalesOrderLinkRepair.ts) -- the operator
   // CLI's repair of a Work Order salesOrderId that points at a non-existent Sales Order. Two separate,
   // durable events: the repair itself (tombstones the link -- salesOrderId is never modified) and, only if
