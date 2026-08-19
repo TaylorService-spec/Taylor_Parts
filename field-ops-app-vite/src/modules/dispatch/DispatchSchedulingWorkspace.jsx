@@ -18,6 +18,7 @@ import {
 } from "../../domain/dispatchSchedulingBoard";
 import { buildScheduleInput } from "../../domain/schedulingWorkspace";
 import { WORK_ORDER_STATUS_LABEL } from "../../domain/workOrderStatus";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Wave 7 completion, PART 1 -- the combined Dispatch / Scheduling operating workspace.
 //
@@ -185,9 +186,9 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
 
       <div className="fo-dboard-toolbar">
         <div className="fo-dboard-daynav" role="group" aria-label="Day navigation">
-          <button type="button" onClick={() => setDayMillis((d) => addDaysMillis(d, -1))}>‹ Previous day</button>
-          <button type="button" onClick={() => setDayMillis(startOfTodayMillis(now))}>Today</button>
-          <button type="button" onClick={() => setDayMillis((d) => addDaysMillis(d, 1))}>Next day ›</button>
+          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, -1))}>‹ Previous day</Button>
+          <Button variant="tertiary" onClick={() => setDayMillis(startOfTodayMillis(now))}>Today</Button>
+          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, 1))}>Next day ›</Button>
           <span className="fo-dboard-daylabel">{fmtDayHeading(board.dayMillis)}</span>
         </div>
         <div className="fo-dboard-summary">
@@ -234,6 +235,8 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
             <ul>
               {board.unassignedScheduledToday.map((job) => (
                 <li key={job.id}>
+                  {/* Left as a raw <button> -- same fo-linkbtn bespoke link style as DropConfirm's Cancel;
+                      see the note there. */}
                   <button type="button" className="fo-linkbtn" onClick={() => setOpenJob(job)}>{job.woNumber}</button>{" "}
                   <span className="fo-muted">{fmtTime(job.startMillis)}</span>
                 </li>
@@ -314,6 +317,11 @@ function TechRow({ row, isDropTarget, dropOffsetFraction, onDragOver, onDrop, on
         role="group"
         aria-label={`${tech.name ?? tech.id}'s schedule`}
       >
+        {/* These job chips are left as raw <button>s -- fo-dboard-chip is an absolutely-positioned,
+            left-aligned, multi-line, flex-column layout (position/left/width driven by inline style
+            from computed timeline percentages). The Button primitive's fixed inline-flex centered box
+            has no variant for this shape; wrapping it would fight the chip's own positioning/layout CSS
+            without an index.css change. See migration report. */}
         {row.jobs.map((job) => (
           <button
             type="button"
@@ -352,7 +360,7 @@ function ReadyCard({ wo, onDragStart, onDragEnd, onSchedule }) {
         <StatusChip status={wo.status} />
       </div>
       {wo.type ? <div className="fo-muted">{wo.type}</div> : null}
-      <button type="button" onClick={onSchedule}>Schedule</button>
+      <Button variant="secondary" onClick={onSchedule}>Schedule</Button>
     </div>
   );
 }
@@ -415,7 +423,11 @@ function DropConfirm({ pendingDrop, technicians, submitting, error, onConfirm, o
         </div>
         <FormError role="alert" className="fo-sched-form__error">{error}</FormError>
         <div className="fo-btn-row">
-          <button type="submit" disabled={submitting}>{submitting ? "Scheduling…" : "Confirm & Schedule"}</button>
+          <Button type="submit" variant="primary" disabled={submitting} loading={submitting}>Confirm & Schedule</Button>
+          {/* Left as a raw <button> -- fo-linkbtn is a bespoke underlined link style (no border/background,
+              brand-primary text) that the Button primitive's variants do not provide; wrapping it in
+              fo-button classes would fight fo-linkbtn's reset and change its appearance without an
+              index.css change. See migration report. */}
           <button type="button" className="fo-linkbtn" disabled={submitting} onClick={onCancel}>Cancel</button>
         </div>
       </form>
@@ -429,6 +441,7 @@ function JobDetail({ job, techName, onClose }) {
     <div className="fo-sched-detail" role="dialog" aria-label={`Work order ${job.woNumber}`}>
       <div className="fo-sched-detail__head">
         <strong>{job.woNumber}</strong>
+        {/* Left as a raw <button> -- same fo-linkbtn bespoke link style; see the note in DropConfirm. */}
         <button type="button" className="fo-linkbtn" onClick={onClose}>Close</button>
       </div>
       <dl className="fo-sched-detail__grid">
