@@ -71,6 +71,20 @@ ok("existing Users/Roles & Permissions/Vehicles/Regions/Company Settings/Integra
   }
 });
 
+// ----- Integrations: a real, complete screen (IntegrationsFaq.jsx) -- must be reachable
+// from the rail, not left behind navHidden like the genuinely-unbuilt placeholders -----
+ok("Integrations is not navHidden -- AppRail (!item.navHidden) renders it, matching the module README's documented 'Administration -> Integrations' journey", () => {
+  const integrations = byKey("integrations");
+  assert.ok(integrations, "integrations subnav item present");
+  assert.equal(integrations.navHidden, undefined, "integrations must not carry navHidden -- IntegrationsFaq.jsx is a built screen, not a placeholder");
+});
+ok("the still-unbuilt placeholders (Vehicles, Regions, Company Settings) remain navHidden", () => {
+  for (const key of ["vehicles", "regions", "companySettings"]) {
+    const item = byKey(key);
+    assert.equal(item.navHidden, true, `${key} should still be navHidden -- it has no built screen`);
+  }
+});
+
 // ----- Domain-level visibility/label/path unchanged -----
 ok("the Administration domain itself is still admin/dispatcher visible, technician fail-closed", () => {
   assert.equal(isDomainVisible(adminDomain, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
