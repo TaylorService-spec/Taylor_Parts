@@ -3,6 +3,7 @@ import { useSalesOrderActions } from "../../hooks/useSalesOrderActions.js";
 import { canAdvance, canCancel, canAllocate, canCreateService, nextAdvanceState } from "../../domain/salesOrderActions.js";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Sales Order operational actions -- wires the three trusted, already sandbox-activated write
 // commands (transitionSalesOrder / allocateSalesOrder / createServiceForSalesOrder) onto the
@@ -71,11 +72,11 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
         }
         primary={
           advanceAllowed && (
-            <button type="button" className="fo-btn-primary" disabled={anyBusy} onClick={() => setOpenDialog("ADVANCE")}>
+            <Button type="button" variant="primary" disabled={anyBusy} onClick={() => setOpenDialog("ADVANCE")}>
               {nextState === "IN_FULFILLMENT" && "Move to In Fulfillment"}
               {nextState === "FULFILLED" && "Mark Fulfilled"}
               {nextState === "CLOSED" && "Close order"}
-            </button>
+            </Button>
           )
         }
       />

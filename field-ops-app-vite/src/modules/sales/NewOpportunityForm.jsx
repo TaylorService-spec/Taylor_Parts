@@ -5,6 +5,7 @@ import { channelOptions } from "../../domain/opportunityFieldModel.js";
 import { validateOpportunityCreateInput, buildOpportunityCreatePayload } from "../../domain/opportunityCreateForm.js";
 import { useOpportunityCreate } from "../../hooks/useOpportunityCreate.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const EMPTY_DRAFT = { accountId: "", ownerEmployeeId: "", salesChannel: "", need: "", expectedValue: null, expectedCloseAt: null };
 
@@ -164,10 +165,16 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
         )}
 
         <div className="fo-sales-editform__actions">
-          <button type="submit" className="fo-btn-primary" disabled={writeDisabled || pending} title={writeDisabled ? readiness?.reason : undefined}>
+          <Button
+            type="submit"
+            variant={writeDisabled ? "protected" : "primary"}
+            disabled={pending}
+            title={writeDisabled ? readiness?.reason : undefined}
+            reason={writeDisabled ? readiness?.reason : undefined}
+          >
             {pending ? "Creating…" : "Create opportunity"}
-          </button>
-          <button type="button" className="fo-btn-ghost" onClick={requestClose}>Cancel</button>
+          </Button>
+          <Button type="button" variant="tertiary" onClick={requestClose}>Cancel</Button>
         </div>
       </form>
     </Modal>

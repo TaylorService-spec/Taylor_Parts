@@ -4,6 +4,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import { buildOpportunityPipeline, channelLabel, stageProgress } from "../../domain/opportunityLifecycle.js";
@@ -197,10 +198,10 @@ function LineEditor({ lines, onChange }) {
             onChange={(e) => update(i, { ref: e.target.value })} />
           <input className="fo-input fo-sales-lineedit__qty" aria-label="Quantity" type="number" min="1" step="1" value={l.qty ?? 1}
             onChange={(e) => update(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-          <button type="button" className="fo-btn-ghost" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</button>
+          <Button type="button" variant="tertiary" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</Button>
         </div>
       ))}
-      <button type="button" className="fo-btn-ghost" onClick={add}>Add line</button>
+      <Button type="button" variant="tertiary" onClick={add}>Add line</Button>
     </div>
   );
 }
@@ -243,8 +244,15 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
         </div>
       ))}
       <div className="fo-sales-editform__actions">
-        <button type="submit" className="fo-btn-primary" disabled={!canSave} title={saveReason}>Save</button>
-        <button type="button" className="fo-btn-ghost" onClick={onCancel}>Cancel</button>
+        <Button
+          type="submit"
+          variant={canSave ? "primary" : "protected"}
+          title={saveReason}
+          reason={canSave ? undefined : saveReason}
+        >
+          Save
+        </Button>
+        <Button type="button" variant="tertiary" onClick={onCancel}>Cancel</Button>
         {!canSave && <span className="fo-muted fo-sales-editform__note">{saveReason}</span>}
       </div>
     </form>
@@ -263,16 +271,17 @@ function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness,
       <div className="fo-sales-detail__block-head">
         <h4>{section.title}</h4>
         {showEdit && !editing && (
-          <button
+          <Button
             type="button"
-            className="fo-btn-ghost fo-sales-detail__edit"
-            disabled={editDisabled}
+            variant={editDisabled ? "protected" : "tertiary"}
+            className="fo-sales-detail__edit"
             title={editDisabled ? readiness.reason : undefined}
+            reason={editDisabled ? readiness.reason : undefined}
             aria-label={editDisabled ? `Edit ${section.title} — ${readiness.reason}` : `Edit ${section.title}`}
-            onClick={() => onEnterEdit(section.id)}
+            onClick={editDisabled ? undefined : () => onEnterEdit(section.id)}
           >
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {editing ? (
@@ -475,16 +484,16 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
   const actions = (
     <ActionRail
       primary={
-        <button
+        <Button
           type="button"
-          className="fo-btn-primary"
-          disabled={!createEnabled}
+          variant={createEnabled ? "primary" : "protected"}
           aria-label={createEnabled ? "New opportunity" : `New opportunity — ${writeReadiness.reason}`}
           title={createEnabled ? undefined : writeReadiness.reason}
+          reason={createEnabled ? undefined : writeReadiness.reason}
           onClick={createEnabled ? () => setCreating(true) : undefined}
         >
           New opportunity
-        </button>
+        </Button>
       }
     />
   );

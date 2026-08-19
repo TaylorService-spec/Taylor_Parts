@@ -25,6 +25,7 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
@@ -607,9 +608,9 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         <ActionRail
           start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
           primary={
-            <button type="button" className="fo-btn-primary" onClick={() => setNewPartOpen(true)}>
+            <Button variant="primary" onClick={() => setNewPartOpen(true)}>
               New Part
-            </button>
+            </Button>
           }
         />
       }

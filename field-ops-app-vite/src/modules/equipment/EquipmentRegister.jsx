@@ -11,6 +11,7 @@ import EquipmentCreateModal from "./EquipmentCreateModal";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
@@ -147,9 +148,8 @@ export default function EquipmentRegister() {
         // chosen -- an "Add Equipment" button with no customer would have nothing to
         // add to.
         accountChosen ? (
-          <button
-            type="button"
-            className="fo-btn-primary"
+          <Button
+            variant="primary"
             onClick={() => {
               // Clear the live region on OPEN. Duplicate names are legal (§8), so
               // creating "Unit A" twice would set an identical announcement string --
@@ -160,7 +160,7 @@ export default function EquipmentRegister() {
             }}
           >
             + New Equipment
-          </button>
+          </Button>
         ) : null
       }
     />
