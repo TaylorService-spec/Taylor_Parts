@@ -63,6 +63,14 @@ export default function TechnicianWorkOrderActions({ workOrder }) {
   const allowedActions = getAllowedActions(workOrder.status, "technician", true);
 
   async function handleAction(action) {
+    // Completion honesty: warn (not block) when planned parts are still
+    // unrecorded, exactly the silent-completion defect
+    // domain/plannedPartsCompletion.js exists to fix. Mirrors
+    // ExecutionCapture.jsx's adjustQty over-plan confirm gate.
+    if (action === "Complete") {
+      const message = unusedPlannedPartsMessage(workOrder);
+      if (message && !window.confirm(message)) return;
+    }
     setSubmitting(true);
     setError(null);
     try {
