@@ -25,6 +25,40 @@ function setUrl(search) {
   window.history.replaceState({}, "", `/${search}`);
 }
 
+// Brand hierarchy is Owner-ruled and not interchangeable: Verenward (parent) /
+// Enterprise Operations OS (platform) / Taylor Parts (implementation). The
+// approved workspace badge is "Taylor Parts · Sandbox". An earlier draft
+// rendered an invented "EOS" wordmark in parent position; these pin the ruling
+// so that cannot silently return.
+describe("Login brand hierarchy", () => {
+  beforeEach(() => { setUrl(""); });
+
+  it("renders all three tiers, with the workspace badge naming the environment", () => {
+    render(<Login />);
+    // The mark appears twice by design -- once in the brand panel and once in
+    // the compact identity that replaces it below 860px. jsdom applies no CSS,
+    // so both are in the tree here; assert presence, not uniqueness.
+    expect(screen.getAllByText("VERENWARD").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Enterprise Operations OS").length).toBeGreaterThan(0);
+    // The mock supplies role: "sandbox", so the badge must carry BOTH halves --
+    // the implementation and the environment.
+    expect(screen.getAllByText("Taylor Parts").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Sandbox").length).toBeGreaterThan(0);
+  });
+
+  it("shows the approved headline and supporting copy", () => {
+    render(<Login />);
+    expect(screen.getByText("RUN THE OPERATION.")).toBeTruthy();
+    expect(screen.getByText(/One connected system\./)).toBeTruthy();
+  });
+
+  it("does not promote the platform into parent-brand position", () => {
+    const { container } = render(<Login />);
+    // "EOS" as a standalone wordmark was the earlier mistake.
+    expect(container.textContent).not.toMatch(/EOS/);
+  });
+});
+
 describe("Login history navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();

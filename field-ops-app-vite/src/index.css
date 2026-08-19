@@ -2370,19 +2370,26 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     repeating-linear-gradient(115deg, rgba(232, 226, 214, 0.05) 0 1px, transparent 1px 21px);
 }
 
-.eos-auth__brand-identity { display: flex; align-items: center; gap: 12px; }
-.eos-auth__brand .eos-auth__mark { color: var(--verenward-stone); }
+.eos-auth__pitch { display: flex; flex-direction: column; gap: 10px; }
 
-.eos-auth__wordmark--brand { font-size: 26px; color: var(--color-text-inverse); }
-
-.eos-auth__brand .eos-auth__descriptor { color: rgba(232, 226, 214, 0.82); }
-
-.eos-auth__promise {
+/* Approved headline. Uses the display face once the foundation PR lands and
+   falls back to a condensed system stack until then, so this reads correctly
+   today and improves automatically rather than needing a second edit. */
+.eos-auth__headline {
   margin: 0;
-  max-width: 30ch;
-  font-size: 19px;
-  line-height: 1.45;
-  letter-spacing: -0.005em;
+  font-family: var(--font-display, "Barlow Condensed", "Arial Narrow", Arial, sans-serif);
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: 0.005em;
+  color: var(--color-text-inverse);
+}
+
+.eos-auth__supporting {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 15.5px;
+  line-height: 1.5;
   color: var(--verenward-stone);
 }
 
@@ -2571,31 +2578,36 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .eos-auth__support { margin: 0; font-size: 12.5px; color: var(--color-text-muted); }
 .eos-auth__meta { display: inline-flex; align-items: center; gap: 10px; }
 .eos-auth__build { font-size: 11.5px; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.eos-auth__env-compact { display: none; }
 
-.eos-auth__env {
+.eos-auth__workspace {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: 7px;
+  padding: 4px 11px;
   font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  border-radius: 999px;
-  /* Non-production only. The badge exists to stop someone acting on the wrong
-     data, so production is the unmarked default: its presence always means
-     this is not live. */
-  color: var(--color-warning);
-  background: var(--color-warning-surface);
-  border: 1px solid rgba(169, 116, 13, 0.28);
+  border-radius: 6px;
 }
 
-.eos-auth__brand .eos-auth__env {
-  color: var(--verenward-stone);
-  background: rgba(232, 226, 214, 0.13);
-  border-color: rgba(232, 226, 214, 0.3);
+/* The implementation always shows; the environment half only appears when this
+   is NOT production, so its presence always means "not live". */
+.eos-auth__workspace--onLight {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
 }
+
+.eos-auth__workspace--onDark {
+  color: var(--verenward-stone);
+  background: rgba(232, 226, 214, 0.12);
+  border: 1px solid rgba(232, 226, 214, 0.28);
+}
+
+.eos-auth__workspace-sep { opacity: 0.55; }
+.eos-auth__workspace-env { color: inherit; }
+.eos-auth__workspace-compact { display: none; }
 
 .eos-auth__env-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
@@ -2606,7 +2618,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .eos-auth__layout { grid-template-columns: minmax(0, 1fr); max-width: 452px; }
   .eos-auth__brand { display: none; }
   .eos-auth__identity--compact { display: flex; }
-  .eos-auth__env-compact { display: inline-flex; }
+  .eos-auth__workspace-compact { display: inline-flex; }
   .eos-auth__card { padding: 34px 28px 26px; }
 }
 
