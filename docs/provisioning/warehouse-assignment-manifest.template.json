@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "TEMPLATE. Deliberately unfilled -- functions/scripts/warehouseAssignmentProvisioningCli.js's",
+    "validateManifestShape() refuses to accept this file as-is (employeeId/warehouseId/rationale must each be",
+    "a non-empty string; null fails that check). Copy this file to a NEW path (do not edit this template in",
+    "place), fill in warehouseId + rationale for each entry per the Owner's decision recorded against",
+    "docs/provisioning/warehouse-assignment-candidates-2026-08-18.md, and pass the COPY to --manifest at",
+    "dry-run. See docs/operations/warehouse-assignment-provisioning-runbook.md."
+  ],
+  "entries": [
+    {
+      "employeeId": "sbx-partsmgr",
+      "warehouseId": null,
+      "rationale": null,
+      "_candidates": ["wh-main", "wh-north", "wh-sandbox-central", "wh-sandbox-north"]
+    },
+    {
+      "employeeId": "sbx-partsassoc",
+      "warehouseId": null,
+      "rationale": null,
+      "_candidates": ["wh-main", "wh-north", "wh-sandbox-central", "wh-sandbox-north"]
+    }
+  ]
+}
