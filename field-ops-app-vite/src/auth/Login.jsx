@@ -44,9 +44,32 @@ function EyeIcon({ off }) {
   );
 }
 
+// BACK-BUTTON SUPPORT. Login renders OUTSIDE BrowserRouter (App.jsx returns it
+// before the router mounts), so there is no route to push and react-router is
+// unavailable here. Recovery was therefore pure component state: entering it
+// created no history entry, so Back skipped the whole app instead of returning
+// to sign in. Moving the router above the auth gate would touch the entire
+// authenticated shell for one screen, so this uses the History API directly.
+//
+// The URL is the source of truth, which also makes the reset view linkable and
+// survive a refresh.
+const RECOVER_PARAM = "reset";
+
+function readModeFromLocation() {
+  if (typeof window === "undefined") return "signin";
+  return new URLSearchParams(window.location.search).has(RECOVER_PARAM) ? "recover" : "signin";
+}
+
+function locationWithMode(mode) {
+  const url = new URL(window.location.href);
+  if (mode === "recover") url.searchParams.set(RECOVER_PARAM, "1");
+  else url.searchParams.delete(RECOVER_PARAM);
+  return url.toString();
+}
+
 export default function Login() {
   const { login, resetPassword } = useAuth();
-  const [mode, setMode] = useState("signin"); // "signin" | "recover"
+  const [mode, setMode] = useState(readModeFromLocation); // "signin" | "recover"
 
   // sign-in state
   const [email, setEmail] = useState("");
@@ -87,6 +110,26 @@ export default function Login() {
       if (t >= cooldownUntil) clearInterval(id); // self-stop at expiry
     }, 250);
     return () => clearInterval(id); // one timer per cooldown; cleaned on unmount
+  }, [cooldownUntil]);
+
+  // Keep the view in step with the history entry the browser is showing, so
+  // Back and Forward both work. Reading the cooldown here (rather than trusting
+  // the state at push time) means arriving back in recovery mid-cooldown lands
+  // on the confirmation view, never a fresh form that would look resendable.
+  useEffect(() => {
+    const onPopState = () => {
+      const next = readModeFromLocation();
+      setMode(next);
+      if (next === "recover") {
+        setRecoverError(null);
+        setRecoverSent(cooldownRemainingSeconds(cooldownUntil, Date.now()) > 0);
+      } else {
+        setRecoverError(null);
+        setRecoverSent(false);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, [cooldownUntil]);
 
   const cooldownRemaining = cooldownRemainingSeconds(cooldownUntil, now);
@@ -142,10 +185,21 @@ export default function Login() {
     // cooldown view -- NOT the fresh form -- so the cooldown cannot be bypassed
     // by leaving and re-entering recovery.
     setRecoverSent(cooldownRemainingSeconds(cooldownUntil, Date.now()) > 0);
+    // Push, so Back returns to sign in rather than leaving the app.
+    window.history.pushState({ eosAuthMode: "recover" }, "", locationWithMode("recover"));
     setMode("recover");
   };
 
   const backToSignIn = () => {
+    // If we pushed the recovery entry ourselves, walk back so the stack stays
+    // honest and Forward still works. If the user LANDED here directly (a
+    // shared ?reset link or a refresh), there is no in-app entry behind us and
+    // history.back() would leave the app -- replace instead.
+    if (window.history.state?.eosAuthMode === "recover") {
+      window.history.back(); // popstate handler resets the view
+      return;
+    }
+    window.history.replaceState({}, "", locationWithMode("signin"));
     setRecoverError(null);
     setRecoverSent(false);
     setMode("signin");
