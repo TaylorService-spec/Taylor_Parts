@@ -104,7 +104,9 @@ describe("ReceiveAgainstPurchaseOrder — SERIAL part", () => {
     fireEvent.change(serial1, { target: { value: "SN-1" } });
     fireEvent.change(serial2, { target: { value: "SN-1" } });
     expect(screen.getByRole("button", { name: "Continue" }).disabled).toBe(true);
-    expect(screen.getByText(/duplicate serial numbers/i)).toBeTruthy();
+    // Must carry a real, styled error class -- "fo-error" is never defined in index.css,
+    // so it renders as unstyled plain text with no visual error treatment.
+    expect(screen.getByText(/duplicate serial numbers/i).className).toBe("fo-form-error");
 
     // Trim whitespace but preserve case; distinct values -> enabled.
     fireEvent.change(serial1, { target: { value: "  AbC-1  " } });
