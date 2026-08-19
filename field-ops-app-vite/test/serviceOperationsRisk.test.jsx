@@ -50,10 +50,12 @@ describe("jobRiskScoring — toAgeHours regression + timestamp honesty", () => {
 describe("AtRiskPanel — Service Operations render path (was crashing)", () => {
   it("renders stalled jobs without a runtime exception", () => {
     // A clearly-stale job (100h old, awaiting dispatch) → HIGH/CRITICAL → appears in the panel.
-    const jobs = [{ id: "old", customer: "Harbor Grill", status: "CREATED", createdAt: NOW - 100 * HOUR, workOrderId: "WO-1" }];
+    // Governed WorkOrder docs carry `woNumber`, never `customer` (see functions/src/types/workOrder.ts) —
+    // fixtures here match that real shape rather than a legacy `customer` field.
+    const jobs = [{ id: "old", woNumber: "WO-2026-000042", status: "CREATED", createdAt: NOW - 100 * HOUR, workOrderId: "WO-1" }];
     render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
     expect(screen.getByText("At Risk Jobs")).toBeTruthy();
-    expect(screen.getByText(/Harbor Grill/)).toBeTruthy();
+    expect(screen.getByText(/WO-2026-000042/)).toBeTruthy();
     expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0);
   });
 
@@ -64,9 +66,22 @@ describe("AtRiskPanel — Service Operations render path (was crashing)", () => 
     // a real count like 8870h legitimately contains the substring "0h", so anchor with \b so only a genuine
     // leading "0h since creation" (a fabricated zero) can match. The unusable-timestamp ⇒ "age unknown" path
     // is covered deterministically by the domain tests above.
-    const jobs = [{ id: "old", customer: "Elm Dental", status: "CREATED", createdAt: NOW - 100 * HOUR }];
+    const jobs = [{ id: "old", woNumber: "WO-2026-000043", status: "CREATED", createdAt: NOW - 100 * HOUR }];
     render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
     expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0); // a real age renders
     expect(screen.queryByText(/\b0h since creation/)).toBeNull(); // no fabricated zero-age
+  });
+
+  it("labels a governed WorkOrder (no `customer` field) with its woNumber, not the raw Firestore doc id", () => {
+    // Regression: a real WorkOrder doc has no `customer` field (only `customerId`), so a label built as
+    // `job.customer || job.id` always fell back to the opaque auto-generated doc id. A dispatcher scanning
+    // this panel must see a human-readable work order number, never a raw id like this one.
+    const rawDocId = "aZ9xK2mQpL7vT4wR8nJc";
+    const jobs = [
+      { id: rawDocId, woNumber: "WO-2026-000099", customerId: "cust-1", status: "CREATED", createdAt: NOW - 100 * HOUR },
+    ];
+    render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
+    expect(screen.getByText(/WO-2026-000099/)).toBeTruthy();
+    expect(screen.queryByText(new RegExp(rawDocId))).toBeNull();
   });
 });
