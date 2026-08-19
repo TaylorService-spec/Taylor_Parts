@@ -1689,3 +1689,52 @@ activation lifts the catalog gate but never substitutes for a grant.
 **Boundary.** This decision authorizes repository implementation and evidence preparation only. The
 role grants themselves, the warehouse record changes, capability activation, the Work Order repairs
 and any deployment remain protected actions requiring separate authorization.
+
+
+## #114 — Manager-layer capability expansion, and Accounting/Finance parity supersedes their distinctness
+
+**Decision (Owner, 2026-08-18).** Five governed business Roles gain capability, expressed as changes
+to `functions/src/access/governedBusinessRoles.ts` (and its generated client mirror):
+
+| Role | Added |
+|---|---|
+| `salesManager` | `salesOrder.read`, `inventory.transaction.read` |
+| `financeManager` | `salesOrder.read`, `reorder.purchaseOrder.read` |
+| `accountingManager` | `account.governedField.write`, `salesOrder.read`, `reorder.purchaseOrder.read` |
+| `operationsManager` | `account.record.create` |
+| `fieldManager` | `account.record.read` |
+
+**"They all should see accounts."** Every manager Role now holds `account.record.read`. `fieldManager`
+was the only one without it: it could create, transition and cancel a Work Order but could not open
+the Customer the Work Order was for.
+
+**Accounting Manager is now identical to Finance Manager, deliberately.** This **supersedes** the
+earlier Owner requirement — recorded in this file's predecessor decisions and pinned by a test named
+"remain distinct (Owner's explicit requirement)" — that the two Roles must not share a grant set. The
+original distinction rested on the single id that happened to differentiate them
+(`account.governedField.write`), not on a described difference between the two jobs. The Owner has
+since decided they do the same work here ("accountingManager should be like financeManager for now").
+Parity was reached by **raising Accounting to Finance**, not by lowering Finance. The pinning test was
+**inverted rather than deleted**, so the parity is an asserted decision: a future divergence has to be
+someone's choice rather than a drift nobody noticed.
+
+**Operations Manager can open a Customer but not amend one.** `account.record.create` is granted;
+`account.record.update` and `account.governedField.write` remain DENIED. That asymmetry is
+intentional and pinned by test — it is not a half-finished grant to be "completed" later.
+
+**Grant is not activation.** `salesOrder.read` is registered `active: false` in the permission
+catalog. All three Roles that now hold it resolve **DENY / `inactivePermission`** until a separate
+per-environment activation. The tests assert *both* halves — that the grant is recorded, and that it
+still denies — so the day someone activates the id these Roles gain the read with no further change,
+and until then no amount of granting can open it.
+
+**Correction of record.** An earlier report in this workstream stated that `fieldManager` held only
+`inventory.transaction.read`, and that `financeManager` and `accountingManager` were already
+identical. Both statements were wrong; they came from a grep whose pattern excluded camelCase
+capability ids such as `workOrder.create`. `fieldManager` in fact held the full Work Order lifecycle,
+and the two money Roles differed by `account.governedField.write`. The Owner's instruction was framed
+against the incorrect table, and was re-confirmed against the corrected one before implementation.
+
+**Boundary.** Repository implementation only. No Role is *assigned* to any principal by this change,
+no capability is activated, nothing is deployed. Assignment, activation and deployment remain
+protected actions requiring separate authorization.
