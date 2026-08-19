@@ -383,6 +383,10 @@ export const NAV_DOMAINS = [
       // stay reachable from the rail per this module's own README (Administration ->
       // Integrations). navHidden was left on from the original placeholder batch edit;
       // removed so the nav matches the built screen.
+      // Duplicate Rules -- its own tab under Administration (Owner, 2026-08-19).
+      // Configuration people read far more often than they edit, so it sits with
+      // the other governed-configuration surfaces rather than in a workspace.
+      { key: "duplicateRules", label: "Duplicate Rules", path: "duplicate-rules" },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],

@@ -25,6 +25,7 @@ import AdministrationOverview from "./modules/administration/AdministrationOverv
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
+import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
@@ -364,6 +365,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
+  }
+  // Administration > Duplicate Rules -- reads the seeded ruleset and renders every
+  // edit control as protected+disabled with the reason, because the governed rules
+  // service does not exist yet. No Firestore access, no writes.
+  if (domain.key === "administration" && item.key === "duplicateRules") {
+    return <AdminDuplicateRules />;
   }
   // Administration > Integrations -- static, informational FAQ on the platform's
   // approved integration boundary (no Firestore access, no writes). Replaces the

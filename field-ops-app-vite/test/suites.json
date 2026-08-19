@@ -740,6 +740,10 @@
     {
       "file": "test/workOrderStatusLabelConformance.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/duplicateRules.test.mjs",
+      "runner": "node"
     }
   ]
 }

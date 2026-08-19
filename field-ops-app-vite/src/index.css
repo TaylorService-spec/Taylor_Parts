@@ -3237,3 +3237,189 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-sm);
 }
+
+/* === Administration -> Duplicate Rules ====================================
+   Rules are configuration people READ far more often than they edit, so this
+   leans on legibility over density: one rule per card, its criteria spelled out
+   rather than encoded, and the consequence stated in words ("Blocks the save")
+   instead of a status colour the reader has to learn.
+   All values come from the token layer; no new colour pairs are introduced. */
+
+.fo-duprules__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: var(--space-4) 0 var(--space-6);
+}
+
+/* --- object picker ------------------------------------------------------ */
+
+.fo-duprules__objects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.fo-duprules__object {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.fo-duprules__object:hover { border-color: var(--color-brand-primary); }
+
+.fo-duprules__object:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Selection is carried by border weight AND a filled count chip, not by colour
+   alone -- the same rule the status vocabulary follows. */
+.fo-duprules__object.is-selected {
+  border-color: var(--color-brand-primary);
+  box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+  font-weight: 600;
+}
+
+.fo-duprules__object-count {
+  min-width: 1.5rem;
+  padding: 0 var(--space-1);
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-control);
+}
+
+.fo-duprules__object.is-selected .fo-duprules__object-count {
+  color: var(--color-text-inverse);
+  background: var(--color-brand-primary);
+}
+
+/* --- rule cards --------------------------------------------------------- */
+
+.fo-duprules__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fo-duprule {
+  padding: var(--space-4);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.fo-duprule__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.fo-duprule__name {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.fo-duprule__criteria {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.fo-duprule__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- detail list -------------------------------------------------------- */
+
+.fo-duprule__detail {
+  display: grid;
+  grid-template-columns: minmax(9rem, max-content) 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.fo-duprule__detail dt {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.fo-duprule__detail dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.fo-duprule__criteria-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fo-duprule__criteria-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.fo-duprule__field { font-weight: 600; }
+
+.fo-duprule__method {
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.fo-duprule__blank-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* The message is what a person actually sees when the rule fires, so it is shown
+   as the quoted string it is rather than paraphrased into the layout. */
+.fo-duprule__message {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-page);
+  border-left: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+}
+
+.fo-duprule__rationale { color: var(--color-text-secondary); }
+
+.fo-duprule__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 640px) {
+  .fo-duprule__detail { grid-template-columns: 1fr; gap: var(--space-1); }
+  .fo-duprule__detail dt { margin-top: var(--space-2); }
+}
