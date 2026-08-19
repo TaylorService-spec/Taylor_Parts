@@ -1,0 +1,56 @@
+name: Field Ops Auth Tests
+
+# field-ops-app-vite/src/auth/ had no workflow path-filtering it at all: a change here ran no test
+# in CI. Real coverage today is narrow: employeeSession.test.mjs exercises ONLY the pure shape-builder
+# buildEmployeeSessionResult() in employeeSessionResult.js. AuthContext.jsx's useAuth() is fully
+# vi.mock()'d out in every test that imports it (dispatchSurfacesErrorState.test.jsx,
+# useCurrentTechnicianFailClosed.test.jsx) -- its real implementation never runs under test. Login.jsx
+# and employeeSession.js's own Firestore-reading resolveEmployeeSession() have no test at all. This
+# workflow wires up the one test that exists; the rest of the directory remains genuinely untested --
+# see PR description rather than a fabricated assertion.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/auth/employeeSession.js"
+      - "field-ops-app-vite/src/auth/employeeSessionResult.js"
+      - "field-ops-app-vite/test/employeeSession.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/field-ops-auth-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/auth/employeeSession.js"
+      - "field-ops-app-vite/src/auth/employeeSessionResult.js"
+      - "field-ops-app-vite/test/employeeSession.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/field-ops-auth-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  field-ops-auth-tests:
+    name: Employee session result -- pure shape-builder tests (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Employee session result tests
+        run: node test/employeeSession.test.mjs
+        working-directory: field-ops-app-vite

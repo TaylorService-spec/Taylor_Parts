@@ -35,6 +35,7 @@ import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import FailureState from "../../shared/ui/FailureState";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
@@ -774,7 +775,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
 function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
-  const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
     <div className="fo-card">
@@ -821,6 +822,11 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- a denied/failed read used to render the SAME
+        // "details unavailable" copy as a genuine not-yet-recorded PO. Fail
+        // visibly instead: "you cannot see it" is not "there is nothing to see".
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -948,8 +954,16 @@ function ReorderRequestCancelled({ request, employeeDirectory }) {
 //   - hooks/useReorderPurchaseOrderVoids.js's useReorderPurchaseOrderVoid()
 //     -- the separate, append-only void record itself.
 function ReorderRequestVoided({ request, employeeDirectory }) {
-  const { data: purchaseOrder, loading: purchaseOrderLoading } = usePurchaseOrderForReorderRequest(request.id);
-  const { data: voidRecord, loading: voidRecordLoading } = useReorderPurchaseOrderVoid(request.id);
+  const {
+    data: purchaseOrder,
+    loading: purchaseOrderLoading,
+    error: purchaseOrderError,
+  } = usePurchaseOrderForReorderRequest(request.id);
+  const {
+    data: voidRecord,
+    loading: voidRecordLoading,
+    error: voidRecordError,
+  } = useReorderPurchaseOrderVoid(request.id);
 
   return (
     <div className="fo-card">
@@ -1001,6 +1015,10 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- see ReorderRequestOrdered above: a denied/failed
+        // read must not render the same copy as a genuinely absent record.
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -1020,6 +1038,8 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
             </tr>
           </tbody>
         </table>
+      ) : voidRecordError && voidRecordError !== "not_found" ? (
+        <FailureState message="You don't have permission to view the void record." />
       ) : (
         <p className="fo-muted">Void record unavailable.</p>
       )}

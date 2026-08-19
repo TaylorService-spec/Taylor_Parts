@@ -268,44 +268,70 @@ export function validateListViewDefinition(def, entity, relationships = []) {
   }
   if (def.entityId !== entity.id) problems.push(`${at}: entityId "${def.entityId}" does not match entity "${entity.id}"`);
 
-  // X-ENTITY-SINGLE-READCALLABLE — a list view's own readCallable override, checked HERE
-  // rather than left to fail wherever a caller happens to open the list
+  // X-ENTITY-SINGLE-READCALLABLE — the readCallable this list will ACTUALLY run at runtime,
+  // checked HERE rather than left to fail wherever a caller happens to open the list
   // (X-UNCONSUMED-DECLARATION-PATTERN: this program's most-repeated defect is a
-  // declaration nothing checks). Three ways this can lie:
-  //   1. naming a callable callableListSource.js has never heard of — a typo or a
-  //      not-yet-registered callable, never a live read to attempt;
-  //   2. naming one on a CLIENT_DIRECT entity — that entity reads Firestore directly and
-  //      has no business routing through a callable at all;
-  //   3. naming one whose SCOPE does not match the surface — a RELATED list always
-  //      supplies a parent-scope filter (buildQueryDescriptor prepends it unconditionally
-  //      for `surface === "RELATED"`), so an unscoped callable there would either throw at
-  //      runtime (callableListSource's own unscoped-cannot-accept-scope guard) or, worse,
-  //      silently read the caller's whole authorized scope instead of the parent's rows;
-  //      an INDEX list never supplies a parent scope, so a scoped callable there would
-  //      throw on every single request. Both are caught here instead of at the first user
-  //      who opens the list.
-  if (def.readCallable) {
+  // declaration nothing checks).
+  //
+  // That callable is not always `def.readCallable`. listRuntime.js falls back to the
+  // entity's own `readCallable` whenever a list view declares none (`entity.readCallable ??
+  // null`) — so a list with NO override still makes a live call through whatever the entity
+  // names, and that inherited name is exactly as capable of lying as an explicit override.
+  // Validating only `if (def.readCallable)` checked nothing for every list that inherits,
+  // which is most of them: it looked like coverage but only ever exercised the override
+  // path, so a bad inherited name (unregistered, or scope-incompatible with THIS list's
+  // surface) sailed through definition-time validation and threw on the first user to open
+  // the list — the exact failure this validator exists to catch.
+  //
+  // `isOverride` only changes the wording below (an override names its own list view; an
+  // inherited name names the entity), never which checks run — both paths are the same live
+  // call and must pass the same gate.
+  const effectiveReadCallable = def.readCallable ?? entity.readCallable ?? null;
+  const isOverride = Boolean(def.readCallable);
+  if (effectiveReadCallable) {
+    const source = isOverride
+      ? `readCallable "${effectiveReadCallable}" is declared`
+      : `readCallable "${effectiveReadCallable}" is inherited from entity "${entity.id}"`;
+    // Three ways this can lie:
+    //   1. naming a callable callableListSource.js has never heard of — a typo or a
+    //      not-yet-registered callable, never a live read to attempt;
+    //   2. naming one on a CLIENT_DIRECT entity — that entity reads Firestore directly and
+    //      has no business routing through a callable at all. In practice this is only ever
+    //      reachable via an explicit override (a well-formed CLIENT_DIRECT entity has no
+    //      readCallable of its own to inherit), but nothing in entityDefinition.js actually
+    //      enforces that the two stay mutually exclusive, so this checks `entity.readVia`
+    //      unconditionally rather than trusting that shape;
+    //   3. naming one whose SCOPE does not match the surface — a RELATED list always
+    //      supplies a parent-scope filter (buildQueryDescriptor prepends it unconditionally
+    //      for `surface === "RELATED"`), so an unscoped callable there would either throw at
+    //      runtime (callableListSource's own unscoped-cannot-accept-scope guard) or, worse,
+    //      silently read the caller's whole authorized scope instead of the parent's rows;
+    //      an INDEX list never supplies a parent scope, so a scoped callable there would
+    //      throw on every single request. All three are caught here instead of at the first
+    //      user who opens the list — whether the name came from this list view or from the
+    //      entity it inherited from.
     if (entity.readVia === "CLIENT_DIRECT") {
       problems.push(
-        `${at}: readCallable "${def.readCallable}" is declared but entity "${entity.id}" reads CLIENT_DIRECT — ` +
+        `${at}: ${source} but entity "${entity.id}" reads CLIENT_DIRECT — ` +
           "a list view's readCallable only makes sense for a CALLABLE-read entity"
       );
-    } else if (!isKnownReadCallable(def.readCallable)) {
+    } else if (!isKnownReadCallable(effectiveReadCallable)) {
       problems.push(
-        `${at}: readCallable "${def.readCallable}" is not a known callable — see CALLABLE_SOURCES in callableListSource.js`
+        `${at}: ${source} but is not a known callable — see CALLABLE_SOURCES in callableListSource.js`
       );
     } else {
-      const info = readCallableSourceInfo(def.readCallable);
+      const info = readCallableSourceInfo(effectiveReadCallable);
       if (def.surface === "RELATED" && !info.scoped) {
         problems.push(
-          `${at}: readCallable "${def.readCallable}" is unscoped, but a RELATED list always supplies a parent-scope ` +
+          `${at}: ${source}, is unscoped, but a RELATED list always supplies a parent-scope ` +
             "filter — declare a scoped callable, or leave readCallable undeclared to use the entity's own"
         );
       }
       if (def.surface === "INDEX" && info.scoped) {
         problems.push(
-          `${at}: readCallable "${def.readCallable}" requires a parent-scope filter, but an INDEX list never ` +
-            "supplies one — declare an unscoped callable"
+          `${at}: ${source}, requires a parent-scope filter, but an INDEX list never ` +
+            "supplies one — declare an unscoped callable" +
+            (isOverride ? "" : ` (entity "${entity.id}" has no unscoped one to inherit; declare an override on this list)`)
         );
       }
     }

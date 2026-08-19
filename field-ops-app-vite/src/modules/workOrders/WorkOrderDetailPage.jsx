@@ -29,12 +29,28 @@ export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
   const { role } = useAuth();
-  const { workOrder, loading } = useWorkOrder(workOrderId);
-  const { account } = useAccount(workOrder?.customerId ?? null);
-  const { location } = useLocationDoc(workOrder?.locationId ?? null);
-  const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
+  const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
+  const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
+  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading work order…</LoadingState></div>;
+
+  // H14 -- a denied/failed Work Order read used to leave `loading` true
+  // forever (no error, no recovery). It now resolves with a distinct
+  // failure, never conflated with the CONFIRMED-absence "could not be
+  // found" message below, which only applies to a successful read that
+  // found no such Work Order.
+  if (error) {
+    return (
+      <div className="fo-panel">
+        <FailureState
+          message={error}
+          action={<button type="button" onClick={retry}>Retry</button>}
+        />
+      </div>
+    );
+  }
 
   if (!workOrder) {
     return (
@@ -59,6 +75,18 @@ export default function WorkOrderDetailPage() {
       <button type="button" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
         &larr; Back to Work Orders
       </button>
+      {/* H14 -- these two reads used to be dropped entirely (no error, no
+          loading) even though useAccount.js/useFirestoreCollection.js
+          already exposed them. A denied Account read rendered a blank/
+          raw-id customer name with no indication anything failed; a denied
+          Technicians read rendered as an empty list, indistinguishable from
+          "no technicians exist". Both now render a visible failure instead
+          of silently falling back. */}
+      {accountError && <FailureState message={accountError} />}
+      {locationError && <FailureState message={locationError} />}
+      {techniciansError && (
+        <FailureState message="You don't have access to the technician list. Some assignment info may be missing." />
+      )}
       <WorkOrderDetail
         workOrder={workOrder}
         jobs={jobsForThisWorkOrder}

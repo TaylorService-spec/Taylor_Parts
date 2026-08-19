@@ -144,3 +144,61 @@ test("a negative ADJUSTED from a reconciled Cycle Count reduces sellable stock",
   // num0() drops non-positive values, so a shortage adjustment must be read with its own sign.
   assert.equal(sumLedgerEligibleOnHand([at("wh-main", "RECEIVED", 5), at("wh-main", "ADJUSTED", -2)], ELIGIBLE), 3);
 });
+
+// ---- H7 (sandbox-gap-scan-2026-08-19.md): the ledger sign inversion ---------------------------------
+//
+// A Cycle Count on a SERIAL-tracked Part reconciling a MISSING unit writes "ADJUSTED, quantity: 1"
+// (SERIAL quantity is always exactly 1, never negative -- there is no "quantity -1 of one specific
+// serial"). Before this fix, sumLedgerEligibleOnHand summed that row exactly like a NONE-mode receipt:
+// discovering a unit MISSING increased its reservable Sales Order availability. The fix mirrors
+// inventoryLedger/mobileLocationPresenceProbe.ts's established `if (v.trackingMode !== "NONE")
+// continue;` precedent -- SERIAL custody is authoritative via serialized_assets, never via quantity math.
+
+test("H7: a SERIAL-tracked ADJUSTED entry (a cycle count finding a unit missing) must NOT raise sellable on-hand", () => {
+  const onHand = sumLedgerEligibleOnHand([at("wh-main", "ADJUSTED", 1, { trackingMode: "SERIAL" })], ELIGIBLE);
+  // Pre-fix this was 1 (the exact inversion H7 reports). The row has physical-type evidence but is
+  // excluded from quantity math entirely, so it is a known 0 (not UNKNOWN -- ADJUSTED is a PHYSICAL type).
+  assert.equal(onHand, 0);
+});
+
+test("H7: a SERIAL-tracked ADJUSTED entry does not distort genuine NONE-mode eligible stock", () => {
+  const onHand = sumLedgerEligibleOnHand(
+    [at("wh-main", "RECEIVED", 3, { trackingMode: "NONE" }), at("wh-main", "ADJUSTED", 1, { trackingMode: "SERIAL" })],
+    ELIGIBLE,
+  );
+  assert.equal(onHand, 3, "the SERIAL row must be excluded, not merely floored -- 3 NONE-mode units stay 3, not 4");
+});
+
+test("H7: a row with no trackingMode field is treated as NONE (backward-compatible default)", () => {
+  // trackingMode is a REQUIRED, validated field on every governed operational-movement write, so a row
+  // carrying a governed type can never legitimately omit it in real data; existing callers/tests that
+  // never set it (all of the tests above this section) must keep behaving exactly as before.
+  assert.equal(sumLedgerEligibleOnHand([at("wh-main", "RECEIVED", 4), at("wh-main", "ADJUSTED", -1)], ELIGIBLE), 3);
+});
+
+// ---- H7 secondary finding: RETURNED/SCRAPPED were schema-legal but silently omitted -----------------
+//
+// transferOrderCommand.ts, cycleCount/cycleCountExpectedQuantity.ts and mobileLocationPresenceProbe.ts
+// already sum RETURNED (+) and SCRAPPED (-). sumLedgerEligibleOnHand omitted both -- a governed RMA
+// return or scrap-out at an eligible warehouse was invisible to Sales Order allocation availability.
+
+test("H7b: RETURNED (RMA) is now counted as eligible physical on-hand, like RECEIVED", () => {
+  assert.equal(sumLedgerEligibleOnHand([at("wh-main", "RETURNED", 2, { trackingMode: "NONE" })], ELIGIBLE), 2);
+});
+
+test("H7b: SCRAPPED is now counted as a physical removal, like TRANSFER_OUT", () => {
+  const onHand = sumLedgerEligibleOnHand(
+    [at("wh-main", "RECEIVED", 5, { trackingMode: "NONE" }), at("wh-main", "SCRAPPED", 2, { trackingMode: "NONE" })],
+    ELIGIBLE,
+  );
+  assert.equal(onHand, 3);
+});
+
+test("H7b: a SERIAL-tracked RETURNED/SCRAPPED entry is excluded from quantity math too", () => {
+  assert.equal(sumLedgerEligibleOnHand([at("wh-main", "RETURNED", 1, { trackingMode: "SERIAL" })], ELIGIBLE), 0);
+  const onHand = sumLedgerEligibleOnHand(
+    [at("wh-main", "RECEIVED", 5, { trackingMode: "NONE" }), at("wh-main", "SCRAPPED", 1, { trackingMode: "SERIAL" })],
+    ELIGIBLE,
+  );
+  assert.equal(onHand, 5);
+});

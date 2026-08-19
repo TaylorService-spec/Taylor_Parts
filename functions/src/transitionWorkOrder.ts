@@ -26,7 +26,8 @@ import {
 import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
-import { stageAuditEvent } from "./access/auditEventWriter";
+import { stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
+import { transitionWorkOrderAuditId } from "./workOrderTransitionMath";
 import {
   applyFulfillmentAcceptance,
   type FulfillmentAcceptance,
@@ -439,11 +440,38 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       tx.set(lockRef, { technicianId: lockRef.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     tx.update(woRef, payload);
+
+    // M9/H19 remediation: EVERY applied transition gets its own Audit Event, staged in this SAME transaction
+    // as the status write above -- not only Complete-with-a-linked-Sales-Order (the salesOrderFulfillmentWriteBack
+    // event below is a separate, additional record about the SO write-back, not a substitute for this one).
+    // Deterministic id (workOrderId + action) -- see workOrderTransitionMath.ts's header comment for why this
+    // is collision-free without a caller-supplied idempotency key.
+    //
+    // H20 fix (merge note): this generic event records the STATE TRANSITION only (status A -> status B) --
+    // it carries no technician-identity detail and structurally cannot express a reassignment on its own.
+    // When this Dispatch IS a reassignment, its summary gets a short pointer to that fact so a reader
+    // scanning only this per-Work-Order trail isn't left wondering why the assignee changed; the full
+    // prior-tech/new-tech/reason detail lives in the dedicated reassignWorkOrderTechnician event below,
+    // staged in this SAME transaction -- one Audit Event per meaningfully distinct fact about this call,
+    // not a duplicate record of the same fact twice.
+    stageAuditEventWithId(tx, transitionWorkOrderAuditId(workOrderId, action), {
+      actorUid,
+      action: "transitionWorkOrder",
+      targetType: "workOrder",
+      targetId: workOrderId,
+      outcome: "applied",
+      summary: `${caller.role ?? "unknown"} ${actorUid} performed ${action} on Work Order ${workOrderId} (${wo.status} -> ${nextStatus})` +
+        (reassignmentAudit
+          ? ` -- reassigned from technician ${reassignmentAudit.priorTechId} to ${reassignmentAudit.newTechId} (see reassignWorkOrderTechnician event for the reason).`
+          : ""),
+    });
+
     if (reassignmentAudit) {
-      // H20 fix: durable record of prior technician, new technician, actor, and timestamp (actorUid/`at`
-      // are always captured by stageAuditEvent itself), plus the dispatcher's reason in `summary`. Staged
-      // in the SAME transaction as the WO write above, so the audit trail and the reassignment commit
-      // atomically together.
+      // H20 fix: an ADDITIONAL event beside "transitionWorkOrder" above (same coexistence pattern as
+      // salesOrderFulfillmentWriteBack beside it for Complete) -- the durable record of prior technician,
+      // new technician, actor, and timestamp (actorUid/`at` are always captured by stageAuditEvent itself),
+      // plus the dispatcher's reason in `summary`. Staged in the SAME transaction as the WO write above, so
+      // the audit trail and the reassignment commit atomically together.
       //
       // NOTIFICATION: this repo has no notification/messaging delivery mechanism today (no push, email, or
       // in-app "notify this technician" pipeline exists anywhere in functions/src or field-ops-app-vite --
@@ -463,6 +491,7 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
           `(Notification not yet implemented -- see this event for the future notifier trigger.)`,
       });
     }
+
     if (soWriteBack) {
       tx.update(soWriteBack.soRef, {
         lines: soWriteBack.nextLines,
