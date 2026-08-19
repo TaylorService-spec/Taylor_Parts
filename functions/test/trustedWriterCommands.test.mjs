@@ -858,15 +858,244 @@ async function main() {
     );
   });
 
-  await check("wiring: a non-allowlisted governed Role (officeManager) is NOT assignable -> UnknownRoleError (allowlist, not all governed Roles)", async () => {
+  // =====================================================================
+  // Owner ruling (grantable-governed-roles workstream): all fifteen governed
+  // business Roles are now on the trusted-writer allowlist -- UnknownRoleError
+  // is gone for every one of them. The seven NON-privileged newcomers (owner
+  // is the one exception, covered in its own section below) are assignable
+  // through the single-admin assignApprovedRole path, exactly like the six
+  // operational Roles already covered above.
+  // =====================================================================
+
+  await check("wiring: the seven newly-reachable NON-privileged governed Roles are each assignable via assignApprovedRole (single admin)", async () => {
+    const actor = await makeAdminActor();
+    for (const roleId of [
+      "generalEmployee",
+      "officeManager",
+      "salesManager",
+      "accountingManager",
+      "financeManager",
+      "fieldManager",
+      "operationsManager",
+    ]) {
+      const principal = await makePrincipal(`principal-${roleId}`);
+      const key = `assign-${roleId}-${uid("k")}`;
+      const result = await assignApprovedRole({ actorUid: actor, principalUid: principal, roleId, scope: { type: "global" }, idempotencyKey: key });
+      assert.equal(result.status, "applied", roleId);
+      const snap = await db.collection("roleAssignments").doc(key).get();
+      assert.equal(snap.data().roleId, roleId);
+      assert.equal(snap.data().status, "active");
+    }
+  });
+
+  await check("wiring: an unrecognized roleId is still UnknownRoleError -- widening the allowlist did not widen what counts as a real Role", async () => {
     const actor = await makeAdminActor();
     const principal = await makePrincipal();
-    for (const roleId of ["officeManager", "operationsManager", "owner"]) {
-      await assertRejectsWith(
-        assignApprovedRole({ actorUid: actor, principalUid: principal, roleId, scope: { type: "global" }, idempotencyKey: `assign-${roleId}-${uid("k")}` }),
-        UnknownRoleError, `${roleId} not allowlisted`,
-      );
+    await assertRejectsWith(
+      assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "still-not-a-real-role", scope: { type: "global" }, idempotencyKey: `assign-fake-${uid("k")}` }),
+      UnknownRoleError,
+    );
+  });
+
+  // =====================================================================
+  // Owner ruling: `owner` is now grantable -- privileged, so it MUST go
+  // through the exact same two-person path `admin` already goes through
+  // (grantRole with a distinct, independently-privileged approver), and
+  // MUST be refused by the single-admin assignApprovedRole path exactly
+  // like `admin` is. Every protection asserted below is EXISTING,
+  // unmodified code (role.privileged gating in grantRole/revokeRole,
+  // verifyApproverIsPrivileged) -- these tests prove it extends to `owner`
+  // automatically rather than assuming it does.
+  // =====================================================================
+
+  await check("owner: assignApprovedRole (single-admin path) refuses it, exactly like admin", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "owner", scope: { type: "global" }, idempotencyKey: `assign-owner-reject-${uid("k")}` }),
+      InvalidStateError,
+    );
+  });
+
+  await check("owner: grantRole without an approverUid is denied", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "owner", scope: { type: "global" }, idempotencyKey: `grant-owner-noapprover-${uid("k")}` }),
+      InvalidInputError,
+    );
+  });
+
+  await check("owner: a principal cannot self-grant owner, even with a distinct valid approver present", async () => {
+    const actor = await makeAdminActor();
+    const approver = await makeAdminActor();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: actor, roleId: "owner", scope: { type: "global" }, approverUid: approver, idempotencyKey: `grant-owner-self-${uid("k")}` }),
+      SelfApprovalError,
+    );
+  });
+
+  await check("owner: approverUid === actorUid (self-approval) is denied", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "owner", scope: { type: "global" }, approverUid: actor, idempotencyKey: `grant-owner-selfapprove-${uid("k")}` }),
+      SelfApprovalError,
+    );
+  });
+
+  await check("owner: approverUid === principalUid (approving your own grant target) is denied", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "owner", scope: { type: "global" }, approverUid: principal, idempotencyKey: `grant-owner-approvertargetsame-${uid("k")}` }),
+      SelfApprovalError,
+    );
+  });
+
+  await check("owner: an approver who is not themselves privileged (dispatcher) is denied (InsufficientApproverAuthorityError)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const nonPrivilegedApprover = await makeDispatcherActor();
+    await assertRejectsWith(
+      grantRole({
+        actorUid: actor,
+        principalUid: principal,
+        roleId: "owner",
+        scope: { type: "global" },
+        approverUid: nonPrivilegedApprover,
+        idempotencyKey: `grant-owner-badapprover-${uid("k")}`,
+      }),
+      InsufficientApproverAuthorityError,
+    );
+  });
+
+  await check("owner: a genuinely distinct, privileged approver SUCCEEDS -- and the principal's grant resolves through resolveEffectiveAccess", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const approver = await makeAdminActor();
+    const key = `grant-owner-ok-${uid("k")}`;
+    const result = await grantRole({
+      actorUid: actor,
+      principalUid: principal,
+      roleId: "owner",
+      scope: { type: "global" },
+      approverUid: approver,
+      idempotencyKey: key,
+    });
+    assert.equal(result.status, "applied");
+    const assignmentSnap = await db.collection("roleAssignments").doc(key).get();
+    assert.equal(assignmentSnap.data().roleId, "owner");
+    assert.equal(assignmentSnap.data().approvedBy, approver);
+
+    // Reporting (report.*), which only Owner holds, is now reachable for this principal --
+    // exactly the live defect the Owner ruling names ("no owner assignment exists, which is
+    // why Reporting is unreachable for every persona"). Verified through the SAME merged-catalog
+    // read path a real caller uses (effectiveAccessFeed.ts), not by re-asserting the Role's own
+    // permissions array.
+    const { resolveEffectiveAccess } = await import("../lib/access/effectiveAccessFeed.js");
+    const { accessVersion, decisions } = await resolveEffectiveAccess({
+      principalUid: principal,
+      permissionIds: ["report.customer.read"],
+    });
+    assert.equal(accessVersion, 1);
+    assert.equal(decisions["report.customer.read"], true, "granting owner must make a report.* capability reachable");
+  });
+
+  await check("owner: revokeRole for a privileged owner assignment requires the same distinct-approver protections as revoking admin", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const approver = await makeAdminActor();
+    const grantKey = `grant-owner-forrevoke-${uid("k")}`;
+    await grantRole({ actorUid: actor, principalUid: principal, roleId: "owner", scope: { type: "global" }, approverUid: approver, idempotencyKey: grantKey });
+
+    // No approverUid at all -> denied.
+    await assertRejectsWith(
+      revokeRole({ actorUid: actor, assignmentId: grantKey, idempotencyKey: `revoke-owner-noapprover-${uid("k")}` }),
+      InvalidInputError,
+    );
+
+    // Self-revocation by the actor who IS the owner principal -> denied, even with an approver.
+    await assertRejectsWith(
+      revokeRole({ actorUid: principal, assignmentId: grantKey, approverUid: approver, idempotencyKey: `revoke-owner-self-${uid("k")}` }),
+      SelfApprovalError,
+    );
+
+    // Genuinely distinct, privileged approver -> succeeds.
+    const revokeApprover = await makeAdminActor();
+    const revokeResult = await revokeRole({ actorUid: actor, assignmentId: grantKey, approverUid: revokeApprover, idempotencyKey: `revoke-owner-ok-${uid("k")}` });
+    assert.equal(revokeResult.status, "applied");
+    assert.equal((await db.collection("roleAssignments").doc(grantKey).get()).data().status, "disabled");
+  });
+
+  // =====================================================================
+  // owner >= admin, verified by COMPOSITION through the real, merged catalog
+  // path a caller actually uses (resolveEffectiveAccess / effectiveAccessFeed.ts
+  // -- COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES), not by asserting the
+  // Role objects' own .permissions arrays contain each other. Two principals,
+  // one holding only `admin`, one holding only `owner`, resolved against the
+  // SAME capability id set.
+  // =====================================================================
+
+  await check("owner >= admin by composition: every capability a solely-admin principal ALLOWs, a solely-owner principal ALLOWs too, through the real merged Role catalog", async () => {
+    const { resolveEffectiveAccess } = await import("../lib/access/effectiveAccessFeed.js");
+    const adminOnly = await makePrincipal("admin-only");
+    await seedActiveRoleAssignment(adminOnly, "admin");
+    const ownerOnly = await makePrincipal("owner-only");
+    await seedActiveRoleAssignment(ownerOnly, "owner");
+
+    const sampleCapabilities = [
+      "account.record.read",
+      "account.governedField.write",
+      "workOrder.create",
+      "workOrder.transition",
+      "workOrder.cancel",
+      "inventory.transaction.read",
+      "inventory.action.read",
+      "inventory.action.create",
+      "inventory.catalog.read",
+      "warehouse.record.read",
+      "admin.userStatus.write",
+      "admin.roleAssignment.write",
+      "admin.accessRequest.decide",
+      "reorder.request.read.queue",
+      "reorder.purchaseOrder.read",
+      // report.customer.read is the one capability owner holds that admin
+      // does NOT -- confirms the composition is a strict superset, not an
+      // identical set.
+      "report.customer.read",
+    ];
+    const adminDecisions = (await resolveEffectiveAccess({ principalUid: adminOnly, permissionIds: sampleCapabilities })).decisions;
+    const ownerDecisions = (await resolveEffectiveAccess({ principalUid: ownerOnly, permissionIds: sampleCapabilities })).decisions;
+
+    for (const id of sampleCapabilities) {
+      if (adminDecisions[id] === true) {
+        assert.equal(ownerDecisions[id], true, `owner must ALLOW "${id}" because admin does (owner >= admin)`);
+      }
     }
+    assert.equal(adminDecisions["report.customer.read"], false, "admin alone must not resolve report.customer.read");
+    assert.equal(ownerDecisions["report.customer.read"], true, "owner alone must resolve report.customer.read (the strict-superset id)");
+  });
+
+  await check("owner >= admin does NOT extend to the trusted-writer commands' OWN actor check: an owner-only principal (no admin compatibility Role) still cannot invoke grantRole itself -- a documented, pre-existing scope boundary this change leaves unmodified", async () => {
+    // trustedWriterCommands.ts's own resolvePrincipalPermission resolves the
+    // ACTOR/APPROVER of its six commands against COMPATIBILITY_ROLES only
+    // (see its own header comment: "ITS actions are compatibility-only by
+    // the Enterprise Access Specification's own design"). Making `owner`
+    // grantable widens who can be granted the Role and what the resulting
+    // principal can read through the merged-catalog surfaces (report.*,
+    // reportExecutionService, partMasterCommands, etc. -- see the test
+    // above) -- it deliberately does NOT widen who may act as actor/approver
+    // for grantRole/revokeRole/assignApprovedRole/setUserStatus/
+    // approveAccessRequest/rejectAccessRequest themselves. This test proves
+    // that boundary still holds after this change, rather than assuming it.
+    const ownerOnlyActor = await makePrincipal("owner-only-actor");
+    await seedActiveRoleAssignment(ownerOnlyActor, "owner");
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: ownerOnlyActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: `owner-only-actor-denied-${uid("k")}` }),
+      UnauthorizedActorError,
+    );
   });
 
   await check("wiring: admin privileged approval behavior unchanged (grantRole admin still needs a distinct approver)", async () => {

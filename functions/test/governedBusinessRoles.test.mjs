@@ -140,15 +140,39 @@ check("every governed business Role's own .id matches its map key", () => {
 // === Assignability gate (trustedWriterCommands.ts GOVERNED_ASSIGNABLE_ROLES) ===
 //
 // Declaring a Role does NOT make it assignable -- a second, deliberate allowlist controls which
-// governed Roles the trusted-writer grant path will accept. These tests pin the two properties that
+// governed Roles the trusted-writer grant path will accept. These tests pin the properties that
 // gate actually exists to protect.
 
-// The load-bearing one. The privileged two-person rule (self-approval ban, distinct approverUid)
-// only means anything if no privileged Role can be quietly slipped into the assignable set.
-check("no privileged Role is assignable through the governed allowlist", () => {
+// Owner ruling (grantable-governed-roles workstream): ALL 15 governed business Roles are now
+// governed-assignable, including the privileged `owner` Role. The invariant that actually matters
+// is narrower than "no privileged Role is assignable" (that was true only because no privileged
+// governed Role existed on the allowlist before): the two-person rule (self-approval ban, distinct
+// approverUid, approver-must-independently-hold-a-privileged-Role) is keyed off `role.privileged`
+// inside grantRole/revokeRole themselves, not off which allowlist a Role came from, so it protects
+// `owner` automatically. What this test pins instead is that `owner` is the ONLY privileged entry --
+// nothing else can quietly become grant-target-privileged without the two-person rule waking up for
+// it too, which would be a silent, untested change to who needs a second approver.
+check("owner is the only privileged Role on the governed allowlist; every other entry is non-privileged", () => {
+  const privilegedIds = [];
   for (const [id, role] of Object.entries(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST)) {
-    assert.equal(role.privileged, false, `${id} is privileged and must not be governed-assignable`);
+    if (role.privileged) {
+      privilegedIds.push(id);
+    }
   }
+  assert.deepEqual(privilegedIds, ["owner"], "owner must be the ONLY privileged governed-assignable Role");
+});
+
+// Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
+// matching Owner's explicit direction ("make all 15 governed business roles grantable").
+check("all fifteen governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+  for (const id of EXPECTED_IDS) {
+    assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
+  }
+  assert.equal(
+    Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
+    15,
+    "the governed allowlist must contain exactly the 15 declared governed business Roles",
+  );
 });
 
 // Every entry must be a real governed Role, identical to its catalog definition -- not a lookalike
@@ -295,6 +319,52 @@ check("Field Manager: full Work Order lifecycle + field-inventory read; no reord
   }
   for (const id of ["reorder.request.assign", "reorder.purchaseOrder.create", "inventory.action.create"]) {
     assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+// === Owner ruling (grantable-governed-roles workstream): fulfillment.coordinatedVisit.read grant ===
+//
+// Proposed grant set is exactly {owner, admin, operationsManager, fieldManager, dispatcher}. Was
+// granted to NO Role before this change, so Coordinated Visits/Mission were inert for everyone,
+// including Owner. GRANT IS NOT ACTIVATION: the id stays registered active:false, so every check
+// here resolves DENY with reason "inactivePermission" (never "noQualifyingGrant") for a role that
+// DOES hold it, and DENY for any reason at all for a role that does not.
+check("fulfillment.coordinatedVisit.read: Field Manager and Operations Manager hold the grant (inactivePermission DENY, not noQualifyingGrant)", () => {
+  for (const id of ["fieldManager", "operationsManager"]) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[id].permissions.includes("fulfillment.coordinatedVisit.read"), id);
+    const result = resolve("fulfillment.coordinatedVisit.read", id, GOVERNED_BUSINESS_ROLES);
+    assert.equal(result.decision, "DENY", id);
+    assert.equal(result.reason, "inactivePermission", `${id} must be denied by the active:false gate, not by lacking the grant`);
+  }
+});
+
+check("fulfillment.coordinatedVisit.read: Owner inherits it by composition (through ADMIN_ROLE.permissions), same inactivePermission reason", () => {
+  assert.ok(OWNER_ROLE.permissions.includes("fulfillment.coordinatedVisit.read"));
+  const result = resolve("fulfillment.coordinatedVisit.read", "owner", GOVERNED_BUSINESS_ROLES);
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("fulfillment.coordinatedVisit.read: admin and dispatcher (compatibility Roles) hold the grant too -- the full five-role set is {owner, admin, operationsManager, fieldManager, dispatcher}", () => {
+  for (const id of ["admin", "dispatcher"]) {
+    assert.ok(COMPATIBILITY_ROLES[id].permissions.includes("fulfillment.coordinatedVisit.read"), id);
+    const result = resolveEffectivePermission({
+      permissionId: "fulfillment.coordinatedVisit.read",
+      assignments: [grant(id, COMPATIBILITY_ROLES)],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: { scope: { type: "global" }, condition: {} },
+    });
+    assert.equal(result.decision, "DENY");
+    assert.equal(result.reason, "inactivePermission");
+  }
+});
+
+check("fulfillment.coordinatedVisit.read: no OTHER Role (compatibility or governed) carries it -- the grant is exactly the five named roles", () => {
+  assert.equal(COMPATIBILITY_ROLES.technician.permissions.includes("fulfillment.coordinatedVisit.read"), false);
+  for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    if (id === "operationsManager" || id === "fieldManager" || id === "owner") continue;
+    assert.equal(role.permissions.includes("fulfillment.coordinatedVisit.read"), false, `${id} must not hold fulfillment.coordinatedVisit.read`);
   }
 });
 
