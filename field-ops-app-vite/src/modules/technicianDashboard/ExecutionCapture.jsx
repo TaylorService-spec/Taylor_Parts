@@ -96,8 +96,11 @@ export default function ExecutionCapture({ workOrder }) {
             const qtyUsed = item.qtyUsed ?? 0;
             const busy = submittingSku === item.sku;
             return (
-              <div key={snapshotPartSku(item) || idx} className="fo-btn-row" style={{ alignItems: "center" }}>
-                <span style={{ flex: 1 }}>
+              <div
+                key={snapshotPartSku(item) || idx}
+                className="fo-btn-row fo-execution-capture__part-row"
+              >
+                <span className="fo-execution-capture__part-label">
                   {displayName} -- {qtyUsed} / {item.qtyPlanned} used
                 </span>
                 <button type="button" disabled={busy || qtyUsed <= 0} onClick={() => adjustQty(item.sku, -1, item)}>
@@ -112,7 +115,7 @@ export default function ExecutionCapture({ workOrder }) {
         )}
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div className="fo-execution-capture__notes">
         <strong>Work Notes</strong>
         <div className="fo-form">
           <input
