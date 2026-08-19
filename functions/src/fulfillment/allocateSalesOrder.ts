@@ -34,7 +34,8 @@ async function requireFulfill(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [SALES_ORDER_FULFILL_CAPABILITY] });
     allowed = decisions[SALES_ORDER_FULFILL_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireFulfill (allocateSalesOrder)] capability resolution failed for ${SALES_ORDER_FULFILL_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to allocate Sales Orders.");
