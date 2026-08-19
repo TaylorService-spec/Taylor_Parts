@@ -45,51 +45,49 @@ export default function AssignedWorkOversightTable({
       <h3>{title} ({requests.length})</h3>
       <p className="fo-muted">{description}</p>
       <p role="status" className="fo-sr-only">{statusMessage}</p>
-      {error ? (
-        <p className="fo-muted">Unable to load {title} ({error}).</p>
-      ) : (
-        <LoadingEmptyState
-          loading={loading}
-          isEmpty={requests.length === 0}
-          loadingText={`Loading ${title}...`}
-          emptyText="No requests are currently assigned to anyone."
-        >
-          <div className="fo-table-scroll">
-            <table className="fo-table">
-              <thead>
-                <tr>
-                  <th>Part</th>
-                  <th>Qty</th>
-                  <th>Urgency</th>
-                  <th>Status</th>
-                  <th>Assignee</th>
-                  <th>Age</th>
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={requests.length === 0}
+        loadingText={`Loading ${title}...`}
+        failedText={`Unable to load ${title} (${error}).`}
+        emptyText="No requests are currently assigned to anyone."
+      >
+        <div className="fo-table-scroll">
+          <table className="fo-table">
+            <thead>
+              <tr>
+                <th>Part</th>
+                <th>Qty</th>
+                <th>Urgency</th>
+                <th>Status</th>
+                <th>Assignee</th>
+                <th>Age</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((request) => (
+                <tr key={request.id}>
+                  <td>{resolveName(request.partId)}</td>
+                  <td>{getDisplayQty(request)}</td>
+                  <td>
+                    {request.urgency ? (
+                      <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+                    ) : (
+                      <StatusPill tone="unknown" label="Needs planning" />
+                    )}
+                  </td>
+                  <td className="fo-muted">
+                    {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
+                  </td>
+                  <td className="fo-muted">{resolveAssigneeDisplay(request.assignedToUserId)}</td>
+                  <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {requests.map((request) => (
-                  <tr key={request.id}>
-                    <td>{resolveName(request.partId)}</td>
-                    <td>{getDisplayQty(request)}</td>
-                    <td>
-                      {request.urgency ? (
-                        <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
-                      ) : (
-                        <StatusPill tone="unknown" label="Needs planning" />
-                      )}
-                    </td>
-                    <td className="fo-muted">
-                      {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
-                    </td>
-                    <td className="fo-muted">{resolveAssigneeDisplay(request.assignedToUserId)}</td>
-                    <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </LoadingEmptyState>
-      )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </LoadingEmptyState>
     </>
   );
 }

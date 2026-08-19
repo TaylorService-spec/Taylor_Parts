@@ -97,9 +97,11 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
       </div>
       <LoadingEmptyState
         loading={loading}
+        failed={!!actionsError}
         isEmpty={actions.length === 0}
         loadingText="Loading part activity..."
-        emptyText={actionsError ? "Unable to load part activity right now. Try again shortly." : "No logged activity yet for this part."}
+        failedText="Unable to load part activity right now. Try again shortly."
+        emptyText="No logged activity yet for this part."
       >
         <div className="fo-table-scroll">
           <table className="fo-table">
@@ -261,38 +263,39 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
         Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
         here.
       </p>
-      {error ? (
-        <p className="fo-muted" role="alert">Unable to load inventory health right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
-          <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
-        </LoadingEmptyState>
-      )}
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={false}
+        loadingText="Loading inventory health..."
+        failedText="Unable to load inventory health right now. Try again shortly."
+        emptyText=""
+      >
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+      </LoadingEmptyState>
 
       <p className="fo-muted">
         Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
       </p>
       {reorderError && <p className="fo-muted" role="alert">{reorderError}</p>}
-      {error ? (
-        <p className="fo-muted" role="alert">Unable to load Needs Planning right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState
-          loading={loading}
-          isEmpty={needsPlanningEntries.length === 0}
-          loadingText="Loading Needs Planning..."
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={needsPlanningEntries.length === 0}
+        loadingText="Loading Needs Planning..."
+        failedText="Unable to load Needs Planning right now. Try again shortly."
+        emptyText="No parts currently need planning."
+      >
+        <InventoryHealthPanel
+          healthEntries={needsPlanningEntries}
+          title="Needs Planning"
+          resolveName={resolveName}
+          onRequestReorder={handleRequestReorder}
+          requestedPartIds={justRequestedPartIds}
+          submittingPartId={submittingPartId}
           emptyText="No parts currently need planning."
-        >
-          <InventoryHealthPanel
-            healthEntries={needsPlanningEntries}
-            title="Needs Planning"
-            resolveName={resolveName}
-            onRequestReorder={handleRequestReorder}
-            requestedPartIds={justRequestedPartIds}
-            submittingPartId={submittingPartId}
-            emptyText="No parts currently need planning."
-          />
-        </LoadingEmptyState>
-      )}
+        />
+      </LoadingEmptyState>
 
       <h3>Parts Catalog</h3>
       {catalog.blocked ? (

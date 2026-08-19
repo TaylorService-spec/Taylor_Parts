@@ -168,6 +168,46 @@ describe("PartDetail -- Fix 2: an access/read error is not reported as 'not foun
   });
 });
 
+// M25 -- LoadingEmptyState had no way to express "this read failed" separately from
+// "this is empty", so PartDetail forced `isEmpty` on a genuine access-denied/read-error
+// message (see the comment this fix removed at the site of this call). A denied read
+// must render with alert semantics (role="alert"); a genuinely-missing document must
+// not -- it is not an error.
+describe("PartDetail -- M25: a denied/failed reorder-request read carries alert semantics, an empty one does not", () => {
+  it("permission-denied renders inside role=\"alert\"", async () => {
+    reorderRequestState.current = { data: null, loading: false, error: "permission-denied", refresh: () => {} };
+    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail />);
+    await screen.findByText("CANONICAL-NAME-A");
+    const alertEl = screen.getByRole("alert");
+    expect(alertEl.textContent).toMatch(/access denied or a read error/i);
+  });
+
+  it("an unavailable read also renders inside role=\"alert\" (not just permission-denied)", async () => {
+    reorderRequestState.current = { data: null, loading: false, error: "unavailable", refresh: () => {} };
+    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail />);
+    await screen.findByText("CANONICAL-NAME-A");
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it("not_found (a genuine miss) never carries role=\"alert\"", async () => {
+    reorderRequestState.current = { data: null, loading: false, error: "not_found", refresh: () => {} };
+    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail />);
+    await screen.findByText("CANONICAL-NAME-A");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("mismatch (a genuine miss) never carries role=\"alert\"", async () => {
+    reorderRequestState.current = { data: null, loading: false, error: "mismatch", refresh: () => {} };
+    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail />);
+    await screen.findByText("CANONICAL-NAME-A");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("PartDetail -- Fix 3: workflow action failures show safe categorized copy, never a raw error", () => {
   it("a failed Assign shows workflowActionErrorMessage's safe copy, not the raw error", async () => {
     reorderRequestState.current = {

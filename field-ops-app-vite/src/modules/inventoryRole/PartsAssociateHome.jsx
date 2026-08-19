@@ -76,9 +76,11 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
       <h3>Waiting</h3>
       <LoadingEmptyState
         loading={waitingLoading}
+        failed={!!waitingError}
         isEmpty={waiting.length === 0}
         loadingText="Loading your assigned requests..."
-        emptyText={waitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
+        failedText="Unable to load your assigned requests right now. Try again shortly."
+        emptyText="No requests currently waiting on you."
       >
         <RequestCards requests={waiting} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
@@ -86,9 +88,11 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
       <h3>In Progress</h3>
       <LoadingEmptyState
         loading={inProgressLoading}
+        failed={!!inProgressError}
         isEmpty={inProgress.length === 0}
         loadingText="Loading your in-progress purchasing..."
-        emptyText={inProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
+        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
+        emptyText="No purchasing currently in progress."
       >
         <RequestCards requests={inProgress} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
