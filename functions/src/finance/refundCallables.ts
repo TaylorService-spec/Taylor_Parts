@@ -40,7 +40,8 @@ async function requireRefundRecord(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [FINANCE_REFUND_RECORD_CAPABILITY] });
     allowed = decisions[FINANCE_REFUND_RECORD_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireRefundRecord] capability resolution failed for ${FINANCE_REFUND_RECORD_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to record refunds.");

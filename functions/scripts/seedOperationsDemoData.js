@@ -7,20 +7,67 @@
 // being "provisioned by an admin (console or Admin SDK), never by the
 // client").
 //
-// Run once, locally, against the live project:
+// INERT on import: only `require.main === module` (below) drives execution, and firebase-admin is required
+// only inside buildProductionDeps() -- so importing this file (e.g. from a test) performs NO Firestore
+// read/write and touches no project, sandbox or production.
+//
+// SAFETY -- X-TARGETING-GUARD (fail-closed, matches functions/scripts/seedSandboxBaseline.js):
+// this used to `initializeApp({ projectId: "taylor-parts" })` -- production -- unconditionally at
+// module load, with no flag, no confirmation, and no way to opt out; every `.set()` below writes at a
+// fixed doc id, so a re-run would silently overwrite live production documents. `--projectId` is now
+// REQUIRED, checked BEFORE firebase-admin is ever required or Firestore touched: `taylor-parts` is
+// refused explicitly, and any other id must resolve in config/environments.json to a NON-production
+// role (an unknown project id fails closed, same as an explicit production one). After init, the SDK's
+// OWN resolved projectId is asserted to match the confirmed --projectId, so ambient credentials
+// (GOOGLE_APPLICATION_CREDENTIALS / gcloud ADC / GCLOUD_PROJECT) cannot silently pick a different target.
+//
+// Run once, locally, against sandbox:
 //   cd functions
-//   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/seedOperationsDemoData.js
-// (or `gcloud auth application-default login` first, then just `node scripts/seedOperationsDemoData.js`
-// with no env var -- either way you need real credentials for the
-// "taylor-parts" project; this sandboxed session has neither available.)
+//   node scripts/seedOperationsDemoData.js --projectId eos-platform-sandbox
+// (uses Application Default Credentials -- `gcloud auth application-default login` first, or set
+// GOOGLE_APPLICATION_CREDENTIALS to a sandbox service-account key.)
 //
 // Idempotent-ish: uses fixed doc ids so re-running overwrites the same
 // seed docs rather than duplicating them.
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
+"use strict";
 
-initializeApp({ projectId: "taylor-parts" });
-const db = getFirestore();
+const path = require("node:path");
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i].startsWith("--")) {
+      const k = argv[i].slice(2);
+      out[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
+    }
+  }
+  return out;
+}
+
+// Refuse any production target. The registry is the authority (ADR-011), so this cannot drift from the
+// environment model -- and an unknown project fails closed rather than being treated as safe. Copied
+// verbatim in shape from functions/scripts/seedSandboxBaseline.js's assertNonProductionTarget().
+function assertNonProductionTarget(projectId, fsDeps) {
+  if (!projectId || projectId === "true") {
+    throw new Error("--projectId is required. There is no default target.");
+  }
+  if (projectId === "taylor-parts") {
+    throw new Error("REFUSING: taylor-parts is the customer production project.");
+  }
+  const registryPath = path.resolve(__dirname, "../../config/environments.json");
+  const registry = JSON.parse(fsDeps.readFileSync(registryPath, "utf8"));
+  const env = registry.environments.find((e) => e.firebase && e.firebase.projectId === projectId);
+  if (!env) {
+    throw new Error(
+      `REFUSING: '${projectId}' is not a known provisioned environment in config/environments.json. ` +
+        "Unknown projects fail closed.",
+    );
+  }
+  if (env.role === "production") {
+    throw new Error(`REFUSING: environment '${env.id}' has role 'production'.`);
+  }
+  return env;
+}
 
 // A handful of real SKUs from field-ops-app-vite/src/data/partsCatalog.ts
 // (and its functions/src mirror) so getCatalogItem() resolves names
@@ -29,7 +76,8 @@ const PART_A = "TST-1003"; // Freezer Cylinder - Compact, warehouseQty 20
 const PART_B = "TST-1015"; // Condenser Fan Motor - HD, warehouseQty 4
 const PART_C = "TST-1031"; // Freezer Cylinder - Pro Series, warehouseQty 0
 
-async function seed() {
+async function seed(deps) {
+  const { db, Timestamp } = deps;
   const batch = db.batch();
   const now = Timestamp.now();
 
@@ -109,7 +157,42 @@ async function seed() {
   console.log("Seed complete.");
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err.message);
-  process.exitCode = 1;
-});
+// Lazily build the real production deps -- firebase-admin is required ONLY here, never at import time.
+function buildProductionDeps(projectId) {
+  // eslint-disable-next-line global-require
+  const { initializeApp, applicationDefault, getApps, getApp } = require("firebase-admin/app");
+  // eslint-disable-next-line global-require
+  const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+  if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId });
+  const resolvedProjectId = getApp().options.projectId;
+  if (resolvedProjectId !== projectId) {
+    throw new Error(
+      `firebase-admin resolved projectId '${resolvedProjectId}' does not match the confirmed --projectId ` +
+        `'${projectId}': refusing to proceed (ambient credentials must not silently pick a different target)`,
+    );
+  }
+  return { db: getFirestore(), Timestamp };
+}
+
+// Full entrypoint composition, extracted so tests can invoke the SAME argv -> parseArgs ->
+// assertNonProductionTarget -> buildProductionDeps -> seed() chain a real run uses, and prove the
+// environment guard rejects BEFORE buildProductionDeps() (and therefore before firebase-admin is ever
+// required and before any Firestore connection, read, or write) runs.
+async function main(argv, fsDeps) {
+  const args = parseArgs(argv);
+  const env = assertNonProductionTarget(args.projectId, fsDeps);
+  console.log(`Seeding Operations demo data into '${env.id}' (${args.projectId}, role=${env.role})`);
+  const deps = buildProductionDeps(args.projectId);
+  return seed(deps);
+}
+
+module.exports = { parseArgs, assertNonProductionTarget, buildProductionDeps, seed, main };
+
+if (require.main === module) {
+  // eslint-disable-next-line global-require
+  const fs = require("node:fs");
+  main(process.argv.slice(2), fs).catch((err) => {
+    console.error("Seed failed:", err && err.message ? err.message : err);
+    process.exitCode = 1;
+  });
+}

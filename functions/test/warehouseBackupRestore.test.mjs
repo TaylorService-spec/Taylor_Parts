@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { Timestamp } from "firebase-admin/firestore";
+import { getApps } from "firebase-admin/app";
 const require = createRequire(import.meta.url);
 const cli = require("../scripts/warehouseBackupRestoreCli.js");
 const codec = require("../lib/warehouseGovernance/warehouseBackupCodec.js");
@@ -118,6 +119,29 @@ await check("runRestore: post-restore parity failure (live still differs) fails 
     runRestoreTxn: async ({ decoded }) => ({ restoredCount: decoded.length }),
   };
   await assert.rejects(cli.runRestore(deps, restoreArgs({ snap: hash, exp: EXP(set) })), /parity failed/);
+});
+
+// ---- X-TARGETING-GUARD: cli.main() fails closed BEFORE buildProductionDeps() (and therefore before
+// firebase-admin is ever required and before any Firestore connection, read, or write) ----
+// `getApps()` (firebase-admin/app) reads the SAME global app registry buildProductionDeps() would register
+// into via admin.initializeApp() -- so its length staying 0 after a rejected cli.main() call is direct proof
+// the rejection happened before Firebase touched anything. Technique copied from
+// functions/test/salesOrderNumberBackfill.test.mjs's environment-guard tests.
+assert.equal(getApps().length, 0, "precondition: no Firebase app has been initialized by anything else in this offline test file");
+await check("main(): a rejected --project ('taylor-parts' required) never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(cli.main(["--project", "not-taylor-parts", "--commit", COMMIT, "--out-dir", "d"]), /--project must be taylor-parts/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --project is rejected");
+});
+await check("main(): a malformed --commit never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(cli.main(["--project", "taylor-parts", "--commit", "not-40-hex", "--out-dir", "d"]), /40-hex/);
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --commit is rejected");
+});
+await check("main(): --restore without --acknowledge-production-write never reaches buildProductionDeps -- no Firebase app registered", async () => {
+  await assert.rejects(
+    cli.main(["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json"]),
+    /acknowledge-production-write/,
+  );
+  assert.equal(getApps().length, 0, "buildProductionDeps (and therefore admin.initializeApp) must never run when --restore lacks --acknowledge-production-write");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

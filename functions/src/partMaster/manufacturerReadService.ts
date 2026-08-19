@@ -100,7 +100,8 @@ export const getManufacturerCatalog = onCall({ region: "us-central1" }, async (r
       permissionIds: [INVENTORY_CATALOG_READ_CAPABILITY],
     });
     allowed = decisions[INVENTORY_CATALOG_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getManufacturerCatalog] capability resolution failed for ${INVENTORY_CATALOG_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read the Manufacturer catalog.");
