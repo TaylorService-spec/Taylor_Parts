@@ -52,12 +52,14 @@ export function useCycleCountActions() {
       try {
         const outcome = await cycleCountCommandClient.createCycleCount(built.value);
         clearKey("create");
+        // M23 blind-count remediation: createCycleCount's response no longer carries expectedQuantity/
+        // expectedSerialNumbers at all (functions/src/cycleCount/cycleCountCallables.ts) -- there is
+        // nothing to read off it here. The expected snapshot first appears in submitCount's outcome,
+        // below, after the counter has already committed their counted value.
         upsert(outcome.cycleCountId, {
           partId: outcome.partId,
           trackingMode: outcome.trackingMode,
           location: outcome.location,
-          expectedQuantity: outcome.expectedQuantity,
-          expectedSerialNumbers: outcome.expectedSerialNumbers ?? undefined,
           status: outcome.status,
         });
         setStatus({ kind: "success", message: describeCycleCountOutcome("create", outcome?.outcome), action: "create" });
@@ -80,12 +82,16 @@ export function useCycleCountActions() {
       setStatus(null);
       try {
         const outcome = await cycleCountCommandClient.submitCycleCount(built.value);
+        // The expected snapshot arrives HERE for the first time (the counted value in this same request
+        // already committed server-side before this response was built) -- safe to store and render now.
         upsert(cycleCountId, {
           status: outcome.status,
           countedQuantity: outcome.countedQuantity ?? undefined,
           countedSerialNumbers: outcome.countedSerialNumbers ?? undefined,
           variance: outcome.variance ?? undefined,
           serialVariance: outcome.serialVariance ?? undefined,
+          expectedQuantity: outcome.expectedQuantity ?? undefined,
+          expectedSerialNumbers: outcome.expectedSerialNumbers ?? undefined,
         });
         setStatus({ kind: "success", message: describeCycleCountOutcome("submit", outcome?.outcome), action: "submit", cycleCountId });
         return { ok: true, errors: {} };
@@ -99,9 +105,14 @@ export function useCycleCountActions() {
     [upsert],
   );
 
+  // M23 blind-count remediation: `decision` is "APPROVE" (default, unchanged pre-M23 meaning: stage the
+  // ADJUSTED ledger correction) or "REJECT" (record the count as disputed, no ledger effect). Either way
+  // this is the manager review step -- the SERVER independently re-checks separation of duties
+  // (the disposing actor cannot be the same principal recorded as this count's submitter when the
+  // variance is material) regardless of which button this UI shows or hides.
   const reconcileCount = useCallback(
-    async (cycleCountId, reasonText) => {
-      const built = buildReconcileCycleCountRequest(cycleCountId, reasonText);
+    async (cycleCountId, reasonText, decision = "APPROVE") => {
+      const built = buildReconcileCycleCountRequest(cycleCountId, reasonText, decision);
       if (!built.ok) return { ok: false };
       setBusyId(cycleCountId);
       setStatus(null);
@@ -110,9 +121,10 @@ export function useCycleCountActions() {
         upsert(cycleCountId, {
           status: outcome.status,
           ledgerEventIds: outcome.ledgerEventIds ?? [],
+          reviewDecision: outcome.reviewDecision ?? undefined,
           reconciliationReason: outcome.reconciliationReason ?? undefined,
         });
-        setStatus({ kind: "success", message: describeCycleCountOutcome("reconcile", outcome?.outcome), action: "reconcile", cycleCountId });
+        setStatus({ kind: "success", message: describeCycleCountOutcome("reconcile", outcome?.outcome, decision), action: "reconcile", cycleCountId });
         return { ok: true };
       } catch (err) {
         setStatus({ kind: "error", message: mapCycleCountActionError(err), action: "reconcile", cycleCountId });

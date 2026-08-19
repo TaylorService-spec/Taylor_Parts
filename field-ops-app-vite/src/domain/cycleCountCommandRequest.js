@@ -64,12 +64,17 @@ export function buildSubmitCycleCountRequest(cycleCountId, trackingMode, draft) 
   return { ok: true, errors: {}, value: { cycleCountId, countedQuantity } };
 }
 
-// Reconcile: { cycleCountId, reason? }. A reason is required by the SERVER only when there is a
+const REVIEW_DECISIONS = new Set(["APPROVE", "REJECT"]);
+
+// Reconcile: { cycleCountId, reason?, decision }. `decision` is the M23 manager-review step -- APPROVE
+// (the pre-M23 default meaning of "reconcile": stage the ADJUSTED ledger correction) or REJECT (record
+// the count as disputed, no ledger effect). A reason is required by the SERVER only when there is a
 // non-zero variance -- this builder does not pre-empt that decision, it just shapes what was typed.
-export function buildReconcileCycleCountRequest(cycleCountId, reasonText) {
+export function buildReconcileCycleCountRequest(cycleCountId, reasonText, decision = "APPROVE") {
   if (!isNonEmptyString(cycleCountId)) return { ok: false, value: null };
+  if (!REVIEW_DECISIONS.has(decision)) return { ok: false, value: null };
   const reason = typeof reasonText === "string" && reasonText.trim() !== "" ? reasonText.trim() : undefined;
-  return { ok: true, value: { cycleCountId, ...(reason ? { reason } : {}) } };
+  return { ok: true, value: { cycleCountId, decision, ...(reason ? { reason } : {}) } };
 }
 
 // The cycleCountId-only request (cancel) shares one exact shape.
