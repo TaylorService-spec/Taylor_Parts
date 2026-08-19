@@ -188,6 +188,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // member -- an ADDITIONAL event beside "transitionWorkOrder" above, not a replacement (see types/access.ts
   // for why both coexist).
   "reassignWorkOrderTechnician",
+  // Phantom Sales Order link repair -- see the matching entries on the AuditAction union (types/access.ts).
+  "repairPhantomSalesOrderLink",
+  "rollbackPhantomSalesOrderLinkRepair",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

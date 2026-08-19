@@ -91,6 +91,19 @@ export interface OperationalRoleResolutionFacts {
 // PURE. Byte-for-byte mirror of firestore.rules's isActiveOperationalRole(role):
 // reciprocal link + ACTIVE employment + operationalRoles list membership.
 // Never throws -- every malformed/missing input resolves to `false`.
+//
+// "Active vocabulary" note: this predicate deliberately FUSES two of
+// the four canonical "active" senses -- Employee active
+// (employeeEmploymentStatus === ACTIVE) AND Role assignment active
+// (operationalRoles membership currently effective) -- into one
+// authorization check. That fusion is intentional (an operational role
+// is only meaningful for a currently-assignable Employee) and is not a
+// naming defect; it is documented, not renamed, in
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a. Do not split this function's name without first
+// updating firestore.rules and its other mirror
+// (adminCredentialCommands.ts's resolveEmployeeLinkFacts) in the same
+// Tier-2 deploy-gated change.
 export function evaluateOperationalRoleActive(
   facts: OperationalRoleResolutionFacts,
   role: unknown,

@@ -25,6 +25,13 @@ export const USERNAMES_COLLECTION = "usernames";
 // the only Phase 3 assignment-eligibility value; the other five are
 // reserved states an Employee can be in without being eligible for a
 // new assignment.
+//
+// "Active vocabulary": this is the canonical "Employee active" sense
+// (currently eligible for operational assignment) -- one of four
+// concepts the word "active" covers in this codebase. See
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a for the full vocabulary and the other three senses
+// (Role assignment active, Capability active, Record active).
 export const EMPLOYEES_COLLECTION = "employees";
 export const EMPLOYMENT_STATUS = {
   ACTIVE: "ACTIVE",
