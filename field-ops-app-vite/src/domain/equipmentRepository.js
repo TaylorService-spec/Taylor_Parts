@@ -9,9 +9,10 @@ import { createEquipmentWith, updateEquipmentWith } from "./equipmentWrites.js";
 // the clock. Writes route through makeCollectionStore -> lib/firebaseSafe.js, so
 // demo/panic mode blocks them like every other write in the app.
 //
-// Production Rules currently DENY the equipment collection outright: until E3's Rules
-// are separately merged AND deployed, create/edit fail closed with safe copy. That is
-// the correct behaviour under this authorization, not a defect.
+// firestore.rules (match /equipment/{equipmentId}) PERMITS admin/dispatcher read, create, and
+// update -- it does not deny the collection outright (see equipment.js's own comments, which
+// already treat Rules (E3) as live enforcement, not a future gate). The remaining question for
+// any given environment is deployment status of firestore.rules there, not what the Rules say.
 //
 // The trusted-writer contracts (move / retire / reactivate) are
 // re-exported unchanged from the pure core -- they are declared in a module with no

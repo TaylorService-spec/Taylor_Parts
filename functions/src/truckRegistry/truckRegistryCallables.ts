@@ -5,8 +5,9 @@
 // codes via the sanitized class-per-reason taxonomy. All real logic lives in the service -- these
 // adapters are deliberately thin so both stay independently testable.
 //
-// "Export is not deployment": exporting these from functions/src/index.ts does NOT deploy or
-// activate them. As wired here there is NO App Check requirement (matching every other callable
+// Exported from functions/src/index.ts and deployed to eos-platform-sandbox under the per-environment
+// activation program; NOT deployed to the production project. As wired here there is NO App Check
+// requirement (matching every other callable
 // in this repo -- no callable enforces App Check), NO Admin UI calls them. Enterprise Inventory
 // Phase 5: deactivateTruck now runs with a REAL default governed-inventory predicate
 // (mobileLocationPresenceProbe.ts, wired as truckRegistryCommands.ts's own resolveDeps default) --

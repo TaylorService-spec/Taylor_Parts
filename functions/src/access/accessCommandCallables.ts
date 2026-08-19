@@ -19,9 +19,10 @@
 //
 // Per the Owner's deployment-candidate authorization: merging this file
 // (once independently reviewed and clean) is not a production action.
-// These functions are not deployed, and no Admin-mutation UI is wired
-// to call them, until a SEPARATE, later Owner production authorization
-// (Implementation Plan Row 19+) is issued.
+// These functions are deployed to eos-platform-sandbox under the per-environment
+// activation program; they are NOT deployed to the production project. No
+// Admin-mutation UI is wired to call them, until a SEPARATE, later Owner
+// production authorization (Implementation Plan Row 19+) is issued.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import * as commands from "./trustedWriterCommands";

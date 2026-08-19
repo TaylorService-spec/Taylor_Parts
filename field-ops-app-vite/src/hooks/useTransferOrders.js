@@ -18,11 +18,10 @@ import { fetchTransferOrderDocsPage, fetchWarehousesPage } from "../services/ope
 // the shared fetcher there was rejected (see operationsQueries.ts's fetchTransferOrderDocsPage
 // comment); the bound belongs at this call site only.
 //
-// KNOWN GAP: as of this remediation, modules/inventory/Transfers.jsx (out of this lane's write
-// scope) does not read transferOrdersTruncated/warehousesTruncated at all -- the flags are
-// computed here and currently go unconsumed by the surface, the same "computed and discarded"
-// defect already found and fixed for Suppliers (see modules/purchasing/Suppliers.jsx's
-// TRUNCATION comment). Wiring an honest disclosure banner into Transfers.jsx is a follow-up.
+// modules/inventory/Transfers.jsx DOES read both flags (transferOrdersTruncated / warehousesTruncated)
+// and renders a disclosure banner for each -- see Transfers.jsx around its `read.transferOrdersTruncated`
+// / `read.warehousesTruncated` blocks. This is wired, not the "computed and discarded" gap that was
+// found and fixed for Suppliers (modules/purchasing/Suppliers.jsx's TRUNCATION comment).
 //
 // Fail-closed: a denied/unavailable read resolves to an error code (never a partial/fabricated
 // list); the workspace renders an honest FailureState. One-shot fetch (transfer_orders + warehouses
