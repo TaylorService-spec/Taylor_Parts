@@ -20,20 +20,20 @@ target_release:
 ## Executive summary
 
 An admin-facing data console: browse object metadata, inspect any record's real stored values,
-export query results, and import or bulk-edit records. The reference is **Salesforce Inspector
-Reloaded**, which admins use to answer "what does this record actually contain" and "get me this
-data out" without waiting for a screen to be built for it.
+export query results, and import or bulk-edit records. The requirement it serves: an admin needs
+to answer "what does this record actually contain" and "get me this data out" without waiting for
+a purpose-built screen.
 
 The gap is real. There is **no export anywhere in this product** — Report Builder can define and
 run a report and then not get the data out. Import exists for **Contacts only**
 (`domain/contactImport.js`). Meanwhile **30 EntityDefinitions** are already registered with
 fields, types and operators, so the metadata needed to drive a generic console mostly exists.
 
-**One line governs the whole design.** Salesforce Inspector's power comes largely from bypassing
-the UI: it drives a generic REST/SOQL API under the user's own permissions. This platform is
-built the other way — writes go through governed commands with capability checks and audit
-events. A generic paste-and-update tool here would be an audit bypass wearing an admin tool's
-clothes.
+**One line governs the whole design.** The obvious way to build a tool like this is a generic
+data API driven under the caller's own permissions, with the console as a thin client over it.
+That is the wrong shape here. This platform routes writes through governed commands with
+capability checks and audit events, and a generic paste-and-update tool would be an audit bypass
+wearing an admin tool's clothes.
 
 So: **reads generic, writes never.**
 
@@ -165,9 +165,9 @@ Generalizes today's Contact-only import across objects.
 ## Explicitly out of scope
 
 - **Bulk delete**, per above.
-- **A generic REST/SOQL-style query API.** The thing that makes Inspector powerful in Salesforce
-  is the thing this platform deliberately does not expose. Queries run through governed read
-  services with the caller's capabilities applied.
+- **A generic query API over the raw data.** The very thing that would make a tool like this
+  quick to build is the thing this platform deliberately does not expose. Queries run through
+  governed read services with the caller's capabilities applied.
 - **Editing metadata definitions.** This console reads EntityDefinitions; authoring them is a
   different concern and is deferred in the approved Admin spec.
 - **Impersonation** — explicitly deferred by ADR-005 and not reintroduced here.

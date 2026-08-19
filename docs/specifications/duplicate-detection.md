@@ -29,8 +29,8 @@ This is now the mitigation the Owner attached to granting `inventory.catalog.man
 `operationsManager` and `fieldManager` (2026-08-19): a field manager creating Parts at a machine
 is the highest-volume, lowest-context place a duplicate is born.
 
-**The model follows Salesforce's, deliberately**, because it is the mature shape for exactly this
-problem and separates two concerns that this repository would otherwise conflate:
+**The model separates two concerns this repository would otherwise conflate**, which is the
+difference between rules people can maintain and a matcher only its author understands:
 
 | Object | Answers | Owner-editable in Admin |
 |---|---|---|
@@ -197,8 +197,8 @@ wording is editable like everything else rather than the hardcoded
   verdict; queue items are initially dismissible but not resolvable, which is a stated limitation
   rather than an oversight.
 - **Silent/automatic merge.** Prohibited outright.
-- **Cross-object matching** (Salesforce matches Lead against Contact). No equivalent pairing is
-  needed yet; the rule shape does not preclude it later.
+- **Cross-object matching** — comparing records of one type against another. No equivalent
+  pairing is needed yet; the rule shape does not preclude it later.
 - **Retroactive scanning.** Live counts are 2 accounts, 2 contacts, 3 locations, 7 parts — there
   is nothing meaningful to backfill. A sweep becomes necessary before any real data import and is
   a named follow-up.
