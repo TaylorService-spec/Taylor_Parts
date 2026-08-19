@@ -255,7 +255,7 @@ export default function AccountDetail() {
   const { user } = useAuth() ?? {};
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
-  const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
+  const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
   // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
@@ -397,6 +397,7 @@ export default function AccountDetail() {
             loading: contactsLoading,
             error: contactsError,
           })}
+          onRetry={retryContacts}
           focusRowKey={pendingContactFocus}
           onFocusHandled={() => setPendingContactFocus(null)}
           announcement={contactAnnouncement}

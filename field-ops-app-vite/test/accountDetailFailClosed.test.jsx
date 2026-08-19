@@ -153,6 +153,26 @@ describe("AccountDetail -- Contacts read fail-closed (site-work #8)", () => {
     renderDetail();
     expect(screen.getByText(/no contacts yet/i)).toBeTruthy();
   });
+
+  // Site-work sweep r1 #8: an UNAVAILABLE (non-permission) Contacts read must offer the
+  // same one-click recovery the identical Locations case already has -- MetadataListGrid
+  // only renders "Try again" when `onRetry` is passed, and useContactsForAccount's own
+  // retry() must reach that prop.
+  it("failed Contacts read (unavailable, not denied): offers Try again and calls the hook's retry", () => {
+    const retryContacts = vi.fn();
+    useAccount.mockReturnValue(RESOLVED_ACCOUNT);
+    useLocationsForAccount.mockReturnValue({ data: [], error: null, retry: vi.fn() });
+    useContactsForAccount.mockReturnValue({
+      data: [],
+      loading: false,
+      error: "Couldn't load contacts. Please try again.",
+      retry: retryContacts,
+    });
+    renderDetail();
+    const button = screen.getByRole("button", { name: /try again/i });
+    fireEvent.click(button);
+    expect(retryContacts).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Regression: handleEditSubmit (AccountDetail.jsx) used to await updateAccount()
