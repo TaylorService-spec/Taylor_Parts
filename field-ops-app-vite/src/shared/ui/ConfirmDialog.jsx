@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import Modal from "./Modal";
+import Icon from "./Icon.jsx";
+import { Button } from "./primitives";
 import { Field, FormActions, FormError, FormStatus } from "./form";
 import { describedBy } from "./form/fieldA11y";
 import { canConfirm } from "../../domain/workflowActionOrder";
@@ -25,6 +28,17 @@ export default function ConfirmDialog({
   consequence,
   confirmLabel,
   cancelLabel = "Back",
+  // Structural severity signal (icon + accent + button colour together, never
+  // colour alone) -- see Icon.jsx's "no colour-alone" convention. Defaults to
+  // true: every existing caller of this dialog (Cancel Work Order, Void PO,
+  // Delete truck, Cancel Sales Order, Reject Reorder, Advance/Allocate/Create
+  // Service) already rendered with the destructive-only `fo-btn-destructive`
+  // class before this migration, so `true` is the behavior-preserving
+  // default. Passing `destructive={false}` is available for a genuinely
+  // routine confirmation once a caller opts in -- see this PR's report for
+  // the caller-side follow-up (those files are outside this migration's
+  // scope).
+  destructive = true,
   requireReason = false,
   reasonLabel = "Reason",
   reasonHint,
@@ -71,7 +85,20 @@ export default function ConfirmDialog({
   return (
     <Modal title={title} onClose={requestClose} closeLabel="Close">
       <div className="fo-confirm-dialog fo-create-modal-form">
-        {consequence && <p className="fo-confirm-consequence">{consequence}</p>}
+        {destructive && (
+          <p className="fo-warning fo-confirm-severity">
+            <Icon icon={AlertTriangle} size="dense" />
+            <span>Destructive action</span>
+          </p>
+        )}
+
+        {consequence && (
+          <p
+            className={`fo-confirm-consequence${destructive ? " fo-confirm-consequence--destructive" : ""}`}
+          >
+            {consequence}
+          </p>
+        )}
 
         {requireReason && (
           <Field id="confirm-reason" label={reasonLabel} required error={reasonError} hint={reasonHint}>
@@ -93,10 +120,17 @@ export default function ConfirmDialog({
         <FormStatus>{submitting ? "Working…" : ""}</FormStatus>
 
         <FormActions className="fo-confirm-actions">
-          <button type="button" className="fo-btn-destructive" onClick={handleConfirm} disabled={submitting}>
-            {submitting ? "Working…" : confirmLabel}
-          </button>
-          <button type="button" onClick={requestClose} disabled={submitting}>{cancelLabel}</button>
+          <Button
+            type="button"
+            variant={destructive ? "destructive" : "primary"}
+            onClick={handleConfirm}
+            loading={submitting}
+          >
+            {confirmLabel}
+          </Button>
+          <Button type="button" variant="secondary" onClick={requestClose} disabled={submitting}>
+            {cancelLabel}
+          </Button>
         </FormActions>
       </div>
     </Modal>

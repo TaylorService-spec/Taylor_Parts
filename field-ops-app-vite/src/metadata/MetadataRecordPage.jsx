@@ -10,6 +10,7 @@ import { fetchPage as fetchFirestorePage } from "./firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
 import FailureState from "../shared/ui/FailureState";
+import { SectionHeader } from "../shared/ui/primitives/index.js";
 
 // Renders a PageDefinition. Thin by design: every decision about WHICH sections appear,
 // where, in what order, and whether a viewer may see them was already made by
@@ -633,27 +634,51 @@ export default function MetadataRecordPage({
         // container, and the PAGE-level check above (not this one) is the only place
         // that distinguishes DENIED from EMPTY, at the granularity the caller asked for.
         if (sections.length === 0) return null;
+        // HEADER is where a record's own identity lives (name/status/tags-style
+        // FIELD_GROUPs, or a registered lifecycle component) -- the design-system
+        // requirement is that this region reads as the record's identity band, not as
+        // just another section. `fo-panel` is the SAME existing elevated-surface class
+        // used elsewhere in this stylesheet (an already-styled, already-shipped class,
+        // not a new rule), applied here to lift the region visually above the sections
+        // that follow it.
+        const regionClass = [REGION_CLASS[region] ?? "fo-record-main", region === "HEADER" ? "fo-panel" : ""]
+          .filter(Boolean)
+          .join(" ");
         return (
-          <div key={region} className={REGION_CLASS[region] ?? "fo-record-main"}>
-            {sections.map((section) => (
-              <section
-                key={section.id}
-                className="fo-record-section"
-                aria-label={section.label ?? humanizeSectionId(section.id)}
-              >
-                {section.label && <h3 className="fo-record-section-title">{section.label}</h3>}
-                <Section
-                  section={section}
-                  record={record}
-                  definition={definition}
-                  listRenderer={listRenderer}
-                  listResolver={listResolver}
-                  entityResolver={entityResolver}
-                  capabilityDecisions={capabilityDecisions}
-                  relatedListFocus={relatedListFocus}
-                />
-              </section>
-            ))}
+          <div key={region} className={regionClass}>
+            {sections.map((section) => {
+              // A generic FIELD_GROUP (GAP 1 below, no registered componentId) is the
+              // "flat dump" case this migration exists to fix: today it is bare dt/dd
+              // pairs with no card, no separation from its neighbours. A section with a
+              // registered component (`accountHealthStrip`, the lifecycle stepper, etc.)
+              // already composes its OWN internal layout, so it is deliberately left
+              // unwrapped here rather than double-boxed inside a second card.
+              const isGenericFieldGroup = section.kind === "FIELD_GROUP" && !componentRegistry.resolve(section.componentId);
+              const sectionClassName = ["fo-record-section", isGenericFieldGroup ? "fo-panel" : ""]
+                .filter(Boolean)
+                .join(" ");
+              return (
+                <section
+                  key={section.id}
+                  className={sectionClassName}
+                  aria-label={section.label ?? humanizeSectionId(section.id)}
+                >
+                  {section.label && (
+                    <SectionHeader title={section.label} level={3} className="fo-record-section-title" />
+                  )}
+                  <Section
+                    section={section}
+                    record={record}
+                    definition={definition}
+                    listRenderer={listRenderer}
+                    listResolver={listResolver}
+                    entityResolver={entityResolver}
+                    capabilityDecisions={capabilityDecisions}
+                    relatedListFocus={relatedListFocus}
+                  />
+                </section>
+              );
+            })}
           </div>
         );
       })}

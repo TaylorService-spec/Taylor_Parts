@@ -1,6 +1,7 @@
 import { useState } from "react";
 import LifecycleChevrons from "../../shared/ui/LifecycleChevrons.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle.js";
 
 // The Opportunity-specific lifecycle progression control: a persistent chevron row over the ratified stage
@@ -56,16 +57,17 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
     const isPending = !!transitions.pending[pendingKey];
     const disabled = writeDisabled || isPending;
     return (
-      <button
+      <Button
         key={o}
         type="button"
-        className="fo-btn-ghost"
+        variant={writeDisabled ? "protected" : "tertiary"}
         disabled={disabled}
         title={writeDisabled ? readiness.reason : undefined}
-        onClick={() => fire({ kind: "OUTCOME", outcome: o }, o === "WON" ? "Mark Won" : "Mark Lost")}
+        reason={writeDisabled ? readiness.reason : undefined}
+        onClick={disabled ? undefined : () => fire({ kind: "OUTCOME", outcome: o }, o === "WON" ? "Mark Won" : "Mark Lost")}
       >
         Mark {o === "WON" ? "Won" : "Lost"}
-      </button>
+      </Button>
     );
   });
 

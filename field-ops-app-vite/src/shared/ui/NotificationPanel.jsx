@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import FailureState from "./FailureState";
-import StatusPill from "./StatusPill.jsx";
+import Icon from "./Icon.jsx";
+import { StatusIndicator } from "./primitives";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone";
 
@@ -41,10 +43,15 @@ function NotificationItem({ item, resolveName, onNavigate }) {
           vocabulary, different meaning, nothing saying which. Name the scale on the
           row. This does not reconcile the two numbers -- they are not the same fact
           and must not be made to agree. */}
+      {/* StatusIndicator (icon + text + colour together) rather than the colour-only
+          StatusPill -- severity here must scan by shape/glyph, not colour alone, since
+          the tone vocabulary compresses HIGH and MEDIUM to the same "attention" colour
+          (see domain/inventoryUrgencyTone.js) and colour-blind/low-contrast field
+          conditions must not lose the distinction entirely. */}
       {item.urgency ? (
-        <StatusPill tone={inventoryUrgencyTone(item.urgency)} label={`Request urgency: ${item.urgency}`} />
+        <StatusIndicator tone={inventoryUrgencyTone(item.urgency)} label={`Request urgency: ${item.urgency}`} />
       ) : (
-        <StatusPill tone="unknown" label="Needs planning" />
+        <StatusIndicator tone="unknown" label="Needs planning" />
       )}
     </Link>
   );
@@ -77,7 +84,12 @@ export default function NotificationPanel({
         onClick={() => setOpen((v) => !v)}
         aria-label={error ? "Notifications, couldn't load" : "Notifications"}
       >
-        Notifications{error ? " ⚠" : total > 0 ? ` (${total})` : ""}
+        <span>Notifications</span>
+        {error ? (
+          <Icon icon={AlertTriangle} size="dense" className="fo-warning" />
+        ) : total > 0 ? (
+          <span className="fo-tabular-nums">({total})</span>
+        ) : null}
       </button>
       {open && (
         <div className="fo-notification-panel-dropdown">

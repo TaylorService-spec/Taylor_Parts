@@ -6,6 +6,7 @@ import { normalizeScanToken, resolveScannedIdentity, SCAN_RESOLUTION } from "../
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Enterprise Inventory -- Cycle Count operating authority: the Cycle Counts workspace
 // (functions/src/cycleCount/*). Create a count against an active WAREHOUSE/MOBILE(truck) location +
@@ -86,9 +87,9 @@ function CreateCycleCountForm({ warehouseOptions, truckOptions, submitting, onCa
         {errors.locationId && <span className="fo-form-error">{errors.locationId}</span>}
       </label>
       <div className="fo-form-actions">
-        <button type="submit" className="fo-btn-primary" disabled={submitting}>
+        <Button type="submit" variant="primary" disabled={submitting}>
           {submitting ? "Starting…" : "Start count"}
-        </button>
+        </Button>
         <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={submitting}>
           Cancel
         </button>
@@ -179,14 +180,13 @@ function SerialCountEntry({ count, busy, onSubmit }) {
           ))}
         </ul>
       )}
-      <button
-        type="button"
-        className="fo-btn-primary"
+      <Button
+        variant="primary"
         disabled={busy}
         onClick={() => onSubmit({ countedSerialNumbers: counted })}
       >
         {busy ? "Recording…" : "Record count"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -230,9 +230,9 @@ function ReconcileForm({ count, busy, onSubmit }) {
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
         </label>
       )}
-      <button type="submit" className="fo-btn-primary" disabled={busy || (hasVariance && reason.trim() === "")}>
+      <Button type="submit" variant="primary" disabled={busy || (hasVariance && reason.trim() === "")}>
         {busy ? "Reconciling…" : "Reconcile"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -316,9 +316,9 @@ export default function CycleCounts() {
     <div className="fo-panel">
       <WorkspaceHeader title="Cycle Counts">
         {!showForm && (
-          <button type="button" className="fo-btn-primary" onClick={() => setShowForm(true)}>
+          <Button variant="primary" onClick={() => setShowForm(true)}>
             New count
-          </button>
+          </Button>
         )}
       </WorkspaceHeader>
       {intro}

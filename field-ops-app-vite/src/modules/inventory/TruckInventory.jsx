@@ -22,6 +22,7 @@ import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import TruckFleetCard from "./TruckFleetCard.jsx";
 import CreateTruckModal from "./truckManagement/CreateTruckModal";
@@ -186,16 +187,15 @@ export default function TruckInventory({
   const actions = (
     <ActionRail
       primary={canManage ? (
-        <button
-          type="button"
-          className="fo-btn-primary"
-          onClick={() => setShowCreate(true)}
-          disabled={!management.writeReady}
+        <Button
+          variant={management.writeReady ? "primary" : "protected"}
+          onClick={management.writeReady ? () => setShowCreate(true) : undefined}
           title={management.writeReady ? "Add a truck" : "Truck management is not yet enabled"}
+          reason={management.writeReady ? undefined : "Truck management is not yet enabled"}
           data-testid="add-truck"
         >
           + Add truck{management.writeReady ? "" : " (not yet enabled)"}
-        </button>
+        </Button>
       ) : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>}
     />
@@ -261,7 +261,7 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
   const actions = (
     <ActionRail
       start={<button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>}
-      primary={onManage ? <button type="button" className="fo-btn-primary" onClick={onManage} data-testid="manage-truck">Manage truck</button> : null}
+      primary={onManage ? <Button variant="primary" onClick={onManage} data-testid="manage-truck">Manage truck</Button> : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>}
     />
   );

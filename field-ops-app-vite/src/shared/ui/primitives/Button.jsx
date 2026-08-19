@@ -54,7 +54,18 @@ export default function Button({
       <button
         type={type}
         className={cls}
-        disabled={isDisabled && !isProtected ? true : undefined}
+        // NATIVE disabled, always. The earlier form set aria-disabled WITHOUT the
+        // native attribute for the protected variant, on the usual reasoning that an
+        // aria-disabled control stays focusable so a screen-reader user can discover
+        // WHY it is unavailable. That reasoning does not apply here and the omission
+        // was live: {...rest} spreads the caller's onClick onto this button, so a
+        // permission-gated control looked disabled, announced disabled, and still
+        // invoked its handler on click. Nothing about the reason is lost by using the
+        // native attribute -- the explanation renders in a SIBLING paragraph below,
+        // outside the button, so it stays readable whether or not the button can hold
+        // focus. Capability enforcement lives in the authorization layer regardless;
+        // this closes a presentation control that was not actually controlling.
+        disabled={isDisabled ? true : undefined}
         aria-disabled={isDisabled ? "true" : undefined}
         aria-busy={loading ? "true" : undefined}
         aria-describedby={describedById}

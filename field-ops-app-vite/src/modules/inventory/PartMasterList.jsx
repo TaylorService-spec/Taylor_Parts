@@ -23,6 +23,7 @@ import { Field, FormActions, FormStatus } from "../../shared/ui/form";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Governed-outcome banner: maps the domain outcome.kind to a StatusPill tone + keeps the governed
 // message verbatim. `applied`/`replayed` are success-shaped; `denied`/`notFound`/`error` are hard
@@ -138,7 +139,7 @@ export default function PartMasterList(props) {
   const parts = state.parts ?? [];
   const actions = (
     <ActionRail
-      primary={<button type="button" className="fo-btn-primary" onClick={openCreate} disabled={busy}>New part</button>}
+      primary={<Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>}
     />
   );
 
