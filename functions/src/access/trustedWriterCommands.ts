@@ -57,6 +57,14 @@ import {
   GENERAL_EMPLOYEE_ROLE,
   OFFICE_MANAGER_ROLE,
   SALES_MANAGER_ROLE,
+  SALESPERSON_ROLE,
+  GENERAL_MANAGER_ROLE,
+  WAREHOUSE_MANAGER_ROLE,
+  WAREHOUSE_ASSOCIATE_ROLE,
+  PARTS_MANAGER_ROLE,
+  PARTS_ASSOCIATE_ROLE,
+  CONTROLLER_ROLE,
+  SUPPORT_STAFF_ROLE,
   ACCOUNTING_MANAGER_ROLE,
   FINANCE_MANAGER_ROLE,
   FIELD_MANAGER_ROLE,
@@ -163,7 +171,7 @@ const ACCESS_REQUESTS_COLLECTION = "accessRequests";
 // throw InvalidStateError` also already refuses `owner` on the
 // single-admin path, unchanged. A dedicated test below proves each of
 // these holds for `owner` specifically (not merely inherited by
-// assertion), and a second test proves the OTHER fourteen entries all
+// assertion), and a second test proves the OTHER fifteen entries all
 // remain non-privileged, so this registry cannot silently grow a second
 // privileged entry without failing CI.
 //
@@ -180,6 +188,14 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,
+  salesperson: SALESPERSON_ROLE,
+  generalManager: GENERAL_MANAGER_ROLE,
+  warehouseManager: WAREHOUSE_MANAGER_ROLE,
+  warehouseAssociate: WAREHOUSE_ASSOCIATE_ROLE,
+  partsManager: PARTS_MANAGER_ROLE,
+  partsAssociate: PARTS_ASSOCIATE_ROLE,
+  controller: CONTROLLER_ROLE,
+  supportStaff: SUPPORT_STAFF_ROLE,
   accountingManager: ACCOUNTING_MANAGER_ROLE,
   financeManager: FINANCE_MANAGER_ROLE,
   fieldManager: FIELD_MANAGER_ROLE,

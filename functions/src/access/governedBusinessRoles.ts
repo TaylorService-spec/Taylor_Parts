@@ -121,6 +121,55 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     // grant is recorded now and stays inert until per-environment activation.
     "salesOrder.read",
     "inventory.transaction.read",
+    // Owner ruling 2026-08-19: Sales Manager holds full opportunity authority.
+    // opportunity.write covers create AND edit -- the catalog registers no separate
+    // update or delete id, so "CRUD" on an Opportunity is exactly these two ids.
+    //
+    // Both are registered active:false, so this is a GRANT, not activation. They
+    // resolve only where a per-environment override activates them, which today is
+    // eos-platform-sandbox alone; production stays denied.
+    //
+    // opportunity.createSalesOrder is deliberately NOT included. Converting a WON
+    // Opportunity into a Sales Order creates a DIFFERENT object with its own
+    // commercial commitment, and the ruling was about opportunities. Adding it is a
+    // one-line change if that is wanted; guessing it in would be scope the Owner
+    // did not ask for.
+    "opportunity.read",
+    "opportunity.write",
+  ],
+}) as Role;
+
+// Spec §26.2 -- the individual contributor the Sales Manager is over. Created
+// 2026-08-19 on the Owner's clarification that "salesManager and Sales are
+// different -- the manager is over the salesperson".
+//
+// ITS CAPABILITIES ARE IDENTICAL TO SALES MANAGER'S TODAY, deliberately, and that
+// is worth stating rather than hiding: the difference between the two Roles is
+// ORGANISATIONAL, not authorizational. A manager currently holds no authority over
+// their reports' records, because "a manager sees their team's work" requires the
+// coverage/territory model the Owner explicitly deferred ("record and preserve the
+// seams, do NOT build during the runway"). Giving salesManager a wider grant here
+// would be building that model by accident, one capability at a time.
+//
+// The same pattern already exists in this file: accountingManager and financeManager
+// are intentionally identical (DECISIONS #114). Two Roles that resolve the same way
+// are not a defect when the distinction they encode is real and the authority
+// difference has not been designed yet.
+export const SALESPERSON_ROLE: Role = Object.freeze({
+  id: "salesperson",
+  name: "Salesperson",
+  description:
+    "Individual sales contributor: Customer read/create/update and full Opportunity authority, plus read visibility of the committed order and of stock. Identical in capability to Sales Manager today -- the manager relationship is organisational and confers no additional authority until the deferred coverage/territory model lands.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [
+    "account.record.read",
+    "account.record.create",
+    "account.record.update",
+    "salesOrder.read",
+    "inventory.transaction.read",
+    "opportunity.read",
+    "opportunity.write",
   ],
 }) as Role;
 
@@ -273,6 +322,101 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     // before.
     "inventory.catalog.manage",
   ],
+}) as Role;
+
+// === ORG-CHART POSITIONS (Owner chart, 2026-08-19) ==========================
+//
+// Seven Roles that exist so the organisation chart is fully expressible in
+// functions/src/access/roleHierarchy.ts. Every one of them ships with NO
+// permissions.
+//
+// That is deliberate, not an oversight. A Role's POSITION and a Role's AUTHORITY
+// are separate systems here: position decides whose work you can see, permissions
+// decide what you can do. Inventing capability sets for seven Roles at once would
+// be guessing at seven business decisions the Owner has not made, and every guess
+// would be live authority. An empty Role grants nothing and denies nothing that
+// was not already denied -- so these can be assigned today for their hierarchy
+// effect, and their capabilities granted later, one Owner ruling at a time.
+//
+// A NAME COLLISION WORTH UNDERSTANDING. warehouseManager, partsManager and
+// partsAssociate already exist as OPERATIONAL ROLES on the employee record
+// (WAREHOUSE_MANAGER / PARTS_MANAGER / PARTS_ASSOCIATE, domain/constants.js).
+// Those are operational QUALIFICATIONS -- "is this person trained and assigned to
+// run a warehouse" -- and this platform deliberately keeps them separate from
+// security authorization (Spec §9). The Roles below are the SECURITY side of the
+// same job title. They are not the same object, they are not interchangeable, and
+// one does not imply the other. Holding the operational role still drives the
+// operational-role home screens exactly as before; holding the governed Role adds
+// a position in the visibility tree.
+
+export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
+  id: "generalManager",
+  name: "General Manager",
+  description:
+    "Org-chart position in the top block, between Owner and the branch heads. Carries no permissions of its own -- its effect is hierarchical visibility over every branch. Capability grants are a separate Owner decision.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
+  id: "warehouseManager",
+  name: "Warehouse Manager",
+  description:
+    "Org-chart position: head of the warehouse branch under Operations, with Warehouse Associates beneath. Distinct from the WAREHOUSE_MANAGER operational role on the employee record, which is an operational qualification rather than a security Role. Carries no permissions of its own.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const WAREHOUSE_ASSOCIATE_ROLE: Role = Object.freeze({
+  id: "warehouseAssociate",
+  name: "Warehouse Associate",
+  description:
+    "Org-chart position beneath the Warehouse Manager. Carries no permissions of its own.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const PARTS_MANAGER_ROLE: Role = Object.freeze({
+  id: "partsManager",
+  name: "Parts Manager",
+  description:
+    "Org-chart position: head of the parts branch under Operations, with Parts Associates beneath. Distinct from the PARTS_MANAGER operational role on the employee record. Carries no permissions of its own.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
+  id: "partsAssociate",
+  name: "Parts Associate",
+  description:
+    "Org-chart position beneath the Parts Manager. Distinct from the PARTS_ASSOCIATE operational role on the employee record. Carries no permissions of its own.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const CONTROLLER_ROLE: Role = Object.freeze({
+  id: "controller",
+  name: "Controller",
+  description:
+    "Org-chart position beneath the Finance Manager, alongside Accounting. Carries no permissions of its own -- financial authority is granted separately and deliberately.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
+export const SUPPORT_STAFF_ROLE: Role = Object.freeze({
+  id: "supportStaff",
+  name: "Support Staff",
+  description:
+    "Org-chart position beneath Accounting. Carries no permissions of its own.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
 }) as Role;
 
 // Spec §26.2 -- privileged full-platform Role. Matches ADMIN_ROLE's
@@ -547,6 +691,14 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,
+  salesperson: SALESPERSON_ROLE,
+  generalManager: GENERAL_MANAGER_ROLE,
+  warehouseManager: WAREHOUSE_MANAGER_ROLE,
+  warehouseAssociate: WAREHOUSE_ASSOCIATE_ROLE,
+  partsManager: PARTS_MANAGER_ROLE,
+  partsAssociate: PARTS_ASSOCIATE_ROLE,
+  controller: CONTROLLER_ROLE,
+  supportStaff: SUPPORT_STAFF_ROLE,
   accountingManager: ACCOUNTING_MANAGER_ROLE,
   financeManager: FINANCE_MANAGER_ROLE,
   fieldManager: FIELD_MANAGER_ROLE,
