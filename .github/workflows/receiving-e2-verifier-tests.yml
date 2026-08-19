@@ -6,6 +6,11 @@ name: Receiving E2 Verifier + Rollback Tests
 # emulator tests only: NO deployment, NO production. Proves the fail-closed verifier interpreters +
 # atomic-publish-only-on-pass, and the snapshot -> mutate -> restore -> Timestamp-exact parity round-trip
 # plus fail-closed identity-set drift.
+#
+# `firestore.rules` is in the `paths:` filter below: firestoreRulesSourceHashCli.js exists to
+# hash-verify the deployed Firestore rules against the committed source, so a change to the rules
+# themselves must re-run this workflow. It was originally omitted -- the same mis-filter shape as the
+# `firestore.indexes.json` gap that let the D4 breach through -- so a rules edit ran no test here.
 
 on:
   pull_request:
@@ -25,6 +30,7 @@ on:
       - "functions/test/functionsInventorySanitize.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
+      - "firestore.rules"
       - ".github/workflows/receiving-e2-verifier-tests.yml"
   push:
     branches: [main]
@@ -44,6 +50,7 @@ on:
       - "functions/test/functionsInventorySanitize.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
+      - "firestore.rules"
       - ".github/workflows/receiving-e2-verifier-tests.yml"
   workflow_dispatch:
 
