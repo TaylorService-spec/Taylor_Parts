@@ -64,7 +64,22 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
         disabled={disabled}
         title={writeDisabled ? readiness.reason : undefined}
         reason={writeDisabled ? readiness.reason : undefined}
-        onClick={disabled ? undefined : () => fire({ kind: "OUTCOME", outcome: o }, o === "WON" ? "Mark Won" : "Mark Lost")}
+        onClick={
+          disabled
+            ? undefined
+            : () =>
+                fire(
+                  // WON carries the Sales Order it will create: that order needs its own
+                  // owner and channel, and they come from the Opportunity being closed.
+                  // The server still derives account and lines itself -- these two are the
+                  // only things it cannot infer. LOST carries neither, because it creates
+                  // nothing.
+                  o === "WON"
+                    ? { kind: "OUTCOME", outcome: o, ownerEmployeeId: row.ownerEmployeeId, salesChannel: row.channel }
+                    : { kind: "OUTCOME", outcome: o },
+                  o === "WON" ? "Mark Won" : "Mark Lost",
+                )
+        }
       >
         Mark {o === "WON" ? "Won" : "Lost"}
       </Button>
