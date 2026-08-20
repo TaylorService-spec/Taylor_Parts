@@ -17,7 +17,32 @@ import { receiveInventoryStockProduction } from "./receiveInventoryStockComposit
 import { ReceiveCommandError, type ResolvedPart, type ReceiveAuditInput } from "./receiveInventoryStockCommand.js";
 import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingError } from "./receivingTypes.js";
 import { listEligibleReceivingLocationOptions, ReceivingLocationOptionsError } from "../warehouseGovernance/receivingLocationOptionsService.js";
-import { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, stageReceiveAuditEvent } from "./receivingCallableWiring.js";
+import { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, resolveReceivePartOutsideTxn, stageReceiveAuditEvent } from "./receivingCallableWiring.js";
+import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
+import {
+  readPurchaseOrderProgress,
+  listReceivablePurchaseOrders,
+  PurchaseOrderProgressNotFoundError,
+  PurchaseOrderProgressInvalidError,
+} from "./purchaseOrderProgressRead.js";
+
+const RECEIVE_CAPABILITY_ID = "inventory.stock.receive";
+
+// The capability gate for the two READ paths. The write path resolves through its own transaction
+// (commit-time authoritative, so a concurrent revocation conflicts the commit); a read has no
+// transaction and uses the established non-transactional resolver. A THROWING resolver is a denial,
+// never an allow.
+async function requireReceiveCapability(uid: string): Promise<void> {
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [RECEIVE_CAPABILITY_ID] });
+    allowed = decisions[RECEIVE_CAPABILITY_ID] === true;
+  } catch (err) {
+    console.error("[requireReceiveCapability] capability resolution failed", err);
+    allowed = false;
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to receive stock.");
+}
 
 const REGION = { region: "us-central1" } as const;
 
@@ -194,3 +219,43 @@ function productionWiring(): ReceiveCallableWiring {
 
 export const receiveInventoryStockCallable = onCall(REGION, (request) => runReceiveInventoryStock(request, productionWiring()));
 export const listReceivingLocationOptionsCallable = onCall(REGION, (request) => runListReceivingLocationOptions(request, productionWiring()));
+
+// ═══════════════════════════ CANONICAL PO RECEIVING PROGRESS (read) ═══════════════════════════
+//
+// Phase D. The multi-scan surface needs the ordered lines AND what remains before an operator starts
+// scanning. `purchase_orders` is client-readable, but `receiving_orders` is deny-all — so remaining
+// cannot be derived in a browser, and without these reads the surface could show what was ordered and
+// never what is outstanding.
+//
+// Gated on `inventory.stock.receive`: no new capability, and the people who may take a receipt are
+// exactly the people who need to see what is left on it. READ-ONLY — no transaction, no write, no
+// lifecycle change. The command re-derives inside its own transaction and remains the authority.
+export const getPurchaseOrderReceivingProgressCallable = onCall(REGION, async (request) => {
+  const actorId = requireAuth(request);
+  await requireReceiveCapability(actorId);
+  const data = (request.data ?? {}) as Record<string, unknown>;
+  try {
+    return await readPurchaseOrderProgress(
+      getFirestore(),
+      String(data.purchaseOrderId ?? ""),
+      async (partId: string) => {
+        const resolved = await resolveReceivePartOutsideTxn(getFirestore(), partId);
+        return resolved === null ? null : resolved.trackingMode;
+      },
+    );
+  } catch (err) {
+    if (err instanceof PurchaseOrderProgressNotFoundError) throw new HttpsError("not-found", "That purchase order was not found.");
+    if (err instanceof PurchaseOrderProgressInvalidError) throw new HttpsError("failed-precondition", "That purchase order cannot be received.");
+    throw new HttpsError("internal", "The request could not be completed.");
+  }
+});
+
+export const listReceivablePurchaseOrdersCallable = onCall(REGION, async (request) => {
+  const actorId = requireAuth(request);
+  await requireReceiveCapability(actorId);
+  try {
+    return { purchaseOrders: await listReceivablePurchaseOrders(getFirestore()) };
+  } catch {
+    throw new HttpsError("internal", "The request could not be completed.");
+  }
+});

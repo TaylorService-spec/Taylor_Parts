@@ -10,6 +10,9 @@
 export const CALLABLE_NAMES = Object.freeze({
   receive: "receiveInventoryStock",
   listOptions: "listReceivingLocationOptions",
+  // Phase D reads. Both are gated on the SAME inventory.stock.receive capability as the write.
+  progress: "getPurchaseOrderReceivingProgress",
+  listReceivable: "listReceivablePurchaseOrders",
 });
 
 // Bounded, SANITIZED frontend outcome vocabulary. A transport result carries only one of these
@@ -268,6 +271,55 @@ export function validateCanonicalReceiveResponse(data) {
     ledgerEventId: data.ledgerEventId,
     derivedState: data.derivedState,
     storedStatus: data.storedStatus ?? null,
+    lines: Object.freeze(lines),
+  });
+}
+
+const PROGRESS_LINE_KEYS = ["lineId", "partId", "trackingMode", "orderedQuantity", "receivedQuantity", "remainingQuantity", "state"];
+const TRACKING_MODES = ["NONE", "SERIAL", "LOT", "UNKNOWN"];
+
+/**
+ * Validate the canonical purchase-order PROGRESS response.
+ *
+ * Allow-listed like every other response validator here: only the named fields survive, so nothing
+ * internal can reach the UI even if a future server version sent it. A malformed response returns
+ * null rather than a partially-trusted object — which matters more here than usual, because these
+ * numbers are what the scan queue reconciles against.
+ *
+ * `trackingMode` is validated against a closed set INCLUDING "UNKNOWN". An unresolvable Part is
+ * reported honestly rather than defaulted to NONE: defaulting would tell an operator a serialized
+ * part needs no serial, and the receipt would then be refused for a reason the screen had actively
+ * contradicted.
+ */
+export function validatePurchaseOrderProgress(data) {
+  if (!isPlainObject(data)) return null;
+  if (!isNonBlankString(data.purchaseOrderId)) return null;
+  if (typeof data.receivable !== "boolean") return null;
+  if (!isFiniteNumber(data.version) || data.version < 0) return null;
+  if (!isNonBlankString(data.derivedState)) return null;
+  if (data.storedStatus !== null && !isNonBlankString(data.storedStatus)) return null;
+  if (!Array.isArray(data.lines)) return null;
+
+  const lines = [];
+  for (const l of data.lines) {
+    if (!isPlainObject(l) || !hasExactKeys(l, PROGRESS_LINE_KEYS)) return null;
+    if (!isNonBlankString(l.lineId) || !isNonBlankString(l.partId)) return null;
+    if (!TRACKING_MODES.includes(l.trackingMode)) return null;
+    for (const n of ["orderedQuantity", "receivedQuantity", "remainingQuantity"]) {
+      if (!isFiniteNumber(l[n]) || l[n] < 0) return null;
+    }
+    if (!isNonBlankString(l.state)) return null;
+    lines.push(Object.freeze({ ...l }));
+  }
+
+  return Object.freeze({
+    purchaseOrderId: data.purchaseOrderId,
+    supplierId: data.supplierId ?? null,
+    supplierName: data.supplierName ?? null,
+    storedStatus: data.storedStatus ?? null,
+    derivedState: data.derivedState,
+    receivable: data.receivable,
+    version: data.version,
     lines: Object.freeze(lines),
   });
 }

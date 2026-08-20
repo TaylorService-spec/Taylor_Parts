@@ -2159,6 +2159,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* An inactive identifier is present but will not resolve. Quieted, never hidden -- it is the
    explanation for a conflict the administrator is about to hit. */
 .fo-table tr.is-inactive td { opacity: 0.62; }
+
+/* Multi-scan receiving. The scan line is the surface an operator lives in for minutes at a time with
+   a hardware scanner, so it stays one row at desk width and stacks on a phone -- never a grid that
+   moves the input under the thumb. */
+.fo-scanline { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+.fo-scanline label { font-size: 12px; font-weight: 600; align-self: center; }
+.fo-scanline .fo-input { flex: 1 1 12rem; min-width: 0; }
+@media (max-width: 640px) {
+  .fo-scanline { flex-direction: column; align-items: stretch; }
+  .fo-scanline .fo-input { flex: 1 1 auto; }
+}
+/* A line with scans against it reads as touched at a glance -- the reconciliation table is scanned
+   during counting, not studied afterwards. */
+.fo-table tr.is-observed td { background: var(--color-surface-subtle, rgba(0, 0, 0, 0.03)); }
+.fo-list li.is-blocked { color: var(--color-danger); }
+/* The receipt is the good outcome, not an alert. */
+.fo-receipt { border-left: 3px solid var(--color-success, var(--color-accent)); }
 .fo-chip { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer;
   background: var(--color-surface-sunken); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
 .fo-chip:hover { border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }

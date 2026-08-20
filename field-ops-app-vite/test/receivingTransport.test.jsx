@@ -44,7 +44,15 @@ const RECEIVE_REQ = () => ({
 
 describe("receivingTransport -- frozen names + requests", () => {
   it("pins the exact deployed callable names", () => {
-    expect(CALLABLE_NAMES).toEqual({ receive: "receiveInventoryStock", listOptions: "listReceivingLocationOptions" });
+    // Phase D added two READS. They are pinned here for the same reason the original two are: a
+    // rename must never silently point the transport at a different function. Both are gated on the
+    // SAME inventory.stock.receive capability as the write, and behind the same readiness constant.
+    expect(CALLABLE_NAMES).toEqual({
+      receive: "receiveInventoryStock",
+      listOptions: "listReceivingLocationOptions",
+      progress: "getPurchaseOrderReceivingProgress",
+      listReceivable: "listReceivablePurchaseOrders",
+    });
   });
   it("the options request is the exact empty object", () => {
     expect(OPTIONS_REQUEST).toEqual({});
@@ -186,9 +194,19 @@ describe("mapCallableErrorToStatus -- frozen codes only", () => {
 
 // Export-surface regressions: no production-importable un-gated seam / runtime override.
 describe("export surface -- no bypass", () => {
-  it("receivingCallableClient exports ONLY the two governed public methods", async () => {
+  it("receivingCallableClient exports ONLY governed public methods — no bypass seam", async () => {
+    // The property is unchanged: every export must be a readiness-gated public method, and there
+    // must be no invoker, override, or core exposed alongside them. Phase D added three (two reads
+    // and the canonical submit), each behind the SAME constant — the readiness-false assertions
+    // below cover all five, so widening this list does not widen what it protects.
     const ns = await import("../src/services/receivingCallableClient.js");
-    expect(Object.keys(ns).sort()).toEqual(["fetchReceivingLocationOptions", "submitReceiveInventoryStock"]);
+    expect(Object.keys(ns).sort()).toEqual([
+      "fetchPurchaseOrderProgress",
+      "fetchReceivablePurchaseOrders",
+      "fetchReceivingLocationOptions",
+      "submitCanonicalReceive",
+      "submitReceiveInventoryStock",
+    ]);
   });
   it("receivingReadiness exposes ONLY the constant (no runtime override/resolver)", async () => {
     const real = await vi.importActual("../src/config/receivingReadiness.js");
@@ -205,6 +223,31 @@ describe("public API -- readiness false gate", () => {
   });
   it("submitReceiveInventoryStock(request) -> UNAVAILABLE, zero callable attempts", async () => {
     expect(await submitReceiveInventoryStock(RECEIVE_REQ())).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
+    expect(H.calls).toEqual([]);
+  });
+
+  // The Phase D methods are gated by the SAME constant, and firebase is never even loaded while it
+  // is false. Asserted individually rather than by inspection, because "it reads the constant" and
+  // "it never invokes" are different claims and only the second one matters.
+  it("fetchReceivablePurchaseOrders() -> UNAVAILABLE, zero callable attempts", async () => {
+    const { fetchReceivablePurchaseOrders } = await import("../src/services/receivingCallableClient.js");
+    expect(await fetchReceivablePurchaseOrders()).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, purchaseOrders: [] });
+    expect(H.calls).toEqual([]);
+  });
+
+  it("fetchPurchaseOrderProgress(id) -> UNAVAILABLE, zero callable attempts", async () => {
+    const { fetchPurchaseOrderProgress } = await import("../src/services/receivingCallableClient.js");
+    expect(await fetchPurchaseOrderProgress("PO-1")).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, progress: null });
+    expect(H.calls).toEqual([]);
+  });
+
+  it("submitCanonicalReceive(request) -> UNAVAILABLE, and does not even validate first", async () => {
+    // The readiness gate is checked BEFORE the request is built, so a malformed request while
+    // readiness is false still reports UNAVAILABLE rather than INVALID -- the environment's state is
+    // the more important fact, and reporting "invalid" would send someone to fix a payload that was
+    // never going to be sent.
+    const { submitCanonicalReceive } = await import("../src/services/receivingCallableClient.js");
+    expect(await submitCanonicalReceive({ nonsense: true })).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null });
     expect(H.calls).toEqual([]);
   });
   it("extra arguments cannot enable invocation while readiness is false", async () => {

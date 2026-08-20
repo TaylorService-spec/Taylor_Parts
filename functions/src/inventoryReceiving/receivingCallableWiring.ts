@@ -109,3 +109,19 @@ export function stageReceiveAuditEvent(txn: Transaction, a: ReceiveAuditInput): 
     summary,
   });
 }
+
+// The trusted Part authority, read OUTSIDE a transaction. Phase D's progress read is read-only and
+// deliberately opens no transaction — a transaction query over receiving_orders is what produced
+// emulator lock contention, and a read that decides nothing has no reason to take one.
+//
+// It reuses the SAME controlType -> trackingMode mapping the transactional resolver uses, so the mode
+// the scanning surface shows and the mode the command enforces cannot disagree.
+export async function resolveReceivePartOutsideTxn(db: Firestore, partId: string): Promise<ResolvedPart | null> {
+  const stored = await buildFirestorePartRepository(db).getById(null, partId as PartId);
+  if (!stored) return null;
+  return {
+    partId: stored.part.partId,
+    trackingMode: controlTypeToTrackingMode(stored.part.controlType),
+    active: stored.part.status === "ACTIVE",
+  };
+}

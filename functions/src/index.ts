@@ -193,6 +193,12 @@ export {
 // NOT otherwise exposed as callable surfaces.
 export {
   receiveInventoryStockCallable as receiveInventoryStock,
+  // Phase D READS. The multi-scan surface needs ordered lines AND what remains before scanning
+  // starts; purchase_orders is client-readable but receiving_orders is deny-all, so remaining cannot
+  // be derived in a browser. Both are gated on the SAME inventory.stock.receive capability -- no new
+  // capability, and read-only (no transaction, no write, no lifecycle change).
+  getPurchaseOrderReceivingProgressCallable as getPurchaseOrderReceivingProgress,
+  listReceivablePurchaseOrdersCallable as listReceivablePurchaseOrders,
   listReceivingLocationOptionsCallable as listReceivingLocationOptions,
 } from "./inventoryReceiving/receivingCallables";
 
