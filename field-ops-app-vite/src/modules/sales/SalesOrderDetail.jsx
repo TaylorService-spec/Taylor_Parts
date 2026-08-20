@@ -6,6 +6,7 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
 import SalesOrderActions from "./SalesOrderActions.jsx";
+import SalesOrderFulfillmentSection from "./SalesOrderFulfillmentSection.jsx";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
 // getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
@@ -114,6 +115,15 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
               </div>
             )}
           </section>
+
+          {/* Fulfillment & Installation -- a READ-ONLY projection over records that already
+              exist (order state, line quantities, linked Work Orders). Placed above the raw
+              lineage list because it answers the question people open this page to ask;
+              the id list below remains as the underlying detail.
+              workOrders is passed as null until a governed linked-Work-Order read is wired,
+              and null means UNKNOWN rather than none -- the projection is explicit about
+              that distinction and the section says so on screen. */}
+          <SalesOrderFulfillmentSection salesOrder={view} workOrders={null} />
 
           <section aria-labelledby="so-service-h">
             <h3 id="so-service-h">Service / Work Order lineage</h3>
