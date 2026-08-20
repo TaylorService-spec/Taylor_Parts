@@ -96,7 +96,7 @@ async function sweepPersona(browser, personaId, destinations) {
     // tool moving between pages, not a defect in the page it just left. Reporting it put
     // one of these in nearly every persona and buried the real findings under noise a
     // reader has to learn to skip, which is how a report stops being read.
-    if (/firestore.googleapis.com.*Listen/channel/.test(req.url()) && req.failure()?.errorText === "net::ERR_ABORTED") {
+    if (/firestore\.googleapis\.com.*Listen\/channel/.test(req.url()) && req.failure()?.errorText === "net::ERR_ABORTED") {
       return;
     }
     findings.push({

@@ -2,11 +2,27 @@
 // Firestore emulator. Prerequisite: npm run build; emulator running.
 //
 // Covers the callable authorization boundary end-to-end, mirroring manufacturerReadCallable.test.mjs's
-// pattern (auth/deny + withProject for the per-environment activation override). UNLIKE salesOrder.read /
-// inventory.catalog.read at their own introduction, `inventory.serializedAsset.read` is deliberately
-// granted to NO compatibility Role and has NO per-environment activation override in this phase -- so
-// EVERY principal (including admin, and including inside the sandbox project) must be denied here. This
-// suite proves that ungranted posture, not a working grant path.
+// pattern (auth/deny + withProject for the per-environment activation override).
+//
+// SUPERSEDED POSTURE, 2026-08-19. This suite was written to prove an UNGRANTED capability:
+// granted to no Role, no activation override, denied for everyone everywhere. Two things
+// changed, and the assertions below now prove the opposite in one of the two cases.
+//
+//   1. The Owner ruled "Admin and Owner have full access to all possible features and
+//      permissions", so admin holds the ENTIRE catalog, this id included.
+//   2. This id IS in eos-platform-sandbox's capabilityActivationOverrides.
+//
+// Grant AND activation together are what produce an ALLOW, so:
+//   - OUTSIDE the sandbox project there is no override, the id stays active:false, and
+//     admin is still denied. That half is unchanged and still asserted.
+//   - INSIDE the sandbox project both conditions are met and admin is ALLOWED. That half
+//     is inverted below.
+//
+// This is not a loosening slipped in with a fix: it is the fix. A live sweep signed in as
+// admin and got HTTP 403 from this callable on a page the rail had offered them.
+// dispatcher and technician hold no such grant and are still denied everywhere, which is
+// what keeps this suite an authorization boundary rather than an open door.
+
 //
 // Requirement "client Rules remain closed": structurally guaranteed, not separately tested here --
 // firestore.rules has NO match block for `serialized_assets` (default deny), UNCHANGED by this PR. This
@@ -32,6 +48,13 @@ const request = (uid) => ({ data: {}, auth: uid ? { uid, token: {} } : undefined
 async function expectHttps(promise, code) {
   await assert.rejects(promise, (error) => error?.code === code);
 }
+async function expectAllowed(promise) {
+  // Deliberately asserts RESOLUTION, not merely "did not reject with permission-denied".
+  // A call that blew up for an unrelated reason would satisfy the weaker check while
+  // proving nothing about authorization.
+  await promise;
+}
+
 
 async function withProject(projectId, fn) {
   const prevG = process.env.GCLOUD_PROJECT;
@@ -89,15 +112,16 @@ await check("callable rejects unauthenticated callers", async () => {
 // ----- 2. admin is denied even though admin holds most other capabilities -- this one is granted to
 // NO compatibility Role, and NO activation override exists (unlike salesOrder.read/inventory.catalog.read
 // at their own introduction) -----
-await check("admin is denied -- inventory.serializedAsset.read is granted to no Role", async () => {
+await check("admin is denied OUTSIDE the sandbox: it holds the grant, but the id is active:false with no override", async () => {
   await expectHttps(reads.getAvailableEquipment.run(request(adminUid)), "permission-denied");
 });
 
-// ----- 3. admin is STILL denied inside the sandbox project -- there is no activation override to lift it,
-// unlike salesOrder.read's own introduction -----
-await check("admin is still denied inside the sandbox project (no activation override exists for this capability)", async () => {
+// ----- 3. admin IS allowed inside the sandbox project: grant + activation both satisfied -----
+// This is the assertion that would have caught the live 403. Its previous form asserted the
+// denial as correct, so the sweep's finding and the test suite disagreed, and the suite was wrong.
+await check("admin IS allowed inside the sandbox project -- grant plus activation override", async () => {
   await withProject("eos-platform-sandbox", async () => {
-    await expectHttps(reads.getAvailableEquipment.run(request(adminUid)), "permission-denied");
+    await expectAllowed(reads.getAvailableEquipment.run(request(adminUid)));
   });
 });
 

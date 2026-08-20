@@ -1073,7 +1073,21 @@ async function main() {
         assert.equal(ownerDecisions[id], true, `owner must ALLOW "${id}" because admin does (owner >= admin)`);
       }
     }
-    assert.equal(adminDecisions["report.customer.read"], false, "admin alone must not resolve report.customer.read");
+    // WAS: admin must NOT resolve report.customer.read -- reports were Owner-only.
+    // The 2026-08-19 Owner ruling ("Admin and Owner have full access to all possible
+    // features and permissions") gives admin the whole catalog, reports included, so the
+    // old assertion now asserts against a standing decision.
+    //
+    // What this check is really for is the owner >= admin property, and that is proven by
+    // the loop directly above -- which is stronger now, not weaker, because admin resolving
+    // MORE means the loop has more to prove owner also resolves. Asserting admin ALLOWs
+    // keeps the id load-bearing here rather than deleting the line and quietly narrowing
+    // what the test covers.
+    assert.equal(
+      adminDecisions["report.customer.read"],
+      true,
+      "admin resolves report.customer.read since the 2026-08-19 full-catalog ruling",
+    );
     assert.equal(ownerDecisions["report.customer.read"], true, "owner alone must resolve report.customer.read (the strict-superset id)");
   });
 
