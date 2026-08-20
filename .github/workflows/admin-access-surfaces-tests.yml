@@ -34,6 +34,7 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/admin-access-surfaces-tests.yml"
@@ -49,6 +50,7 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - ".github/workflows/admin-access-surfaces-tests.yml"
   workflow_dispatch:
 
@@ -84,4 +86,5 @@ jobs:
           test/roleAccessModel.test.jsx
           test/adminRolesPermissions.test.jsx
           test/adminRolesPermissionsDeclined.test.jsx
+          test/objectAccessModel.test.jsx
         working-directory: field-ops-app-vite
