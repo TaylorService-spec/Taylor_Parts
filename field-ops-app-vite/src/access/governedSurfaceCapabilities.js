@@ -53,8 +53,22 @@ export const CATALOG_SURFACE_CAPABILITIES = Object.freeze([
 
 // Every id above, as ONE flat list, so the effective-access feed can resolve them in a single request
 // against a single accessVersion (the same consistency property the report request already relies on).
+// RECEIVING. The one capability on this list that is ACTIVE and already granted -- every other
+// governed surface capability here is registered active:false and denies for everyone today.
+//
+// It is added so the shell can resolve a DECISION on it, which is what lets the shared Scan
+// workspace be visible to a governed Parts/Warehouse persona WITHOUT adding a business role to the
+// legacy ROLE_NAV_ACCESS map. That map understands only the three legacy roles and cannot express
+// those personas at all (docs/governance/parts-scanner-access-decision.md §3); capabilityAccess on
+// the nav item is the mechanism that already exists for exactly this, and it needs the id to be in
+// the request set or the decision comes back absent and the item stays hidden.
+//
+// NO NEW CAPABILITY. inventory.stock.receive is the capability that already governs receiving.
+export const RECEIVING_SURFACE_CAPABILITIES = Object.freeze(["inventory.stock.receive"]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
   ...CATALOG_SURFACE_CAPABILITIES,
+  ...RECEIVING_SURFACE_CAPABILITIES,
 ]);

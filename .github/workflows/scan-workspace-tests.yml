@@ -1,0 +1,107 @@
+name: Scan Workspace Tests
+
+# THE SCANNING SURFACES — the shared Scan workspace (Phase E) and the multi-scan supplier receiving
+# journey it composes (Phase D).
+#
+# WHY THIS WORKFLOW EXISTS. The client's vitest suites run in CI ONLY when a workflow names the file;
+# there is no glob lane. Phase D's two vitest suites (multiScanReceiving.test.jsx, receivingTransport.test.jsx)
+# were added without one, so from the day they merged until this workflow landed they had never run in
+# CI even once — they passed locally and were CI-invisible. Registering them here closes that gap, and
+# the path list below is deliberately wide enough that a change to the queue, the transport, the
+# readiness constant, the nav config or the workspace itself brings this lane with it.
+#
+# WHAT IS PROVEN HERE.
+#   scanWorkflows          — eligibility derives from the EXISTING capability model, never from a role
+#                            name, and no scanner-specific capability was invented. Also asserts, at
+#                            file level, that ROLE_NAV_ACCESS gained no governed business role.
+#   scanWorkspace          — the shared entry composes both journeys rather than reimplementing either;
+#                            Phase D's queue, blocked-submission and UNKNOWN-tracking properties still
+#                            hold when launched from it; readiness-false calls no protected callable.
+#   multiScanReceiving     — the Phase D journey itself.
+#   receivingTransport     — the pinned callable names and the client transport export allowlist.
+#   serviceNavGroups       — the nav tripwire, which the Scan item extends.
+#
+# Offline: no emulator, no deployment, no secrets, no production access. The emulator-backed receiving
+# command suites live in inventory-receiving-command-tests.yml, each in its own isolated emulator.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/modules/scan/**"
+      - "field-ops-app-vite/src/modules/receiving/**"
+      - "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx"
+      - "field-ops-app-vite/src/domain/receivingScanQueue.js"
+      - "field-ops-app-vite/src/domain/receivingTransport.js"
+      - "field-ops-app-vite/src/services/receivingCallableClient.js"
+      - "field-ops-app-vite/src/config/receivingReadiness.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      - "field-ops-app-vite/test/scanWorkspace.test.jsx"
+      - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
+      - "field-ops-app-vite/test/receivingTransport.test.jsx"
+      - "field-ops-app-vite/test/receivingScanQueue.test.mjs"
+      - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
+      - ".github/workflows/scan-workspace-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/modules/scan/**"
+      - "field-ops-app-vite/src/modules/receiving/**"
+      - "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx"
+      - "field-ops-app-vite/src/domain/receivingScanQueue.js"
+      - "field-ops-app-vite/src/domain/receivingTransport.js"
+      - "field-ops-app-vite/src/services/receivingCallableClient.js"
+      - "field-ops-app-vite/src/config/receivingReadiness.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      - "field-ops-app-vite/test/scanWorkspace.test.jsx"
+      - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
+      - "field-ops-app-vite/test/receivingTransport.test.jsx"
+      - "field-ops-app-vite/test/receivingScanQueue.test.mjs"
+      - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
+      - ".github/workflows/scan-workspace-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan-workspace-tests:
+    name: Shared Scan workspace + multi-scan receiving (node:test + vitest + jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
+      - name: Scan workflow availability (pure)
+        run: node --test test/scanWorkflows.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Receiving scan queue (pure)
+        run: node --test test/receivingScanQueue.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Service navigation groups tripwire
+        run: node test/serviceNavGroups.test.mjs
+        working-directory: field-ops-app-vite
+
+      # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
+      - name: Scan workspace + multi-scan receiving journey + transport (vitest + jsdom)
+        run: npx vitest run test/scanWorkspace.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        working-directory: field-ops-app-vite

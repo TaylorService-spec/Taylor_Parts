@@ -784,6 +784,10 @@
     {
       "file": "test/receivingScanQueue.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/scanWorkflows.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

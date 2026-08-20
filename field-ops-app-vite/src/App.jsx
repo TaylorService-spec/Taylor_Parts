@@ -5,6 +5,7 @@ import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
+import ScanWorkspace from "./modules/scan/ScanWorkspace";
 import Inventory from "./modules/inventory/Inventory";
 import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
@@ -300,6 +301,18 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "service" && item.key === "coordinatedMission") {
     return <CoordinatedMissionView />;
+  }
+  // THE SHARED SCAN WORKSPACE (Phase E). Composes the two scanning journeys that exist -- the Phase D
+  // supplier receiving journey and the existing technician PartsScanner -- and derives which of them
+  // to offer from the TRUSTED effective-access feed already threaded through operationalContext,
+  // never from a role name. FieldMode still composes PartsScanner itself, so the technician journey
+  // is not moved, only additionally reachable.
+  if (domain.key === "service" && item.key === "scan") {
+    return (
+      <ScanWorkspace
+        deps={{ hasCapability: operationalContext?.hasCapability, role }}
+      />
+    );
   }
   // Sprint 2.1.1 -- Inventory Domain Foundation. "Parts" now renders
   // the real Inventory workspace; the legacy demo Inventory.jsx it

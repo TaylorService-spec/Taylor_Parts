@@ -2283,6 +2283,41 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (min-width: 700px) {
   .fo-scan__entry { grid-template-columns: auto 1fr auto; align-items: center; }
 }
+
+/* ---------------------------------------------------------------------------
+   SHARED SCAN WORKSPACE -- the workflow chooser
+   ---------------------------------------------------------------------------
+   The list a scanning user lands on. It carries only workflows they can
+   actually complete, so every card here is a real, reachable job -- there are
+   no disabled cards to style, because an operation that does not exist is not
+   listed at all.
+
+   Sized for a warehouse phone held one-handed: the whole card is a generous
+   target, the label is the control (a real button, so it is tabbable and
+   Enter-activatable without any key handling of our own), and the description
+   sits under it rather than in a tooltip no thumb can summon.
+   ------------------------------------------------------------------------- */
+.fo-scan-workflows {
+  list-style: none; margin: 16px 0 0; padding: 0;
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+}
+.fo-scan-workflows > li {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+/* Full-bleed inside the card and comfortably above the 44px touch floor. */
+.fo-scan-workflows > li > button { width: 100%; min-height: 52px; font-size: 16px; }
+.fo-scan-workflows > li > p { margin: 0; font-size: 13.5px; line-height: 1.45; }
+
+@media (min-width: 700px) {
+  /* Two abreast on a desk. minmax keeps a lone workflow from stretching into a
+     banner, which would read as an announcement rather than a choice. */
+  .fo-scan-workflows { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .fo-scan-workflows > li > button { width: auto; align-self: flex-start; }
+}
 /* Sales Opportunity Operating Workspace (Cycle 2). A scannable pipeline table + a read-only detail aside,
    composed on the Wave-0 primitives. No new colour tokens — tone comes from the shared StatusPill layer. */
 .fo-sales-banner { margin: 0 0 12px; font-size: 13px; }

@@ -4,6 +4,7 @@ import {
   TRANSFER_SURFACE_CAPABILITIES,
   CYCLE_COUNT_SURFACE_CAPABILITIES,
   CATALOG_SURFACE_CAPABILITIES,
+  RECEIVING_SURFACE_CAPABILITIES,
 } from "../access/governedSurfaceCapabilities.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
@@ -186,6 +187,21 @@ export const NAV_DOMAINS = [
       { key: "coordinatedVisits", label: "Coordinated Visits", path: "coordinated-visits" },
       { key: "coordinatedMission", label: "Coordinated Mission", path: "coordinated-mission", legacyKey: "fieldMode" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
+      // THE SHARED SCAN WORKSPACE. Declares BOTH paths deliberately, which is the composition
+      // isNavItemVisible already supports (an item may declare a capability set and a compatibility
+      // path and admit either):
+      //
+      //   capabilityAccess -> a governed Parts/Warehouse persona holding inventory.stock.receive
+      //     sees it WITHOUT any change to the legacy ROLE_NAV_ACCESS map. That map understands only
+      //     admin/dispatcher/technician and cannot express those personas at all
+      //     (docs/governance/parts-scanner-access-decision.md §3), so adding business roles to it
+      //     would add keys nothing reads.
+      //   legacyKey "fieldMode" -> technicians and admins keep seeing it through the SAME key the
+      //     Technician Workspace already uses. No new ROLE_NAV_ACCESS key is invented.
+      //
+      // Nav visibility is not the security boundary (Rules and the governed commands are). The
+      // workspace itself derives every workflow it offers from the trusted effective-access feed.
+      { key: "scan", label: "Scan", path: "scan", legacyKey: "fieldMode", capabilityAccess: RECEIVING_SURFACE_CAPABILITIES },
       // Platform Task 3 -- Control Tower left the Service sub-nav: it is now the
       // top-level "Service Operations" area (NAV_DOMAINS' serviceOperations
       // below), still rendered by LEGACY_COMPONENTS["controlTower"] with the same
@@ -525,6 +541,12 @@ export const SERVICE_NAV_GROUPS = [
   { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
   { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"] },
   { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace", "coordinatedMission"] },
+  // SCANNING IS ITS OWN GROUP, not a child of Technician Workspace.
+  //
+  // The shared Scan workspace serves warehouse and Parts personas as well as technicians, and a
+  // Parts Associate who can see only this one item should not be told they are inside "Technician
+  // Workspace" -- the group label is the only context they would get, and it would be wrong.
+  { key: "scanning", label: "Scanning", itemKeys: ["scan"] },
 ];
 
 // Build the two-level Service nav model from the ALREADY-VISIBILITY-FILTERED

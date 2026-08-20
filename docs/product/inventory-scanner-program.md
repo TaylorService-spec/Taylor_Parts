@@ -4,6 +4,11 @@
 **Audience:** Product owner, architecture reviewers, and implementation agents  
 **Status:** Approved product direction; implementation must reconcile every authority against current `main`
 
+**What is actually built:** this file is the specification, not a status report. For the
+phase-by-phase delivery state — repository, UX, backend, deployment and activation tracked
+separately, because they move independently — see
+[the delivery state](inventory-scanner-program-state.md).
+
 **Current verified baseline:** `main` at `590f9437`. Read
 `docs/governance/parts-scanner-access-decision.md` before implementation. That
 package establishes that the current Scanner has one technician-only action,
