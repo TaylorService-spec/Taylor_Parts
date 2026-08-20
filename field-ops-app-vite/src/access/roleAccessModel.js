@@ -157,3 +157,97 @@ export function accessDiagnostics(roles) {
     activeCount: PERMISSION_CATALOG.filter((p) => p.active !== false).length,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE OBJECT SIDE.
+//
+// Everything above reads the model from a ROLE: pick a role, see its reach. The Objects grid
+// does the same — it is role-first, one role at a time across every object.
+//
+// That leaves "who can delete a Sales Order?" answerable only by selecting each of sixteen
+// roles in turn and reading one column. The question is ordinary and the answer is in the same
+// data; it simply had no view. These functions are that view, built on the SAME
+// objectPermissionMap the grid renders, so the two can never disagree about what a verb means.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One object's full picture: for each verb, the capabilities behind it and every supplied role
+ * that holds at least one of them.
+ *
+ * `state` per verb:
+ *   noCapability — nothing in the catalog governs it. NOT the same as "nobody was granted it",
+ *                  and never rendered the same way: one is a gap in the model, the other is a
+ *                  decision about people.
+ *   nobody       — capabilities exist and no supplied role holds any. Someone could be granted
+ *                  this; nobody has been.
+ *   held         — at least one role can do it.
+ */
+export function objectAccess(entry, roles) {
+  const active = activeCapabilityIds();
+  const byId = catalogById();
+
+  const verbs = {};
+  for (const verb of VERBS) {
+    const ids = entry[verb] ?? [];
+    const capabilities = ids.map((id) => ({
+      id,
+      // A capability the mapping names but the catalog does not define. Same reasoning as the
+      // role side: a typo and a deletion are indistinguishable once both are dropped.
+      known: byId.has(id),
+      active: active.has(id),
+      heldBy: roles.filter((r) => (r?.permissions ?? []).includes(id)).map((r) => r.id),
+    }));
+    const holders = [...new Set(capabilities.flatMap((c) => c.heldBy))].sort();
+    verbs[verb] = {
+      capabilities,
+      holders,
+      state: ids.length === 0 ? "noCapability" : holders.length === 0 ? "nobody" : "held",
+      // Every capability behind this verb is registered inactive, so even the roles listed as
+      // holders cannot perform it. Holders WITHOUT the ability to act is precisely the state a
+      // plain tick misrepresents.
+      allInert: ids.length > 0 && capabilities.every((c) => !c.active),
+    };
+  }
+
+  return {
+    object: entry.object,
+    domain: entry.domain,
+    rulesOnly: entry.rulesOnly ?? null,
+    verbs,
+  };
+}
+
+/** Every object, resolved. */
+export function objectAccessAll(roles) {
+  return OBJECT_PERMISSIONS.map((entry) => objectAccess(entry, roles));
+}
+
+/**
+ * Object-side diagnostics — the findings that only appear reading down the object axis.
+ *
+ *   ungoverned      — objects the capability model does not govern for ANY verb. Some are
+ *                     governed by firestore.rules instead (marked), which is a different
+ *                     mechanism rather than an absence; the rest are genuine model gaps.
+ *   nobodyCan       — object/verb pairs where capabilities exist and no role holds them. A
+ *                     capability nobody was given, as opposed to one that does not exist.
+ *   inertOnly       — object/verb pairs whose every backing capability is inactive, so the
+ *                     roles shown as holders still cannot act.
+ */
+export function objectDiagnostics(roles) {
+  const all = objectAccessAll(roles);
+  const ungoverned = [];
+  const nobodyCan = [];
+  const inertOnly = [];
+
+  for (const o of all) {
+    if (VERBS.every((v) => o.verbs[v].state === "noCapability")) {
+      ungoverned.push({ object: o.object, domain: o.domain, rulesOnly: o.rulesOnly });
+    }
+    for (const v of VERBS) {
+      if (o.verbs[v].state === "nobody") nobodyCan.push({ object: o.object, verb: v });
+      if (o.verbs[v].allInert) inertOnly.push({ object: o.object, verb: v });
+    }
+  }
+
+  return { ungoverned, nobodyCan, inertOnly };
+}

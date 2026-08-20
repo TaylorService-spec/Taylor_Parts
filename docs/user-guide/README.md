@@ -83,6 +83,7 @@ Every guide is tagged so you're never misled about what actually works:
 
 ## Administration
 
+- [See who can do what to an object](administration/see-who-can-do-what.md) — **live** — Administration > Objects, By object view: pick an object and see how many roles can create/read/edit/delete it, which permission lets them, and diagnostics for objects the permission model does not govern (admin/dispatcher).
 - [See what a role can actually do](administration/see-what-a-role-can-do.md) — **live** — Pick a role and read its real capabilities from the live access rules: what it can actually do, what it holds but is switched off system-wide, its Create/Read/Edit/Delete reach per object, and system-wide diagnostics (admin/dispatcher).
 - [Add and view employees](administration/manage-employees.md) — **live** — List field technicians and add a new one (name + phone) on the Administration > Employees screen.
 - [Read the integrations connection guide](administration/integrations-guide.md) — **live** — Browse and search the Administration > Integrations FAQ and gather a readiness checklist before requesting a connection.
