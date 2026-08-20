@@ -1,0 +1,127 @@
+name: Part Identifier Administration Tests
+
+# Scanner Program Phase A (docs/product/inventory-scanner-program.md §18 step 4): the governed Part
+# identifier / barcode administration path -- trusted alias callables, the read projection, and the
+# Part Master "Barcodes & Identifiers" surface.
+#
+# WHY AN EMULATOR JOB. The alias commands were already unit-tested; what had never been tested is
+# the layer that made them REACHABLE. The things that only a real transaction shows are exactly the
+# ones this slice depends on: that the read projects the version token deactivate requires, that an
+# identifier owned by another Part is refused as a CONFLICT rather than a validation failure, that a
+# repeated create replays instead of duplicating, and that scan-to-test changes nothing.
+#
+# WHY A SEPARATE VITEST JOB. The client's vitest suites run in CI by EXPLICIT NAME, not by glob, so a
+# suite nobody names here is silently never run.
+#
+# No deployment, no grant, no activation, no production access, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/partMaster/partAlias**"
+      - "functions/src/partMaster/normalization.ts"
+      - "functions/src/partMaster/types.ts"
+      - "functions/test/partAliasCallables.test.mjs"
+      - "functions/test/partAliasCommands.test.mjs"
+      - "functions/src/index.ts"
+      - "functions/package.json"
+      - "field-ops-app-vite/src/domain/partIdentifiers.js"
+      - "field-ops-app-vite/src/hooks/usePartIdentifiers.js"
+      - "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
+      - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
+      - "field-ops-app-vite/test/partIdentifiers.test.mjs"
+      - "field-ops-app-vite/test/partIdentifiersSection.test.jsx"
+      - "config/environments.json"
+      - "scripts/resolveEnvironment.mjs"
+      - ".github/workflows/part-identifier-administration-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/partMaster/partAlias**"
+      - "functions/test/partAliasCallables.test.mjs"
+      - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
+      - "field-ops-app-vite/src/domain/partIdentifiers.js"
+      - ".github/workflows/part-identifier-administration-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alias-callables-emulator:
+    name: Part identifier callables (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/part-identifier-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/part-identifier-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/part-identifier-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Part identifier callables (build + run)
+        run: npm run test:partIdentifiersEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: part-identifier-emulator-logs
+          path: /tmp/part-identifier-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  identifier-surface:
+    name: Part identifier surface + pure contract (vitest + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies (reproducible)
+        run: npm ci
+        working-directory: field-ops-app-vite
+
+      - name: Lint
+        run: npx oxlint src/shared/partMaster src/domain/partIdentifiers.js src/hooks/usePartIdentifiers.js src/services/partAliasCallableClient.js src/config/partIdentifierReadiness.js
+        working-directory: field-ops-app-vite
+
+      # The pure contract MIRRORS the server's normalization rules and reads the authority's source
+      # to prove it. Run under node:test because it needs no DOM.
+      - name: Pure identifier contract
+        run: node --test test/partIdentifiers.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Identifier administration surface
+        run: npx vitest run test/partIdentifiersSection.test.jsx
+        working-directory: field-ops-app-vite

@@ -267,6 +267,31 @@ export {
   changeManufacturerStatusCallable as changeManufacturerStatus,
 } from "./partMaster/manufacturerCallables";
 
+// --- Part IDENTIFIERS / barcodes (part_aliases): trusted alias command + read callables ---
+// Scanner Program Phase A (docs/product/inventory-scanner-program.md §18 step 4). The alias commands
+// have existed, unit-tested, since INV-1 Phase 1 PR 1.3 and were UNREACHABLE: no onCall adapter was
+// ever exported, so no browser could call them. The Part Master "Barcodes & Identifiers" section
+// rendered UNAVAILABLE and named that gap precisely. These adapters close the TRANSPORT gap only.
+//
+// NO NEW CAPABILITY. All five are governed by `inventory.catalog.manage` -- the capability the alias
+// commands already enforce, per the recorded O-gate direction. The two reads are gated on the same
+// id because this is an administration surface with no separate audience, and because seeing an
+// INACTIVE identifier is what makes the create path's conflict refusal legible. See
+// partAliasCallables.ts for the alternative that was considered and not taken.
+//
+// EXPORT != DEPLOY, REGISTER != GRANT != ACTIVATE. Nothing here is deployed or granted by this
+// slice, and the client transport additionally fails closed behind PART_IDENTIFIER_TRANSPORT_READY
+// (false in every environment). `part_aliases` stays deny-all in firestore.rules and does not need
+// to change: a callable runs on the Admin SDK, which Rules do not govern. Firebase deploys each
+// callable under its exported index property name -> frozen public names (no "Callable" suffix).
+export {
+  createPartAliasCallable as createPartAlias,
+  deactivatePartAliasCallable as deactivatePartAlias,
+  reactivatePartAliasCallable as reactivatePartAlias,
+  listPartAliasesCallable as listPartAliases,
+  probePartAliasCallable as probePartAlias,
+} from "./partMaster/partAliasCallables";
+
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
 // production project. NO UI wired yet, NO capability granted, NO App Check.

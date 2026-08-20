@@ -213,6 +213,31 @@ Nothing in steps 2–5 was started. This document is step 2, and step 1 is not m
 
 ---
 
+## 5b. Phase A status — DELIVERED
+
+Owner decision 2026-08-20 directed Phase A (identifier administration) to proceed immediately as
+independent work. It is built.
+
+**Classification: RELEASE CANDIDATE — NOT USER-OPERABLE.**
+
+| Axis | State |
+|---|---|
+| Repository-complete behaviour | **Yes** — five callables, read projection, full UX, tests, CI |
+| Capability definition required | **No.** `inventory.catalog.manage` already exists, is ACTIVE, and is what the alias commands already enforce. No synonym was created |
+| Grant required | **No** — already granted to admin and two governed business roles |
+| Activation required | **No** — the capability is not inert |
+| Deployment required | **YES** — the five callables are exported but not deployed |
+| Readiness flip required | **YES** — `PART_IDENTIFIER_TRANSPORT_READY` is false in all four environments |
+| Data migration required | **No.** `part_aliases` is unpopulated, and that is the correct starting state — identifiers are entered, not backfilled |
+| Owner decisions remaining | None for Phase A |
+
+Two of the three blockers the surface itself named are now closed. The third —
+`firestore.rules` deny-all on `part_aliases` — was **not** closed and did not need to be: a
+callable runs on the Admin SDK, which Rules do not govern. Rules are unchanged.
+
+**No index was added.** The list read is a single-field equality query with in-memory ordering,
+specifically so it needs none.
+
 ## 6. Preserved by this reconciliation
 
 The Owner decision recorded in `docs/governance/parts-scanner-access-decision.md` and in program

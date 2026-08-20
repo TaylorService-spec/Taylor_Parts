@@ -143,8 +143,37 @@ export function aliasFromFirestore(docId: string, data: Record<string, unknown> 
 }
 
 // Narrow, storage-independent repository (no list/search, no delete).
+/**
+ * The most a single Part's identifier list will return.
+ *
+ * A bound rather than a page: a Part with more than this many identifiers is a data-quality
+ * problem, not a paging problem, and the administration surface should say so instead of
+ * silently paging through it. `truncated` makes that visible rather than presenting a partial
+ * list as complete.
+ */
+export const PART_ALIAS_LIST_LIMIT = 200;
+
+export interface PartAliasList {
+  readonly aliases: readonly StoredPartAlias[];
+  /** True when more identifiers matched than were returned. Never folded into the list itself. */
+  readonly truncated: boolean;
+}
+
 export interface PartAliasRepository {
   getByAliasId(txn: Transaction | null, aliasId: PartAliasId): Promise<StoredPartAlias | null>;
+  /**
+   * Every identifier recorded against one Part, ACTIVE and INACTIVE alike.
+   *
+   * INACTIVE ONES ARE INCLUDED DELIBERATELY. There is no delete here -- deactivation preserves
+   * history -- and an administrator who cannot see an inactive identifier cannot understand why
+   * re-adding it is rejected as a conflict. Hiding them would turn a legible refusal into an
+   * inexplicable one.
+   *
+   * EQUALITY ON ONE FIELD, NO ORDERING. Firestore indexes single fields automatically, so this
+   * query needs no composite index -- which matters because adding one is a protected boundary
+   * this slice must not cross. Ordering is applied in memory by the caller.
+   */
+  listByPartId(partId: PartId): Promise<PartAliasList>;
   stageCreate(txn: Transaction, stored: StoredPartAlias): void;
   stageUpdate(txn: Transaction, stored: StoredPartAlias): void;
 }
@@ -156,6 +185,20 @@ export function buildFirestorePartAliasRepository(db: Firestore): PartAliasRepos
       const snap = txn ? await txn.get(ref(aliasId)) : await ref(aliasId).get();
       if (!snap.exists) return null;
       return aliasFromFirestore(snap.id, snap.data());
+    },
+    async listByPartId(partId) {
+      // limit + 1 so "there are more" is a fact read from the query rather than inferred from a
+      // full page, which cannot tell a list of exactly LIMIT from a truncated one.
+      const snap = await db
+        .collection(PART_ALIASES_COLLECTION)
+        .where("partId", "==", partId)
+        .limit(PART_ALIAS_LIST_LIMIT + 1)
+        .get();
+      const docs = snap.docs.slice(0, PART_ALIAS_LIST_LIMIT);
+      return {
+        aliases: docs.map((d) => aliasFromFirestore(d.id, d.data())),
+        truncated: snap.docs.length > PART_ALIAS_LIST_LIMIT,
+      };
     },
     stageCreate(txn, stored) {
       txn.create(ref(stored.aliasId), aliasToFirestore(stored));

@@ -51,6 +51,7 @@ Every guide is tagged so you're never misled about what actually works:
 
 ## Inventory
 
+- [Add and manage a part’s barcodes and identifiers](inventory/manage-part-identifiers.md) — **built, not switched on** — Register the barcodes and part numbers a part is also known by, test a scan before trusting it, and deactivate/reactivate without deleting. Governed by inventory.catalog.manage; the surface says it is unavailable rather than showing an empty list.
 - [Find a part and check its stock](inventory/find-a-part.md) — **live** — Look up a part in the Parts catalog and read its stock position and reorder status (read-only).
 - [Request a reorder for a part](inventory/request-a-reorder.md) — **live** — Flag a low part into the reorder queue via the Request Reorder control (one-click for forecastable parts; eligibility-gated manual qty for Needs Planning).
 - [Review a reorder request (approve or reject)](inventory/review-a-reorder-request.md) — **live** — Approve a pending request to hand it to the Parts Manager, or reject it with a required reason.
