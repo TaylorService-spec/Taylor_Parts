@@ -27,6 +27,7 @@ import AdministrationUnavailable from "./modules/administration/AdministrationUn
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
+import AdminObjects from "./modules/administration/AdminObjects.jsx";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
@@ -245,6 +246,11 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // one is emitted first and React Router matched it -- so the deployed page said
   // "This area isn't built yet" over a list that was very much built. Tests and build
   // both passed, because neither renders the route table the way the browser does.
+  // Dispatched here, not as a separate <Route> -- the generic subnav loop emits the route
+  // and renders whatever this returns, so a second Route at the same path never wins.
+  if (domain.key === "administration" && item.key === "objects") {
+    return <AdminObjects />;
+  }
   if (domain.key === "customers" && item.key === "salesOrders") {
     return <SalesOrdersList />;
   }

@@ -383,6 +383,10 @@ export const NAV_DOMAINS = [
       { key: "employees", label: "Employees", path: "", legacyKey: "technicians" },
       { key: "users", label: "Users", path: "users" },
       { key: "rolesPermissions", label: "Roles & Permissions", path: "roles-permissions" },
+      // Objects -- the Role x Object x CRED grid (Owner, 2026-08-20). Sits beside Roles &
+      // Permissions because it answers the other half of the same question: that screen is
+      // about which PEOPLE hold a role; this one is what a ROLE can do to each object.
+      { key: "objects", label: "Objects", path: "objects" },
       // Net-new per Spec sec16's "permission preview/explanation" MVP surface.
       // Real read-only content (effective-permission preview render) lands in
       // Row 11 (Task 16) -- this row only adds the reachable nav slot.

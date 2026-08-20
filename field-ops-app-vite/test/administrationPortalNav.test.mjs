@@ -98,8 +98,10 @@ ok("the Administration domain's key/path/label are unchanged", () => {
 });
 ok("exactly eleven Administration subnav items now exist (eight original + Overview + Permission Preview + Duplicate Rules)", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
-  // was added deliberately (Owner, 2026-08-19) as its own tab under Administration.
-  assert.equal(adminDomain.subnav.length, 11);
+  // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
+  // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
+  // keep immediately: a scripted edit inserted Objects TWICE and this assertion caught it.
+  assert.equal(adminDomain.subnav.length, 12);
 });
 
 ok("Duplicate Rules is a visible Administration tab, not hidden", () => {
