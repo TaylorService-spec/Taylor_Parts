@@ -31,6 +31,7 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
+| SO-HANDOFF-1 | **Opportunity line-item model + Sales Order transfer contract** (spec) | Repo-safe documentation work with no capability, grant, Rule or collection change. It is the named prerequisite for SO-HANDOFF-2 (Owner, 2026-08-20: "First define the Opportunity line-item model and determine what transfers into the Sales Order") | Write the spec: what a line item is on an Opportunity, which fields transfer into the Sales Order, and what the Sales Order derives rather than copies. No code |
 
 > **UX workstream registered 2026-08-09.** The prior terminal CHECKPOINT was reached with the UX
 > workstream **absent from this ledger** — UX items existed only in session state, so the selector could not
@@ -61,6 +62,7 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | Item | Blocked on | Type |
 |---|---|---|
+| SO-HANDOFF-2 · **Opportunity → Sales Order creation UX** | **SO-HANDOFF-1** (line-item model + transfer contract). The backend is already complete and deployed — `createSalesOrderFromOpportunity` writes the lineage and its capability `opportunity.createSalesOrder` is granted and sandbox-activated — but the client has **zero call sites** (its only textual appearance is a comment in `metadata/definitions/salesOrder.js`), so a WON Opportunity cannot produce a Sales Order through the product. The upstream cause is that the Opportunity form never collects line items, so the handoff has nothing to hand over (`docs/assessments/sandbox-gap-scan-2026-08-19.md` H11). **Expose the EXISTING callable — do not write a second create service.** Must prevent duplicate Sales Orders, preserve lineage, surface validation/failure states distinctly, and navigate to the created order | product gap, backend-complete |
 | ~~Control Center — Agent Operations / Network Health / Recent Progress / UX board~~ | **RESOLVED (#732 / keystone #9).** All four projection gaps filled by extending `controlCenterAdapter` (schema 1.1.0: `agentOperations`, `networkHealth` sanitized-only, `recentProgress` from PR evidence, populated `uxBoard`); keystone renders them; UX capabilities registered in `roadmapModel.mjs`. Not approximated | ~~projection~~ → DONE |
 | Serialized Equipment availability | P1a real serialized-asset availability signal **+** #12 Temporary Equipment/Placement. Do **not** fabricate availability data | roadmap |
 | #12 Temporary Equipment / Placement | Assess only **after** F2 + integrated sandbox mature (custody persistence shape unresolved) | roadmap (preserved) |

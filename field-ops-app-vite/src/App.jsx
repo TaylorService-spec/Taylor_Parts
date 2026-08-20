@@ -27,6 +27,8 @@ import AdministrationUnavailable from "./modules/administration/AdministrationUn
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
+import AdminObjects from "./modules/administration/AdminObjects.jsx";
+import EmployeesList from "./modules/administration/EmployeesList.jsx";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
@@ -237,6 +239,28 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // resolveEffectiveAccessCallable decision for opportunity.write instead of a hardcoded fail-closed value.
   if (domain.key === "customers" && item.key === "opportunities") {
     return <OpportunityWorkspaceConnected />;
+  }
+  // The Sales Order INDEX must be dispatched HERE, not by a separate <Route>. The generic
+  // subnav loop below emits a route for EVERY visible nav item and renders whatever this
+  // function returns; an item with no branch and no legacyKey falls through to
+  // PlaceholderPage. Adding a second <Route> at the same path did not win -- the generic
+  // one is emitted first and React Router matched it -- so the deployed page said
+  // "This area isn't built yet" over a list that was very much built. Tests and build
+  // both passed, because neither renders the route table the way the browser does.
+  // Dispatched here, not as a separate <Route> -- the generic subnav loop emits the route
+  // and renders whatever this returns, so a second Route at the same path never wins.
+  // Owner ruling 2026-08-20: "technician is a role". The Employees item keeps its
+  // legacyKey (so WHO can see it is unchanged) but renders the governed employee
+  // directory instead of the fieldops_technicians roster it used to. The two had drifted
+  // into parallel identities for the same people; the directory is `employees`.
+  if (domain.key === "administration" && item.key === "employees") {
+    return <EmployeesList />;
+  }
+  if (domain.key === "administration" && item.key === "objects") {
+    return <AdminObjects />;
+  }
+  if (domain.key === "customers" && item.key === "salesOrders") {
+    return <SalesOrdersList />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
@@ -570,10 +594,6 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
-              {/* The Sales Order INDEX. Static prefix, so it outranks the dynamic
-                  :accountId sibling below -- same ordering reasoning as the
-                  sales-order detail route directly above. */}
-              <Route path="sales-orders" element={<SalesOrdersList />} />
               <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>

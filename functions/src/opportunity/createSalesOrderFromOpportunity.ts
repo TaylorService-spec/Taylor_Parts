@@ -44,7 +44,7 @@ interface OpportunityLineDoc {
   qty?: number;
 }
 
-interface OpportunityDoc {
+export interface OpportunityDoc {
   opportunityNumber?: string | null;
   outcome?: string | null;
   accountId?: string;
@@ -71,7 +71,7 @@ export interface CreateSalesOrderFromOpportunityResult {
 // Translate the Opportunity's PRE-COMMITMENT lines (kind/ref/qty?) into the Sales Order builder's
 // SalesOrderLineInput shape. `qty` is OPTIONAL on an Opportunity line but REQUIRED (as orderedQty) on a Sales
 // Order line — a missing qty is a fail-closed condition here, never defaulted (e.g. to 1).
-function deriveSalesOrderLines(lines: OpportunityLineDoc[] | undefined): SalesOrderLineInput[] {
+export function deriveSalesOrderLines(lines: OpportunityLineDoc[] | undefined): SalesOrderLineInput[] {
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new HttpsError("failed-precondition", "Opportunity has no lines to seed a Sales Order from.");
   }

@@ -98,6 +98,25 @@ export const ROLE_HIERARCHY: Readonly<Record<string, RoleHierarchyNode>> = Objec
       "Head of the marketing branch, a peer of Sales, Operations and Finance. Equal to Sales Manager by Owner ruling, so neither sees the other's people.",
     stated: true,
   }),
+  // Owner roster 2026-08-20. Purchasing Manager sits under Finance Manager: the 2026-08-19
+  // ruling put purchasing under accounting, and the roster gives Erik BOTH Accounting
+  // Manager and Purchasing Manager. Reporting line follows that, while the capability bundle
+  // stays on its own role.
+  purchasingManager: Object.freeze({
+    roleId: "purchasingManager",
+    parent: "financeManager",
+    rationale: "Procurement reports into Finance, per the 2026-08-19 ruling that purchasing falls under accounting.",
+    stated: true,
+  }),
+  // Shop Manager is a Service-organization position (Owner roster 2026-08-20, Willie),
+  // placed under Service Manager -- the role its own description mirrors. Holds no
+  // capabilities; placement is visibility only and confers nothing.
+  shopManager: Object.freeze({
+    roleId: "shopManager",
+    parent: "fieldManager",
+    rationale: "Service-organization position under the Service Manager. Placement is visibility; the CRUD matrix declares no authority row for it.",
+    stated: true,
+  }),
   operationsManager: Object.freeze({
     roleId: "operationsManager",
     parent: "admin",

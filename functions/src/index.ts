@@ -19,13 +19,16 @@ export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPla
 // Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
-export { createOpportunity, transitionOpportunity } from "./opportunity/opportunityCallables";
+export { createOpportunity, transitionOpportunity, updateOpportunity } from "./opportunity/opportunityCallables";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
 // P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
 // EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT).
 export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";
+// The ATOMIC Won action. Closes the Opportunity as WON and creates its Sales Order in ONE
+// transaction, so a Won Opportunity can never exist without its order. EXPORT != DEPLOY.
+export { closeOpportunityAsWon } from "./opportunity/closeOpportunityAsWon";
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
 export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";

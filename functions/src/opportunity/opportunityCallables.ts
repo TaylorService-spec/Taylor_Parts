@@ -21,8 +21,11 @@ import { allocateOpportunityNumber } from "./opportunityNumbering";
 import {
   buildCreateOpportunity,
   buildTransitionPatch,
+  buildUpdateOpportunity,
   OpportunityCommandError,
   type CreateOpportunityInput,
+  type UpdateOpportunityInput,
+  type OpportunityFieldChange,
   type OpportunityDocState, type BuiltOpportunity,
 } from "./opportunityCommands";
 import { isOutcome, isStage, type TransitionIntent } from "./opportunityLifecycle";
@@ -204,6 +207,122 @@ export const transitionOpportunity = onCall({ region: "us-central1" }, async (re
   try {
     return await db.runTransaction((tx) =>
       persistTransitionedOpportunity(db, tx, ref, data.opportunityId, intent, actorUid, data.idempotencyKey!),
+    );
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// ============================ ORDINARY EDIT ============================
+//
+// The third write path. Before it, every Edit control in the Opportunity workspace was
+// disabled with "the governed save command is not wired in this build" -- accurate, and
+// understated: no such command existed, so an Opportunity could be created and advanced but
+// never corrected.
+//
+// Transactional core, exported for the same reason the other two are: tests exercise the
+// idempotency and concurrency invariants directly, below the capability gate.
+export async function persistUpdatedOpportunity(
+  db: Firestore, tx: Transaction, ref: FirebaseFirestore.DocumentReference,
+  input: UpdateOpportunityInput, actorUid: string, idempotencyKey: string,
+) {
+  // SCOPED TO THE OPPORTUNITY, not just actor+key. mkAuditId hashes only actorUid|key, so an
+  // actor reusing one idempotency key across two DIFFERENT Opportunities would collide and the
+  // second edit would return a false "replayed" -- skipping every validation and silently not
+  // applying. Found by test: three assertions failed because earlier tests in the same file had
+  // already burned the key. Composing the id with the opportunityId gives this action a
+  // per-record replay space, which is what createSalesOrderFromOpportunity already does.
+  //
+  // NOTE, deliberately not fixed here: transitionOpportunity and createOpportunity call the
+  // same helper without a target in the key and have the same latent collision. That is a
+  // pre-existing idempotency space with keys already in use, so narrowing it is a behaviour
+  // change of its own rather than a rider on this one. Recorded in the execution backlog.
+  const aid = mkAuditId("updateOpportunity", actorUid, `${input.opportunityId}|${idempotencyKey}`);
+  // Reads first, both of them, before any write -- Firestore's rule, and the same shape the
+  // transition core uses.
+  const prior = await tx.get(auditEventDocRef(aid));
+  const snap = await tx.get(ref);
+  if (!snap.exists) throw new HttpsError("not-found", `No Opportunity with id ${input.opportunityId}`);
+  if (prior.exists) {
+    // A replay returns the prior outcome untouched rather than re-validating against a
+    // document that may have moved on since.
+    return { success: true as const, replayed: true as const, opportunityId: input.opportunityId, changed: [] as string[] };
+  }
+  const current = snap.data() as Record<string, unknown>;
+
+  const { patch, changes } = buildUpdateOpportunity(
+    current as never,
+    input,
+    { actorUid, nowMillis: Date.now() },
+  );
+
+  // updatedAtMillis is the optimistic-concurrency token the NEXT caller will send back, so it
+  // is written as a plain number the client can echo. updatedAt stays a server timestamp for
+  // ordering. Both, deliberately: one is a version, the other is a time.
+  tx.update(ref, { ...patch, updatedAt: FieldValue.serverTimestamp() });
+
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "updateOpportunity",
+    targetType: "opportunity",
+    targetId: input.opportunityId,
+    outcome: "applied",
+    // CHANGED FIELD NAMES ONLY, and that is a contract limit rather than a choice.
+    // RecordAuditEventInput has no metadata/detail field, so BEFORE/AFTER VALUES CANNOT BE
+    // RECORDED without altering the governed audit schema -- which is not this change to
+    // make. Names are recorded here (fully supported); the values remain recoverable from the
+    // document history. Stated rather than silently dropped, since the ask was explicitly
+    // "before/after values where policy permits" and the policy currently does not.
+    summary: `updated opportunity ${input.opportunityId}: ${changes.map((c: OpportunityFieldChange) => c.field).join(", ")}`,
+  });
+
+  return {
+    success: true as const,
+    replayed: false as const,
+    opportunityId: input.opportunityId,
+    changed: changes.map((c: OpportunityFieldChange) => c.field),
+  };
+}
+
+// Ordinary edit of an Opportunity's deal fields. Lifecycle is NOT reachable from here --
+// buildUpdateOpportunity never reads stage or outcome from the input, so no payload can move
+// an Opportunity through its lifecycle by this route.
+export const updateOpportunity = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+  await requireOpportunityWrite(request.auth.uid);
+
+  const data = (request.data ?? {}) as Record<string, unknown>;
+  if (typeof data.opportunityId !== "string" || data.opportunityId.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "opportunityId is required.");
+  }
+  if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
+  }
+  if (typeof data.expectedUpdatedAtMillis !== "number" || !Number.isFinite(data.expectedUpdatedAtMillis)) {
+    throw new HttpsError("invalid-argument", "expectedUpdatedAtMillis is required.");
+  }
+
+  // FIELDS ARE COPIED INDIVIDUALLY, NEVER SPREAD. `request.data` is attacker-controlled, and
+  // spreading it would let any key reach the command core -- including one the core does not
+  // read today but might tomorrow. Only these seven can arrive, and each is copied ONLY when
+  // present, so "absent" and "explicit null" stay distinguishable all the way down.
+  const input: UpdateOpportunityInput = {
+    opportunityId: data.opportunityId.trim(),
+    expectedUpdatedAtMillis: data.expectedUpdatedAtMillis,
+  };
+  if (data.accountId !== undefined) input.accountId = String(data.accountId);
+  if (data.ownerEmployeeId !== undefined) input.ownerEmployeeId = String(data.ownerEmployeeId);
+  if (data.salesChannel !== undefined) input.salesChannel = data.salesChannel as never;
+  if (data.need !== undefined) input.need = data.need === null ? null : String(data.need);
+  if (data.expectedValue !== undefined) input.expectedValue = data.expectedValue as number | null;
+  if (data.expectedCloseAt !== undefined) input.expectedCloseAt = data.expectedCloseAt as number | null;
+  if (data.lines !== undefined) input.lines = data.lines as never;
+
+  const db = getFirestore();
+  const ref = db.collection(OPPORTUNITIES_COLLECTION).doc(input.opportunityId);
+  try {
+    return await db.runTransaction((tx) =>
+      persistUpdatedOpportunity(db, tx, ref, input, request.auth!.uid, (data.idempotencyKey as string).trim()),
     );
   } catch (err) {
     throw mapCommandError(err);

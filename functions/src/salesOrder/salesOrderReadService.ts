@@ -69,6 +69,23 @@ export interface SalesOrderProjection {
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+// Firestore Timestamp -> epoch millis, or null. Identical in shape to
+// crmActivity/crmActivityReadService.ts's helper of the same name, deliberately, so the two
+// governed read services convert a timestamp the same way rather than each inventing one.
+//
+// A CALLABLE CANNOT RETURN A Timestamp. It has to serialize, so the wire shape is a number
+// and the conversion belongs here, at the projection boundary -- not in the client, which
+// would then need to know Firestore's object shape.
+//
+// Duck-typed on purpose: `num()` above cannot be reused because a Timestamp is an OBJECT,
+// not a number, so num(data.createdAt) returns null for every document that has one.
+function toMillis(v: unknown): number | null {
+  if (v && typeof v === "object" && typeof (v as { toMillis?: unknown }).toMillis === "function") {
+    return (v as { toMillis: () => number }).toMillis();
+  }
+  return null;
+}
 const nonNegNum = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
 function projectLine(raw: unknown, index: number): SalesOrderLineProjection | null {
@@ -118,8 +135,19 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
     state,
     lines,
     serviceWorkOrderIds,
-    createdAtMillis: num(data.createdAtMillis),
-    updatedAtMillis: num(data.updatedAtMillis),
+    // READS `createdAt`/`updatedAt`, WHICH IS WHAT THE WRITE PATH STORES.
+    //
+    // These previously read `data.createdAtMillis`/`data.updatedAtMillis` -- field names no
+    // writer has ever produced. createSalesOrderFromOpportunity.ts writes
+    // `createdAt: FieldValue.serverTimestamp()` and `updatedAt`, so `num()` was handed
+    // undefined on every document and returned null every time.
+    //
+    // Nothing broke visibly, which is exactly why it survived: the projection dutifully
+    // reported "this order has no creation date" for all 14 sandbox orders, and no consumer
+    // existed to notice. The defect would only have surfaced as a column of em dashes the
+    // first time a timestamp was displayed -- data that looks absent rather than wrong.
+    createdAtMillis: toMillis(data.createdAt),
+    updatedAtMillis: toMillis(data.updatedAt),
   };
 }
 

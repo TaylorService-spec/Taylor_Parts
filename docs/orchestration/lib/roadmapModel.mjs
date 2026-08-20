@@ -180,8 +180,34 @@ export const roadmapModel = Object.freeze({
             completionCriteria: ["opportunity.write inert", "opportunity.read inert", "opportunities deny-all"],
             workItems: [{ id: "opp-w1", name: "opportunityCommands/Callables/ReadService", status: "DONE", owner: "Product/Design",
               prEvidence: ["#651", "#654"], evidence: [{ kind: "PR", ref: "#651" }, { kind: "PR", ref: "#654" }, { kind: "CAPABILITY_FLAG", ref: "opportunity.write", note: "active:false" }] }] }] },
+        // SALES ORDER UX IS BUILT. This entry used the shared ...INERT_BACKEND spread, whose
+        // uxState is "NONE" -- accurate when the backend landed with nothing on top of it, and
+        // wrong now. The spread is kept for the dimensions that ARE still inert and the one
+        // stale dimension is stated explicitly after it.
+        //
+        // What exists in the repository today:
+        //   - SalesOrderDetail.jsx, routed at /customers/opportunities/sales-order/:salesOrderId
+        //   - SalesOrderActions.jsx -- contextual Advance/Cancel/Allocate/Create-Service actions
+        //   - salesOrderEntity + salesOrderRelatedList + salesOrderIndexList in metadata
+        //   - getSalesOrderContext / listSalesOrdersForAccount / listSalesOrderIndex, deployed
+        //   - the account-related Sales Orders list, built and verified
+        //   - SO-YYYY-###### numbering, rendered as the business reference
+        //   - 14 numbered Sales Orders returned through governed reads in sandbox
+        //
+        // uxState "PARTIAL", not "COMPLETE": the write-side capabilities remain active:false, so
+        // the operational actions render fail-closed until a separately-authorized activation.
+        // "PARTIAL" is this model's supported value for "built and reachable, not fully operable"
+        // -- the UX enum has no SUBSTANTIALLY_COMPLETE.
+        //
+        // deployState is left at NOT_DEPLOYED and that is a MODELLING LIMIT, not a claim: the
+        // READ callables are deployed and serving sandbox today, while the WRITE side is not.
+        // The DEPLOY enum is DEPLOYED | NOT_DEPLOYED | NOT_APPLICABLE | UNKNOWN, with no value
+        // for "reads live, writes inert", and asserting either whole-capability value would be
+        // false in one direction. Recorded here rather than resolved by picking the wrong one.
         { id: "sales-order-lifecycle", name: "Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7)", workstreamOwner: "Product/Design",
-          status: "PROTECTED_ACTION", ...INERT_BACKEND, protectedBoundary: "Grant salesOrder.* + deploy callables",
+          status: "PROTECTED_ACTION", ...INERT_BACKEND, uxState: "PARTIAL",
+          protectedBoundary: "Grant salesOrder.* + deploy callables",
+          blockedReason: "READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. TWO gaps remain. (1) CREATION HAS NO UI PATH -- createSalesOrderFromOpportunity is deployed and its capability granted+activated, but the client has ZERO call sites, so a WON Opportunity cannot produce a Sales Order through the product (corroborated by sandbox-gap-scan-2026-08-19 H11: the Opportunity form never collects line items, so the handoff has nothing to hand over). (2) The salesOrder.index global list was built as a metadata ListViewDefinition but not mounted as a navigable route. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.",
           dependencies: ["opportunity-lifecycle"], lastVerifiedRepoState: "da89558",
           milestones: [{ id: "so-m1", name: "Committed commercial order + Service lineage", complete: true,
             completionCriteria: ["salesOrder.write inert", "salesOrder.service inert", "sales_orders deny-all", "assigns no WO/inventory"],

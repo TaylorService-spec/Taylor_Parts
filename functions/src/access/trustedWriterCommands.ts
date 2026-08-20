@@ -58,6 +58,8 @@ import {
   OFFICE_MANAGER_ROLE,
   SALES_MANAGER_ROLE,
   MARKETING_MANAGER_ROLE,
+  PURCHASING_MANAGER_ROLE,
+  SHOP_MANAGER_ROLE,
   SALESPERSON_ROLE,
   GENERAL_MANAGER_ROLE,
   WAREHOUSE_MANAGER_ROLE,
@@ -194,6 +196,8 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   // it resolves UnknownRoleError at assignment time -- defined, visible in the catalog,
   // and impossible to give anyone.
   marketingManager: MARKETING_MANAGER_ROLE,
+  purchasingManager: PURCHASING_MANAGER_ROLE,
+  shopManager: SHOP_MANAGER_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,

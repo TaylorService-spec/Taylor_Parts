@@ -139,6 +139,73 @@ export const MARKETING_MANAGER_ROLE: Role = Object.freeze({
   ],
 }) as Role;
 
+// PURCHASING MANAGER -- Owner roster 2026-08-20 (Tom; Erik holds it as a second role
+// alongside Accounting Manager).
+//
+// Carries the purchasing WORKFLOW, which is a sequence rather than one write: see what needs
+// buying, take it into purchasing, record the resulting Purchase Order, keep it current.
+// Granting create without the queue read would produce a buyer who cannot see what needs
+// buying.
+//
+// Reads mirror the CRUD matrix's Purchasing row -- it must see the catalog, stock, transfers
+// and serialized assets it is buying against, and the AR side of what it commits.
+//
+// THREE OMISSIONS, EACH A DECISION:
+//   - reorder.request.approve / .reject: whoever raises an order must not approve it. The
+//     matrix's own segregation-of-duties principle, applied to the role that raises them.
+//   - reorder.purchaseOrder.void: carries an isOwnAssignment Condition everywhere it is
+//     held; granting it unconditioned here would exceed admin's own authority.
+//   - No finance WRITE. The matrix gives Purchasing read-only on Invoices/AR.
+export const PURCHASING_MANAGER_ROLE: Role = Object.freeze({
+  id: "purchasingManager",
+  name: "Purchasing Manager",
+  description:
+    "Procurement authority: raises and maintains Purchase Orders through the governed reorder workflow, with read visibility across catalog, stock, transfers, serialized assets and AR. Cannot approve or void what it raises.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [
+    // Owner ruling 2026-08-18, "they all should see accounts".
+    "account.record.read",
+    "salesOrder.read",
+    // The purchasing workflow itself.
+    "reorder.purchaseOrder.read",
+    "reorder.purchaseOrder.create",
+    "reorder.request.read.queue",
+    "reorder.request.startPurchasing",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.postPurchasingUpdate",
+    // Buying context: what is in the catalog, what is on hand, what is moving.
+    "inventory.catalog.read",
+    "inventory.transaction.read",
+    "inventory.action.read",
+    "warehouse.transferOrder.read",
+    "inventory.serializedAsset.read",
+    // Invoices/AR read only, per the matrix's Purchasing row.
+    "finance.read",
+  ],
+}) as Role;
+
+// SHOP MANAGER -- Owner roster 2026-08-20 (Willie).
+//
+// GRANTED NOTHING, DELIBERATELY. The roster names the position and the CRUD matrix's
+// User-to-Role sheet describes it in Service terms, but the matrix's Role x Object grid has
+// NO Shop Manager row -- there is no stated authority to implement.
+//
+// The alternative was to copy Service Manager's grants on the strength of a similar
+// description. That would be inventing authority the business has not specified, and an
+// invented grant is indistinguishable from a decided one once it is in the file. An empty
+// Role is honest: the position exists, is assignable, and holds nothing until the matrix
+// says what it holds. Same posture as the other org-chart positions awaiting a row.
+export const SHOP_MANAGER_ROLE: Role = Object.freeze({
+  id: "shopManager",
+  name: "Shop Manager",
+  description:
+    "Service-organization position from the Owner roster. Carries no permissions of its own: the CRUD matrix names the role but declares no Role x Object row for it, and authority is not inferred from a job description.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [],
+}) as Role;
+
 export const SALES_MANAGER_ROLE: Role = Object.freeze({
   id: "salesManager",
   name: "Sales Manager",
@@ -230,29 +297,17 @@ export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
     "account.governedField.write",
     "salesOrder.read",
     "reorder.purchaseOrder.read",
-    // PURCHASING FOLDS INTO ACCOUNTING. Owner ruling 2026-08-19: "Purchasing falls under
-    // accounting". The CRUD matrix carried a standalone Purchasing role that has no
-    // counterpart here and now never will -- its authority lands on this Role instead.
+    // PURCHASING MOVED OFF THIS ROLE on 2026-08-20, to PURCHASING_MANAGER_ROLE.
     //
-    // What that means concretely is the purchasing WORKFLOW, which is a sequence rather
-    // than a single write: see what needs buying, take it into purchasing, record the
-    // Purchase Order that resulted, and keep it current. Granting the create without the
-    // queue read would produce a buyer who can raise a PO but cannot see what needs one.
-    "reorder.purchaseOrder.create",
-    "reorder.request.read.queue",
-    "reorder.request.startPurchasing",
-    "reorder.request.recordPurchaseOrder",
-    "reorder.request.postPurchasingUpdate",
-    // DELIBERATELY NOT GRANTED, and each omission is a decision rather than an oversight:
-    //   - reorder.purchaseOrder.void carries an isOwnAssignment Condition everywhere it is
-    //     held. Granting it here without that Condition would be a wider authority than
-    //     admin's own, which cannot be right for a Role that inherits purchasing duties.
-    //   - reorder.request.approve/reject stay separate from purchasing execution. Whoever
-    //     raises the order should not also approve it -- the matrix's own segregation-of-
-    //     duties principle, applied to the very merge it asked for.
-    //   - The Controller/Accounting finance row (Invoices/AR, Payments, Commissions as CRE)
-    //     is NOT granted here. The ruling folded PURCHASING into accounting; it said
-    //     nothing about finance write authority, and finance.* remains a separate decision.
+    // The 2026-08-19 ruling "Purchasing falls under accounting" was implemented by granting
+    // the purchasing workflow here, because no Purchasing role existed to receive it. The
+    // Owner's roster then named Purchasing Manager AND assigned Erik BOTH Accounting Manager
+    // and Purchasing Manager.
+    //
+    // That honors both statements better than merging the bundles did: purchasing reports
+    // into accounting THROUGH THE PERSON, while the authority sits on the role whose job it
+    // is. Anyone who needs both holds both -- which is exactly what a stacked assignment is
+    // for, and it keeps a pure Accounting Manager from silently acquiring buying power.
   ],
 }) as Role;
 
@@ -757,6 +812,8 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,
   marketingManager: MARKETING_MANAGER_ROLE,
+  purchasingManager: PURCHASING_MANAGER_ROLE,
+  shopManager: SHOP_MANAGER_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,

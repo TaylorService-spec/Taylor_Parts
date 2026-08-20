@@ -164,6 +164,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // P1.3 -- runtime mirror of the createSalesOrderFromOpportunity AuditAction union member (governed,
   // human-invoked WON -> Create Sales Order action; own deterministic Audit Event id space).
   "createSalesOrderFromOpportunity",
+  // Runtime mirror of the closeOpportunityAsWon AuditAction union member (atomic WON plus
+  // Sales Order creation in one transaction).
+  "closeOpportunityAsWon",
+  // Runtime mirror of the updateOpportunity AuditAction union member.
+  "updateOpportunity",
   // P1.1 (Sales->Cash fulfillment spine): runtime mirror of the salesOrderFulfillmentWriteBack AuditAction
   // union member (WO-Complete -> SO fulfilledQty write-back traceability).
   "salesOrderFulfillmentWriteBack",
