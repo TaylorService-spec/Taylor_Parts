@@ -85,6 +85,19 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
     // lineage visibly"). Was previously written server-side but never projected through to the UI --
     // the exact "coordination invisibility" finding from the gap audit.
     salesOrderId: opp.salesOrderId ?? null,
+    // THE VERSION, carried so an edit can prove which copy it started from. updateOpportunity
+    // rejects any caller that cannot; without this the governed edit command is unreachable
+    // from this surface no matter what else is wired.
+    //
+    // `?? 0` is the contract, not a fallback dressed up as one: the command reads a missing
+    // current version AS 0, so echoing 0 for a record that has none is the honest statement
+    // "I loaded the version-less copy" -- and it still fails the check if someone else edits
+    // in between, because that write gives the record a real version.
+    updatedAtMillis: num(opp.updatedAtMillis) ?? 0,
+    // Record timestamps. The Record section rendered "not recorded" for every Opportunity ever
+    // shown, because these were never projected -- not because the data was missing.
+    createdAt: num(opp.createdAtMillis),
+    updatedAt: num(opp.updatedAtMillis),
     attention,
     attentionTone: worstTone,
   };

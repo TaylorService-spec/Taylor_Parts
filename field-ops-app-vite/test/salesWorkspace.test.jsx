@@ -142,18 +142,29 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  // Regression for the confirmed defect: write-readiness alone used to be enough to render Edit as fully
-  // live, even though SectionEditForm's own Save is inert without a wired onSaveSection command (App.jsx's
-  // production mount never passes one). A capability-holding user could open a section, edit fields, and only
-  // discover on submit that Save was disabled. Edit must be gated on BOTH readiness AND a wired save command.
-  it("readiness enabled but NO governed save command wired: Edit itself stays disabled + honest (does not invite a dead-end edit)", () => {
-    render(<SalesWorkspace readiness={ENABLED} />); // no onSaveSection — mirrors the real production mount
+  // SUPERSEDED BY THE WIRING, and rewritten rather than deleted so the reason is on the record.
+  //
+  // This previously asserted that Edit stays DISABLED when no onSaveSection is injected, because the
+  // production mount never passed one -- the governed save command existed but nothing called it, so
+  // offering Edit would have invited a dead-end edit. That was correct for an unwired build.
+  //
+  // The command is wired now: SalesWorkspace defaults to the real hooks/useOpportunitySectionSave, and
+  // onSaveSection is an OVERRIDE seam rather than the thing that makes saving possible. So the honest
+  // assertion flips: a caller with readiness and no override gets a LIVE Edit, because there really is
+  // a command behind it. The dead-end it guarded against cannot occur, since the absent-command case
+  // no longer exists.
+  //
+  // What still matters -- and is asserted here -- is that the OTHER gate did not quietly go with it:
+  // readiness alone governs the affordance, and a save must be genuinely reachable when it is enabled.
+  it("readiness enabled with NO injected override: Edit is LIVE, because the real governed command is wired", () => {
+    render(<SalesWorkspace readiness={ENABLED} />); // mirrors the real production mount
     const editNeed = screen.getByRole("button", { name: /edit customer need/i });
-    expect(editNeed.disabled).toBe(true);
-    expect(editNeed.title).toMatch(/governed save command is not wired/i);
-    // clicking a disabled Edit must not open the section form
+    expect(editNeed.disabled).toBe(false);
     fireEvent.click(editNeed);
-    expect(screen.queryByRole("textbox")).toBeNull();
+    // the section form opens and offers a Save that is not disabled-with-a-reason
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.disabled).toBe(false);
   });
 
   it("entering a section edit (readiness enabled AND a wired save command) swaps read for a compact form; Cancel returns to read", () => {

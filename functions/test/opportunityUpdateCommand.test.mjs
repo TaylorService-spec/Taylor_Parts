@@ -212,3 +212,55 @@ test("sending identical values changes nothing and is reported as NO_CHANGES", (
     "NO_CHANGES",
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// nextAction — PROJECTED AND DISPLAYED, but writable by nothing until now.
+//
+// The workspace's field model classifies nextAction USER_MAINTAINED and renders an editable
+// section for it, the read projection returns it, and the pipeline sorts on it. No command could
+// write it. The surface offered an edit the system could not accept: the field could be read
+// forever and never corrected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("nextAction is an ordinary editable field", () => {
+  const { patch, changes } = buildUpdateOpportunity(
+    current({ nextAction: "call Tuesday" }),
+    input({ nextAction: "site visit Thursday" }),
+    CTX
+  );
+  assert.equal(patch.nextAction, "site visit Thursday");
+  assert.deepEqual(
+    changes.find((c) => c.field === "nextAction"),
+    { field: "nextAction", before: "call Tuesday", after: "site visit Thursday" }
+  );
+});
+
+test("a blank nextAction CLEARS it rather than storing an empty string", () => {
+  // Same rule `need` already follows. An empty string is not a next action; it is the absence
+  // of one, and storing it as data would make "" and null two spellings of the same fact.
+  const { patch } = buildUpdateOpportunity(
+    current({ nextAction: "call Tuesday" }),
+    input({ nextAction: "   " }),
+    CTX
+  );
+  assert.equal(patch.nextAction, null);
+});
+
+test("an unchanged nextAction is not recorded as a change", () => {
+  assert.throws(
+    () =>
+      buildUpdateOpportunity(
+        current({ nextAction: "call Tuesday" }),
+        input({ nextAction: "call Tuesday" }),
+        CTX
+      ),
+    /No editable field changed/
+  );
+});
+
+test("nextAction is in the declared editable set — the client mirror is checked against this", () => {
+  assert.ok(EDITABLE_OPPORTUNITY_FIELDS.includes("nextAction"));
+  // and lifecycle still is not, by construction
+  assert.equal(EDITABLE_OPPORTUNITY_FIELDS.includes("stage"), false);
+  assert.equal(EDITABLE_OPPORTUNITY_FIELDS.includes("outcome"), false);
+});

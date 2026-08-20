@@ -43,15 +43,35 @@ const mkAuditId = (action: string, actorUid: string, key: string): string =>
 function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
   if (err instanceof OpportunityCommandError) {
+    // THE DOMAIN CODE TRAVELS IN `details`, and it has to.
+    //
+    // There are more distinct outcomes here than there are HttpsError codes to carry them, so
+    // without this every one of VERSION_CONFLICT, CLOSED, NO_CHANGES, OWNER_REQUIRED and
+    // CHANNEL_INVALID reached the client as bare "invalid-argument" and was rendered as one
+    // generic "that request was invalid" -- which is actively wrong for the first three. A
+    // version conflict is not an invalid request; telling someone their edit was malformed when
+    // the truth is that a colleague saved first sends them looking for a mistake they did not
+    // make. `details` is the supported channel for exactly this, so the client can say the
+    // true thing instead of the nearest available one.
+    const detail = err.code;
     switch (err.code) {
       case "ALREADY_CLOSED":
       case "ILLEGAL_TRANSITION":
       case "OUTCOME_REQUIRES_DECISION":
       case "NO_LINES":
       case "LINE_QTY_REQUIRED_FOR_WON":
-        return new HttpsError("failed-precondition", err.message);
+      // A closed Opportunity is a historical record, not a malformed request.
+      case "CLOSED":
+      // Nothing changed. Not a failure of the request -- a statement about it.
+      case "NO_CHANGES":
+        return new HttpsError("failed-precondition", err.message, detail);
+      // Concurrency, not validity. `aborted` is the established code for "someone else got
+      // there first, retry against the new state" and is what lets the client offer a reload-
+      // and-reapply instead of a dead end.
+      case "VERSION_CONFLICT":
+        return new HttpsError("aborted", err.message, detail);
       default:
-        return new HttpsError("invalid-argument", err.message);
+        return new HttpsError("invalid-argument", err.message, detail);
     }
   }
   return new HttpsError("internal", "Opportunity command failed.");
@@ -61,7 +81,7 @@ export async function persistCreatedOpportunity(
   db: Firestore, tx: Transaction, built: BuiltOpportunity, actorUid: string, idempotencyKey?: string,
 ) {
   const aid = idempotencyKey ? mkAuditId("createOpportunity", actorUid, idempotencyKey) : null;
-  const { createdAtMillis: _c, updatedAtMillis: _u, ...fields } = built;
+  const { createdAtMillis: _c, updatedAtMillis: _version, ...fields } = built;
   if (aid) {
     const prior = await tx.get(auditEventDocRef(aid));
     if (prior.exists) return { success: true as const, replayed: true as const, opportunityId: ((prior.data() ?? {}).targetId as string) ?? null, stage: built.stage };
@@ -81,6 +101,18 @@ export async function persistCreatedOpportunity(
   tx.set(ref, {
     ...fields,
     opportunityNumber,
+    // A VERSION FROM BIRTH. updatedAtMillis is the optimistic-concurrency token
+    // updateOpportunity compares against, and it was previously stripped here -- so a
+    // newly created Opportunity had no version until its FIRST edit wrote one. The command
+    // treats a missing version as 0, which means two people editing a never-yet-edited
+    // Opportunity both read 0, both pass the check, and the second silently overwrites the
+    // first. Writing the version at creation closes that window at the only moment it was
+    // ever open. Records created before this keep the 0 fallback and stay editable.
+    //
+    // createdAtMillis stays stripped: createdAt (serverTimestamp) is the authority on WHEN,
+    // and a second creation time would be a second answer to a question already answered.
+    // This field is a VERSION, not a time -- which is why only this one is kept.
+    updatedAtMillis: _version,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

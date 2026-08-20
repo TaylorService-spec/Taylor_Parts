@@ -23,7 +23,7 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
     customerName: "Should Not Copy Co",
     internalNotes: "secret",
   });
-  // The allow-list grew by exactly two, deliberately (#1099). This assertion failing on a
+  // The allow-list has grown twice, each time deliberately (#1099, then the version token). This assertion failing on a
   // new field is the guard WORKING: the projection is minimal by design, so every addition
   // has to be argued for here rather than sliding in unnoticed.
   //
@@ -32,9 +32,22 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
   // back to the Firestore document id -- which is how 95kFz8WWgiSn2nU2O3Ml became a
   // user-facing label. Identity is the minimum a caller needs in order NOT to expose an
   // internal key.
+  //
+  // createdAtMillis and updatedAtMillis are the NEXT two, and the argument for them is
+  // narrower still: updatedAtMillis is the optimistic-concurrency token updateOpportunity
+  // REQUIRES. Without it in the projection no client can prove which version it loaded, so
+  // the governed edit command is unreachable from every read surface in the product -- built,
+  // correct, and callable by nothing. createdAtMillis comes with it because the Record section
+  // rendered "not recorded" for every Opportunity ever displayed, not because the data was
+  // missing but because it was never projected.
+  //
+  // Neither is customer data, neither is an internal key, and both are already visible to any
+  // caller authorized to read the record at all. This is the same allow-list discipline, not
+  // an exception to it.
   assert.deepEqual(Object.keys(p).sort(), [
-    "accountId", "expectedCloseAt", "expectedValue", "id", "lines", "name", "need", "nextAction",
-    "opportunityNumber", "outcome", "ownerEmployeeId", "salesChannel", "salesOrderId", "stage",
+    "accountId", "createdAtMillis", "expectedCloseAt", "expectedValue", "id", "lines", "name",
+    "need", "nextAction", "opportunityNumber", "outcome", "ownerEmployeeId", "salesChannel",
+    "salesOrderId", "stage", "updatedAtMillis",
   ]);
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.salesOrderId, "SO-1");
@@ -87,4 +100,42 @@ test("summarizeReadResult: clean set is ready; any skip makes it degraded; empty
   const empty = summarizeReadResult([]);
   assert.equal(empty.status, "ready");
   assert.deepEqual(empty.opportunities, []);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE VERSION TOKEN — the omission that made the governed edit command unreachable.
+//
+// updateOpportunity REQUIRES expectedUpdatedAtMillis: it rejects any caller that cannot prove
+// which version it loaded. This projection never returned that value, so no client could supply
+// it, so the command could not be called from any read surface in the product. The command was
+// built, correct, and tested; nothing on earth could reach it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("the optimistic-concurrency token is projected", () => {
+  const p = projectOpportunity("o1", {
+    stage: "SOLUTION",
+    accountId: "acct-1",
+    updatedAtMillis: 1_755_000_000_000,
+    createdAtMillis: 1_754_000_000_000,
+  });
+  assert.equal(p.updatedAtMillis, 1_755_000_000_000, "without this the edit command cannot be called at all");
+  assert.equal(p.createdAtMillis, 1_754_000_000_000);
+});
+
+test("a record with no version projects null, not a fabricated one", () => {
+  // The command reads a missing current version AS 0, so a client echoing null-then-0 is making
+  // a true statement about the copy it loaded. Inventing a plausible timestamp here would make
+  // that statement false and the concurrency check meaningless.
+  const p = projectOpportunity("o1", { stage: "SOLUTION", accountId: "acct-1" });
+  assert.equal(p.updatedAtMillis, null);
+  assert.equal(p.createdAtMillis, null);
+});
+
+test("a non-numeric version is dropped rather than passed through", () => {
+  const p = projectOpportunity("o1", {
+    stage: "SOLUTION",
+    accountId: "acct-1",
+    updatedAtMillis: "2026-08-20T00:00:00Z",
+  });
+  assert.equal(p.updatedAtMillis, null, "a Timestamp or string version would fail the numeric comparison silently");
 });

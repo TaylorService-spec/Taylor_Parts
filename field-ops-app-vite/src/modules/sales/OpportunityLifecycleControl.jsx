@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import LifecycleChevrons from "../../shared/ui/LifecycleChevrons.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -17,6 +18,16 @@ import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle
 // component never patches row state itself.
 export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged }) {
   const [error, setError] = useState(null);
+  // What the Won actually PRODUCED. Marking an Opportunity Won creates a Sales Order in the same
+  // transaction, and until now the control discarded that fact entirely: the chevrons flipped to
+  // "Closed", and the single most consequential moment in the sales process reported nothing. The
+  // user had to go and find the order they had just created, with no evidence it existed.
+  //
+  // Held in local state rather than read from `row`, because it is available IMMEDIATELY -- the
+  // command returns it -- whereas `row` only carries it after the refetch lands. `row` remains
+  // the durable source once it does (the ContextBand's Sales Order fact), so this is the
+  // acknowledgement, not the record.
+  const [won, setWon] = useState(null);
   const { stages, terminal } = stageProgress(row);
   const actions = allowedActions(row);
   const writeDisabled = !readiness.enabled;
@@ -27,6 +38,15 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
     try {
       const outcome = await transitions.runTransition(intent);
       if (outcome.kind === "applied" || outcome.kind === "replayed") {
+        if (intent.outcome === "WON" && outcome.salesOrderId) {
+          setWon({
+            salesOrderId: outcome.salesOrderId,
+            salesOrderNumber: outcome.salesOrderNumber ?? null,
+            // `recovered` means the Opportunity was already WON and its order was found rather
+            // than created. Said plainly instead of claiming a creation that did not happen.
+            recovered: outcome.recovered === true,
+          });
+        }
         onChanged?.();
       } else {
         setError(outcome.message ?? `${label} could not be completed.`);
@@ -89,6 +109,15 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
   return (
     <div className="fo-sales-detail__lifecycle">
       <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
+      {won && (
+        <p className="fo-sales-lifecycle-won" role="status">
+          {won.recovered ? "This Opportunity was already won. Its Sales Order is " : "Won. Sales Order "}
+          <Link to={`/customers/opportunities/sales-order/${won.salesOrderId}`}>
+            {won.salesOrderNumber ?? won.salesOrderId}
+          </Link>
+          {won.recovered ? "." : " was created."}
+        </p>
+      )}
       {closed ? (
         <p className="fo-muted">Closed — no further lifecycle actions.</p>
       ) : (

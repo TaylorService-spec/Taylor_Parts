@@ -2284,6 +2284,19 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-sales-detail__lifecycle { display: grid; gap: 8px; }
 .fo-sales-lifecycle-note { margin: 0; font-size: 12px; }
 .fo-sales-lifecycle-error { margin: 0; font-size: 12px; color: var(--color-danger); }
+/* The Won acknowledgement. Reads as a RESULT, not an alert: closing a deal is the good outcome,
+   and the one thing the user needs from it is a way to reach the Sales Order it just created. */
+.fo-sales-lifecycle-won {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 4px);
+  border-left: 3px solid var(--color-success, var(--color-accent));
+  background: var(--color-surface-subtle, rgba(0, 0, 0, 0.03));
+  font-size: 13px;
+}
+.fo-sales-lifecycle-won a { font-weight: 600; }
+/* A failed section save, stated in the form the user is still looking at. */
+.fo-sales-editform__error { margin: 8px 0 0; font-size: 12px; color: var(--color-danger); }
 
 /* Generic lifecycle-chevron row (shared/ui/LifecycleChevrons.jsx) — reusable, business-rule-free. Steps
    recompose to a wrapped flex row rather than a rigid table so it holds up at phone widths. */

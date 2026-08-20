@@ -54,6 +54,23 @@ export interface OpportunityProjection {
   // previously written but never projected, so the lineage existed in Firestore but was invisible
   // to every reader (the exact "coordination invisibility" finding from the gap audit).
   salesOrderId: string | null;
+  // THE OPTIMISTIC-CONCURRENCY TOKEN, and the reason editing could not be wired at all.
+  //
+  // updateOpportunity REQUIRES expectedUpdatedAtMillis -- it rejects any caller that cannot
+  // prove which version it loaded. This projection never returned that value, so no client
+  // could supply it, so the governed edit command was unreachable from every read surface in
+  // the product. The command was built and correct; nothing could call it.
+  //
+  // Projected as the plain number the document stores (updatedAtMillis), NOT the serverTimestamp
+  // mirror (updatedAt): a version must round-trip through a JSON callable boundary unchanged,
+  // and a Timestamp does not. Both fields exist on the document precisely so one can be a
+  // version and the other a time.
+  //
+  // Null on records written before updatedAtMillis existed. The command treats a missing
+  // current version as 0, so such a record is still editable by a caller that echoes what it
+  // was actually given -- the null is honest about the record, not a lock on it.
+  createdAtMillis: number | null;
+  updatedAtMillis: number | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
@@ -90,6 +107,8 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     nextAction: str(data.nextAction),
     lines,
     salesOrderId: str(data.salesOrderId),
+    createdAtMillis: num(data.createdAtMillis),
+    updatedAtMillis: num(data.updatedAtMillis),
   };
 }
 

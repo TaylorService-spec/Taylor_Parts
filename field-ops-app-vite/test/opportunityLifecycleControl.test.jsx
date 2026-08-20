@@ -3,7 +3,8 @@
 // DECISION, LOST offered from any open stage, a closed opportunity offers nothing, and a successful
 // transition calls onChanged() (authoritative refresh) rather than mutating anything locally.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import OpportunityLifecycleControl from "../src/modules/sales/OpportunityLifecycleControl.jsx";
 
 afterEach(cleanup);
@@ -114,5 +115,81 @@ describe("OpportunityLifecycleControl -- transitions call the hook and refresh a
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByRole("alert").textContent).toMatch(/not authorized/i);
     expect(onChanged).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST-WON: the control must show what the Won PRODUCED.
+//
+// Marking an Opportunity Won creates a Sales Order in the same transaction, and this control
+// used to discard that entirely — it called onChanged() and the chevrons flipped to "Closed".
+// The single most consequential moment in the sales process reported nothing, leaving the user
+// to go and find the order they had just created with no evidence it existed. That is the same
+// "coordination invisibility" shape as the unprojected Sales Order back-link, at the moment it
+// matters most.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("OpportunityLifecycleControl -- what the Won produced", () => {
+  const DECISION = { stage: "DECISION", outcome: null, ownerEmployeeId: "emp-1", channel: "RETAIL" };
+
+  const wonTransitions = (result) =>
+    transitionsStub({ runTransition: vi.fn().mockResolvedValue({ kind: "applied", ...result }) });
+
+  function renderWon(result) {
+    const transitions = wonTransitions(result);
+    render(
+      <MemoryRouter>
+        <OpportunityLifecycleControl row={DECISION} readiness={ENABLED} transitions={transitions} onChanged={() => {}} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /mark won/i }));
+    return transitions;
+  }
+
+  it("names the Sales Order it created and links to it", async () => {
+    renderWon({ salesOrderId: "so-1", salesOrderNumber: "SO-2026-0042" });
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toMatch(/won/i);
+    const link = within(status).getByRole("link", { name: "SO-2026-0042" });
+    expect(link.getAttribute("href")).toMatch(/so-1$/);
+  });
+
+  it("falls back to the id when the number is absent — a reachable order beats a pretty label", async () => {
+    renderWon({ salesOrderId: "so-2", salesOrderNumber: null });
+    const status = await screen.findByRole("status");
+    expect(within(status).getByRole("link", { name: "so-2" })).toBeTruthy();
+  });
+
+  it("a RECOVERED order is described as found, never as created", async () => {
+    // The Opportunity was already WON and its existing order was reconciled. Claiming a creation
+    // that did not happen would be a small lie with real consequences: it invites the user to
+    // believe a second order exists.
+    renderWon({ salesOrderId: "so-3", salesOrderNumber: "SO-2026-0007", recovered: true });
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toMatch(/already won/i);
+    expect(status.textContent).not.toMatch(/was created/i);
+  });
+
+  it("LOST produces no Sales Order acknowledgement, because it creates nothing", async () => {
+    const transitions = transitionsStub();
+    render(
+      <MemoryRouter>
+        <OpportunityLifecycleControl row={{ stage: "SOLUTION", outcome: null }} readiness={ENABLED} transitions={transitions} onChanged={() => {}} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /mark lost/i }));
+    await waitFor(() => expect(transitions.runTransition).toHaveBeenCalled());
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("a Won that reports no Sales Order says nothing rather than inventing one", async () => {
+    const transitions = wonTransitions({});
+    render(
+      <MemoryRouter>
+        <OpportunityLifecycleControl row={DECISION} readiness={ENABLED} transitions={transitions} onChanged={() => {}} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /mark won/i }));
+    await waitFor(() => expect(transitions.runTransition).toHaveBeenCalled());
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
