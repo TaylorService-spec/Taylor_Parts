@@ -53,10 +53,11 @@ const MATRIX_ROLES = [
   { label: "Technician", id: "technician" },
   { label: "Warehouse Manager", id: "warehouseManager" },
   { label: "Warehouse Associate", id: "warehouseAssociate" },
-  { label: "Purchasing Manager", id: null },
+  { label: "Purchasing Manager", id: "purchasingManager" },
   { label: "Controller", id: "controller" },
   { label: "Accounting Manager", id: "accountingManager" },
   { label: "Support Staff", id: "supportStaff" },
+  { label: "Shop Manager", id: "shopManager" },
 ];
 
 function Cell({ state }) {

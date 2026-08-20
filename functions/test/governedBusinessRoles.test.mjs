@@ -50,6 +50,10 @@ const ALL_GOVERNED_ROLES = Object.values(GOVERNED_BUSINESS_ROLES);
 const EXPECTED_IDS = [
   // Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
   "marketingManager",
+  // Owner roster 2026-08-20: Tom holds Purchasing, Erik holds Purchasing Manager as a
+  // second role alongside Accounting Manager; Willie holds Shop Manager.
+  "purchasingManager",
+  "shopManager",
   "generalEmployee",
   "officeManager",
   "salesManager",
@@ -100,12 +104,12 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-four ids (twenty-three, plus Marketing Manager)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-six ids (twenty-four, plus Purchasing Manager and Shop Manager)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 24);
+  assert.equal(ALL_GOVERNED_ROLES.length, 26);
 });
 
 check("salesperson and salesManager are intentionally identical in capability today", () => {
@@ -193,14 +197,14 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all twenty-four governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all twenty-six governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   for (const id of EXPECTED_IDS) {
     assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    24,
-    "the governed allowlist must contain exactly the 24 declared governed business Roles",
+    26,
+    "the governed allowlist must contain exactly the 26 declared governed business Roles",
   );
 });
 
@@ -369,11 +373,14 @@ check("Finance/Accounting Manager: Sales Order read is granted-but-inactive, and
   }
 });
 
-// Owner ruling 2026-08-19: "Purchasing falls under accounting". The CRUD matrix's
-// standalone Purchasing role has no counterpart in this file and now never will -- its
-// authority lands on Accounting Manager. Pinned in BOTH directions, because the whole
-// point is that the two Roles stopped being interchangeable on this date.
-check("Accounting Manager holds the purchasing workflow; Finance Manager deliberately does NOT", () => {
+// PURCHASING LIVES ON PURCHASING MANAGER, not on Accounting Manager.
+//
+// The 2026-08-19 ruling "Purchasing falls under accounting" was first implemented by
+// granting the workflow to Accounting Manager, because no Purchasing role existed to
+// receive it. The Owner's 2026-08-20 roster named Purchasing Manager AND gave Erik BOTH
+// roles, which honors the ruling through the PERSON rather than by merging the bundles --
+// and keeps a pure Accounting Manager from silently acquiring buying power.
+check("Purchasing Manager holds the purchasing workflow; Accounting and Finance Manager do NOT", () => {
   const PURCHASING = [
     "reorder.purchaseOrder.create",
     "reorder.request.read.queue",
@@ -381,14 +388,39 @@ check("Accounting Manager holds the purchasing workflow; Finance Manager deliber
     "reorder.request.recordPurchaseOrder",
     "reorder.request.postPurchasingUpdate",
   ];
+  const purchasing = GOVERNED_BUSINESS_ROLES.purchasingManager;
+  assert.ok(purchasing, "purchasingManager must exist");
   for (const id of PURCHASING) {
-    assert.ok(ACCOUNTING_MANAGER_ROLE.permissions.includes(id), `accountingManager must hold ${id}`);
+    assert.ok(purchasing.permissions.includes(id), `purchasingManager must hold ${id}`);
+    assert.equal(
+      ACCOUNTING_MANAGER_ROLE.permissions.includes(id),
+      false,
+      `accountingManager must NOT hold ${id} -- it moved to purchasingManager on 2026-08-20`,
+    );
     assert.equal(
       FINANCE_MANAGER_ROLE.permissions.includes(id),
       false,
-      `financeManager must NOT hold ${id} -- purchasing folded into ACCOUNTING, not finance`,
+      `financeManager must NOT hold ${id}`,
     );
   }
+});
+
+check("Purchasing Manager cannot approve, reject or void what it raises", () => {
+  // Segregation of duties on the role that actually raises orders.
+  const purchasing = GOVERNED_BUSINESS_ROLES.purchasingManager;
+  for (const id of ["reorder.request.approve", "reorder.request.reject", "reorder.purchaseOrder.void"]) {
+    assert.equal(purchasing.permissions.includes(id), false, `purchasingManager must NOT hold ${id}`);
+  }
+});
+
+check("Shop Manager exists, is assignable, and deliberately holds nothing", () => {
+  // The roster names the position; the CRUD matrix declares no Role x Object row for it.
+  // An empty Role is the honest encoding -- copying Service Manager's grants on the
+  // strength of a similar job description would invent authority the business never stated,
+  // and an invented grant is indistinguishable from a decided one once it is in the file.
+  const shop = GOVERNED_BUSINESS_ROLES.shopManager;
+  assert.ok(shop, "shopManager must exist");
+  assert.deepEqual(shop.permissions, [], "shopManager holds nothing until the matrix declares a row");
 });
 
 check("the purchasing merge did not hand Accounting Manager approval or void authority", () => {
@@ -426,9 +458,13 @@ check("Accounting Manager retains everything Finance Manager holds (the 2026-08-
     accountingSet.has("account.governedField.write"),
     "parity was reached by RAISING Accounting to Finance, not by lowering Finance",
   );
+  // The 2026-08-19 purchasing grant briefly made Accounting exceed Finance. The 2026-08-20
+  // roster moved purchasing to its own Role, so the two are identical again -- which is the
+  // 2026-08-18 parity ruling, restored rather than broken. Asserted as "at least", so a
+  // future Accounting-only grant is still permitted without editing this back.
   assert.ok(
-    ACCOUNTING_MANAGER_ROLE.permissions.length > FINANCE_MANAGER_ROLE.permissions.length,
-    "Accounting should now exceed Finance -- purchasing folded into it on 2026-08-19",
+    ACCOUNTING_MANAGER_ROLE.permissions.length >= FINANCE_MANAGER_ROLE.permissions.length,
+    "Accounting must never fall below Finance -- the 2026-08-18 parity ruling raised it to match",
   );
 });
 
@@ -876,7 +912,7 @@ check("technician gains none of the three warehouse ids (no operational-role Rul
   );
 });
 
-check("only Operations Manager, among the eight governed business Roles, holds any warehouse.*.read id (Spec §27.4)", () => {
+check("warehouse.*.read stays confined: Operations Manager holds all three, Purchasing Manager only transferOrder, nobody else any (Spec §27.4)", () => {
   const warehouseIds = new Set(["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]);
   for (const role of Object.values(GOVERNED_BUSINESS_ROLES)) {
     const holdsAny = role.permissions.some((id) => warehouseIds.has(id));
@@ -885,6 +921,16 @@ check("only Operations Manager, among the eight governed business Roles, holds a
       for (const id of warehouseIds) assert.ok(role.permissions.includes(id), id);
     } else if (role.id === "owner") {
       // Owner mirrors admin, which (as of this addendum) DOES hold these -- see the dedicated Owner check below.
+      continue;
+    } else if (role.id === "purchasingManager") {
+      // Owner roster 2026-08-20. The CRUD matrix Purchasing row grants Transfer Orders R,
+      // and a buyer who cannot see stock movements is buying blind. It holds ONLY the
+      // transferOrder read -- not warehouse.record.read or stockLocation.read -- so the
+      // narrower claim this check exists to protect still holds and is asserted here.
+      assert.ok(role.permissions.includes("warehouse.transferOrder.read"), "purchasingManager reads transfer orders");
+      for (const id of ["warehouse.record.read", "warehouse.stockLocation.read"]) {
+        assert.equal(role.permissions.includes(id), false, `purchasingManager must NOT hold ${id}`);
+      }
       continue;
     } else {
       assert.equal(holdsAny, false, `${role.id} must not hold a warehouse id`);
