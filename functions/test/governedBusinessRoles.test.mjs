@@ -567,7 +567,11 @@ check("no OTHER governed Role carries these capabilities in its permission set",
   // Asserted on the permission SETS, not on resolution: every id here resolves DENY anyway while
   // active:false, so a resolution-based check would pass vacuously and prove nothing.
   for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
-    if (id !== "workOrderPartsPlanner") {
+    // "owner" exempted for the same composition reason recorded just below: the
+    // 2026-08-19 ruling gives admin the whole catalog and OWNER_PERMISSIONS is composed
+    // from ADMIN_ROLE.permissions, so owner holds every id by inheritance. What this
+    // still protects is that no other governed Role carries it on its own.
+    if (id !== "workOrderPartsPlanner" && id !== "owner") {
       assert.equal(role.permissions.includes("workOrder.parts.plan"), false, id);
     }
     // "owner" is exempted, not overlooked. Owner ruling 2026-08-19 granted CRM activity
@@ -660,8 +664,16 @@ check("catalog MANAGE is held by the three management Roles plus the purpose-bui
   const activating = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
     (id) => resolve("inventory.catalog.activate", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
   );
-  assert.deepEqual(activating, ["inventoryCatalogAdministrator"], "activate stays confined");
-  assert.equal(resolve("inventory.catalog.activate", "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  // owner now resolves ALLOW for activate. That is a CONSEQUENCE of the 2026-08-19
+  // ruling (admin holds the full catalog; owner is composed from admin), not a
+  // reversal of the confinement this check was written for -- the point was that no
+  // OPERATIONAL Role picks activate up, and none does. Owner and admin are the two
+  // Roles the ruling deliberately makes unrestricted.
+  assert.deepEqual(
+    activating.filter((id) => id !== "owner").sort(),
+    ["inventoryCatalogAdministrator"],
+    "activate stays confined to the durable catalog administrator among non-owner Roles",
+  );
 });
 
 check("the catalog MANAGE reversal did not leak to the operational Roles it was never meant to reach", () => {
@@ -881,6 +893,11 @@ check("Owner holds exactly the five W-SAVE definition-CRUD ids, and only Owner a
     assert.ok(OWNER_ROLE.permissions.includes(id), id);
   }
   for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling ("Admin and
+    // Owner have full access to all possible features and permissions") gives admin
+    // the ENTIRE catalog, so admin legitimately holds this id. The invariant these
+    // loops protect -- that no OTHER Role picks it up independently -- is unchanged.
+    if (role.id === "admin") continue;
     assert.equal(role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false, `compatibility Role "${role.id}" must not hold a definition-CRUD id`);
   }
   for (const role of ALL_GOVERNED_ROLES) {
@@ -891,7 +908,11 @@ check("Owner holds exactly the five W-SAVE definition-CRUD ids, and only Owner a
 
 check("Owner does NOT hold any inactive report.* id, and resolving any of them still DENIES (active:false overrides any grant)", () => {
   for (const id of INACTIVE_REPORT_IDS) {
-    assert.equal(OWNER_ROLE.permissions.includes(id), false, `Owner must not list "${id}" -- it is registered active:false`);
+    // Owner now LISTS these ids (admin holds the full catalog by the 2026-08-19
+    // ruling, and owner composes from admin). That is fine and is the whole point of
+    // the grant/activation split: what matters is that an active:false id still DENIES
+    // no matter who holds it, which is exactly what the next three assertions prove.
+    // Checking the list membership here would only re-assert the old posture.
     const result = resolve(id, "owner", GOVERNED_BUSINESS_ROLES);
     assert.equal(result.decision, "DENY", id);
     assert.equal(result.reason, "inactivePermission", id);
@@ -900,6 +921,11 @@ check("Owner does NOT hold any inactive report.* id, and resolving any of them s
 
 check("Owner is the ONLY Role (of all eleven) that holds any report.* id -- compatibility Roles and the other seven governed business Roles are untouched", () => {
   for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling ("Admin and
+    // Owner have full access to all possible features and permissions") gives admin
+    // the ENTIRE catalog, so admin legitimately holds this id. The invariant these
+    // loops protect -- that no OTHER Role picks it up independently -- is unchanged.
+    if (role.id === "admin") continue;
     assert.equal(role.permissions.some((id) => id.startsWith("report.")), false, `compatibility Role "${role.id}" must not hold a report.* id`);
   }
   for (const role of ALL_GOVERNED_ROLES) {
@@ -915,7 +941,9 @@ check("Owner is the ONLY Role (of all eleven) that holds any report.* id -- comp
 check("no compatibility Role or non-Owner governed business Role can read any report.* capability, resolver-verified", () => {
   const sampleIds = ["report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"];
   for (const id of sampleIds) {
-    assert.equal(resolve(id, "admin", COMPATIBILITY_ROLES).decision, "DENY", `admin + ${id}`);
+    // admin is NOT asserted here any more -- it holds the full catalog by the
+    // 2026-08-19 ruling and correctly ALLOWs. dispatcher and technician are the Roles
+    // this check exists to protect, and they are still asserted below.
     assert.equal(resolve(id, "dispatcher", COMPATIBILITY_ROLES).decision, "DENY", `dispatcher + ${id}`);
     assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES).decision, "DENY", `technician + ${id}`);
     for (const role of ALL_GOVERNED_ROLES) {
