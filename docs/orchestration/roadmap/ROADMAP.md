@@ -26,7 +26,7 @@
 | Capability | Owner | Status | Impl | Activation | Backend | UserOp | UX | Deploy | Milestones |
 |---|---|---|---|---|---|---|---|---|---|
 | Sales Opportunity lifecycle (Cycles 2–3) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
-| Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
+| Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | PARTIAL | NOT_DEPLOYED | 1/1 |
 | Fulfillment allocation & availability (Cycle 5) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | PARTIAL | false | NONE | NOT_DEPLOYED | 1/1 |
 | Commercial Coverage & Territory (register #15) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
 | Coordinated operations projections | Product/Design | DONE | IMPLEMENTED | NOT_APPLICABLE | COMPLETE | UNKNOWN | UNKNOWN | NOT_APPLICABLE | 1/1 |
@@ -136,7 +136,7 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 - [x] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability.
 - [>] Owner Control Center (projection + delivery) _(Platform & Orchestration)_
 - [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
-- [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
+- [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. TWO gaps remain. (1) CREATION HAS NO UI PATH -- createSalesOrderFromOpportunity is deployed and its capability granted+activated, but the client has ZERO call sites, so a WON Opportunity cannot produce a Sales Order through the product (corroborated by sandbox-gap-scan-2026-08-19 H11: the Opportunity form never collects line items, so the handoff has nothing to hand over). (2) The salesOrder.index global list was built as a metadata ListViewDefinition but not mounted as a navigable route. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
 - [P] Commercial Coverage & Territory (register #15) _(Commercial & Sales)_ — Precedence/override/inheritance + sales credit + commission are deferred policy (do not manufacture)
 - [x] Coordinated operations projections _(Commercial & Sales)_
@@ -261,8 +261,9 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 #### Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) — `PROTECTED_ACTION`
 
 - Owner: Product/Design · Milestones: 1/1 · Last verified: `da89558`
-- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: NONE · Deploy: NOT_DEPLOYED
+- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: PARTIAL · Deploy: NOT_DEPLOYED
 - Dependencies: opportunity-lifecycle
+- Blocked: READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. TWO gaps remain. (1) CREATION HAS NO UI PATH -- createSalesOrderFromOpportunity is deployed and its capability granted+activated, but the client has ZERO call sites, so a WON Opportunity cannot produce a Sales Order through the product (corroborated by sandbox-gap-scan-2026-08-19 H11: the Opportunity form never collects line items, so the handoff has nothing to hand over). (2) The salesOrder.index global list was built as a metadata ListViewDefinition but not mounted as a navigable route. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.
 - Protected boundary: Grant salesOrder.* + deploy callables
   - ☑ **Committed commercial order + Service lineage** — criteria: salesOrder.write inert; salesOrder.service inert; sales_orders deny-all; assigns no WO/inventory
     - salesOrderCommands/Callables + createServiceForSalesOrder — `DONE` · PRs: #659 #663 · evidence: PR:#659, PR:#663
