@@ -744,6 +744,10 @@
     {
       "file": "test/duplicateRules.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/railDomainRowAlignment.test.mjs",
+      "runner": "node"
     }
   ]
 }

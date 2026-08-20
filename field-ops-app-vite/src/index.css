@@ -425,14 +425,25 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-rail__domain-icon { display: inline-flex; flex-shrink: 0; }
 /* A leaf row is an <a>, a button row is a <button>: without this they compute
    different widths. Persona review measured the leaf at 270px inside a 252px
-   rail -- overflowing and clipping -- with its label 3px off every sibling.
-   The spacer reserves the chevron's width so labels align down one edge. */
+   rail -- overflowing and clipping. */
 .fo-rail__domain-row--leaf {
   width: 100%; box-sizing: border-box;
   padding-left: 10px;
 }
-.fo-rail__domain-row--leaf::before {
-  content: ""; flex: none; box-sizing: border-box; width: 10px; margin-left: 2px;  /* chevron-width spacer */
+
+/* Reserves the chevron's slot on rows that have no chevron, so every domain
+   label lands on one edge regardless of whether the domain expands.
+   WHY IT IS AN ELEMENT AND NOT ::before. It used to be
+   `.fo-rail__domain-row--leaf::before`, which was correct when a row was just
+   chevron + label. Once a domain ICON was added ahead of the label, ::before kept
+   rendering FIRST -- before the icon -- so it stopped aligning the label and
+   started indenting the entire row, icon included. Leaf domains visibly sat
+   further right than their expandable siblings. A real element in the markup can
+   sit exactly where the chevron sits, which is the only position that makes the
+   two row shapes agree.
+   Box metrics deliberately mirror .fo-rail__chevron exactly. */
+.fo-rail__chevron-spacer {
+  flex: none; box-sizing: border-box; width: 10px; height: 10px; margin-left: 2px;
 }
 
 /* Subtle disclosure. Rotation is the only affordance -- no icon set, per the

@@ -241,6 +241,12 @@ export default function AppRail({
                   }
                 >
                   <DomainIcon domainKey={domain.key} />
+                  {/* Occupies the chevron's slot so a leaf row's label lands on the
+                      same edge as an expandable row's. It must sit HERE, between the
+                      icon and the label, because that is where the chevron sits --
+                      the previous ::before spacer rendered before the icon and so
+                      indented the whole row instead of aligning the label. */}
+                  <span className="fo-rail__chevron-spacer" aria-hidden="true" />
                   <span className="fo-rail__domain-label">{domain.label}</span>
                 </NavLink>
               ) : (
