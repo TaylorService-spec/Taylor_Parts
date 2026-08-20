@@ -19,7 +19,7 @@ export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPla
 // Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
-export { createOpportunity, transitionOpportunity } from "./opportunity/opportunityCallables";
+export { createOpportunity, transitionOpportunity, updateOpportunity } from "./opportunity/opportunityCallables";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";

@@ -316,6 +316,9 @@ export type AuditAction =
   // transaction. Its own union member, and its own deterministic Audit Event id space, so a
   // replay of the atomic action cannot collide with either standalone callable
   | "closeOpportunityAsWon"
+  // Ordinary edit of an Opportunity deal field. Distinct from transitionOpportunity because an
+  // ordinary edit cannot move the lifecycle, and the audit trail must keep the two apart
+  | "updateOpportunity"
   // P1.1 (Sales->Cash fulfillment spine) -- the trusted transitionWorkOrder Complete-action write-back to
   // the linked Sales Order's `lines[].fulfilledQty`. Traceability only, NOT the idempotency gate (COMPLETED
   // is structurally once-per-Work-Order via canTransition, see transitionWorkOrder.ts's header comment).
