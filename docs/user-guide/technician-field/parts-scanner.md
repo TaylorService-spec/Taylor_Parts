@@ -1,37 +1,60 @@
 # Parts Scanner (Technician Workspace)
 
-> **Demo only — this screen does not save.** The Technician Workspace / Parts Scanner is a preview of how field part scanning will work. Everything you do here changes only what's on your screen for this session. Nothing is recorded to inventory, work orders, or purchase orders, and it all resets when you leave. Do not rely on it for real stock counts.
+**Status: live** (technician, admin) · Service > Technician Workspace
 
-**What this lets you do (once real):** Scan or look up a part and record a quick inventory action from the field — use it on a work order, load your truck, receive stock, cycle count, or add it to a purchase order.
+Scan a part on the job and record that you used it — without leaving the work order.
 
-**Who can see it:** Technician. Open it from **Service > Technician Workspace**.
+## What it does
 
-## Before you start
+The Scanner answers three questions and then gets out of the way:
 
-- This is a walkthrough of the intended flow, not a working tool yet. Treat any "added successfully" message as a demo confirmation, not a real save.
-- Camera scanning needs a device with a camera and your permission. If it isn't available, you can still type a part number.
+1. **What did I scan?** — it resolves the code to a real record, or tells you honestly that it
+   couldn't.
+2. **Can I see it?** — it searches only what you're actually allowed to read.
+3. **What can I do with it?** — it offers only actions the system will genuinely accept.
 
 ## Steps
 
-1. Open **Service > Technician Workspace**. You'll see the "Scan. Move. Done." workspace with a fixed demo location ("Truck 14 · Taylor Service").
-2. Find a part one of three ways:
-   - Select **Scan company QR** to open the camera and center a QR code in the frame.
-   - Type a QR value, barcode, or SKU in the box and select **Find part**.
-   - Select one of the sample SKU buttons under "Try:".
-3. When a part is found, its card shows the name, SKU, barcode, and demo on-truck / warehouse counts.
-4. Under **What are you doing?**, choose an action: Use on work order, Load my truck, Receive inventory, Cycle count, or Add to purchase order.
-5. If you chose **Use on work order**, pick a work order from the list.
-6. Set the quantity with the **−** / **+** buttons or by typing.
-7. Select **Confirm [action]**. You'll see a confirmation and the on-screen demo totals change. Remember: nothing is saved.
+1. Open **Service > Technician Workspace**.
+2. Scan a code, or type it in.
+3. Read the result card. It shows the part's **name** (not the code you just typed back at you),
+   its human code, how many are planned on this job, and which job that is.
+4. If the part is planned on your current job, set the quantity with **−** / **+** and press the
+   record button.
 
-## Tips and common problems
+## Recording part usage
 
-- **"Camera access was not granted"** or **"Camera scanning is not available here"** — type the barcode or SKU instead, or pick a sample SKU.
-- **"QR code read, but no part matches"** — the scan worked but that code isn't a known demo part.
-- **"Not enough stock on your truck" / "in the warehouse"** — these checks use demo numbers only.
-- The work-order list here comes from the older job records, not your dispatched work orders.
+This is the Scanner's one action, and it works when all four are true:
 
-## Related
+- you're signed in as a **technician**
+- the work order is **assigned to you**
+- you have an **active** work order
+- the part is **planned** on that job
 
-- [See my assigned work orders](./see-my-work-orders.md)
-- [Record parts used and work notes](./record-parts-and-notes.md) — the real way to log parts used on your assigned work orders.
+If any of these isn't true, the button is shown disabled with the specific reason — "This work
+order is not assigned to you", "This part is not planned on your current job". It never silently
+does nothing.
+
+The server checks all four again independently. The Scanner never decides on its own.
+
+## What you might see
+
+| Message | What it means |
+|---|---|
+| "That code couldn't be read." | The scan didn't produce a usable code. Try again or type it. |
+| "That code matches more than one record." | Pick the right one from the list shown. |
+| A "not found" message | It isn't in **what you can see** — which is not the same as not existing. The message says which. |
+| "Your work orders couldn't be loaded…" | A read failed. This is a failure, not an empty scanner. |
+| "Nothing to do with this here." | It resolved fine; there's just no action for it in this context. |
+
+## What it does not do
+
+The Scanner **does not receive stock, load trucks, run cycle counts, or draft purchase orders.**
+
+An earlier version showed those five actions to everyone, always, against sample parts held in
+memory. They looked real and stored nothing. They were removed deliberately when the Scanner was
+rebuilt on the real governed data.
+
+To receive stock, use **Inventory > Receiving** — see
+[Receive a purchase order](../inventory/receive-a-purchase-order.md). That is the only place the
+governed receipt happens.
