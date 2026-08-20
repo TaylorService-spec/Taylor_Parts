@@ -30,7 +30,13 @@ export type OpportunityCommandErrorCode =
   | "ALREADY_CLOSED"
   | "ILLEGAL_TRANSITION"
   | "OUTCOME_REQUIRES_DECISION"
-  | "LINE_QTY_REQUIRED_FOR_WON";
+  | "LINE_QTY_REQUIRED_FOR_WON"
+  // Ordinary-edit codes. VERSION_CONFLICT is separate from INVALID on purpose: one means
+  // "your input is wrong", the other means "your input was right when you loaded it and
+  // someone else has since changed the record" -- different facts needing different UI.
+  | "VERSION_CONFLICT"
+  | "CLOSED"
+  | "NO_CHANGES";
 
 export class OpportunityCommandError extends Error {
   code: OpportunityCommandErrorCode;
@@ -143,6 +149,164 @@ export function buildCreateOpportunity(
     createdAtMillis: ctx.nowMillis,
     updatedAtMillis: ctx.nowMillis,
   };
+}
+
+// ============================ ORDINARY EDIT ============================
+//
+// Editing an Opportunity's ORDINARY fields -- the ones that describe the deal, not its
+// position in the lifecycle. Before this existed, the workspace's Edit controls were
+// disabled with "the governed save command is not wired in this build", which was accurate:
+// createOpportunity and transitionOpportunity were the only write paths, so an Opportunity
+// could be created and advanced but never corrected.
+//
+// LIFECYCLE IS NOT AN ORDINARY FIELD. `stage` and `outcome` are absent from the editable
+// set by construction -- not filtered out at the end, not validated against, simply never
+// read from the input. An ordinary edit cannot move an Opportunity through its lifecycle by
+// any input, malformed or otherwise, because there is no code path from input to those
+// fields. buildTransitionPatch remains the only way either changes.
+//
+// NOT A PATCH OF WHATEVER WAS SENT. Every editable field is named here and read individually.
+// A caller cannot introduce a field by sending it: an unknown key is ignored rather than
+// written, so the persisted shape is decided by this file and never by the request.
+//
+// ABSENT vs NULL are different. An absent key means "leave this alone"; an explicit null on a
+// nullable field means "clear it". Collapsing them would make it impossible to clear a value
+// without also being unable to leave one untouched.
+export interface UpdateOpportunityInput {
+  opportunityId: string;
+  /** Optimistic concurrency: the updatedAtMillis the caller loaded. */
+  expectedUpdatedAtMillis: number;
+  accountId?: string;
+  ownerEmployeeId?: string;
+  salesChannel?: SalesChannel;
+  need?: string | null;
+  expectedValue?: number | null;
+  expectedCloseAt?: number | null;
+  /** Whole-array replacement. See the note on line editing below. */
+  lines?: OpportunityLineInput[];
+}
+
+/** One field's before/after, for the audit event. */
+export interface OpportunityFieldChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface UpdateOpportunityPatch {
+  patch: Record<string, unknown>;
+  changes: OpportunityFieldChange[];
+}
+
+/** The ordinary-editable fields. Lifecycle fields are deliberately absent. */
+export const EDITABLE_OPPORTUNITY_FIELDS = Object.freeze([
+  "accountId",
+  "ownerEmployeeId",
+  "salesChannel",
+  "need",
+  "expectedValue",
+  "expectedCloseAt",
+  "lines",
+]);
+
+// Build the field patch for an ordinary edit. Pure: no Firestore, no clock, no identity --
+// `actorUid`/`nowMillis` are supplied by the callable, exactly as the other two cores do.
+//
+// LINES ARE REPLACED WHOLE, not patched element-wise. Add/edit/remove all arrive as the new
+// array. That is the honest shape for an ARRAY FIELD ON THE DOCUMENT (which is where lines
+// live -- there is no line subcollection): a per-line command would have to re-read, splice
+// and write the same array anyway, while inviting the belief that two concurrent line edits
+// merge. They do not. Whole-array replacement under the version check makes the conflict
+// visible instead of silently losing one of them.
+export function buildUpdateOpportunity(
+  current: OpportunityDocState & { updatedAtMillis?: number | null },
+  input: UpdateOpportunityInput,
+  ctx: { actorUid: string; nowMillis: number }
+): UpdateOpportunityPatch {
+  if (!input || typeof input !== "object") throw new OpportunityCommandError("INVALID", "Missing input");
+  if (!nonEmpty(input.opportunityId)) throw new OpportunityCommandError("INVALID", "opportunityId is required");
+  if (!current || !isStage(current.stage)) throw new OpportunityCommandError("INVALID", "Invalid current state");
+
+  // A closed Opportunity is a historical record. WON and LOST are terminal, and editing the
+  // deal terms of a WON Opportunity would silently disagree with the Sales Order already
+  // derived from them.
+  if (current.outcome === "WON" || current.outcome === "LOST") {
+    throw new OpportunityCommandError("CLOSED", `Opportunity is ${current.outcome} and cannot be edited`);
+  }
+
+  // OPTIMISTIC CONCURRENCY. Compared before anything is built, so a stale writer is rejected
+  // rather than validated and then rejected -- and so the error a caller sees is the real one.
+  if (!finiteNum(input.expectedUpdatedAtMillis)) {
+    throw new OpportunityCommandError("INVALID", "expectedUpdatedAtMillis is required");
+  }
+  const currentVersion = finiteNum(current.updatedAtMillis) ? current.updatedAtMillis : 0;
+  if (currentVersion !== input.expectedUpdatedAtMillis) {
+    throw new OpportunityCommandError(
+      "VERSION_CONFLICT",
+      "This Opportunity changed since it was loaded. Reload and reapply your edit."
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+  const changes: OpportunityFieldChange[] = [];
+  const record = (field: string, before: unknown, after: unknown) => {
+    patch[field] = after;
+    changes.push({ field, before: before ?? null, after: after ?? null });
+  };
+  const cur = current as unknown as Record<string, unknown>;
+
+  if (input.accountId !== undefined) {
+    if (!nonEmpty(input.accountId)) throw new OpportunityCommandError("ACCOUNT_REQUIRED", "accountId cannot be empty");
+    if (input.accountId !== cur.accountId) record("accountId", cur.accountId, input.accountId);
+  }
+  if (input.ownerEmployeeId !== undefined) {
+    if (!nonEmpty(input.ownerEmployeeId)) {
+      throw new OpportunityCommandError("OWNER_REQUIRED", "ownerEmployeeId cannot be empty");
+    }
+    if (input.ownerEmployeeId !== cur.ownerEmployeeId) {
+      record("ownerEmployeeId", cur.ownerEmployeeId, input.ownerEmployeeId);
+    }
+  }
+  if (input.salesChannel !== undefined) {
+    if (!isChannel(input.salesChannel)) {
+      throw new OpportunityCommandError("CHANNEL_INVALID", "salesChannel is not a recognized channel");
+    }
+    if (input.salesChannel !== cur.salesChannel) record("salesChannel", cur.salesChannel, input.salesChannel);
+  }
+  if (input.need !== undefined) {
+    const next = nonEmpty(input.need) ? input.need : null;
+    if (next !== (cur.need ?? null)) record("need", cur.need ?? null, next);
+  }
+  if (input.expectedValue !== undefined) {
+    const next = input.expectedValue === null ? null : input.expectedValue;
+    if (next !== null && !finiteNum(next)) {
+      throw new OpportunityCommandError("INVALID", "expectedValue must be a number or null");
+    }
+    if (next !== (cur.expectedValue ?? null)) record("expectedValue", cur.expectedValue ?? null, next);
+  }
+  if (input.expectedCloseAt !== undefined) {
+    const next = input.expectedCloseAt === null ? null : input.expectedCloseAt;
+    if (next !== null && !finiteNum(next)) {
+      throw new OpportunityCommandError("INVALID", "expectedCloseAt must be a number or null");
+    }
+    if (next !== (cur.expectedCloseAt ?? null)) record("expectedCloseAt", cur.expectedCloseAt ?? null, next);
+  }
+  if (input.lines !== undefined) {
+    if (!Array.isArray(input.lines)) throw new OpportunityCommandError("LINE_INVALID", "lines must be an array");
+    // Reuses validateLine -- the SAME product-level guard creation uses. A serialized-asset
+    // reference is rejected on edit exactly as it is on create; there is no second, looser
+    // path into the lines array.
+    const nextLines = input.lines.map((l, i) => validateLine(l, i));
+    record("lines", cur.lines ?? [], nextLines);
+  }
+
+  if (changes.length === 0) {
+    throw new OpportunityCommandError("NO_CHANGES", "No editable field changed");
+  }
+
+  patch.updatedByUid = ctx.actorUid;
+  patch.updatedAtMillis = ctx.nowMillis;
+  return { patch, changes };
 }
 
 export interface OpportunityDocState {
