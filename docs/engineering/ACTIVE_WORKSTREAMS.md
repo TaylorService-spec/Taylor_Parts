@@ -27,6 +27,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Overnight Tier-1 program — Opportunity write paths, Sales Order fulfillment view, Part identifiers, roadmap reconciliation
+- Agent/session:       Claude (overnight autonomous program, 2026-08-20) · Role: builder
+- Branch / worktree:   sequential single-writer lanes off `origin/main`; one isolated worktree used only for the #1061 trial merge, removed afterwards
+- Base commit:         `969305e1` (start) → `d7592671` (after #1341 and #1342)
+- Owned paths:         functions/src/opportunity/ · functions/src/salesOrder/salesOrderReadService.ts · field-ops-app-vite/src/domain/salesOrderFulfillmentProgress.js · field-ops-app-vite/src/modules/sales/ · field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx · docs/orchestration/lib/roadmapModel.mjs
+- Shared paths req'd:  functions/src/types/access.ts (AuditAction union) · functions/src/access/auditEventWriter.ts (runtime mirror) · functions/package.json · docs/orchestration/execution-backlog.md · this registry
+- Dependencies:        none blocking; ran sequentially so no two writers shared a branch or checkout
+- Expected outcome:    governed Opportunity edit + atomic close-as-WON, Sales Order index mounted, fulfillment progression, Part identifier surface, roadmap truthful against main
+- Protected boundaries:reached and NOT crossed — no deploy, no capability activation, no role grant, no Rules change, no provisioning, no sandbox or production data mutation. The emulator was local only and stopped.
+- Lifecycle stage:     SANDBOX BUILD (repo-only; nothing deployed or activated)
+
+
 - Capability:          EOS cost/capacity semantic correction (#831 regression)
 - Agent/session:       Codex `/root` · Role: builder
 - Branch / worktree:   `codex/eos-cost-capacity-semantics` · `D:\Taylor_Parts-cost-capacity`
