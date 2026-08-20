@@ -84,6 +84,20 @@ export const ROLE_HIERARCHY: Readonly<Record<string, RoleHierarchyNode>> = Objec
       "Head of the sales branch, a peer of Operations and Finance -- not beneath Operations. Sees the sales side only.",
     stated: true,
   }),
+  // Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
+  // parent: "admin" -- the SAME parent as salesManager, which is what makes them equal.
+  // Placing Marketing under salesManager would have been the easy reading of "a marketing
+  // top" and the wrong one: it would put the whole sales pipeline and every salesperson
+  // inside Marketing's visibility, and put Marketing inside the Sales Manager's. Peers on
+  // one level see neither across nor into each other, which is exactly the rule this file
+  // already enforces between Sales and Warehouse.
+  marketingManager: Object.freeze({
+    roleId: "marketingManager",
+    parent: "admin",
+    rationale:
+      "Head of the marketing branch, a peer of Sales, Operations and Finance. Equal to Sales Manager by Owner ruling, so neither sees the other's people.",
+    stated: true,
+  }),
   operationsManager: Object.freeze({
     roleId: "operationsManager",
     parent: "admin",

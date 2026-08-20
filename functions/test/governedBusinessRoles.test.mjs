@@ -48,6 +48,8 @@ function check(name, fn) {
 
 const ALL_GOVERNED_ROLES = Object.values(GOVERNED_BUSINESS_ROLES);
 const EXPECTED_IDS = [
+  // Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
+  "marketingManager",
   "generalEmployee",
   "officeManager",
   "salesManager",
@@ -98,12 +100,12 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-three ids (sixteen, plus the seven org-chart positions added 2026-08-19)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-four ids (twenty-three, plus Marketing Manager)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 23);
+  assert.equal(ALL_GOVERNED_ROLES.length, 24);
 });
 
 check("salesperson and salesManager are intentionally identical in capability today", () => {
@@ -191,14 +193,14 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all twenty-three governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all twenty-four governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   for (const id of EXPECTED_IDS) {
     assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    23,
-    "the governed allowlist must contain exactly the 23 declared governed business Roles",
+    24,
+    "the governed allowlist must contain exactly the 24 declared governed business Roles",
   );
 });
 
@@ -353,27 +355,108 @@ check("Finance Manager: Customer read + governed-field write + PO read; no ordin
 });
 
 // Both money Roles read the committed order, and neither can write it or void a PO.
-check("Finance/Accounting Manager: Sales Order read is granted-but-inactive, and neither Role gained write authority", () => {
+check("Finance/Accounting Manager: Sales Order read is granted-but-inactive, and NEITHER gained Sales Order write", () => {
   for (const roleId of ["financeManager", "accountingManager"]) {
     assert.ok(GOVERNED_BUSINESS_ROLES[roleId].permissions.includes("salesOrder.read"), roleId);
     const r = resolve("salesOrder.read", roleId, GOVERNED_BUSINESS_ROLES);
     assert.equal(r.decision, "DENY", roleId);
     assert.equal(r.reason, "inactivePermission", roleId);
-    for (const id of ["salesOrder.write", "salesOrder.fulfill", "reorder.purchaseOrder.create", "reorder.purchaseOrder.void"]) {
+    // Sales Order WRITE stays denied for both. The 2026-08-19 purchasing ruling moved
+    // procurement authority, not order authority.
+    for (const id of ["salesOrder.write", "salesOrder.fulfill"]) {
       assert.equal(resolve(id, roleId, GOVERNED_BUSINESS_ROLES).decision, "DENY", roleId + "/" + id);
     }
   }
 });
 
-// OWNER REVERSAL 2026-08-18 ("accountingManager should be like financeManager for
-// now") replaces the earlier "remain distinct" requirement this test used to pin.
-// The assertion is inverted rather than deleted so the parity stays a stated
-// decision: if the two sets ever diverge again, that has to be someone's choice.
-check("Accounting Manager and Finance Manager are deliberately IDENTICAL (Owner ruling 2026-08-18, superseding the earlier distinctness requirement)", () => {
-  const accountingSet = [...new Set(ACCOUNTING_MANAGER_ROLE.permissions)].sort();
-  const financeSet = [...new Set(FINANCE_MANAGER_ROLE.permissions)].sort();
-  assert.deepEqual(accountingSet, financeSet, "the two Roles' grant sets are intentionally the same set");
-  assert.ok(accountingSet.includes("account.governedField.write"), "parity was reached by RAISING Accounting to Finance, not by lowering Finance");
+// Owner ruling 2026-08-19: "Purchasing falls under accounting". The CRUD matrix's
+// standalone Purchasing role has no counterpart in this file and now never will -- its
+// authority lands on Accounting Manager. Pinned in BOTH directions, because the whole
+// point is that the two Roles stopped being interchangeable on this date.
+check("Accounting Manager holds the purchasing workflow; Finance Manager deliberately does NOT", () => {
+  const PURCHASING = [
+    "reorder.purchaseOrder.create",
+    "reorder.request.read.queue",
+    "reorder.request.startPurchasing",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.postPurchasingUpdate",
+  ];
+  for (const id of PURCHASING) {
+    assert.ok(ACCOUNTING_MANAGER_ROLE.permissions.includes(id), `accountingManager must hold ${id}`);
+    assert.equal(
+      FINANCE_MANAGER_ROLE.permissions.includes(id),
+      false,
+      `financeManager must NOT hold ${id} -- purchasing folded into ACCOUNTING, not finance`,
+    );
+  }
+});
+
+check("the purchasing merge did not hand Accounting Manager approval or void authority", () => {
+  // Segregation of duties, applied to the very merge that asked for it: whoever raises a
+  // Purchase Order must not also approve it. void is withheld for a different reason --
+  // it carries an isOwnAssignment Condition everywhere it is held, and granting it here
+  // unconditioned would exceed admin's own authority.
+  for (const id of ["reorder.request.approve", "reorder.request.reject", "reorder.purchaseOrder.void"]) {
+    assert.equal(
+      ACCOUNTING_MANAGER_ROLE.permissions.includes(id),
+      false,
+      `accountingManager must NOT hold ${id}`,
+    );
+  }
+});
+
+// THE PARITY ENDED ON PURPOSE, and this test is the record of how.
+//
+// 2026-08-18 the Owner ruled "accountingManager should be like financeManager FOR NOW",
+// and the previous version of this test pinned the two sets as identical. "For now" ended
+// on 2026-08-19 with "Purchasing falls under accounting", which gives Accounting a
+// workflow Finance has no claim to.
+//
+// So the assertion is narrowed rather than deleted: everything the 2026-08-18 parity
+// ruling actually established still holds -- Accounting was RAISED to Finance's level and
+// keeps every id Finance has -- while Accounting is now permitted to hold MORE. What is
+// still forbidden is Finance quietly drifting above Accounting, or Accounting losing any
+// of the parity it was granted.
+check("Accounting Manager retains everything Finance Manager holds (the 2026-08-18 parity), and may now hold more", () => {
+  const accountingSet = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
+  for (const id of FINANCE_MANAGER_ROLE.permissions) {
+    assert.ok(accountingSet.has(id), `accountingManager lost "${id}", which the 2026-08-18 parity ruling granted it`);
+  }
+  assert.ok(
+    accountingSet.has("account.governedField.write"),
+    "parity was reached by RAISING Accounting to Finance, not by lowering Finance",
+  );
+  assert.ok(
+    ACCOUNTING_MANAGER_ROLE.permissions.length > FINANCE_MANAGER_ROLE.permissions.length,
+    "Accounting should now exceed Finance -- purchasing folded into it on 2026-08-19",
+  );
+});
+
+// Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
+check("Marketing Manager exists, is a peer of Sales Manager, and holds only reads", () => {
+  const marketing = GOVERNED_BUSINESS_ROLES.marketingManager;
+  assert.ok(marketing, "marketingManager must exist");
+  assert.equal(marketing.compatibility, false);
+  for (const id of ["account.record.read", "opportunity.read", "salesOrder.read"]) {
+    assert.ok(marketing.permissions.includes(id), `marketingManager must hold ${id}`);
+  }
+  // No write anywhere. The matrix gives Marketing CRED over Marketing Initiatives, and no
+  // marketing.* capability exists to grant -- a recorded catalog gap, not an omission here.
+  for (const id of marketing.permissions) {
+    assert.ok(
+      id.endsWith(".read"),
+      `marketingManager holds "${id}", which is not a read -- Marketing has no write authority until a marketing capability exists`,
+    );
+  }
+});
+
+// Owner ruling 2026-08-19: "service Manager is fieldManager". The id is unchanged --
+// live grants, roleHierarchy.ts and the audit trail all reference it -- so the LABEL is
+// what moved. Pinned so the two cannot drift apart again and leave the product calling
+// this position something the business does not.
+check("Service Manager is the fieldManager id -- the label changed, the id did not", () => {
+  assert.equal(GOVERNED_BUSINESS_ROLES.fieldManager.name, "Service Manager");
+  assert.ok(GOVERNED_BUSINESS_ROLES.fieldManager, "the id stays 'fieldManager'; renaming it would orphan every live grant");
 });
 
 check("Field Manager: full Work Order lifecycle + field-inventory read + Customer read; no reorder/purchasing execution", () => {

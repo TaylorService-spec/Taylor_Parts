@@ -110,6 +110,35 @@ export const OFFICE_MANAGER_ROLE: Role = Object.freeze({
 // Spec §26.2 -- Customer/CRM coverage from the existing catalog only;
 // quote/sales-pipeline/reporting capabilities are a recorded catalog
 // gap (Spec §26.4), not granted here.
+// MARKETING -- Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
+// A top-level commercial position, peer to Sales Manager rather than reporting through it
+// (roleHierarchy.ts places both directly under admin), which is what "equal to" fixes: on
+// the same level, Marketing neither sees into Sales' people nor sits beneath them.
+//
+// GRANTED WHAT EXISTS, WHICH IS LESS THAN THE MATRIX ASKS FOR. The CRUD matrix gives
+// Marketing CRED over "Marketing Initiatives", and NO marketing capability exists in the
+// permission catalog at all -- there is no id to grant. Creating the Role with the reads it
+// can actually hold is honest; inventing a capability the engine does not enforce would
+// produce a Role that looks authorized and is not. Marketing Initiatives is recorded as a
+// catalog gap alongside Commissions, Technician Time and Notifications.
+//
+// Contacts and Customer Locations, which the matrix also gives Marketing, are governed by
+// firestore.rules today and have no capability either -- so they are not expressible here.
+export const MARKETING_MANAGER_ROLE: Role = Object.freeze({
+  id: "marketingManager",
+  name: "Marketing Manager",
+  description:
+    "Top-level Marketing position, peer to Sales Manager. Read visibility across Customers, Opportunities and Sales Orders for segmentation and campaign targeting. Marketing Initiative capabilities are a recorded permission-catalog gap -- no marketing.* id exists to grant.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [
+    // Owner ruling 2026-08-18, "they all should see accounts".
+    "account.record.read",
+    "opportunity.read",
+    "salesOrder.read",
+  ],
+}) as Role;
+
 export const SALES_MANAGER_ROLE: Role = Object.freeze({
   id: "salesManager",
   name: "Sales Manager",
@@ -201,6 +230,29 @@ export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
     "account.governedField.write",
     "salesOrder.read",
     "reorder.purchaseOrder.read",
+    // PURCHASING FOLDS INTO ACCOUNTING. Owner ruling 2026-08-19: "Purchasing falls under
+    // accounting". The CRUD matrix carried a standalone Purchasing role that has no
+    // counterpart here and now never will -- its authority lands on this Role instead.
+    //
+    // What that means concretely is the purchasing WORKFLOW, which is a sequence rather
+    // than a single write: see what needs buying, take it into purchasing, record the
+    // Purchase Order that resulted, and keep it current. Granting the create without the
+    // queue read would produce a buyer who can raise a PO but cannot see what needs one.
+    "reorder.purchaseOrder.create",
+    "reorder.request.read.queue",
+    "reorder.request.startPurchasing",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.postPurchasingUpdate",
+    // DELIBERATELY NOT GRANTED, and each omission is a decision rather than an oversight:
+    //   - reorder.purchaseOrder.void carries an isOwnAssignment Condition everywhere it is
+    //     held. Granting it here without that Condition would be a wider authority than
+    //     admin's own, which cannot be right for a Role that inherits purchasing duties.
+    //   - reorder.request.approve/reject stay separate from purchasing execution. Whoever
+    //     raises the order should not also approve it -- the matrix's own segregation-of-
+    //     duties principle, applied to the very merge it asked for.
+    //   - The Controller/Accounting finance row (Invoices/AR, Payments, Commissions as CRE)
+    //     is NOT granted here. The ruling folded PURCHASING into accounting; it said
+    //     nothing about finance write authority, and finance.* remains a separate decision.
   ],
 }) as Role;
 
@@ -236,10 +288,17 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
 // Spec §9), not duplicated here as an unconditioned grant. Equipment
 // capabilities are a recorded catalog gap (Spec §26.4).
 export const FIELD_MANAGER_ROLE: Role = Object.freeze({
+  // THE ID STAYS "fieldManager"; ONLY THE LABEL CHANGES. Owner ruling 2026-08-19:
+  // "service Manager is fieldManager" -- the business calls this position Service
+  // Manager, and the CRUD matrix lists it under that name. The id is load-bearing in a
+  // way the label is not: it is what live role assignments, roleHierarchy.ts and the
+  // access audit trail all reference, so renaming it would orphan every existing grant
+  // to silently rename a job title. The name is what people read; the id is what the
+  // system resolves. They are allowed to differ, and here they must.
   id: "fieldManager",
-  name: "Field Manager",
+  name: "Service Manager",
   description:
-    "Technicians/dispatch/Work Orders: full Work Order lifecycle authority plus field-inventory read visibility. Equipment capabilities are a recorded permission-catalog gap (Spec §26.4).",
+    "Service Manager (id `fieldManager`). Technicians/dispatch/Work Orders: full Work Order lifecycle authority plus field-inventory read visibility. Equipment capabilities are a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
   permissions: [
@@ -697,6 +756,7 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,
+  marketingManager: MARKETING_MANAGER_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,
