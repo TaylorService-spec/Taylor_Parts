@@ -113,8 +113,28 @@ export function buildQueryDescriptor(def, entity, request = {}) {
   }
   // The tiebreaker is appended HERE rather than trusted from the request, so no caller can
   // produce a non-total order — which is what makes cursor paging drop and duplicate rows.
+  //
+  // ITS DIRECTION FOLLOWS THE CLAUSE BEFORE IT, and that is not cosmetic. Firestore serves
+  // "orderBy(field), orderBy(__name__)" from the implicit single-field index ONLY when both
+  // point the same way. Mixing them — updatedAt DESC then __name__ ASC — is a composite
+  // query that requires an explicitly declared index, and without one Firestore rejects it
+  // with failed-precondition.
+  //
+  // Hardcoding ASC therefore broke every list whose sort ends DESC. The Customers page is
+  // the one that was noticed: its defaultSort is updatedAt DESC, so the runtime issued
+  // updatedAt DESC + __name__ ASC, Firestore refused the query, and useMetadataList mapped
+  // the non-permission error to "unavailable" — the page rendered "Customers could not be
+  // loaded. Try again." while the summary counts above it, which come from a callable and
+  // never touch this path, cheerfully reported 2 accounts. Nothing was denied and no data
+  // was missing; the query was simply unservable. Retrying it could never have worked.
+  //
+  // Matching the direction is the fix rather than declaring a composite index per list,
+  // because the tiebreaker exists ONLY to make the order total for cursor paging. Which way
+  // it points is arbitrary; that it agrees with its neighbour is what keeps the query on the
+  // index Firestore already maintains for free.
   if (!sort.some((s) => s.fieldId === def.tiebreaker)) {
-    sort.push(Object.freeze({ fieldId: def.tiebreaker, direction: "ASC" }));
+    const preceding = sort[sort.length - 1];
+    sort.push(Object.freeze({ fieldId: def.tiebreaker, direction: preceding?.direction === "DESC" ? "DESC" : "ASC" }));
   }
 
   // --- bound: clamped, never absent ---
