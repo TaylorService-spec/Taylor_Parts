@@ -72,7 +72,12 @@ await check("missing/unknown/malformed fields fail closed", () => {
   assert.equal(V.validateReceivingOrderInput({ ...input(), extra: 1 }, AUTH).reason, "unknown_field");
   assert.equal(V.validateReceivingOrderInput({ ...input(), source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: "RR-1" } }, AUTH).reason, "purchase_order_id_invalid");
   assert.equal(V.validateReceivingOrderInput({ ...input(), source: { ...src, stray: 1 } }, AUTH).reason, "source_invalid");
-  assert.equal(V.validateReceivingOrderInput({ ...input(), source: { ...src, type: "PURCHASE_ORDER" } }, AUTH).reason, "source_type_invalid");
+  // The closed-set check still holds; only the SET grew. This used "PURCHASE_ORDER" as its example
+  // of an unknown type, which was true when the set had exactly one member and is now the canonical
+  // authority (Phase C). The property under test is that a type OUTSIDE the set fails closed, so it
+  // now uses a value that is genuinely outside it.
+  assert.equal(V.validateReceivingOrderInput({ ...input(), source: { ...src, type: "NOT_A_SOURCE" } }, AUTH).reason, "source_type_invalid");
+  assert.equal(V.validateReceivingOrderInput({ ...input(), source: { ...src, type: "" } }, AUTH).reason, "source_type_invalid");
   assert.equal(V.validateReceivingOrderInput({ ...input(), source: { ...src, purchaseOrderId: "OTHER" } }, AUTH).reason, "source_identity_mismatch");
   assert.equal(V.validateReceivingOrderInput({ ...input(), receivingLocation: { type: "NOPE", locationId: "x" } }, AUTH).reason, "receiving_location_invalid");
   assert.equal(V.validateReceivingOrderInput({ ...input(), idempotencyKey: "" }, AUTH).reason, "idempotency_key_invalid");

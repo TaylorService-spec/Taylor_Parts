@@ -27,6 +27,8 @@ import {
   type ReceivingActor,
   type ReceivingOutcome,
   type DeserializedReceivingOrder,
+  type ReceivingSourceType,
+  LEGACY_SOURCE_TYPE,
 } from "./receivingTypes.js";
 import { validateReceivingOrderInput } from "./receivingValidation.js";
 
@@ -60,7 +62,14 @@ export function serializeReceivingOrder(value: ReceivingOrderValue, actor: Recei
   return {
     schemaVersion: RECEIVING_SCHEMA_VERSION,
     receivingId: receivingOrderDocId(value.idempotencyKey), // stored identity == doc path; server-derived, never from input
-    source: { type: value.source.type, reorderRequestId: value.source.reorderRequestId, purchaseOrderId: value.source.purchaseOrderId },
+    // reorderRequestId is written ONLY when the source actually has one. Spreading it
+    // unconditionally would send `undefined` to Firestore for a canonical PO -- which the Admin SDK
+    // rejects outright, and which would be a claim of a reorder-request link that does not exist.
+    source: {
+      type: value.source.type,
+      ...(value.source.reorderRequestId === undefined ? {} : { reorderRequestId: value.source.reorderRequestId }),
+      purchaseOrderId: value.source.purchaseOrderId,
+    },
     receivingLocation: { type: value.receivingLocation.type, locationId: value.receivingLocation.locationId },
     status: value.status,
     version: value.version,
@@ -98,10 +107,16 @@ const RECEIVING_ID_RE = /^rcv_[0-9a-f]{40}$/;
 const RECEIVING_ORDER_NUMBER_RE = /^RO-[0-9]{4}-[0-9]{6,}$/;
 const STORED_LINE_KEYS = new Set(["lineId", "partId", "trackingMode", "expectedQuantity", "receivedQuantity", "status", "serialNumbers"]);
 
-// Fail-closed deserialize of a stored receiving_orders record. Validates self-consistency (first-slice
-// shape: PUTAWAY_COMPLETE / version 1 / one NONE line / expected == received), converts server
-// Timestamps to millis (no Timestamp leaks into the value), and throws MalformedStoredRecordError on
-// anything unexpected -- never normalizes malformed data into validity.
+// Fail-closed deserialize of a stored receiving_orders record. Validates self-consistency
+// (PUTAWAY_COMPLETE / version 1 / one or more lines with unique ids / received <= expected), converts
+// server Timestamps to millis (no Timestamp leaks into the value), and throws
+// MalformedStoredRecordError on anything unexpected -- never normalizes malformed data into validity.
+//
+// Phase C widened two of these deliberately. `lines` was pinned at exactly one, which no multi-line
+// receipt could satisfy; and quantities required expected === received, which made every PARTIAL
+// receipt unreadable. Both were correct descriptions of the single-full-receipt slice and neither
+// described a safety property: what actually protects the record is received <= expected plus unique
+// line ids, and both are enforced above.
 export function deserializeReceivingOrder(data: unknown): DeserializedReceivingOrder {
   if (!isPlainObject(data)) throw new MalformedStoredRecordError("stored receiving order is not an object");
   if (data.schemaVersion !== RECEIVING_SCHEMA_VERSION) throw new MalformedStoredRecordError("stored schemaVersion invalid");
@@ -110,39 +125,82 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
   if (data.status !== "PUTAWAY_COMPLETE") throw new MalformedStoredRecordError("stored status invalid for first-slice order");
   if (data.version !== RECEIVING_INITIAL_VERSION) throw new MalformedStoredRecordError("stored version invalid for first-slice order");
 
+  // SOURCE, validated PER AUTHORITY rather than by one rule that only ever described the legacy one.
+  //
+  // Legacy keeps its exact original invariant: reorderRequestId present AND equal to purchaseOrderId.
+  // Canonical must NOT carry a reorderRequestId at all -- it has no reorder request, and a stored
+  // record claiming one would be describing a link that does not exist. Each shape is rejected in the
+  // other's slot, so a stored record can never be ambiguous about which authority produced it.
   const source = data.source;
-  if (!isPlainObject(source) || typeof source.type !== "string" || !(RECEIVING_SOURCE_TYPES as readonly string[]).includes(source.type) ||
-      !isNonEmptyString(source.reorderRequestId) || !isNonEmptyString(source.purchaseOrderId) || source.purchaseOrderId !== source.reorderRequestId) {
+  if (!isPlainObject(source) || typeof source.type !== "string" ||
+      !(RECEIVING_SOURCE_TYPES as readonly string[]).includes(source.type) ||
+      !isNonEmptyString(source.purchaseOrderId)) {
     throw new MalformedStoredRecordError("stored source invalid");
+  }
+  if (source.type === LEGACY_SOURCE_TYPE) {
+    if (!isNonEmptyString(source.reorderRequestId) || source.purchaseOrderId !== source.reorderRequestId) {
+      throw new MalformedStoredRecordError("stored legacy source invalid");
+    }
+  } else if (source.reorderRequestId !== undefined) {
+    throw new MalformedStoredRecordError("stored canonical source must not carry a reorderRequestId");
   }
   const location = validateLocationRef(data.receivingLocation);
   if (location === null) throw new MalformedStoredRecordError("stored receivingLocation invalid");
 
-  if (!Array.isArray(data.lines) || data.lines.length !== 1) throw new MalformedStoredRecordError("stored lines invalid");
-  const l = data.lines[0];
-  if (!isPlainObject(l) || Object.keys(l).some((k) => !STORED_LINE_KEYS.has(k))) throw new MalformedStoredRecordError("stored line shape invalid");
-  if (!isNonEmptyString(l.lineId) || !isNonEmptyString(l.partId)) throw new MalformedStoredRecordError("stored line identity invalid");
-  if (!(RECEIVING_SUPPORTED_TRACKING_MODES as readonly string[]).includes(l.trackingMode as string) || l.status !== RECEIVING_LINE_STATUS) {
-    throw new MalformedStoredRecordError("stored line mode/status invalid");
-  }
-  const storedMode = l.trackingMode as ReceivingLineTrackingMode;
-  if (!isPositiveFiniteNumber(l.expectedQuantity) || !isPositiveFiniteNumber(l.receivedQuantity) || l.expectedQuantity !== l.receivedQuantity) {
-    throw new MalformedStoredRecordError("stored line quantity invalid");
-  }
-  // Serial identity, re-validated on the way OUT with the same rules applied on the way in. A stored
-  // record that lost, gained, duplicated or mis-counted its serials is malformed -- never normalized
-  // into validity, because this value is what replay coherence is fingerprinted against.
-  let storedSerialNumbers: string[] | undefined;
-  if (storedMode === "SERIAL") {
-    if (!Array.isArray(l.serialNumbers)) throw new MalformedStoredRecordError("stored SERIAL line has no serialNumbers");
-    const serials = l.serialNumbers as unknown[];
-    if (!serials.every((s) => isNonEmptyString(s))) throw new MalformedStoredRecordError("stored serialNumbers invalid");
-    if (serials.length !== l.receivedQuantity) throw new MalformedStoredRecordError("stored serialNumbers count does not match receivedQuantity");
-    if (new Set(serials as string[]).size !== serials.length) throw new MalformedStoredRecordError("stored serialNumbers contain duplicates");
-    storedSerialNumbers = [...(serials as string[])];
-  } else if (l.serialNumbers !== undefined) {
-    throw new MalformedStoredRecordError("stored NONE line must not carry serialNumbers");
-  }
+  // LINES -- one or more. The first slice pinned this at exactly one; Phase C receives a batch, so the
+  // same per-line rules are applied to EVERY line rather than to `lines[0]`.
+  //
+  // Two invariants are enforced here that the single-line version got for free:
+  //   - at least one line (an empty receipt is not a receipt);
+  //   - line ids UNIQUE within the record. A receipt addressing the same PO line twice makes the
+  //     quantity it recorded ambiguous, and this value is what replay coherence is fingerprinted
+  //     against -- an ambiguous stored record could never be re-derived identically.
+  if (!Array.isArray(data.lines) || data.lines.length === 0) throw new MalformedStoredRecordError("stored lines invalid");
+  const seenLineIds = new Set<string>();
+  const storedLines: ReceivingLineValue[] = (data.lines as unknown[]).map((raw) => {
+    const l = raw as Record<string, unknown>;
+    if (!isPlainObject(l) || Object.keys(l).some((k) => !STORED_LINE_KEYS.has(k))) throw new MalformedStoredRecordError("stored line shape invalid");
+    if (!isNonEmptyString(l.lineId) || !isNonEmptyString(l.partId)) throw new MalformedStoredRecordError("stored line identity invalid");
+    if (seenLineIds.has(l.lineId as string)) throw new MalformedStoredRecordError("stored lines contain a duplicate lineId");
+    seenLineIds.add(l.lineId as string);
+    if (!(RECEIVING_SUPPORTED_TRACKING_MODES as readonly string[]).includes(l.trackingMode as string) || l.status !== RECEIVING_LINE_STATUS) {
+      throw new MalformedStoredRecordError("stored line mode/status invalid");
+    }
+    const storedMode = l.trackingMode as ReceivingLineTrackingMode;
+    // PARTIAL RECEIPT IS VALID STORED DATA. This previously required expected === received, which
+    // made every partial receipt unreadable. What is still rejected is received > expected -- a
+    // stored over-receipt, which the write path refuses and which therefore cannot legitimately
+    // exist.
+    if (!isPositiveFiniteNumber(l.expectedQuantity) || !isPositiveFiniteNumber(l.receivedQuantity)) {
+      throw new MalformedStoredRecordError("stored line quantity invalid");
+    }
+    if ((l.receivedQuantity as number) > (l.expectedQuantity as number)) {
+      throw new MalformedStoredRecordError("stored line received exceeds expected");
+    }
+    // Serial identity, re-validated on the way OUT with the same rules applied on the way in. A
+    // stored record that lost, gained, duplicated or mis-counted its serials is malformed -- never
+    // normalized into validity, because this value is what replay coherence is fingerprinted against.
+    let storedSerialNumbers: string[] | undefined;
+    if (storedMode === "SERIAL") {
+      if (!Array.isArray(l.serialNumbers)) throw new MalformedStoredRecordError("stored SERIAL line has no serialNumbers");
+      const serials = l.serialNumbers as unknown[];
+      if (!serials.every((s) => isNonEmptyString(s))) throw new MalformedStoredRecordError("stored serialNumbers invalid");
+      if (serials.length !== l.receivedQuantity) throw new MalformedStoredRecordError("stored serialNumbers count does not match receivedQuantity");
+      if (new Set(serials as string[]).size !== serials.length) throw new MalformedStoredRecordError("stored serialNumbers contain duplicates");
+      storedSerialNumbers = [...(serials as string[])];
+    } else if (l.serialNumbers !== undefined) {
+      throw new MalformedStoredRecordError("stored NONE line must not carry serialNumbers");
+    }
+    return {
+      lineId: l.lineId as string,
+      partId: l.partId as string,
+      trackingMode: storedMode,
+      expectedQuantity: l.expectedQuantity as number,
+      receivedQuantity: l.receivedQuantity as number,
+      status: RECEIVING_LINE_STATUS,
+      ...(storedSerialNumbers === undefined ? {} : { serialNumbers: storedSerialNumbers }),
+    };
+  });
   if (!isNonEmptyString(data.idempotencyKey)) throw new MalformedStoredRecordError("stored idempotencyKey invalid");
   // Stored identity must be a path-safe receivingId that agrees with the idempotency-derived doc id.
   if (typeof data.receivingId !== "string" || !RECEIVING_ID_RE.test(data.receivingId)) throw new MalformedStoredRecordError("stored receivingId invalid");
@@ -166,17 +224,18 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
     receivingOrderNumber = data.receivingOrderNumber;
   }
 
-  const line: ReceivingLineValue = {
-    lineId: l.lineId, partId: l.partId, trackingMode: storedMode,
-    expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: RECEIVING_LINE_STATUS,
-    ...(storedSerialNumbers === undefined ? {} : { serialNumbers: storedSerialNumbers }),
-  };
   const value: ReceivingOrderValue = {
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: source.reorderRequestId, purchaseOrderId: source.purchaseOrderId },
+    source: {
+      type: source.type as ReceivingSourceType,
+      // Carried only when the stored record actually has it, so a canonical receipt round-trips
+      // without acquiring a reorder-request link it never had.
+      ...(source.reorderRequestId === undefined ? {} : { reorderRequestId: source.reorderRequestId as string }),
+      purchaseOrderId: source.purchaseOrderId as string,
+    },
     receivingLocation: { type: location.type, locationId: location.locationId },
     status: "PUTAWAY_COMPLETE",
     version: RECEIVING_INITIAL_VERSION,
-    lines: [line],
+    lines: storedLines,
     idempotencyKey: data.idempotencyKey,
   };
   return {
