@@ -134,9 +134,15 @@ check("each branch head sees its own branch, whole", () => {
   assert.deepEqual([...descendantsOf("salesManager")].sort(), ["salesperson"]);
   assert.deepEqual(
     [...descendantsOf("operationsManager")].sort(),
-    ["dispatcher", "fieldManager", "partsAssociate", "partsManager", "technician", "warehouseAssociate", "warehouseManager"],
+    // shopManager joined 2026-08-20 (Owner roster, Willie): a Service-organization position
+    // under the Service Manager, which sits under Operations -- so it is an Operations
+    // descendant transitively. It holds no capabilities; hierarchy is visibility, not authority.
+    ["dispatcher", "fieldManager", "partsAssociate", "partsManager", "shopManager", "technician", "warehouseAssociate", "warehouseManager"],
   );
-  assert.deepEqual([...descendantsOf("financeManager")].sort(), ["accountingManager", "controller", "supportStaff"]);
+  // purchasingManager joined 2026-08-20 under Finance, following the ruling that purchasing
+  // falls under accounting. The roster gives Erik both Accounting Manager and Purchasing
+  // Manager, so the reporting line is real rather than nominal.
+  assert.deepEqual([...descendantsOf("financeManager")].sort(), ["accountingManager", "controller", "purchasingManager", "supportStaff"]);
 });
 
 check("the top of the chart sees every branch", () => {
