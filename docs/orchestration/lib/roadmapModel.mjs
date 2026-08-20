@@ -173,8 +173,22 @@ export const roadmapModel = Object.freeze({
     {
       id: "commercial-sales", name: "Commercial & Sales", kind: "DOMAIN",
       capabilities: [
+        // uxState spelled out rather than taken from ...INERT_BACKEND, whose "NONE" was true
+        // when the backend landed bare and is not any more. Built as of 2026-08-20:
+        //   - the Opportunity workspace with pipeline/stage progression
+        //   - buildUpdateOpportunity + the updateOpportunity callable: the ordinary-edit path
+        //     whose absence was why every Edit control read "the governed save command is not
+        //     wired in this build" -- the command genuinely did not exist
+        //   - closeOpportunityAsWon: WON and its Sales Order in ONE transaction, so a Won
+        //     Opportunity can no longer exist without its order
+        //
+        // "PARTIAL", not "COMPLETE": the workspace still needs its lifecycle controls, the
+        // employee owner selector and the solution-line editor wired to the new command.
+        // Capabilities remain active:false, so nothing is user-operable regardless.
         { id: "opportunity-lifecycle", name: "Sales Opportunity lifecycle (Cycles 2–3)", workstreamOwner: "Product/Design",
-          status: "PROTECTED_ACTION", ...INERT_BACKEND, protectedBoundary: "Grant opportunity.* + deploy callables",
+          status: "PROTECTED_ACTION", ...INERT_BACKEND, uxState: "PARTIAL",
+          protectedBoundary: "Grant opportunity.* + deploy callables",
+          blockedReason: "Governed write paths complete: create, transition, ordinary edit (updateOpportunity) and atomic close-as-WON, the last creating exactly one Sales Order in a single transaction with 13 emulator assertions behind it. UX remains PARTIAL -- lifecycle controls, the governed employee owner selector and solution-line editing are not yet wired to the new command. opportunity.* stays active:false, so no principal can exercise any of it until a separately-authorized grant and deploy.",
           dependencies: [], lastVerifiedRepoState: "da89558",
           milestones: [{ id: "opp-m1", name: "Governed write + trusted read projection", complete: true,
             completionCriteria: ["opportunity.write inert", "opportunity.read inert", "opportunities deny-all"],
@@ -207,7 +221,7 @@ export const roadmapModel = Object.freeze({
         { id: "sales-order-lifecycle", name: "Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7)", workstreamOwner: "Product/Design",
           status: "PROTECTED_ACTION", ...INERT_BACKEND, uxState: "PARTIAL",
           protectedBoundary: "Grant salesOrder.* + deploy callables",
-          blockedReason: "READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. TWO gaps remain. (1) CREATION HAS NO UI PATH -- createSalesOrderFromOpportunity is deployed and its capability granted+activated, but the client has ZERO call sites, so a WON Opportunity cannot produce a Sales Order through the product (corroborated by sandbox-gap-scan-2026-08-19 H11: the Opportunity form never collects line items, so the handoff has nothing to hand over). (2) The salesOrder.index global list was built as a metadata ListViewDefinition but not mounted as a navigable route. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.",
+          blockedReason: "READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. The salesOrder.index global list is now MOUNTED on the metadata runtime (2026-08-20), and a read-only Fulfillment & Installation progression renders on Sales Order detail, derived from order state, line quantities and linked Work Orders -- with UNKNOWN preserved rather than inferred, and Customer Handoff left UNKNOWN because no serialized-asset custody event exists to prove it. The CREATION path from a WON Opportunity now exists server-side as closeOpportunityAsWon (atomic, exactly one order) but has NO client call site yet, so a WON Opportunity still cannot produce a Sales Order through the product. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.",
           dependencies: ["opportunity-lifecycle"], lastVerifiedRepoState: "da89558",
           milestones: [{ id: "so-m1", name: "Committed commercial order + Service lineage", complete: true,
             completionCriteria: ["salesOrder.write inert", "salesOrder.service inert", "sales_orders deny-all", "assigns no WO/inventory"],
