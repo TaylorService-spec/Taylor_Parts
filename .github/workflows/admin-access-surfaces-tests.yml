@@ -1,0 +1,87 @@
+name: Administration Access Surfaces Tests
+
+# The Administration screens that render the ACCESS MODEL: Roles & Permissions (the read-only
+# Role inspector) and Objects (the Role x Object x CRED grid), plus the pure model behind them
+# (src/access/roleAccessModel.js, src/access/objectPermissionMap.js).
+#
+# WHY ITS OWN WORKFLOW. These are vitest suites, and the client's vitest suites run in CI by
+# EXPLICIT NAME rather than by glob -- so a new suite that nobody names here is silently never
+# run. `test/adminRolesPermissionsDeclined.test.jsx` had been in exactly that state since it was
+# written (its own header records itself as REGISTRATION_PENDING); it caught a real break when
+# the Role inspector landed, but only because a full local `vitest run` happened to include it.
+# CI would not have.
+#
+# WHAT THESE PROTECT. The load-bearing claim on these surfaces is that GRANT IS NOT ACTIVATION:
+# a capability registered `active: false` denies for everyone regardless of who holds it, so a
+# screen that renders a granted-but-inert capability as plain access tells an administrator
+# access exists when it does not. Every assertion about `effective` vs `inert` exists for that,
+# and this is what keeps it running.
+#
+# No emulator, no deployment, no production access, no secrets -- pure render + pure model tests.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/administration/**"
+      - "field-ops-app-vite/src/access/roleAccessModel.js"
+      - "field-ops-app-vite/src/access/objectPermissionMap.js"
+      # The contracts these surfaces READ. A role gaining or losing a capability, or a
+      # capability flipping active, changes what these screens must show -- so a change to the
+      # generated client mirrors has to re-run them.
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/compatibilityRoles.ts"
+      - "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+      - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/admin-access-surfaces-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/administration/**"
+      - "field-ops-app-vite/src/access/roleAccessModel.js"
+      - "field-ops-app-vite/src/access/objectPermissionMap.js"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/compatibilityRoles.ts"
+      - "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+      - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - ".github/workflows/admin-access-surfaces-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-access-surfaces:
+    name: Role inspector + access model (vitest + jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies (reproducible)
+        run: npm ci
+        working-directory: field-ops-app-vite
+
+      - name: Lint the surfaces and the model
+        run: npx oxlint src/modules/administration src/access/roleAccessModel.js src/access/objectPermissionMap.js
+        working-directory: field-ops-app-vite
+
+      - name: Role inspector + access model tests
+        run: >-
+          npx vitest run
+          test/roleAccessModel.test.jsx
+          test/adminRolesPermissions.test.jsx
+          test/adminRolesPermissionsDeclined.test.jsx
+        working-directory: field-ops-app-vite
