@@ -50,18 +50,68 @@ export function fingerprintReceivingOrder(value: ReceivingOrderValue): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex").slice(0, 16);
 }
 
-// Deterministic, PATH-SAFE receiving identity from the caller idempotencyKey. The raw caller string is
-// never a Firestore path; the deterministic doc IS the idempotency record.
+// LEGACY receipt identity: deterministic and path-safe, derived from the caller idempotencyKey ALONE.
+// The raw caller string is never a Firestore path; the deterministic doc IS the idempotency record.
+//
+// PRESERVED EXACTLY, and deliberately not "fixed". Deployed callers already hold receipts at these
+// ids, and changing the derivation would orphan every one of them -- a genuine retry would hash to a
+// new id, find nothing, and RE-APPLY. Its narrowness is contained instead: legacy receipts are
+// full-quantity, one-shot, and additionally serialized by the reorder_requests transition, so a key
+// reused across two legacy POs is caught by that transition rather than silently replayed.
 export function receivingOrderDocId(idempotencyKey: string): string {
   return "rcv_" + createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 40);
 }
 
+/**
+ * CANONICAL receipt identity — TARGET-SCOPED, not key-scoped.
+ *
+ * The legacy derivation hashes the idempotency key and nothing else, so the SAME raw client key used
+ * against two DIFFERENT purchase orders resolves to one document. For a one-shot legacy receipt that
+ * is contained; for canonical receipts, where a client legitimately sends many receipts and may well
+ * reuse a key generator per session, it would mean the second PO's receipt silently replays the
+ * first PO's result — reporting success for a receipt that never happened, against stock that never
+ * moved.
+ *
+ * So the canonical namespace carries the operation, the source authority, the purchase order, the
+ * actor, and the client key. Same actor + same PO + same key + same payload replays; the same key
+ * against a different PO is a different receipt and applies. Actor scoping matches the established
+ * pattern in this repository (partMasterCommands' auditDocId is actor-scoped), so two people are two
+ * intents.
+ *
+ * Hashed over `canonicalJson`, this module's own key-sorted encoding — the same encoding the
+ * fingerprint uses — so the identity cannot depend on property insertion order.
+ *
+ * The `rcvc_` prefix is what makes legacy and canonical namespaces PROVABLY disjoint while sharing
+ * one collection: a canonical id can never equal a legacy id, whatever the inputs.
+ */
+export interface CanonicalReceivingNamespace {
+  readonly operation: "receiveInventoryStock";
+  readonly sourceType: ReceivingSourceType;
+  readonly purchaseOrderId: string;
+  readonly actorId: string;
+  readonly idempotencyKey: string;
+}
+
+export function canonicalReceivingOrderDocId(ns: CanonicalReceivingNamespace): string {
+  return "rcvc_" + createHash("sha256").update(canonicalJson(ns)).digest("hex").slice(0, 40);
+}
+
 // Serialize a validated value into the stored order. actor + createdAt/updatedAt/createdBy/updatedBy are
 // SERVER-AUTHORED from the trusted caller's actor and clock (never accepted from untrusted input).
-export function serializeReceivingOrder(value: ReceivingOrderValue, actor: ReceivingActor, now: Date, fingerprint: string): Record<string, unknown> {
+export function serializeReceivingOrder(
+  value: ReceivingOrderValue,
+  actor: ReceivingActor,
+  now: Date,
+  fingerprint: string,
+  // The receipt's identity, SUPPLIED rather than re-derived here. It used to be recomputed from the
+  // idempotency key, which silently hard-coded the legacy namespace into every stored record and made
+  // a target-scoped canonical id impossible to store. The caller owns which namespace applies; this
+  // function only records it. Defaulted to the legacy derivation so existing callers are unchanged.
+  receivingId: string = receivingOrderDocId(value.idempotencyKey),
+): Record<string, unknown> {
   return {
     schemaVersion: RECEIVING_SCHEMA_VERSION,
-    receivingId: receivingOrderDocId(value.idempotencyKey), // stored identity == doc path; server-derived, never from input
+    receivingId, // stored identity == doc path; server-derived, never from input
     // reorderRequestId is written ONLY when the source actually has one. Spreading it
     // unconditionally would send `undefined` to Firestore for a canonical PO -- which the Admin SDK
     // rejects outright, and which would be a claim of a reorder-request link that does not exist.
@@ -101,7 +151,9 @@ const STORED_KEYS = new Set([
   "schemaVersion", "receivingId", "source", "receivingLocation", "status", "version", "lines", "idempotencyKey",
   "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint", "receivingOrderNumber",
 ]);
-const RECEIVING_ID_RE = /^rcv_[0-9a-f]{40}$/;
+// Both namespaces. `rcvc_` (canonical, target-scoped) and `rcv_` (legacy, key-scoped) share this
+// one collection and are provably disjoint by prefix -- a canonical id can never equal a legacy one.
+const RECEIVING_ID_RE = /^rcvc?_[0-9a-f]{40}$/;
 // RO-YYYY-###### — six-digit zero-padded sequence, but not truncated once the sequence outgrows six
 // digits (see receivingOrderNumbering.ts's formatReceivingOrderNumber), so this stays a floor, not a cap.
 const RECEIVING_ORDER_NUMBER_RE = /^RO-[0-9]{4}-[0-9]{6,}$/;
@@ -202,9 +254,17 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
     };
   });
   if (!isNonEmptyString(data.idempotencyKey)) throw new MalformedStoredRecordError("stored idempotencyKey invalid");
-  // Stored identity must be a path-safe receivingId that agrees with the idempotency-derived doc id.
+  // Stored identity must be a path-safe receivingId in one of the two namespaces.
   if (typeof data.receivingId !== "string" || !RECEIVING_ID_RE.test(data.receivingId)) throw new MalformedStoredRecordError("stored receivingId invalid");
-  if (data.receivingId !== receivingOrderDocId(data.idempotencyKey)) throw new MalformedStoredRecordError("stored receivingId does not agree with its idempotencyKey");
+  // AGREEMENT IS CHECKED PER NAMESPACE. A legacy id is derived from the idempotency key alone, so it
+  // can be -- and is -- re-derived here. A CANONICAL id is target-scoped: it also hashes the
+  // operation, authority, purchase order and actor, none of which the stored record carries in a form
+  // this pure deserializer could recompute from. Re-deriving the legacy way would fail every
+  // canonical record; what guarantees canonical identity instead is the caller's own
+  // receivingId-equals-docId check plus the structurally disjoint prefix.
+  if (data.receivingId.startsWith("rcv_") && data.receivingId !== receivingOrderDocId(data.idempotencyKey)) {
+    throw new MalformedStoredRecordError("stored receivingId does not agree with its idempotencyKey");
+  }
   if (!isActor(data.actor)) throw new MalformedStoredRecordError("stored actor invalid");
   if (!isNonEmptyString(data.createdBy) || !isNonEmptyString(data.updatedBy)) throw new MalformedStoredRecordError("stored createdBy/updatedBy invalid");
   if (!(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)) throw new MalformedStoredRecordError("stored timestamps are not server Timestamps");
@@ -286,11 +346,34 @@ export async function stageReceivingOrder(
 ): Promise<ReceivingOutcome> {
   const validated = validateReceivingOrderInput(input, authority);
   if (!validated.valid) throw new InvalidReceivingError(validated.reason);
+  const value = validated.value;
+  // The LEGACY namespace, preserved exactly: deployed callers already hold receipts at these ids.
+  return stageReceivingOrderValue(store, value, receivingOrderDocId(value.idempotencyKey), deps);
+}
+
+/**
+ * THE ONE RECEIVING CORE (§9: "both transports must converge on one receiving core").
+ *
+ * Takes an ALREADY-VALIDATED value and the receipt identity its namespace decided. Legacy calls it
+ * through `stageReceivingOrder` above with a key-scoped id; canonical calls it directly with a
+ * target-scoped one. There is exactly one implementation of replay, conflict and staging, so the two
+ * transports cannot drift into disagreeing about what a replay is.
+ *
+ * On an existing idempotency document it FULLY validates the stored record — deserialize, identity
+ * coherence, recomputed-fingerprint coherence — then: same fingerprint → replayed (no duplicate);
+ * different → IdempotencyConflictError; malformed → MalformedStoredRecordError. It never independently
+ * commits (staging is via the injected store) and does not mutate its inputs.
+ */
+export async function stageReceivingOrderValue(
+  store: ReceivingIdempotencyStore,
+  value: ReceivingOrderValue,
+  docId: string,
+  deps: ReceivingStageDeps,
+): Promise<ReceivingOutcome> {
   if (!isActor(deps.actor) || !(deps.now instanceof Date) || Number.isNaN(deps.now.getTime())) {
     throw new InvalidReceivingError("stage_deps_invalid");
   }
-  const value = validated.value;
-  const docId = receivingOrderDocId(value.idempotencyKey);
+  if (!RECEIVING_ID_RE.test(docId)) throw new InvalidReceivingError("receiving_id_invalid");
   const fp = fingerprintReceivingOrder(value);
 
   const existing = await store.read(docId);
@@ -299,7 +382,12 @@ export async function stageReceivingOrder(
     if (stored.receivingId !== docId) {
       throw new MalformedStoredRecordError("stored receivingId does not match its document id");
     }
-    if (receivingOrderDocId(stored.value.idempotencyKey) !== docId) {
+    // IDENTITY COHERENCE, per namespace. The legacy check re-derived the id from the stored
+    // idempotency key; a canonical id cannot be re-derived from the key alone (that is the entire
+    // point of scoping it to the target), so the equivalent guarantee there is the prefix plus the
+    // receivingId/docId agreement above. Re-deriving a legacy id from a canonical record — or the
+    // reverse — is exactly the silent reinterpretation §4 forbids, so neither is attempted.
+    if (docId.startsWith("rcv_") && receivingOrderDocId(stored.value.idempotencyKey) !== docId) {
       throw new MalformedStoredRecordError("stored idempotencyKey does not derive its document id");
     }
     const storedRecomputed = fingerprintReceivingOrder(stored.value);
@@ -311,6 +399,6 @@ export async function stageReceivingOrder(
     }
     return { outcome: "replayed", receivingId: docId, fingerprint: fp };
   }
-  store.create(docId, serializeReceivingOrder(value, deps.actor, deps.now, fp));
+  store.create(docId, serializeReceivingOrder(value, deps.actor, deps.now, fp, docId));
   return { outcome: "applied", receivingId: docId, fingerprint: fp };
 }

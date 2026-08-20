@@ -776,6 +776,10 @@
     {
       "file": "test/partIdentifiers.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/canonicalReceivingTransport.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

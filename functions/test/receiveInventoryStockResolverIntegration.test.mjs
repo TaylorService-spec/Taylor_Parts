@@ -140,7 +140,13 @@ await check("path-unsafe locationId -> DESTINATION_INVALID, zero writes", async 
 await check("composition sanitizes a raw transaction error -> RECEIVING_INTEGRITY (no raw leak)", async () => {
   const raw = Object.assign(new Error("3 INVALID_ARGUMENT: Transaction is invalid or closed; path warehouses/a/b"), { code: 3 });
   const fakeInput = { db: { runTransaction: async () => { throw raw; } }, actor: { kind: "USER", id: "a" }, authorize: async () => true, resolvePart: async () => ({ partId: "p", trackingMode: "NONE", active: true }), stageAudit: () => {}, now: () => NOW };
-  const req = { source: { reorderRequestId: "rr-x", purchaseOrderId: "rr-x" } };
+  // The source must NAME its authority to get past the pre-transaction shape gate, which is now
+  // authority-agnostic (it checks that a supported type was declared, nothing legacy-specific). This
+  // fixture omitted `type` and previously slipped through a gate that only looked for a
+  // reorderRequestId. The property under test -- a RAW transaction error is sanitized to
+  // RECEIVING_INTEGRITY with no leak -- is unchanged; only reaching the transaction requires a
+  // well-formed source now.
+  const req = { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: "rr-x", purchaseOrderId: "rr-x" } };
   await assert.rejects(receiveInventoryStockProduction(req, fakeInput), (e) => e instanceof ReceivingIntegrityError && e.code === "RECEIVING_INTEGRITY" && !RAW_LEAK_RE.test(e.message));
 });
 

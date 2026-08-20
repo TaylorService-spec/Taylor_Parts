@@ -215,11 +215,21 @@ await check("exact retry at a later clock time replays (not a conflict)", async 
 
 // ---- P2: collision-free per-line ledger idempotency key ----------------------------------------
 await check("delimiter-colliding (idempotencyKey,lineId) pairs produce DISTINCT ledger events", async () => {
-  // Under naive `recv:${idempotencyKey}:${lineId}`, ("k:x","y") and ("k","x:y") both -> "recv:k:x:y".
+  // Under naive `recv:${idempotencyKey}:${lineId}`, (K + ":x", "y") and (K, "x:y") both collide on
+  // `recv:K:x:y`. The collision property is what this pins.
+  //
+  // K IS RUN-SCOPED. It used to be the literal "k". A LEGACY receipt's document id is
+  // rcv_sha256(idempotencyKey) -- deterministic and deliberately NOT scoped to the order -- so a fixed
+  // key resolves to the same document on every run, and a second run against a long-lived emulator
+  // fails with an idempotency conflict against its own previous run. That is a fixture collision, not
+  // a product defect; the production identity rules are pinned separately in
+  // receiveCanonicalMultiLine.test.mjs (same raw key on different POs, and legacy/canonical namespace
+  // disjointness).
+  const K = `k-${runId}-${(seq += 1)}`;
   const a = await seedScenario();
   const b = await seedScenario();
-  const outA = await receiveInventoryStock(request(a, { idempotencyKey: "k:x", lines: [{ lineId: "y", partId: a.partId, expectedQuantity: a.orderedQuantity, receivedQuantity: a.orderedQuantity }] }), makeDeps(a).deps);
-  const outB = await receiveInventoryStock(request(b, { idempotencyKey: "k", lines: [{ lineId: "x:y", partId: b.partId, expectedQuantity: b.orderedQuantity, receivedQuantity: b.orderedQuantity }] }), makeDeps(b).deps);
+  const outA = await receiveInventoryStock(request(a, { idempotencyKey: `${K}:x`, lines: [{ lineId: "y", partId: a.partId, expectedQuantity: a.orderedQuantity, receivedQuantity: a.orderedQuantity }] }), makeDeps(a).deps);
+  const outB = await receiveInventoryStock(request(b, { idempotencyKey: K, lines: [{ lineId: "x:y", partId: b.partId, expectedQuantity: b.orderedQuantity, receivedQuantity: b.orderedQuantity }] }), makeDeps(b).deps);
   assert.equal(outA.outcome, "applied"); assert.equal(outB.outcome, "applied");
   assert.notEqual(outA.ledgerEventId, outB.ledgerEventId, "colliding pairs must not share a ledger event");
 });

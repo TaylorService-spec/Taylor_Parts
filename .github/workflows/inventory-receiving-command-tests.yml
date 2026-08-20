@@ -13,6 +13,8 @@ on:
       - "functions/test/receiveSerializedStockCommand.test.mjs"
       - "functions/src/inventoryLedger/**"
       - "functions/test/receiveInventoryStockCommand.test.mjs"
+      - "functions/src/purchasing/**"
+      - "functions/test/receiveCanonicalMultiLine.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -24,6 +26,8 @@ on:
       - "functions/test/receiveSerializedStockCommand.test.mjs"
       - "functions/src/inventoryLedger/**"
       - "functions/test/receiveInventoryStockCommand.test.mjs"
+      - "functions/src/purchasing/**"
+      - "functions/test/receiveCanonicalMultiLine.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -70,6 +74,16 @@ jobs:
       - name: Receiving command tests (build + run)
         run: npm run test:receiveInventoryStock
         working-directory: functions
+
+      # CANONICAL multi-line receiving: partial receipts, per-line derivation, target-scoped receipt
+      # identity, and the concurrency proof that two simultaneous receipts cannot collectively exceed
+      # the remaining quantity. Runs against the SAME emulator as the legacy suite above -- both
+      # authorities, one receiving core.
+      - name: Canonical multi-line receiving (emulator)
+        run: node test/receiveCanonicalMultiLine.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       # Wave 7: SERIAL receipt through the SAME governed command -- atomicity with the receipt,
       # duplicate-serial refusal, replay safety, and the NONE/LOT regressions.

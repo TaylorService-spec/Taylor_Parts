@@ -238,6 +238,20 @@ callable runs on the Admin SDK, which Rules do not govern. Rules are unchanged.
 **No index was added.** The list read is a single-field equality query with in-memory ordering,
 specifically so it needs none.
 
+## 5d. §4.1 RESOLVED, and Phase C implemented
+
+The blocking question in §4.1 — the partial-receipt state vocabulary — was settled by Owner decision
+on 2026-08-20: derived-only NOT_RECEIVED / PARTIALLY_RECEIVED / RECEIVED, with no persisted partial
+status. §4.2 (supplier) and §4.3 (warehouse on the PO) were settled the same way this package
+recommended: no guess, and no warehouse on the PO.
+
+Multi-line receiving is implemented against `purchase_orders` as the canonical authority, with
+`reorder_purchase_orders` preserved immutable and compatible. See
+`docs/product/multi-line-purchase-order-phase-b.md` §10 and
+`docs/specifications/multi-line-receiving-transaction-order.md`.
+
+**§4.2 remains open only in the sense that the supplier migration was deliberately NOT run.**
+
 ## 6. Preserved by this reconciliation
 
 The Owner decision recorded in `docs/governance/parts-scanner-access-decision.md` and in program

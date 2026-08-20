@@ -140,3 +140,134 @@ export function mapCallableErrorToStatus(err) {
 
 // Exported for focused tests only.
 export const __test__ = Object.freeze({ RECEIVE_TOP_KEYS, SOURCE_KEYS, LOCATION_KEYS, LINE_KEYS });
+
+// ═════════════════════════════ CANONICAL MULTI-LINE RECEIPT ═════════════════════════════
+//
+// The canonical batch shape, added alongside the legacy one. Both build a request for the SAME
+// callable and the same server-side receiving core (§9) -- this is a second REQUEST BUILDER, never a
+// second domain service, and neither shape implements any receiving rule of its own.
+//
+// WHAT DIFFERS FROM LEGACY, and why:
+//   - the source names a purchase order and carries NO reorderRequestId. A canonical PO has no
+//     reorder request, and the server REJECTS a canonical source that claims one rather than
+//     trimming it, so sending one would be a request that disagrees with itself.
+//   - many lines are permitted.
+//   - a line carries NO expectedQuantity. What remains is a server fact derived from committed
+//     receipts; letting a client state it would let a caller widen its own limit. The legacy builder
+//     still sends it, because deployed callers do and the server checks it against the order.
+//   - `expectedVersion` is optional optimistic concurrency against the PO the caller actually saw.
+
+const CANONICAL_TOP_KEYS = ["source", "receivingLocation", "lines", "idempotencyKey"];
+const CANONICAL_SOURCE_KEYS = ["type", "purchaseOrderId"];
+const CANONICAL_LINE_KEYS = ["lineId", "partId", "receivedQuantity"];
+const CANONICAL_LINE_OPTIONAL_KEYS = ["serialNumbers"];
+
+/**
+ * Build a canonical multi-line receive request, or null if the caller's input is not usable.
+ *
+ * Returns null rather than throwing or repairing, exactly like buildReceiveRequest: a malformed
+ * request is refused CLIENT-SIDE without ever invoking the callable.
+ */
+export function buildCanonicalReceiveRequest(request) {
+  if (!isPlainObject(request)) return null;
+  const allowedTop = [...CANONICAL_TOP_KEYS, "expectedVersion"];
+  if (!CANONICAL_TOP_KEYS.every((k) => Object.prototype.hasOwnProperty.call(request, k))) return null;
+  if (!Object.keys(request).every((k) => allowedTop.includes(k))) return null;
+
+  const source = request.source;
+  if (!isPlainObject(source) || !hasExactKeys(source, CANONICAL_SOURCE_KEYS)) return null;
+  if (source.type !== "PURCHASE_ORDER") return null;
+  if (!isNonBlankString(source.purchaseOrderId)) return null;
+
+  const loc = request.receivingLocation;
+  if (!isPlainObject(loc) || !hasExactKeys(loc, LOCATION_KEYS)) return null;
+  if (loc.type !== "WAREHOUSE") return null;
+  if (!isNonBlankString(loc.locationId)) return null;
+
+  const lines = request.lines;
+  if (!Array.isArray(lines) || lines.length === 0) return null;
+
+  const seen = new Set();
+  const built = [];
+  for (const line of lines) {
+    if (!isPlainObject(line)) return null;
+    if (!CANONICAL_LINE_KEYS.every((k) => Object.prototype.hasOwnProperty.call(line, k))) return null;
+    if (!Object.keys(line).every((k) => CANONICAL_LINE_KEYS.includes(k) || CANONICAL_LINE_OPTIONAL_KEYS.includes(k))) return null;
+    if (!isNonBlankString(line.lineId) || !isNonBlankString(line.partId)) return null;
+    // A duplicate line makes the intended quantity ambiguous. Refused here so it never reaches the
+    // wire, and refused again server-side, which is the authority.
+    if (seen.has(line.lineId)) return null;
+    seen.add(line.lineId);
+    if (!isFiniteNumber(line.receivedQuantity) || line.receivedQuantity <= 0) return null;
+
+    let serialNumbers = null;
+    if (line.serialNumbers !== undefined) {
+      if (!Array.isArray(line.serialNumbers) || line.serialNumbers.length === 0) return null;
+      if (!line.serialNumbers.every((s) => isNonBlankString(s))) return null;
+      serialNumbers = line.serialNumbers.map((s) => s.trim());
+    }
+    built.push(Object.freeze({
+      lineId: line.lineId,
+      partId: line.partId,
+      receivedQuantity: line.receivedQuantity,
+      ...(serialNumbers === null ? {} : { serialNumbers: Object.freeze(serialNumbers) }),
+    }));
+  }
+
+  if (!isNonBlankString(request.idempotencyKey)) return null;
+  if (request.expectedVersion !== undefined) {
+    if (!isFiniteNumber(request.expectedVersion) || request.expectedVersion < 0) return null;
+  }
+
+  return Object.freeze({
+    source: Object.freeze({ type: "PURCHASE_ORDER", purchaseOrderId: source.purchaseOrderId }),
+    receivingLocation: Object.freeze({ type: "WAREHOUSE", locationId: loc.locationId }),
+    lines: Object.freeze(built),
+    idempotencyKey: request.idempotencyKey,
+    ...(request.expectedVersion === undefined ? {} : { expectedVersion: request.expectedVersion }),
+  });
+}
+
+const RESULT_LINE_KEYS = ["lineId", "partId", "orderedQuantity", "previouslyReceived", "receivedNow", "remainingQuantity", "state"];
+const DERIVED_STATES = ["NOT_RECEIVED", "PARTIALLY_RECEIVED", "RECEIVED"];
+
+/**
+ * Validate the multi-line receipt response.
+ *
+ * BOUNDED AND ALLOW-LISTED, like every other response validator here: only the named fields survive,
+ * so no internal fingerprint, stack, authority-selection detail or unrestricted document data can
+ * reach the UI even if a future server version were to send it. A malformed response returns null
+ * rather than a partially-trusted object.
+ */
+export function validateCanonicalReceiveResponse(data) {
+  if (!isPlainObject(data)) return null;
+  if (data.outcome !== "applied" && data.outcome !== "replayed") return null;
+  if (!isNonBlankString(data.receivingId) || !isNonBlankString(data.purchaseOrderId)) return null;
+  if (!isNonBlankString(data.ledgerEventId)) return null;
+  if (!DERIVED_STATES.includes(data.derivedState)) return null;
+  // storedStatus is the PO's procurement lifecycle, a DIFFERENT concept from derivedState. Null is
+  // legitimate (a legacy source has no canonical PO status), so it is checked but not required.
+  if (data.storedStatus !== null && !isNonBlankString(data.storedStatus)) return null;
+  if (!Array.isArray(data.lines) || data.lines.length === 0) return null;
+
+  const lines = [];
+  for (const l of data.lines) {
+    if (!isPlainObject(l) || !hasExactKeys(l, RESULT_LINE_KEYS)) return null;
+    if (!isNonBlankString(l.lineId) || !isNonBlankString(l.partId)) return null;
+    for (const n of ["orderedQuantity", "previouslyReceived", "receivedNow", "remainingQuantity"]) {
+      if (!isFiniteNumber(l[n]) || l[n] < 0) return null;
+    }
+    if (!DERIVED_STATES.includes(l.state)) return null;
+    lines.push(Object.freeze({ ...l }));
+  }
+
+  return Object.freeze({
+    outcome: data.outcome,
+    receivingId: data.receivingId,
+    purchaseOrderId: data.purchaseOrderId,
+    ledgerEventId: data.ledgerEventId,
+    derivedState: data.derivedState,
+    storedStatus: data.storedStatus ?? null,
+    lines: Object.freeze(lines),
+  });
+}

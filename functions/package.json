@@ -129,7 +129,8 @@
     "test:salesOrderLedgerAuthority": "npm run build && node --test test/salesOrderLedgerAuthority.test.mjs",
     "test:e2eEmulatorSuite": "npm run build && node scripts/runE2eEmulatorSuite.mjs",
     "test:seedOperationsDemoData": "node test/seedOperationsDemoData.test.mjs",
-    "test:partIdentifiersEmulator": "npm run build && node --test test/partAliasCallables.test.mjs"
+    "test:partIdentifiersEmulator": "npm run build && node --test test/partAliasCallables.test.mjs",
+    "test:receivingMultiLineEmulator": "npm run build && node --test test/receiveInventoryStockCommand.test.mjs test/inventoryReceivingFoundation.test.mjs && node test/receiveCanonicalMultiLine.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
