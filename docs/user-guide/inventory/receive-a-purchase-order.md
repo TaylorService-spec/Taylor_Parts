@@ -1,7 +1,6 @@
 # Receive a purchase order
 
-> **Status: real, governed transaction — fail-closed until activated.** Unlike the rest of the
-> Parts Scanner (which is a demo preview), "Receive a purchase order" is the real receiving
+> **Status: real, governed transaction — fail-closed until activated.** This is the real receiving
 > transaction. It is not turned on in this environment yet, so right now the last step will tell
 > you receiving isn't activated and nothing gets submitted. Nothing about the steps below is a
 > preview — this is exactly how it will work once it's switched on.
@@ -15,34 +14,30 @@ from any Technician Workspace session, but a Technician who submits it will be t
 have permission (once receiving is activated). Today, everyone sees the same "not activated"
 result regardless of role, because receiving isn't switched on yet.
 
-## Two ways to get here (same receipt)
-There is one receiving workflow, reachable from two places — the steps and results are identical:
-- **Inventory > Receiving** (recommended for Admin/Dispatcher) — the receiving workspace, which
-  lists every ordered purchase order awaiting receipt. Start here to receive without scanning.
-- **Parts Scanner** (Service > Technician Workspace) — scan or pick a part first, then choose
-  **Receive a purchase order**; it shows the open purchase orders for that part.
+## Where to start
+**Inventory > Receiving** (Admin/Dispatcher) — the receiving workspace, which lists every ordered
+purchase order awaiting receipt.
+
+This guide previously described a second launch point on the Parts Scanner. **That no longer
+exists**: the Scanner was rebuilt on real governed data and its old demo action menu — including
+receiving — was removed. Receiving happens here and nowhere else.
 
 ## Before you start
 - The part must have a purchase order that's been placed and is in the **Ordered** state — see
   [Place the order and track purchasing](place-the-order.md). If nothing has been ordered yet,
   there's nothing to receive.
-- Open **Inventory > Receiving** (or, to receive from a scan, **Service > Technician Workspace**).
+- Open **Inventory > Receiving**.
 
 ## Steps
-1. **Choose the part / purchase order.** In **Inventory > Receiving**, you'll see the ordered
-   purchase orders awaiting receipt — skip to step 3. From the **Parts Scanner** tool instead,
-   find the part — scan its company QR code, type its SKU/barcode, or pick it from the "Try"
-   list (see [Parts Scanner](parts-scanner.md)), then choose **Receive a purchase order**.
-2. Under **What are you doing?**, choose **Receive a purchase order**.
-3. **Choose the purchase order.** You'll see the open purchase orders awaiting receipt for this
-   part — each row shows the supplier, PO number, and ordered quantity. Select the one you're
-   receiving.
-4. **Choose a receiving location.** Pick where the stock is going from the **Receiving location**
+1. **Open Inventory > Receiving.** You'll see the ordered purchase orders awaiting receipt.
+2. **Choose the purchase order.** Each row shows the supplier, PO number, and ordered quantity.
+   Select the one you're receiving.
+3. **Choose a receiving location.** Pick where the stock is going from the **Receiving location**
    list, then select **Continue**.
-5. **Confirm.** The confirmation screen shows the part, the purchase order, the quantity to
+4. **Confirm.** The confirmation screen shows the part, the purchase order, the quantity to
    receive, and the location. The quantity is always the full amount that was ordered — you
    can't edit it or receive a partial quantity in this version. Select **Confirm receipt**.
-6. You'll land on a result screen telling you what happened (see below).
+5. You'll land on a result screen telling you what happened (see below).
 
 ## What the result means
 - **Receipt recorded** — success. The purchase order was received into inventory.
@@ -76,5 +71,5 @@ There is one receiving workflow, reachable from two places — the steps and res
 - [Place the order and track purchasing](place-the-order.md)
 - [Mark a reorder request received](mark-reorder-received.md) — the separate closeout note, not
   the same as this receiving transaction
-- [Parts Scanner](parts-scanner.md) — the tool this workflow launches from
+- [Parts Scanner](parts-scanner.md) — a separate tool; it records planned-part usage and does NOT receive stock
 - [Reorder Requests](../reorder-requests.md) — the full request-to-received journey

@@ -1,22 +1,22 @@
 # Parts scanner (Technician Workspace)
 
-**What this lets you do:** Scan or look up a part on a phone and pick an action — use it on a work order, load your truck, cycle count, add it to a purchase-order draft, or **receive a purchase order**.
+**Status: live** (technician, admin) · Service > Technician Workspace
 
-**Mostly a demo — with one real action.** The scan and lookup are real, and **Receive a purchase order** is the real governed receiving transaction (see [Receive a purchase order](receive-a-purchase-order.md); it's fail-closed until receiving is activated). The other actions (use / load / cycle count / purchase-order draft) run on sample parts held in memory — those quantities, counts, and drafts reset when you reload and are never stored or shared. Treat everything except **Receive a purchase order** as a preview, not a live inventory tool.
+This page is the inventory-side pointer. The full guide lives at
+**[Parts Scanner (Technician Workspace)](../technician-field/parts-scanner.md)**.
 
-**Who can do it:** Technicians (and anyone with the Technician Workspace). You reach it from **Service > Technician Workspace**, not from the Inventory area.
+## The short version
 
-## Steps
-1. Under **Scan a part**, either tap **Scan company QR** to use the camera, or type a QR value, barcode, or SKU and tap **Find part**. You can also tap one of the sample SKUs under "Try:".
-2. When a part is found, its card shows on-truck and warehouse quantities (sample values).
-3. Under **What are you doing?**, pick an action: **Use on work order**, **Load my truck**, **Receive inventory**, **Cycle count**, or **Add to purchase order**.
-4. For a work-order action, choose the work order. Set the **Quantity** with the − / + buttons or by typing.
-5. Tap **Confirm**. A confirmation message appears and the demo tallies update on screen only.
+The Scanner resolves a scanned code against real, governed records — the parts planned on your own
+work orders — and offers exactly one action: **record that you used a planned part on your current
+job**, when it's your job and the part is on its plan.
 
-## Tips and common problems
-- **Camera won't open:** camera scanning needs device permission and a supported browser. If it's unavailable, type the SKU or barcode instead.
-- **"No part matches":** the scanner only knows the sample parts. Try one of the suggested SKUs.
-- **Changes disappeared:** expected — this screen doesn't save anything.
+## It does not receive stock
 
-## Related
-- [Find a part and check its stock](find-a-part.md) (the real, saved parts workspace)
+Earlier versions of this page said the Scanner carried a **Receive a purchase order** action and
+described it as one of two launch points for the governed receipt. **That is no longer true.** The
+Scanner was rebuilt on the real governed data, and the old five-action demo menu — receive, load
+truck, cycle count, purchase-order draft — was removed with it.
+
+To receive stock, use **Inventory > Receiving**:
+[Receive a purchase order](receive-a-purchase-order.md). It is now the only launch point.
