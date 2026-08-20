@@ -28,6 +28,7 @@ import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
 import AdminObjects from "./modules/administration/AdminObjects.jsx";
+import EmployeesList from "./modules/administration/EmployeesList.jsx";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
@@ -248,6 +249,13 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // both passed, because neither renders the route table the way the browser does.
   // Dispatched here, not as a separate <Route> -- the generic subnav loop emits the route
   // and renders whatever this returns, so a second Route at the same path never wins.
+  // Owner ruling 2026-08-20: "technician is a role". The Employees item keeps its
+  // legacyKey (so WHO can see it is unchanged) but renders the governed employee
+  // directory instead of the fieldops_technicians roster it used to. The two had drifted
+  // into parallel identities for the same people; the directory is `employees`.
+  if (domain.key === "administration" && item.key === "employees") {
+    return <EmployeesList />;
+  }
   if (domain.key === "administration" && item.key === "objects") {
     return <AdminObjects />;
   }
