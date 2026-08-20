@@ -73,7 +73,12 @@ export default function Receipts() {
         </p>
       )}
       {view.rows.length === 0 ? (
-        <EmptyState variant="database" title="No receipts yet" message="Received purchase orders will appear here once a purchase order is received." />
+        <EmptyState
+          variant="database"
+          title="No receipts yet"
+          message="Received purchase orders will appear here once a purchase order is received."
+          guidance="A receipt is the record that ordered stock actually arrived. A purchase order only appears on this screen after it has been received, so this list stays empty until the first receipt is recorded."
+        />
       ) : (
         <div className="fo-table-scroll">
           <table className="fo-table" aria-label="Receipts">

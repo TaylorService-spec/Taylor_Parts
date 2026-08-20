@@ -195,7 +195,29 @@ export function buildListPresentation({ def, entity, page = null, loading = fals
     viewAllListId: def?.surface === "RELATED" ? def?.viewAllListId ?? null : null,
     truncated: def?.surface === "RELATED" ? !!page?.hasMore : false,
     emptyMessage: emptyMessageFor(state, def),
+    emptyGuidance: emptyGuidanceFor(state, def),
   });
+}
+
+/**
+ * WHY this collection exists, for a FIRST-RUN empty only.
+ *
+ * emptyMessage says a list is empty. It cannot say what the screen is for, and on a
+ * first run that is the only question the reader actually has. This carries the answer
+ * from the list DEFINITION, which is the one place that knows what the entity means --
+ * rather than from each surface, which is how the same explanation ends up written
+ * several times and drifting.
+ *
+ * EMPTY ONLY, and the restriction is the point. FILTERED means the reader already has
+ * records and merely over-filtered; explaining what a work order is at that moment is
+ * noise, and it would reappear on every filter change. DENIED and UNAVAILABLE are not
+ * empties at all -- describing the collection there would imply the read succeeded and
+ * found nothing, which is the specific wrong conclusion those states exist to prevent.
+ *
+ * Optional everywhere: a definition without `emptyGuidance` renders exactly as before.
+ */
+export function emptyGuidanceFor(state, def = null) {
+  return state === "EMPTY" ? def?.emptyGuidance ?? null : null;
 }
 
 /**

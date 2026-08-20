@@ -328,6 +328,8 @@ export const accountEntity = makeEntityDefinition({
 });
 
 export const accountIndexList = makeListViewDefinition({
+  emptyGuidance:
+    "A customer is the account everything else hangs off — its locations are where service happens, and its work orders, equipment, and financial summary all roll up here.",
   id: "account.index",
   entityId: "account",
   label: "Customers",

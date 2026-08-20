@@ -150,6 +150,8 @@ export const warehouseEntity = makeEntityDefinition({
  * query shape this surface already runs (see the file header).
  */
 export const warehouseIndexList = makeListViewDefinition({
+  emptyGuidance:
+    "Warehouses are the stocking locations inventory is received into and issued from. They are set up outside this read-only screen, and a warehouse must be Active to be eligible to receive.",
   id: "warehouse.index",
   entityId: "warehouse",
   label: "Warehouses",

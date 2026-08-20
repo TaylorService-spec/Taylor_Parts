@@ -102,7 +102,12 @@ export default function WorkOrdersList() {
         // Distinguish a genuinely empty database (the "All" group) from filters
         // that merely hide existing work orders.
         statusGroup === "ALL" ? (
-          <EmptyState variant="database" title="No work orders yet" message="New work orders will appear here." />
+          <EmptyState
+            variant="database"
+            title="No work orders yet"
+            message="New work orders will appear here."
+            guidance="A work order is the customer-facing service record for one job at one customer location. Each one carries a status through its lifecycle — open, then active, then done — and that status is what the filters above group by."
+          />
         ) : (
           <EmptyState variant="filtered" message="No work orders in this group." />
         )

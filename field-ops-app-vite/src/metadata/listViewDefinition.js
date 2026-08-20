@@ -230,6 +230,15 @@ export function makeListViewDefinition(input = {}) {
     // before this field existed. Validated against `callableListSource.js`'s own registry
     // by `validateListViewDefinition` below, never trusted un-checked.
     readCallable: input.readCallable ?? null,
+    // WHY this collection exists, shown on a FIRST-RUN empty only (see
+    // listPresentation.js's emptyGuidanceFor). One or two plain sentences about what the
+    // records ARE and what causes one to appear -- never how to click.
+    //
+    // It lives on the DEFINITION because the definition is the one place that knows what
+    // the entity means. Put on each surface instead, the same explanation gets written
+    // once per screen and then drifts. Optional: a definition that declares nothing
+    // renders exactly as it did before this field existed.
+    emptyGuidance: input.emptyGuidance ?? null,
   });
 }
 

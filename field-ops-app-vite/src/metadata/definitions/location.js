@@ -235,6 +235,8 @@ export const locationIndexList = makeListViewDefinition({
  * no capability on contactRelatedList for the identical reason.
  */
 export const locationRelatedList = makeListViewDefinition({
+  emptyGuidance:
+    "A location is a physical site where service happens for this customer. Raising a work order needs one, so add the customer’s first location here before scheduling work for them.",
   id: "account.locations",
   entityId: "location",
   label: "Locations",

@@ -748,6 +748,23 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 .fo-muted { color: var(--color-text-secondary); font-size: 14px; }
 
+/* Contextual-help slice -- EmptyState's `guidance` line (the "why this collection
+   exists" sentence shown only on a first-run "database" empty). The bronze accent
+   is the token whose documented intent is exactly this ("premium accent / guidance
+   / emphasis"), used as a rule rather than a fill so guidance reads as an aside and
+   never competes with the state's own title. Text stays on the standard secondary
+   colour (6.3:1 on page) -- bronze is a 4.75:1 accent and is not used for body copy
+   here. `max-width` is in ch so the measure holds regardless of container width. */
+.fo-state-guidance {
+  margin: 10px 0 0;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--color-brand-accent);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
 /* Wave 4: retired fo-badge-completed's colour intent under a non-badge name. Deliberately
    background+color ONLY, matching the original rule exactly -- it was used standalone
    (never paired with the base .fo-badge pill styles), so OutcomeBanner's OK state has always

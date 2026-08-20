@@ -232,6 +232,8 @@ export const supplierEntity = makeEntityDefinition({
  * shape this surface already runs (see the file header).
  */
 export const supplierIndexList = makeListViewDefinition({
+  emptyGuidance:
+    "Suppliers are the vendors parts are purchased from. Each carries a status showing whether it is active for purchasing. Suppliers are recorded outside this read-only screen.",
   id: "supplier.index",
   entityId: "supplier",
   label: "Suppliers",

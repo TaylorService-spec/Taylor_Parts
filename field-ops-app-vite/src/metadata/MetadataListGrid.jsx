@@ -44,7 +44,7 @@ const NUMERIC_CELL_TYPES = new Set(["NUMBER", "CURRENCY_MINOR"]);
  * blank region is indistinguishable from a list that legitimately has no rows.
  */
 function StateBody({ presentation, onRetry }) {
-  const { state, emptyMessage } = presentation;
+  const { state, emptyMessage, emptyGuidance } = presentation;
 
   if (state === "LOADING") return <LoadingState />;
 
@@ -53,6 +53,12 @@ function StateBody({ presentation, onRetry }) {
       <EmptyState
         title={state === "FILTERED" ? "No matches" : "Nothing here yet"}
         message={emptyMessage}
+        // WHY the collection exists, on a first-run empty. Passed unconditionally: the
+        // primitive itself enforces that guidance renders for "database" only, and
+        // emptyGuidanceFor has already returned null for every state but EMPTY. Two
+        // independent guards, because a "what is this screen for" paragraph appearing on
+        // a filtered list is the exact noise both of them exist to prevent.
+        guidance={emptyGuidance}
         // The primitive already draws this exact distinction and names it the same way:
         // "database" means nothing exists yet, "filtered" means records exist and the
         // current filters hide them. Reusing its vocabulary keeps one definition of the
