@@ -33,6 +33,9 @@ export const REQUIRED_FIREBASE_KEYS = Object.freeze([
 
 export const READINESS_KEYS = Object.freeze([
   'RECEIVING_TRANSPORT_READY',
+  // Scanner Program Phase A. Registered here so an environment that FORGETS it is a build
+  // error rather than a silent default -- the same fail-closed rule every other flag follows.
+  'PART_IDENTIFIER_TRANSPORT_READY',
   'TRUCK_MANAGEMENT_WRITE_READY',
   'TRUSTED_COMPLETION_ENABLED',
 ]);

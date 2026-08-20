@@ -772,6 +772,10 @@
     {
       "file": "test/opportunitySectionSave.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/partIdentifiers.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -2149,6 +2149,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    stay adjacent for as long as they fit. */
 .fo-object-detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 8px 0; }
 .fo-object-detail__verb h4 { margin: 0 0 4px; font-size: 13px; }
+
+/* Part identifier administration (Part Master > Barcode & Identifiers). The add form is a short
+   stacked form, not a grid: it is filled in from a scanner on a phone as often as from a keyboard
+   at a desk, and a stacked form is the one shape that works at both. */
+.fo-identifier-form { display: grid; gap: 8px; margin-top: 12px; max-width: 34rem; }
+.fo-identifier-form__row { display: grid; gap: 3px; }
+.fo-identifier-form__row label { font-size: 12px; font-weight: 600; }
+/* An inactive identifier is present but will not resolve. Quieted, never hidden -- it is the
+   explanation for a conflict the administrator is about to hit. */
+.fo-table tr.is-inactive td { opacity: 0.62; }
 .fo-chip { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer;
   background: var(--color-surface-sunken); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
 .fo-chip:hover { border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }
