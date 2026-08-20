@@ -153,3 +153,84 @@ test("solution lines round-trip through the governed path", async () => {
   assert.equal(doc.lines[0].ref, "PRT-9");
   assert.equal(doc.lines[0].qty, 4);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A VERSION FROM BIRTH — the create path used to strip it.
+//
+// updatedAtMillis is the optimistic-concurrency token, and persistCreatedOpportunity discarded
+// it before writing. So a newly created Opportunity had NO version until its first edit wrote
+// one, and the command reads a missing version as 0 — meaning two people editing a never-yet-
+// edited Opportunity both read 0, both passed the check, and the second silently overwrote the
+// first. The lost-update window was open at exactly one moment, and it was the moment a record
+// is most likely to be corrected by more than one person.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("a newly created Opportunity carries a version immediately", async () => {
+  const { persistCreatedOpportunity } = await import("../lib/opportunity/opportunityCallables.js");
+  const { buildCreateOpportunity } = await import("../lib/opportunity/opportunityCommands.js");
+
+  const built = buildCreateOpportunity(
+    {
+      accountId: "acct-version",
+      ownerEmployeeId: "emp-1",
+      salesChannel: "RETAIL",
+      lines: [{ kind: "PART", ref: "PRT-1", qty: 1 }],
+    },
+    { actorUid: ACTOR, nowMillis: 1_755_100_000_000 }
+  );
+  const res = await db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, ACTOR, `ver-${Date.now()}`));
+  created.push(res.opportunityId);
+
+  const doc = await db.collection("opportunities").doc(res.opportunityId).get();
+  assert.equal(
+    doc.data().updatedAtMillis,
+    1_755_100_000_000,
+    "without a version at creation, the first two concurrent edits both compare against 0 and one is silently lost"
+  );
+});
+
+test("the version written at creation is the one an edit must echo", async () => {
+  const { persistCreatedOpportunity } = await import("../lib/opportunity/opportunityCallables.js");
+  const { buildCreateOpportunity } = await import("../lib/opportunity/opportunityCommands.js");
+
+  const built = buildCreateOpportunity(
+    {
+      accountId: "acct-version-2",
+      ownerEmployeeId: "emp-1",
+      salesChannel: "RETAIL",
+      lines: [{ kind: "PART", ref: "PRT-1", qty: 1 }],
+    },
+    { actorUid: ACTOR, nowMillis: 1_755_200_000_000 }
+  );
+  const res = await db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, ACTOR, `ver2-${Date.now()}`));
+  created.push(res.opportunityId);
+
+  // The WRONG version is refused...
+  await assert.rejects(
+    db.runTransaction((tx) =>
+      persistUpdatedOpportunity(
+        db,
+        tx,
+        db.collection("opportunities").doc(res.opportunityId),
+        { opportunityId: res.opportunityId, expectedUpdatedAtMillis: 0, need: "edited" },
+        ACTOR,
+        `bad-${Date.now()}`,
+      )
+    ),
+    "a stale writer must be rejected, not merged"
+  );
+
+  // ...and the real one is accepted, so the check is a gate rather than a wall.
+  const ok = await db.runTransaction((tx) =>
+    persistUpdatedOpportunity(
+      db,
+      tx,
+      db.collection("opportunities").doc(res.opportunityId),
+      { opportunityId: res.opportunityId, expectedUpdatedAtMillis: 1_755_200_000_000, need: "edited" },
+      ACTOR,
+      `good-${Date.now()}`,
+    )
+  );
+  assert.equal(ok.replayed, false);
+  assert.deepEqual(ok.changed, ["need"]);
+});

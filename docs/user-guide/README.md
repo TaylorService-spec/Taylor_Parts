@@ -43,6 +43,11 @@ Every guide is tagged so you're never misled about what actually works:
 - [Record parts used and work notes](technician-field/record-parts-and-notes.md) — **live** — Adjust used quantities on planned parts and add append-only work notes via Execution Capture on an assigned work order.
 - [Parts Scanner (Technician Workspace)](technician-field/parts-scanner.md) — **demo (except Receive)** — Field part scan/lookup at Service > Technician Workspace; in-memory demo except the real governed **Receive a purchase order** action — see [Receive a purchase order](inventory/receive-a-purchase-order.md).
 
+## Sales
+
+- [Edit an opportunity’s details](sales/edit-an-opportunity.md) — **live** — Correct an open opportunity one section at a time (commercial details, customer need, solution lines, next action), including reassigning the owner from the employee directory (admin/dispatcher/owner).
+- [Mark an opportunity Won (and get its Sales Order)](sales/mark-an-opportunity-won.md) — **live** — Close a deal at the Decision stage; the Sales Order is created in the same transaction and linked from the confirmation, so a won deal is never left without one (admin/dispatcher/owner).
+
 ## Inventory
 
 - [Find a part and check its stock](inventory/find-a-part.md) — **live** — Look up a part in the Parts catalog and read its stock position and reorder status (read-only).

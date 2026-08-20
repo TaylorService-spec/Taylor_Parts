@@ -182,6 +182,7 @@ export interface UpdateOpportunityInput {
   need?: string | null;
   expectedValue?: number | null;
   expectedCloseAt?: number | null;
+  nextAction?: string | null;
   /** Whole-array replacement. See the note on line editing below. */
   lines?: OpportunityLineInput[];
 }
@@ -206,6 +207,12 @@ export const EDITABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "need",
   "expectedValue",
   "expectedCloseAt",
+  // nextAction was PROJECTED AND DISPLAYED but writable by nothing. The workspace's field
+  // model classifies it USER_MAINTAINED and renders it as an editable section, so the surface
+  // offered an edit the system could not accept -- the field could be read forever and never
+  // corrected. It is an ordinary free-text field on the deal, not a lifecycle position, so it
+  // belongs in exactly this set and nowhere else.
+  "nextAction",
   "lines",
 ]);
 
@@ -290,6 +297,14 @@ export function buildUpdateOpportunity(
       throw new OpportunityCommandError("INVALID", "expectedCloseAt must be a number or null");
     }
     if (next !== (cur.expectedCloseAt ?? null)) record("expectedCloseAt", cur.expectedCloseAt ?? null, next);
+  }
+  if (input.nextAction !== undefined) {
+    // Same absent/null/blank handling as `need`: blank clears rather than storing "".
+    const next = nonEmpty(input.nextAction) ? input.nextAction : null;
+    if (next !== null && typeof next !== "string") {
+      throw new OpportunityCommandError("INVALID", "nextAction must be a string or null");
+    }
+    if (next !== (cur.nextAction ?? null)) record("nextAction", cur.nextAction ?? null, next);
   }
   if (input.lines !== undefined) {
     if (!Array.isArray(input.lines)) throw new OpportunityCommandError("LINE_INVALID", "lines must be an array");

@@ -20,6 +20,14 @@ function mapErrorToStatus(err) {
   return code || "internal";
 }
 
+// The DOMAIN code the callable put in `details` (opportunityCallables.ts's mapCommandError).
+// There are more distinct governed outcomes than HttpsError codes, so without this a version
+// conflict and a malformed payload are indistinguishable to the caller. Only ever a string;
+// anything else is treated as absent rather than passed along as a message.
+function mapErrorDetail(err) {
+  return typeof err?.details === "string" && err.details.length > 0 ? err.details : null;
+}
+
 async function invoke(name, payload) {
   const [{ httpsCallable }, { functions }] = await Promise.all([
     import("firebase/functions"),
@@ -37,7 +45,7 @@ export async function createOpportunity(input) {
     const result = await invoke("createOpportunity", input);
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
@@ -54,7 +62,7 @@ export async function transitionOpportunity({ opportunityId, toStage, outcome, i
     const result = await invoke("transitionOpportunity", payload);
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
@@ -91,7 +99,7 @@ export async function closeOpportunityAsWon({
     });
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
@@ -116,6 +124,7 @@ export async function updateOpportunity({
   need,
   expectedValue,
   expectedCloseAt,
+  nextAction,
   lines,
 }) {
   try {
@@ -129,11 +138,12 @@ export async function updateOpportunity({
       ...(need !== undefined ? { need } : {}),
       ...(expectedValue !== undefined ? { expectedValue } : {}),
       ...(expectedCloseAt !== undefined ? { expectedCloseAt } : {}),
+      ...(nextAction !== undefined ? { nextAction } : {}),
       ...(lines !== undefined ? { lines } : {}),
     });
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
