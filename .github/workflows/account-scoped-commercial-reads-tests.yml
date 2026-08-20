@@ -20,6 +20,7 @@ on:
       - "config/environments.json"
       - "functions/test/opportunityAccountRead.test.mjs"
       - "functions/test/salesOrderAccountRead.test.mjs"
+      - "functions/test/salesOrderIndexRead.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -36,6 +37,7 @@ on:
       - "config/environments.json"
       - "functions/test/opportunityAccountRead.test.mjs"
       - "functions/test/salesOrderAccountRead.test.mjs"
+      - "functions/test/salesOrderIndexRead.test.mjs"
       - ".github/workflows/account-scoped-commercial-reads-tests.yml"
   workflow_dispatch:
 
@@ -73,7 +75,7 @@ jobs:
           exit 1
         working-directory: functions
 
-      - name: Account-scoped Opportunity + Sales Order read tests (build + run)
+      - name: Opportunity + Sales Order reads, account-scoped and index (build + run)
         run: npm run test:accountScopedCommercialReadsEmulator
         working-directory: functions
         env:

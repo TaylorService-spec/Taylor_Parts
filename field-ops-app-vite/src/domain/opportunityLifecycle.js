@@ -12,12 +12,15 @@ export const OPPORTUNITY_OUTCOMES = ["WON", "LOST"];
 // model.md); channelOptions() (UI select) + the governed write validators read from it, so a value widens both.
 export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"];
 
-const STAGE_LABEL = {
+// Exported so the metadata layer sources ONE vocabulary rather than minting a second.
+// The Work Order status split (#1141) is what this avoids: labels private to one module
+// become labels copied into the next one, and then the two drift.
+export const STAGE_LABEL = {
   IDENTIFIED: "Identified", QUALIFYING: "Qualifying", SOLUTION: "Solution",
   QUOTING: "Quoting", CUSTOMER_REVIEW: "Customer review", DECISION: "Decision",
 };
-const OUTCOME_LABEL = { WON: "Won", LOST: "Lost" };
-const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail", STRATEGIC_ACCOUNTS: "Strategic Accounts" };
+export const OUTCOME_LABEL = { WON: "Won", LOST: "Lost" };
+export const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail", STRATEGIC_ACCOUNTS: "Strategic Accounts" };
 
 export const stageLabel = (s) => STAGE_LABEL[s] ?? s ?? "—";
 export const channelLabel = (c) => CHANNEL_LABEL[c] ?? c ?? "—";
@@ -53,14 +56,20 @@ export function deriveAttention(opp, nowMillis) {
 }
 
 // One pipeline row (projection). Customer name is resolved from an injected name map (canonical Account
-// authority later); falls back to the opportunity's own snapshot then its accountId — never a raw id shown
-// as the primary label if a name is resolvable.
+// authority later), then the opportunity's own snapshot. It does NOT fall back to accountId.
+//
+// It used to. The comment here read "never a raw id shown as the primary label IF A NAME IS RESOLVABLE",
+// and that escape clause was the defect: DECISIONS #106 has no such clause. A missing name is not
+// permission to display a record id. This was not hypothetical -- `accountNameById` is `{}` for every
+// governed read (mapOpportunityReadResult hard-codes it), and `customerName` only exists on fixtures, so
+// real data in this column meant a raw document id in front of a user. Unresolved now renders the em dash,
+// which is honest and makes the missing resolution VISIBLE rather than disguising it as a value.
 export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} } = {}) {
   const attention = deriveAttention(opp, nowMillis);
   const worstTone = attention.some((a) => a.tone === "attention") ? "attention" : attention.length ? "info" : null;
   return {
     id: opp.id ?? opp.opportunityId ?? null,
-    customerName: accountNameById[opp.accountId] ?? opp.customerName ?? opp.accountId ?? "—",
+    customerName: accountNameById[opp.accountId] ?? opp.customerName ?? "—",
     accountId: opp.accountId ?? null,
     channel: opp.salesChannel ?? null,
     stage: opp.stage ?? null,
@@ -76,6 +85,19 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
     // lineage visibly"). Was previously written server-side but never projected through to the UI --
     // the exact "coordination invisibility" finding from the gap audit.
     salesOrderId: opp.salesOrderId ?? null,
+    // THE VERSION, carried so an edit can prove which copy it started from. updateOpportunity
+    // rejects any caller that cannot; without this the governed edit command is unreachable
+    // from this surface no matter what else is wired.
+    //
+    // `?? 0` is the contract, not a fallback dressed up as one: the command reads a missing
+    // current version AS 0, so echoing 0 for a record that has none is the honest statement
+    // "I loaded the version-less copy" -- and it still fails the check if someone else edits
+    // in between, because that write gives the record a real version.
+    updatedAtMillis: num(opp.updatedAtMillis) ?? 0,
+    // Record timestamps. The Record section rendered "not recorded" for every Opportunity ever
+    // shown, because these were never projected -- not because the data was missing.
+    createdAt: num(opp.createdAtMillis),
+    updatedAt: num(opp.updatedAtMillis),
     attention,
     attentionTone: worstTone,
   };

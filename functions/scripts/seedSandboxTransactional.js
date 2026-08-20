@@ -154,6 +154,15 @@ async function main() {
     name: "Sandbox Technician", status: "available", skills: ["refrigeration", "ice-machines"],
     userId: uidTech, createdAt: now, updatedAt: now, updatedBy: by,
   });
+  // A SECOND technician. The engine refuses to double-book a technician onto two active Work
+  // Orders -- correct domain behaviour -- and with exactly one technician in the scenario, that rule
+  // made every seeded WO permanently un-dispatchable once the first one was active. A single
+  // technician cannot represent a dispatch queue. No userId: this is a dispatch TARGET, not a
+  // persona, and inventing a second identity would widen the auth surface for no reason.
+  await set("fieldops_technicians", "tech-sbx-02", {
+    name: "Sandbox Technician Two", status: "available", skills: ["refrigeration"],
+    userId: null, createdAt: now, updatedAt: now, updatedBy: by,
+  });
 
   // --- Work Orders across the GOVERNED lifecycle ------------------------
   // F0: seeded into fieldops_wos with the shape createWorkOrder() writes, and
@@ -289,7 +298,10 @@ async function main() {
     assignedToUserId: uidPartsAssoc, assignedBy: uidPartsMgr, assignedAt: now,
     purchasingStartedAt: now, purchasingStartedBy: uidPartsAssoc,
     purchasingNotes: "Arctic Parts Supply confirmed availability.", vendorContacted: true,
-    purchaseOrderId: "po-sbx-001", orderedBy: uidPartsAssoc, orderedAt: now,
+    // Must equal the reorder request id: receiveInventoryStockCommand.ts rejects the source as
+    // incoherent when reorderRequest.purchaseOrderId is defined and differs. The readable order
+    // number is externalPoNumber on the purchase order itself.
+    purchaseOrderId: "ro-sbx-001", orderedBy: uidPartsAssoc, orderedAt: now,
     lastPurchasingUpdateAt: now, lastPurchasingUpdateBy: uidPartsAssoc,
   }));
   // PENDING_REVIEW — an unreviewed queue item.
@@ -315,24 +327,72 @@ async function main() {
     reviewNotes: "Sufficient stock already on hand at wh-main.",
   }));
 
+  // ORDERED, SERIALIZED — the receiving candidate for the serial path. PRT-2001 is the deliberate
+  // SERIALIZED fixture, so receiving it exercises serial capture and governed serialized-asset
+  // activation rather than a plain quantity receipt. The serialized assets themselves are NEVER
+  // seeded: the governed Receiving command creates them, which is the whole point of this record.
+  await set("reorder_requests", "ro-sbx-006", reorderRequest({
+    partId: "PRT-2001", recommendedQty: 2, requestedQty: 2, status: "ORDERED",
+    currentOwner: uidPartsAssoc, requestedBy: uidTech || by, createdAt: now,
+    reviewedBy: uidPartsMgr, reviewedAt: now, reviewDecision: "APPROVED",
+    reviewNotes: "Two compressor units required for scheduled ice-machine replacements.",
+    assignedToUserId: uidPartsAssoc, assignedBy: uidPartsMgr, assignedAt: now,
+    purchasingStartedAt: now, purchasingStartedBy: uidPartsAssoc,
+    purchasingNotes: "ColdChain Components confirmed serial-tracked units.", vendorContacted: true,
+    // Equals the reorder request id -- the governed Receiving coherence rule, same as ro-sbx-001.
+    purchaseOrderId: "ro-sbx-006", orderedBy: uidPartsAssoc, orderedAt: now,
+    lastPurchasingUpdateAt: now, lastPurchasingUpdateBy: uidPartsAssoc,
+  }));
+
   // --- Purchase orders (the GOVERNED reorder PO model, Decision B) -------
-  await set("reorder_purchase_orders", "po-sbx-001", {
-    purchaseOrderId: "po-sbx-001", reorderRequestId: "ro-sbx-001",
+  // DOCUMENT KEY = the REORDER REQUEST id, not the human PO number.
+  //
+  // This is the governed contract, not a convention: receiveInventoryStockCommand.ts reads
+  // `reorder_purchase_orders.doc(reorderRequestId)`, and the linked request must satisfy
+  // `reorderRequest.purchaseOrderId === reorderRequestId`. The fixtures previously keyed these
+  // documents by "po-sbx-001"/"po-sbx-002", so the content was correct and completely unreachable --
+  // Receiving answered NOT_FOUND for a source that visibly existed in Firestore.
+  //
+  // The human-facing order number lives in `externalPoNumber`, which is what the governed Receiving
+  // tests use and what keeps "po-sbx-001" visible to a reader without it pretending to be the key.
+  await set("reorder_purchase_orders", "ro-sbx-001", {
+    reorderRequestId: "ro-sbx-001", externalPoNumber: "po-sbx-001",
+    // Retained so existing read models that project purchaseOrderId keep working; it is the SAME
+    // identity as the document key, never the external number, so the coherence check holds.
+    purchaseOrderId: "ro-sbx-001",
     partId: "PRT-1001", supplierId: "sup-arcticparts", orderedQuantity: 4,
     status: "ORDERED", scenarioId: SCENARIO_ID,
     recordedBy: uidPartsAssoc, recordedAt: now, createdAt: now, updatedAt: now,
   });
-  await set("reorder_purchase_orders", "po-sbx-002", {
-    purchaseOrderId: "po-sbx-002", reorderRequestId: "ro-sbx-005",
+  await set("reorder_purchase_orders", "ro-sbx-005", {
+    reorderRequestId: "ro-sbx-005", externalPoNumber: "po-sbx-002",
+    purchaseOrderId: "ro-sbx-005",
     partId: "PRT-1002", supplierId: "sup-coldchain", orderedQuantity: 5,
     status: "VOIDED", voidReason: "Duplicate order raised in error.", scenarioId: SCENARIO_ID,
     recordedBy: uidPartsAssoc, recordedAt: now, voidedBy: uidPartsMgr, voidedAt: now,
     createdAt: now, updatedAt: now,
   });
 
+  // The SERIALIZED receiving candidate's purchase order. Keyed by the reorder request id, exactly
+  // like ro-sbx-001; orderedQuantity 2 is what the governed command binds the serial count to, so a
+  // receipt must supply exactly two distinct serial numbers.
+  await set("reorder_purchase_orders", "ro-sbx-006", {
+    reorderRequestId: "ro-sbx-006", externalPoNumber: "po-sbx-003",
+    purchaseOrderId: "ro-sbx-006",
+    partId: "PRT-2001", supplierId: "sup-coldchain", orderedQuantity: 2,
+    status: "ORDERED", scenarioId: SCENARIO_ID,
+    recordedBy: uidPartsAssoc, recordedAt: now, createdAt: now, updatedAt: now,
+  });
+
+  // The mis-keyed documents this scenario used to emit. Removed so a re-seeded sandbox converges on
+  // the governed shape instead of carrying an unreachable duplicate of the same order forever.
+  for (const staleId of ["po-sbx-001", "po-sbx-002"]) {
+    await db.collection("reorder_purchase_orders").doc(staleId).delete();
+  }
+
   console.log("Seeded:", JSON.stringify(counts));
   console.log(`Scenario ${SCENARIO_ID} v${SCENARIO_VERSION} ready.`);
-  console.log("Receiving-ready candidate: reorder ro-sbx-001 + PO po-sbx-001 (both ORDERED).");
+  console.log("Receiving-ready candidates: ro-sbx-001 (PRT-1001, STANDARD) and ro-sbx-006 (PRT-2001, SERIALIZED).");
   console.log("The receipt itself is NOT seeded — it is the governed write the scenario exists to exercise.");
 }
 

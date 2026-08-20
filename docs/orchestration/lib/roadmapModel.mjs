@@ -173,15 +173,55 @@ export const roadmapModel = Object.freeze({
     {
       id: "commercial-sales", name: "Commercial & Sales", kind: "DOMAIN",
       capabilities: [
+        // uxState spelled out rather than taken from ...INERT_BACKEND, whose "NONE" was true
+        // when the backend landed bare and is not any more. Built as of 2026-08-20:
+        //   - the Opportunity workspace with pipeline/stage progression
+        //   - buildUpdateOpportunity + the updateOpportunity callable: the ordinary-edit path
+        //     whose absence was why every Edit control read "the governed save command is not
+        //     wired in this build" -- the command genuinely did not exist
+        //   - closeOpportunityAsWon: WON and its Sales Order in ONE transaction, so a Won
+        //     Opportunity can no longer exist without its order
+        //
+        // "PARTIAL", not "COMPLETE": the workspace still needs its lifecycle controls, the
+        // employee owner selector and the solution-line editor wired to the new command.
+        // Capabilities remain active:false, so nothing is user-operable regardless.
         { id: "opportunity-lifecycle", name: "Sales Opportunity lifecycle (Cycles 2–3)", workstreamOwner: "Product/Design",
-          status: "PROTECTED_ACTION", ...INERT_BACKEND, protectedBoundary: "Grant opportunity.* + deploy callables",
+          status: "PROTECTED_ACTION", ...INERT_BACKEND, uxState: "PARTIAL",
+          protectedBoundary: "Grant opportunity.* + deploy callables",
+          blockedReason: "Governed write paths complete: create, transition, ordinary edit (updateOpportunity) and atomic close-as-WON, the last creating exactly one Sales Order in a single transaction with 13 emulator assertions behind it. UX remains PARTIAL -- lifecycle controls, the governed employee owner selector and solution-line editing are not yet wired to the new command. opportunity.* stays active:false, so no principal can exercise any of it until a separately-authorized grant and deploy.",
           dependencies: [], lastVerifiedRepoState: "da89558",
           milestones: [{ id: "opp-m1", name: "Governed write + trusted read projection", complete: true,
             completionCriteria: ["opportunity.write inert", "opportunity.read inert", "opportunities deny-all"],
             workItems: [{ id: "opp-w1", name: "opportunityCommands/Callables/ReadService", status: "DONE", owner: "Product/Design",
               prEvidence: ["#651", "#654"], evidence: [{ kind: "PR", ref: "#651" }, { kind: "PR", ref: "#654" }, { kind: "CAPABILITY_FLAG", ref: "opportunity.write", note: "active:false" }] }] }] },
+        // SALES ORDER UX IS BUILT. This entry used the shared ...INERT_BACKEND spread, whose
+        // uxState is "NONE" -- accurate when the backend landed with nothing on top of it, and
+        // wrong now. The spread is kept for the dimensions that ARE still inert and the one
+        // stale dimension is stated explicitly after it.
+        //
+        // What exists in the repository today:
+        //   - SalesOrderDetail.jsx, routed at /customers/opportunities/sales-order/:salesOrderId
+        //   - SalesOrderActions.jsx -- contextual Advance/Cancel/Allocate/Create-Service actions
+        //   - salesOrderEntity + salesOrderRelatedList + salesOrderIndexList in metadata
+        //   - getSalesOrderContext / listSalesOrdersForAccount / listSalesOrderIndex, deployed
+        //   - the account-related Sales Orders list, built and verified
+        //   - SO-YYYY-###### numbering, rendered as the business reference
+        //   - 14 numbered Sales Orders returned through governed reads in sandbox
+        //
+        // uxState "PARTIAL", not "COMPLETE": the write-side capabilities remain active:false, so
+        // the operational actions render fail-closed until a separately-authorized activation.
+        // "PARTIAL" is this model's supported value for "built and reachable, not fully operable"
+        // -- the UX enum has no SUBSTANTIALLY_COMPLETE.
+        //
+        // deployState is left at NOT_DEPLOYED and that is a MODELLING LIMIT, not a claim: the
+        // READ callables are deployed and serving sandbox today, while the WRITE side is not.
+        // The DEPLOY enum is DEPLOYED | NOT_DEPLOYED | NOT_APPLICABLE | UNKNOWN, with no value
+        // for "reads live, writes inert", and asserting either whole-capability value would be
+        // false in one direction. Recorded here rather than resolved by picking the wrong one.
         { id: "sales-order-lifecycle", name: "Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7)", workstreamOwner: "Product/Design",
-          status: "PROTECTED_ACTION", ...INERT_BACKEND, protectedBoundary: "Grant salesOrder.* + deploy callables",
+          status: "PROTECTED_ACTION", ...INERT_BACKEND, uxState: "PARTIAL",
+          protectedBoundary: "Grant salesOrder.* + deploy callables",
+          blockedReason: "READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. The salesOrder.index global list is now MOUNTED on the metadata runtime (2026-08-20), and a read-only Fulfillment & Installation progression renders on Sales Order detail, derived from order state, line quantities and linked Work Orders -- with UNKNOWN preserved rather than inferred, and Customer Handoff left UNKNOWN because no serialized-asset custody event exists to prove it. The CREATION path from a WON Opportunity now exists server-side as closeOpportunityAsWon (atomic, exactly one order) but has NO client call site yet, so a WON Opportunity still cannot produce a Sales Order through the product. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.",
           dependencies: ["opportunity-lifecycle"], lastVerifiedRepoState: "da89558",
           milestones: [{ id: "so-m1", name: "Committed commercial order + Service lineage", complete: true,
             completionCriteria: ["salesOrder.write inert", "salesOrder.service inert", "sales_orders deny-all", "assigns no WO/inventory"],

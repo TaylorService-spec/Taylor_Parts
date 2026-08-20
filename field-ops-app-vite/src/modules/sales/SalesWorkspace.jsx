@@ -4,6 +4,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import { buildOpportunityPipeline, channelLabel, stageProgress } from "../../domain/opportunityLifecycle.js";
@@ -11,6 +12,9 @@ import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "..
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
+import OwnerSelect from "./OwnerSelect.jsx";
+import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
+import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import StageProgressTrack from "../../shared/ui/StageProgressTrack.jsx";
 import NewOpportunityForm from "./NewOpportunityForm.jsx";
 
@@ -40,6 +44,72 @@ import NewOpportunityForm from "./NewOpportunityForm.jsx";
 // circular import); re-exported here so the existing `import { isoDate, parseLocalDate } from
 // ".../SalesWorkspace.jsx"` call site (test/salesWorkspaceDate.test.jsx) is unchanged.
 export { isoDate, parseLocalDate };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-CRM-OPPORTUNITIES — metadata list runtime migration EVALUATED, DECLINED.
+//
+// The task: render this pipeline's table through the metadata list runtime
+// (metadata/listPresentation.js's buildListPresentation + metadata/MetadataListGrid.jsx),
+// driven by the real `opportunityIndexList` (metadata/definitions/opportunity.js). Investigated
+// in full before writing anything; three independent, compounding blockers were found, any ONE
+// of which is disqualifying on its own, and none fixable from inside this file's writeScope
+// (only this module + its test file):
+//
+// BLOCKER 1 — no INDEX-surface hook can drive a CALLABLE-read entity at all.
+// hooks/useMetadataList.js (the hook every migrated INDEX surface uses, e.g.
+// modules/accounts/AccountsList.jsx) imports `fetchPage` ONLY from metadata/firestoreListSource.js
+// — it has no readVia branch. opportunityEntity declares `readVia: "CALLABLE"` (opportunity.js's
+// own header: "opportunities is deny-all in Firestore Rules"). Running this workspace's list
+// through useMetadataList would issue a raw client `getDocs` against a deny-all collection —
+// permission-denied for 100% of callers, including one holding the real `opportunity.read`
+// capability. Only metadata/MetadataRecordPage.jsx's DefaultRelatedList branches by readVia
+// (selectListSource); no INDEX-surface equivalent exists. Fixing this means editing
+// hooks/useMetadataList.js, which is shared list-runtime infrastructure other lanes' surfaces
+// already depend on (e.g. S-CRM-CUSTOMERS) — out of this lane's writeScope.
+//
+// BLOCKER 2 — even a CALLABLE-aware INDEX hook could not serve this list as declared.
+// metadata/callableListSource.js hardcodes a SINGLE response-key mapping
+// (listOpportunitiesForAccount -> "opportunities") and THROWS without a parent-scope filter to
+// send as that callable's `accountId` argument (`descriptor.filters[0]`) — it is built for a
+// RELATED section scoped to one Account, not an unscoped INDEX. The real governed unscoped read
+// this workspace already uses is a DIFFERENT callable, `listOpportunityContext`
+// (access/opportunitySource.js's governedOpportunitySource — "returns the caller's whole
+// authorized scope with no accountId filter"), which callableListSource.js has no mapping for.
+// Fixing this also means editing shared list-runtime files, not this one.
+//
+// BLOCKER 3 — even reusing this workspace's OWN existing governed read (no double-read; the
+// same sanctioned pattern accountPageComponents.js's buildAccountRelatedListPresentation
+// established for Contacts/Locations: feed already-loaded rows into buildListPresentation
+// purely for rendering) would still drop real, currently-shown information:
+//   (a) opportunityIndexList's declared columns (opportunityNumber, accountId, stage,
+//       salesChannel, expectedValue, expectedCloseAt) have no "Attention / next action" column
+//       — this pipeline's actual triage signal (buildOpportunityPipeline's attention derivation
+//       + the raw `nextAction` field, both rendered by PipelineRow below). opportunity.js
+//       deliberately does NOT declare `nextAction` as a field ("read but never written [...]
+//       NOT declared here") — there is no column declaration this migration could even ask for.
+//       Rendering through the declared list as-is would silently remove that column: a real,
+//       confirmed regression, not a hypothetical one.
+//   (b) accountId is REFERENCE with nothing to resolve it TO without a second live read.
+//       listOpportunityContext's own projection deliberately returns accountId only — no
+//       denormalized name ("does NOT copy Customer name/PII into the Opportunity for
+//       rendering", opportunityReadService.ts) — and mapOpportunityReadResult
+//       (access/opportunitySource.js) hard-codes `accountNameById: {}` for every REAL governed
+//       result; only the synthetic fixture source populates it. A real `resolveReference` here
+//       would have to issue a per-row Account read — exactly the N+1 pattern this task's own
+//       instructions forbid. (This also means today's hand-written "Customer" column silently
+//       falls back to the raw `accountId` document id once real governed data replaces the
+//       synthetic fixtures — domain/opportunityLifecycle.js's `buildPipelineRow`:
+//       `accountNameById[opp.accountId] ?? opp.customerName ?? opp.accountId ?? "—"` — a
+//       pre-existing defect in a file outside this lane's writeScope, reported rather than
+//       fixed here.)
+//
+// This pipeline therefore stays hand-rendered — the metadata list runtime cannot yet reproduce
+// its master-detail selection, attention-sorted triage column, editable sections, lifecycle
+// actions, or create flow, and forcing just the table through `opportunityIndexList` as declared
+// today would be a confirmed functional regression (dropped Attention/next column), not a
+// faithful migration. Recorded on docs/orchestration/metadata-program/LEDGER.md as
+// S-CRM-OPPORTUNITIES declined-for-cause, matching the two prior declines in this program.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const currency = (v) =>
   typeof v === "number" ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "—";
@@ -72,7 +142,7 @@ function FieldRead({ field }) {
 // Edit control for one USER_MAINTAINED field, bound to the section draft. These render ONLY inside an active
 // section edit form (never as a standing wall of controls). No control performs a write — Save is what would
 // hand the draft to the governed command, and Save is itself gated by readiness + a wired command.
-function FieldEdit({ field, value, onChange }) {
+function FieldEdit({ field, value, onChange, directory }) {
   const id = `opp-edit-${field.key}`;
   switch (field.control) {
     case "select":
@@ -94,13 +164,10 @@ function FieldEdit({ field, value, onChange }) {
     case "textarea":
       return <textarea id={id} className="fo-input" rows={3} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
     case "owner":
-      // Owner reassignment (governed). The employee directory is not connected yet (accountOwner is free text,
-      // ADR-012 has no team/scope model), so this is a bounded id field, honest about the not-yet-connected
-      // directory rather than a fake picker.
-      return (
-        <input id={id} className="fo-input" type="text" value={value ?? ""} onChange={(e) => onChange(e.target.value)}
-          aria-describedby={`${id}-note`} />
-      );
+      // Owner reassignment (governed), now a real picker over the employee directory. OwnerSelect
+      // owns the degradation: a caller who cannot read the directory keeps the bounded id field
+      // and is told why, rather than being shown an empty dropdown.
+      return <OwnerSelect id={id} value={value} onChange={onChange} describedBy={`${id}-note`} directory={directory} />;
     case "lines":
       // Solution-line editing is the richest control; kept honest + minimal here (the responsive composition
       // is the deliverable, not a full line-item builder). Lines are product/model/part refs + qty.
@@ -131,29 +198,35 @@ function LineEditor({ lines, onChange }) {
             onChange={(e) => update(i, { ref: e.target.value })} />
           <input className="fo-input fo-sales-lineedit__qty" aria-label="Quantity" type="number" min="1" step="1" value={l.qty ?? 1}
             onChange={(e) => update(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-          <button type="button" className="fo-btn-ghost" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</button>
+          <Button type="button" variant="tertiary" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</Button>
         </div>
       ))}
-      <button type="button" className="fo-btn-ghost" onClick={add}>Add line</button>
+      <Button type="button" variant="tertiary" onClick={add}>Add line</Button>
     </div>
   );
 }
 
 // A section edit FORM (opened when the user enters section-level editing). Binds a draft of the section's
-// USER_MAINTAINED fields, offers Save + Cancel. Save is inert unless BOTH (a) write-readiness is enabled and
-// (b) a governed save command is wired (onSave) — today neither, so Save is disabled + honest. Cancel always
-// returns to read without side effects.
-function SectionEditForm({ section, readiness, onSave, onCancel }) {
+// USER_MAINTAINED fields, offers Save + Cancel. Save is live when BOTH (a) write-readiness is enabled and
+// (b) a governed save command is wired (onSave); otherwise it is disabled and says which of the two is
+// missing. Cancel always returns to read without side effects.
+//
+// THE DRAFT SURVIVES A FAILED SAVE. On a version conflict in particular, the form stays open holding what
+// the user typed, because the recovery they are being asked to perform is "reapply your edit" — discarding
+// it and then asking for it back would be the one unrecoverable response to a recoverable problem.
+function SectionEditForm({ section, readiness, onSave, onCancel, saving, outcome, directory }) {
   const [draft, setDraft] = useState(() => sectionDraft(section));
   const set = (key, v) => setDraft((d) => ({ ...d, [key]: v }));
   const editable = section.fields.filter((f) => f.dataClass === OPPORTUNITY_DATA_CLASS.USER_MAINTAINED);
   const saveWired = typeof onSave === "function";
-  const canSave = readiness.enabled && saveWired;
+  const canSave = readiness.enabled && saveWired && !saving;
   const saveReason = !readiness.enabled
     ? readiness.reason
     : !saveWired
       ? "The governed save command is not wired in this build."
-      : undefined;
+      : saving
+        ? "Saving…"
+        : undefined;
   return (
     <form
       className="fo-sales-editform"
@@ -168,7 +241,7 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
             {f.label}
             {f.governed && <span className="fo-sales-editform__gov" title="Authorized (governed) change"> · governed</span>}
           </label>
-          <FieldEdit field={f} value={draft[f.key]} onChange={(v) => set(f.key, v)} />
+          <FieldEdit field={f} value={draft[f.key]} onChange={(v) => set(f.key, v)} directory={directory} />
           {f.control === "owner" && (
             <p id={`opp-edit-${f.key}-note`} className="fo-muted fo-sales-editform__note">
               Employee directory not connected yet — reassignment records the owner id.
@@ -177,40 +250,81 @@ function SectionEditForm({ section, readiness, onSave, onCancel }) {
         </div>
       ))}
       <div className="fo-sales-editform__actions">
-        <button type="submit" className="fo-btn-primary" disabled={!canSave} title={saveReason}>Save</button>
-        <button type="button" className="fo-btn-ghost" onClick={onCancel}>Cancel</button>
+        <Button
+          type="submit"
+          variant={canSave ? "primary" : "protected"}
+          title={saveReason}
+          reason={canSave ? undefined : saveReason}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button type="button" variant="tertiary" onClick={onCancel} disabled={saving}>Cancel</Button>
         {!canSave && <span className="fo-muted fo-sales-editform__note">{saveReason}</span>}
       </div>
+      {/* The failure the user must act on, stated where they are looking and announced to AT.
+          A conflict is not styled as their mistake -- it is a report that someone else saved
+          first, and the draft above is still theirs to resubmit. */}
+      {outcome && outcome.kind !== "applied" && outcome.kind !== "replayed" && (
+        <p
+          className={outcome.kind === "noop" ? "fo-muted fo-sales-editform__note" : "fo-sales-editform__error"}
+          role={outcome.kind === "noop" ? undefined : "alert"}
+        >
+          {outcome.message}
+        </p>
+      )}
     </form>
   );
 }
 
 // A detail SECTION. Reads by default. Editable-by-design sections carry a contextual Edit affordance in the
-// header (disabled + honest when readiness is off — same fail-closed posture as the lifecycle actions and the
-// inert create control). Entering edit swaps the read body for the section form; only one section edits at a
-// time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit affordance.
-function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness, onSave }) {
+// header (disabled + honest when EITHER readiness is off OR no governed save command is wired — same
+// fail-closed posture as the lifecycle actions and the inert create control; today's production mount passes
+// no onSaveSection, so Edit stays disabled+honest there even for a real write-capable caller, rather than
+// opening a form whose Save can never succeed). Entering edit swaps the read body for the section form; only
+// one section edits at a time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit
+// affordance.
+function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness, onSave, editable = true, saving, outcome, directory }) {
   const showEdit = section.editable;
-  const editDisabled = !readiness.enabled;
+  const saveWired = typeof onSave === "function";
+  // `editable` is the RECORD-level rule (a closed Opportunity is a historical record; the command
+  // refuses it with CLOSED). Mirrored here so the surface never offers an edit that is certain to
+  // be rejected -- the server still enforces it, this only stops the invitation.
+  const editDisabled = !readiness.enabled || !saveWired || !editable;
+  const editReason = !editable
+    ? "This Opportunity is closed. Its details are a historical record and can no longer be edited."
+    : !readiness.enabled
+      ? readiness.reason
+      : !saveWired
+        ? "The governed save command is not wired in this build."
+        : undefined;
   return (
     <section className="fo-sales-detail__block" aria-label={section.title} data-dataclass={section.dataClass}>
       <div className="fo-sales-detail__block-head">
         <h4>{section.title}</h4>
         {showEdit && !editing && (
-          <button
+          <Button
             type="button"
-            className="fo-btn-ghost fo-sales-detail__edit"
-            disabled={editDisabled}
-            title={editDisabled ? readiness.reason : undefined}
-            aria-label={editDisabled ? `Edit ${section.title} — ${readiness.reason}` : `Edit ${section.title}`}
-            onClick={() => onEnterEdit(section.id)}
+            variant={editDisabled ? "protected" : "tertiary"}
+            className="fo-sales-detail__edit"
+            title={editDisabled ? editReason : undefined}
+            reason={editDisabled ? editReason : undefined}
+            aria-label={editDisabled ? `Edit ${section.title} — ${editReason}` : `Edit ${section.title}`}
+            onClick={editDisabled ? undefined : () => onEnterEdit(section.id)}
           >
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {editing ? (
-        <SectionEditForm section={section} readiness={readiness} onSave={onSave} onCancel={onCancelEdit} />
+        <SectionEditForm
+          section={section}
+          readiness={readiness}
+          onSave={onSave}
+          onCancel={onCancelEdit}
+          saving={saving}
+          outcome={outcome}
+          directory={directory}
+        />
       ) : (
         <SectionReadBody section={section} />
       )}
@@ -244,7 +358,7 @@ function SectionReadBody({ section }) {
 // The detail aside. A ContextBand scans the key facts (read), then the editing-ready sections operate on the
 // underlying data. Same datum can appear as a scannable fact AND be maintained in a section — scan up top,
 // operate below. Lifecycle sits between the derived attention and the read-only record.
-function OpportunityDetail({ row, readiness, onSaveSection, onChanged }) {
+function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps, directory }) {
   const [editingSection, setEditingSection] = useState(null);
   const model = useMemo(
     () => opportunityDetailModel(row, { format: { currency, date: shortDate } }),
@@ -253,7 +367,15 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged }) {
   // Called unconditionally (rules-of-hooks) — `row?.id ?? null` scopes the transition idempotency cache to
   // whichever Opportunity is selected right now; useOpportunityTransitions resets its cache on an id change.
   const transitions = useOpportunityTransitions(row?.id ?? null);
+  // Same unconditional-call discipline: the governed section-save command, scoped to whichever
+  // Opportunity is selected right now.
+  const sectionSave = useOpportunitySectionSave(row?.id ?? null, saveDeps);
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
+
+  // WON and LOST are terminal. The command refuses to edit them (CLOSED) because the deal terms
+  // of a WON Opportunity are what the Sales Order was derived from -- editing them afterwards
+  // would make the two disagree with no record of which is right.
+  const recordEditable = isOpportunityEditable(row);
 
   const facts = [
     { key: "customer", label: "Customer", value: row.customerName },
@@ -293,14 +415,33 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged }) {
         onEnterEdit={setEditingSection}
         onCancelEdit={() => setEditingSection(null)}
         readiness={readiness}
-        onSave={
-          onSaveSection
-            ? (sectionId, draft) => {
-                onSaveSection(sectionId, draft);
-                setEditingSection(null);
-              }
-            : undefined
-        }
+        editable={recordEditable}
+        saving={!!sectionSave.pending[id]}
+        outcome={sectionSave.outcome?.sectionId === id ? sectionSave.outcome : null}
+        directory={directory}
+        onSave={async (sectionId, draft) => {
+          // `onSaveSection` stays an injection seam for tests; unwired callers get the real
+          // governed command rather than an inert form. This is the wiring that was missing --
+          // the command and every affordance around it already existed.
+          const result = onSaveSection
+            ? await onSaveSection(sectionId, draft, row.updatedAtMillis)
+            : await sectionSave.saveSection(sectionId, draft, row.updatedAtMillis);
+
+          // The section closes only on a save that actually happened. Everything else keeps the
+          // form open with the draft intact, because the user has something to do with it --
+          // including NO_CHANGES, which closed silently at first and so reported nothing at all:
+          // the message lives IN the form, and a form that closes takes its own explanation with
+          // it. Pressing Save and having the panel vanish with no word is indistinguishable from
+          // a save that worked.
+          if (result?.kind === "applied" || result?.kind === "replayed") {
+            setEditingSection(null);
+            // Re-read authoritatively. Never patch the row locally: the server owns the new
+            // version token, and a locally-invented one would fail the NEXT save with a
+            // conflict the user could not explain.
+            onChanged?.();
+          }
+          return result;
+        }}
       />
     );
   };
@@ -369,12 +510,14 @@ function PipelineRow({ row, selected, onSelect }) {
 }
 
 // Props are optional injection seams for tests/activation: `readiness` defaults to the fail-closed write-
-// readiness seam; `onSaveSection` is the governed save command (unwired today ⇒ Save stays inert). Production
-// renders <SalesWorkspace readiness={...} /> from App.jsx's connected wrapper, which computes readiness from
-// the REAL trusted capability feed (access/useOpportunityCapabilities); a caller that passes neither (every
-// existing test here) still gets the seam's own fail-closed default.
-export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps } = {}) {
-  const { opportunities, accountNameById, status, refetch } = useOpportunities(source);
+// readiness seam; `onSaveSection` OVERRIDES the governed save command (tests inject it; production leaves it
+// out and gets the real one, hooks/useOpportunitySectionSave). `saveDeps`/`createDeps` inject a mocked
+// command client; `directory` injects an employee-directory double for the owner picker. Production renders
+// <SalesWorkspace readiness={...} /> from App.jsx's connected wrapper, which computes readiness from the REAL
+// trusted capability feed (access/useOpportunityCapabilities); a caller that passes none of these (every
+// existing test here) still gets the seam's own fail-closed default and writes nothing.
+export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory } = {}) {
+  const { opportunities, accountNameById, status, synthetic, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
   // Write-readiness through the seam. Fail-closed by default (governed write built but inert unless a real
@@ -409,16 +552,16 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
   const actions = (
     <ActionRail
       primary={
-        <button
+        <Button
           type="button"
-          className="fo-btn-primary"
-          disabled={!createEnabled}
+          variant={createEnabled ? "primary" : "protected"}
           aria-label={createEnabled ? "New opportunity" : `New opportunity — ${writeReadiness.reason}`}
           title={createEnabled ? undefined : writeReadiness.reason}
+          reason={createEnabled ? undefined : writeReadiness.reason}
           onClick={createEnabled ? () => setCreating(true) : undefined}
         >
           New opportunity
-        </button>
+        </Button>
       }
     />
   );
@@ -431,7 +574,12 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       </p>
     ) : null;
 
-  const isSynthetic = status === "ready";
+  // Whether these rows are sample fixtures is the SOURCE's fact, not a function of the source having
+  // loaded. This previously read `status === "ready"`, which labelled every successfully-loaded pipeline
+  // "synthetic" -- so the live governed pipeline told the user its real Opportunities were samples. An
+  // honesty banner that fires on real data is worse than no banner: it teaches people to disbelieve
+  // true records.
+  const isSynthetic = synthetic === true;
 
   return (
     <WorkspaceShell
@@ -441,7 +589,14 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       context={<ContextBand items={contextItems} />}
       attention={attention}
       supporting={
-        <OpportunityDetail row={selectedRow} readiness={writeReadiness} onSaveSection={onSaveSection} onChanged={refetch} />
+        <OpportunityDetail
+          row={selectedRow}
+          readiness={writeReadiness}
+          onSaveSection={onSaveSection}
+          onChanged={refetch}
+          saveDeps={saveDeps}
+          directory={directory}
+        />
       }
     >
       {creating && (

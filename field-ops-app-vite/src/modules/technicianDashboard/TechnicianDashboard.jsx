@@ -11,6 +11,7 @@ import { useAuth } from "../../auth/AuthContext";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
 // the technician role. UI + read-layer composition (6.1) plus the
@@ -111,7 +112,7 @@ export default function TechnicianDashboard() {
         <p className="fo-muted" role="alert">
           Your technician profile could not be loaded. {technicianError}
         </p>
-        <button type="button" onClick={retryTechnician}>Retry</button>
+        <Button variant="secondary" onClick={retryTechnician}>Retry</Button>
       </WorkspaceShell>
     );
   }

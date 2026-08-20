@@ -4,8 +4,10 @@
 import {
   CYCLE_COUNT_LOCATION_TYPES,
   CYCLE_COUNT_SUPPORTED_TRACKING_MODES,
+  CYCLE_COUNT_REVIEW_DECISIONS,
   type CycleCountLocationRef,
   type CycleCountLocationType,
+  type CycleCountReviewDecision,
   type CycleCountTrackingMode,
   type CycleCountValue,
   type ValidationResult,
@@ -81,12 +83,21 @@ export function validateSubmitCycleCountInput(
   return { valid: true, value: { countedSerialNumbers: [...serials] }, reason: null };
 }
 
-export function validateReconcileCycleCountInput(input: unknown): ValidationResult<{ readonly reason: string | null }> {
+// `decision` defaults to APPROVE when omitted, preserving every pre-M23 caller's request shape --
+// reconcileCycleCount's original meaning (approve + stage ADJUSTED ledger evidence) is decision APPROVE.
+// decision REJECT is the M23 manager-review addition: dispose of the count as disputed, no ledger effect.
+export function validateReconcileCycleCountInput(
+  input: unknown,
+): ValidationResult<{ readonly reason: string | null; readonly decision: CycleCountReviewDecision }> {
   if (!isPlainObject(input)) return { valid: false, value: null, reason: "not_object" };
   if (input.reason !== undefined && !isNonEmptyString(input.reason)) {
     return { valid: false, value: null, reason: "reason_invalid" };
   }
-  return { valid: true, value: { reason: input.reason !== undefined ? (input.reason as string) : null }, reason: null };
+  if (input.decision !== undefined && !(CYCLE_COUNT_REVIEW_DECISIONS as readonly string[]).includes(input.decision as string)) {
+    return { valid: false, value: null, reason: "decision_invalid" };
+  }
+  const decision = (input.decision as CycleCountReviewDecision | undefined) ?? "APPROVE";
+  return { valid: true, value: { reason: input.reason !== undefined ? (input.reason as string) : null, decision }, reason: null };
 }
 
 export type { CycleCountValue };

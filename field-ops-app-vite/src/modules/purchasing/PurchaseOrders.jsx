@@ -33,6 +33,38 @@ import EmptyState from "../../shared/ui/EmptyState";
 // operator action (a receipt mutates production inventory and requires the
 // inventory.stock.receive capability); this surface only shows the exact source
 // descriptor an operator would use.
+//
+// S-COM-PURCHASE-ORDERS -- ATTEMPTED and DECLINED for cause. src/metadata/definitions/
+// purchaseOrder.js (purchaseOrderEntity/purchaseOrderIndexList) describes the SAME
+// underlying collection this surface reads (reorder_purchase_orders, via
+// PURCHASE_ORDERS_COLLECTION) -- there is no dataset swap here. But the metadata list
+// runtime would drive the read a fundamentally different way: a direct, unbounded scan
+// of reorder_purchase_orders alone, versus this surface's read -- which is driven by
+// `reorder_requests` filtered to ORDERED/RECEIVED/VOIDED, then joined by id to
+// reorder_purchase_orders (domain/purchaseOrdersView.js's buildPurchaseOrdersView()).
+// That join is not incidental plumbing; it is the entire point of the surface:
+//   - purchaseOrder.js's own header records that `status` on a reorder_purchase_orders
+//     DOCUMENT has exactly one legal value ("ORDERED") and is immutable -- VOIDED and
+//     RECEIVED live on the LINKED reorder_requests document, never on this one. A plain
+//     metadata list rendering the declared `status` ENUM column would show "Ordered" on
+//     every single row forever, including rows that are actually voided or received --
+//     a silent, misleading regression, not a cosmetic one.
+//   - ORPHAN rows (an ORDERED request whose PO doc could not be read -- a real integrity
+//     exception this view-model exists to surface, per its own header) have NO
+//     corresponding reorder_purchase_orders document at all. A list driven off that
+//     collection alone cannot produce them; they would silently vanish, and the "Needs
+//     attention" state along with them.
+//   - The receipt-candidate descriptor, the "Ordered by" resolution, and the VOIDED/
+//     RECEIVED/OPEN/ORPHAN status ladder are all derived from the join, not from any
+//     single reorder_purchase_orders field the metadata list runtime could render.
+// Migrating this surface onto purchaseOrderIndexList would not be a rendering-layer
+// change; it would flatten a request-driven lifecycle composite onto a document-driven
+// list contract and lose the VOIDED/RECEIVED distinction and the ORPHAN integrity
+// exception in the process -- the same class of decline already recorded for
+// S-INV-TRANSFERS ("lifecycle composite, not a list") and S-CRM-OPPORTUNITIES (#1226).
+// See test/purchaseOrdersSurface.test.jsx for the regression-locking suite and the
+// S-COM-PURCHASE-ORDERS ledger entry (docs/orchestration/metadata-program/ledger.json)
+// for the record. No functional change was made to this file below.
 
 // The three statuses a reorder Purchase Order can be observed under. Module-level
 // constant so the hook's `statuses.join(",")` dep key is stable across renders.

@@ -29,3 +29,19 @@ netwatch.log
 # principal UIDs -- they must never be committed.
 functions/.operator-access-intents/
 .operator-access-intents/
+
+# Emulator debug output — generated at runtime, never a repo artifact.
+firestore-debug.log
+firebase-debug.log
+.impeccable/
+
+# Emulator E2E harness — generated port-overridden firebase.json (functions/scripts/runE2eEmulatorSuite.mjs).
+.e2e-emulator-firebase.json
+
+# Per-session cache written by the impeccable design hook. It records absolute
+# local paths and session UUIDs, so it is machine-specific by construction and
+# has no meaning in another checkout. It was tracked by accident and has been
+# committed several times as incidental noise; worse, it shows as a dirty file
+# constantly, which is exactly the kind of always-there diff people learn to
+# ignore -- and the production release runbook refuses a dirty tree.
+**/.impeccable/hook.cache.json

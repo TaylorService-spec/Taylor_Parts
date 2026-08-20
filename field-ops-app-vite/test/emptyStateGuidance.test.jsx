@@ -49,3 +49,66 @@ describe("EmptyState guidance slot", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUIDANCE THROUGH THE METADATA LIST RUNTIME.
+//
+// Four of the eight screens this slice originally annotated by hand (Customers,
+// Warehouses, Suppliers, and the Account's Locations section) were migrated to the
+// metadata list runtime while this work sat open, and their hand-written EmptyState call
+// sites no longer exist. Re-adding them would have resurrected deleted code.
+//
+// The equivalent in the new architecture is the list DEFINITION: emptyGuidance travels
+// definition → buildListPresentation → MetadataListGrid → EmptyState, which means every
+// metadata-driven surface gets it at once instead of one call site at a time — and the
+// text lives next to what the entity means rather than next to one screen that shows it.
+// ─────────────────────────────────────────────────────────────────────────────
+import { buildListPresentation, emptyGuidanceFor } from "../src/metadata/listPresentation.js";
+import { accountIndexList } from "../src/metadata/definitions/account.js";
+import { warehouseIndexList } from "../src/metadata/definitions/warehouse.js";
+import { supplierIndexList } from "../src/metadata/definitions/supplier.js";
+import { locationRelatedList } from "../src/metadata/definitions/location.js";
+
+describe("emptyGuidanceFor (the state rule)", () => {
+  const def = { emptyGuidance: "What this collection is." };
+
+  it("shows guidance on a first-run EMPTY", () => {
+    expect(emptyGuidanceFor("EMPTY", def)).toBe("What this collection is.");
+  });
+
+  it("stays silent on FILTERED — the reader already has records and merely over-filtered", () => {
+    expect(emptyGuidanceFor("FILTERED", def)).toBeNull();
+  });
+
+  it("stays silent on DENIED and UNAVAILABLE — describing the collection would imply the read succeeded and found nothing", () => {
+    expect(emptyGuidanceFor("DENIED", def)).toBeNull();
+    expect(emptyGuidanceFor("UNAVAILABLE", def)).toBeNull();
+  });
+
+  it("a definition that declares nothing renders exactly as before", () => {
+    expect(emptyGuidanceFor("EMPTY", { label: "Widgets" })).toBeNull();
+    expect(emptyGuidanceFor("EMPTY", null)).toBeNull();
+  });
+});
+
+describe("the migrated screens kept their authored guidance", () => {
+  // Each of these carried a hand-written paragraph before its screen was migrated. The
+  // text survived the migration; only where it lives changed.
+  it.each([
+    ["Customers", accountIndexList, /customer is the account everything else hangs off/i],
+    ["Warehouses", warehouseIndexList, /stocking locations inventory is received into/i],
+    ["Suppliers", supplierIndexList, /vendors parts are purchased from/i],
+    ["Account locations", locationRelatedList, /physical site where service happens/i],
+  ])("%s", (_name, def, pattern) => {
+    expect(def.emptyGuidance).toMatch(pattern);
+  });
+
+  it("reaches the presentation an empty list actually renders from", () => {
+    const p = buildListPresentation({ def: warehouseIndexList, entity: null, page: { rows: [], hasMore: false } });
+    expect(p.state).toBe("EMPTY");
+    expect(p.emptyGuidance).toMatch(/stocking locations/i);
+    // and the message is still its own, separate statement
+    expect(p.emptyMessage).toBeTruthy();
+    expect(p.emptyMessage).not.toBe(p.emptyGuidance);
+  });
+});

@@ -28,6 +28,7 @@ import { CYCLE_COUNTS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION } from "../c
 import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import {
   UnauthorizedCycleCountError,
+  CycleCountSelfApprovalError,
   CycleCountNotFoundError,
   CycleCountLocationInvalidError,
   CycleCountPartInvalidError,
@@ -54,9 +55,11 @@ import {
   cancelFields,
 } from "./cycleCountRepository.js";
 import { computeExpectedQuantityThroughTxn, computeExpectedSerialsThroughTxn } from "./cycleCountExpectedQuantity.js";
+import { isMaterialCycleCountVariance, resolveCycleCountMaterialityConfig } from "./cycleCountMateriality.js";
 
 export {
   UnauthorizedCycleCountError,
+  CycleCountSelfApprovalError,
   CycleCountNotFoundError,
   CycleCountLocationInvalidError,
   CycleCountPartInvalidError,
@@ -92,7 +95,7 @@ export interface ResolvedCycleCountPart {
 }
 
 export interface CycleCountAuditInput {
-  readonly action: "createCycleCount" | "submitCycleCount" | "reconcileCycleCount" | "cancelCycleCount";
+  readonly action: "createCycleCount" | "submitCycleCount" | "reconcileCycleCount" | "rejectCycleCount" | "cancelCycleCount";
   readonly actorId: string;
   readonly cycleCountId: string;
   readonly partId: string;
@@ -246,11 +249,11 @@ export async function submitCycleCount(request: unknown, deps: CycleCountCommand
         if (stored.countedQuantity !== countedQuantity) {
           throw new CycleCountIdempotencyConflictError("cycle count was already submitted with a different counted quantity");
         }
-        return { outcome: "replayed", cycleCountId, status: stored.status, countedQuantity, variance: stored.variance };
+        return { outcome: "replayed", cycleCountId, status: stored.status, countedQuantity, variance: stored.variance, expectedQuantity: stored.value.expectedQuantity };
       }
       txn.update(ref, submitFields(stored.version + 1, actor, now, countedQuantity, undefined, variance, undefined));
       deps.stageAudit(txn, { action: "submitCycleCount", actorId: actor.id, cycleCountId, partId: stored.value.partId, location: stored.value.location, variance });
-      return { outcome: "applied", cycleCountId, status: "COUNTED", countedQuantity, variance };
+      return { outcome: "applied", cycleCountId, status: "COUNTED", countedQuantity, variance, expectedQuantity: stored.value.expectedQuantity };
     }
 
     // SERIAL
@@ -265,17 +268,52 @@ export async function submitCycleCount(request: unknown, deps: CycleCountCommand
       const priorCounted = new Set(stored.countedSerialNumbers ?? []);
       const same = priorCounted.size === countedSet.size && [...priorCounted].every((s) => countedSet.has(s));
       if (!same) throw new CycleCountIdempotencyConflictError("cycle count was already submitted with different counted serials");
-      return { outcome: "replayed", cycleCountId, status: stored.status, countedSerialNumbers: counted, serialVariance: stored.serialVariance };
+      return {
+        outcome: "replayed",
+        cycleCountId,
+        status: stored.status,
+        countedSerialNumbers: counted,
+        serialVariance: stored.serialVariance,
+        expectedSerialNumbers: stored.value.expectedSerialNumbers,
+      };
     }
     txn.update(ref, submitFields(stored.version + 1, actor, now, undefined, counted, undefined, serialVariance));
     deps.stageAudit(txn, { action: "submitCycleCount", actorId: actor.id, cycleCountId, partId: stored.value.partId, location: stored.value.location, serialVariance });
-    return { outcome: "applied", cycleCountId, status: "COUNTED", countedSerialNumbers: counted, serialVariance };
+    return {
+      outcome: "applied",
+      cycleCountId,
+      status: "COUNTED",
+      countedSerialNumbers: counted,
+      serialVariance,
+      expectedSerialNumbers: stored.value.expectedSerialNumbers,
+    };
   });
 }
 
 // =====================================================================================================
-// reconcileCycleCount -- COUNTED -> RECONCILED. Requires a reason on any non-zero variance; stages
-// ADJUSTED ledger evidence (never overwrites stock truth directly); idempotent; atomic.
+// reconcileCycleCount -- COUNTED -> RECONCILED (decision APPROVE, the default) or COUNTED -> REJECTED
+// (decision REJECT). This is the manager review step: expected vs. counted vs. variance was already
+// computed and frozen at submit time (submitCycleCount never lets the counter see it change after the
+// fact); this command is where a manager DISPOSES of that variance.
+//
+//   APPROVE: requires a reason on any non-zero variance; stages ADJUSTED ledger evidence (never
+//            overwrites stock truth directly) -- unchanged from this command's pre-M23 behavior.
+//   REJECT : requires a reason on any non-zero variance (a dispute needs the same justification an
+//            adjustment would); stages NO ledger writes at all -- the expected-quantity authority is
+//            left exactly as it was, the count is simply recorded as disputed for follow-up (e.g. a
+//            recount), never silently treated as a correction.
+//
+// SEPARATION OF DUTIES (Owner ruling, M23): whichever way a manager disposes of it, the disposing actor
+// may not be the SAME principal who submitted this count (`stored.submittedBy`) when the variance is
+// MATERIAL (cycleCountMateriality.ts) -- CycleCountSelfApprovalError, enforced inside this same
+// transaction, so it cannot be bypassed by a client that simply omits the check. A record whose variance
+// is not material (or is zero) has nothing to separate duties over, so the same principal may dispose of
+// it either way -- forcing a second reviewer onto every rounding-level discrepancy would just make small
+// counts slower without buying any real integrity.
+//
+// Idempotent (a retried APPROVE replays the same ledgerEventIds; a retried REJECT replays the same
+// empty set); atomic; a decision cannot be changed after the fact (an already-RECONCILED count cannot
+// later be REJECTed, or vice versa -- STATUS_INVALID).
 // =====================================================================================================
 export async function reconcileCycleCount(request: unknown, deps: CycleCountCommandDeps): Promise<CycleCountActionOutcome> {
   const actor = requireActor(deps.actor);
@@ -284,6 +322,8 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
   const validatedReq = validateReconcileCycleCountInput(request);
   if (!validatedReq.valid) throw new CycleCountMalformedStoredRecordError(`reconcile input invalid: ${validatedReq.reason}`);
   const suppliedReason = validatedReq.value.reason;
+  const decision = validatedReq.value.decision;
+  const isReject = decision === "REJECT";
 
   return deps.db.runTransaction(async (txn) => {
     const now = deps.now();
@@ -296,19 +336,38 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
     if (!snap.exists) throw new CycleCountNotFoundError();
     const stored = deserializeCycleCount(cycleCountId, snap.data());
 
-    if (stored.status !== "COUNTED" && stored.status !== "RECONCILED") {
+    if (stored.status !== "COUNTED" && stored.status !== "RECONCILED" && stored.status !== "REJECTED") {
       throw new CycleCountStatusInvalidError(`cycle count is ${stored.status}, cannot reconcile (submit a count first)`);
     }
-    const alreadyReconciled = stored.status === "RECONCILED";
+    const alreadyDecided = stored.status === "RECONCILED" || stored.status === "REJECTED";
+    if (alreadyDecided) {
+      const priorWasReject = stored.status === "REJECTED";
+      if (priorWasReject !== isReject) {
+        throw new CycleCountStatusInvalidError(`cycle count was already ${stored.status}, its decision cannot be changed`);
+      }
+    }
 
     const part = await deps.resolvePart(txn, stored.value.partId);
     if (part === null || part.partId !== stored.value.partId) throw new CycleCountPartInvalidError("part not found");
 
     const isSerial = stored.value.trackingMode === "SERIAL";
-    const hasVariance = isSerial
-      ? (stored.serialVariance?.missing.length ?? 0) > 0 || (stored.serialVariance?.unexpected.length ?? 0) > 0
-      : (stored.variance ?? 0) !== 0;
-    if (hasVariance && !alreadyReconciled && !suppliedReason) throw new CycleCountReasonRequiredError();
+    const discrepancyUnits = isSerial
+      ? (stored.serialVariance?.missing.length ?? 0) + (stored.serialVariance?.unexpected.length ?? 0)
+      : Math.abs(stored.variance ?? 0);
+    const hasVariance = discrepancyUnits > 0;
+    if (hasVariance && !alreadyDecided && !suppliedReason) throw new CycleCountReasonRequiredError();
+
+    if (hasVariance && !alreadyDecided) {
+      // Fail-closed: submitCycleCount (post-M23) always writes submittedBy, so its absence on a
+      // COUNTED record with a variance means the stored record predates that write or is otherwise
+      // malformed -- refuse rather than silently allow an unattributable self-approval.
+      if (stored.submittedBy === undefined) {
+        throw new CycleCountMalformedStoredRecordError("stored cycle count is COUNTED with a variance but has no submittedBy");
+      }
+      const expectedUnits = isSerial ? (stored.value.expectedSerialNumbers?.length ?? 0) : stored.value.expectedQuantity;
+      const isMaterial = isMaterialCycleCountVariance(discrepancyUnits, expectedUnits, resolveCycleCountMaterialityConfig());
+      if (isMaterial && actor.id === stored.submittedBy) throw new CycleCountSelfApprovalError();
+    }
 
     const bufferedStore = {
       async read(docId: string) {
@@ -321,7 +380,10 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
     };
 
     const ledgerEventIds: string[] = [];
-    if (isSerial) {
+    // REJECT never stages ledger evidence, even when there is a variance -- rejecting a count is a
+    // statement that the count itself is not trusted as a correction, not a correction in the other
+    // direction. Only APPROVE (isReject === false) reaches the stageOperationalMovement calls below.
+    if (!isReject && isSerial) {
       // Missing serials get ADJUSTED ledger EVIDENCE (see this module's header note on why the
       // serialized_assets registry itself is intentionally NOT flipped). "Unexpected" serials are
       // recorded as evidence on the cycle count document only (already staged at submit time) -- they
@@ -341,10 +403,10 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
         };
         const outcome = await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now });
         ledgerEventIds.push(outcome.docId);
-        if (!alreadyReconciled && outcome.outcome !== "applied") throw new CycleCountIntegrityError("reconciliation ledger effect did not apply coherently");
-        if (alreadyReconciled && outcome.outcome !== "replayed") throw new CycleCountIntegrityError("cycle count already reconciled but ledger did not replay coherently");
+        if (!alreadyDecided && outcome.outcome !== "applied") throw new CycleCountIntegrityError("reconciliation ledger effect did not apply coherently");
+        if (alreadyDecided && outcome.outcome !== "replayed") throw new CycleCountIntegrityError("cycle count already decided but ledger did not replay coherently");
       }
-    } else if ((stored.variance ?? 0) !== 0) {
+    } else if (!isReject && (stored.variance ?? 0) !== 0) {
       const ev = {
         type: "ADJUSTED" as const,
         partId: stored.value.partId,
@@ -357,21 +419,28 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
       };
       const outcome = await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now });
       ledgerEventIds.push(outcome.docId);
-      if (!alreadyReconciled && outcome.outcome !== "applied") throw new CycleCountIntegrityError("reconciliation ledger effect did not apply coherently");
-      if (alreadyReconciled && outcome.outcome !== "replayed") throw new CycleCountIntegrityError("cycle count already reconciled but ledger did not replay coherently");
+      if (!alreadyDecided && outcome.outcome !== "applied") throw new CycleCountIntegrityError("reconciliation ledger effect did not apply coherently");
+      if (alreadyDecided && outcome.outcome !== "replayed") throw new CycleCountIntegrityError("cycle count already decided but ledger did not replay coherently");
     }
 
-    if (alreadyReconciled) {
+    if (alreadyDecided) {
       const priorIds = new Set(stored.ledgerEventIds ?? []);
       const same = priorIds.size === ledgerEventIds.length && ledgerEventIds.every((id) => priorIds.has(id));
-      if (!same) throw new CycleCountIntegrityError("cycle count already reconciled but ledger evidence did not replay coherently");
-      return { outcome: "replayed", cycleCountId, status: stored.status, ledgerEventIds, ...(stored.reconciliationReason === undefined ? {} : { reconciliationReason: stored.reconciliationReason }) };
+      if (!same) throw new CycleCountIntegrityError("cycle count already decided but ledger evidence did not replay coherently");
+      return {
+        outcome: "replayed",
+        cycleCountId,
+        status: stored.status,
+        ledgerEventIds,
+        ...(stored.reviewDecision === undefined ? {} : { reviewDecision: stored.reviewDecision }),
+        ...(stored.reconciliationReason === undefined ? {} : { reconciliationReason: stored.reconciliationReason }),
+      };
     }
 
-    writes.push({ op: "update", ref, data: reconcileFields(stored.version + 1, actor, now, suppliedReason, ledgerEventIds) });
+    writes.push({ op: "update", ref, data: reconcileFields(stored.version + 1, actor, now, suppliedReason, ledgerEventIds, decision) });
 
     deps.stageAudit(txn, {
-      action: "reconcileCycleCount",
+      action: isReject ? "rejectCycleCount" : "reconcileCycleCount",
       actorId: actor.id,
       cycleCountId,
       partId: stored.value.partId,
@@ -383,7 +452,14 @@ export async function reconcileCycleCount(request: unknown, deps: CycleCountComm
       if (w.op === "create") txn.create(w.ref, w.data);
       else txn.update(w.ref, w.data);
     }
-    return { outcome: "applied", cycleCountId, status: "RECONCILED", ledgerEventIds, ...(suppliedReason === null ? {} : { reconciliationReason: suppliedReason }) };
+    return {
+      outcome: "applied",
+      cycleCountId,
+      status: isReject ? "REJECTED" : "RECONCILED",
+      ledgerEventIds,
+      reviewDecision: decision,
+      ...(suppliedReason === null ? {} : { reconciliationReason: suppliedReason }),
+    };
   });
 }
 

@@ -53,13 +53,20 @@ function distinct(values) {
   return Array.from(new Set(values));
 }
 
-// Resolve a name map that may be a Map or a plain object; missing -> the id itself
-// (never a blank cell), so an unresolved name degrades gracefully.
+// Resolve a name map that may be a Map or a plain object. An unresolved name returns null,
+// NOT the id.
+//
+// This used to fall back to the id, justified in its own comment as "never a blank cell, so
+// an unresolved name degrades gracefully". That is the escape clause DECISIONS #106 refuses,
+// and it is the fourth place in this codebase found doing it (after the Opportunity pipeline,
+// warehousesView and suppliersView). A document id is not a degraded name -- it is a
+// different kind of thing, and showing one tells the reader something false about the record.
+// Null lets the caller render an honest placeholder or its own "Unresolved reference" state.
 function resolveName(nameMap, id) {
   if (!isNonEmptyString(id)) return null;
-  if (nameMap instanceof Map) return nameMap.get(id) ?? id;
+  if (nameMap instanceof Map) return nameMap.get(id) ?? null;
   if (nameMap && typeof nameMap === "object" && isNonEmptyString(nameMap[id])) return nameMap[id];
-  return id;
+  return null;
 }
 
 // LOADED-ONLY optional filters. accountId is an equality filter this module owns;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
+import { useAccountPicker } from "../../hooks/useAccountPicker";
+import { EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
@@ -11,6 +11,7 @@ import EquipmentCreateModal from "./EquipmentCreateModal";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
@@ -32,7 +33,12 @@ import { equipmentStatusTone } from "../../domain/equipment";
 // and ordering all run through the E1 domain helpers. No per-record query loop.
 
 export default function EquipmentRegister() {
-  const { data: accounts, loading: accountsLoading, error: accountsError } = useFirestoreCollection(ACCOUNTS_COLLECTION);
+  // BOUNDED (§9): capped read that discloses truncation rather than silently offering
+  // a subset the user would read as "all customers".
+  const accountPicker = useAccountPicker();
+  const accounts = accountPicker.options;
+  const accountsLoading = accountPicker.loading;
+  const accountsError = accountPicker.error;
   const [accountId, setAccountId] = useState("");
   const [term, setTerm] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -142,9 +148,8 @@ export default function EquipmentRegister() {
         // chosen -- an "Add Equipment" button with no customer would have nothing to
         // add to.
         accountChosen ? (
-          <button
-            type="button"
-            className="fo-btn-primary"
+          <Button
+            variant="primary"
             onClick={() => {
               // Clear the live region on OPEN. Duplicate names are legal (§8), so
               // creating "Unit A" twice would set an identical announcement string --
@@ -155,7 +160,7 @@ export default function EquipmentRegister() {
             }}
           >
             + New Equipment
-          </button>
+          </Button>
         ) : null
       }
     />

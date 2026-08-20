@@ -3,6 +3,7 @@ import { buildScheduleInput } from "../../domain/schedulingWorkspace";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { FormError } from "../ui/form";
+import { Button } from "../ui/primitives";
 
 // Governed "Schedule this Work Order" collector -- the ONE reusable surface that moves a
 // READY_TO_DISPATCH Work Order to SCHEDULED via the already-deployed transitionWorkOrder("Schedule", ...)
@@ -102,12 +103,12 @@ export default function ScheduleWorkOrderForm({ workOrder, technicians = [], onS
       <FormError role="alert" className="fo-sched-form__error">{error}</FormError>
 
       <div className="fo-btn-row">
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Scheduling…" : "Schedule"}
-        </button>
-        <button type="button" className="fo-linkbtn" disabled={submitting} onClick={() => onCancel?.()}>
+        <Button type="submit" loading={submitting}>
+          Schedule
+        </Button>
+        <Button type="button" variant="tertiary" className="fo-linkbtn" disabled={submitting} onClick={() => onCancel?.()}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

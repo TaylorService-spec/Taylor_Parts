@@ -1,3 +1,4 @@
+import { ACCOUNT_AR_STATE } from "./accountArView.js";
 // Account health strip -- the PURE view model for the Account workspace's top-line metrics.
 //
 // HONESTY IS THE WHOLE POINT OF THIS MODULE. It projects ONLY metrics with a real, authoritative,
@@ -47,28 +48,36 @@ function openWorkOrdersMetric(countState) {
 }
 
 // Outstanding AR + past due, both from the ONE AR view model (never a second AR derivation).
+//
+// The discriminants are compared against ACCOUNT_AR_STATE, the producer's own
+// exported contract -- NOT hardcoded literals. This file previously compared
+// arView.kind against uppercase strings ("READY", "EMPTY", ...) while
+// accountArView.js emits lowercase ones, so no branch could ever match and the
+// strip fell through to UNAVAILABLE on every account, forever, including
+// accounts whose AR read succeeded. Importing the contract makes that class of
+// mismatch impossible rather than merely currently-correct.
 function arMetrics(arView) {
   const kind = arView?.kind;
-  if (kind === "LOADING") {
+  if (kind === ACCOUNT_AR_STATE.LOADING) {
     return [
       { id: "outstandingAr", label: "Outstanding AR", state: HEALTH_METRIC_STATE.LOADING },
       { id: "pastDueAr", label: "Past due", state: HEALTH_METRIC_STATE.LOADING },
     ];
   }
-  if (kind === "DENIED") {
+  if (kind === ACCOUNT_AR_STATE.DENIED) {
     return [
       { id: "outstandingAr", label: "Outstanding AR", state: HEALTH_METRIC_STATE.DENIED },
       { id: "pastDueAr", label: "Past due", state: HEALTH_METRIC_STATE.DENIED },
     ];
   }
-  if (kind === "EMPTY") {
+  if (kind === ACCOUNT_AR_STATE.EMPTY) {
     // A real answer: this account has no invoices at all.
     return [
       { id: "outstandingAr", label: "Outstanding AR", state: HEALTH_METRIC_STATE.READY, value: "None" },
       { id: "pastDueAr", label: "Past due", state: HEALTH_METRIC_STATE.READY, value: "0" },
     ];
   }
-  if (kind !== "READY") {
+  if (kind !== ACCOUNT_AR_STATE.READY) {
     return [
       { id: "outstandingAr", label: "Outstanding AR", state: HEALTH_METRIC_STATE.UNAVAILABLE },
       { id: "pastDueAr", label: "Past due", state: HEALTH_METRIC_STATE.UNAVAILABLE },

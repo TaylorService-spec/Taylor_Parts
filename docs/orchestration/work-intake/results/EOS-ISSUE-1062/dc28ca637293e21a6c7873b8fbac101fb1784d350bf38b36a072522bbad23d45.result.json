@@ -1,0 +1,42 @@
+{
+  "resultId": "EOS-ISSUE-1062:271dd964eos1062",
+  "requestId": "EOS-ISSUE-1062",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "b25531fe8ccbfb4e56854c7bb29411c1ae32809a6b5d95bf11ba21647b2da072",
+  "status": "COMPLETE",
+  "verdict": "PASS",
+  "disposition": "DELIVERED",
+  "summary": "Sandbox Functions deployment verification helper implemented, tested, documented; PR #1070 open with green CI (MERGED not required).",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/3ccb168737b9bd1bff60eead54f1035df1c1c9089cae67145e39b414cdb10b42.content.md",
+  "contentSha256": "3ccb168737b9bd1bff60eead54f1035df1c1c9089cae67145e39b414cdb10b42",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/3ccb168737b9bd1bff60eead54f1035df1c1c9089cae67145e39b414cdb10b42.content.md",
+      "sha256": "3ccb168737b9bd1bff60eead54f1035df1c1c9089cae67145e39b414cdb10b42"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {
+    "testsRun": 18,
+    "testsPassed": 18,
+    "existingTestsPassed": 62
+  },
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/1062"
+    ],
+    "pullRequests": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/pull/1070"
+    ]
+  },
+  "createdAt": "2026-08-16T23:55:00.000Z",
+  "pointer": "result://EOS-ISSUE-1062",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-ISSUE-1062/dc28ca637293e21a6c7873b8fbac101fb1784d350bf38b36a072522bbad23d45.result.json",
+  "sha256": "dc28ca637293e21a6c7873b8fbac101fb1784d350bf38b36a072522bbad23d45"
+}

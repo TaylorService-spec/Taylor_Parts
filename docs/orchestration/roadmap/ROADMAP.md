@@ -25,8 +25,8 @@
 
 | Capability | Owner | Status | Impl | Activation | Backend | UserOp | UX | Deploy | Milestones |
 |---|---|---|---|---|---|---|---|---|---|
-| Sales Opportunity lifecycle (Cycles 2–3) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
-| Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
+| Sales Opportunity lifecycle (Cycles 2–3) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | PARTIAL | NOT_DEPLOYED | 1/1 |
+| Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | PARTIAL | NOT_DEPLOYED | 1/1 |
 | Fulfillment allocation & availability (Cycle 5) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | PARTIAL | false | NONE | NOT_DEPLOYED | 1/1 |
 | Commercial Coverage & Territory (register #15) | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | NONE | NOT_DEPLOYED | 1/1 |
 | Coordinated operations projections | Product/Design | DONE | IMPLEMENTED | NOT_APPLICABLE | COMPLETE | UNKNOWN | UNKNOWN | NOT_APPLICABLE | 1/1 |
@@ -135,8 +135,8 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 - [x] Network Telemetry Integration + Real-Load Proof _(Platform & Orchestration)_
 - [x] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability.
 - [>] Owner Control Center (projection + delivery) _(Platform & Orchestration)_
-- [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
-- [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
+- [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Governed write paths complete: create, transition, ordinary edit (updateOpportunity) and atomic close-as-WON, the last creating exactly one Sales Order in a single transaction with 13 emulator assertions behind it. UX remains PARTIAL -- lifecycle controls, the governed employee owner selector and solution-line editing are not yet wired to the new command. opportunity.* stays active:false, so no principal can exercise any of it until a separately-authorized grant and deploy.
+- [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. The salesOrder.index global list is now MOUNTED on the metadata runtime (2026-08-20), and a read-only Fulfillment & Installation progression renders on Sales Order detail, derived from order state, line quantities and linked Work Orders -- with UNKNOWN preserved rather than inferred, and Customer Handoff left UNKNOWN because no serialized-asset custody event exists to prove it. The CREATION path from a WON Opportunity now exists server-side as closeOpportunityAsWon (atomic, exactly one order) but has NO client call site yet, so a WON Opportunity still cannot produce a Sales Order through the product. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
 - [P] Commercial Coverage & Territory (register #15) _(Commercial & Sales)_ — Precedence/override/inheritance + sales credit + commission are deferred policy (do not manufacture)
 - [x] Coordinated operations projections _(Commercial & Sales)_
@@ -253,7 +253,8 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 #### Sales Opportunity lifecycle (Cycles 2–3) — `PROTECTED_ACTION`
 
 - Owner: Product/Design · Milestones: 1/1 · Last verified: `da89558`
-- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: NONE · Deploy: NOT_DEPLOYED
+- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: PARTIAL · Deploy: NOT_DEPLOYED
+- Blocked: Governed write paths complete: create, transition, ordinary edit (updateOpportunity) and atomic close-as-WON, the last creating exactly one Sales Order in a single transaction with 13 emulator assertions behind it. UX remains PARTIAL -- lifecycle controls, the governed employee owner selector and solution-line editing are not yet wired to the new command. opportunity.* stays active:false, so no principal can exercise any of it until a separately-authorized grant and deploy.
 - Protected boundary: Grant opportunity.* + deploy callables
   - ☑ **Governed write + trusted read projection** — criteria: opportunity.write inert; opportunity.read inert; opportunities deny-all
     - opportunityCommands/Callables/ReadService — `DONE` · PRs: #651 #654 · evidence: PR:#651, PR:#654, CAPABILITY_FLAG:opportunity.write(active:false)
@@ -261,8 +262,9 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 #### Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) — `PROTECTED_ACTION`
 
 - Owner: Product/Design · Milestones: 1/1 · Last verified: `da89558`
-- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: NONE · Deploy: NOT_DEPLOYED
+- Dimensions — Impl: IMPLEMENTED · Activation: INERT · Backend: COMPLETE · UserOperable: false · UX: PARTIAL · Deploy: NOT_DEPLOYED
 - Dependencies: opportunity-lifecycle
+- Blocked: READ UX built and reachable: detail page routed, contextual actions, account-related list, metadata definitions, governed reads deployed and serving 14 numbered orders in sandbox. The salesOrder.index global list is now MOUNTED on the metadata runtime (2026-08-20), and a read-only Fulfillment & Installation progression renders on Sales Order detail, derived from order state, line quantities and linked Work Orders -- with UNKNOWN preserved rather than inferred, and Customer Handoff left UNKNOWN because no serialized-asset custody event exists to prove it. The CREATION path from a WON Opportunity now exists server-side as closeOpportunityAsWon (atomic, exactly one order) but has NO client call site yet, so a WON Opportunity still cannot produce a Sales Order through the product. Write-side capabilities remain active:false, so operational actions render fail-closed pending a separately-authorized grant + activation.
 - Protected boundary: Grant salesOrder.* + deploy callables
   - ☑ **Committed commercial order + Service lineage** — criteria: salesOrder.write inert; salesOrder.service inert; sales_orders deny-all; assigns no WO/inventory
     - salesOrderCommands/Callables + createServiceForSalesOrder — `DONE` · PRs: #659 #663 · evidence: PR:#659, PR:#663

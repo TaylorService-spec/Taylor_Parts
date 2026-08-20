@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- seeded
 // admin/dispatcher/technician compatibility Roles. Fixed by docs/
 // specifications/enterprise-access-and-administration-platform.md §7
@@ -28,10 +34,12 @@
 // dispatcher). `audit.event.read` remains deferred to Row 11 (the Admin
 // Portal's own read surface), since Row 7 does not consume it.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/compatibilityRoles.ts. If either file
-// changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
+import { PERMISSION_CATALOG } from "./permissionCatalog.ts";
 
 const PARTS_MANAGER_ONLY = { role: "PARTS_MANAGER" };
 const PARTS_ASSOCIATE_ONLY = { role: "PARTS_ASSOCIATE" };
@@ -67,6 +75,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "reorder.purchaseOrder.read",
   "reorder.purchaseOrder.create",
   "reorder.purchaseOrder.void",
+  "inventory.analytics.read",
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",
@@ -108,6 +117,18 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
+  // Coordinated Operations fidelity fix, grant step (Owner ruling, grantable-governed-roles
+  // workstream). `fulfillment.coordinatedVisit.read` was registered active:false and ALREADY
+  // eligible for per-environment activation (environmentCapabilityOverrides.ts), but held by NO
+  // Role at all -- so Coordinated Visits (Service/Dispatch) and Coordinated Mission (Technician)
+  // stayed inert even where activation was on, for every principal including Owner. Owner's
+  // proposed grant set is exactly {owner, admin, operationsManager, fieldManager, dispatcher};
+  // granted here to the shared admin/dispatcher base so both compatibility Roles hold it AND
+  // Owner inherits it by composition (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...]) --
+  // operationsManager and fieldManager are granted directly in governedBusinessRoles.ts. Grant is
+  // NOT activation: this id stays active:false, so it denies everywhere the per-environment
+  // override is off (i.e. everywhere except platform-sandbox), exactly like the spine ids above.
+  "fulfillment.coordinatedVisit.read",
 ] as const;
 
 // reorder.purchaseOrder.void is double-gated in firestore.rules
@@ -120,21 +141,11 @@ const SHARED_ADMIN_DISPATCHER_CONDITIONS = {
   "reorder.purchaseOrder.void": [{ kind: "isOwnAssignment" as const, params: {} }],
 };
 
-// Assessment §1: admin has every capability audited there, including the
-// Issue #175 governed-field write withheld from dispatcher, plus the
-// Row 7 Admin Portal / trusted-writer authorities.
-export const ADMIN_ROLE: Role = Object.freeze({
-  id: "admin",
-  name: "Administrator (compatibility)",
-  description:
-    "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
-  systemSeed: true,
-  compatibility: true,
-  // Privileged (Spec sec2.4 / ADR-005 sec2.4): granting/revoking this
-  // Role requires a second, distinct authorized approver, and it is
-  // never eligible for the single-admin assignApprovedRole path (Row 7).
-  privileged: true,
-  permissions: [
+// Every capability admin holds by CURATION -- each entry below was granted by a
+// specific decision, and the comments are the record of those decisions. Kept
+// verbatim so the reasoning survives; see ADMIN_ALL_PERMISSIONS beneath it for
+// what admin actually resolves with.
+const ADMIN_CURATED_PERMISSIONS = [
     ...SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS,
     "account.governedField.write",
     "admin.userStatus.write",
@@ -152,7 +163,90 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "finance.adjustment.record",
     "finance.refund.record",
     "finance.read",
-  ],
+    // CRM activity -- Owner ruling 2026-08-19, closing the finding in
+    // docs/governance/crm-activity-admin-authority-proposal.md. Exactly one Role
+    // carried these ids (crmActivityContributor), so canonical admin authority did
+    // not include them: a dispatcher holding that operational Role could read CRM
+    // notes on an Account while the admin could not, and OWNER inherited the same
+    // gap through OWNER_PERMISSIONS composition. The proposal explicitly REJECTED
+    // assigning crmActivityContributor to admin as the durable fix -- that turns
+    // canonical authority into accumulated operational-role workarounds. Granting
+    // on ADMIN_ROLE is the durable form, and Owner ruled admin holds the full set,
+    // not read alone.
+    //
+    // ADMIN-only (NOT the shared base) so DISPATCHER does not gain crm.activity.create
+    // as a side effect -- dispatcher already holds both by its own governed
+    // crmActivityContributor assignment, which stays the audited path for anyone else.
+    // Owner inherits both automatically via OWNER_PERMISSIONS composition.
+    //
+    // GRANT != ACTIVATION, unchanged: both ids remain per-environment activated
+    // (environmentCapabilityOverrides.ts) and production stays triple-blocked.
+    "crm.activity.create",
+    "crm.activity.read",
+    // Catalog curation -- Owner ruling 2026-08-19. inventory.catalog.manage creates and
+    // edits the canonical Part and Manufacturer records every stock movement, Work Order
+    // line and Purchase Order keys off. Before this, exactly two Roles carried it:
+    // inventoryCatalogAdministrator (durable) and inventoryCreateExecutor (a one-run
+    // temporary elevation) -- so canonical admin authority did NOT include the ability to
+    // fix a catalog record, while a Parts Manager holding the operational Role did.
+    //
+    // ADMIN-only, deliberately NOT on SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS: dispatcher
+    // gains nothing. Owner inherits via OWNER_PERMISSIONS composition.
+    //
+    // MANAGE only, NOT inventory.catalog.activate. Creating and correcting reference data
+    // is a different authority from changing its lifecycle status, and activate stays with
+    // inventoryCatalogAdministrator. admin already holds inventory.catalog.read through the
+    // shared base, so read+manage is a coherent pair -- curating a Part against a
+    // manufacturer list you cannot see is not (the same reasoning that added the read to
+    // inventoryCatalogAdministrator).
+    "inventory.catalog.manage",
+];
+
+// OWNER RULING (2026-08-19): "Admin and Owner have full access to all possible
+// features and permissions." So admin holds the ENTIRE catalog, not a hand-kept
+// subset of it.
+//
+// WHY THIS IS DERIVED AND NOT A LONGER HAND LIST. The curated list above had
+// drifted 60 ids behind the catalog. Nobody removed them; the catalog simply grew
+// and the list did not, and the gap was invisible until an admin went looking for
+// a screen and found nothing. A literal list of 110 ids would be correct on the
+// day it was written and wrong again at the next capability added. Deriving it
+// means a new capability is admin's the moment it is registered, which is exactly
+// what the ruling says.
+//
+// GRANT IS STILL NOT ACTIVATION. Holding an id that is registered `active: false`
+// resolves DENY with reason `inactivePermission` regardless. This widens WHO holds
+// a capability; it does not turn any capability on, in any environment.
+//
+// SEPARATION-OF-DUTIES NOTE, deliberately recorded rather than silently applied:
+// this puts inventory.cycleCount.create/submit/reconcile in one Role, so an admin
+// can reconcile a count they themselves submitted, and it grants audit.event.read.
+// Both follow from the ruling as stated. If internal controls should override the
+// ruling for those specific ids, they belong in an explicit exclusion list here --
+// not as an accident of the list being out of date.
+const ADMIN_ALL_PERMISSIONS = [
+  ...ADMIN_CURATED_PERMISSIONS,
+  ...PERMISSION_CATALOG.map((permission) => permission.id).filter(
+    (id) => !ADMIN_CURATED_PERMISSIONS.includes(id),
+  ),
+];
+
+// Assessment §1: admin has every capability audited there, including the
+// Issue #175 governed-field write withheld from dispatcher, plus the
+// Row 7 Admin Portal / trusted-writer authorities.
+export const ADMIN_ROLE: Role = Object.freeze({
+
+  id: "admin",
+  name: "Administrator (compatibility)",
+  description:
+    "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
+  systemSeed: true,
+  compatibility: true,
+  // Privileged (Spec sec2.4 / ADR-005 sec2.4): granting/revoking this
+  // Role requires a second, distinct authorized approver, and it is
+  // never eligible for the single-admin assignApprovedRole path (Row 7).
+  privileged: true,
+  permissions: ADMIN_ALL_PERMISSIONS,
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
 

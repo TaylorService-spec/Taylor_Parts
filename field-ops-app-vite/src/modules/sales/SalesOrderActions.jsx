@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useSalesOrderActions } from "../../hooks/useSalesOrderActions.js";
 import { canAdvance, canCancel, canAllocate, canCreateService, nextAdvanceState } from "../../domain/salesOrderActions.js";
+import {
+  SALES_ORDER_WRITE_CAPABILITY,
+  SALES_ORDER_FULFILL_CAPABILITY,
+  SALES_ORDER_SERVICE_CAPABILITY,
+  SALES_ORDER_WRITE_DISABLED_REASON,
+} from "../../access/salesOrderCapabilityAccess.js";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Sales Order operational actions -- wires the three trusted, already sandbox-activated write
 // commands (transitionSalesOrder / allocateSalesOrder / createServiceForSalesOrder) onto the
@@ -11,17 +18,30 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 // terms -- `unitPrice` was stripped from the trusted read projection in PR #991 and nothing here
 // reintroduces it or any other commercial term; this surface is operational, not commercial.
 //
-// Every offered action is gated by a CLIENT MIRROR of the backend's own precondition
-// (domain/salesOrderActions.js) so an operator is never shown a button the server would reject --
-// but that mirror is UX ONLY. The server re-checks every one of these preconditions and remains the
-// sole authority; a stale/incorrect mirror can only ever produce a worse error message, never an
-// unauthorized write (see domain/salesOrderActions.js's header for the one documented gap).
+// Every offered action is gated by TWO independent checks: (1) a CLIENT MIRROR of the backend's own
+// STATE precondition (domain/salesOrderActions.js) that decides whether the action is offered AT ALL
+// for this Sales Order's current lifecycle state, and (2) the REAL trusted write-CAPABILITY signal
+// (`hasCapability`, fed from access/useSalesOrderCapabilities.js's resolveEffectiveAccessCallable
+// feed) that decides whether an already-offered action renders LIVE or PROTECTED+disabled+honest.
+// This closes the known defect where a principal holding salesOrder.read but not salesOrder.write/
+// .fulfill/.service (salesManager, accountingManager, financeManager) saw fully live buttons and only
+// learned they were unauthorized after confirming and hitting the server's denial. `hasCapability`
+// defaults to fail-closed (denies every capability) when the caller does not inject the real signal --
+// same posture as access/opportunityWriteReadiness.js -- so an action is NEVER rendered live unless a
+// real grant says so. The state mirror remains UX ONLY regardless: the server re-checks every
+// precondition and remains the sole authority (see domain/salesOrderActions.js's header for the one
+// documented state-mirror gap).
 //
 // A successful action calls `onChanged()` (the caller's useSalesOrder().refetch) so the page shows
 // the SERVER's new state -- this component never fabricates the post-action state itself.
-export default function SalesOrderActions({ view, onChanged, actionDeps }) {
+export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapability }) {
   const { pending, runTransition, runAllocate, runCreateService, discardTransitionIntent } = useSalesOrderActions(view.id, actionDeps);
   const [openDialog, setOpenDialog] = useState(null); // null | "ADVANCE" | "CANCEL" | "ALLOCATE" | "SERVICE"
+
+  const checkCapability = hasCapability ?? (() => false); // fail-closed default -- see header
+  const writeGranted = checkCapability(SALES_ORDER_WRITE_CAPABILITY); // Advance + Cancel (transitionSalesOrder)
+  const fulfillGranted = checkCapability(SALES_ORDER_FULFILL_CAPABILITY); // Allocate
+  const serviceGranted = checkCapability(SALES_ORDER_SERVICE_CAPABILITY); // Create Service
 
   const hasPartLine = view.lines.some((l) => l.kind === "PART");
   const advanceAllowed = canAdvance(view.state, { allLinesFulfilled: view.allLinesFulfilled });
@@ -29,6 +49,11 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
   const allocateAllowed = canAllocate(view.state);
   const serviceAllowed = canCreateService(view.state, { serviceWorkOrderIds: view.serviceWorkOrderIds });
   const nextState = nextAdvanceState(view.state);
+
+  // Dialog copy must use the governed business reference, never the Firestore document id
+  // (DECISIONS #106: a missing reference is not permission to display a record id). This matches
+  // the honest-unavailable fallback SalesOrderDetail.jsx already uses for the page title.
+  const orderLabel = view.salesOrderNumber ? `Sales Order ${view.salesOrderNumber}` : "Sales Order — Reference unavailable";
 
   function closeDialog(transitionToDiscard) {
     if (transitionToDiscard) discardTransitionIntent(transitionToDiscard);
@@ -48,29 +73,53 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
         secondary={
           <>
             {allocateAllowed && (
-              <button type="button" className="fo-btn-secondary" disabled={anyBusy} onClick={() => setOpenDialog("ALLOCATE")}>
+              <Button
+                type="button"
+                variant={fulfillGranted ? "secondary" : "protected"}
+                reason={fulfillGranted ? undefined : SALES_ORDER_WRITE_DISABLED_REASON}
+                disabled={anyBusy}
+                onClick={fulfillGranted ? () => setOpenDialog("ALLOCATE") : undefined}
+              >
                 Allocate
-              </button>
+              </Button>
             )}
             {serviceAllowed && (
-              <button type="button" className="fo-btn-secondary" disabled={anyBusy} onClick={() => setOpenDialog("SERVICE")}>
+              <Button
+                type="button"
+                variant={serviceGranted ? "secondary" : "protected"}
+                reason={serviceGranted ? undefined : SALES_ORDER_WRITE_DISABLED_REASON}
+                disabled={anyBusy}
+                onClick={serviceGranted ? () => setOpenDialog("SERVICE") : undefined}
+              >
                 Create Service
-              </button>
+              </Button>
             )}
             {cancelAllowed && (
-              <button type="button" className="fo-btn-destructive" disabled={anyBusy} onClick={() => setOpenDialog("CANCEL")}>
+              <Button
+                type="button"
+                variant={writeGranted ? "destructive" : "protected"}
+                reason={writeGranted ? undefined : SALES_ORDER_WRITE_DISABLED_REASON}
+                disabled={anyBusy}
+                onClick={writeGranted ? () => setOpenDialog("CANCEL") : undefined}
+              >
                 Cancel order
-              </button>
+              </Button>
             )}
           </>
         }
         primary={
           advanceAllowed && (
-            <button type="button" className="fo-btn-primary" disabled={anyBusy} onClick={() => setOpenDialog("ADVANCE")}>
+            <Button
+              type="button"
+              variant={writeGranted ? "primary" : "protected"}
+              reason={writeGranted ? undefined : SALES_ORDER_WRITE_DISABLED_REASON}
+              disabled={anyBusy}
+              onClick={writeGranted ? () => setOpenDialog("ADVANCE") : undefined}
+            >
               {nextState === "IN_FULFILLMENT" && "Move to In Fulfillment"}
               {nextState === "FULFILLED" && "Mark Fulfilled"}
               {nextState === "CLOSED" && "Close order"}
-            </button>
+            </Button>
           )
         }
       />
@@ -78,7 +127,8 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ADVANCE" && (
         <ConfirmDialog
           title="Advance Sales Order"
-          consequence={`This moves Sales Order ${view.id} from ${view.state} to ${nextState}.`}
+          destructive={false}
+          consequence={`This moves ${orderLabel} from ${view.state} to ${nextState}.`}
           confirmLabel="Advance"
           onConfirm={async () => {
             await runTransition("ADVANCE");
@@ -92,7 +142,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "CANCEL" && (
         <ConfirmDialog
           title="Cancel Sales Order"
-          consequence={`This cancels Sales Order ${view.id}. It cannot be resumed from here.`}
+          consequence={`This cancels ${orderLabel}. It cannot be resumed from here.`}
           confirmLabel="Confirm cancel"
           cancelLabel="Keep order"
           onConfirm={async () => {
@@ -107,7 +157,8 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "ALLOCATE" && (
         <ConfirmDialog
           title="Allocate Sales Order"
-          consequence={`This computes and records current availability against Sales Order ${view.id}'s lines. It does not change pricing or quote terms.`}
+          destructive={false}
+          consequence={`This computes and records current availability against ${orderLabel}'s lines. It does not change pricing or quote terms.`}
           confirmLabel="Confirm allocate"
           onConfirm={async () => {
             await runAllocate();
@@ -121,7 +172,8 @@ export default function SalesOrderActions({ view, onChanged, actionDeps }) {
       {openDialog === "SERVICE" && (
         <ConfirmDialog
           title="Create Service"
-          consequence={`This creates a Work Order to fulfill Sales Order ${view.id}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
+          destructive={false}
+          consequence={`This creates a Work Order to fulfill ${orderLabel}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
           confirmLabel="Confirm create Service"
           onConfirm={async () => {
             await runCreateService();

@@ -121,6 +121,22 @@ describe("ReportBuilder — Saved Reports wiring (Fix 2)", () => {
     expect(payload.definition.fields).toEqual(["customer.name"]);
   });
 
+  it("Save stays disabled while the definition is invalid (object picked, no fields selected) even with a name entered", () => {
+    const create = vi.fn();
+    withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create }} />);
+
+    // Pick an object but select zero fields -- builderStatus(def) is "invalid", same as what
+    // keeps Run disabled. A name alone must not be enough to enable Save.
+    fireEvent.change(screen.getByLabelText("Object"), { target: { value: "customer" } });
+    fireEvent.change(screen.getByLabelText("Report name"), { target: { value: "Incomplete report" } });
+
+    const saveButton = screen.getByRole("button", { name: "Save as new report" });
+    expect(saveButton.disabled).toBe(true);
+
+    fireEvent.click(saveButton);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("a create() rejection surfaces a safe message, never a raw error", async () => {
     const create = vi.fn().mockRejectedValue({ code: "functions/invalid-argument" });
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create }} />);

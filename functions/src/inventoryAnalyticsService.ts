@@ -27,7 +27,11 @@ export type LedgerTransaction = {
   id: string;
   workOrderId: string;
   partId: string;
-  type: "RESERVED" | "RELEASED" | "CONSUMED";
+  // Mirrors InventoryTransactionType: the legacy Work-Order vocabulary plus the governed movement
+  // types Receiving/Transfer/Cycle Count write to the same append-only ledger.
+  type:
+    | "RESERVED" | "RELEASED" | "CONSUMED"
+    | "RECEIVED" | "TRANSFER_IN" | "TRANSFER_OUT" | "ADJUSTED";
   quantity: number;
   timestamp: number; // epoch ms -- see header comment re: Timestamp conversion
 };

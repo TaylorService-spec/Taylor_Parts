@@ -6,6 +6,7 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
 import SalesOrderActions from "./SalesOrderActions.jsx";
+import SalesOrderFulfillmentSection from "./SalesOrderFulfillmentSection.jsx";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
 // getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
@@ -20,18 +21,34 @@ import SalesOrderActions from "./SalesOrderActions.jsx";
 // `actionDeps` is an injectable test-only seam (mirrors PartWriteModal's `writeDeps`): passed straight
 // through to SalesOrderActions -> useSalesOrderActions so tests can supply a MOCKED command client
 // without touching `firebase`. Production routing never supplies it, so it defaults to the real client.
-export default function SalesOrderDetail({ actionDeps } = {}) {
+// `hasCapability` is the REAL trusted write-capability signal (access/useSalesOrderCapabilities),
+// passed straight through to SalesOrderActions so it can render Advance/Cancel/Allocate/Create Service
+// as live only for a principal actually granted salesOrder.write/.fulfill/.service -- fail-closed
+// (protected + disabled + honest) when omitted, same posture as every other write-readiness seam.
+export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   const { salesOrderId } = useParams();
   const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
   const view = salesOrderView({ loading, errorStatus, result });
 
   const actions =
     view.kind === SALES_ORDER_VIEW_STATE.READY
-      ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} />
+      ? <SalesOrderActions view={view} onChanged={refetch} actionDeps={actionDeps} hasCapability={hasCapability} />
       : null;
 
+  // The page title is the governed business reference, never the Firestore document id
+  // (DECISIONS #106: a missing reference is not permission to display a record id). A Sales
+  // Order created before numbering existed has no salesOrderNumber -- that is rendered as an
+  // honest unavailable state, not a fabricated or id-derived one. `view.id` remains available
+  // to the rest of the tree for routing only.
+  const title =
+    view.kind === SALES_ORDER_VIEW_STATE.READY
+      ? view.salesOrderNumber
+        ? `Sales Order ${view.salesOrderNumber}`
+        : "Sales Order — Reference unavailable"
+      : "Sales Order";
+
   return (
-    <WorkspaceShell title={view.kind === SALES_ORDER_VIEW_STATE.READY ? `Sales Order ${view.id}` : "Sales Order"} actions={actions}>
+    <WorkspaceShell title={title} actions={actions}>
       {view.kind === SALES_ORDER_VIEW_STATE.LOADING && <p className="fo-muted">Loading Sales Order…</p>}
       {view.kind === SALES_ORDER_VIEW_STATE.DENIED && (
         <FailureState title="Sales Order unavailable" message="You are not authorized to view this Sales Order." />
@@ -50,8 +67,16 @@ export default function SalesOrderDetail({ actionDeps } = {}) {
               {
                 key: "opportunity",
                 label: "Originating Opportunity",
+                // Label with the Opportunity's immutable reference, never its document id.
+                // Where a Sales Order predates Opportunity identity there is no reference to
+                // show, so the link reads "Originating opportunity" — a true statement that a
+                // link exists, rather than a database key presented as a name.
                 value: view.sourceOpportunityId
-                  ? <Link to="/customers/opportunities">{view.sourceOpportunityId}</Link>
+                  ? (
+                    <Link to="/customers/opportunities">
+                      {view.sourceOpportunityNumber || "Originating opportunity"}
+                    </Link>
+                  )
                   : "—",
               },
               { key: "state", label: "Lifecycle state", value: <StatusPill tone={view.tone} label={view.state} /> },
@@ -90,6 +115,15 @@ export default function SalesOrderDetail({ actionDeps } = {}) {
               </div>
             )}
           </section>
+
+          {/* Fulfillment & Installation -- a READ-ONLY projection over records that already
+              exist (order state, line quantities, linked Work Orders). Placed above the raw
+              lineage list because it answers the question people open this page to ask;
+              the id list below remains as the underlying detail.
+              workOrders is passed as null until a governed linked-Work-Order read is wired,
+              and null means UNKNOWN rather than none -- the projection is explicit about
+              that distinction and the section says so on screen. */}
+          <SalesOrderFulfillmentSection salesOrder={view} workOrders={null} />
 
           <section aria-labelledby="so-service-h">
             <h3 id="so-service-h">Service / Work Order lineage</h3>

@@ -5,12 +5,14 @@ import { buildPartsPlanInput, planRemovalBlocked } from "../domain/workOrderPart
 // WO Parts Planning -- the ONLY place the governed setWorkOrderPartsPlan command is invoked from the
 // Work Order experience.
 //
-// There is deliberately NO readiness flag here. Part Master write has one because its UI must be
-// inert in an environment where the callables are absent; parts planning instead relies on the
-// capability itself: `workOrder.parts.plan` is registered active:false and granted to no Role, so the
-// command fails closed on the server for every caller until a separate grant. Adding a second,
-// client-side gate would let the repo *look* activated while the server still denies -- one gate,
-// server-side, is the honest model.
+// This hook (the SAVE call itself) still relies purely on the server-side gate: `workOrder.parts.plan`
+// is registered active:false, so the command fails closed for every caller until a separate grant, and
+// this hook never guesses. The EDIT-ENTRY affordance is a different question -- letting a user run a
+// full add/remove/quantity session that can only ever be rejected here is its own defect (a control
+// that looks live and cannot work), so WorkOrderPartsPlanEditor.jsx now gates "Edit parts plan" up
+// front on the same trusted effective-access feed used for Opportunity write
+// (access/useWorkOrderPartsPlanCapability.js). That is a second READ of the same server-resolved
+// decision, not a second, independently-guessed gate -- this save path remains the sole authority.
 //
 // Every outcome is an object; this hook never throws. The client NEVER claims a success it did not
 // receive, and never optimistically mutates the plan -- the caller refetches the Work Order so the

@@ -22,6 +22,7 @@ import {
 import Modal from "../ui/Modal";
 import { Field, FormActions, FormStatus } from "../ui/form";
 import StatusPill from "../ui/StatusPill.jsx";
+import { Button } from "../ui/primitives/index.js";
 
 const OUTCOME_TONE = {
   applied: "positive",
@@ -173,9 +174,9 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
             {allowedStatusTransitions(part.status).length === 0
               ? <span className="fo-muted">No status changes are available from {part.status}.</span>
               : allowedStatusTransitions(part.status).map((s) => (
-                  <button key={s} type="button" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</button>
+                  <Button key={s} type="button" variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</Button>
                 ))}
-            <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
+            <Button type="button" variant="secondary" onClick={requestClose} disabled={busy}>Cancel</Button>
           </FormActions>
         </div>
       ) : (
@@ -183,8 +184,8 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
           <PartForm mode={mode} form={form} setForm={setForm} disabled={busy || !writeReady} />
           <FormStatus>{busy ? "Saving…" : ""}</FormStatus>
           <FormActions>
-            <button type="submit" disabled={busy || !writeReady}>{busy ? "Saving…" : mode === "create" ? "Create part" : "Save changes"}</button>
-            <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
+            <Button type="submit" variant="primary" disabled={!writeReady} loading={busy}>{mode === "create" ? "Create part" : "Save changes"}</Button>
+            <Button type="button" variant="secondary" onClick={requestClose} disabled={busy}>Cancel</Button>
           </FormActions>
         </form>
       )}

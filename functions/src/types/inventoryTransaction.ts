@@ -1,7 +1,23 @@
 // Epic 2D Inventory Trigger System (see docs/architecture/ADR-003).
 import type { Timestamp } from "firebase-admin/firestore";
 
-export type InventoryTransactionType = "RESERVED" | "RELEASED" | "CONSUMED";
+// The legacy Work-Order reservation vocabulary PLUS the governed operational movement types that
+// Receiving, Transfer and Cycle Count reconciliation write to this SAME append-only ledger. They were
+// always being written; this type simply did not name them, so every consumer that switched on it
+// silently treated real stock movement as nothing at all.
+//
+// NOTE: this union deliberately does NOT also list RETURNED/SCRAPPED (the two other schema-legal
+// operational movement types -- see inventoryLedger/operationalMovementTypes.ts's
+// OPERATIONAL_MOVEMENT_TYPES). Widening this SHARED type would cascade into ledgerNormalizer.ts's
+// analytics mirror (inventoryAnalyticsService.ts's LedgerTransaction, a narrower, independently
+// maintained type) and every other reader of InventoryTransaction.type -- consumers outside this fix's
+// scope (H7 is specifically inventoryService.ts's getAvailableQuantity and
+// fulfillment/fulfillmentAvailability.ts's sumLedgerEligibleOnHand). Both of those two functions
+// already read `type` as a plain `string` in their own local row shapes, so they gain RETURNED/SCRAPPED
+// handling without widening this shared field type or touching any other consumer's behavior.
+export type InventoryTransactionType =
+  | "RESERVED" | "RELEASED" | "CONSUMED"
+  | "RECEIVED" | "TRANSFER_IN" | "TRANSFER_OUT" | "ADJUSTED";
 
 // Append-only ledger entry -- never updated or deleted once written
 // (see inventoryService.ts: every write here is tx.set() on a brand
@@ -13,6 +29,13 @@ export interface InventoryTransaction {
   type: InventoryTransactionType;
   quantity: number;
   timestamp: Timestamp;
+  // Present ONLY on governed operational-movement records (schemaVersion 2 -- see
+  // inventoryLedger/operationalMovementTypes.ts). ALWAYS present and validated non-empty on those
+  // records (operationalMovementValidation.ts's isTrackingMode check runs before a write is ever
+  // staged); a legacy WO entry (RESERVED/RELEASED/CONSUMED) never carries this field and never needs
+  // to, because those types never enter a governed quantity sum. See getAvailableQuantity() in
+  // inventoryService.ts for why this field must gate the governed sum (H7 fix).
+  trackingMode?: string;
 }
 
 // One doc per Work Order -- idempotency + failure/retry bookkeeping,

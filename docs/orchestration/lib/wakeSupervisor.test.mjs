@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assessReadiness, nextBackoffMs, buildClaudeInvocation, DEFAULT_GUARDRAILS,
-  TRIGGER_MECHANISMS, TRIGGER_KINDS,
+  TRIGGER_MECHANISMS, TRIGGER_KINDS, buildExecutionOutputContract,
 } from "./wakeSupervisor.mjs";
 
 const okItem = (over = {}) => ({ id: "W-1", status: "READY", authorized: true, protectedBoundary: null, scope: ["orchestration"], sha: "abc", ...over });
@@ -98,4 +98,56 @@ test("the constructed invocation is fully guardrailed and never uses bypass perm
   assert.ok(patch.argv.join(" ").includes("--allowedTools Write"), "patch producer grants Write");
   assert.throws(() => buildClaudeInvocation({ contextPackage: { role: "w", scope: [] }, profile: "NOPE" }), /unknown profile/);
   assert.throws(() => buildClaudeInvocation({}), /contextPackage is required/); // must bootstrap via the shared package
+});
+
+// --- governed output contract (gate↔worker seam) ---------------------------------------------------
+// Regression cover for the defect where classifyCompletion required `receipts:["tests"]` but nothing ever
+// asked the worker for them, so correct work landed as BLOCKED_EXECUTION purely on issue-body wording.
+
+test("output contract names every required receipt and the exact evidence shape the gate reads", () => {
+  const c = buildExecutionOutputContract({ requiredExecutionReceipts: ["tests"], expectedArtifactClass: "PATCH", verifierRequired: true });
+  assert.match(c, /"receipts": \["tests"\]/);
+  assert.match(c, /"evidence"/);
+  assert.match(c, /"executionCapable"/);
+  assert.match(c, /"toolPermissionBlocked"/);
+  assert.match(c, /PATCH/);
+  assert.match(c, /verifier/);
+});
+
+test("a contract requiring nothing produces no contract text", () => {
+  assert.equal(buildExecutionOutputContract({ requiredExecutionReceipts: [], expectedArtifactClass: "NONE", verifierRequired: false }), "");
+  assert.equal(buildExecutionOutputContract({}), "");
+});
+
+test("receipts are requested honestly — never instructed to claim an unearned one", () => {
+  const c = buildExecutionOutputContract({ requiredExecutionReceipts: ["tests"] });
+  assert.match(c, /ONLY after you actually performed it/);
+  assert.match(c, /Never claim it because tests merely exist/);
+  assert.match(c, /toolPermissionBlocked` to true/);
+});
+
+test("non-string / malformed receipt entries are filtered, not emitted", () => {
+  const c = buildExecutionOutputContract({ requiredExecutionReceipts: ["tests", "", null, 7] });
+  assert.match(c, /"receipts": \["tests"\]/);
+});
+
+test("buildClaudeInvocation APPENDS the contract to the C-7 package without replacing it", () => {
+  const withC = buildClaudeInvocation({ contextPackage: "C7-PACKAGE-BODY", profile: "READ_ONLY_ANALYSIS", executionContract: { requiredExecutionReceipts: ["tests"] } });
+  const prompt = withC.argv[withC.argv.indexOf("-p") + 1];
+  assert.match(prompt, /C7-PACKAGE-BODY/);
+  assert.match(prompt, /REQUIRED OUTPUT CONTRACT/);
+});
+
+test("omitting the contract leaves the prompt byte-identical to the prior behavior", () => {
+  const a = buildClaudeInvocation({ contextPackage: "PKG", profile: "READ_ONLY_ANALYSIS" });
+  assert.equal(a.argv[a.argv.indexOf("-p") + 1], "PKG");
+});
+
+test("the contract conveys no authority — argv guardrails are unchanged by it", () => {
+  const a = buildClaudeInvocation({ contextPackage: "PKG", profile: "READ_ONLY_ANALYSIS" });
+  const b = buildClaudeInvocation({ contextPackage: "PKG", profile: "READ_ONLY_ANALYSIS", executionContract: { requiredExecutionReceipts: ["tests"], expectedArtifactClass: "PATCH" } });
+  const strip = (x) => x.argv.filter((_, i) => i !== x.argv.indexOf("-p") + 1);
+  assert.deepEqual(strip(b), strip(a));
+  assert.equal(b.profile, a.profile);
+  assert.equal(b.turnCeiling, a.turnCeiling);
 });

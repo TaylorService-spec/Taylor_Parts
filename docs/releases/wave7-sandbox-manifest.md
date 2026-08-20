@@ -19,6 +19,7 @@ here. This manifest starts empty at the Wave 6 deployed baseline and accumulates
 | Environment | `platform-sandbox` → Firebase project `eos-platform-sandbox` |
 | Environment registry (authoritative) | [`config/environments.json`](../../config/environments.json) |
 | Deployed-vs-expected check | `node scripts/checkDeployedVersions.mjs` |
+| Deployed Functions verification check | `node scripts/verifySandboxFunctions.mjs --project eos-platform-sandbox <fn1> [fn2 ...]` — read-only; confirms each named Gen-2 callable EXISTS, is ACTIVE, and runs `nodejs22` (see [EOS-ISSUE-1062](../orchestration/work-intake/EOS-ISSUE-1062.work.json)) |
 
 `config/environments.json` remains the **single source of truth** for environment identity,
 readiness flags, and capability activation. This manifest references it; it never duplicates it.
@@ -351,3 +352,19 @@ declared-equals-live assertion. Leaving it listed would let a genuinely undeclar
   them requires separate authorization. See the `verify-rules-deploy` skill.
 - The **pooled sandbox deployment itself** is a separate authorization. Rows accumulate
   until that authorization is given.
+
+---
+
+## CLOSEOUT — consolidated sandbox promotion to `cd442727` (2026-08-17)
+
+Every item recorded in this manifest is included in the consolidated promotion of `main`
+(`cd442727103a983ec332fe880b7dcca1019773b5`) to `platform-sandbox`. Hosting, Firestore Rules,
+Firestore indexes and the governed fixtures are converged; Cloud Functions are PARTIALLY promoted
+(see the component table and the operator command in the promotion record).
+
+PENDING markers above refer to the state at the time each row was written and are superseded by the
+evidence in `sandbox-promotion-cd442727.md`, which is the authority for what is actually live. A row
+is not re-verified merely by being redeployed: prior E2E evidence stays bound to the commit it was
+tested against.
+
+Full evidence: [sandbox-promotion-cd442727.md](./sandbox-promotion-cd442727.md)

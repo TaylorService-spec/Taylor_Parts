@@ -26,9 +26,10 @@
 // removed or deliberately recorded here -- the surface cannot silently grow
 // while convergence is in progress. That drift gate is the point.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this repo)
-// at field-ops-app-vite/src/access/legacyAuthorizationSurface.ts. If either
-// file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 
 /** The Issue #226 implementation-plan row that owns a domain's cutover. */
 export type CutoverRow = "row23" | "row24" | "row25" | "row26" | "unassigned";

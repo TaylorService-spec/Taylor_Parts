@@ -95,6 +95,11 @@ export interface AvailableEquipmentReadResult {
   // is surfaced so a caller can honestly report "N excluded", matching getManufacturerCatalog's
   // excludedCount convention.
   excludedCount: number;
+  // BOUNDED-READ HONESTY. True when the registry holds more available assets than this read
+  // returned. Distinct from excludedCount, which counts documents that WERE read and failed the
+  // availability invariant -- this counts documents that were never read at all. Optional so the
+  // account-scoped callers that never truncate need not carry it.
+  truncated?: boolean;
 }
 
 // The trusted read callable -- the Available Equipment projection (§I: "Available Equipment UI reads
@@ -103,6 +108,9 @@ export interface AvailableEquipmentReadResult {
 // re-validates and re-asserts the invariant per document before including it -- never trusts the query
 // filter alone. Maps failures to HttpsError so the client can distinguish denied (permission-denied) from
 // unavailable (internal).
+/** Cap for the Available Equipment registry read. See the bounded-read note at the query. */
+const AVAILABLE_EQUIPMENT_LIMIT = 1000;
+
 export const getAvailableEquipment = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
 
@@ -113,26 +121,38 @@ export const getAvailableEquipment = onCall({ region: "us-central1" }, async (re
       permissionIds: [INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY],
     });
     allowed = decisions[INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[getAvailableEquipment] capability resolution failed for ${INVENTORY_SERIALIZED_ASSET_READ_CAPABILITY}`, err);
     allowed = false; // fail closed
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read the Available Equipment registry.");
 
   try {
     const db = getFirestore();
+    // BOUNDED READ. The two equality filters narrow the set but do not cap it -- an available
+    // serialized-asset pool has no natural ceiling, so "filtered" was being mistaken for
+    // "bounded". Fetching limit+1 lets the extra row disclose truncation instead of the page
+    // silently pretending to be the whole registry.
+    //
+    // `truncated` is kept SEPARATE from `excludedCount` deliberately: they answer different
+    // questions. excludedCount means "these documents were read and failed the availability
+    // invariant"; truncated means "there are more documents we did not read at all". Collapsing
+    // them would make a paging boundary look like a data-quality problem.
     const snap = await db
       .collection(SERIALIZED_ASSETS_COLLECTION)
       .where("inventoryState", "==", "AVAILABLE")
       .where("currentEquipmentId", "==", null)
+      .limit(AVAILABLE_EQUIPMENT_LIMIT + 1)
       .get();
+    const truncated = snap.size > AVAILABLE_EQUIPMENT_LIMIT;
     const availableEquipment: SerializedAssetProjection[] = [];
     let excludedCount = 0;
-    for (const doc of snap.docs) {
+    for (const doc of snap.docs.slice(0, AVAILABLE_EQUIPMENT_LIMIT)) {
       const projection = projectSerializedAsset(doc.id, doc.data());
       if (projection && isAvailableForEquipmentRead(projection)) availableEquipment.push(projection);
       else excludedCount++;
     }
-    const result: AvailableEquipmentReadResult = { status: "ready", availableEquipment, excludedCount };
+    const result: AvailableEquipmentReadResult = { status: "ready", availableEquipment, excludedCount, truncated };
     return result;
   } catch {
     throw new HttpsError("internal", "The Available Equipment read is temporarily unavailable.");

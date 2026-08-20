@@ -148,6 +148,34 @@ check("buildWeeklySchedule: unknown-tech scheduled work is surfaced (never dropp
   assert.ok(kinds.includes("PAST_DUE:o1"));
 });
 
+check("buildWeeklySchedule: a stuck past-due job from a DIFFERENT (older) week still shows in needsAttention while viewing 'this week'", () => {
+  // Dispatcher is viewing THIS week (Mon 2026-08-24), but a SCHEDULED job was set THREE WEEKS ago
+  // and never dispatched. It must still surface in needsAttention -- a dispatcher who is (correctly)
+  // looking at "This week" must not have a stuck job silently invisible just because its
+  // scheduledStart falls outside the viewed 7-day window.
+  const now = at(2026, 8, 26, 8, 0); // Wednesday of the viewed week
+  const viewedWeekStart = startOfWeekMillis(now); // Monday 2026-08-24
+  const technicians = [{ id: "t1", name: "Only Tech" }];
+  const workOrders = [
+    {
+      id: "stale1",
+      woNumber: "WO-STALE",
+      status: "SCHEDULED",
+      scheduledTechId: "t1",
+      scheduledStart: at(2026, 8, 3, 9, 0), // three weeks before the viewed week, still SCHEDULED
+      scheduledEnd: at(2026, 8, 3, 10, 0),
+    },
+  ];
+  const vm = buildWeeklySchedule({ workOrders, technicians, weekStartMillis: viewedWeekStart, nowMillis: now });
+  // The stale job is not part of THIS week's board...
+  assert.equal(vm.totals.scheduledThisWeek, 0);
+  const row = vm.technicianRows[0];
+  assert.equal(row.weekJobCount, 0);
+  // ...but it MUST still be flagged as needing attention.
+  const kinds = vm.needsAttention.map((n) => `${n.kind}:${n.job.id}`);
+  assert.ok(kinds.includes("PAST_DUE:stale1"), "past-due job from an older week must not vanish from needsAttention");
+});
+
 check("buildScheduleInput: valid payload mirrors the required Schedule fields", () => {
   const r = buildScheduleInput({ date: "2026-08-10", start: "09:00", end: "11:30", techId: "t1" });
   assert.equal(r.ok, true);

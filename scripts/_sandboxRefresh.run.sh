@@ -22,8 +22,28 @@ echo "== [2/5] deploy Functions -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs
 firebase deploy --only functions --project eos-platform-sandbox --force
 
-echo "== [3/5] build frontend for platform-sandbox =="
-( cd field-ops-app-vite && VITE_ENVIRONMENT_ID=platform-sandbox VITE_BASE=/ npx vite build )
+echo "== [3a/5] verify the build-base contract =="
+# MUST RUN BEFORE THE ENVIRONMENT BUILD. verifyBuildBase.mjs deletes dist/ and
+# rebuilds it TWICE with the plain npm scripts (npm run build, npm run
+# build:firebase) -- neither of which sets an environment, so both resolve to the
+# registry default, which is PRODUCTION. Running it after the environment build
+# silently replaces the correct artifact with a production-stamped one.
+#
+# That is what actually caused the 2026-08-19 incident. The environment variable
+# was never the problem: step 3 built correctly and this step overwrote it.
+( cd field-ops-app-vite && npm run verify:build-base )
+
+echo "== [3b/5] build frontend for platform-sandbox (LAST build before deploy) =="
+# The environment is an ARGUMENT, not a shell variable, and buildForEnvironment
+# re-reads the emitted version.json and refuses if the artifact is not stamped as
+# asked. Nothing may rebuild dist/ after this point.
+( cd field-ops-app-vite && node scripts/buildForEnvironment.mjs platform-sandbox )
+
+echo "== [3c/5] verify the ARTIFACT belongs to this project =="
+# The last check before anything ships. _sandboxDeployGuard.mjs above proves the
+# TARGET is not production; this proves the ARTIFACT is not production either.
+# Those are different questions, and on 2026-08-19 only the first was being asked.
+node scripts/verifyDeployArtifact.mjs --projectId eos-platform-sandbox
 
 echo "== [4/5] deploy Hosting -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs

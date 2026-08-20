@@ -1271,3 +1271,470 @@ Integration is a separate, manually dispatched, same-target-serialized workflow 
 hash and `APPROVE`. It fails closed on dirty state, hash/scope/base mismatch, conflict, stale `main`, focused
 test failure, or replay, and never stashes unknown files, broadens permissions, bypasses the artifact guard,
 or force-pushes. This resolves the #818/#819 contract mismatch without weakening PR #814.
+
+## 102. Metadata-driven EOS is built independently; "Salesforce-style" is not permission to clone Salesforce
+
+**Date:** 2026-08-17
+**Decision:** EOS moves toward a metadata-driven enterprise application architecture, targeting
+Salesforce-class configurability with EOS-native operational UX and EOS-native governed
+command/capability architecture. Salesforce and comparable platforms may be studied as examples of
+mature metadata-driven systems via public documentation only; every major abstraction must be
+defensible from an EOS requirement rather than from vendor parity. Copying vendor source, assets,
+schemas, Metadata API structures, trademarks, or pixel-for-pixel UI is prohibited, as is reverse
+engineering or depending on Salesforce services for EOS core metadata operation.
+
+Two boundaries are load-bearing. **Authorization:** page/list metadata may decide what renders and
+which affordances appear, but never grants authority — the governed trusted-command and capability
+architecture remains the authorization authority, and metadata must never enable client writes that
+bypass it. **Scale:** metadata-driven surfaces must not imply client-side dataset ownership; lists
+use cursor pagination, bounded reads, stable sorting, server-shaped indexed queries and
+URL-persisted filters. External full-text search is deferred until data volume justifies it.
+
+EOS remains operation-centric, not record-centric: metadata must carry lifecycle state, readiness,
+blockers, next actions, approvals, work queues, custody, attention projections and governed actions,
+and the migration must not reduce EOS to generic CRUD screens. Entity / field / relationship / page /
+list / action / capability / workflow / tenant metadata stay separate layers rather than one page
+schema.
+
+v1 builds the minimum reusable foundation (EntityDefinition, FieldDefinition, RelationshipDefinition,
+PageDefinition, PageRegion, ComponentDefinition, ListViewDefinition, ActionDefinition,
+VisibilityRule/CapabilityRequirement) proven through real consumers — Accounts list, Account record,
+Contacts — then validated against Work Orders. If it only works for CRM records it is not yet an EOS
+metadata architecture.
+
+Full continuing rule, including the ten stop-and-escalate conditions and the required stop report
+format: `governance/metadata-architecture-ip-boundary.md`. The Metadata Architecture specification,
+when written, must reference it.
+
+## 103. FieldDefinition v1 is the current contract, not the final field architecture
+
+**Owner ruling, 2026-08-17.** v1 is **not** superseded: it remains the read/query/render contract
+and every merged definition written against it stays valid. What it must not be treated as is the
+final enterprise field model — it carries one identity, no notion of a derived value, and a type
+list that treats every number alike.
+
+**Field Architecture v2 is scheduled BEFORE broad mass-definition of the remaining business
+entities.** That is the whole point of the timing: two entities are defined today, and each further
+one written against v1 raises the cost of changing the field contract by the number of definitions,
+tests, indexes and surfaces that would have to move together.
+
+Required scope: `label` vs `systemName` — a stable machine identity, immutable except through
+governed migration, referenced by metadata, formulas, relationships, integrations, reporting,
+automation and AI/tool contracts, and deliberately **not** spelled with a vendor's "API Name" or
+custom-field suffix conventions. Field classes STANDARD / SYSTEM / CUSTOM / DERIVED, with DERIVED
+split into FORMULA / LOOKUP / ROLLUP / PROJECTION and **not** collapsed into one generic
+calculated-field concept. Explicit numeric semantics (INTEGER, DECIMAL, PERCENTAGE, RATIO, CURRENCY,
+unit-aware QUANTITY) carrying storage/calculation/display precision, rounding mode, bounds and step,
+under the rule that **formatting never silently changes an authoritative business value** and that
+percentage storage is explicit. A constrained, validated expression vocabulary — no arbitrary
+JavaScript, no executable metadata (§8). A dependency graph declared by `systemName`, validated,
+rejecting cycles, where cross-entity dependencies respect the authority of the underlying data and
+**never become an authorization bypass**. Queryability split VIRTUAL / MATERIALIZED / AGGREGATE,
+because displayable does not imply sortable or filterable at scale. The durable behavior contract
+through deprecation, under §6 — metadata declares authority requirements and never grants them. An
+EOS-native standard field vocabulary that standardizes **meaning** where concepts genuinely repeat
+without forcing every entity to carry every field. Storage separation, so `systemName` is never
+assumed to equal the Firestore path and implementation details do not become platform contract. And
+a custom-field **seam** — not the custom-field administration product.
+
+Specification: `specifications/field-architecture-v2.md`. Ledger: `G-FIELD-ARCH-V2` (the gate) and
+`A-ENTITY-MASS-DEFINITION` (the sequencing constraint, recorded as an entry so it cannot be lost
+between one migration and the next). Surfaces consuming already-defined entities are not blocked.
+
+## 104. Field Architecture v2 is implemented additively; v1 stays the contract until compatibility is proven
+
+**Owner ruling, 2026-08-17, implemented.** The durable field architecture lands under
+`field-ops-app-vite/src/metadata/v2/` **beside** v1 rather than replacing it. v1 remains the current
+read/query/render contract and every merged definition stays valid.
+
+**Identity is four concepts, not one.** Internal record id (opaque, immutable, never rendered as a
+label) · entity `systemName` (`account`, `workOrder`) · business reference (`WO-2026-000127`, and not
+every entity has one) · human name (mutable). `recordIdentity()` resolves display as human name then
+business reference then **null**; the recordId is present for routing and deliberately absent from
+the display chain, because that fallback is the defect corrected on Opportunity (#1099) and Sales
+Order (#1124). `systemName` is the EOS term — not "API Name" — and validation rejects vendor suffixes
+and prefixes outright. `storagePath` stays separate from `systemName` even where they match, so a
+later remap to a legacy path cannot break formulas, reports or integrations, and Firestore layout
+never becomes platform contract.
+
+**Field classes** STANDARD / SYSTEM / CUSTOM / DERIVED, with DERIVED split FORMULA / LOOKUP / ROLLUP /
+PROJECTION and not collapsed. **A LOOKUP or ROLLUP must declare `sourceAuthority`** — validation fails
+without it — because a derived value cannot launder the authority of the data it reads. **A ROLLUP
+must declare `queryability: AGGREGATE`**: calling it VIRTUAL invites computing a complete-looking
+total over whatever rows happened to load.
+
+**Numeric semantics** carry storage, calculation and display scales separately. **Percentage storage
+mode is required, never inferred** — 0.15 and 15 both mean fifteen percent, and guessing wrongly is a
+100x error that still looks plausible. Display formatting returns a **string**, so a rounded figure
+cannot re-enter arithmetic and become the authoritative value. `displayScale` may be coarser than
+storage, never finer.
+
+**Formulas are data, not code.** A closed operator vocabulary over an AST of operators, field
+references and literals; a function anywhere in a definition is rejected with its own message rather
+than as a type error. A field reference may not contain a dot — a dotted path is arbitrary traversal
+crossing an entity boundary that LOOKUP exists to make explicit. Dependency cycles are rejected at
+definition time, where the message names the fields, rather than at evaluation time, where the
+symptom is a stack overflow in front of a user.
+
+**`alternateKey` requires `unique`** — matching on a non-unique field approves a guaranteed ">1 match"
+integrity failure — and `unique` alone does not imply `alternateKey`: one is a data property, the
+other a governance decision.
+
+**`fromV1()` records gaps rather than filling them**: UNKNOWN_MUTABILITY, UNKNOWN_WRITE_CAPABILITY,
+UNKNOWN_ROUNDING_POLICY. Defaulting mutability because most fields are mutable would convert a
+missing decision into a stated one nobody revisits.
+
+**Not built:** the bulk-import product, custom-field administration, a unit-conversion engine, and any
+rewrite of the approved WO-YYYY-###### / OPP-YYYY-###### numbering. Seams only.
+
+`A-ENTITY-MASS-DEFINITION` stays blocked until compatibility is proven against the two existing
+definitions — migration work, not architecture work.
+
+## 105. Record provenance is a platform invariant; four architecture workstreams recorded behind one shared query model
+
+**Owner architecture addendum, 2026-08-17.** Capture and sequencing. Specification:
+`specifications/eos-platform-architecture-addendum.md`, which reconciles against what already exists
+rather than duplicating it — the audit event architecture keeps mutation history, the governed report
+creator becomes a convergence target, and Field Architecture v2 remains the base contract every
+workstream consumes.
+
+**RECORD PROVENANCE (implemented).** Every durable EOS business record carries `createdAt` /
+`createdBy`; every mutable one additionally carries `updatedAt` / `updatedBy`. These are SYSTEM
+fields — exposable on pages, lists, reports and exports where authorized, never redefinable and never
+directly writable. They carry **no writeCapability**, because a client-supplied timestamp or actor is
+a *claim* rather than provenance: any caller who can write the record can write the claim, so a
+trusted command writes these or they are not provenance.
+
+An **append-only** record gets two fields, not four — emitting `updatedAt` on an issued invoice
+implies a mutation path that must not exist. **Synonyms are rejected**: `creationDate` beside
+`createdAt` is two answers to one question, and legacy storage is handled with `storagePath`, never a
+second name in the standard vocabulary. **Exemptions require a stated reason**, so an exemption for a
+cache or a lock stays a decision somebody made rather than a gap somebody left.
+
+**Provenance is not audit history.** It describes current state and cannot answer "what changed on
+the fourteenth"; reconstructing history from `updatedBy` makes the last writer look like the only
+writer. Material mutation history remains the existing audit event architecture's, and the origin
+seam (`createdVia`, `initiatedBy`, `sourceExecutionId`, `correlationId`) must be reconciled against it
+before anything writes those fields — a parallel actor vocabulary is exactly what this addendum
+forbids.
+
+**THE UNIFIED QUERY MODEL IS A SHARED DEPENDENCY**, recorded as `A-QUERY-MODEL-UNIFIED` so it is not
+rediscovered five times. List filters, saved views, the report builder, automation conditions, EQL,
+AI-generated queries and the admin visual builder converge on one governed query AST and one
+validation pipeline. Independent query semantics per feature is how six subsystems end up disagreeing
+about what a filter means. It must absorb the existing report creator rather than run beside it, and
+must not collapse the board-scope contract into list pagination — a board returns a complete working
+set or admits it cannot, which is a different promise from a page.
+
+**Automation v1**, **EQL v1** and **Bulk Data v1** are recorded blocked on it, because automation
+conditions are queries, EQL compiles into the model, and an export is a governed query with a
+different sink. **Admin metadata configuration / page designer** is blocked on entity definition —
+there is nothing to configure until there is metadata to configure.
+
+Invariants carried into those entries so they survive the gap between recording and building:
+automation may **compose** approved capabilities but never **invent** executable authority; EQL is
+read-oriented and AI receives no bypass; bulk changes scale but authority does not, matching is by
+recordId / business reference / approved alternateKey and never a mutable label, `>1 match` is an
+integrity failure rather than a guess; **export authority may never exceed the initiating user's read
+scope**, "Export All" means all within *their* authorized scope, and the server-side job enforces it
+because UI hiding is not enforcement; page metadata requests presentation and never grants authority;
+operational pages keep their protected sections because placement flexibility and composition
+invariants are separate concerns and only one is negotiable.
+
+None of this blocks current executable migration work.
+
+## 106. Sales Orders get a real business reference; a record id is never a substitute for missing identity
+
+**Owner ruling, 2026-08-17.** The document-id-as-label pattern is **not accepted**. Sales Order receives an
+immutable business reference, `SO-YYYY-######`, joining the approved EOS family beside `WO-YYYY-######` and
+`OPP-YYYY-######`.
+
+`salesOrderNumber` is STANDARD / STRING / immutable / unique, and becomes the Sales Order EntityDefinition's
+`referenceField`. `alternateKey` is **evaluated separately** rather than assumed from uniqueness — one is a data
+property, the other a governance decision, as Field Architecture v2 already enforces.
+
+**Generation is server-authoritative.** The client never chooses or asserts the sequence, allocation is
+deterministic and concurrency-safe, document ids are never sequence material, and the number is **never inferred
+from the Opportunity, Account or Work Order**. Lineage references may appear together — `OPP-…`, `SO-…`, `WO-…`
+— but they remain independent identities, and deriving one object's reference from another's sequence would make
+two records share a fate they do not share.
+
+**Immutability is the point of a reference.** Once assigned it survives every change to name, status,
+fulfillment, relationships and any other business state. A record that renumbers has no durable identity.
+
+**Legacy records fail honestly.** A Sales Order without a number renders a neutral *reference unavailable*
+state. It does **not** fabricate a number client-side and does **not** fall back to the document id. The
+governing invariant:
+
+> **A missing business reference is not permission to display a record id.**
+
+**Migration is separate from creation**, so future correctness never waits on historical cleanup: new Sales
+Orders are numbered the moment the code activates, while backfill proceeds under its own protected
+authorization. The tooling is repo-complete and inert — deterministic, idempotent, dry-run capable,
+collision-detecting, preserving `recordId` and existing relationships, emitting auditable evidence, safe under
+rerun. Where historical creation timestamps are authoritative they may set the year; where ordering cannot be
+established reliably, references are assigned by an explicitly documented deterministic policy rather than
+pretending to reflect a sequence no evidence supports.
+
+**The fourth confirmed instance of one defect class** (#1094, #1099, #1124, and now the Sales Order header).
+Recorded as a general invariant: no durable business entity may use its opaque internal recordId as its normal
+human-facing identity merely because a canonical name or reference is missing. When identity is missing —
+record the data-model gap, fix the identity model, and render the absence honestly. Do not normalize the
+database key into business identity.
+
+Related provenance convergence, continuing independently: `X-CONTACT-PROVENANCE-GAP` (three write paths onto the
+standard four fields, future writes separated from any historical backfill decision) and
+`X-EQUIPMENT-PROVENANCE-GAP` (epoch-number timestamps and no actor — determine the actual stored semantics
+first, use `systemName`/`storagePath` separation if legacy storage must stay compatible, and prefer UNKNOWN to
+an invented actor).
+
+## 107. Write-capable agents require isolated worktrees; destructive git authority stays with the controller
+
+**Owner execution-governance rule, 2026-08-17.** Binding on all EOS multi-agent work.
+Rule: `orchestration/agent-isolation-execution-rule.md`. Enforced where enforceable by
+`orchestration/lib/writerLanes.mjs`.
+
+**The incident.** Two write-capable agents and the controller operated in one checkout. One agent switched
+the branch mid-commit, the controller's commit landed on that agent's branch, a remote branch was created
+carrying another lane's ancestry, and the agent then asked the controller to force-push over it. Nothing was
+lost — but only because the collision happened to be noticed.
+
+**One writer, one worktree, one branch, one lane.** A writer never shares the controller's checkout or another
+writer's. Read-only scouts may share a checkout because they mutate nothing; a scout that finds work requiring
+edits reports rather than starting to edit, and a dedicated writer lane is created.
+
+**Destructive actions are controller-level** — force push, hard reset, destructive rebase, deleting a branch
+with unmerged work, removing a worktree with uncommitted work, overwriting a remote branch, history rewrite.
+The recovery order is `inspect → preserve → fresh branch → cherry-pick verified commits → diff against scope →
+test → abandon`, and the ordering is the substance: **contamination is not solved by destroying the evidence of
+it.** In the incident, the correct resolution was pushing the corrected work under a new branch name — the same
+valid result with nothing destructive.
+
+**The controller verifies rather than trusting a handoff.** Branch still matches the lane, no unrelated commits
+appeared, files match scope, no other lane's commits leaked in, CI coverage present, PR describes the branch it
+was opened from. *"Agent says done"* is not proof of branch integrity. A writer's handoff must state branch,
+head SHA, base SHA, files, tests, risks, dependency assumptions, and **whether any recovery occurred** — never
+folded into a normal completion summary.
+
+**PR state is what GitHub confirms**, never a predicted number; and no orchestration state advances after a
+failed command because a later pipeline stage succeeded (`gh pr create … | tail -1` is the exact shape that
+caused a phantom PR in this ledger once already).
+
+**Merges stay serialized** even with parallel writers: green against an earlier main is not green.
+
+`writerLanes.mjs` catches the mechanical failures — a writer with no worktree, two lanes sharing a worktree or
+branch, one task with two active lanes, a PR recorded without verification, a recorded PR whose GitHub head is
+another branch — with 17 regression tests. It cannot prove a dependency assumption was sound or that a summary
+is honest; **controller inspection remains mandatory.**
+
+**Governing principle:** agent autonomy does not transfer destructive repository authority. A subagent may
+recommend; the controller decides. *"An agent asked me to"* is never sufficient authority.
+
+## 108. Defining an entity does not confer indexing authority over a collection another program governs
+
+**Decision.** `equipment_models` remains governed by **D4** (equipment compatibility). D4 continues
+to defer compound query shapes to **D5**. The metadata program's `equipmentModel` entity definition
+stays; its `equipmentModel.index` list view and the three `equipment_models` composite indexes it
+derived are **removed**.
+
+**What happened.** PR #1206 added an `equipmentModel` INDEX list view. Its two declared filters
+derived three `equipment_models` composite indexes, which were declared in `firestore.indexes.json`
+and subsequently deployed to the sandbox. `functions/src/equipmentCompatibility/repository.ts`
+declares `EQUIPMENT_MODELS_COLLECTION` — the collection is D4's — and
+`functions/test/equipmentCompatibilityRegistry.test.mjs` asserts *"D4 declares no compound index
+for the governed collections."* That assertion was correct and specific; the metadata program
+crossed it.
+
+**Why nobody noticed.** The equipment-compatibility workflow's `paths:` filter did not include
+`firestore.indexes.json`. A change to the index file therefore could not trigger the guard that
+governs the index file. The breach was invisible for four days and only surfaced when an unrelated
+PR happened to touch a path that workflow *does* watch.
+
+Two program-level guards also failed to catch it, for a reason worth recording: `listIndexCoverage`
+and `indexDriftGuard` compare *declared* demands against *declared* indexes. Both were perfectly
+consistent — the metadata program declared a demand and declared an index to serve it. Neither
+guard has any notion of **who is allowed to declare an index for which collection**, so internal
+consistency was never the question that would have caught this.
+
+**The principle.** An EntityDefinition describes a collection. It does not acquire authority over
+that collection. Where two programs' contracts meet, the narrower prior boundary holds until it is
+explicitly superseded — a definition that quietly crosses one is a breach, not a supersession. If a
+catalog INDEX surface over `equipment_models` is ever wanted, it arrives through an explicit D5
+decision that moves the boundary.
+
+**Cost of the correction: none.** No UI referenced the removed list view, and `equipmentModel`'s
+`readVia` is `CALLABLE` against a capability registered `active: false`. The removed indexes served
+no query.
+
+**Live orphans, deliberately not deleted.** The three `equipment_models` composites are live and
+`READY` in `eos-platform-sandbox`. Removing a declaration from source does not authorize deleting a
+live index, and index deletion is destructive and separately authorized. They are recorded as
+**harmless live orphans** — no query uses them, they cost only storage — pending a separate cleanup
+authorization. Source and sandbox are therefore intentionally divergent by exactly three indexes,
+and any reconciliation that reports "3 unexpected live" is reporting this, not a drift defect.
+
+**Guards added.** `firestore.indexes.json` now appears in the equipment-compatibility workflow's
+path filters, so the D4 registry guard runs whenever the index file changes. The metadata program's
+own fleet-catalog suite now asserts that `equipmentModel` exports **no** ListViewDefinition, so a
+re-added index list fails on both sides of the boundary rather than only in D4's suite.
+
+## #109 — Phantom Sales Order links are repaired, with history preserved
+
+**Decision (Owner, 2026-08-19).** The four Work Orders that completed against `so-harbor-c713` — a
+Sales Order that never existed — are to be repaired rather than left. The repair must preserve
+history: an exact before/after manifest, correction of the invalid relationship, an appended audit
+event, and a documented rollback. **No write until separately authorized.**
+
+**Why this needed deciding.** `transitionWorkOrder` gated its Sales Order fulfillment write-back on
+`if (soSnap.exists)` and proceeded silently when the Sales Order was absent. Four Work Orders
+completed and consumed inventory with no record anywhere that the write-back was skipped. The
+completions are real; only the link is false. Deleting or rewriting them would destroy legitimate
+operational history to hide a referential defect.
+
+**Constraint on the repair.** The five affected Work Orders share `salesOrderId` as their coordination
+grouping key by design (see `seedSandboxCoordinatedInstall.js`). A repair that clears the field
+without replacing the grouping would break the coordinated-visit relationship it was standing in for.
+
+**Status.** Repair package prepared as tooling and evidence only. Execution is a separate protected
+authorization.
+
+## #110 — Dispatch may reassign away from the scheduled technician, with a recorded reason
+
+**Decision (Owner, 2026-08-19).** Reassignment at Dispatch is permitted and explicit. It requires a
+reason. The system records prior technician, new technician, actor, timestamp and reason; re-runs the
+schedule and conflict checks against the new technician; and notifies affected parties. Completed and
+cancelled work remains locked.
+
+**Why.** `transitionWorkOrder` accepted a caller-supplied `assignedTechId` with no comparison against
+`scheduledTechId` and never reconciled the two. The scheduling board keys on one field and the
+technician boards on the other, so two technicians could own the same job on two governed surfaces.
+The double-booking guard — otherwise rigorous, with a per-technician transactional lock — ran its
+conflict check once, at Schedule time, against the *original* technician's calendar, so the
+technician who actually received the job was never checked at all.
+
+The ruling treats reassignment as a legitimate operational act that must be accountable, rather than
+forbidding it or leaving it silent.
+
+**Note.** Whether a notification mechanism exists in this repository is to be established rather than
+assumed; if none exists, the requirement is recorded and the audit event emitted for a future
+notifier, not faked.
+
+## #111 — Cycle counts are blind, and a counter cannot approve their own material variance
+
+**Decision (Owner, 2026-08-19).** Expected quantity is hidden from the counter until submission. After
+submission, managers may see expected versus counted and approve or reject the variance. Material
+adjustments require separate authority, and **the counter cannot approve their own material
+variance.**
+
+**Why.** The UI rendered "Expected: N" directly above the count input. A cycle count exists to obtain
+an independent observation; showing the system's answer first anchors the counter to it and quietly
+converts the control into a confirmation step.
+
+The separation-of-duties half is the load-bearing part: it must be enforced server-side, where the
+authorization model lives. A client-side check would be a suggestion, not a control.
+
+**Materiality** is to be defined explicitly and configurably rather than as a buried constant, reusing
+an existing domain threshold if one exists.
+
+## #112 — "Active" names four distinct concepts and labels must say which
+
+**Decision (Owner, 2026-08-19).** The word is overloaded and the senses are not interchangeable:
+
+| Sense | Meaning |
+|---|---|
+| **Employee active** | currently eligible for operational assignment |
+| **Role assignment active** | included in effective-access resolution |
+| **Capability active** | enabled in that environment |
+| **Record active** | available for current business use; not deleted or retired |
+
+Labels must name the relevant concept wherever ambiguity is possible.
+
+**Why.** A review found "Active" naming a five-status set on the Work Orders list and a one-status set
+on the Dispatcher Board capacity card — the same technician showing different "Active" counts on two
+screens, with neither screen wrong on its own terms. The same word also spans authorization state,
+environment activation and record lifecycle, where confusing two senses is a governance error rather
+than a wording preference.
+
+**Scope.** User-facing labels are corrected now. Renaming persisted enum values or Firestore fields is
+a data migration and is explicitly NOT part of this decision; where an identifier is misleading, the
+rename and its migration cost are to be proposed separately.
+
+## #113 — All fifteen governed business roles become grantable, with owner protections preserved
+
+**Decision (Owner, 2026-08-19).**
+
+- All **15** governed business roles are to be grantable through trusted, audited, server-side
+  administration.
+- **Owner protections are preserved**, and **`owner ≥ admin`** must hold.
+- `fulfillment.coordinatedVisit.read` is granted to **owner, admin, operationsManager, fieldManager,
+  dispatcher**.
+- `inventoryCreateExecutor` is **not** assigned until its exact recipient and business need are
+  presented.
+- The two missing warehouse assignments are prepared with exact employee and warehouse ids before
+  authorization is requested.
+- **No provisioning or activation writes without a dry-run manifest and separate sandbox
+  authorization.**
+
+**Why.** Only 10 of 15 roles could be granted: `grantRole` and `assignApprovedRole` threw
+`UnknownRoleError` for the other eight, which were `owner` and the entire management layer —
+`operationsManager`, `officeManager`, `salesManager`, `accountingManager`, `financeManager`,
+`fieldManager`, `generalEmployee`. Authority that exists on paper and cannot be conferred is not
+authority. Live, no `owner` assignment exists at all, which is why Reporting is unreachable for every
+persona and why `owner ≥ admin` fails in practice today.
+
+`fulfillment.coordinatedVisit.read` was activated in sandbox but granted to **no role whatsoever**, so
+Coordinated Visits and Coordinated Mission were inert for every principal including owner —
+activation lifts the catalog gate but never substitutes for a grant.
+
+**Boundary.** This decision authorizes repository implementation and evidence preparation only. The
+role grants themselves, the warehouse record changes, capability activation, the Work Order repairs
+and any deployment remain protected actions requiring separate authorization.
+
+
+## #114 — Manager-layer capability expansion, and Accounting/Finance parity supersedes their distinctness
+
+**Decision (Owner, 2026-08-18).** Five governed business Roles gain capability, expressed as changes
+to `functions/src/access/governedBusinessRoles.ts` (and its generated client mirror):
+
+| Role | Added |
+|---|---|
+| `salesManager` | `salesOrder.read`, `inventory.transaction.read` |
+| `financeManager` | `salesOrder.read`, `reorder.purchaseOrder.read` |
+| `accountingManager` | `account.governedField.write`, `salesOrder.read`, `reorder.purchaseOrder.read` |
+| `operationsManager` | `account.record.create` |
+| `fieldManager` | `account.record.read` |
+
+**"They all should see accounts."** Every manager Role now holds `account.record.read`. `fieldManager`
+was the only one without it: it could create, transition and cancel a Work Order but could not open
+the Customer the Work Order was for.
+
+**Accounting Manager is now identical to Finance Manager, deliberately.** This **supersedes** the
+earlier Owner requirement — recorded in this file's predecessor decisions and pinned by a test named
+"remain distinct (Owner's explicit requirement)" — that the two Roles must not share a grant set. The
+original distinction rested on the single id that happened to differentiate them
+(`account.governedField.write`), not on a described difference between the two jobs. The Owner has
+since decided they do the same work here ("accountingManager should be like financeManager for now").
+Parity was reached by **raising Accounting to Finance**, not by lowering Finance. The pinning test was
+**inverted rather than deleted**, so the parity is an asserted decision: a future divergence has to be
+someone's choice rather than a drift nobody noticed.
+
+**Operations Manager can open a Customer but not amend one.** `account.record.create` is granted;
+`account.record.update` and `account.governedField.write` remain DENIED. That asymmetry is
+intentional and pinned by test — it is not a half-finished grant to be "completed" later.
+
+**Grant is not activation.** `salesOrder.read` is registered `active: false` in the permission
+catalog. All three Roles that now hold it resolve **DENY / `inactivePermission`** until a separate
+per-environment activation. The tests assert *both* halves — that the grant is recorded, and that it
+still denies — so the day someone activates the id these Roles gain the read with no further change,
+and until then no amount of granting can open it.
+
+**Correction of record.** An earlier report in this workstream stated that `fieldManager` held only
+`inventory.transaction.read`, and that `financeManager` and `accountingManager` were already
+identical. Both statements were wrong; they came from a grep whose pattern excluded camelCase
+capability ids such as `workOrder.create`. `fieldManager` in fact held the full Work Order lifecycle,
+and the two money Roles differed by `account.governedField.write`. The Owner's instruction was framed
+against the incorrect table, and was re-confirmed against the corrected one before implementation.
+
+**Boundary.** Repository implementation only. No Role is *assigned* to any principal by this change,
+no capability is activated, nothing is deployed. Assignment, activation and deployment remain
+protected actions requiring separate authorization.

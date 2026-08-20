@@ -20,7 +20,8 @@ async function requireCoverageRead(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [COVERAGE_READ_CAPABILITY] });
     allowed = decisions[COVERAGE_READ_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireCoverageRead] capability resolution failed for ${COVERAGE_READ_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read commercial coverage.");

@@ -4,6 +4,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import SalesWorkspace from "../src/modules/sales/SalesWorkspace.jsx";
+import { opportunityEntity, opportunityIndexList } from "../src/metadata/definitions/opportunity.js";
 
 afterEach(cleanup);
 
@@ -46,6 +47,35 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     const row = within(table).getByText("Northgate Grocery").closest("tr");
     expect(row.querySelector(".fo-stagetrack")).toBeTruthy();
     expect(row.querySelector(".fo-status-pill, .fo-statuspill, [class*='pill']")).toBeTruthy();
+  });
+
+  // The banner previously fired on `status === "ready"`, so a successfully-loaded GOVERNED pipeline told
+  // the user its real Opportunities were samples. An honesty banner that fires on real data is worse than
+  // none -- it teaches people to disbelieve true records. These pin it to the source's own flag.
+  it("does NOT claim synthetic data when the source reports real governed rows", async () => {
+    const governed = () => ({
+      status: "ready",
+      synthetic: false,
+      opportunities: [{ id: "opp-live-1", accountId: "acct-harbor", stage: "IDENTIFIED", channel: "RETAIL" }],
+      accountNameById: { "acct-harbor": "Harbor Foods" },
+      error: null,
+    });
+    render(<SalesWorkspace source={governed} />);
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+    expect(screen.queryByText(/synthetic sample opportunities/i)).toBeNull();
+  });
+
+  it("still says so when the source really is synthetic", async () => {
+    const fixture = () => ({
+      status: "ready",
+      synthetic: true,
+      opportunities: [{ id: "opp-fix-1", accountId: "acct-harbor", stage: "IDENTIFIED", channel: "RETAIL" }],
+      accountNameById: { "acct-harbor": "Harbor Foods" },
+      error: null,
+    });
+    render(<SalesWorkspace source={fixture} />);
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+    expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();
   });
   it("shows an honest synthetic-data banner and an inert (disabled) create control", () => {
     render(<SalesWorkspace />);
@@ -112,8 +142,33 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("entering a section edit (readiness enabled) swaps read for a compact form; Cancel returns to read", () => {
-    render(<SalesWorkspace readiness={ENABLED} />);
+  // SUPERSEDED BY THE WIRING, and rewritten rather than deleted so the reason is on the record.
+  //
+  // This previously asserted that Edit stays DISABLED when no onSaveSection is injected, because the
+  // production mount never passed one -- the governed save command existed but nothing called it, so
+  // offering Edit would have invited a dead-end edit. That was correct for an unwired build.
+  //
+  // The command is wired now: SalesWorkspace defaults to the real hooks/useOpportunitySectionSave, and
+  // onSaveSection is an OVERRIDE seam rather than the thing that makes saving possible. So the honest
+  // assertion flips: a caller with readiness and no override gets a LIVE Edit, because there really is
+  // a command behind it. The dead-end it guarded against cannot occur, since the absent-command case
+  // no longer exists.
+  //
+  // What still matters -- and is asserted here -- is that the OTHER gate did not quietly go with it:
+  // readiness alone governs the affordance, and a save must be genuinely reachable when it is enabled.
+  it("readiness enabled with NO injected override: Edit is LIVE, because the real governed command is wired", () => {
+    render(<SalesWorkspace readiness={ENABLED} />); // mirrors the real production mount
+    const editNeed = screen.getByRole("button", { name: /edit customer need/i });
+    expect(editNeed.disabled).toBe(false);
+    fireEvent.click(editNeed);
+    // the section form opens and offers a Save that is not disabled-with-a-reason
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.disabled).toBe(false);
+  });
+
+  it("entering a section edit (readiness enabled AND a wired save command) swaps read for a compact form; Cancel returns to read", () => {
+    render(<SalesWorkspace readiness={ENABLED} onSaveSection={() => {}} />);
     // Customer need is an editable section; enter its edit mode
     const editNeed = screen.getByRole("button", { name: /edit customer need/i });
     expect(editNeed.disabled).toBe(false);
@@ -127,17 +182,10 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
   });
 
   it("only one section edits at a time (section-level editing, not a whole-detail form)", () => {
-    render(<SalesWorkspace readiness={ENABLED} />);
+    render(<SalesWorkspace readiness={ENABLED} onSaveSection={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
     // while the need edits, other sections still show their Edit affordance (not all forced into edit)
     expect(screen.getByRole("button", { name: /edit commercial details/i })).toBeTruthy();
-  });
-
-  it("save stays inert when readiness is enabled but no governed command is wired", () => {
-    render(<SalesWorkspace readiness={ENABLED} />); // no onSaveSection
-    fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
-    const save = screen.getByRole("button", { name: /^save$/i });
-    expect(save.disabled).toBe(true); // command not wired => honest, inert
   });
 
   it("with readiness enabled AND a wired command, saving hands the section draft to the governed command", () => {
@@ -248,4 +296,30 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
     await screen.findByText(/Freezer replacement/i);
   });
 
+});
+
+// S-CRM-OPPORTUNITIES — metadata list runtime migration EVALUATED, DECLINED (see the header
+// comment block in SalesWorkspace.jsx for the full reasoning: three compounding blockers, any
+// one disqualifying on its own). These tests do NOT exercise a migration — they lock the two
+// facts of the real `opportunityIndexList`/`opportunityEntity` declarations that this decline
+// depends on, so a future change to either definition that would remove the blocker fails here
+// loudly and prompts re-evaluation, rather than the decline silently going stale.
+describe("SalesWorkspace (metadata list runtime migration — declined, blocking facts locked)", () => {
+  it("opportunityIndexList has no Attention/next-action column — this pipeline's real triage signal is not representable through the declared list", () => {
+    const fieldIds = opportunityIndexList.columns.map((c) => c.fieldId);
+    expect(fieldIds).not.toContain("nextAction");
+    expect(fieldIds).not.toContain("attention");
+  });
+
+  it("opportunityEntity does not declare a nextAction field at all — there is no column this migration could even ask for", () => {
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("nextAction");
+  });
+
+  it("opportunityEntity's accountId REFERENCE column has no denormalized name field beside it — a real resolveReference would require a second, per-row live read", () => {
+    const accountIdField = opportunityEntity.fields.find((f) => f.id === "accountId");
+    expect(accountIdField?.type).toBe("REFERENCE");
+    const fieldIds = opportunityEntity.fields.map((f) => f.id);
+    expect(fieldIds).not.toContain("accountName");
+  });
 });

@@ -12,7 +12,7 @@ import {
   clearedFiltersForAccount,
   accountSaveErrorMessage,
 } from "../src/domain/accountPortfolio.js";
-import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../src/domain/constants.js";
+import { ACCOUNT_STATUS, ACCOUNT_STATUS_LABEL, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE } from "../src/domain/constants.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -153,6 +153,49 @@ ok("accountSaveErrorMessage: generic error -> retry message, no raw detail", () 
 });
 ok("accountSaveErrorMessage: null error -> generic retry message", () => {
   assert.match(accountSaveErrorMessage(null), /try again/i);
+});
+
+// #1093 regression. The portfolio cards reported "0 Active" beside a table of rows each
+// showing an ACTIVE pill, and clicking Active filtered the list to nothing, because the enum
+// held presentation casing ("Active") while persisted documents hold "ACTIVE". These assert
+// against the canonical enum rather than any literal, so the two can never drift apart again.
+ok("#1093 -- canonical machine values are uppercase, matching persisted documents", () => {
+  assert.equal(ACCOUNT_STATUS.ACTIVE, "ACTIVE");
+  assert.equal(ACCOUNT_STATUS.PROSPECT, "PROSPECT");
+  assert.equal(ACCOUNT_STATUS.INACTIVE, "INACTIVE");
+  assert.equal(ACCOUNT_STATUS.ARCHIVED, "ARCHIVED");
+  for (const v of Object.values(ACCOUNT_STATUS)) {
+    assert.equal(v, v.toUpperCase(), `${v} must be a machine value, not a label`);
+  }
+});
+
+ok("#1093 -- display labels are a separate concept and are never the stored value", () => {
+  assert.equal(accountStatusLabel(ACCOUNT_STATUS.ACTIVE), "Active");
+  for (const [value, label] of Object.entries(ACCOUNT_STATUS_LABEL)) {
+    assert.notEqual(value, label, "a label that equals its machine value has re-merged the two concepts");
+  }
+});
+
+ok("#1093 -- an unknown status is returned verbatim, never relabelled to a default", () => {
+  // Silently mapping an unrecognized value to a friendly default would hide precisely the
+  // data mismatch this issue was.
+  assert.equal(accountStatusLabel("SOMETHING_ELSE"), "SOMETHING_ELSE");
+  assert.equal(accountStatusLabel(undefined), "");
+});
+
+ok("#1093 -- counts and filters agree with documents as they are actually stored", () => {
+  const stored = [
+    { id: "a", status: "ACTIVE" },
+    { id: "b", status: "ACTIVE" },
+    { id: "c", status: "PROSPECT" },
+  ];
+  const summary = summarizeAccounts(stored);
+  assert.equal(summary.total, 3);
+  assert.equal(summary.active, 2, "the count must match what the rows visibly say");
+  assert.equal(summary.prospect, 1);
+
+  const filtered = filterAccounts(stored, { status: ACCOUNT_STATUS.ACTIVE });
+  assert.equal(filtered.length, 2, "clicking the Active card must not empty the table");
 });
 
 console.log(`\n${passed} passed, 0 failed`);

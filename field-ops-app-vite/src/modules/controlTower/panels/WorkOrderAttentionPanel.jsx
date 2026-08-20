@@ -32,8 +32,8 @@ function technicianLabel(techId, technicians) {
 
 function AttentionRow({ item, technicians }) {
   return (
-    <Link to={item.deepLink} className="work-order-card" style={{ display: "block" }}>
-      <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+    <Link to={item.deepLink} className="work-order-card fo-controltower-attention-row">
+      <h3 className="fo-controltower-attention-row__title">
         {item.woNumber}
         {item.attentionType === WO_ATTENTION_TYPE.ACTION_ITEM ? (
           <StatusPill tone="attention" label="Action needed" />

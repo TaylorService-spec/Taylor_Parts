@@ -132,11 +132,19 @@ export default function Operations({ accessVersion } = {}) {
 
         const healthEntries = generateInventoryHealthDashboard(transactions, stockSnapshots);
 
-        const discrepancies = detectStockDiscrepancies({
+        const discrepancyResult = detectStockDiscrepancies({
           warehouseStock: stockLocations,
           ledgerConsumption: consumedTransactions,
         });
-        const reconciliationReport = generateReconciliationReport(discrepancies);
+        const reconciliationReport = generateReconciliationReport(discrepancyResult);
+
+        // M-OPS-1: the health dashboard below is built ONLY from parts that have at least
+        // one ledger transaction (computeAvailableStockByPart iterates transactions, not bin
+        // stock) -- a part with recorded bin stock but zero ledger history is silently absent
+        // from healthEntries, not shown as zero. Count what's omitted so the panel can
+        // disclose it instead of looking like a complete inventory picture.
+        const stockPartIds = new Set(stockLocations.map((loc) => loc.partId));
+        const omittedBinStockCount = [...stockPartIds].filter((partId) => !availableByPart.has(partId)).length;
 
         const procurementRecommendations = healthEntries
           .filter((entry) => entry.recommendation.recommendedOrderQty > 0)
@@ -153,6 +161,7 @@ export default function Operations({ accessVersion } = {}) {
           error: null,
           data: {
             healthEntries,
+            omittedBinStockCount,
             warehouses,
             stockLocations,
             transferOrderDocs,
@@ -198,6 +207,7 @@ export default function Operations({ accessVersion } = {}) {
 
   const {
     healthEntries,
+    omittedBinStockCount,
     warehouses,
     stockLocations,
     transferOrderDocs,
@@ -224,7 +234,11 @@ export default function Operations({ accessVersion } = {}) {
       {namesUnavailable && (
         <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
       )}
-      <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+      <InventoryHealthPanel
+        healthEntries={healthEntries}
+        omittedBinStockCount={omittedBinStockCount}
+        resolveName={resolveName}
+      />
       <WarehousePanel
         warehouses={warehouses}
         stockLocations={stockLocations}

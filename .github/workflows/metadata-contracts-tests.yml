@@ -1,0 +1,339 @@
+name: Metadata Contracts Tests
+
+# EOS Metadata-to-Platform program, Gate A -- CI coverage for the Entity/Field/
+# Relationship definition contracts (field-ops-app-vite/src/metadata/).
+#
+# A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this
+# repo runs per-subsystem workflows on PRs rather than one global suite, so a test
+# that exists but is named in no workflow simply never runs on a pull request.
+#
+# What these contracts guard is governance, not convenience -- metadata never
+# grants authority (boundary section 6), definitions are data and never code
+# (section 8), declared filter operators are a claim about a real backend query
+# (section 9), and a machine value is never a display label. Those properties have
+# to fail the build, not merely be documented, which is the whole reason this job
+# exists this early.
+#
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
+      - "field-ops-app-vite/test/metadataListGrid.test.jsx"
+      - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataPurchaseOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataWarehouseDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataProcurementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataCatalogDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataInventoryActionDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
+      - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/employeeVocabulary.js"
+      - "field-ops-app-vite/src/domain/accountCommercialVocabulary.js"
+      - "field-ops-app-vite/src/domain/partVocabulary.js"
+      - "field-ops-app-vite/src/domain/equipmentStatus.js"
+      - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/salesOrderStatus.js"
+      - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
+      - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
+      - "field-ops-app-vite/test/recordProvenance.test.mjs"
+      - "field-ops-app-vite/test/queryModel.test.mjs"
+      - "field-ops-app-vite/src/metadata/definitions/**"
+      - "field-ops-app-vite/test/boardScope.test.mjs"
+      - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
+      - "field-ops-app-vite/src/domain/workOrderStatus.js"
+      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/test/accountSearch.test.mjs"
+      - "field-ops-app-vite/src/domain/accountSearch.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
+      - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
+      - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
+      - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistry.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
+      - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
+      - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
+      - "field-ops-app-vite/test/warehousesSurface.test.jsx"
+      - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
+      - "field-ops-app-vite/test/transfersSurface.test.jsx"
+      - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/metadata/callableListSource.js"
+      - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
+      - ".github/workflows/metadata-contracts-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/test/metadataEntityDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataListPresentation.test.mjs"
+      - "field-ops-app-vite/test/metadataListGrid.test.jsx"
+      - "field-ops-app-vite/test/metadataAccountDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataWorkOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataCrmDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataPartDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEquipmentDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataEmployeeDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataPurchaseOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataWarehouseDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataProcurementDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataCatalogDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataInventoryActionDefinitions.test.mjs"
+      - "field-ops-app-vite/test/metadataManufacturerDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/manufacturerVocabulary.js"
+      - "field-ops-app-vite/test/metadataAccountPageDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/employeeVocabulary.js"
+      - "field-ops-app-vite/src/domain/accountCommercialVocabulary.js"
+      - "field-ops-app-vite/src/domain/partVocabulary.js"
+      - "field-ops-app-vite/src/domain/equipmentStatus.js"
+      - "field-ops-app-vite/test/metadataSalesOrderDefinition.test.mjs"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/salesOrderStatus.js"
+      - "field-ops-app-vite/test/fieldArchitectureV2.test.mjs"
+      - "field-ops-app-vite/test/fieldArchitectureV2Compatibility.test.mjs"
+      - "field-ops-app-vite/test/recordProvenance.test.mjs"
+      - "field-ops-app-vite/test/queryModel.test.mjs"
+      - "field-ops-app-vite/src/metadata/definitions/**"
+      - "field-ops-app-vite/test/boardScope.test.mjs"
+      - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
+      - "field-ops-app-vite/src/domain/workOrderStatus.js"
+      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "field-ops-app-vite/test/customersSurface.test.jsx"
+      - "field-ops-app-vite/test/accountSearch.test.mjs"
+      - "field-ops-app-vite/src/domain/accountSearch.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
+      - "field-ops-app-vite/test/metadataListRuntime.test.mjs"
+      - "field-ops-app-vite/test/metadataPageRuntime.test.mjs"
+      - "field-ops-app-vite/test/metadataListViewDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistry.test.mjs"
+      - "field-ops-app-vite/test/metadataRegistryRealPageDefinition.test.jsx"
+      - "field-ops-app-vite/test/metadataCallableListSource.test.jsx"
+      - "field-ops-app-vite/test/metadataUseMetadataListReadVia.test.jsx"
+      - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
+      - "field-ops-app-vite/test/warehousesSurface.test.jsx"
+      - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
+      - "field-ops-app-vite/test/transfersSurface.test.jsx"
+      - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
+      - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/technicians/Technicians.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/src/metadata/callableListSource.js"
+      - "field-ops-app-vite/test/metadataPageDefinition.test.mjs"
+      - "field-ops-app-vite/test/metadataRecordPage.test.jsx"
+      - ".github/workflows/metadata-contracts-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-contracts-tests:
+    name: Metadata definition contracts (node:test + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Entity/Field/Relationship contract tests (node:test)
+        run: node --test test/metadataEntityDefinition.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: List presentation model tests (node:test)
+        run: node --test test/metadataListPresentation.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: List runtime query core tests (node:test)
+        run: node --test test/metadataListRuntime.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Page composition runtime tests (node:test)
+        run: node --test test/metadataPageRuntime.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: ListViewDefinition contract tests (node:test)
+        run: node --test test/metadataListViewDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Component/action registry tests (node:test)
+        run: node --test test/metadataRegistry.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Registry references — REAL page definition against the REAL registry (vitest)
+        run: npx vitest run test/metadataRegistryRealPageDefinition.test.jsx
+        working-directory: field-ops-app-vite
+      - name: List sources — readVia dispatch and the callable source (vitest)
+        run: npx vitest run test/metadataUseMetadataListReadVia.test.jsx test/metadataCallableListSource.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Manufacturers surface on the metadata list runtime (vitest)
+        run: npx vitest run test/manufacturersMetadataList.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Warehouses surface on the metadata list runtime (vitest)
+        run: npx vitest run test/warehousesSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Suppliers surface on the metadata list runtime (vitest)
+        run: npx vitest run test/suppliersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Technicians surface is NOT the Employees entity (vitest)
+        run: npx vitest run test/techniciansSurfaceEmployeeDivergence.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Transfers surface is a lifecycle composite, not a list (vitest)
+        run: npx vitest run test/transfersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Purchase Orders surface is a request-driven join, not a list (vitest)
+        run: npx vitest run test/purchaseOrdersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Roles surface has no entity and no read (vitest)
+        run: npx vitest run test/adminRolesPermissionsDeclined.test.jsx
+        working-directory: field-ops-app-vite
+      - name: PageDefinition contract tests (node:test)
+        run: node --test test/metadataPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Operational board scope contract tests (node:test)
+        run: node --test test/boardScope.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Work Order definition tests (node:test)
+        run: node --test test/metadataWorkOrderDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: CRM definition tests — Contact + Opportunity (node:test)
+        run: node --test test/metadataCrmDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Part definition tests (node:test)
+        run: node --test test/metadataPartDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Equipment definition tests (node:test)
+        run: node --test test/metadataEquipmentDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Employee definition tests (node:test)
+        run: node --test test/metadataEmployeeDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Purchase Order definition tests (node:test)
+        run: node --test test/metadataPurchaseOrderDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Location definition tests (node:test)
+        run: node --test test/metadataLocationDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Warehouse definition tests (node:test)
+        run: node --test test/metadataWarehouseDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Supplier definition tests (node:test)
+        run: node --test test/metadataSupplierDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Fleet + catalog definition tests (node:test)
+        run: node --test test/metadataFleetCatalogDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Billing definition tests (node:test)
+        run: node --test test/metadataBillingDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Stock Location definition tests (node:test)
+        run: node --test test/metadataStockLocationDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Territory + mobile location definition tests (node:test)
+        run: node --test test/metadataTerritoryMobileDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Held-definition identity modes (node:test)
+        run: node --test test/metadataTransferOrderDefinition.test.mjs test/metadataInventoryMovementDefinitions.test.mjs test/metadataProcurementDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Catalog definition tests (node:test)
+        run: node --test test/metadataCatalogDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Inventory action + PO void definition tests (node:test)
+        run: node --test test/metadataInventoryActionDefinitions.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Manufacturer definition tests (node:test)
+        run: node --test test/metadataManufacturerDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Account record page definition tests (node:test)
+        run: node --test test/metadataAccountPageDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Sales Order definition tests (node:test)
+        run: node --test test/metadataSalesOrderDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Account definition tests (node:test)
+        run: node --test test/metadataAccountDefinition.test.mjs
+        working-directory: field-ops-app-vite
+      - name: List grid renderer tests (vitest, jsdom)
+        run: npx vitest run test/metadataListGrid.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Record page renderer tests (vitest, jsdom)
+        run: npx vitest run test/metadataRecordPage.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Firestore list source translation tests (vitest)
+        run: npx vitest run test/metadataFirestoreListSource.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Customers surface tests (vitest, jsdom)
+        run: npx vitest run test/customersSurface.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Account search contract tests (node:test)
+        run: node --test test/accountSearch.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Field Architecture v2 contract tests (node:test)
+        run: node --test test/fieldArchitectureV2.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Field Architecture v2 compatibility with existing definitions (node:test)
+        run: node --test test/fieldArchitectureV2Compatibility.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Record provenance invariant tests (node:test)
+        run: node --test test/recordProvenance.test.mjs
+        working-directory: field-ops-app-vite
+      - name: EOS query model tests (node:test)
+        run: node --test test/queryModel.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Lint the metadata surface (oxlint)
+        run: npx oxlint src/metadata
+        working-directory: field-ops-app-vite

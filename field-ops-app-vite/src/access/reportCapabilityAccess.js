@@ -17,13 +17,20 @@
 // reads users/{uid}.role, never inspects Role names, and never builds a Role definition -- a raw
 // role can never confer a governed capability (the W1 correction; this keeps it true).
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
+import { GOVERNED_SURFACE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
 
 // The capabilities the trusted feed is asked to decide, in ONE consistent request (all resolved
 // against the same accessVersion): the four wave-1 Report Builder object-read ids, plus the five
 // per-action saved-definition ids the Saved Reports UI gates on. Never a broader or arbitrary set.
+// Extended (Owner decision 2026-08-16, #1065) with the governed SURFACE capabilities that now decide
+// route/nav visibility for capability-backed surfaces. Still one consistent request resolved against a
+// single accessVersion -- and still a closed, declared list, never a broader or arbitrary set. The name
+// stays REPORT_CAPABILITY_REQUEST because every consumer already imports it; what it means is "the
+// capabilities the shell must have a decision on to render navigation honestly".
 export const REPORT_CAPABILITY_REQUEST = Object.freeze([
   ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
   ...REPORT_DEFINITION_CAPABILITY_IDS,
+  ...GOVERNED_SURFACE_CAPABILITY_IDS,
 ]);
 
 // Observed-version subscription status. hasCapability requires `ready` with a valid version.
@@ -76,6 +83,46 @@ export function interpretAccessResult(data) {
 //   - the feed's resolved version EXACTLY matches the current observed version (deny while CHANGING,
 //     and discard a decision set resolved against an earlier/out-of-order version);
 //   - the decision for the capability is an EXPLICIT `true`.
+/**
+ * Is the governed access decision still being established for `currentUid`?
+ *
+ * WHY THIS EXISTS. buildHasCapability() correctly denies while loading -- fail-closed. But "deny"
+ * and "don't know yet" have very different consequences for ROUTING. A capability-gated route that
+ * is merely absent falls through to the router's catch-all, which REDIRECTS to /dashboard and
+ * destroys the requested URL. By the time the decision arrives the user is already somewhere else,
+ * so a legitimately-authorized principal could never land on the surface by full page load or deep
+ * link -- only by in-app navigation, once the decision happened to be resolved already.
+ *
+ * That is exactly what happened to inventoryTransferOperator on /inventory/transfers: the feed
+ * granted inventory.transfer.create, and the redirect had already fired.
+ *
+ * Compatibility-role users never saw it because ROLE_NAV_ACCESS is available synchronously from
+ * AuthContext -- there is no window for them to lose. This signal exists so the shell can WAIT for
+ * the answer instead of acting on its absence. It grants nothing; it only distinguishes
+ * "not yet known" from "known to be no".
+ */
+export function isAccessResolving(gate, currentUid) {
+  if (!currentUid) return false; // signed out is a settled answer, not a pending one
+  const version = gate?.version;
+  const feed = gate?.feed;
+
+  // The version subscription has not produced a usable value for THIS principal yet. A stale value
+  // from a previous principal counts as unresolved, not as an answer about this one.
+  if (!version || version.status === VERSION_STATUS.LOADING) return true;
+  if (version.status === VERSION_STATUS.READY && version.uid !== currentUid) return true;
+
+  // An ERROR/SIGNED_OUT version is settled: it denies, and waiting longer would not change it.
+  if (version.status !== VERSION_STATUS.READY) return false;
+
+  // Version known; the feed decision for it may still be in flight.
+  if (!feed || feed.status === FEED_STATUS.IDLE || feed.status === FEED_STATUS.LOADING) return true;
+  if (feed.status === FEED_STATUS.READY) {
+    // Ready but for a superseded principal/version -- a re-fetch is coming.
+    return feed.forUid !== currentUid || feed.forVersion !== version.version;
+  }
+  return false; // ERROR: settled denial
+}
+
 export function buildHasCapability(gate, currentUid) {
   const version = gate?.version;
   const feed = gate?.feed;

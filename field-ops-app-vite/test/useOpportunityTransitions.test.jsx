@@ -6,11 +6,16 @@ import { renderHook, act } from "@testing-library/react";
 import { useOpportunityTransitions } from "../src/hooks/useOpportunityTransitions.js";
 
 function mockClient() {
-  return { transitionOpportunity: vi.fn() };
+  // BOTH commands. WON is routed to closeOpportunityAsWon rather than transitionOpportunity,
+  // because the transition sets WON without creating a Sales Order -- the split-brain the
+  // atomic command exists to prevent. A mock carrying only the transition would let that
+  // routing regress silently, which is how it was missed in the first place.
+  return { transitionOpportunity: vi.fn(), closeOpportunityAsWon: vi.fn() };
 }
 
 const ADVANCE = { kind: "ADVANCE", toStage: "QUALIFYING" };
-const WON = { kind: "OUTCOME", outcome: "WON" };
+// WON carries the Sales Order owner/channel the atomic command requires.
+const WON = { kind: "OUTCOME", outcome: "WON", ownerEmployeeId: "emp-1", salesChannel: "RETAIL" };
 const LOST = { kind: "OUTCOME", outcome: "LOST" };
 
 describe("useOpportunityTransitions -- idempotency key strategy", () => {
@@ -95,11 +100,13 @@ describe("useOpportunityTransitions -- idempotency key strategy", () => {
 
   it("a failed-precondition outcome (e.g. ALREADY_CLOSED/ILLEGAL_TRANSITION) maps to safe copy and throws", async () => {
     const client = mockClient();
-    client.transitionOpportunity.mockResolvedValue({ errorStatus: "failed-precondition" });
+    // WON goes to the ATOMIC command, so that is the one that must fail here.
+    client.closeOpportunityAsWon.mockResolvedValue({ errorStatus: "failed-precondition" });
     const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
     await act(async () => {
       await expect(result.current.runTransition(WON)).rejects.toMatchObject({ outcome: { kind: "invalid" } });
     });
+    expect(client.transitionOpportunity).not.toHaveBeenCalled();
   });
 
   it("sends the exact payload the server expects for ADVANCE and for OUTCOME", async () => {
@@ -116,5 +123,92 @@ describe("useOpportunityTransitions -- idempotency key strategy", () => {
     const lostSent = client.transitionOpportunity.mock.calls[1][0];
     expect(lostSent).toMatchObject({ opportunityId: "OPP-1", outcome: "LOST" });
     expect(lostSent.toStage).toBeUndefined();
+  });
+});
+
+// ============ WON ROUTING — the defect this suite now pins ============
+//
+// Before this, runTransition sent EVERY intent to transitionOpportunity, WON included. That
+// callable sets outcome WON and creates no Sales Order, so clicking "Mark Won" produced an
+// Opportunity that was WON, terminal, and orderless — exactly the split-brain
+// closeOpportunityAsWon was written to make unreachable. The atomic command was merged and
+// simply never called.
+//
+// These assertions exist so that regression cannot return quietly: a mock without
+// closeOpportunityAsWon now fails loudly rather than silently taking the old path.
+describe("WON is routed to the atomic command, never to transitionOpportunity", () => {
+  const wonResult = {
+    result: { success: true, replayed: false, recovered: false, opportunityId: "OPP-1", salesOrderId: "so-9", salesOrderNumber: "SO-2026-000009" },
+  };
+
+  it("WON calls closeOpportunityAsWon and NOT transitionOpportunity", async () => {
+    const client = mockClient();
+    client.closeOpportunityAsWon.mockResolvedValue(wonResult);
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    await act(async () => { await result.current.runTransition(WON); });
+
+    expect(client.closeOpportunityAsWon).toHaveBeenCalledTimes(1);
+    expect(client.transitionOpportunity).not.toHaveBeenCalled();
+  });
+
+  it("the atomic call carries the Sales Order's owner and channel, which the server cannot infer", async () => {
+    const client = mockClient();
+    client.closeOpportunityAsWon.mockResolvedValue(wonResult);
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    await act(async () => { await result.current.runTransition(WON); });
+
+    const payload = client.closeOpportunityAsWon.mock.calls[0][0];
+    expect(payload.opportunityId).toBe("OPP-1");
+    expect(payload.ownerEmployeeId).toBe("emp-1");
+    expect(payload.salesChannel).toBe("RETAIL");
+    expect(typeof payload.idempotencyKey).toBe("string");
+    // Account and lines are server-derived from the Opportunity. Sending them would invite a
+    // client to disagree with the record it is closing.
+    expect(payload).not.toHaveProperty("accountId");
+    expect(payload).not.toHaveProperty("lines");
+  });
+
+  it("the created Sales Order is carried back so the caller can link to it", async () => {
+    const client = mockClient();
+    client.closeOpportunityAsWon.mockResolvedValue(wonResult);
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    let outcome;
+    await act(async () => { outcome = await result.current.runTransition(WON); });
+
+    // A Won that does not show its order leaves the user hunting for what they just made.
+    expect(outcome.salesOrderId).toBe("so-9");
+    expect(outcome.salesOrderNumber).toBe("SO-2026-000009");
+    expect(outcome.recovered).toBe(false);
+  });
+
+  it("a RECOVERED close (Won existed, order was missing) is reported as such", async () => {
+    const client = mockClient();
+    client.closeOpportunityAsWon.mockResolvedValue({
+      result: { success: true, replayed: false, recovered: true, opportunityId: "OPP-1", salesOrderId: "so-3", salesOrderNumber: "SO-2026-000003" },
+    });
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    let outcome;
+    await act(async () => { outcome = await result.current.runTransition(WON); });
+    expect(outcome.recovered).toBe(true);
+  });
+
+  it("LOST still uses transitionOpportunity — it creates no order, so it must not go atomic", async () => {
+    const client = mockClient();
+    client.transitionOpportunity.mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "OPP-1", stage: "DECISION", outcome: "LOST" } });
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    await act(async () => { await result.current.runTransition(LOST); });
+
+    expect(client.transitionOpportunity).toHaveBeenCalledTimes(1);
+    expect(client.closeOpportunityAsWon).not.toHaveBeenCalled();
+  });
+
+  it("ADVANCE still uses transitionOpportunity", async () => {
+    const client = mockClient();
+    client.transitionOpportunity.mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "OPP-1", stage: "QUALIFYING", outcome: null } });
+    const { result } = renderHook(() => useOpportunityTransitions("OPP-1", { client }));
+    await act(async () => { await result.current.runTransition({ kind: "ADVANCE", toStage: "QUALIFYING" }); });
+
+    expect(client.transitionOpportunity).toHaveBeenCalledTimes(1);
+    expect(client.closeOpportunityAsWon).not.toHaveBeenCalled();
   });
 });

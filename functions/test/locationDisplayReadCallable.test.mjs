@@ -63,12 +63,32 @@ const technicianUid = await seedPrincipal("technician");
 await check("callable rejects unauthenticated callers", async () => {
   await expectHttps(svc.getLocationDisplay.run(request(undefined, { locationIds: ["WH-1"] })), "unauthenticated");
 });
-await check("admin is denied -- inventory.location.display.read is granted to no Role", async () => {
+// SUPERSEDED POSTURE, 2026-08-19. This suite was written to prove an UNGRANTED capability:
+// granted to no Role, no activation override, denied for everyone everywhere. Two things
+// changed, and the assertions below now prove the opposite in one of the two cases.
+//
+//   1. The Owner ruled "Admin and Owner have full access to all possible features and
+//      permissions", so admin holds the ENTIRE catalog, this id included.
+//   2. This id IS in eos-platform-sandbox's capabilityActivationOverrides.
+//
+// Grant AND activation together are what produce an ALLOW, so:
+//   - OUTSIDE the sandbox project there is no override, the id stays active:false, and
+//     admin is still denied. That half is unchanged and still asserted.
+//   - INSIDE the sandbox project both conditions are met and admin is ALLOWED. That half
+//     is inverted below.
+//
+// This is not a loosening slipped in with a fix: it is the fix. A live sweep signed in as
+// admin and got HTTP 403 from this callable on a page the rail had offered them.
+// dispatcher and technician hold no such grant and are still denied everywhere, which is
+// what keeps this suite an authorization boundary rather than an open door.
+await check("admin is denied OUTSIDE the sandbox: it holds the grant, but the id is active:false with no override", async () => {
   await expectHttps(svc.getLocationDisplay.run(request(adminUid, { locationIds: ["WH-1"] })), "permission-denied");
 });
-await check("admin is still denied inside the sandbox project (no activation override exists for this capability)", async () => {
+await check("admin IS allowed inside the sandbox project -- grant plus activation override", async () => {
   await withProject("eos-platform-sandbox", async () => {
-    await expectHttps(svc.getLocationDisplay.run(request(adminUid, { locationIds: ["WH-1"] })), "permission-denied");
+    // Asserts RESOLUTION, not merely "not permission-denied": a call failing for an
+    // unrelated reason would satisfy the weaker check while proving nothing.
+    await svc.getLocationDisplay.run(request(adminUid, { locationIds: ["WH-1"] }));
   });
 });
 await check("dispatcher is denied, in any project", async () => {

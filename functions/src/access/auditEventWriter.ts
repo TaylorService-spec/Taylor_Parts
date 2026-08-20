@@ -164,6 +164,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // P1.3 -- runtime mirror of the createSalesOrderFromOpportunity AuditAction union member (governed,
   // human-invoked WON -> Create Sales Order action; own deterministic Audit Event id space).
   "createSalesOrderFromOpportunity",
+  // Runtime mirror of the closeOpportunityAsWon AuditAction union member (atomic WON plus
+  // Sales Order creation in one transaction).
+  "closeOpportunityAsWon",
+  // Runtime mirror of the updateOpportunity AuditAction union member.
+  "updateOpportunity",
   // P1.1 (Sales->Cash fulfillment spine): runtime mirror of the salesOrderFulfillmentWriteBack AuditAction
   // union member (WO-Complete -> SO fulfilledQty write-back traceability).
   "salesOrderFulfillmentWriteBack",
@@ -181,6 +186,19 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "submitCycleCount",
   "reconcileCycleCount",
   "cancelCycleCount",
+  // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision (reject, no
+  // ledger evidence). Runtime mirror of the rejectCycleCount AuditAction union member.
+  "rejectCycleCount",
+  // Work Order transition audit trail (M9/H19 remediation): runtime mirror of the transitionWorkOrder
+  // AuditAction union member (types/access.ts) -- one Audit Event per applied Work Order transition.
+  "transitionWorkOrder",
+  // H20 fix (dispatch reassignment): runtime mirror of the reassignWorkOrderTechnician AuditAction union
+  // member -- an ADDITIONAL event beside "transitionWorkOrder" above, not a replacement (see types/access.ts
+  // for why both coexist).
+  "reassignWorkOrderTechnician",
+  // Phantom Sales Order link repair -- see the matching entries on the AuditAction union (types/access.ts).
+  "repairPhantomSalesOrderLink",
+  "rollbackPhantomSalesOrderLinkRepair",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

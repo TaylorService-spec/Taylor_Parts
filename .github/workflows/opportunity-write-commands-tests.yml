@@ -1,0 +1,89 @@
+name: Opportunity Write Commands Tests
+
+# The governed Opportunity WRITE paths: ordinary edit (updateOpportunity) and the atomic
+# close-as-WON that creates exactly one Sales Order in a single transaction.
+#
+# These need the Firestore emulator and therefore cannot live in `test:access`, which runs
+# with no emulator. Without their own workflow they would be CI-UNCOVERED — a new subsystem
+# whose tests only ever run when someone remembers to run them locally, which is how the
+# transaction-ordering guarantee would quietly rot.
+#
+# The ordering guarantee is the reason this job matters: Firestore requires all reads before
+# all writes, and `allocateSalesOrderNumber` is itself read-then-write. If that order
+# regresses, the transaction fails at RUNTIME on the one path that must never fail — closing
+# a deal. A green run here is the evidence that it still holds.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/opportunity/**"
+      - "functions/src/salesOrder/salesOrderCommands.ts"
+      - "functions/src/salesOrder/salesOrderNumbering.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/test/opportunityUpdateCallable.test.mjs"
+      - "functions/test/closeOpportunityAsWonAtomic.test.mjs"
+      - "functions/test/auditIdempotencyTargetScope.test.mjs"
+      - "functions/src/salesOrder/salesOrderCallables.ts"
+      - "functions/package.json"
+      - ".github/workflows/opportunity-write-commands-tests.yml"
+  pull_request:
+    paths:
+      - "functions/src/opportunity/**"
+      - "functions/src/salesOrder/salesOrderCommands.ts"
+      - "functions/src/salesOrder/salesOrderNumbering.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/test/opportunityUpdateCallable.test.mjs"
+      - "functions/test/closeOpportunityAsWonAtomic.test.mjs"
+      - "functions/test/auditIdempotencyTargetScope.test.mjs"
+      - "functions/src/salesOrder/salesOrderCallables.ts"
+      - "functions/package.json"
+      - ".github/workflows/opportunity-write-commands-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  opportunity-write-commands-emulator:
+    name: Opportunity edit + atomic Won -> Sales Order (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/opportunity-write-commands-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/opportunity-write-commands-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/opportunity-write-commands-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Opportunity write commands (build + run)
+        run: npm run test:opportunityWriteCommandsEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opportunity-write-commands-emulator-logs
+          path: /tmp/opportunity-write-commands-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

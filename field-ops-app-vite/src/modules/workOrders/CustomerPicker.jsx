@@ -10,6 +10,7 @@ import {
 } from "../../domain/customerSearch";
 import { accountStatusTone } from "../../domain/accountPortfolio";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives";
 
 // Work Order wizard, Step 1 -- accessible Customer picker. Replaces the generic
 // Global Search box with a combobox whose results are unambiguous: each shows
@@ -146,9 +147,9 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
           <div className="fo-customer-picker-status" role="status" aria-live="polite">
             <span>{statusMessage}</span>
             {locError && (
-              <button type="button" className="fo-link-btn fo-customer-picker-retry" onClick={retry}>
+              <Button variant="tertiary" className="fo-link-btn fo-customer-picker-retry" onClick={retry}>
                 Retry
-              </button>
+              </Button>
             )}
           </div>
 

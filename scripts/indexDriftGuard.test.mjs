@@ -89,7 +89,56 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // EMPTY. Every declared index has reached the live estate.
+  // Declared by the TransferOrder leaf definition; not deployed.
+  'transfer_orders|COLLECTION|status:ASCENDING,createdAt:DESCENDING',
+  // Declared by the MobileLocation leaf definition; not deployed.
+  'mobile_locations|COLLECTION|active:ASCENDING,displayLabel:ASCENDING',
+  // Declared by the Stock Location leaf definition; not deployed.
+  'stock_locations|COLLECTION|warehouseId:ASCENDING,binCode:ASCENDING',
+  // Declared by the Truck leaf definition; not deployed. (EquipmentModel's were removed --
+  // equipment_models is D4-governed; see equipmentModel.js's boundary note.)
+  'trucks|COLLECTION|status:ASCENDING,displayLabel:ASCENDING',
+  'trucks|COLLECTION|homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
+  'trucks|COLLECTION|status:ASCENDING,homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
+  // Declared by the Manufacturer leaf definition; not deployed.
+  'manufacturers|COLLECTION|status:ASCENDING,name:ASCENDING',
+  // Declared by the Warehouse and Supplier leaf definitions; not deployed.
+  'warehouses|COLLECTION|status:ASCENDING,name:ASCENDING',
+  'suppliers|COLLECTION|status:ASCENDING,name:ASCENDING',
+  // Declared by the Location leaf definition; not deployed.
+  'locations|COLLECTION|accountId:ASCENDING,name:ASCENDING',
+  // Declared by the Employee leaf definition; not deployed.
+  'employees|COLLECTION|operationalRoles:CONTAINS,displayName:ASCENDING',
+  'employees|COLLECTION|employmentStatus:ASCENDING,displayName:ASCENDING',
+  'employees|COLLECTION|employmentStatus:ASCENDING,operationalRoles:CONTAINS,displayName:ASCENDING',
+  // Declared by the Part and Equipment leaf definitions; not deployed.
+  'parts|COLLECTION|status:ASCENDING,internalPartNumber:ASCENDING',
+  'parts|COLLECTION|stockingClass:ASCENDING,internalPartNumber:ASCENDING',
+  'parts|COLLECTION|status:ASCENDING,stockingClass:ASCENDING,internalPartNumber:ASCENDING',
+  'equipment|COLLECTION|accountId:ASCENDING,name:ASCENDING',
+  'equipment|COLLECTION|status:ASCENDING,name:ASCENDING',
+  'equipment|COLLECTION|accountId:ASCENDING,status:ASCENDING,name:ASCENDING',
+  // Declared by the Account metadata definition (#1137), NOT yet deployed. Index
+  // deployment is a separate authorized action, so account.index's declared filters are
+  // a promise the repository keeps and the environment does not yet -- and listing the
+  // key here states that gap rather than letting the guard read as drift.
+  'accounts|COLLECTION|status:ASCENDING,updatedAt:DESCENDING',
+  'accounts|COLLECTION|relationshipTypes:CONTAINS,updatedAt:DESCENDING',
+  'accounts|COLLECTION|status:ASCENDING,relationshipTypes:CONTAINS,updatedAt:DESCENDING',
+  // Declared by the Work Order metadata definition (Gate B). The other two shapes it
+  // demands were already live before the definition existed.
+  'fieldops_wos|COLLECTION|status:ASCENDING,customerId:ASCENDING,createdAt:DESCENDING',
+  // Declared by the operational board scope contract: all three of its queries filter
+  // status IN (an equality) plus a scheduledStart range or equality.
+  'fieldops_wos|COLLECTION|status:ASCENDING,scheduledStart:ASCENDING',
+  // Declared by the Contact and Opportunity definitions (first Account related-list
+  // dependencies). Opportunities are CALLABLE-read, so this serves the server's own query.
+  'contacts|COLLECTION|accountId:ASCENDING,name:ASCENDING',
+  'opportunities|COLLECTION|stage:ASCENDING,expectedCloseAt:ASCENDING',
+  // Declared by the Sales Order definition (S-CRM-SALES-ORDER-DEFINITION). Sales Orders are
+  // CALLABLE-read like Opportunities, so this serves the server's own listSalesOrdersForAccount
+  // query shape, not a client-direct read.
+  'sales_orders|COLLECTION|state:ASCENDING,salesOrderNumber:DESCENDING',
   //
   // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
   // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That

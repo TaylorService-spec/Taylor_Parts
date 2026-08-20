@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
@@ -8,18 +8,13 @@ import { accountStatusTone, accountRelationshipTone, accountLineOfBusinessTone }
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
-import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS } from "../../domain/constants";
+import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, accountStatusLabel } from "../../domain/constants";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
-import ServiceActivitySection from "./ServiceActivitySection";
-import AccountOpportunitiesSection from "./AccountOpportunitiesSection";
-import AccountSalesOrdersSection from "./AccountSalesOrdersSection";
-import AccountFinancialsSection from "./AccountFinancialsSection";
 import AccountHealthStrip from "./AccountHealthStrip";
 import AccountAttentionSection from "./AccountAttentionSection";
-import ActivityAndNotesSection from "./ActivityAndNotesSection";
 import { useAccountAr } from "../../hooks/useAccountAr";
 import { accountArView } from "../../domain/accountArView";
 import { useAccountWorkOrderCount } from "../../hooks/useAccountServiceActivity";
@@ -28,12 +23,56 @@ import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
 import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { useAuth } from "../../auth/AuthContext";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import {
+  accountRecordPageMainSubset,
+  accountRecordPageContactsLocationsSubset,
+  accountPageListResolver,
+  accountPageEntityResolver,
+  useAccountPageCapabilityDecisions,
+  buildAccountRelatedListPresentation,
+} from "../../metadata/definitions/accountPageComponents.js";
+
+// X-ACCOUNT-PAGE-WIRING -- Financials / Activity & Notes / Service Activity (the MAIN-column
+// componentId sections, in accountPage.js's own order) now render through MetadataRecordPage
+// against the real accountRecordPage definition (definitions/accountPage.js), using a subset of
+// its sections -- see accountPageComponents.js's WIRING SCOPE note for exactly what remains
+// hand-rendered below and why (the header identity, health strip, Account Attention, the
+// Contacts/Locations RELATED_LIST sections, and the two FIELD_GROUP sections). Capability
+// decisions come from useAccountPageCapabilityDecisions, the same trusted
+// resolveEffectiveAccessCallable-backed, fail-closed gate access/useReportCapabilities.js
+// already uses, requesting exactly the ids accountRecordPage declares.
+//
+// X-ACCOUNT-PAGE-WIRING-COMPLETE -- re-evaluated after MetadataRecordPage's three renderer gaps
+// closed (commit 27b109bb: FIELD_GROUP entityResolver, RELATED_LIST default binding, `embedded`).
+// Closing those gaps made every remaining section mechanically renderable; it did not make any of
+// them SAFE to render here. Each was checked against what it would actually replace and found to
+// render measurably worse -- see accountPageComponents.js's WIRING SCOPE block for the full,
+// per-section evidence (a section-level finance.read gate hiding Account Attention's ungated
+// Work-Order half for every current viewer; a forced duplicate live read plus lost Add/Import
+// CRUD and lost post-add focus-handoff for Contacts/Locations; raw unresolved reference ids and a
+// lost taxStatus safe-default for Commercial Profile; a lost collapsed-by-default layout for
+// Notes & Identifiers). No section below was moved. Locked in by test/accountPageComponents.test.jsx.
+//
+// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 -- Opportunities and Sales Orders (both RELATED_LIST,
+// CALLABLE-readVia) are now ALSO wired through the same MetadataRecordPage call, as the first
+// two sections of accountRecordPageMainSubset (accountPage.js's own order: opportunities ->
+// salesOrders -> financials -> activityAndNotes -> serviceActivity). Their two prior blockers
+// (a raw-epoch-millisecond TIMESTAMP column; DefaultRelatedList wiring no row navigation) closed
+// with commit 6998306f -- see accountPageComponents.js's WIRING SCOPE note for the full
+// re-verification and the one new REGISTRATION_PENDING finding (opportunity.js's own
+// rowNavigationTo names a route that does not exist; handled inside accountPageComponents.js's
+// listResolver, not here). AccountOpportunitiesSection.jsx / AccountSalesOrdersSection.jsx are no
+// longer mounted here -- their own account-scoped hooks/components remain unmodified and
+// available for other callers, but this page reads both through the metadata RELATED_LIST path.
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -171,15 +210,66 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
   );
 }
 
+// X-RELATED-LIST-ACTIONS wiring for the Contacts/Locations sections below --
+// A-ACCOUNT-WIRE-CONTACTS-LOCATIONS. The section HEADING (with its live row count) and the
+// "+ Add ..." / "Import ..." affordances stay hand-rendered here -- MetadataListGrid /
+// DefaultRelatedList have no equivalent -- while the row grid itself, the four
+// EMPTY/DENIED/UNAVAILABLE/READY states, and the post-create keyboard-focus handoff all
+// route through the real metadata list runtime (buildAccountRelatedListPresentation +
+// MetadataListGrid's own focusRowKey/onFocusHandled). See accountPageComponents.js's WIRING
+// SCOPE note for the full case (why a separate MetadataRecordPage call, why NOT
+// DefaultRelatedList, the Location-address-flattening and Contact-isPrimary fixes).
+function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFocusHandled, announcement, actions }) {
+  return (
+    <>
+      <h4>{heading}</h4>
+      <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
+      <MetadataListGrid
+        presentation={presentation}
+        onRetry={onRetry}
+        caption={heading}
+        focusRowKey={focusRowKey ?? undefined}
+        onFocusHandled={onFocusHandled}
+      />
+      {actions && actions.length > 0 && (
+        <div className="fo-btn-row">
+          {actions.map((action) => (
+            <button key={action.label} type="button" onClick={action.onClick}>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
+  // Guarded rather than a bare destructure: production always renders inside AuthProvider (App.jsx),
+  // but several existing AccountDetail tests render this component with no AuthProvider ancestor --
+  // useAuth() (useContext(AuthContext), no default value) returns undefined there. Falling back to
+  // {} keeps `user` undefined/null in that case, which useAccountPageCapabilityDecisions already
+  // treats as signed-out (fail-closed, denies every capability) -- never a permissive default.
+  const { user } = useAuth() ?? {};
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
-  const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
-  const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
+  const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
+  const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
-  // Health-strip inputs. Both are EXISTING authoritative account-scoped reads; the AR read is the
-  // SAME one AccountFinancialsSection renders, so the strip and the AR area can never disagree.
+  // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
+  // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
+  // permissive default.
+  const capabilityDecisions = useAccountPageCapabilityDecisions(user);
+  // Health-strip inputs. Both are EXISTING authoritative account-scoped reads.
+  //
+  // This comment used to claim the strip and the AR area "can never disagree" because they share
+  // the AR read. They share the read FUNCTION, not the read: AccountArSection and
+  // AccountAttentionSection each call useAccountAr(accountId) independently, so one page load
+  // issues three separate listAccountInvoiceAr requests. They can disagree, and they did -- see
+  // issue #1094, where the strip reported Unavailable beside a section showing a real balance.
+  // Single-read ownership is tracked separately as #1095; do not restore the invariant claim
+  // until one owner actually holds the read.
   const arState = useAccountAr(accountId);
   // fetchFn must be a stable module-level reference (the hook keys its effect on it).
   const workOrderCount = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
@@ -194,27 +284,14 @@ export default function AccountDetail() {
   const [locationAnnouncement, setLocationAnnouncement] = useState("");
   // The contact/location id to move focus to once the live subscription renders
   // its row (matched by id internally; the id is never rendered/announced).
+  // X-RELATED-LIST-ACTIONS: the post-create focus handoff itself (waiting for the live
+  // subscription to deliver the new row, then moving DOM focus onto it) is now
+  // MetadataListGrid's own concern (focusRowKey/onFocusHandled, wired through
+  // accountRelatedListRenderer below) -- this state is only the id to hand off and the
+  // handler that clears it once MetadataListGrid reports the handoff done, matching the
+  // contract every other caller of that prop already follows.
   const [pendingContactFocus, setPendingContactFocus] = useState(null);
   const [pendingLocationFocus, setPendingLocationFocus] = useState(null);
-  const contactRowRef = useRef(null);
-  const locationRowRef = useRef(null);
-
-  // After a successful import OR single add, focus the target Contact's row once
-  // the live useContactsForAccount subscription has delivered it.
-  useEffect(() => {
-    if (pendingContactFocus && contactRowRef.current) {
-      contactRowRef.current.focus();
-      setPendingContactFocus(null);
-    }
-  }, [pendingContactFocus, contacts]);
-
-  // Same for a newly added Location once useLocationsForAccount delivers it.
-  useEffect(() => {
-    if (pendingLocationFocus && locationRowRef.current) {
-      locationRowRef.current.focus();
-      setPendingLocationFocus(null);
-    }
-  }, [pendingLocationFocus, locations]);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading customer…</LoadingState></div>;
 
@@ -246,8 +323,19 @@ export default function AccountDetail() {
     );
   }
 
+  // On a blocked/denied write this THROWS so AccountForm's own catch keeps the
+  // edit form open with an honest saveError message (see accountSaveErrorMessage)
+  // -- same contract as handleAddLocation/handleAddContact below. Without this
+  // check a blocked write resolved `{ blocked: true }` (it does not reject) and
+  // fell straight through to setIsEditing(false), closing the form as if the
+  // save succeeded while silently discarding the user's edits.
   async function handleEditSubmit(values) {
-    await updateAccount(account.id, values);
+    const result = await updateAccount(account.id, values);
+    if (result?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
     setIsEditing(false);
   }
 
@@ -293,6 +381,54 @@ export default function AccountDetail() {
     );
   }
 
+  // X-RELATED-LIST-ACTIONS wiring -- the RELATED_LIST binding for accountRecordPage's
+  // "contacts" / "locations" sections. `listRenderer` (MetadataRecordPage's own injection
+  // point) always wins over the default binding for every RELATED_LIST section that call
+  // touches -- see accountRecordPageContactsLocationsSubset's own comment for why this is a
+  // SEPARATE MetadataRecordPage call rather than folded into accountRecordPageMainSubset.
+  function accountRelatedListRenderer({ listId }) {
+    if (listId === "account.contacts") {
+      return (
+        <RelatedListSection
+          heading={`Contacts (${contactsError ? "—" : contacts.length})`}
+          presentation={buildAccountRelatedListPresentation({
+            listId,
+            rows: contacts,
+            loading: contactsLoading,
+            error: contactsError,
+          })}
+          onRetry={retryContacts}
+          focusRowKey={pendingContactFocus}
+          onFocusHandled={() => setPendingContactFocus(null)}
+          announcement={contactAnnouncement}
+          actions={[
+            { label: "+ Add Contact", onClick: () => setShowContactModal(true) },
+            { label: "Import Contacts", onClick: () => setShowImport(true) },
+          ]}
+        />
+      );
+    }
+    if (listId === "account.locations") {
+      return (
+        <RelatedListSection
+          heading={`Locations (${locationsError ? "—" : locations.length})`}
+          presentation={buildAccountRelatedListPresentation({
+            listId,
+            rows: locations,
+            loading: locationsLoading,
+            error: locationsError,
+          })}
+          onRetry={retryLocations}
+          focusRowKey={pendingLocationFocus}
+          onFocusHandled={() => setPendingLocationFocus(null)}
+          announcement={locationAnnouncement}
+          actions={[{ label: "+ Add Location", onClick: () => setShowLocationModal(true) }]}
+        />
+      );
+    }
+    return null;
+  }
+
   const billingLine = formatAddress(account.billingAddress);
   const hasIdentifiers =
     account.customerNumber || account.erpId || account.accountingId || account.legacyId;
@@ -300,7 +436,7 @@ export default function AccountDetail() {
   const actions = (
     <ActionRail
       start={<button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">&larr; Back to Customers</button>}
-      primary={!isEditing ? <button type="button" className="fo-btn-primary" onClick={() => setIsEditing(true)}>Edit</button> : null}
+      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit</Button> : null}
     />
   );
 
@@ -324,7 +460,7 @@ export default function AccountDetail() {
           <section className="fo-account-summary">
             <div className="fo-pill-row">
               {account.status && (
-                <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
+                <StatusPill tone={accountStatusTone(account.status)} label={accountStatusLabel(account.status)} />
               )}
               <RelationshipBadges relationshipTypes={account.relationshipTypes} />
               <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
@@ -353,60 +489,75 @@ export default function AccountDetail() {
           {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
               exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
               real record surfaces, not an empty shell implying "this account has none." Ordered
-              Opportunities, then Sales Orders, above Financials in the PRIMARY column. */}
-          <AccountOpportunitiesSection accountId={account.id} />
-          <AccountSalesOrdersSection accountId={account.id} />
+              Opportunities, then Sales Orders, above Financials in the PRIMARY column -- same
+              order as always, now produced by accountRecordPageMainSubset (accountPage.js's own
+              section order) rather than hand-sequenced here.
 
-          {/* Accounts Receivable + the provider-dependent financial surfaces, composed into ONE
-              area. Previously these were three separate blocks and the same "not connected"
-              sentence rendered four times on a single page load; AccountFinancialsSection keeps
-              the real AR read prominent and collapses the unconfigured provider into one line. */}
-          <AccountFinancialsSection accountId={account.id} />
+              A-ACCOUNT-WIRE-CALLABLE-LISTS-2: both sections now render through the single
+              MetadataRecordPage call below (RELATED_LIST, CALLABLE readVia via
+              callableListSource.js) rather than AccountOpportunitiesSection/
+              AccountSalesOrdersSection directly. The two blockers that kept them hand-rendered
+              (opportunity.js's expectedCloseAt TIMESTAMP column rendering as a raw epoch number;
+              DefaultRelatedList wiring no row navigation) both closed with commit 6998306f --
+              cellValue() now formats TIMESTAMP/DATE, and DefaultRelatedList now builds onRowClick
+              from a resolved list definition's rowNavigationTo. Sales Orders keeps its real
+              per-order route (opportunities/sales-order/:salesOrderId -> SalesOrderDetail.jsx,
+              App.jsx) via salesOrderRelatedList's own rowNavigationTo, wired through unmodified.
+              Opportunities has no equivalent per-record route anywhere in App.jsx today --
+              opportunity.js's own rowNavigationTo names one that does not exist, a pre-existing
+              defect outside this file's/accountPageComponents.js's writeScope for that specific
+              file (definitions/opportunity.js) -- so accountPageComponents.js's listResolver
+              strips it, and Opportunities rows render honestly non-focusable (no onClick, no
+              tabIndex) rather than link to a page that would 404. See accountPageComponents.js's
+              WIRING SCOPE note for the full evidence and the REGISTRATION_PENDING finding. */}
 
-          {/* ACTIVITY & NOTES -- durable, attributed CRM interaction history. Lives in the
-              PRIMARY column: it is a record surface a salesperson works in, not sidebar
-              context. Deliberately not a single editable notes blob. */}
-          <ActivityAndNotesSection accountId={account.id} />
+          {/* Accounts Receivable + the provider-dependent financial surfaces, ACTIVITY & NOTES,
+              and Service Activity -- X-ACCOUNT-PAGE-WIRING: these three are exactly
+              accountRecordPage's MAIN-column componentId sections (financials, activityAndNotes,
+              serviceActivity), in the same order accountPage.js and this file already agreed on,
+              now rendered through MetadataRecordPage against the real definition + the real
+              capability decisions rather than called directly. Section-level behavior is
+              unchanged (same components, same accountId), and financials/activityAndNotes stay
+              gated on finance.read/crm.activity.read exactly as accountPage.js declares --
+              crm.activity.read is registered active:false catalog-wide, so Activity & Notes will
+              not render here until that capability is separately activated, which is the correct
+              fail-closed reading of accountPage.js's own declaration, not a regression. Same
+              fail-closed reading now applies to opportunity.read/salesOrder.read, both also
+              registered active:false catalog-wide -- Opportunities/Sales Orders will not render
+              here until either is separately activated, matching the already-accepted
+              financials/activityAndNotes precedent, not a new regression. */}
+          <MetadataRecordPage
+            definition={accountRecordPageMainSubset}
+            record={account}
+            capabilityDecisions={capabilityDecisions}
+            listResolver={accountPageListResolver}
+            entityResolver={accountPageEntityResolver}
+          />
 
-          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
-          <ServiceActivitySection accountId={account.id} />
-
-          {/* 3. Contacts */}
-          <section className="wo-history">
-            <h4>Contacts ({contactsError ? "—" : contacts.length})</h4>
-            <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
-            {contactsError ? (
-              // site-work #8: a FAILED read is not "No contacts yet" -- mirrors the
-              // Locations section's fail-closed pattern below. Rendering the false
-              // empty state would hide real Contacts (duplicate-contact / mis-routed
-              // -service risk); fail closed to an actionable failure instead.
-              <div className="fo-inline-error" role="alert" data-contacts-error>
-                {contactsError}
-              </div>
-            ) : contacts.length === 0 ? (
-              <EmptyState variant="database" message="No contacts yet." />
-            ) : (
-              contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="wo-history-row"
-                  ref={contact.id === pendingContactFocus ? contactRowRef : undefined}
-                  tabIndex={contact.id === pendingContactFocus ? -1 : undefined}
-                >
-                  <strong>{contact.name}</strong>
-                  {contact.isPrimary && <StatusPill tone="positive" label="Primary" />}
-                  {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
-                  {contact.email && <span className="fo-muted"> -- {contact.email}</span>}
-                </div>
-              ))
-            )}
-            {/* Add Contact opens the shared-Modal creation flow; Import Contacts
-                keeps its own separate CSV modal. No inline form below the list. */}
-            <div className="fo-btn-row">
-              <button type="button" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
-              <button type="button" onClick={() => setShowImport(true)}>Import Contacts</button>
-            </div>
-          </section>
+          {/* 3. Contacts / 4. Locations -- X-RELATED-LIST-ACTIONS (#1211) unblocked wiring
+              these through the metadata list runtime: MetadataListGrid gained
+              focusRowKey/onFocusHandled (the post-create keyboard-focus handoff
+              pendingContactFocus/pendingLocationFocus need) and this lane
+              (A-ACCOUNT-WIRE-CONTACTS-LOCATIONS) closed the remaining double-read concern by
+              reusing useContactsForAccount/useLocationsForAccount's OWN live data
+              (buildAccountRelatedListPresentation, accountPageComponents.js) instead of
+              DefaultRelatedList's independent read. `accountRelatedListRenderer` above supplies
+              a `listRenderer` for this call ONLY -- accountRecordPageContactsLocationsSubset is
+              a SEPARATE MetadataRecordPage call from the one above precisely so `listRenderer`
+              (which wins for every RELATED_LIST section it touches) cannot also intercept
+              Opportunities/Sales Orders. "+ Add Contact" / "Import Contacts" / "+ Add Location"
+              and their modals have no equivalent inside MetadataListGrid/DefaultRelatedList and
+              stay hand-mounted here, unchanged. See accountPageComponents.js's WIRING SCOPE note
+              for the full case. */}
+          <MetadataRecordPage
+            definition={accountRecordPageContactsLocationsSubset}
+            record={account}
+            capabilityDecisions={capabilityDecisions}
+            listResolver={accountPageListResolver}
+            entityResolver={accountPageEntityResolver}
+            listRenderer={accountRelatedListRenderer}
+            embedded
+          />
 
           {showContactModal && (
             <ContactCreateModal
@@ -426,44 +577,9 @@ export default function AccountDetail() {
             />
           )}
 
-          {/* 4. Locations -- add-only (no Location edit action exists) */}
-          <section className="wo-history">
-            <h4>Locations ({locationsError ? "—" : locations.length})</h4>
-            <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
-            {locationsError ? (
-              // #291: a FAILED read is not "No locations yet". Fail closed to an
-              // actionable failure with retry, never an empty state that would tell the
-              // user this customer has no locations when we simply could not look.
-              <div className="fo-inline-error" role="alert" data-location-error>
-                {locationsError}{" "}
-                <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
-              </div>
-            ) : locations.length === 0 ? (
-              <EmptyState
-                variant="database"
-                message="No locations yet."
-                guidance="A location is a physical site where service happens for this customer. Raising a work order needs one, so add the customer's first location here before scheduling work for them."
-              />
-            ) : (
-              locations.map((loc) => {
-                const locLine = formatAddress(loc.address);
-                return (
-                  <div
-                    key={loc.id}
-                    className="wo-history-row"
-                    ref={loc.id === pendingLocationFocus ? locationRowRef : undefined}
-                    tabIndex={loc.id === pendingLocationFocus ? -1 : undefined}
-                  >
-                    <strong>{loc.name}</strong>
-                    {locLine && <span className="fo-muted"> -- {locLine}</span>}
-                    {loc.accessNotes && <div className="fo-muted">{loc.accessNotes}</div>}
-                  </div>
-                );
-              })
-            )}
-            {/* Add Location opens the shared-Modal creation flow; no inline form. */}
-            <button type="button" onClick={() => setShowLocationModal(true)}>+ Add Location</button>
-          </section>
+          {/* 4. Locations -- add-only (no Location edit action exists). Rendered by the same
+              MetadataRecordPage call above (accountRecordPageContactsLocationsSubset carries
+              both "contacts" and "locations"). */}
 
           {showLocationModal && (
             <LocationCreateModal
@@ -476,7 +592,17 @@ export default function AccountDetail() {
             </div>
             <aside className="fo-account-secondary" aria-label="Account context">
 
-          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
+          {/* Commercial Profile -- informational fields + current-name identity (PR 1)
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
+              renderer (accountPage.js: commercialProfile, GAP 1's `entityResolver`) and left
+              hand-rendered. The generic renderer's cellValue() has no REFERENCE-field
+              resolution -- accountOwnerEmployeeId/billingContactId would show the raw stored
+              employee/contact id where CommercialProfileSection shows the CURRENT resolved name
+              via IdentityLine -- and no taxStatus safe default, so an absent taxStatus would
+              render "—" instead of the required "Unknown" (domain/commercialProfile.js's
+              resolveTaxStatus(), see account.js's own field comment). Both are data-correctness
+              regressions, not formatting ones. See accountPageComponents.js's WIRING SCOPE
+              note. */}
           <CommercialProfileSection
             account={account}
             contacts={contacts}
@@ -491,12 +617,34 @@ export default function AccountDetail() {
               authorities (AR overdue + Work Order past due). Renders nothing when there
               is nothing to say. The Marketing seam mounts alongside and stays absent
               while no provider exists: an optional section with nothing to say should
-              contribute nothing, not a permanent apology. */}
+              contribute nothing, not a permanent apology.
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: still NOT routed through MetadataRecordPage,
+              re-evaluated after `embedded` (GAP 3) shipped. `embedded` fixes the REGION-level
+              symptom (a zero-section plan no longer becomes a page-level FailureState) but not
+              the SECTION-level cause: accountPage.js declares ONE capability
+              (finance.read) for this section, while AccountAttentionSection internally
+              composes TWO sources at different authority levels -- AR via useAccountAr
+              (finance.read-gated) and Work-Order-past-due via useAccountAttentionWorkOrders
+              (UNGATED, Rules-by-role only). A section-level capabilityRequirement can only
+              honor the coarser of the two, so wiring this through metadata would hide the
+              entire panel -- including the ungated Work-Order half -- whenever finance.read
+              is denied. finance.read is registered catalog-wide active:false today, i.e.
+              denied for every current viewer, so that is not a theoretical edge case: it
+              would blank this panel for 100% of users right now. Hand-rendered to keep
+              AccountAttentionSection's real per-source degrade; see accountPageComponents.js's
+              WIRING SCOPE note and test/accountPageComponents.test.jsx for the full case. */}
           <AccountAttentionSection accountId={account.id} />
 
           {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
               column: it is a record surface a salesperson works in, not sidebar context. */}
-          {/* 6. Notes / Identifiers -- collapsed by default */}
+          {/* 6. Notes / Identifiers -- collapsed by default
+              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
+              renderer (accountPage.js: notesAndIdentifiers) and left hand-rendered. No data
+              gap this time (every field is plain STRING/TEXT) -- but this section is declared
+              collapsedByDefault: true and MetadataRecordPage's <Section> has no collapse
+              concept, so wiring it would silently change the page from collapsed to always
+              expanded, a confirmed layout change. See accountPageComponents.js's WIRING
+              SCOPE note. */}
           <details className="fo-account-collapsible">
             <summary>Notes &amp; Identifiers</summary>
             {account.notes ? (

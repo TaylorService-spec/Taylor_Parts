@@ -21,6 +21,7 @@ import {
   type SalesOrderDocState, type BuiltSalesOrder,
 } from "./salesOrderCommands";
 import type { SalesOrderTransition } from "./salesOrderLifecycle";
+import { allocateSalesOrderNumber } from "./salesOrderNumbering";
 
 export const SALES_ORDER_WRITE_CAPABILITY = "salesOrder.write";
 
@@ -100,8 +101,17 @@ export async function persistCreatedSalesOrder(
   const oppRef = built.sourceOpportunityId
     ? await verifySourceOpportunity(db, tx, built.sourceOpportunityId, built.accountId, built.lines)
     : null;
+
+  // HUMAN IDENTITY. Allocated inside the caller's transaction, alongside the document write, so a
+  // reference is never issued without its Sales Order appearing and a Sales Order never appears
+  // without one. Server-authoritative: `built` (from the pure `buildCreateSalesOrder`) never carries
+  // a salesOrderNumber, so there is nothing here for a client-supplied value to override.
+  //
+  // Immutable by construction: set here at creation and no transition path writes it.
+  const { salesOrderNumber } = await allocateSalesOrderNumber(tx, new Date().getUTCFullYear());
+
   const ref = db.collection(SALES_ORDERS_COLLECTION).doc();
-  tx.set(ref, { ...fields, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  tx.set(ref, { ...fields, salesOrderNumber, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   if (aid) stageAuditEventWithId(tx, aid, { actorUid, action: "createSalesOrder", targetType: "salesOrder", targetId: ref.id, outcome: "applied", summary: `created sales order for account ${built.accountId}` });
   if (oppRef) tx.update(oppRef, { salesOrderId: ref.id });
   return { success: true as const, replayed: false as const, salesOrderId: ref.id, state: built.state };
@@ -114,8 +124,26 @@ export async function persistTransitionedSalesOrder(
   db: Firestore, tx: Transaction, ref: FirebaseFirestore.DocumentReference,
   salesOrderId: string, transition: SalesOrderTransition, actorUid: string, idempotencyKey: string,
 ) {
-  const aid = mkAuditId("transitionSalesOrder", actorUid, idempotencyKey);
+  // TARGET-SCOPED IDEMPOTENCY, with the legacy id still honoured.
+  //
+  // THE DEFECT. mkAuditId hashes actorUid|key with NO target. One actor reusing an
+  // idempotency key across two DIFFERENT Sales Orders therefore collides: the second call
+  // finds the first call's audit event, returns "replayed", and SKIPS EVERY VALIDATION
+  // without applying anything. The caller is told it succeeded.
+  //
+  // THE FIX. Compose the id with the salesOrderId so each record has its own replay space --
+  // the shape createSalesOrderFromOpportunity and updateOpportunity already use.
+  //
+  // BACKWARD COMPATIBILITY, EXPLICITLY. Changing the derivation orphans every id already
+  // written: a genuine retry of an in-flight pre-change call would hash to a NEW id, find
+  // nothing, and RE-APPLY -- turning a safety mechanism into a double-apply during the
+  // rollout window. So the legacy id is still read. If either exists, this is a replay.
+  // Only the NEW id is ever written, so the legacy lookup ages out on its own and no
+  // existing audit record becomes unsafe or unreachable.
+  const aid = mkAuditId("transitionSalesOrder", actorUid, `${salesOrderId}|${idempotencyKey}`);
+  const legacyAid = mkAuditId("transitionSalesOrder", actorUid, idempotencyKey);
   const prior = await tx.get(auditEventDocRef(aid));
+  const legacyPrior = aid === legacyAid ? prior : await tx.get(auditEventDocRef(legacyAid));
   const snap = await tx.get(ref);
   if (!snap.exists) throw new HttpsError("not-found", `No Sales Order with id ${salesOrderId}`);
   const current = snap.data() as SalesOrderDocState;
@@ -141,7 +169,8 @@ async function requireSalesOrderWrite(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [SALES_ORDER_WRITE_CAPABILITY] });
     allowed = decisions[SALES_ORDER_WRITE_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireSalesOrderWrite] capability resolution failed for ${SALES_ORDER_WRITE_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to write Sales Orders.");

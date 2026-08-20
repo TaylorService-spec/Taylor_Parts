@@ -109,3 +109,54 @@ test("a refusal (STAGED/BLOCKED/FAILED) emits NO review-ready signal — only co
   assert.equal(failed.disposition, "FAILED");
   assert.equal(failed.reviewReady, undefined);
 });
+
+// --- gate↔worker seam: the worker must be TOLD the receipts the gate will judge it on ----------------
+// Regression cover: previously the prompt was the C-7 package alone, so a PATCH_PRODUCER item whose
+// contract required `tests` blocked as "required execution receipts missing: tests" unless the issue body
+// happened to ask for receipts by hand. The contract must ride with the real spawn, not be inert.
+
+function patchArtifact() {
+  const requestId = "EOS-EXEC-CONTRACT-1";
+  const payload = {
+    requestId, title: "t", intent: "implement the thing",
+    scope: ["docs/orchestration/work-intake/"], contextScope: ["orchestration"],
+    source: { producer: "Owner", provenance: "test" },
+    status: "EXECUTION_AUTHORIZED",
+    authority: { authorizationState: "AUTHORIZED", basis: "owner authorized", protectedBoundary: null, authorizedExecutionProfile: "PATCH_PRODUCER" },
+    // The real shape an eos-intake issue produces for an implementation task.
+    execution: { taskClass: "PATCH_PRODUCER", expectedArtifactClass: "PATCH", requiredExecutionReceipts: ["tests"], verifierRequired: true, signal: "EXPLICIT_DECLARATION", ambiguous: false, reason: "test" },
+    artifactLocation: `docs/orchestration/work-intake/${requestId}.work.json`,
+    createdAt: "2026-08-11T05:00:00Z", updatedAt: "2026-08-11T05:00:00Z", relatedRefs: { issues: [], pullRequests: [] },
+  };
+  const a = { ...payload, sha256: intakeDigest(payload) };
+  return resolveWorkIntake({ requestId, location: a.artifactLocation, sha256: a.sha256, bytes: Buffer.from(JSON.stringify(a), "utf8") });
+}
+
+test("the spawned invocation carries the required receipts into the worker prompt", () => {
+  const worker = mockWorker();
+  runIntakeExecution({ artifact: patchArtifact(), now: NOW, processRunner: worker, lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  assert.equal(worker.calls.length, 1, "exactly one spawn");
+  const argv = worker.calls[0].argv;
+  const prompt = argv[argv.indexOf("-p") + 1];
+  assert.match(prompt, /REQUIRED OUTPUT CONTRACT/, "worker was never told the output contract");
+  assert.match(prompt, /"evidence"/);
+});
+
+test("the contract handed to the worker is the SAME one the gate judges — never a divergent copy", () => {
+  const worker = mockWorker();
+  const r = runIntakeExecution({ artifact: patchArtifact(), now: NOW, processRunner: worker, lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  const argv = worker.calls[0].argv;
+  const prompt = argv[argv.indexOf("-p") + 1];
+  // Whatever receipts the resolved contract demands, the prompt must name every one of them.
+  for (const receipt of (r.execContract?.requiredExecutionReceipts || [])) {
+    assert.match(prompt, new RegExp(receipt), `prompt omitted required receipt "${receipt}"`);
+  }
+});
+
+test("the C-7 context package is still present alongside the contract (appended, not replaced)", () => {
+  const worker = mockWorker();
+  runIntakeExecution({ artifact: patchArtifact(), now: NOW, processRunner: worker, lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  const argv = worker.calls[0].argv;
+  const prompt = argv[argv.indexOf("-p") + 1];
+  assert.match(prompt, /governingAuthority|sufficiency|SUFFICIENT/, "C-7 package was replaced rather than appended to");
+});

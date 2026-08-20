@@ -8,6 +8,10 @@ function toState(snap, loading) {
     opportunities: snap?.opportunities ?? [],
     accountNameById: snap?.accountNameById ?? {},
     status: snap?.status ?? "unavailable",
+    // The SOURCE decides whether its rows are synthetic fixtures or real governed data; this hook only
+    // carries that answer through. Defaulting to false matters: an absent flag must never let the UI
+    // claim real records are samples. Mirrors useCoordinatedOperations.js's identical passthrough.
+    synthetic: snap?.synthetic === true,
     loading,
     error: snap?.error ?? null,
   };

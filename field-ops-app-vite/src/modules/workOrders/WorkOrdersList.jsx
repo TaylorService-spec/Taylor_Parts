@@ -9,6 +9,8 @@ import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { Button } from "../../shared/ui/primitives";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
 // Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
@@ -25,10 +27,20 @@ import { loadErrorMessage } from "../../domain/loadErrorMessage";
 // of a locally-hand-rolled copy. No behavior change -- the filter bar
 // previously reused fo-nav-btn (tuned for the dark header nav); it now
 // uses FilterBar's own light-panel-appropriate styling instead.
+// "Active" vocabulary note: this tab's key stays "ACTIVE" (internal,
+// not persisted) but its user-facing label is deliberately NOT bare
+// "Active." This 5-status bucket (dispatched through work-in-progress)
+// is a different population than the Dispatcher Board capacity card's
+// "In Progress" count (TechnicianCapacityCard.jsx, WORK_IN_PROGRESS
+// only) and the Operations panel's 8-status "Active" column
+// (ExecutionInsightsPanel.jsx). All three are variants of the
+// discovered 5th "active" sense (Work Order in-progress) documented
+// in docs/architecture/ADR-012-persona-authority-composition-and-scope.md.
+// Counts are intentionally unchanged here -- only the label.
 const STATUS_GROUPS = [
   { key: "ALL", label: "All", statuses: null },
   { key: "OPEN", label: "Open", statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] },
-  { key: "ACTIVE", label: "Active", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
+  { key: "ACTIVE", label: "Dispatched+", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
   { key: "DONE", label: "Done", statuses: ["COMPLETED", "CLOSED"] },
   { key: "CANCELLED", label: "Cancelled", statuses: ["CANCELLED"] },
 ];
@@ -71,7 +83,7 @@ export default function WorkOrdersList() {
       <WorkspaceHeader title="Work Orders">
         <GlobalSearch providerKeys={["workOrders"]} context={{ workOrders }} placeholder="Search work orders..." />
         <Link to="/service/work-orders/new">
-          <button type="button">+ New Work Order</button>
+          <Button variant="primary">+ New Work Order</Button>
         </Link>
       </WorkspaceHeader>
 
@@ -117,7 +129,7 @@ export default function WorkOrdersList() {
                   <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
                 </td>
                 <td>
-                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{wo.status}</span>
+                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{workOrderStatusLabel(wo.status)}</span>
                 </td>
                 <td className="fo-muted">{customerNames.get(wo.customerId) ?? wo.customerId}</td>
                 <td className="fo-muted">{wo.type}</td>

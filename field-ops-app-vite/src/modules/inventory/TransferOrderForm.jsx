@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Enterprise Inventory Phase 4 -- the "New Transfer" form. A plain controlled form (no client-side
 // stock/part lookup beyond what the Transfers workspace already loaded for the location pickers) --
@@ -96,7 +97,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, subm
       </div>
 
       <div className="fo-form-actions">
-        <button type="submit" className="fo-btn-primary" disabled={submitting}>{submitting ? "Creating…" : "Create transfer"}</button>
+        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "Creating…" : "Create transfer"}</Button>
         <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
       </div>
     </form>

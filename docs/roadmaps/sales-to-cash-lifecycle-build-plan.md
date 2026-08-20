@@ -5,7 +5,13 @@ Derived from the end-to-end lifecycle audit (`docs/orchestration/site-work/lifec
 ## Settled design decisions (do NOT re-litigate; these govern every item below)
 1. **`fulfilledQty` = governed completed/accepted fulfillment, with PARTIAL fulfillment ACCUMULATED** — never inferred from allocation or dispatch. It is written by an explicit governed completion/acceptance event and adds up across partial fulfillments.
 2. **Actual part OVERAGE → explicit governed exception / additional-part path** — never silently capped, clamped-away, or fabricated. If actual usage exceeds plan, that is recorded through a governed exception, not hidden.
-3. **WON → makes an Opportunity ELIGIBLE for an explicit governed "Create Sales Order" action** — NOT auto-created. No Firestore trigger auto-mints the SO; a human invokes a governed action.
+3. ~~**WON → makes an Opportunity ELIGIBLE for an explicit governed "Create Sales Order" action** — NOT auto-created. No Firestore trigger auto-mints the SO; a human invokes a governed action.~~
+
+   **SUPERSEDED by Owner direction (2026-08-19): closing an Opportunity as WON creates its Sales Order ATOMICALLY, in the same transaction.**
+
+   The part that has NOT changed — and is the reason decision #3 existed — is that nothing happens without a human. There is still no Firestore trigger, and the Sales Order is still minted only by an explicit, capability-gated action a person invokes. What changed is that marking Won and creating the order are no longer TWO actions a user could complete only half of.
+
+   The two-step shape produced a real, reachable state: an Opportunity that is WON, terminal, and orderless, with no way to tell whether the second step was skipped, failed, or was never intended. `functions/src/opportunity/closeOpportunityAsWon.ts` now performs both in one transaction — requiring BOTH `opportunity.write` and `opportunity.createSalesOrder` — and reconciles rather than duplicates when an order already exists. P1.3, P1.5 and P1.6 below are delivered by that command.
 
 ## Continuous build path
 sell → convert → allocate → create service work → plan parts → dispatch → execute → consume actuals → complete → fulfill SO → bill → AR → equipment/custody closure

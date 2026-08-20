@@ -1,12 +1,27 @@
 import { useEffect, useState } from "react";
-import { fetchTransferOrderDocs, fetchWarehouses } from "../services/operationsQueries";
+import { fetchTransferOrderDocsPage, fetchWarehousesPage } from "../services/operationsQueries";
 
 // Inventory > Transfers -- read hook for the Transfers workspace. It REUSES the existing shared
-// operationsQueries fetches (the same reads the Operations dashboard uses: transfer_orders +
-// warehouses, both read-only / Admin-SDK-write-only collections) rather than issuing its own
-// Firestore reads -- so there is one read path, not a parallel one. It returns the raw inputs the
-// canonical view-model (modules/operations/transferOrdersViewModel.buildTransferOrdersView) needs;
-// it does NOT itself shape rows (single source of truth stays with that view-model).
+// operationsQueries BOUNDED page fetchers (transfer_orders + warehouses, both read-only /
+// Admin-SDK-write-only collections) rather than issuing its own Firestore reads -- so there is
+// one read path, not a parallel one. It returns the raw inputs the canonical view-model
+// (modules/operations/transferOrdersViewModel.buildTransferOrdersView) needs; it does NOT itself
+// shape rows (single source of truth stays with that view-model).
+//
+// BOUNDED (X-TRANSFER-ORDERS-UNBOUNDED-READ remediation). This hook previously called the
+// UNBOUNDED fetchTransferOrderDocs/fetchWarehouses -- a plain getDocs over the whole collection,
+// no cap, no truncated flag, nothing to disclose. It now calls the PAGE variants
+// (fetchTransferOrderDocsPage/fetchWarehousesPage, both capped at operationsQueries.LIST_READ_CAP)
+// and surfaces each read's own `truncated` flag separately as transferOrdersTruncated/
+// warehousesTruncated, so a caller CAN disclose a capped list honestly. The unbounded originals
+// are left untouched and still feed the Operations dashboard's WarehousePanel display -- capping
+// the shared fetcher there was rejected (see operationsQueries.ts's fetchTransferOrderDocsPage
+// comment); the bound belongs at this call site only.
+//
+// modules/inventory/Transfers.jsx DOES read both flags (transferOrdersTruncated / warehousesTruncated)
+// and renders a disclosure banner for each -- see Transfers.jsx around its `read.transferOrdersTruncated`
+// / `read.warehousesTruncated` blocks. This is wired, not the "computed and discarded" gap that was
+// found and fixed for Suppliers (modules/purchasing/Suppliers.jsx's TRUNCATION comment).
 //
 // Fail-closed: a denied/unavailable read resolves to an error code (never a partial/fabricated
 // list); the workspace renders an honest FailureState. One-shot fetch (transfer_orders + warehouses
@@ -17,17 +32,42 @@ import { fetchTransferOrderDocs, fetchWarehouses } from "../services/operationsQ
 // Omitted callers are unaffected -- undefined !== undefined is false, so the effect still only
 // re-runs on an actual accessVersion change unless a caller opts in by bumping refreshKey.
 export function useTransferOrders(accessVersion, refreshKey) {
-  const [state, setState] = useState({ loading: true, error: null, transferOrderDocs: [], warehouses: [] });
+  const [state, setState] = useState({
+    loading: true,
+    error: null,
+    transferOrderDocs: [],
+    warehouses: [],
+    transferOrdersTruncated: false,
+    warehousesTruncated: false,
+  });
 
   useEffect(() => {
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    Promise.all([fetchTransferOrderDocs(), fetchWarehouses()])
-      .then(([transferOrderDocs, warehouses]) => {
-        if (!cancelled) setState({ loading: false, error: null, transferOrderDocs, warehouses });
+    Promise.all([fetchTransferOrderDocsPage(), fetchWarehousesPage()])
+      .then(([transferOrdersPage, warehousesPage]) => {
+        if (!cancelled) {
+          setState({
+            loading: false,
+            error: null,
+            transferOrderDocs: transferOrdersPage.items,
+            warehouses: warehousesPage.items,
+            transferOrdersTruncated: transferOrdersPage.truncated,
+            warehousesTruncated: warehousesPage.truncated,
+          });
+        }
       })
       .catch((err) => {
-        if (!cancelled) setState({ loading: false, error: err?.code ?? "unknown", transferOrderDocs: [], warehouses: [] });
+        if (!cancelled) {
+          setState({
+            loading: false,
+            error: err?.code ?? "unknown",
+            transferOrderDocs: [],
+            warehouses: [],
+            transferOrdersTruncated: false,
+            warehousesTruncated: false,
+          });
+        }
       });
     return () => {
       cancelled = true;

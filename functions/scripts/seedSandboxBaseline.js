@@ -21,7 +21,7 @@
  *   node scripts/seedSandboxBaseline.js --projectId eos-platform-sandbox
  */
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -81,13 +81,31 @@ const SUPPLIERS = [
 
 // Realistic refrigeration/ice-machine service parts — the business Taylor Parts
 // actually operates in — rather than generic filler.
+//
+// CONFORMANCE (2026-08-17). These fixtures previously carried only a legacy
+// `partTrackingMode: "QUANTITY"` and no governed Part Master fields, so
+// partFromFirestore() threw MalformedStoredRecordError for every one of them. Any
+// governed command that resolves a Part — transfer, cycle count, receiving —
+// therefore failed with an opaque INTERNAL error. The authoritative fixture now
+// carries the governed schema: `controlType`, `stockingClass` and `stockingUnit`
+// (validated unit CODE — "EACH", not the display abbreviation "EA").
+//
+// controlType is STANDARD for every quantity-tracked part. That is what these
+// fixtures have always MEANT; serialized/lot semantics are NOT invented here just
+// to make a test pass. PRT-2001 below is the one deliberate exception, added as a
+// purpose-built SERIALIZED fixture so the serial path has conformant data to
+// exercise — its serialized asset state is created by the governed Receiving
+// command, never seeded directly.
 const PARTS = [
-  { id: "PRT-1001", name: "Evaporator Fan Motor", category: "Refrigeration", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1002", name: "Water Inlet Valve", category: "Water System", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1003", name: "Condenser Coil Assembly", category: "Refrigeration", unit: "EA", supplierId: "sup-coldchain" },
-  { id: "PRT-1004", name: "Ice Thickness Probe", category: "Controls", unit: "EA", supplierId: "sup-coldchain" },
-  { id: "PRT-1005", name: "Water Filter Cartridge", category: "Water System", unit: "EA", supplierId: "sup-arcticparts" },
-  { id: "PRT-1006", name: "Compressor Start Relay", category: "Electrical", unit: "EA", supplierId: "sup-coldchain" },
+  { id: "PRT-1001", name: "Evaporator Fan Motor", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1002", name: "Water Inlet Valve", category: "Water System", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1003", name: "Condenser Coil Assembly", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  { id: "PRT-1004", name: "Ice Thickness Probe", category: "Controls", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  { id: "PRT-1005", name: "Water Filter Cartridge", category: "Water System", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-arcticparts" },
+  { id: "PRT-1006", name: "Compressor Start Relay", category: "Electrical", unit: "EA", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
+  // Purpose-built SERIALIZED fixture. A compressor unit is genuinely serial-tracked in this
+  // business, so this is a real modelling choice rather than a test-shaped one.
+  { id: "PRT-2001", name: "Ice Machine Compressor Unit", category: "Refrigeration", unit: "EA", stockingUnit: "EACH", controlType: "SERIALIZED", stockingClass: "STOCKED", supplierId: "sup-coldchain" },
 ];
 
 const ACCOUNTS = [
@@ -140,8 +158,24 @@ async function main() {
     // authority (I-LA C2), so it is set explicitly, never left to inference.
     await upsert(db, "warehouses", w.id, {
       id: w.id, name: w.name, location: w.location, status: w.status,
-      version: 1, provenance: "SEEDED", createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
-      governanceInitializedAt: now, governanceInitializedBy: by,
+      // provenance must be a WAREHOUSE_PROVENANCES member ("NATIVE" | "MIGRATED"). It was "SEEDED",
+      // which is not one, so validateGovernedWarehouse() rejected EVERY seeded warehouse with
+      // provenance_invalid -- and Receiving/Transfer both resolve their destination through that
+      // validator, so no seeded warehouse was ever a usable governed location. These records are
+      // created natively in the sandbox rather than migrated from a legacy store, so NATIVE is the
+      // accurate value, not merely the passing one.
+      version: 1, provenance: "NATIVE", createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
+      // Actively REMOVE the forbidden pair rather than merely stopping writing it. Every upsert here
+      // is a merge, so a sandbox seeded before this correction would keep its old
+      // governanceInitializedAt/By fields forever and stay invalid no matter how often the seed ran.
+      // Deleting them is what makes the fixture reproducible against an EXISTING sandbox, not just a
+      // freshly created one.
+      governanceInitializedAt: FieldValue.delete(), governanceInitializedBy: FieldValue.delete(),
+      // NO governanceInitializedAt/By. The validator's provenance model (§3A.1) is exclusive: NATIVE
+      // REQUIRES the created pair and FORBIDS the governance-initialization pair, which exists to
+      // record when a MIGRATED legacy record was brought under governance. A natively-created
+      // warehouse was never ungoverned, so carrying that pair is a contradiction, not extra detail --
+      // and it failed validation as native_forbids_governance_init.
     });
     bump("warehouses");
   }
@@ -156,8 +190,20 @@ async function main() {
 
   for (const p of PARTS) {
     await upsert(db, "parts", p.id, {
-      partId: p.id, sku: p.id, name: p.name, category: p.category, unitOfMeasure: p.unit,
-      partTrackingMode: "QUANTITY", status: "ACTIVE",
+      partId: p.id, sku: p.id, name: p.name, category: p.category,
+      // Governed Part Master fields — what partFromFirestore()/validatePart() actually read.
+      internalPartNumber: p.id, stockingUnit: p.stockingUnit,
+      controlType: p.controlType, stockingClass: p.stockingClass,
+      status: "ACTIVE",
+      // Optimistic-concurrency version. readMeta() REQUIRES an integer >= INITIAL_VERSION, so a
+      // fixture without it is rejected as malformed metadata even when every domain field is
+      // correct -- the second half of the same conformance gap, and just as invisible.
+      version: 1,
+      // Legacy compatibility fields, retained deliberately: older read paths still project
+      // unitOfMeasure/partTrackingMode, and removing them here would be an unrelated migration.
+      // The GOVERNED fields above are authoritative; these are kept in step with them.
+      unitOfMeasure: p.unit,
+      partTrackingMode: p.controlType === "SERIALIZED" ? "SERIAL" : "QUANTITY",
       createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
     });
     bump("parts");

@@ -25,7 +25,7 @@ export default function DispatchQueuePanel({ jobs, technicians, workOrders }) {
       ) : (
         recommendations.map((signal) => (
           <div key={signal.id} className="fo-card">
-            <strong>{signal.metadata.job.customer || signal.id}</strong>
+            <strong>{signal.metadata.job.woNumber || signal.id}</strong>
             {" → "}
             {signal.metadata.recommended ? (
               <span>

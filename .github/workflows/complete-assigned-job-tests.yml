@@ -1,0 +1,78 @@
+name: Complete Assigned Job Tests
+
+# F-RULES-1 final gap -- functions/src/completeAssignedJob.ts is a live, deployed callable
+# (trusted technician job completion, Decision #39) with a dedicated Firestore-emulator test
+# file, but no workflow path-filtered it: a change here ran no test in CI at all. This
+# workflow proves the read-verify-write completion cascade (job -> complete, own technician
+# -> available) and its atomic audit/idempotency guarantee stay covered.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/completeAssignedJob.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/index.ts"
+      - "functions/test/completeAssignedJob.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/complete-assigned-job-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/completeAssignedJob.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/index.ts"
+      - "functions/test/completeAssignedJob.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/complete-assigned-job-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  complete-assigned-job-tests:
+    name: Complete assigned job tests (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/complete-assigned-job-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/complete-assigned-job-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/complete-assigned-job-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Complete assigned job callable tests (build + run)
+        run: npm run test:completeAssignedJob
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-assigned-job-emulator-logs
+          path: /tmp/complete-assigned-job-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

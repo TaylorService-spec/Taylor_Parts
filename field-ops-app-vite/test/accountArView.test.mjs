@@ -78,3 +78,13 @@ test("formatMinor never divides a non-finite amount", () => {
   assert.equal(formatMinor(undefined, "USD"), "—");
   assert.equal(formatMinor(1000, null), "10.00");
 });
+
+// X-MONEY-FORMATTER-DISAGREEMENT: formatMinor now delegates to domain/money.js's
+// currencyExponent-aware core instead of hardcoding /100, so it renders correctly for a
+// currency whose minor unit is not 1/100 (JPY, exponent 0) rather than silently
+// disagreeing with money.js's own formatMoneyMajor.
+test("formatMinor is exponent-aware for a non-2-exponent currency (JPY) -- no longer a hardcoded /100", () => {
+  assert.equal(formatMinor(1000, "JPY"), "JPY 1000");
+  assert.equal(formatMinor(0, "JPY"), "JPY 0"); // zero still renders as zero, not blank
+  assert.equal(formatMinor(-9, "JPY"), "JPY -9");
+});

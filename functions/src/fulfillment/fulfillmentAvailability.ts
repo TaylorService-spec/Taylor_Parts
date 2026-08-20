@@ -39,6 +39,81 @@ export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?:
   return sawEligible ? onHand : 0;
 }
 
+// Ledger-derived eligible physical ON_HAND for a part (Owner-ratified 2026-08-17, superseding the
+// stock_locations rule).
+//
+// WHY THIS REPLACED stock_locations. Nothing in the codebase ever WRITES stock_locations -- it is a seeded
+// legacy projection -- while Receiving, Transfer and reconciled Cycle Counts all write the append-only
+// inventory_transactions ledger. The two could therefore only diverge, and in the sandbox they did, in both
+// directions: PRT-1001 held 3 genuinely received units and stock_locations said 0 (a real order was
+// BACKORDERED), while PRT-1005 said 40 with nothing ever received (36 units were committed that do not
+// exist). An availability source that can both refuse real stock and promise imaginary stock is not an
+// authority. Physical stock now comes from the same ledger every other inventory surface already uses.
+//
+// PHYSICAL ONLY. RESERVED / RELEASED / CONSUMED are LOGICAL commitment events and are deliberately NOT
+// counted here -- they are subtracted separately by openWorkOrderReserved(). Counting them here would both
+// double-count demand and, worse, treat a commitment as a physical receipt.
+//
+// WAREHOUSE ELIGIBILITY PRESERVED. Only movements at an eligible (status==ACTIVE) WAREHOUSE location count.
+// MOBILE/truck stock is deliberately excluded: it is real inventory, but it is not sellable warehouse stock.
+//
+// SERIAL-TRACKED ROWS ARE EXCLUDED (H7 fix). A SERIAL-tracked Part's unit count is not aggregable
+// quantity math -- each serial is exactly one unit, tracked individually by the serialized_assets
+// registry, never by summing ledger quantities. A Cycle Count reconciling a MISSING SERIAL-tracked
+// unit writes "ADJUSTED, quantity: 1" (SERIAL quantity is always exactly 1 and cannot carry a negative
+// sign), which this function used to sum exactly like a NONE-mode receipt -- discovering a unit
+// missing INCREASED its reservable availability. The correct pattern already exists in
+// inventoryLedger/mobileLocationPresenceProbe.ts's probeNoneStockPresentAtLocation
+// (`if (v.trackingMode !== "NONE") continue;`, "SERIAL custody is authoritative via serialized_assets,
+// not via quantity math"); this function follows that precedent for the QUANTITY math specifically. A
+// SERIAL/LOT row still counts as "physical movement evidence exists" (sawAnyPhysical/sawEligible) --
+// it genuinely is a movement, just not one this function aggregates by quantity -- so an eligible
+// warehouse with ONLY SERIAL evidence still resolves to a known 0 (a real, if empty, answer) rather
+// than a fabricated UNKNOWN. A row with NO trackingMode field is treated as NONE (included) -- safe
+// because trackingMode is a REQUIRED, validated field on every governed operational-movement write
+// (operationalMovementValidation.ts's isTrackingMode check), so a row carrying a governed type can
+// never legitimately lack it; the default only matters for rows predating the field (never a genuine
+// SERIAL row).
+//
+// RETURNED/SCRAPPED are now summed here too (H7 secondary finding): schema-legal operational movement
+// types (RMA / Scrap source objects) that transferOrderCommand.ts, cycleCountExpectedQuantity.ts and
+// mobileLocationPresenceProbe.ts already sum, but that this consumer previously omitted entirely.
+//
+// Returns null (UNKNOWN) when the part has no physical movement evidence at all -- never treated as 0, matching
+// the previous contract. Floored at 0 so a malformed ledger can never produce negative sellable stock.
+export function sumLedgerEligibleOnHand(
+  rows: Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
+  eligibleWarehouseIds: Set<string>
+): number | null {
+  // Two distinct facts, exactly as the previous stock_locations contract drew them:
+  //   sawAnyPhysical    -- the part has physical movement evidence SOMEWHERE (so 0 is a real answer)
+  //   sawEligible       -- some of that movement is at a sellable warehouse
+  // No evidence at all => UNKNOWN. Evidence, but none of it sellable => a known 0 (a real backorder).
+  let sawAnyPhysical = false;
+  let sawEligible = false;
+  let onHand = 0;
+  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED", "RETURNED", "SCRAPPED"]);
+  for (const r of rows) {
+    const isNoneModeQuantity = r.trackingMode === undefined || r.trackingMode === "NONE";
+    if (PHYSICAL.has(r.type)) sawAnyPhysical = true;
+    const loc = r.location;
+    if (!loc || loc.type !== "WAREHOUSE" || typeof loc.locationId !== "string") continue;
+    if (!eligibleWarehouseIds.has(loc.locationId)) continue;
+    if (!isNoneModeQuantity) { sawEligible = true; continue; } // SERIAL/LOT: evidence counted, quantity excluded (H7)
+    const q = num0(r.quantity);
+    if (r.type === "RECEIVED" || r.type === "TRANSFER_IN" || r.type === "RETURNED") { sawEligible = true; onHand += q; }
+    else if (r.type === "TRANSFER_OUT" || r.type === "SCRAPPED") { sawEligible = true; onHand -= q; }
+    else if (r.type === "ADJUSTED") {
+      // ADJUSTED carries its own sign (negative when a reconciled Cycle Count came up short), so num0()'s
+      // positive-only guard would silently drop the shortage. Read the raw value.
+      const signed = typeof r.quantity === "number" && Number.isFinite(r.quantity) ? r.quantity : 0;
+      sawEligible = true; onHand += signed;
+    }
+  }
+  if (!sawAnyPhysical) return null;
+  return sawEligible ? Math.max(0, onHand) : 0;
+}
+
 // Net open Work-Order reservations for a part from the append-only ledger rows: RESERVED − RELEASED −
 // CONSUMED, floored at 0. `rows` are the inventory_transactions for the part (already filtered by partId).
 //

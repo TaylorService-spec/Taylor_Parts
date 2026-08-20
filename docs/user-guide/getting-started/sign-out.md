@@ -8,7 +8,7 @@
 - Nothing needed. The **Logout** button is in the top-right corner of every screen.
 
 ## Steps
-1. Find your email address in the top-right corner of the top bar. The **Logout** button sits next to it.
+1. Find your email address in the top-right corner of the header strip, above the main area. The **Logout** button sits next to it.
 2. Click **Logout**. Your session ends and the app returns to the **Field Ops Login** panel.
 
 ## Tips / common problems

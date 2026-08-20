@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- the
 // deterministic effective-permission resolver. Fixed by docs/
 // specifications/enterprise-access-and-administration-platform.md §8
@@ -11,9 +17,10 @@
 // unit-tested against the seeded compatibility Roles (compatibilityRoles.ts)
 // before anything wires it up.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/resolveEffectivePermission.ts. If
-// either file changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { PermissionId, Role, RoleAssignment, Scope } from "../types/access";
 import { findPermission } from "./permissionCatalog";
 

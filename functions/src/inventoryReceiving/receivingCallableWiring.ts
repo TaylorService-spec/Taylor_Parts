@@ -1,7 +1,9 @@
 // Receiving Phase-2 E1: the REAL production seams the Receiving callables wire into the merged services.
-// Repository-only. Everything reads THROUGH the caller's transaction (commit-time consistent). Nothing
-// here is granted or deployed; inventory.stock.receive is registered-but-UNGRANTED, so the governed
-// resolver denies every principal until a separate grant gate.
+// Deployed and live in eos-platform-sandbox (2026-08-06, Decision #63). Everything reads THROUGH the
+// caller's transaction (commit-time consistent). inventory.stock.receive is GRANTED to admin, dispatcher
+// and owner (compatibilityRoles.ts, Decisions #65/#68); the governed resolver allows those Roles and
+// still denies everyone else. Client transport readiness is tracked separately in
+// field-ops-app-vite/src/config/receivingReadiness.js.
 
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission.js";

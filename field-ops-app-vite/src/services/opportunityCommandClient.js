@@ -20,6 +20,14 @@ function mapErrorToStatus(err) {
   return code || "internal";
 }
 
+// The DOMAIN code the callable put in `details` (opportunityCallables.ts's mapCommandError).
+// There are more distinct governed outcomes than HttpsError codes, so without this a version
+// conflict and a malformed payload are indistinguishable to the caller. Only ever a string;
+// anything else is treated as absent rather than passed along as a message.
+function mapErrorDetail(err) {
+  return typeof err?.details === "string" && err.details.length > 0 ? err.details : null;
+}
+
 async function invoke(name, payload) {
   const [{ httpsCallable }, { functions }] = await Promise.all([
     import("firebase/functions"),
@@ -37,7 +45,7 @@ export async function createOpportunity(input) {
     const result = await invoke("createOpportunity", input);
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
@@ -54,11 +62,94 @@ export async function transitionOpportunity({ opportunityId, toStage, outcome, i
     const result = await invoke("transitionOpportunity", payload);
     return { result };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
+  }
+}
+
+// CLOSING AS WON IS ITS OWN COMMAND, not a transition.
+//
+// transitionOpportunity CAN set outcome WON -- and doing so from here would be a defect, not
+// a shortcut. A WON Opportunity must have exactly one Sales Order, and the transition
+// callable creates none. Routing a Won through it produces precisely the split-brain
+// closeOpportunityAsWon exists to prevent: an Opportunity that is WON, terminal, and has no
+// order, recoverable only by a second call nobody makes when the first one appeared to work.
+//
+// So Won goes through the atomic command, which does both halves in ONE transaction. The
+// client cannot assemble that guarantee out of two calls, and must not try.
+//
+// ownerEmployeeId and salesChannel are REQUIRED by the callable: the Sales Order needs its
+// own owner and channel, and the server derives account and lines from the Opportunity
+// rather than trusting the payload for them.
+export async function closeOpportunityAsWon({
+  opportunityId,
+  ownerEmployeeId,
+  salesChannel,
+  locationId,
+  customerPO,
+  idempotencyKey,
+}) {
+  try {
+    const result = await invoke("closeOpportunityAsWon", {
+      opportunityId,
+      ownerEmployeeId,
+      salesChannel,
+      idempotencyKey,
+      ...(locationId !== undefined ? { locationId } : {}),
+      ...(customerPO !== undefined ? { customerPO } : {}),
+    });
+    return { result };
+  } catch (err) {
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
+  }
+}
+
+// ORDINARY EDIT. Lifecycle fields are absent from this payload by construction -- the server
+// never reads stage or outcome from an update, so sending them changes nothing, and this
+// adapter does not offer them either.
+//
+// expectedUpdatedAtMillis is the optimistic-concurrency token the caller LOADED. It is
+// required, and deliberately not defaulted here: a client that cannot say which version it
+// edited has no business overwriting one.
+//
+// Fields are forwarded only when PRESENT. Absent and explicit-null mean different things all
+// the way to the command core -- absent leaves a value alone, null clears it -- and
+// collapsing them here would make clearing a field impossible to express.
+export async function updateOpportunity({
+  opportunityId,
+  expectedUpdatedAtMillis,
+  idempotencyKey,
+  accountId,
+  ownerEmployeeId,
+  salesChannel,
+  need,
+  expectedValue,
+  expectedCloseAt,
+  nextAction,
+  lines,
+}) {
+  try {
+    const result = await invoke("updateOpportunity", {
+      opportunityId,
+      expectedUpdatedAtMillis,
+      idempotencyKey,
+      ...(accountId !== undefined ? { accountId } : {}),
+      ...(ownerEmployeeId !== undefined ? { ownerEmployeeId } : {}),
+      ...(salesChannel !== undefined ? { salesChannel } : {}),
+      ...(need !== undefined ? { need } : {}),
+      ...(expectedValue !== undefined ? { expectedValue } : {}),
+      ...(expectedCloseAt !== undefined ? { expectedCloseAt } : {}),
+      ...(nextAction !== undefined ? { nextAction } : {}),
+      ...(lines !== undefined ? { lines } : {}),
+    });
+    return { result };
+  } catch (err) {
+    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
   }
 }
 
 export const opportunityCommandClient = Object.freeze({
   createOpportunity,
   transitionOpportunity,
+  closeOpportunityAsWon,
+  updateOpportunity,
 });

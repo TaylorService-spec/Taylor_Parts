@@ -68,6 +68,7 @@ export default function AccountOpportunitiesSection({ accountId }) {
               return (
                 <li key={row.key}>
                   <Link to="/opportunities">{row.label}</Link>{" "}
+                  {row.reference && <span className="fo-muted">{row.reference}</span>}{" "}
                   <StatusPill tone="info" label={stageLabel(row.stage)} />{" "}
                   <span className="fo-muted">
                     {value ? <>value {value}</> : null}

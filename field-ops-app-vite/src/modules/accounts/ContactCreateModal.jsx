@@ -3,6 +3,7 @@ import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
 import { contactSaveErrorMessage } from "../../domain/accountChildSaveErrors";
+import { Button } from "../../shared/ui/primitives";
 
 // Issue #214 PR-2 -- Contact creation moved out of the inline form that used to
 // sit below the live Contacts list and into the shared Modal, on the System-A
@@ -110,8 +111,8 @@ export default function ContactCreateModal({ accountName, onCreate, onClose }) {
         <FormStatus>{submitting ? "Saving contact..." : ""}</FormStatus>
 
         <FormActions>
-          <button type="submit" disabled={submitting}>{submitting ? "Saving..." : "Add Contact"}</button>
-          <button type="button" onClick={requestClose} disabled={submitting}>Cancel</button>
+          <Button type="submit" loading={submitting}>Add Contact</Button>
+          <Button type="button" variant="tertiary" onClick={requestClose} disabled={submitting}>Cancel</Button>
         </FormActions>
       </form>
     </Modal>

@@ -76,6 +76,12 @@ export interface Permission {
   // need is not inherently field-specific, but its first and, as of this
   // addition, only use is the `report.*` field-read/object-read
   // capability class below.
+  //
+  // "Active vocabulary": this is the canonical "Capability active"
+  // sense (enabled in that environment) -- distinct from Employee
+  // active, Role assignment active, and Record active. See
+  // docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+  // section 2.2a.
   active?: boolean;
 }
 
@@ -116,6 +122,13 @@ export interface Role {
   privileged?: boolean;
 }
 
+// "Active vocabulary": this is the canonical "Role assignment active"
+// sense (included in effective-access resolution) -- distinct from
+// Employee active (employmentStatus), Capability active
+// (PermissionDefinition.active / per-env overrides), and Record active
+// (generic master-data isActive/status). See
+// docs/architecture/ADR-012-persona-authority-composition-and-scope.md
+// section 2.2a for the full vocabulary.
 export type RoleAssignmentStatus = "active" | "disabled";
 
 // Spec §5.3 -- binds a Role to a principal within a Scope. Creation/
@@ -299,6 +312,13 @@ export type AuditAction =
   // Its own deterministic Audit Event id space, separate from createSalesOrder's, so a replay key never
   // collides across the two callables.
   | "createSalesOrderFromOpportunity"
+  // The ATOMIC WON action -- closes an Opportunity as WON and creates its Sales Order in one
+  // transaction. Its own union member, and its own deterministic Audit Event id space, so a
+  // replay of the atomic action cannot collide with either standalone callable
+  | "closeOpportunityAsWon"
+  // Ordinary edit of an Opportunity deal field. Distinct from transitionOpportunity because an
+  // ordinary edit cannot move the lifecycle, and the audit trail must keep the two apart
+  | "updateOpportunity"
   // P1.1 (Sales->Cash fulfillment spine) -- the trusted transitionWorkOrder Complete-action write-back to
   // the linked Sales Order's `lines[].fulfilledQty`. Traceability only, NOT the idempotency gate (COMPLETED
   // is structurally once-per-Work-Order via canTransition, see transitionWorkOrder.ts's header comment).
@@ -321,7 +341,39 @@ export type AuditAction =
   | "createCycleCount"
   | "submitCycleCount"
   | "reconcileCycleCount"
-  | "cancelCycleCount";
+  | "cancelCycleCount"
+  // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision. A manager
+  // reviewing a submitted count now disposes of it as APPROVE (reconcileCycleCount, unchanged
+  // above) or REJECT (this action) -- reject stages no ledger evidence, it only records the
+  // decision, so it needed its own action rather than overloading reconcileCycleCount's meaning.
+  | "rejectCycleCount"
+  // Work Order transition audit trail (M9/H19 remediation) -- the trusted transitionWorkOrder callable's
+  // OWN Audit Event for every applied action (Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/
+  // Close/Cancel/MarkReady), not only the Complete-with-linked-Sales-Order write-back which already had
+  // its own separate salesOrderFulfillmentWriteBack action above. Deterministic Audit Event id (derived
+  // from workOrderId + action, see workOrderTransitionMath.ts) makes every applied transition traceable
+  // to a stable id -- collision-free without a caller-supplied idempotency key, because canTransition()
+  // already makes a given action apply to a given Work Order at most once across its whole lifecycle
+  | "transitionWorkOrder"
+  // H20 fix (dispatch reassignment) -- an ADDITIONAL, narrower event beside "transitionWorkOrder" above,
+  // same coexistence pattern as salesOrderFulfillmentWriteBack beside it for Complete: the generic event
+  // records the STATE TRANSITION (status A -> status B) and carries no technician-identity detail at all,
+  // so it cannot express a reassignment on its own. This event fires only for the narrow case where the
+  // technician actually being Dispatched differs from wo.scheduledTechId, and carries what the generic
+  // event structurally cannot -- prior technician, new technician, and the dispatcher-supplied reason
+  // (required for this case only). Two events describing the one Dispatch call, each meaningful on its
+  // own query ("every transition on this Work Order" vs. "every technician reassignment"), not a
+  // duplicate of the same fact twice. Traceability only, not an idempotency gate -- Dispatch is
+  // structurally once-per-Work-Order via canTransition (SCHEDULED -> DISPATCHED, same as every other
+  // action here).
+  | "reassignWorkOrderTechnician"
+  // Phantom Sales Order link repair (functions/src/repair/phantomSalesOrderLinkRepair.ts) -- the operator
+  // CLI's repair of a Work Order salesOrderId that points at a non-existent Sales Order. Two separate,
+  // durable events: the repair itself (tombstones the link -- salesOrderId is never modified) and, only if
+  // an operator later reverts it, the paired rollback. Same verb+Noun convention, extending this SAME
+  // immutable Audit Event path -- no parallel audit system.
+  | "repairPhantomSalesOrderLink"
+  | "rollbackPhantomSalesOrderLinkRepair";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

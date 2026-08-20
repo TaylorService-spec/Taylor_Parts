@@ -18,7 +18,13 @@ export type LedgerTransaction = {
   id: string;
   workOrderId: string;
   partId: string;
-  type: "RESERVED" | "RELEASED" | "CONSUMED";
+  // The legacy Work-Order reservation vocabulary PLUS the governed operational movement types the
+  // inventory_transactions ledger actually writes today (Receiving, Transfer, Cycle Count
+  // reconciliation). Both live in the SAME append-only ledger; omitting the governed ones meant
+  // every governed movement was invisible to on-hand.
+  type:
+    | "RESERVED" | "RELEASED" | "CONSUMED"
+    | "RECEIVED" | "TRANSFER_IN" | "TRANSFER_OUT" | "ADJUSTED";
   quantity: number;
   timestamp: number;
 };
@@ -240,19 +246,46 @@ export function generateInventoryHealthDashboard(
 // available = warehouseQty (data/partsCatalog.ts's static baseline) -
 // (grossReserved - released). CONSUMED is deliberately not subtracted
 // again (see that file's comment).
+/**
+ * Available stock per Part, from the append-only inventory_transactions ledger.
+ *
+ * GOVERNED MOVEMENT WAS INVISIBLE HERE. This previously understood only the legacy Work-Order
+ * vocabulary (RESERVED/RELEASED) and took its BASELINE from the static catalog's warehouseQty. A
+ * governed Part has no static row, so its baseline was 0 and none of its real movements counted:
+ * PRT-2001 had two RECEIVED units in the ledger and displayed 0, and PRT-1001 displayed 0 while
+ * holding 3 units across two warehouses and a truck.
+ *
+ * That contradicted the documented authority this file's own header states -- the
+ * inventory_transactions ledger is the source of truth for stock movement, and the static catalog is
+ * only a baseline. Governed movements are now applied on top of that baseline:
+ *
+ *   RECEIVED     +qty   stock entered the estate
+ *   TRANSFER_IN  +qty   arrived at a location
+ *   TRANSFER_OUT -qty   left a location
+ *   ADJUSTED     +qty   signed correction from a reconciled Cycle Count (already negative when short)
+ *
+ * Summed across ALL locations, which is what a Part-level "available" figure means; per-location
+ * balances are a separate projection.
+ *
+ * The legacy reservation arithmetic is unchanged, so Parts that only have Work-Order activity behave
+ * exactly as before and the static baseline still applies to them.
+ */
 export function computeAvailableStockByPart(transactions: LedgerTransaction[]): Map<string, number> {
-  const byPart = new Map<string, { reserved: number; released: number }>();
+  const byPart = new Map<string, { reserved: number; released: number; governed: number }>();
   for (const t of transactions) {
-    const entry = byPart.get(t.partId) ?? { reserved: 0, released: 0 };
+    const entry = byPart.get(t.partId) ?? { reserved: 0, released: 0, governed: 0 };
     if (t.type === "RESERVED") entry.reserved += t.quantity;
     else if (t.type === "RELEASED") entry.released += t.quantity;
+    else if (t.type === "RECEIVED" || t.type === "TRANSFER_IN") entry.governed += t.quantity;
+    else if (t.type === "TRANSFER_OUT") entry.governed -= t.quantity;
+    else if (t.type === "ADJUSTED") entry.governed += t.quantity;
     byPart.set(t.partId, entry);
   }
 
   const result = new Map<string, number>();
-  for (const [partId, { reserved, released }] of byPart) {
+  for (const [partId, { reserved, released, governed }] of byPart) {
     const warehouseQty = getCatalogItem(partId)?.warehouseQty ?? 0;
-    result.set(partId, warehouseQty - (reserved - released));
+    result.set(partId, warehouseQty + governed - (reserved - released));
   }
   return result;
 }

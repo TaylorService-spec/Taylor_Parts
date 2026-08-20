@@ -71,10 +71,40 @@ text.
 
 ### Copy provenance
 
-Every guidance string wired in Stage 1 is derived from the matching `docs/user-guide/` document, not
-invented. Where a guide says a screen is read-only and records originate elsewhere, the guidance says so —
-it must never imply an action the app cannot perform. Wired at 8 call sites: Customers, Customer Locations,
-Work Orders, Transfers, Warehouses, Purchase Orders, Receipts, Suppliers.
+Every guidance string is derived from the matching `docs/user-guide/` document, not invented. Where a guide
+says a screen is read-only and records originate elsewhere, the guidance says so — it must never imply an
+action the app cannot perform. Eight surfaces carry it: Customers, Customer Locations, Work Orders,
+Transfers, Warehouses, Purchase Orders, Receipts, Suppliers.
+
+### Two delivery routes, because the app grew one while this sat open
+
+Stage 1 was designed as eight hand-written call sites. Between its authoring and its landing, four of those
+screens — Customers, Warehouses, Suppliers, and the Account's Locations section — were migrated to the
+**metadata list runtime**, and their hand-written `EmptyState` call sites ceased to exist. Re-adding them
+would have resurrected deleted code.
+
+So guidance reaches a surface by whichever route that surface uses, and the two are the same idea at
+different altitudes:
+
+| Route | Surfaces | Where the text lives |
+|---|---|---|
+| Direct prop | Work Orders, Transfers, Purchase Orders, Receipts | The `EmptyState` call site |
+| List definition | Customers, Warehouses, Suppliers, Account Locations | `emptyGuidance` on the `ListViewDefinition` |
+
+The definition route is the better one and is where new surfaces should declare guidance. It travels
+`definition → buildListPresentation → MetadataListGrid → EmptyState`, so **every** metadata-driven list
+gains the affordance at once rather than one call site at a time, and the text sits next to what the entity
+*means* instead of next to one screen that happens to show it — which is the drift the per-call-site
+approach invites.
+
+`emptyGuidanceFor` restricts the definition route to state `EMPTY`. `FILTERED` is excluded for the same
+reason the variant rule excludes it; `DENIED` and `UNAVAILABLE` are excluded because describing the
+collection there would imply the read succeeded and found nothing, which is the exact wrong conclusion those
+states exist to prevent. The component's own variant rule still applies underneath — two independent guards,
+because a "what is this screen for" paragraph on a filtered list is what both exist to stop.
+
+As the remaining four surfaces migrate to the list runtime, their guidance should move to their definitions
+and the prop should be passed only by surfaces that are not metadata-driven.
 
 ---
 

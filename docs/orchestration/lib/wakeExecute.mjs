@@ -14,6 +14,7 @@
 // from real evidence, and failures are captured distinctly, never reinterpreted as completed work.
 
 import { assessReadiness, buildClaudeInvocation, DEFAULT_GUARDRAILS } from "./wakeSupervisor.mjs";
+import { extractWorkerEvidence } from "./workerEvidence.mjs";
 import { resolveDispatchModel } from "./modelPolicy.mjs";
 import { createCostCapacityTelemetry, UNKNOWN_COST } from "./costCapacity.mjs";
 
@@ -50,7 +51,7 @@ const refuse = (outcome, reason, extra = {}) => Object.freeze({ outcome, spawned
  * @param {string|null} [o.sourceCommit]
  * @param {string|null} [o.sourceFreshness]  reviewProvenance state; must be "CURRENT" to run live
  */
-export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null, executionProfile = "READ_ONLY_ANALYSIS" } = {}) {
+export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, lease, resolveModel = resolveDispatchModel, persistResult = null, sourceCommit = null, sourceFreshness = null, executionProfile = "READ_ONLY_ANALYSIS", executionContract = null } = {}) {
   if (typeof contextPackageFn !== "function") throw new Error("executeWake: contextPackageFn (shared C-7 builder) is required");
   if (!processRunner || typeof processRunner.run !== "function") throw new Error("executeWake: processRunner must be injected");
   if (!lease || typeof lease.acquire !== "function") throw new Error("executeWake: lease must be injected");
@@ -88,7 +89,10 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
   // The capability profile is GOVERNED and resolved by the caller (runIntakeExecution) — least-privilege
   // READ_ONLY_ANALYSIS unless a governed authorization granted more. It is never taken from worker/request
   // self-declaration here, so a worker cannot widen its own authority.
-  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }), profile: executionProfile || "READ_ONLY_ANALYSIS" });
+  // The governed output contract rides WITH the invocation so the worker is told, deterministically, which
+  // structured receipts classifyCompletion will judge it on. It conveys no authority — the profile above
+  // remains the sole source of the capability envelope.
+  const invocation = buildClaudeInvocation({ contextPackage, guardrails: Object.freeze({ ...DEFAULT_GUARDRAILS, model: model.selectedModel, maxBudgetUsd: ctx.costCapacity?.explicitEconomicCostCapUsd ?? null }), profile: executionProfile || "READ_ONLY_ANALYSIS", executionContract });
   let leaseReleased = false;
   const releaseLease = () => { if (leaseReleased) return true; try { lease.release(); leaseReleased = true; return true; } catch { return false; } };
 
@@ -126,6 +130,8 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
 
     // Only NOW is COMPLETED provable (clean exit + parseable result + not truncated at the turn ceiling).
     base.wakeState = "COMPLETED";
+    // Parse the worker's structured completion evidence out of its result text (fail-closed; never throws).
+    const workerEvidence = extractWorkerEvidence(parsed.result);
     if (persistResult) {
       try { persistResult({ item, wake: base, result: parsed, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, model: model.selectedModel }); }
       catch (e) { return fail("RESULT_PERSIST_FAILURE", e.message, base, releaseLease); }
@@ -136,7 +142,12 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
       turnCeiling: invocation.turnCeiling ?? null, profile: invocation.profile ?? null,
       selectedModel: model.selectedModel, contextPackage, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null,
       costCapacity: createCostCapacityTelemetry({ actualProviderCostUsd: UNKNOWN_COST, estimatedExecutionCostUsd: parsed.total_cost_usd ?? null, providerCapacityUsage: ctx.providerCapacityUsage || {}, budgetStopReason: null, costProvenance: { actual: "UNAVAILABLE", estimated: parsed.total_cost_usd == null ? "UNAVAILABLE" : "CLAUDE_CLI_MODELED" }, freshness: parsed.total_cost_usd == null ? "UNKNOWN" : "CURRENT" }),
-      result: parsed.result, leaseReleased: releasedOk,
+      result: parsed.result,
+      // The worker's STRUCTURED evidence, parsed out of its free-text result. `result` stays a string (its
+      // consumers hash it as the durable content), so the evidence rides alongside rather than reshaping it.
+      // A missing/malformed block yields EMPTY evidence → the completion gate blocks exactly as before.
+      workerEvidence: workerEvidence.evidence, workerEvidenceFound: workerEvidence.found,
+      leaseReleased: releasedOk,
       failureKind: releasedOk ? null : "LEASE_RELEASE_FAILURE",
     });
   } finally {

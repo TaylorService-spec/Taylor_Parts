@@ -23,6 +23,8 @@ on:
       - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
       - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      - "field-ops-app-vite/src/hooks/useAccountAr.js"
+      - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
       - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
       - "field-ops-app-vite/test/accountOpportunitiesView.test.mjs"
@@ -48,6 +50,8 @@ on:
       - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
       - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      - "field-ops-app-vite/src/hooks/useAccountAr.js"
+      - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
       - "field-ops-app-vite/test/accountDetailFailClosed.test.jsx"
       - "field-ops-app-vite/test/accountOpportunitiesView.test.mjs"
@@ -82,6 +86,10 @@ jobs:
       # Pure view model: which metrics exist, and that an unavailable source never becomes a number.
       - name: Account health strip (offline)
         run: node test/accountHealthStrip.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Account AR in-flight sharing (#1095)
+        run: node test/accountArInFlightSharing.test.mjs
         working-directory: field-ops-app-vite
 
       # Locks the repetition regression: the unconfigured-provider sentence must not return 4x.

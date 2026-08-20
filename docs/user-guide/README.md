@@ -16,9 +16,9 @@ Every guide is tagged so you're never misled about what actually works:
 
 ## Getting started
 
-- [Sign in to Field Ops](getting-started/sign-in.md) — **live** — Sign in with your work email and password; covers the login form, error message, No access state, and demo banner.
-- [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the app frame plus the role-specific My Dashboard (live technician dashboard; placeholder for admin/dispatcher, who use Operations Dashboard).
-- [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the top area tabs and sub-tabs, what each role sees, and an honest note that many sub-sections are not-yet-built placeholders.
+- [Sign in to Field Ops](getting-started/sign-in.md) — **live** — Sign in with your work email and password on the two-panel sign-in screen; covers the login form, the self-service password reset flow, error messages, No access state, and demo banner.
+- [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the navigation rail plus header strip, and the role-specific My Dashboard (live technician dashboard; a real, access-aware "What needs you right now" destination list for admin/dispatcher).
+- [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the left navigation rail's expandable areas, what each role sees, and an honest note that a few sections are not-yet-built placeholders.
 - [Sign out of Field Ops](getting-started/sign-out.md) — **live** — Use the Logout button in the top-right to end your session, especially on shared devices.
 - [When a screen is empty](getting-started/when-a-screen-is-empty.md) — **live** — Tell "nothing exists yet" apart from "your filters are hiding everything," and read the guidance line that explains what a brand-new screen is for.
 
@@ -43,6 +43,11 @@ Every guide is tagged so you're never misled about what actually works:
 - [Update a work order's status](technician-field/update-work-order-status.md) — **live** — Move an assigned work order through its lifecycle (Accept, Start Travel, Arrived, Start Work, Complete) from the work order detail view.
 - [Record parts used and work notes](technician-field/record-parts-and-notes.md) — **live** — Adjust used quantities on planned parts and add append-only work notes via Execution Capture on an assigned work order.
 - [Parts Scanner (Technician Workspace)](technician-field/parts-scanner.md) — **demo (except Receive)** — Field part scan/lookup at Service > Technician Workspace; in-memory demo except the real governed **Receive a purchase order** action — see [Receive a purchase order](inventory/receive-a-purchase-order.md).
+
+## Sales
+
+- [Edit an opportunity’s details](sales/edit-an-opportunity.md) — **live** — Correct an open opportunity one section at a time (commercial details, customer need, solution lines, next action), including reassigning the owner from the employee directory (admin/dispatcher/owner).
+- [Mark an opportunity Won (and get its Sales Order)](sales/mark-an-opportunity-won.md) — **live** — Close a deal at the Decision stage; the Sales Order is created in the same transaction and linked from the confirmation, so a won deal is never left without one (admin/dispatcher/owner).
 
 ## Inventory
 

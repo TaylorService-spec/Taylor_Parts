@@ -9,6 +9,7 @@ import {
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity.
 // Two distinct presentation elements over the same Account's Work Orders,
@@ -91,9 +92,9 @@ export default function ServiceActivitySection({ accountId }) {
           )}
 
           {timeline.hasMore ? (
-            <button type="button" onClick={timeline.loadMore} disabled={timeline.loadingMore}>
-              {timeline.loadingMore ? "Loading…" : "Load More"}
-            </button>
+            <Button type="button" variant="tertiary" onClick={timeline.loadMore} loading={timeline.loadingMore}>
+              Load More
+            </Button>
           ) : (
             <p className="fo-muted">End of activity.</p>
           )}

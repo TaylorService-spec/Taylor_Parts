@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "TEMPLATE. Deliberately unfilled -- functions/scripts/inventoryCreateExecutorGrantManifestCli.js's",
+    "validateGrantManifestShape() refuses to accept this file as-is or to build a plan from it while ANY",
+    "required field below is null, a placeholder string (TBD/TODO/REPLACE_ME/N-A etc.), or blank.",
+    "",
+    "Owner ruling (2026-08-18): 'Do not assign inventoryCreateExecutor until its exact recipient and business",
+    "need are presented. No provisioning or activation writes without a dry-run manifest and separate sandbox",
+    "authorization.' This template is the enforcement of that ruling, not a form to rubber-stamp -- copy it to",
+    "a NEW path (do not edit this template in place) only once a real recipient and a real business need are",
+    "known and approved.",
+    "",
+    "inventoryCreateExecutor (functions/src/access/governedBusinessRoles.ts INVENTORY_CREATE_EXECUTOR_ROLE) is",
+    "execution-scoped: granted for ONE approved Part Master CREATE run via the trusted assignApprovedRole",
+    "command (functions/src/access/trustedWriterCommands.ts), then revoked immediately after execution and",
+    "reconciliation (docs/architecture/SYSTEM_AUTHORITIES.md). This manifest records the human decision that",
+    "must exist BEFORE that command is ever called -- it does not itself call assignApprovedRole (that is a",
+    "deployed Cloud Function, a separate protected action, and out of scope for this repository-only prepare",
+    "lane)."
+  ],
+  "roleId": "inventoryCreateExecutor",
+  "recipient": {
+    "employeeId": null,
+    "principalUid": null,
+    "displayName": null
+  },
+  "businessNeed": null,
+  "scope": {
+    "type": "global"
+  },
+  "approvedBy": null,
+  "revokeAfter": "immediately after the approved CREATE execution and its reconciliation (see SYSTEM_AUTHORITIES.md)",
+  "authorizationReference": null
+}

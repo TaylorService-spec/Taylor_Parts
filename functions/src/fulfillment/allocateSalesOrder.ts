@@ -7,7 +7,8 @@
 // Authorization = capability `salesOrder.fulfill`, resolved fail-closed via the trusted effective-access feed;
 // registered active:false ⇒ DENY for everyone until a separate Owner grant. EXPORT != DEPLOY, REGISTER != GRANT.
 //
-// PARTS availability (Owner-ratified): eligible ON_HAND (stock_locations at status==ACTIVE warehouses) − open
+// PARTS availability (Owner-ratified 2026-08-17, superseding the stock_locations rule): ledger-derived
+// eligible physical ON_HAND (inventory_transactions at status==ACTIVE warehouses) − open
 // WO reservations (inventory_transactions RESERVED−RELEASED−CONSUMED) − other active SO allocations. Missing
 // on-hand evidence ⇒ UNKNOWN (never 0). SERVICE lines need no inventory ⇒ always allocatable.
 //
@@ -19,9 +20,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Transaction } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
-import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, STOCK_LOCATIONS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
+import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { buildAllocationPlan, type Availability } from "./allocationProjection";
-import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments, sumEligibleOnHand } from "./fulfillmentAvailability";
+import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments, sumLedgerEligibleOnHand } from "./fulfillmentAvailability";
 import { readEquipmentAvailability } from "./equipmentAvailabilityContract";
 
 export const SALES_ORDER_FULFILL_CAPABILITY = "salesOrder.fulfill";
@@ -33,7 +34,8 @@ async function requireFulfill(uid: string): Promise<void> {
   try {
     const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [SALES_ORDER_FULFILL_CAPABILITY] });
     allowed = decisions[SALES_ORDER_FULFILL_CAPABILITY] === true;
-  } catch {
+  } catch (err) {
+    console.error(`[requireFulfill (allocateSalesOrder)] capability resolution failed for ${SALES_ORDER_FULFILL_CAPABILITY}`, err);
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to allocate Sales Orders.");
@@ -48,13 +50,18 @@ interface SoLine {
   selectedSerialIds?: string[];
 }
 
-// Read the eligible ON_HAND for a part: sum stock_locations.quantity for partId at eligible (status==ACTIVE)
-// warehouses. Returns null (UNKNOWN) if the read yields no usable evidence. All reads via the transaction.
+// Read the eligible physical ON_HAND for a part from the GOVERNED LEDGER (Owner-ratified 2026-08-17):
+// physical movements at eligible (status==ACTIVE) warehouses. Returns null (UNKNOWN) when the part has no
+// physical movement evidence. Reads the SAME inventory_transactions collection readOpenWoReserved() already
+// uses, so sellable stock and open reservations are derived from one authority rather than two that drift.
 async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds: Set<string>): Promise<number | null> {
   const db = getFirestore();
-  const snap = await tx.get(db.collection(STOCK_LOCATIONS_COLLECTION).where("partId", "==", ref));
-  return sumEligibleOnHand(
-    snap.docs.map((d) => d.data() as { warehouseId?: string; quantity?: number }),
+  const snap = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", ref));
+  return sumLedgerEligibleOnHand(
+    snap.docs.map(
+      (d) =>
+        d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }
+    ),
     eligibleWarehouseIds
   );
 }

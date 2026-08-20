@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { routerBasenameFrom } from "./routerBasename";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
@@ -12,10 +12,12 @@ import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboa
 import AccountsList from "./modules/accounts/AccountsList";
 import SalesWorkspace from "./modules/sales/SalesWorkspace";
 import SalesOrderDetail from "./modules/sales/SalesOrderDetail.jsx";
+import SalesOrdersList from "./modules/sales/SalesOrdersList.jsx";
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
+import { useSalesOrderCapabilities } from "./access/useSalesOrderCapabilities.js";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
@@ -24,6 +26,9 @@ import AdministrationOverview from "./modules/administration/AdministrationOverv
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
+import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
+import AdminObjects from "./modules/administration/AdminObjects.jsx";
+import EmployeesList from "./modules/administration/EmployeesList.jsx";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
@@ -79,8 +84,10 @@ const previewHasPermission = createPermissionPreviewer(
 // separate deployment + Owner authorization.
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
-import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, deniedDomainIndexItem } from "./navigation/navConfig";
+import LandingPage from "./navigation/LandingPage";
+import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
 import EmptyState from "./shared/ui/EmptyState.jsx";
+import { Button } from "./shared/ui/primitives";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
 // Experience). Real URL-based routing via react-router-dom, replacing
@@ -122,33 +129,21 @@ const LEGACY_COMPONENTS = {
   technicianDashboard: TechnicianDashboard,
 };
 
-// Admin/dispatcher personalized landing (W5). Real role-aware home -- quick-access
-// cards to the primary operational surfaces both admin and dispatcher can reach --
-// replacing the prior "isn't built yet" placeholder. Technician gets the real
-// TechnicianDashboard. Every card links to a verified route; none is a dead link.
-const LANDING_AREAS = [
-  { to: "/dashboard/operations", label: "Inventory & Supply Overview", hint: "Cross-domain operational health" },
-  { to: "/service", label: "Work Orders", hint: "Browse and manage work orders" },
-  { to: "/service/dispatcher-board", label: "Dispatcher Board", hint: "Assign and dispatch work" },
-  { to: "/customers", label: "Customers", hint: "Accounts, contacts, and locations" },
-  { to: "/inventory", label: "Inventory", hint: "Parts and stock" },
-];
-
-function DashboardIndex({ role }) {
+// Role-aware landing. A technician has a real, data-backed home (TechnicianDashboard)
+// and keeps it. Everyone else used to get a hard-coded list of five links that was the
+// same for every non-technician: an admin without Reporting saw the identical five as
+// one with it, so the screen asserted access it had not checked. LandingPage computes
+// the destination set from isDomainVisible/isNavItemVisible -- the SAME functions the
+// rail and the route table use for this exact principal -- so it can neither show a
+// destination this person cannot open nor omit one they can.
+function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
   if (role === "technician") return <TechnicianDashboard />;
   return (
-    <div className="fo-panel">
-      <h2>My Dashboard</h2>
-      <p className="fo-muted">Quick access to your areas.</p>
-      <div className="fo-landing-grid">
-        {LANDING_AREAS.map((a) => (
-          <Link key={a.to} to={a.to} className="fo-landing-card">
-            <span className="fo-landing-card-title">{a.label}</span>
-            <span className="fo-muted">{a.hint}</span>
-          </Link>
-        ))}
-      </div>
-    </div>
+    <LandingPage
+      role={role}
+      allowedLegacyKeys={allowedLegacyKeys}
+      operationalContext={operationalContext}
+    />
   );
 }
 
@@ -201,9 +196,30 @@ function OpportunityWorkspaceConnected() {
   return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} />;
 }
 
-function renderSubnavItem(domain, item, role, operationalContext) {
+// Fixes the known defect (SalesOrderActions.jsx) where the Sales Order Advance/Cancel/Allocate/
+// Create Service buttons rendered live from the client-side STATE mirror alone, with no capability
+// check -- so a principal holding salesOrder.read but not salesOrder.write/.fulfill/.service
+// (salesManager, accountingManager, financeManager) saw fully enabled action buttons and only learned
+// they were unauthorized after confirming and hitting the server's denial. This is the one production
+// call site that feeds SalesOrderDetail's `hasCapability` prop the REAL trusted
+// resolveEffectiveAccessCallable decision (access/useSalesOrderCapabilities) -- mirrors
+// OpportunityWorkspaceConnected above exactly. Every unit/component test still gets the fail-closed
+// default (no `hasCapability` injected).
+function SalesOrderDetailConnected() {
+  const { user } = useAuth();
+  const { hasCapability } = useSalesOrderCapabilities(user);
+  return <SalesOrderDetail hasCapability={hasCapability} />;
+}
+
+function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys) {
   if (domain.key === "dashboard" && item.key === "my") {
-    return <DashboardIndex role={role} />;
+    return (
+      <DashboardIndex
+        role={role}
+        allowedLegacyKeys={allowedLegacyKeys}
+        operationalContext={operationalContext}
+      />
+    );
   }
   // Sprint 2.0.2 -- Customer Foundation. Same special-case pattern as
   // DashboardIndex above: this item has no legacyKey (it's a brand
@@ -223,6 +239,28 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // resolveEffectiveAccessCallable decision for opportunity.write instead of a hardcoded fail-closed value.
   if (domain.key === "customers" && item.key === "opportunities") {
     return <OpportunityWorkspaceConnected />;
+  }
+  // The Sales Order INDEX must be dispatched HERE, not by a separate <Route>. The generic
+  // subnav loop below emits a route for EVERY visible nav item and renders whatever this
+  // function returns; an item with no branch and no legacyKey falls through to
+  // PlaceholderPage. Adding a second <Route> at the same path did not win -- the generic
+  // one is emitted first and React Router matched it -- so the deployed page said
+  // "This area isn't built yet" over a list that was very much built. Tests and build
+  // both passed, because neither renders the route table the way the browser does.
+  // Dispatched here, not as a separate <Route> -- the generic subnav loop emits the route
+  // and renders whatever this returns, so a second Route at the same path never wins.
+  // Owner ruling 2026-08-20: "technician is a role". The Employees item keeps its
+  // legacyKey (so WHO can see it is unchanged) but renders the governed employee
+  // directory instead of the fieldops_technicians roster it used to. The two had drifted
+  // into parallel identities for the same people; the directory is `employees`.
+  if (domain.key === "administration" && item.key === "employees") {
+    return <EmployeesList />;
+  }
+  if (domain.key === "administration" && item.key === "objects") {
+    return <AdminObjects />;
+  }
+  if (domain.key === "customers" && item.key === "salesOrders") {
+    return <SalesOrdersList />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
@@ -353,6 +391,12 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
   }
+  // Administration > Duplicate Rules -- reads the seeded ruleset and renders every
+  // edit control as protected+disabled with the reason, because the governed rules
+  // service does not exist yet. No Firestore access, no writes.
+  if (domain.key === "administration" && item.key === "duplicateRules") {
+    return <AdminDuplicateRules />;
+  }
   // Administration > Integrations -- static, informational FAQ on the platform's
   // approved integration boundary (no Firestore access, no writes). Replaces the
   // prior PlaceholderPage for this existing nav item. (Handoff from the parallel
@@ -480,7 +524,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 key={item.key}
                 path={item.path || undefined}
                 index={item.path === ""}
-                element={renderSubnavItem(domain, item, role, operationalContext)}
+                element={renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys)}
               />
             ))}
           {/* Three independent missions landed on a blank page at /inventory and
@@ -493,22 +537,33 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               let it state the denial. Deliberately not a redirect: bouncing to another
               surface hides the reason and leaves the user believing the area is broken.
               Access is unchanged -- this only gives the refusal somewhere to be said. */}
-          {(() => {
-            const indexItem = deniedDomainIndexItem(domain, role, allowedLegacyKeys, operationalContext);
-            if (!indexItem) return null;
-            return (
+          {/* GENERALIZED from the index item to EVERY denied subnav item, for the same
+              reason and one more.
+              The loop above emits routes only for VISIBLE items, so a hidden item's path
+              matched nothing in this domain and fell through to the domain's dynamic child
+              route below -- which read the path segment as a RECORD ID. A warehouse manager
+              opening /inventory/receiving was told `Unknown part "receiving"`: not a denial,
+              not a 404, but a confident claim about a part that was never a part. The same
+              shape existed on /customers/:accountId and /equipment/:equipmentId.
+              A static segment outranks a dynamic one in the router's own ranking, so simply
+              emitting these routes takes the path back from the record lookup.
+              Access is unchanged -- this only gives the refusal somewhere to be said. */}
+          {domain.subnav
+            .filter((item) => !isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
+            .map((item) => (
               <Route
-                index
+                key={`denied-${item.key}`}
+                path={item.path || undefined}
+                index={item.path === ""}
                 element={
                   <EmptyState
                     variant="filtered"
-                    title={`${indexItem.label} isn't available to your role`}
+                    title={`${item.label} isn't available to your role`}
                     message="Your account doesn't have access to this area. Contact an administrator if you believe this is an error."
                   />
                 }
               />
-            );
-          })()}
+            ))}
           {/* Sprint 2.0.2 -- first parameterized route in this
               generic, subnav-driven route generator. navConfig.js's
               subnav items are all static paths; a per-record detail
@@ -539,7 +594,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
-              <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetail />} />
+              <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>
           )}
@@ -684,7 +739,7 @@ export default function App() {
   // granted only from a successful, current-principal decision; denied while loading, on
   // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
   // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
-  const { hasCapability, accessVersion } = useReportCapabilities(user);
+  const { hasCapability, accessVersion, accessResolving } = useReportCapabilities(user);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
   // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
@@ -706,13 +761,20 @@ export default function App() {
       <div className="fo-panel">
         <FailureState
           message={identityError}
-          action={<button type="button" className="fo-btn" onClick={retryIdentityResolution}>Retry</button>}
+          action={<Button type="button" variant="primary" onClick={retryIdentityResolution}>Retry</Button>}
         />
       </div>
     );
   }
 
   if (!user) return <Login />;
+
+  // Governed access is not known YET. Rendering the route table now would emit the route set for a
+  // principal whose capabilities have not resolved, and the router's catch-all would immediately
+  // redirect a capability-gated deep link to /dashboard -- destroying the URL before the answer
+  // arrives. Waiting grants nothing (hasCapability still denies until a positive decision lands);
+  // it only stops the shell from acting on an absence as though it were a refusal.
+  if (accessResolving) return <div className="fo-panel">Loading...</div>;
 
   if (!hasAnyAccess) {
     return (
@@ -726,9 +788,9 @@ export default function App() {
           Ask an administrator to grant your account a role — giving them the email above
           helps them find it. Once access is granted, choose <strong>Check again</strong>.
         </p>
-        <button type="button" className="fo-btn" onClick={() => window.location.reload()}>
+        <Button type="button" variant="primary" onClick={() => window.location.reload()}>
           Check again
-        </button>
+        </Button>
       </div>
     );
   }

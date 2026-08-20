@@ -1,85 +1,79 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { ACCOUNTS_COLLECTION, ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
+import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, accountStatusLabel } from "../../domain/constants";
 import { createAccount } from "../../domain/accounts";
-import {
-  summarizeAccounts,
-  filterAccounts,
-  collectTags,
-  hasActiveFilters,
-  formatLastUpdate,
-  clearedFiltersForAccount,
-  accountStatusTone,
-  accountRelationshipTone,
-} from "../../domain/accountPortfolio";
-import GlobalSearch from "../../shared/search/GlobalSearch";
+import { accountEntity, accountIndexList } from "../../metadata/definitions/account.js";
+import { useMetadataList } from "../../hooks/useMetadataList";
+import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary";
+import { useAccountSearch } from "../../hooks/useAccountSearch";
+import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
-import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import Modal from "../../shared/ui/Modal";
-import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
-import FailureState from "../../shared/ui/FailureState";
-import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import AccountForm from "./AccountForm";
 
-// Sprint 2.0.2 -- Customer Foundation. Internal name AccountsList; rendered UI
-// says "Customers" throughout (docs/BusinessEntityModel.md).
+// Customers — the first surface on the metadata list runtime.
 //
-// Customer Results Dashboard: /customers is a portfolio dashboard -- status
-// portfolio cards (click to filter), local relationship-type + tag filters
-// (clear/reset + live result count), and an enriched results table (name,
-// status, relationship, tags, human-readable last update). It uses ONLY the
-// existing Accounts subscription (useFirestoreCollection) and computes every
-// metric/filter locally (domain/accountPortfolio.js) -- no Contact/Location
-// query, no per-account query loop, no raw IDs, no financial calculation.
-// Global Search, New Customer, and the /customers/:accountId detail link are
-// preserved.
+// WHAT CHANGED AND WHY IT MATTERS. This page used to subscribe to the ENTIRE accounts
+// collection and do all filtering, counting and tag-faceting in memory. At Taylor's
+// current volume that was invisible; at 250,000 accounts it is a quarter of a million
+// document reads to render one screen, which is the client-side dataset ownership §9
+// forbids. Rows now come from a bounded, cursor-paged metadata query.
+//
+// THE CARDS ARE NOT COMPUTED FROM THE ROWS. Total/Active/Prospect/Inactive/Archived are
+// claims about the whole book of business, so they come from getAccountPortfolioSummary,
+// a governed server-side count over the complete scope. Deriving them from the page would
+// produce numbers that are smaller than the truth while still labelled "Total" — a worse
+// failure than the unbounded read this replaces, because that one was merely slow.
+//
+// Neither read is unbounded, and there is no second one: the old subscription is gone
+// rather than kept alongside.
+//
+// FACETS: ONE RESTORED, ONE STILL DEFERRED. The relationship chips are back, because the
+// index derivation now models filter COMBINATIONS and the three composites the query
+// really needs are declared. Their values come from the enum, which is a closed set the
+// code owns — not from scanning the collection.
+//
+// The tag chips are NOT back. Tag values are open, so the only way to know which exist is
+// to read every account, and rebuilding the facet from the current page would present
+// "the tags on these fifty rows" as "the tags that exist". Tags still RENDER in their
+// rows; the global facet waits on an authoritative catalog and is recorded as such.
+
+const RELATIONSHIP_LABEL = { CUSTOMER: "Customer", VENDOR: "Vendor" };
 
 const STATUS_CARDS = [
   { key: "total", label: "Total", status: null },
-  { key: "active", label: "Active", status: ACCOUNT_STATUS.ACTIVE },
-  { key: "prospect", label: "Prospect", status: ACCOUNT_STATUS.PROSPECT },
-  { key: "inactive", label: "Inactive", status: ACCOUNT_STATUS.INACTIVE },
-  { key: "archived", label: "Archived", status: ACCOUNT_STATUS.ARCHIVED },
+  { key: "ACTIVE", label: accountStatusLabel(ACCOUNT_STATUS.ACTIVE), status: ACCOUNT_STATUS.ACTIVE },
+  { key: "PROSPECT", label: accountStatusLabel(ACCOUNT_STATUS.PROSPECT), status: ACCOUNT_STATUS.PROSPECT },
+  { key: "INACTIVE", label: accountStatusLabel(ACCOUNT_STATUS.INACTIVE), status: ACCOUNT_STATUS.INACTIVE },
+  { key: "ARCHIVED", label: accountStatusLabel(ACCOUNT_STATUS.ARCHIVED), status: ACCOUNT_STATUS.ARCHIVED },
 ];
 
-const RELATIONSHIP_LABEL = {
-  [ACCOUNT_RELATIONSHIP_TYPE.CUSTOMER]: "Customer",
-  [ACCOUNT_RELATIONSHIP_TYPE.VENDOR]: "Vendor",
-};
-
 export default function AccountsList() {
-  const { data: accounts, loading, error } = useFirestoreCollection(ACCOUNTS_COLLECTION);
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
-  const [relationshipFilter, setRelationshipFilter] = useState([]);
-  const [tagFilter, setTagFilter] = useState([]);
-  // After a successful create: the row to move focus to + a live announcement.
-  const [pendingFocus, setPendingFocus] = useState(null);
+  // ONE relationship at a time, not a set. Firestore permits a single array filter per
+  // query, so offering multi-select would promise an intersection no declared index
+  // serves — and the old page's AND-semantics chips were only possible because it was
+  // filtering in memory.
+  const [relationshipFilter, setRelationshipFilter] = useState(null);
   const [announcement, setAnnouncement] = useState("");
-  const newRowLinkRef = useRef(null);
-  // Set by AccountForm's onSavingChange while a create is committing. Read synchronously
-  // by the Modal's onClose so Escape / ✕ / backdrop cannot dismiss the overlay mid-save
-  // (#322) -- a ref, not state, so the close handler sees the CURRENT status, not a value
-  // captured on an earlier render.
   const creatingRef = useRef(false);
 
-  const summary = useMemo(() => summarizeAccounts(accounts), [accounts]);
-  const allTags = useMemo(() => collectTags(accounts), [accounts]);
-  const filtered = useMemo(
-    () => filterAccounts(accounts, { status: statusFilter, relationshipTypes: relationshipFilter, tags: tagFilter }),
-    [accounts, statusFilter, relationshipFilter, tagFilter]
-  );
-  const filtersActive = hasActiveFilters({ status: statusFilter, relationshipTypes: relationshipFilter, tags: tagFilter });
+  const filters = useMemo(() => {
+    const next = [];
+    if (statusFilter) next.push({ fieldId: "status", operator: "EQUALS", value: statusFilter });
+    if (relationshipFilter) {
+      next.push({ fieldId: "relationshipTypes", operator: "ARRAY_CONTAINS", value: relationshipFilter });
+    }
+    return next;
+  }, [statusFilter, relationshipFilter]);
 
-  // Called by AccountForm inside the overlay. On failure this THROWS so
-  // AccountForm catches it, shows the error inside the still-open overlay, and
-  // nothing here runs (the overlay does not close). On success: clear only the
-  // filters that would hide the new customer, queue focus + a live announcement,
-  // and close the overlay. The live Accounts subscription adds the row itself --
-  // no manual insert, no refetch.
+  const { presentation, loadMore, retry } = useMetadataList(accountIndexList, accountEntity, { filters });
+  const { summary, state: summaryState, retry: retrySummary } = useAccountPortfolioSummary();
+
   async function handleCreate(values) {
     const created = await createAccount(values);
     if (created?.blocked) {
@@ -87,77 +81,46 @@ export default function AccountsList() {
       blockedErr.blocked = true;
       throw blockedErr;
     }
-    const next = clearedFiltersForAccount(created, {
-      status: statusFilter,
-      relationshipTypes: relationshipFilter,
-      tags: tagFilter,
-    });
-    setStatusFilter(next.status);
-    setRelationshipFilter(next.relationshipTypes);
-    setTagFilter(next.tags);
-    setPendingFocus({ id: created.id, name: created.name });
+    // A status filter that would hide the customer just created is cleared, so the
+    // confirmation is not immediately contradicted by an empty table.
+    if (statusFilter && created?.status !== statusFilter) setStatusFilter(null);
     setAnnouncement(`Customer ${created.name} created.`);
     setShowCreate(false);
+    // The page is a query result, not a live subscription, so a new record does not
+    // arrive on its own. Refetching is explicit rather than hoped for.
+    retry();
+    retrySummary();
   }
 
-  // Once the newly created customer's row is rendered (the live subscription has
-  // delivered it and current filters don't hide it), move focus to its name and
-  // consume the pending-focus marker.
-  useEffect(() => {
-    if (pendingFocus && newRowLinkRef.current) {
-      newRowLinkRef.current.focus();
-      setPendingFocus(null);
-    }
-  }, [pendingFocus, filtered]);
+  const cardCount = (card) => {
+    if (summaryState !== "READY" || !summary) return null;
+    return card.status === null ? summary.total : summary.byStatus?.[card.key] ?? 0;
+  };
 
-  function toggleStatus(status) {
-    // Total (status null) always clears; a status card toggles on/off.
-    setStatusFilter((cur) => (status === null ? null : cur === status ? null : status));
-  }
-  function toggleRelationship(type) {
-    setRelationshipFilter((cur) => (cur.includes(type) ? cur.filter((t) => t !== type) : [...cur, type]));
-  }
-  function toggleTag(tag) {
-    setTagFilter((cur) => (cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag]));
-  }
-  function clearFilters() {
-    setStatusFilter(null);
-    setRelationshipFilter([]);
-    setTagFilter([]);
-  }
-
-  const cardCount = (card) => (card.status === null ? summary.total : summary[card.key]);
+  // GOVERNED SEARCH, NOT THE OLD GLOBAL SEARCH. The GlobalSearch `accounts` provider
+  // (src/shared/search/searchProviders.js) filters an array the caller supplies, and the
+  // only caller that could supply it was the whole-collection subscription this page no
+  // longer holds — handing it the current page instead would search fifty rows and render
+  // "no results" for a customer that exists, so it stayed removed rather than repurposed.
+  //
+  // This is the replacement recorded at that removal: domain/accountSearch.js issues a
+  // real, bounded Firestore prefix query on `name` (see that module for why prefix, not
+  // substring/full-text, and why no composite index is needed). It matches customers
+  // whose name STARTS WITH what was typed, case-sensitively — the UI copy below says so
+  // rather than implying a broader search.
+  const [searchTerm, setSearchTerm] = useState("");
+  const search = useAccountSearch(searchTerm);
 
   const actions = (
     <ActionRail
-      start={<GlobalSearch providerKeys={["accounts"]} context={{ accounts }} placeholder="Search customers..." />}
-      primary={<button type="button" className="fo-btn-primary" onClick={() => setShowCreate(true)}>+ New Customer</button>}
+      primary={<Button variant="primary" onClick={() => setShowCreate(true)}>+ New Customer</Button>}
     />
   );
 
   return (
     <WorkspaceShell title="Customers" actions={actions}>
-      {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
-      {/* Creation overlay -- opens without navigating or moving the dashboard.
-          The form catches its own save failures and keeps the overlay open.
-
-          CLOSE-DURING-SAVE GUARD (#322): onClose refuses while a create is committing, so
-          Escape / ✕ / backdrop cannot dismiss the overlay mid-write. The form's own Cancel
-          button is already disabled during save, but the Modal chrome routes through
-          onClose, which the button does not intercept -- so the guard lives here, reading
-          the ref AccountForm sets via onSavingChange.
-
-          Still a #293 CANARY (#302): the guard is a fresh-identity inline arrow every
-          render, exactly as before -- guarding it did not memoize it, so its identity
-          still changes each render and it still exposes a [onClose]-keyed regression.
-          Modal reads onClose through a ref, so this costs nothing. Honesty caveat, per the
-          driver's own note: the deterministic typing suite PASSES here even on unfixed
-          main (AccountForm holds its own state, so typing re-renders the form, not
-          AccountsList, and the arrow keeps its identity through the burst); the Location
-          flow is the hard reproducer. Do NOT "tidy" this into a useCallback -- it is a
-          real canary, just not the one the suite fails on. */}
       {showCreate && (
         <Modal title="New Customer" onClose={() => { if (creatingRef.current) return; setShowCreate(false); }}>
           <AccountForm
@@ -169,142 +132,117 @@ export default function AccountsList() {
         </Modal>
       )}
 
-      {loading ? (
-        <LoadingState>Loading customers…</LoadingState>
-      ) : error ? (
-        // Terminal subscription failure -- safe categorized copy only (never the
-        // raw code); the content branch below is not reached, so no stale data.
-        <FailureState message={loadErrorMessage(error, { entity: "customers" })} />
-      ) : accounts.length === 0 ? (
-        <EmptyState
-          variant="database"
-          title="No customers yet"
-          message="Add your first customer to get started."
-          guidance="A customer is the account everything else hangs off — its locations are where service happens, and its work orders, equipment, and financial summary all roll up here."
-          action={<button type="button" onClick={() => setShowCreate(true)}>+ New Customer</button>}
+      <div className="fo-global-search" role="search">
+        <input
+          type="search"
+          placeholder="Search customers by name (starts with)…"
+          aria-label="Search customers by name — matches names starting with what you type"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
         />
-      ) : (
-        <>
-          {/* Portfolio cards -- click to filter by status; Total clears the status filter */}
-          <div className="fo-portfolio-cards" role="group" aria-label="Customer portfolio by status">
-            {STATUS_CARDS.map((card) => {
-              const pressed = card.status === null ? statusFilter === null : statusFilter === card.status;
-              return (
-                <button
-                  key={card.key}
-                  type="button"
-                  className={`fo-portfolio-card${pressed ? " fo-portfolio-card-active" : ""}`}
-                  aria-pressed={pressed}
-                  onClick={() => toggleStatus(card.status)}
-                >
-                  <span className="fo-portfolio-card-count">{cardCount(card)}</span>
-                  <span className="fo-portfolio-card-label">{card.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Local filters: relationship type + tags, with clear/reset */}
-          <div className="fo-portfolio-filters">
-            <div className="fo-filter-group" role="group" aria-label="Filter by relationship type">
-              <span className="fo-filter-label">Relationship:</span>
-              {Object.values(ACCOUNT_RELATIONSHIP_TYPE).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`fo-filter-chip${relationshipFilter.includes(type) ? " fo-filter-chip-active" : ""}`}
-                  aria-pressed={relationshipFilter.includes(type)}
-                  onClick={() => toggleRelationship(type)}
-                >
-                  {RELATIONSHIP_LABEL[type] ?? type}
-                </button>
-              ))}
-            </div>
-
-            {allTags.length > 0 && (
-              <div className="fo-filter-group" role="group" aria-label="Filter by tag">
-                <span className="fo-filter-label">Tags:</span>
-                {allTags.map((tag) => (
+        {searchTerm.trim() && (
+          <div className="fo-global-search-results" role="status" aria-live="polite">
+            {search.state === "LOADING" && <div className="fo-muted fo-global-search-empty">Searching…</div>}
+            {search.state === "EMPTY" && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+            {search.state === "DENIED" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {search.state === "UNAVAILABLE" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {(search.state === "READY" || search.state === "TRUNCATED") && (
+              <>
+                {search.results.map((account) => (
                   <button
-                    key={tag}
+                    key={account.id}
                     type="button"
-                    className={`fo-filter-chip${tagFilter.includes(tag) ? " fo-filter-chip-active" : ""}`}
-                    aria-pressed={tagFilter.includes(tag)}
-                    onClick={() => toggleTag(tag)}
+                    className="fo-global-search-result"
+                    onClick={() => { setSearchTerm(""); navigate(`/customers/${account.id}`); }}
                   >
-                    {tag}
+                    <span>{account.name}</span>
+                    {account.status && <span className="fo-muted"> — {accountStatusLabel(account.status)}</span>}
                   </button>
                 ))}
-              </div>
+                {/* Truncation is disclosed IN the results panel, not hidden below the fold —
+                    a capped list that looks complete is the exact failure this replaces. */}
+                {search.truncated && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+              </>
             )}
-
-            <button type="button" className="fo-link-btn" onClick={clearFilters} disabled={!filtersActive}>
-              Clear filters
-            </button>
           </div>
+        )}
+      </div>
 
-          <p className="fo-muted fo-portfolio-count" role="status" aria-live="polite">
-            {filtered.length} of {summary.total} customer{summary.total === 1 ? "" : "s"} shown
-          </p>
+      <div className="fo-portfolio-cards" role="group" aria-label="Customer portfolio by status">
+        {STATUS_CARDS.map((card) => {
+          const pressed = card.status === null ? statusFilter === null : statusFilter === card.status;
+          const count = cardCount(card);
+          return (
+            <button
+              key={card.key}
+              type="button"
+              className={`fo-portfolio-card${pressed ? " fo-portfolio-card-active" : ""}`}
+              aria-pressed={pressed}
+              onClick={() => setStatusFilter((cur) => (card.status === null ? null : cur === card.status ? null : card.status))}
+            >
+              {/* An unavailable count shows a dash, never a zero. "0 Active" is a claim
+                  about the business; "—" is a claim about the read, and they are not
+                  interchangeable. */}
+              <span className="fo-portfolio-card-count">{count === null ? "—" : count}</span>
+              <span className="fo-portfolio-card-label">{card.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
-          {filtered.length === 0 ? (
-            <EmptyState
-              variant="filtered"
-              message="No customers match the current filters."
-              action={<button type="button" className="fo-link-btn" onClick={clearFilters}>Clear filters</button>}
-            />
-          ) : (
-            <div className="fo-table-scroll">
-              <table className="fo-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Relationship</th>
-                    <th>Tags</th>
-                    <th>Last update</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((account) => {
-                    const rels = Object.values(ACCOUNT_RELATIONSHIP_TYPE).filter((t) =>
-                      (account.relationshipTypes ?? []).includes(t)
-                    );
-                    return (
-                      <tr key={account.id}>
-                        <td>
-                          <Link
-                            to={`/customers/${account.id}`}
-                            ref={account.id === pendingFocus?.id ? newRowLinkRef : undefined}
-                          >
-                            {account.name}
-                          </Link>
-                        </td>
-                        <td>
-                          {account.status && (
-                            <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
-                          )}
-                        </td>
-                        <td>
-                          {rels.length > 0 ? (
-                            rels.map((t) => (
-                              <StatusPill key={t} tone={accountRelationshipTone(t)} label={RELATIONSHIP_LABEL[t] ?? t} />
-                            ))
-                          ) : (
-                            <span className="fo-muted">—</span>
-                          )}
-                        </td>
-                        <td className="fo-muted">{(account.tags ?? []).join(", ") || "—"}</td>
-                        <td className="fo-muted">{formatLastUpdate(account.updatedAt ?? account.createdAt)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+      {summaryState === "DENIED" && (
+        <p className="fo-muted" role="status">Portfolio totals are not available to you.</p>
       )}
+      {summaryState === "UNAVAILABLE" && (
+        <p className="fo-warning" role="status">
+          Portfolio totals could not be loaded.{" "}
+          <button type="button" className="fo-link-btn" onClick={retrySummary}>Try again</button>
+        </p>
+      )}
+
+      {/* The audit of legacy title-cased statuses is still open, so this is not
+          hypothetical. Records the enum does not recognise are counted in the total and
+          reported here rather than disappearing from four categories that would then
+          silently fail to add up. */}
+      {summaryState === "READY" && summary?.unclassified > 0 && (
+        <p className="fo-warning" role="status">
+          {summary.unclassified} customer{summary.unclassified === 1 ? " has a status" : "s have statuses"} outside the
+          standard set, so the totals above add up to more than the four categories shown.
+        </p>
+      )}
+
+      <div className="fo-portfolio-filters">
+        <div className="fo-filter-group" role="group" aria-label="Filter by relationship type">
+          <span className="fo-filter-label">Relationship:</span>
+          {Object.values(ACCOUNT_RELATIONSHIP_TYPE).map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`fo-filter-chip${relationshipFilter === type ? " fo-filter-chip-active" : ""}`}
+              aria-pressed={relationshipFilter === type}
+              onClick={() => setRelationshipFilter((cur) => (cur === type ? null : type))}
+            >
+              {RELATIONSHIP_LABEL[type] ?? type}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="fo-link-btn"
+          onClick={() => { setStatusFilter(null); setRelationshipFilter(null); }}
+          disabled={!statusFilter && !relationshipFilter}
+        >
+          Clear filters
+        </button>
+      </div>
+
+      <MetadataListGrid
+        presentation={presentation}
+        caption="Customers"
+        onRowClick={(id) => navigate(`/customers/${id}`)}
+        onLoadMore={loadMore}
+        onRetry={retry}
+      />
     </WorkspaceShell>
   );
 }

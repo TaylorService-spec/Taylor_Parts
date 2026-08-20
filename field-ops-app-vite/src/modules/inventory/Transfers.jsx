@@ -20,6 +20,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
 import TransferOrderForm from "./TransferOrderForm";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Inventory > Transfers -- the operating workspace for the governed Transfer command family
 // (functions/src/inventoryTransfer/*). It REUSES the shared read (useTransferOrders ->
@@ -114,9 +115,9 @@ export default function Transfers({ accessVersion }) {
     <div className="fo-panel">
       <WorkspaceHeader title="Transfers">
         {!showForm && (
-          <button type="button" className="fo-btn-primary" onClick={() => setShowForm(true)}>
+          <Button variant="primary" onClick={() => setShowForm(true)}>
             New transfer
-          </button>
+          </Button>
         )}
       </WorkspaceHeader>
       {intro}
@@ -148,6 +149,24 @@ export default function Transfers({ accessVersion }) {
       {hiddenInvalidCount > 0 && (
         <p className="fo-warning" role="alert">
           {hiddenInvalidCount} transfer record{hiddenInvalidCount === 1 ? "" : "s"} couldn't be displayed due to a data issue — report this if it persists.
+        </p>
+      )}
+      {/*
+        The transfer read used to be fully UNBOUNDED -- no cap and no truncation flag at all,
+        so there was nothing to disclose because nothing was bounded. It is now capped, and a
+        cap that nobody tells the reader about is the defect this program keeps removing: a
+        capped list must never present its cap as the whole set. Two independent flags rather
+        than one merged boolean, because two different collections are capped and merging them
+        would hide WHICH list is incomplete.
+      */}
+      {read.transferOrdersTruncated && (
+        <p className="fo-muted" role="status">
+          Showing the most recent transfers. Some are not listed.
+        </p>
+      )}
+      {read.warehousesTruncated && (
+        <p className="fo-muted" role="status">
+          Some warehouses are not loaded, so a transfer's endpoint may show its stored id instead of a name.
         </p>
       )}
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />

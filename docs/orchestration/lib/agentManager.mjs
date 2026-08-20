@@ -54,6 +54,37 @@ export function decideIntakeDispatch({ requestId, workSha256, committedStatus = 
   if (alreadyComplete) {
     return { decision: "DEDUPE_REUSE", requestId, resultRef: s.resultRef, reason: "a COMPLETE result already exists for this authorized work (same work sha) — not re-dispatching" };
   }
+
+  // DETERMINISTIC BLOCK — do not re-dispatch unchanged work that already blocked.
+  //
+  // Observed 2026-08-16: seven items sat in BLOCKED_EXECUTION/FAILED and EVERY execute run
+  // re-attempted all of them. Each takes minutes, so a run burned 30+ minutes re-running work
+  // that could not succeed, saturating the single self-hosted runner and starving new intake.
+  //
+  // This is the same rule the retry classifier applies to commands (failureClassification.mjs
+  // §6: "not retryable without a state change"), applied at the ITEM level. An item that blocked
+  // on missing receipts, or on insufficient authority, will block identically on the next run --
+  // nothing about it changed.
+  //
+  // The work sha is the state change. If the artifact is EDITED (new sha), the block is stale and
+  // the item dispatches again, which is exactly how a human fixes one: change the work, re-run.
+  const TERMINAL_UNTIL_WORK_CHANGES = new Set(["BLOCKED_EXECUTION", "FAILED"]);
+  const blockedOnSameWork = !!s
+    && TERMINAL_UNTIL_WORK_CHANGES.has(s.state)
+    && !!s.workArtifact
+    && s.workArtifact.sha256 === workSha256;
+  if (blockedOnSameWork) {
+    return {
+      decision: "SKIP_DETERMINISTIC_BLOCK",
+      requestId,
+      state: s.state,
+      reason:
+        `previously ${s.state} for this exact work sha and nothing has changed — not re-dispatching. ` +
+        `Edit the work artifact (producing a new sha) or resolve ${s.currentWork ? `"${s.currentWork}"` : "the recorded blocker"} to make it eligible again.`,
+      blocker: s.currentWork ?? null,
+    };
+  }
+
   return { decision: "DISPATCH", requestId };
 }
 

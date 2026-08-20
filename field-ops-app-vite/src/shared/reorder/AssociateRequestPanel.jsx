@@ -13,6 +13,8 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants.js";
 import StatusPill from "../ui/StatusPill.jsx";
 import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import FailureState from "../ui/FailureState";
+import { Button } from "../ui/primitives/index.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A). Extracted from
 // PartsAssociateHome.jsx's own RequestCards + AssignedRequestDetail (StartPurchasingCard/
@@ -88,9 +90,9 @@ function StartPurchasingCard({ request, resolveName }) {
       <RequestSummary request={request} resolveName={resolveName} />
       {error && <p className="fo-muted">{error}</p>}
       <div className="disp-board-toolbar">
-        <button type="button" onClick={handleStart} disabled={submitting}>
-          {submitting ? "Starting..." : "Start Purchasing"}
-        </button>
+        <Button type="button" onClick={handleStart} loading={submitting}>
+          Start Purchasing
+        </Button>
       </div>
     </div>
   );
@@ -206,9 +208,9 @@ function PurchasingInProgressCard({ request, resolveName }) {
             onChange={(e) => setExpectedAvailabilityDate(e.target.value)}
           />
           <div className="disp-board-toolbar">
-            <button type="submit" disabled={updateSubmitting}>
-              {updateSubmitting ? "Posting..." : "Post Update"}
-            </button>
+            <Button type="submit" loading={updateSubmitting}>
+              Post Update
+            </Button>
           </div>
         </form>
       </div>
@@ -246,9 +248,9 @@ function PurchasingInProgressCard({ request, resolveName }) {
           {poError && <p className="fo-muted" role="alert">{poError}</p>}
 
           <div className="disp-board-toolbar">
-            <button type="submit" disabled={poSubmitting}>
-              {poSubmitting ? "Recording..." : "Record Purchase Order"}
-            </button>
+            <Button type="submit" loading={poSubmitting}>
+              Record Purchase Order
+            </Button>
           </div>
         </form>
       </div>
@@ -257,7 +259,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
 }
 
 function OrderedCard({ request, resolveName }) {
-  const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -313,6 +315,12 @@ function OrderedCard({ request, resolveName }) {
             )}
           </tbody>
         </table>
+      ) : purchaseOrderError && purchaseOrderError !== "not_found" ? (
+        // H14 (reorder pair) -- a denied/failed read used to render the
+        // SAME "details unavailable" copy as a genuine not-yet-recorded PO.
+        // Fail visibly instead: "you cannot see it" is not "there is
+        // nothing to see".
+        <FailureState message="You don't have permission to view this Purchase Order." />
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
@@ -322,16 +330,18 @@ function OrderedCard({ request, resolveName }) {
       </p>
       {error && <p className="fo-muted">{error}</p>}
       <div className="disp-board-toolbar">
-        <button type="button" onClick={handleReceive} disabled={submitting}>
-          {submitting ? "Recording..." : "Mark Received"}
-        </button>
+        <Button type="button" onClick={handleReceive} loading={submitting}>
+          Mark Received
+        </Button>
       </div>
     </div>
   );
 }
 
 function TerminalCard({ request, resolveName }) {
-  const { data: voidRecord } = useReorderPurchaseOrderVoid(request.status === REORDER_REQUEST_STATUS.VOIDED ? request.id : null);
+  const { data: voidRecord, error: voidRecordError } = useReorderPurchaseOrderVoid(
+    request.status === REORDER_REQUEST_STATUS.VOIDED ? request.id : null
+  );
 
   return (
     <div className="fo-card">
@@ -365,6 +375,12 @@ function TerminalCard({ request, resolveName }) {
           </tbody>
         </table>
       )}
+      {request.status === REORDER_REQUEST_STATUS.VOIDED && voidRecordError && voidRecordError !== "not_found" && !voidRecord && (
+        // H14 (reorder pair) -- the void record read failing is masked whenever
+        // request.voidReason already has a value (the common case), so this
+        // only needs to surface when there is truly nothing else to show.
+        <FailureState message="You don't have permission to view the full void record." />
+      )}
       {request.status === REORDER_REQUEST_STATUS.RECEIVED && (
         <table className="fo-table">
           <tbody>
@@ -393,9 +409,9 @@ export function AssignedRequestDetail({ requestId, resolveName, onClose }) {
     return (
       <div className="fo-card">
         <p className="fo-muted" role="alert">Unable to load this request right now. Close it and try again.</p>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
     );
   }
@@ -403,9 +419,9 @@ export function AssignedRequestDetail({ requestId, resolveName, onClose }) {
     return (
       <div className="fo-card">
         <p className="fo-muted">This request is no longer available.</p>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
     );
   }
@@ -414,9 +430,9 @@ export function AssignedRequestDetail({ requestId, resolveName, onClose }) {
     <div>
       <div className="fo-workspace-header">
         <h3 className="fo-workspace-header-title">Request Detail</h3>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       {request.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && (
         <StartPurchasingCard request={request} resolveName={resolveName} />
@@ -462,13 +478,14 @@ export function RequestCards({ requests, resolveName, onSelect }) {
             }
             metadata={[{ key: "qty", label: "Qty", value: getDisplayQty(request) }]}
             actions={
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 aria-label={`View ${resolveName(request.partId)}`}
                 onClick={(e) => onSelect(request.id, e.currentTarget)}
               >
                 View
-              </button>
+              </Button>
             }
           />
         </li>

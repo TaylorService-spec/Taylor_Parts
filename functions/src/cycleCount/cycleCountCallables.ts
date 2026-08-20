@@ -75,12 +75,17 @@ function validateSubmitRequest(data: unknown): Record<string, unknown> {
 }
 
 // -------- RECONCILE request contract --------
-const RECONCILE_KEYS: ReadonlySet<string> = new Set(["cycleCountId", "reason"]);
+// `decision` is the M23 manager-review addition ("APPROVE" | "REJECT", defaults to "APPROVE" when
+// omitted so this callable's pre-M23 request shape still works unchanged).
+const RECONCILE_KEYS: ReadonlySet<string> = new Set(["cycleCountId", "reason", "decision"]);
 function validateReconcileRequest(data: unknown): Record<string, unknown> {
   if (!isPlainObject(data)) throw invalidArg("Request data must be an object.");
   if (!noUnknownKeys(data, RECONCILE_KEYS)) throw invalidArg("The request has unknown fields.");
   if (!isNonBlankString(data.cycleCountId)) throw invalidArg("cycleCountId is invalid.");
   if (data.reason !== undefined && !isNonBlankString(data.reason)) throw invalidArg("reason is invalid.");
+  if (data.decision !== undefined && data.decision !== "APPROVE" && data.decision !== "REJECT") {
+    throw invalidArg("decision is invalid.");
+  }
   return data;
 }
 
@@ -99,7 +104,9 @@ function mapCycleCountError(err: unknown): HttpsError {
   if (err instanceof CycleCountCommandError) {
     const code: FunctionsErrorCode = mapCode(err.code);
     const message =
-      code === "permission-denied" ? "You are not authorized to perform this cycle count action."
+      code === "permission-denied" && err.code === "SEPARATION_OF_DUTIES"
+        ? "You submitted this count and cannot approve or reject its own material variance -- a different manager must review it."
+      : code === "permission-denied" ? "You are not authorized to perform this cycle count action."
       : code === "not-found" ? "The cycle count could not be found."
       : code === "failed-precondition" ? "This cycle count action is not currently permitted."
       : "The cycle count action could not be completed.";
@@ -110,6 +117,7 @@ function mapCycleCountError(err: unknown): HttpsError {
 function mapCode(code: CycleCountCommandFailureCode): FunctionsErrorCode {
   switch (code) {
     case "PERMISSION_DENIED":
+    case "SEPARATION_OF_DUTIES":
       return "permission-denied";
     case "CYCLE_COUNT_NOT_FOUND":
       return "not-found";
@@ -151,14 +159,20 @@ export async function runCreateCycleCount(request: CallableRequest<unknown>, wir
       stageAudit: wiring.stageAudit,
       now: wiring.now,
     });
+    // M23 blind-count remediation: expectedQuantity/expectedSerialNumbers are DELIBERATELY OMITTED from
+    // this response. The command already computed and stored them (createCycleCountProduction's own
+    // outcome carries them, server-side, for the idempotency-replay path above), but they are never
+    // projected onto what reaches the counting client -- if they were, a determined user could read the
+    // expected value straight off this network response (in the browser devtools Network tab) before
+    // ever typing a counted quantity, defeating the blind count even though the UI itself never renders
+    // it. The counter first learns the expected value in submitCycleCount's OWN response (see below),
+    // which only arrives after their counted value has already left their hands in that same request.
     return {
       outcome: outcome.outcome,
       cycleCountId: outcome.cycleCountId,
       partId: outcome.partId,
       trackingMode: outcome.trackingMode,
       location: outcome.location,
-      expectedQuantity: outcome.expectedQuantity,
-      expectedSerialNumbers: outcome.expectedSerialNumbers ?? null,
       status: outcome.status,
     };
   } catch (err) {
@@ -178,6 +192,9 @@ export async function runSubmitCycleCount(request: CallableRequest<unknown>, wir
       stageAudit: wiring.stageAudit,
       now: wiring.now,
     });
+    // M23 blind-count remediation: THIS is the first response that carries the expected snapshot back to
+    // the counting client -- deliberately, since by the time this response arrives, the counted value in
+    // this SAME request has already been recorded server-side. There is nothing left to anchor.
     return {
       outcome: outcome.outcome,
       cycleCountId: outcome.cycleCountId,
@@ -186,6 +203,8 @@ export async function runSubmitCycleCount(request: CallableRequest<unknown>, wir
       countedSerialNumbers: outcome.countedSerialNumbers ?? null,
       variance: outcome.variance ?? null,
       serialVariance: outcome.serialVariance ?? null,
+      expectedQuantity: outcome.expectedQuantity ?? null,
+      expectedSerialNumbers: outcome.expectedSerialNumbers ?? null,
     };
   } catch (err) {
     throw mapCycleCountError(err);
@@ -209,6 +228,7 @@ export async function runReconcileCycleCount(request: CallableRequest<unknown>, 
       cycleCountId: outcome.cycleCountId,
       status: outcome.status,
       ledgerEventIds: outcome.ledgerEventIds ?? [],
+      reviewDecision: outcome.reviewDecision ?? null,
       reconciliationReason: outcome.reconciliationReason ?? null,
     };
   } catch (err) {

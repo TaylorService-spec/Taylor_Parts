@@ -9,9 +9,19 @@
 // Business-rule-free, exactly like LifecycleChevrons: it is handed steps and a terminal badge and
 // knows nothing about Opportunity, stage names, or transition legality.
 //
+// Each segment's colour is paired with a SHAPE, not colour alone, and the shapes match tone.js's
+// STEP_ICONS silhouette family LifecycleChevrons uses (check / filled ring / hollow ring): complete
+// is a solid filled bar, current is a solid filled bar with a marker ring so it does not read as just
+// "another complete bar" once colour is gone, and future is a hollow outlined bar -- solid vs. hollow
+// survives greyscale and colour-blindness even though the bars stay decorative/aria-hidden.
+//
 // ACCESSIBILITY: the segments are decorative (aria-hidden) because a screen reader user must not have
 // to count bars. The real information is one text label -- "Qualified, stage 2 of 4" or "Won" -- which
 // is exactly what the visual conveys, so the two channels stay in step.
+//
+// The current/future shape treatment lives in index.css (.fo-stagetrack__bar.is-current /
+// .is-future) via the `is-${status}` class already applied below -- no per-status inline style
+// needed.
 export default function StageProgressTrack({ steps, terminal = null }) {
   const list = steps ?? [];
   if (list.length === 0) return null;
@@ -31,7 +41,10 @@ export default function StageProgressTrack({ steps, terminal = null }) {
     <span className={`fo-stagetrack${terminal ? ` fo-stagetrack--${terminal.tone}` : ""}`}>
       <span className="fo-stagetrack__bars" aria-hidden="true">
         {list.map((s) => (
-          <span key={s.key} className={`fo-stagetrack__bar is-${s.status}`} />
+          <span
+            key={s.key}
+            className={`fo-stagetrack__bar is-${s.status}`}
+          />
         ))}
       </span>
       <span className="fo-stagetrack__summary">{summary}</span>

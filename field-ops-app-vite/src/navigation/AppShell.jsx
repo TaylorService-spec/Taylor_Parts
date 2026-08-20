@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { X } from "lucide-react";
 import AppRail, { RailBrand } from "./AppRail";
 import { NAV_DOMAINS } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
+import Icon from "../shared/ui/Icon";
 
 // Sprint 2.0.1 -- real <NavLink> anchors (not onClick + setState) so the
 // browser's native back/forward + address bar all work without any custom
@@ -137,7 +139,14 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           >
             <div className="fo-drawer__head">
               <RailBrand />
-              <button type="button" className="fo-drawer__close" onClick={closeDrawer}>
+              <button
+                type="button"
+                className="fo-drawer__close"
+                onClick={closeDrawer}
+              >
+                {/* Icon is decorative -- "Close" is still the button's whole
+                    accessible name, unchanged. */}
+                <Icon icon={X} size="dense" />
                 Close
               </button>
             </div>

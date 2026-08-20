@@ -4,7 +4,7 @@
 // Cloud-Function-only writes (firestore.rules denies create/update/
 // delete unconditionally) -- this file never writes to any of them,
 // it only reads what an admin/dispatcher is allowed to see.
-import { collection, getDocs, query, where, documentId, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, where, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
   REORDER_REQUESTS_COLLECTION as LIVE_REORDER_REQUESTS_COLLECTION,
@@ -96,6 +96,49 @@ async function listCollection<T>(name: string): Promise<T[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
 }
 
+/**
+ * Default cap for BOUNDED list reads. Generous enough that no current dataset truncates,
+ * so adopting it is behaviour-preserving today.
+ */
+export const LIST_READ_CAP = 200;
+
+/**
+ * A bounded, ordered read of one collection, plus an honest truncation flag.
+ *
+ * DELIBERATELY A SEPARATE FUNCTION RATHER THAN A CAP ON listCollection(), and this is the
+ * whole point of the change. Every unbounded fetcher here has TWO kinds of consumer:
+ *
+ *   list surfaces  -- Warehouses, Suppliers, Transfers: a page of rows is an honest page
+ *   the Operations dashboard -- which NETS these into availableStock, reconciliation
+ *                               positions and consumption totals
+ *
+ * Capping the shared factory would have bounded both, and a total computed over a
+ * truncated input is not "partial" -- it is WRONG, presented as complete. That is a worse
+ * outcome than the unbounded read it replaces, because an unbounded read is slow and
+ * honest while a silently-netted-over-a-page total is fast and false.
+ *
+ * So the bound lives at the CALL SITE. List surfaces adopt this; the dashboard keeps the
+ * unbounded fetcher and stays recorded as blocked on an authoritative aggregate.
+ */
+export async function listCollectionPage<T>(
+  name: string,
+  { cap = LIST_READ_CAP, orderByField = "name" }: { cap?: number; orderByField?: string } = {},
+): Promise<{ items: T[]; truncated: boolean }> {
+  // cap + 1: the extra row is the truncation probe, matching the convention the trusted
+  // read callables and the metadata list runtime already use.
+  const snap = await getDocs(query(collection(db, name), orderBy(orderByField), limit(cap + 1)));
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  const truncated = docs.length > cap;
+  return { items: truncated ? docs.slice(0, cap) : docs, truncated };
+}
+
+/** Bounded variants for LIST surfaces. The unbounded originals remain for aggregate consumers. */
+export const fetchWarehousesPage = (opts?: { cap?: number }) =>
+  listCollectionPage<RawWarehouse>(WAREHOUSES_COLLECTION, { ...opts, orderByField: "name" });
+
+export const fetchSuppliersPage = (opts?: { cap?: number }) =>
+  listCollectionPage<RawSupplier>(SUPPLIERS_COLLECTION, { ...opts, orderByField: "name" });
+
 // EI-P1c-2: a dedicated transfer-order read that preserves the authoritative Firestore
 // document id SEPARATELY from the stored data, so the transfer-order adapter can compare
 // them and fail closed on a stored-id conflict (never merge/override). This is the ONLY
@@ -107,6 +150,31 @@ export interface TransferOrderDoc {
 export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
   const snap = await getDocs(collection(db, TRANSFER_ORDERS_COLLECTION));
   return snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
+};
+
+// X-TRANSFER-ORDERS-UNBOUNDED-READ remediation: a bounded, ordered read of transfer_orders in
+// the SAME { docId, data } shape as fetchTransferOrderDocs above (docId kept separate from the
+// stored data so the transfer-order adapter can still fail closed on a stored-id conflict),
+// plus an honest truncation flag. Ordered by documentId() -- transfer orders have no natural
+// display-name field the way warehouses/suppliers do, so the authoritative id is the only
+// stable ordering available.
+//
+// DELIBERATELY A SEPARATE FUNCTION FROM fetchTransferOrderDocs, for the identical reason
+// listCollectionPage exists as a sibling of listCollection above: fetchTransferOrderDocs also
+// feeds the Operations dashboard's WarehousePanel Transfer Orders table (modules/operations/
+// Operations.jsx), which this remediation deliberately does not touch. The bound lives at the
+// LIST-SURFACE call site (Inventory > Transfers, hooks/useTransferOrders.js), never the shared
+// unbounded fetcher, matching the fetchWarehouses/fetchWarehousesPage and
+// fetchSuppliers/fetchSuppliersPage precedent above.
+export const fetchTransferOrderDocsPage = async (
+  { cap = LIST_READ_CAP }: { cap?: number } = {},
+): Promise<{ items: TransferOrderDoc[]; truncated: boolean }> => {
+  const snap = await getDocs(
+    query(collection(db, TRANSFER_ORDERS_COLLECTION), orderBy(documentId()), limit(cap + 1)),
+  );
+  const docs = snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
+  const truncated = docs.length > cap;
+  return { items: truncated ? docs.slice(0, cap) : docs, truncated };
 };
 
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);

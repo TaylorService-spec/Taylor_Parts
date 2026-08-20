@@ -22,6 +22,7 @@ import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import TruckFleetCard from "./TruckFleetCard.jsx";
 import CreateTruckModal from "./truckManagement/CreateTruckModal";
@@ -114,7 +115,7 @@ export default function TruckInventory({
 
   const scanModal = scan && (
     <div className="fo-modal-overlay" role="presentation" onClick={() => setScan(null)}>
-      <div className="fo-panel" role="dialog" aria-modal="true" aria-label="Scan review" style={{ maxWidth: 480, margin: "10vh auto" }} onClick={(e) => e.stopPropagation()}>
+      <div className="fo-panel fo-scan-review-panel" role="dialog" aria-modal="true" aria-label="Scan review" onClick={(e) => e.stopPropagation()}>
         <h3>Scan review</h3>
         <p className="fo-muted">A scan <b>identifies</b> an item and opens this review — it never moves inventory on its own. Movement isn’t wired in this workspace.</p>
         <div className="fo-chip-row" role="group" aria-label="Scan outcomes">
@@ -186,16 +187,15 @@ export default function TruckInventory({
   const actions = (
     <ActionRail
       primary={canManage ? (
-        <button
-          type="button"
-          className="fo-btn-primary"
-          onClick={() => setShowCreate(true)}
-          disabled={!management.writeReady}
+        <Button
+          variant={management.writeReady ? "primary" : "protected"}
+          onClick={management.writeReady ? () => setShowCreate(true) : undefined}
           title={management.writeReady ? "Add a truck" : "Truck management is not yet enabled"}
+          reason={management.writeReady ? undefined : "Truck management is not yet enabled"}
           data-testid="add-truck"
         >
           + Add truck{management.writeReady ? "" : " (not yet enabled)"}
-        </button>
+        </Button>
       ) : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>}
     />
@@ -261,7 +261,7 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
   const actions = (
     <ActionRail
       start={<button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>}
-      primary={onManage ? <button type="button" className="fo-btn-primary" onClick={onManage} data-testid="manage-truck">Manage truck</button> : null}
+      primary={onManage ? <Button variant="primary" onClick={onManage} data-testid="manage-truck">Manage truck</Button> : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>}
     />
   );
@@ -299,7 +299,7 @@ function InventoryTab({ truck, options }) {
   const equipment = condition ? truck.serializedEquipment.filter((e) => e.condition === condition) : truck.serializedEquipment;
   return (
     <>
-      <div className="fo-btn-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+      <div className="fo-btn-row fo-btn-row--spread">
         <h4>Serialized Equipment</h4>
         <label>Condition<select value={condition} onChange={(e) => setCondition(e.target.value)}><option value="">All</option>{options.equipmentCondition.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
       </div>
@@ -386,11 +386,11 @@ function ReconciliationTab({ reconciliation }) {
   return (
     <div className="fo-panel">
       <h4>Expected vs Scanned</h4>
-      <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
-        <div><dt className="fo-muted">Serialized expected</dt><dd style={{ margin: 0 }}>{dash(r.expectedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Serialized scanned</dt><dd style={{ margin: 0 }}>{dash(r.scannedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Parts expected</dt><dd style={{ margin: 0 }}>{dash(r.expectedParts)}</dd></div>
-        <div><dt className="fo-muted">Parts scanned</dt><dd style={{ margin: 0 }}>{dash(r.scannedParts)}</dd></div>
+      <dl className="fo-reconciliation-summary">
+        <div><dt className="fo-muted">Serialized expected</dt><dd className="fo-dd-tight">{dash(r.expectedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Serialized scanned</dt><dd className="fo-dd-tight">{dash(r.scannedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Parts expected</dt><dd className="fo-dd-tight">{dash(r.expectedParts)}</dd></div>
+        <div><dt className="fo-muted">Parts scanned</dt><dd className="fo-dd-tight">{dash(r.scannedParts)}</dd></div>
       </dl>
       <h4>Missing</h4>
       {r.missing.length === 0 ? <p className="fo-muted">None reported.</p> : (

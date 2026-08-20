@@ -54,6 +54,25 @@ import {
   INVENTORY_TRANSFER_OPERATOR_ROLE,
   INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
   INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+  GENERAL_EMPLOYEE_ROLE,
+  OFFICE_MANAGER_ROLE,
+  SALES_MANAGER_ROLE,
+  MARKETING_MANAGER_ROLE,
+  PURCHASING_MANAGER_ROLE,
+  SHOP_MANAGER_ROLE,
+  SALESPERSON_ROLE,
+  GENERAL_MANAGER_ROLE,
+  WAREHOUSE_MANAGER_ROLE,
+  WAREHOUSE_ASSOCIATE_ROLE,
+  PARTS_MANAGER_ROLE,
+  PARTS_ASSOCIATE_ROLE,
+  CONTROLLER_ROLE,
+  SUPPORT_STAFF_ROLE,
+  ACCOUNTING_MANAGER_ROLE,
+  FINANCE_MANAGER_ROLE,
+  FIELD_MANAGER_ROLE,
+  OPERATIONS_MANAGER_ROLE,
+  OWNER_ROLE,
 } from "./governedBusinessRoles";
 import {
   resolveEffectivePermission,
@@ -112,27 +131,52 @@ const ACCESS_REQUESTS_COLLECTION = "accessRequests";
 // Curated registry of Roles assignable through the trusted role-assignment
 // commands. It is the compatibility Roles PLUS an explicit allowlist of
 // GOVERNED business Roles cleared for the trusted-command grant path --
-// deliberately NOT every governed Role (declaring a Role in
-// governedBusinessRoles.ts does not make it assignable here; it must be
-// explicitly added below under its own governed gate). INV-1 / ADR-009 /
-// Decision #42: the sole entry is the operational, non-privileged
-// `inventoryCreateExecutor` (privileged:false -> assignApprovedRole's
-// single authorized admin + append-only audit). All four role-lookup sites
-// below resolve against this registry uniformly, so an unknown or
-// non-allowlisted roleId fails closed (UnknownRoleError) exactly as before,
-// and the privileged two-person rule is unaffected (compatibility Roles are
-// unchanged; the one governed entry is non-privileged).
+// deliberately NOT an alias of GOVERNED_BUSINESS_ROLES (declaring a Role in
+// governedBusinessRoles.ts still does not make it assignable here by
+// itself; it must be explicitly added below under its own governed gate).
+// INV-1 / ADR-009 / Decision #42 started this registry with the sole,
+// operational, non-privileged `inventoryCreateExecutor`. All four
+// role-lookup sites below resolve against this registry uniformly, so an
+// unknown or non-allowlisted roleId fails closed (UnknownRoleError) exactly
+// as before.
 //
-// EXTENDED for the operational Roles built since. Each of the six below was declared in
-// governedBusinessRoles.ts to carry a specific capability family, and each was consequently
-// un-assignable by ANY path: the Role existed, the capability existed, the environment activated
-// it, and no principal could ever hold it. That is the same defect class as a capability carried by
-// no Role -- authority that exists on paper and cannot be conferred in practice.
+// EXTENDED, first for six more operational Roles, and now (Owner ruling,
+// "grantable-governed-roles" workstream) for the remaining eight: `owner`,
+// `operationsManager`, `officeManager`, `salesManager`, `accountingManager`,
+// `financeManager`, `fieldManager`, `generalEmployee`. Each was declared in
+// governedBusinessRoles.ts to carry a specific capability set and was
+// consequently un-assignable by ANY path -- the Role existed, the
+// capability existed, the environment could even activate it, and no
+// principal could ever hold it. That is the same defect class as a
+// capability carried by no Role at all: authority that exists on paper and
+// cannot be conferred in practice. This registry is now EVERY id
+// GOVERNED_BUSINESS_ROLES declares (all 15) -- Owner's explicit direction
+// was "make all 15 governed business roles grantable" -- but it remains a
+// hand-enumerated object literal, not `= GOVERNED_BUSINESS_ROLES`, so a
+// FUTURE Role added to that catalog does NOT become assignable merely by
+// being declared; it still requires an explicit line added here under
+// review, preserving the "declaring != assignable" property for anything
+// not yet on this list.
 //
-// Every entry here is privileged:false. That is the gate's real load-bearing property: the
-// privileged two-person rule (self-approval ban + distinct approverUid) is untouched, because no
-// privileged Role is being made assignable. A test below asserts that property directly, so this
-// list cannot later acquire a privileged Role without failing CI.
+// PRIVILEGED-ROLE EXCEPTION: `owner` is privileged:true (same as the
+// compatibility `admin` Role it mirrors) and is now the ONE privileged
+// entry in this registry -- everything else here is privileged:false. This
+// is safe WITHOUT any new protection code because the two-person rule is
+// keyed off `role.privileged`, not off which allowlist a Role came from:
+// grantRole/revokeRole already (a) require a distinct approverUid whenever
+// the TARGET Role is privileged, (b) forbid actorUid === principalUid for a
+// privileged Role (self-grant ban), (c) forbid approverUid === actorUid or
+// approverUid === principalUid (self-approval ban), and (d) require the
+// approver to independently resolve `admin.roleAssignment.write` at global
+// scope AND hold a Role marked `privileged` (verifyApproverIsPrivileged) --
+// all four apply to `owner` exactly as they already do to `admin`, with no
+// code change needed here. assignApprovedRole's own `if (role.privileged)
+// throw InvalidStateError` also already refuses `owner` on the
+// single-admin path, unchanged. A dedicated test below proves each of
+// these holds for `owner` specifically (not merely inherited by
+// assertion), and a second test proves the OTHER fifteen entries all
+// remain non-privileged, so this registry cannot silently grow a second
+// privileged entry without failing CI.
 //
 // Adding a Role here still grants NOTHING. It only makes the Role reachable by grantRole/
 // assignApprovedRole, each of which remains a governed, audited, idempotent trusted-writer command.
@@ -144,9 +188,34 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   inventoryTransferOperator: INVENTORY_TRANSFER_OPERATOR_ROLE,
   inventoryCycleCountCounter: INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
   inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+  generalEmployee: GENERAL_EMPLOYEE_ROLE,
+  officeManager: OFFICE_MANAGER_ROLE,
+  salesManager: SALES_MANAGER_ROLE,
+  // Owner ruling 2026-08-19. Listed HERE as well as in GOVERNED_BUSINESS_ROLES: this
+  // allowlist is what makes a Role actually grantable, and a Role defined but absent from
+  // it resolves UnknownRoleError at assignment time -- defined, visible in the catalog,
+  // and impossible to give anyone.
+  marketingManager: MARKETING_MANAGER_ROLE,
+  purchasingManager: PURCHASING_MANAGER_ROLE,
+  shopManager: SHOP_MANAGER_ROLE,
+  salesperson: SALESPERSON_ROLE,
+  generalManager: GENERAL_MANAGER_ROLE,
+  warehouseManager: WAREHOUSE_MANAGER_ROLE,
+  warehouseAssociate: WAREHOUSE_ASSOCIATE_ROLE,
+  partsManager: PARTS_MANAGER_ROLE,
+  partsAssociate: PARTS_ASSOCIATE_ROLE,
+  controller: CONTROLLER_ROLE,
+  supportStaff: SUPPORT_STAFF_ROLE,
+  accountingManager: ACCOUNTING_MANAGER_ROLE,
+  financeManager: FINANCE_MANAGER_ROLE,
+  fieldManager: FIELD_MANAGER_ROLE,
+  operationsManager: OPERATIONS_MANAGER_ROLE,
+  owner: OWNER_ROLE,
 });
 
-// Exported for the invariant test: the allowlist above must never contain a privileged Role.
+// Exported for the invariant tests: everything in the allowlist above must be either
+// non-privileged, or must be exactly `owner` (the one Role this registry deliberately makes
+// grantable through the existing, unmodified privileged two-person path -- see the comment above).
 export const GOVERNED_ASSIGNABLE_ROLE_IDS: readonly string[] = Object.freeze(
   Object.keys(GOVERNED_ASSIGNABLE_ROLES),
 );

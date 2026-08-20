@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // Enterprise Access & Administration Platform (Issue #226) -- stable,
 // capability-based Permission catalog. Fixed by docs/specifications/
 // enterprise-access-and-administration-platform.md §6/§7 and sequenced
@@ -10,9 +16,10 @@
 // anyone; Role->Permission mapping is Row 2 (Task 7)'s compatibility
 // resolver, not this file. No runtime authorization behavior changes.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this
-// repo) at functions/src/access/permissionCatalog.ts. If either file
-// changes, change the other to match.
+// SHARED EOS ACCESS CONTRACT. This module exists in both the Functions and
+// frontend packages because there is no shared-module tooling in this repo. It is
+// maintained as ONE canonical source and mechanically synchronized by
+// scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Permission } from "../types/access";
 
 // Spec §6: PermissionId = "<domain>.<resource>.<action>", lower-camel
@@ -111,8 +118,8 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // WO Parts Planning Phase 2 -- authoring/changing a Work Order's planned parts (qtyPlanned) via the
   // governed setWorkOrderPartsPlan producer. Registered active:false: fail-closed for every principal until
-  // a SEPARATE Owner grant through the Persona/Permissions architecture. A capability, NOT a role check --
-  // it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
+  // a SEPARATE Owner grant through the Persona/Permissions architecture. This is a capability, NOT a role
+  // check -- it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
   Object.freeze({
     id: "workOrder.parts.plan",
     description:
@@ -123,8 +130,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // Sales Opportunity Cycle 3 -- authoring/advancing a governed Opportunity (create + lifecycle transition)
   // via the trusted opportunity command. Registered active:false: fail-closed for every principal until a
-  // SEPARATE Owner grant. A capability, NOT a role check. Opportunity is PRE-COMMITMENT: it never creates
-  // inventory movement, Work Orders, or invoices, and its lines are product-level (never a serialized asset).
+  // SEPARATE Owner grant. A capability, NOT a role check -- it answers only "may this actor write
+  // Opportunities". Opportunity is PRE-COMMITMENT: it never creates inventory movement, Work Orders, or
+  // invoices, and its lines are product-level (never a serialized Equipment asset).
   Object.freeze({
     id: "opportunity.write",
     description:
@@ -134,7 +142,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     active: false,
   }),
   // Sales Opportunity Cycle 3c -- read authorization for the TRUSTED MINIMAL read projection
-  // (listOpportunityContext), registered active:false. Backend-resolved scope; no client-direct collection read.
+  // (listOpportunityContext). Registered active:false (fail-closed). This governs a trusted backend read that
+  // returns only the minimal Sales-workspace projection; the client never reads the opportunities collection
+  // directly (no client Rules widening).
   Object.freeze({
     id: "opportunity.read",
     description:
@@ -169,8 +179,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
-  // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command,
-  // registered active:false. Committed commercial order following a WON Opportunity.
+  // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command.
+  // Registered active:false (fail-closed). The committed commercial order following a WON Opportunity; it does
+  // not assign serialized assets or write Work Orders/inventory (later governed seams do).
   Object.freeze({
     id: "salesOrder.write",
     description:
@@ -179,8 +190,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
     active: false,
   }),
-  // Fulfillment Cycle 5 -- allocate a committed Sales Order against authoritative inventory availability,
-  // registered active:false. Records allocation only on the Sales Order.
+  // Fulfillment Cycle 5 -- allocate a committed Sales Order via the governed allocateSalesOrder command
+  // (authoritative availability from canonical inventory/warehouses; records allocation only on the Sales
+  // Order). Registered active:false (fail-closed).
   Object.freeze({
     id: "salesOrder.fulfill",
     description:
@@ -189,8 +201,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "fulfill",
     active: false,
   }),
-  // Sales Order Cycle 7 -- create governed Service demand (a Work Order via the governed Work Order authority)
-  // for a Sales Order with demand lineage, registered active:false. SO never writes WO state/assignment/schedule.
+  // Sales Order Cycle 7 -- create governed Service demand for a Sales Order via createServiceForSalesOrder,
+  // which produces a Work Order through the existing governed Work Order authority (ADR-009) with demand
+  // lineage. Registered active:false. The Sales Order never writes Work Order state / assignment / schedule.
   Object.freeze({
     id: "salesOrder.service",
     description:
@@ -379,6 +392,30 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Void a reorder Purchase Order -- admin/dispatcher, or the recorded assignee only.",
     resource: "reorder.purchaseOrder",
     action: "void",
+  }),
+  // Inventory analytics -- the trusted getInventoryAnalytics read (inventory health
+  // dashboard over inventory_transactions + stock_locations).
+  //
+  // AUTHORITY NORMALIZATION, NOT A PERMISSION CHANGE. This callable previously
+  // authorized with a direct `caller.role === "admin" || "dispatcher"` check, the only
+  // read service in the repo bypassing the capability catalog. Registering it here and
+  // granting it through SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS reproduces that exact
+  // audience -- admin and dispatcher, no one else, nothing removed.
+  //
+  // Deliberately ONE capability rather than requiring inventory.transaction.read AND
+  // warehouse.stockLocation.read together. Those two each cover one of the collections
+  // it reads, but no callable in this repo requires two capabilities, and inventing that
+  // pattern for a single case would be a worse precedent than a composite id.
+  //
+  // `active` is omitted (undefined !== false), so it resolves like every other
+  // pre-existing capability. Registering it active:false would have DENIED today's
+  // admins and dispatchers, which is a permission removal disguised as a refactor.
+  Object.freeze({
+    id: "inventory.analytics.read",
+    description:
+      "Read the trusted inventory health analytics projection (getInventoryAnalytics) computed over inventory_transactions and stock_locations. Backend-resolved; no client-direct read of either collection.",
+    resource: "inventory.analytics",
+    action: "read",
   }),
   Object.freeze({
     id: "inventory.transaction.read",
@@ -841,11 +878,11 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     active: false,
   }),
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
-  // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
-  // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so
-  // resolveEffectivePermission() denies `noQualifyingGrant` for every principal until a later,
-  // separately-authorized grant gate. The trusted command's authorization is an injected seam;
-  // nothing invokes it in production. Same ungranted posture as the inventory.catalog.* entries above.
+  // GRANTED to the governed admin, dispatcher and owner Roles since 2026-08-06 (compatibilityRoles.ts
+  // grants it directly to admin + dispatcher; owner inherits by composition -- Decisions #65/#68).
+  // resolveEffectivePermission() therefore allows those three Roles; it still denies `noQualifyingGrant`
+  // for technician and other ungranted principals. Client transport readiness (whether the UI actually
+  // calls it) is a SEPARATE, still-gated concern -- see field-ops-app-vite/src/config/receivingReadiness.js.
   Object.freeze({
     id: "inventory.stock.receive",
     description: "Receive inbound stock into an inventory location against a reorder purchase order (trusted Receiving service).",
@@ -1018,7 +1055,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // and MOBILE (mobile_locations/{id}.displayLabel) ONLY -- CUSTOMER and any other category resolve to
   // UNRESOLVED (label null), never a fabricated type. Bounded point-reads only (getAll on the exact
   // requested ids, capped at 50) -- no collection scan, no new index, no client-direct warehouses
-  // widening, no client-direct mobile_locations read (unchanged: no Rules match block, default deny).
+  // widening, and no client-direct mobile_locations widening introduced here. (Corrected 2026-08-17:
+  // this previously said mobile_locations has no Rules match block and is default-deny.
+  // firestore.rules:1235-1238 grants admin/dispatcher read on it and denies all client writes.)
   // REGISTERED BUT UNGRANTED BY DESIGN: this phase grants the capability to NO compatibility Role and
   // adds NO per-environment activation override, so resolveEffectivePermission() denies for every
   // principal until a later, separately authorized grant + activation gate -- same posture as

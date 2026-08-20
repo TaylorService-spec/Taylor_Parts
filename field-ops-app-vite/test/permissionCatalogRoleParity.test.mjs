@@ -22,14 +22,31 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PERMISSION_CATALOG, findPermission } from "../src/access/permissionCatalog.ts";
 import { COMPATIBILITY_ROLES } from "../src/access/compatibilityRoles.ts";
+import { PLATFORM_SUBSTITUTIONS } from "../../scripts/syncAccessContracts.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const functionalSource = (file) => fs.readFileSync(file, "utf8")
-  .split("\n")
-  .filter((line) => !line.trimStart().startsWith("//"))
-  .join("\n")
-  .replace(/\s+/g, " ")
-  .trim();
+// Apply the SAME declared platform substitutions the generator applies, rather
+// than teaching this test about any one of them. A substitution exists because the
+// two platforms genuinely cannot share a line (the Admin SDK's Timestamp type; an
+// extensionless specifier that tsc resolves but Node's ESM loader does not). Those
+// lines are expected to differ, and every OTHER difference must still fail here.
+// Importing the generator's own table means a rule can never be honored by the sync
+// and rejected by this test -- which is exactly the drift that broke this test.
+const applySubstitutions = (source, moduleFile) => {
+  let out = source;
+  for (const rule of PLATFORM_SUBSTITUTIONS[moduleFile] ?? []) {
+    out = out.split(rule.canonical).join(rule.generated);
+  }
+  return out;
+};
+
+const functionalSource = (file, moduleFile = null) =>
+  applySubstitutions(fs.readFileSync(file, "utf8"), moduleFile)
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n")
+    .replace(/\s+/g, " ")
+    .trim();
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -43,7 +60,7 @@ ok("permissionCatalog.ts frontend mirror is functionally identical to the backen
 
 ok("compatibilityRoles.ts frontend mirror is functionally identical to the backend catalog", () => {
   const frontend = functionalSource(path.join(root, "field-ops-app-vite/src/access/compatibilityRoles.ts"));
-  const backend = functionalSource(path.join(root, "functions/src/access/compatibilityRoles.ts"));
+  const backend = functionalSource(path.join(root, "functions/src/access/compatibilityRoles.ts"), "compatibilityRoles.ts");
   assert.equal(frontend, backend, "frontend compatibility Roles must stay data-identical to the backend source of truth");
 });
 

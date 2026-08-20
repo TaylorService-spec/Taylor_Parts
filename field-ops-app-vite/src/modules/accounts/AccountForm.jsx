@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
+import { ACCOUNT_STATUS, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
@@ -9,6 +9,7 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 import IdentityLine from "./IdentityLine";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
+import { Button } from "../../shared/ui/primitives";
 
 // Sprint 2.0.2 -- Customer Foundation. Shared create/edit form,
 // internal name AccountForm per the naming convention (rendered UI
@@ -270,7 +271,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         <select id="account-status" className="fo-wizard-control" value={status} onChange={(e) => setStatus(e.target.value)}>
           {Object.values(ACCOUNT_STATUS).map((s) => (
             <option key={s} value={s}>
-              {s}
+              {accountStatusLabel(s)}
             </option>
           ))}
         </select>
@@ -442,7 +443,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
               {/* CURRENT owner, re-resolved from userId -- not the stored
                   historical snapshot; loading/error/unknown states preserved. */}
               <IdentityLine label="Current owner" identity={currentOwnerIdentity} />
-              <button type="button" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</button>
+              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</Button>
             </div>
           )}
           <EmployeeAssignmentPicker
@@ -477,9 +478,9 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         />
       </Field>
 
-      <button type="button" onClick={() => setShowExternalIds((v) => !v)} className="fo-link-btn">
+      <Button type="button" variant="tertiary" onClick={() => setShowExternalIds((v) => !v)} className="fo-link-btn">
         {showExternalIds ? "Hide" : "Show"} external IDs (future integrations)
-      </button>
+      </Button>
 
       {showExternalIds && (
         <>
@@ -509,13 +510,13 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       <FormStatus>{submitting ? "Saving customer..." : ""}</FormStatus>
 
       <FormActions>
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Saving..." : submitLabel ?? "Save"}
-        </button>
+        <Button type="submit" loading={submitting}>
+          {submitLabel ?? "Save"}
+        </Button>
         {onCancel && (
-          <button type="button" onClick={onCancel} disabled={submitting}>
+          <Button type="button" variant="tertiary" onClick={onCancel} disabled={submitting}>
             Cancel
-          </button>
+          </Button>
         )}
       </FormActions>
     </form>

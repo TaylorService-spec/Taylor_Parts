@@ -25,14 +25,18 @@ function intentKey(intent) {
 // can never apply twice. The key is discarded on success or via discardIntent; it is deliberately NOT
 // cleared on a failed attempt (that is the retry case this protects).
 //
-// The server derives the replay identity as mkAuditId("transitionOpportunity", actorUid, idempotencyKey)
-// (functions/src/opportunity/opportunityCallables.ts) -- opportunityId is NOT part of it. A key kept after
-// a failed attempt on one Opportunity, then reused (by a stale ref) on a DIFFERENT Opportunity, would match
-// the earlier audit id and take the replay branch, returning `{ success: true, replayed: true }` WITHOUT
-// applying the transition to the new Opportunity -- reporting success for a transition that never happened.
-// This hook is not guaranteed to remount between Opportunities (the same detail pane re-selects a different
-// row in place), so the cache is scoped explicitly by opportunityId rather than relying on unmount: any
-// pending intent belongs to the Opportunity it was created for and is dropped with it.
+// The server NOW derives the replay identity as mkAuditId("transitionOpportunity", actorUid,
+// `${opportunityId}|${idempotencyKey}`) (functions/src/opportunity/opportunityCallables.ts). It did not
+// always: the id omitted the target, so a key kept after a failed attempt on one Opportunity and then
+// reused (by a stale ref) on a DIFFERENT one matched the earlier audit id, took the replay branch, and
+// returned `{ success: true, replayed: true }` WITHOUT applying anything -- reporting success for a
+// transition that never happened. That hole is closed server-side.
+//
+// The client-side scoping below stays, and is not redundant. This hook is not guaranteed to remount
+// between Opportunities (the same detail pane re-selects a different row in place), so without it a
+// pending intent would outlive the record it was created for -- now producing a genuine cross-record
+// write attempt rather than a false replay. Scoping keys by opportunityId is what keeps an intent
+// attached to the Opportunity it was formed against.
 export function useOpportunityTransitions(opportunityId, deps) {
   const client = deps?.client ?? opportunityCommandClient;
   const [pending, setPending] = useState({});
@@ -59,16 +63,47 @@ export function useOpportunityTransitions(opportunityId, deps) {
       const idempotencyKey = keysRef.current[ik];
       setPending((p) => ({ ...p, [ik]: true }));
       try {
-        const payload = {
-          opportunityId,
-          idempotencyKey,
-          ...(intent.kind === "ADVANCE" ? { toStage: intent.toStage } : { outcome: intent.outcome }),
-        };
-        const { result, errorStatus } = await client.transitionOpportunity(payload);
+        // WON DOES NOT GO THROUGH transitionOpportunity.
+        //
+        // It can -- the callable accepts outcome WON -- and that is exactly the defect. The
+        // transition sets WON and creates NO Sales Order, so a Won routed through it leaves
+        // an Opportunity that is WON, terminal, and orderless: the split-brain
+        // closeOpportunityAsWon was built to make unreachable. Before this, clicking
+        // "Mark Won" did precisely that.
+        //
+        // The atomic command does both halves in one transaction. A client cannot assemble
+        // that guarantee out of two calls, so it does not try -- it calls the one command
+        // that carries it. LOST and every ADVANCE stay on the transition path, which is
+        // correct for them: neither creates an order.
+        //
+        // The Sales Order's own owner and channel come from the Opportunity being closed.
+        // The server derives account and lines itself rather than trusting the payload, so
+        // only these two are sent.
+        const isWon = intent.kind === "OUTCOME" && intent.outcome === "WON";
+        const { result, errorStatus } = isWon
+          ? await client.closeOpportunityAsWon({
+              opportunityId,
+              ownerEmployeeId: intent.ownerEmployeeId,
+              salesChannel: intent.salesChannel,
+              idempotencyKey,
+            })
+          : await client.transitionOpportunity({
+              opportunityId,
+              idempotencyKey,
+              ...(intent.kind === "ADVANCE" ? { toStage: intent.toStage } : { outcome: intent.outcome }),
+            });
         if (errorStatus) {
           throw Object.assign(new Error(outcomeFromErrorCode(errorStatus).message), { outcome: outcomeFromErrorCode(errorStatus) });
         }
+        // The atomic command returns the Sales Order it created OR found. Carried through so
+        // the caller can link to it -- a Won that does not show its order leaves the user to
+        // go hunting for the thing they just made.
         const outcome = outcomeFromTransitionResult(result);
+        if (isWon && result) {
+          outcome.salesOrderId = result.salesOrderId ?? null;
+          outcome.salesOrderNumber = result.salesOrderNumber ?? null;
+          outcome.recovered = result.recovered === true;
+        }
         delete keysRef.current[ik]; // this intent is finished -- a future click starts a new one
         return outcome;
       } finally {

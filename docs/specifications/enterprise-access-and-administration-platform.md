@@ -36,6 +36,45 @@ Contracts and behaviour for: §5 the seven governed objects; §6 stable permissi
 
 Per ADR-005 and the authorization for this Specification, the following are **named but not designed here** and remain separately-authorized future gates: the **tenant/company model** (Issue #140 is the authority — §10 reserves the seam only); the **full approval matrix** (§15 fixes ADR-005's principles; the complete matrix is Specification-of-record for a later stage); **complex builders** (permission/Role-definition, custom Scope/Condition builders); **direct permission overrides**; the **Access Request workflow/UI** (its record contract is defined in §5.7, the workflow is deferred); **AI administration**; **impersonation**; and **legacy-role retirement** (§7/§21 define the criteria, not the act). **No production deployment or data migration** is specified as executable here.
 
+### 3.1 Addendum — Admin portal scope extended (Owner, 2026-08-19)
+
+**This section amends §3's prohibition on "any Admin UI beyond the ADR-approved MVP." It does not
+amend anything else.** The body of this Specification above is unchanged and remains
+SPECIFICATION-APPROVED as written; this addendum records an Owner authorization that post-dates
+it, so the prohibition and the authorization are not left contradicting each other in the same
+document.
+
+The Owner authorized two additional Administration surfaces, each specified separately:
+
+| Surface | Specification | What it adds |
+|---|---|---|
+| Duplicate Rules | [duplicate-detection.md](./duplicate-detection.md) | Admin-authored Matching Rules and Duplicate Rules, per object, with a duplicate queue |
+| Data Console | [admin-data-console.md](./admin-data-console.md) | Metadata browser, record inspector, export, and governed import |
+
+**What is NOT amended, and why it matters.** These surfaces administer *data and data-quality
+policy*. They confer no authority over the authorization model itself. Specifically, §3's
+deferrals of **permission/Role-definition builders**, **custom Scope/Condition builders**,
+**direct permission overrides**, the **Access Request workflow**, **impersonation**, and
+**legacy-role retirement** all stand unchanged. So does every other hard prohibition in §3 —
+client-direct permission administration, `operationalRoles` as security permissions, detailed
+permissions in claims, a tenant schema, and production deployment or data migration.
+
+Two constraints carry from those specifications and are restated here because they are the ones
+that keep this extension from eroding §12's enforcement boundaries:
+
+1. **The Data Console reads generically and writes never.** Every write routes through the
+   existing governed command for that object, producing the same audit event as the equivalent
+   UI action. A generic collection writer in an admin tool would be an audit bypass, which is
+   precisely what §12 and §15 exist to prevent.
+2. **Authoring a duplicate rule is a governed authority, not a preference.** Editing a Matching
+   Rule to match nothing silently disables a control; it is capability-gated and audited like any
+   other governed change, per §14.
+
+New capability identifiers proposed by those specifications (`duplicate.rule.manage`,
+`duplicate.queue.resolve`, and the console's read/export/import ids) follow §6's naming contract
+and are registered through the normal catalog path. **This addendum grants nothing** — it records
+that the surfaces are authorized to be specified and built, not that any principal holds them.
+
 **Must not be silently introduced (hard prohibitions, verified in review):** client-direct permission administration; `operationalRoles` treated as security permissions; detailed permissions/Scopes/Conditions in custom claims; a tenant/company schema; any Admin UI beyond the ADR-approved MVP; production deployment or data migration.
 
 ## 4. Definitions

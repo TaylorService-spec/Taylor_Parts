@@ -71,6 +71,20 @@ ok("existing Users/Roles & Permissions/Vehicles/Regions/Company Settings/Integra
   }
 });
 
+// ----- Integrations: a real, complete screen (IntegrationsFaq.jsx) -- must be reachable
+// from the rail, not left behind navHidden like the genuinely-unbuilt placeholders -----
+ok("Integrations is not navHidden -- AppRail (!item.navHidden) renders it, matching the module README's documented 'Administration -> Integrations' journey", () => {
+  const integrations = byKey("integrations");
+  assert.ok(integrations, "integrations subnav item present");
+  assert.equal(integrations.navHidden, undefined, "integrations must not carry navHidden -- IntegrationsFaq.jsx is a built screen, not a placeholder");
+});
+ok("the still-unbuilt placeholders (Vehicles, Regions, Company Settings) remain navHidden", () => {
+  for (const key of ["vehicles", "regions", "companySettings"]) {
+    const item = byKey(key);
+    assert.equal(item.navHidden, true, `${key} should still be navHidden -- it has no built screen`);
+  }
+});
+
 // ----- Domain-level visibility/label/path unchanged -----
 ok("the Administration domain itself is still admin/dispatcher visible, technician fail-closed", () => {
   assert.equal(isDomainVisible(adminDomain, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
@@ -82,8 +96,22 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly ten Administration subnav items now exist (eight original + Overview + Permission Preview)", () => {
-  assert.equal(adminDomain.subnav.length, 10);
+ok("exactly eleven Administration subnav items now exist (eight original + Overview + Permission Preview + Duplicate Rules)", () => {
+  // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
+  // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
+  // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
+  // keep immediately: a scripted edit inserted Objects TWICE and this assertion caught it.
+  assert.equal(adminDomain.subnav.length, 12);
+});
+
+ok("Duplicate Rules is a visible Administration tab, not hidden", () => {
+  const item = adminDomain.subnav.find((i) => i.key === "duplicateRules");
+  assert.ok(item, "duplicateRules subnav item must exist");
+  assert.equal(item.path, "duplicate-rules");
+  assert.equal(item.label, "Duplicate Rules");
+  // navHidden would make it routed-but-unreachable -- the exact defect sweep R1-19
+  // found on the Integrations item.
+  assert.notEqual(item.navHidden, true);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

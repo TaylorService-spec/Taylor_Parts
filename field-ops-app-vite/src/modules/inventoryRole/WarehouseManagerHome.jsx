@@ -16,6 +16,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -91,15 +92,17 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
     <div className="fo-card">
       <div className="fo-workspace-header">
         <h3 className="fo-workspace-header-title">Part Activity -- {partName}</h3>
-        <button type="button" onClick={onClose}>
+        <Button type="button" variant="tertiary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <LoadingEmptyState
         loading={loading}
+        failed={!!actionsError}
         isEmpty={actions.length === 0}
         loadingText="Loading part activity..."
-        emptyText={actionsError ? "Unable to load part activity right now. Try again shortly." : "No logged activity yet for this part."}
+        failedText="Unable to load part activity right now. Try again shortly."
+        emptyText="No logged activity yet for this part."
       >
         <div className="fo-table-scroll">
           <table className="fo-table">
@@ -261,38 +264,39 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
         Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
         here.
       </p>
-      {error ? (
-        <p className="fo-muted" role="alert">Unable to load inventory health right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
-          <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
-        </LoadingEmptyState>
-      )}
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={false}
+        loadingText="Loading inventory health..."
+        failedText="Unable to load inventory health right now. Try again shortly."
+        emptyText=""
+      >
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+      </LoadingEmptyState>
 
       <p className="fo-muted">
         Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
       </p>
       {reorderError && <p className="fo-muted" role="alert">{reorderError}</p>}
-      {error ? (
-        <p className="fo-muted" role="alert">Unable to load Needs Planning right now. Try again shortly.</p>
-      ) : (
-        <LoadingEmptyState
-          loading={loading}
-          isEmpty={needsPlanningEntries.length === 0}
-          loadingText="Loading Needs Planning..."
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={needsPlanningEntries.length === 0}
+        loadingText="Loading Needs Planning..."
+        failedText="Unable to load Needs Planning right now. Try again shortly."
+        emptyText="No parts currently need planning."
+      >
+        <InventoryHealthPanel
+          healthEntries={needsPlanningEntries}
+          title="Needs Planning"
+          resolveName={resolveName}
+          onRequestReorder={handleRequestReorder}
+          requestedPartIds={justRequestedPartIds}
+          submittingPartId={submittingPartId}
           emptyText="No parts currently need planning."
-        >
-          <InventoryHealthPanel
-            healthEntries={needsPlanningEntries}
-            title="Needs Planning"
-            resolveName={resolveName}
-            onRequestReorder={handleRequestReorder}
-            requestedPartIds={justRequestedPartIds}
-            submittingPartId={submittingPartId}
-            emptyText="No parts currently need planning."
-          />
-        </LoadingEmptyState>
-      )}
+        />
+      </LoadingEmptyState>
 
       <h3>Parts Catalog</h3>
       {catalog.blocked ? (
@@ -348,8 +352,9 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                             )}
                           </td>
                           <td>
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
                               aria-label={`View Activity for ${part.name}`}
                               onClick={(e) => {
                                 lastTriggerRef.current = e.currentTarget;
@@ -357,7 +362,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                               }}
                             >
                               View Activity
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -366,16 +371,16 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                 </table>
               </div>
 
-              <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
-                <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
+              <div className="disp-board-toolbar disp-board-toolbar--end">
+                <Button type="button" variant="secondary" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
                   Previous
-                </button>
+                </Button>
                 <span className="fo-muted">
                   Page {currentPage + 1} of {pageCount}
                 </span>
-                <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
+                <Button type="button" variant="secondary" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
                   Next
-                </button>
+                </Button>
               </div>
             </>
           </LoadingEmptyState>

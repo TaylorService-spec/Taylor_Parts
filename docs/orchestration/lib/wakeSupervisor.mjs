@@ -106,15 +106,88 @@ export function nextBackoffMs(attempts, { baseMs = 60_000, capMs = 900_000 } = {
 }
 
 /**
- * Construct the fully-guardrailed `claude -p` argv the supervisor WOULD run. The prompt is a C-7
- * context package (consume the SAME package mechanism — never a bespoke bootstrap). Returns argv for
- * dry-run logging or supervised live exec; this function spawns nothing.
+ * The worker-facing OUTPUT CONTRACT for a governed execution.
+ *
+ * WHY THIS EXISTS: `classifyCompletion` (completionSemantics.mjs) can only reach COMPLETE when the
+ * worker's structured `evidence.receipts` covers the contract's `requiredExecutionReceipts`. Until this
+ * function existed, nothing ever TOLD the worker that — the prompt was the C-7 context package alone.
+ * A run therefore only satisfied the gate when the issue body happened to spell out "return receipts",
+ * so well-formed work blocked at BLOCKED_EXECUTION ("required execution receipts missing: tests") purely
+ * because the receipt was never requested. This closes that gate↔worker disconnect deterministically
+ * instead of depending on how an issue was worded.
+ *
+ * This asks ONLY for honest structured reporting. It grants nothing, widens no authority, and never
+ * instructs the worker to claim a receipt it did not earn — `classifyCompletion` still independently
+ * validates every receipt after the fact, and a fabricated one is a reporting defect, not an escalation.
+ *
+ * Pure: no fs/network/clock. Returns "" when the contract requires nothing.
  */
-export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUARDRAILS, profile = null } = {}) {
+export function buildExecutionOutputContract({ requiredExecutionReceipts = [], expectedArtifactClass = "NONE", verifierRequired = false } = {}) {
+  const receipts = Array.isArray(requiredExecutionReceipts) ? requiredExecutionReceipts.filter((r) => typeof r === "string" && r) : [];
+  const wantsArtifact = typeof expectedArtifactClass === "string" && expectedArtifactClass && expectedArtifactClass !== "NONE";
+  if (receipts.length === 0 && !wantsArtifact && !verifierRequired) return "";
+
+  const lines = [
+    "",
+    "## REQUIRED OUTPUT CONTRACT (governed — read before you finish)",
+    "",
+    "Your final message MUST end with a single fenced ```eos-evidence block containing an `evidence` object.",
+    "Completion is decided from THIS structured block, never from your prose. If the block is absent or",
+    "incomplete, your work is recorded as BLOCKED_EXECUTION even when the work itself was done correctly.",
+    "",
+    "```eos-evidence",
+    "{",
+    '  "evidence": {',
+    `    "receipts": [${receipts.map((r) => JSON.stringify(r)).join(", ")}],`,
+    '    "artifacts": [],',
+    '    "executionCapable": true,',
+    '    "toolPermissionBlocked": false,',
+    '    "verifier": null',
+    "  }",
+    "}",
+    "```",
+    "",
+  ];
+
+  if (receipts.length > 0) {
+    lines.push(`REQUIRED RECEIPTS — list a name in \`receipts\` ONLY after you actually performed it: ${receipts.join(", ")}.`);
+    if (receipts.includes("tests")) {
+      lines.push('  · "tests" means you RAN a test command and observed its result. Quote the command and its');
+      lines.push("    pass/fail counts in your prose. Never claim it because tests merely exist.");
+    }
+    lines.push("");
+  }
+  if (wantsArtifact) {
+    lines.push(`REQUIRED DURABLE ARTIFACT — this task must produce a ${expectedArtifactClass}. When you have`);
+    lines.push(`  genuinely produced it, add ${JSON.stringify(expectedArtifactClass)} to \`artifacts\`. If you could not, leave`);
+    lines.push("  `artifacts` empty and say plainly why — the run resolves to AWAITING_ARTIFACTIZATION, which is a");
+    lines.push("  truthful outcome. A fabricated artifact claim is worse than an unfinished task.");
+    lines.push("");
+  }
+  if (verifierRequired) {
+    lines.push('VERIFIER — set `verifier` to "PASS" only on a real passing verification; otherwise "FAIL" or null.');
+    lines.push("");
+  }
+  lines.push("HONESTY GATE — if a required tool or permission was unavailable, set `executionCapable` to false");
+  lines.push("  and `toolPermissionBlocked` to true, and do NOT list receipts you could not earn. Reporting a");
+  lines.push("  blocked run truthfully is the correct outcome; retrying a deterministically prohibited action is not.");
+  lines.push("");
+  return lines.join("\n");
+}
+
+/**
+ * Construct the fully-guardrailed `claude -p` argv the supervisor WOULD run. The prompt is a C-7
+ * context package (consume the SAME package mechanism — never a bespoke bootstrap), plus the governed
+ * output contract that tells the worker which structured receipts completion will be judged on.
+ * Returns argv for dry-run logging or supervised live exec; this function spawns nothing.
+ */
+export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUARDRAILS, profile = null, executionContract = null } = {}) {
   if (!contextPackage) throw new Error("buildClaudeInvocation: a C-7 contextPackage is required (bootstrap via the shared package mechanism)");
   // A named profile, when supplied, is the source of truth for the authority envelope + turn ceiling.
   if (profile) guardrails = guardrailsForProfile(profile, { model: guardrails.model, maxBudgetUsd: guardrails.maxBudgetUsd, wallClockSec: guardrails.wallClockSec, outputFormat: guardrails.outputFormat });
-  const prompt = typeof contextPackage === "string" ? contextPackage : JSON.stringify(contextPackage);
+  const base = typeof contextPackage === "string" ? contextPackage : JSON.stringify(contextPackage);
+  // The contract is APPENDED, never substituted — the C-7 package remains the authority on the work itself.
+  const prompt = executionContract ? `${base}\n${buildExecutionOutputContract(executionContract)}` : base;
   const argv = [
     "-p", prompt,
     "--output-format", guardrails.outputFormat,

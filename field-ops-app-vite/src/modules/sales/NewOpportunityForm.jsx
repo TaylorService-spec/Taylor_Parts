@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import Modal from "../../shared/ui/Modal.jsx";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
-import { ACCOUNTS_COLLECTION } from "../../domain/constants.js";
+import { useAccountPicker } from "../../hooks/useAccountPicker.js";
 import { channelOptions } from "../../domain/opportunityFieldModel.js";
 import { validateOpportunityCreateInput, buildOpportunityCreatePayload } from "../../domain/opportunityCreateForm.js";
 import { useOpportunityCreate } from "../../hooks/useOpportunityCreate.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 const EMPTY_DRAFT = { accountId: "", ownerEmployeeId: "", salesChannel: "", need: "", expectedValue: null, expectedCloseAt: null };
 
 // New Opportunity — governed CREATE flow. Account selection reuses the SAME generic Firestore-collection
-// hook AccountsList already uses (hooks/useFirestoreCollection); owner stays a bounded employee-id field
+// hook (hooks/useAccountPicker, a BOUNDED read); owner stays a bounded employee-id field
 // (the employee directory is not connected — see opportunityFieldModel.js's "owner" control note, honest
 // about the same not-yet-connected directory rather than a fake picker). Opportunity has NO contactId field
 // (functions/src/opportunity/opportunityCommands.ts's CreateOpportunityInput) — deliberately no contact
@@ -20,8 +20,13 @@ const EMPTY_DRAFT = { accountId: "", ownerEmployeeId: "", salesChannel: "", need
 // `deps.useAccounts` / `deps.client` let tests inject fakes without touching firebase (mirrors every other
 // governed-write surface's `deps` seam in this codebase).
 export default function NewOpportunityForm({ onClose, onCreated, readiness, deps = {} }) {
-  const useAccounts = deps.useAccounts ?? (() => useFirestoreCollection(ACCOUNTS_COLLECTION));
-  const { data: accounts, loading: accountsLoading, error: accountsError } = useAccounts();
+  // BOUNDED (§9): the default read is capped and discloses truncation. The deps seam is
+  // untouched, so every injected test fake keeps working -- the swap is the DEFAULT only.
+  const useAccounts = deps.useAccounts ?? (() => {
+    const picker = useAccountPicker();
+    return { data: picker.options, loading: picker.loading, error: picker.error, pickerMessage: picker.message };
+  });
+  const { data: accounts, loading: accountsLoading, error: accountsError, pickerMessage } = useAccounts();
   const { pending, runCreate, discardIntent } = useOpportunityCreate(deps.client ? { client: deps.client } : undefined);
 
   const [draft, setDraft] = useState(EMPTY_DRAFT);
@@ -66,7 +71,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
     <Modal title="New opportunity" onClose={requestClose}>
       <form className="fo-sales-createform" onSubmit={handleSubmit}>
         {writeDisabled && (
-          <p className="fo-sales-lifecycle-note fo-muted" role="status">
+          <p id="new-opp-readiness" className="fo-sales-lifecycle-note fo-muted" role="status">
             {readiness?.reason}
           </p>
         )}
@@ -89,6 +94,10 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
               ))}
             </select>
           )}
+          {/* Truncation notice sits OUTSIDE the error/select ternary: it is a fact about
+              the option set, not part of either branch, and burying it inside the select
+              branch would hide it exactly when an error also occurred. */}
+          {pickerMessage && <p className="fo-muted">{pickerMessage}</p>}
           {fieldErrors.accountId && <p className="fo-sales-createform__error">{fieldErrors.accountId}</p>}
         </div>
 
@@ -156,10 +165,20 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
         )}
 
         <div className="fo-sales-editform__actions">
-          <button type="submit" className="fo-btn-primary" disabled={writeDisabled || pending} title={writeDisabled ? readiness?.reason : undefined}>
+          <Button
+            type="submit"
+            variant={writeDisabled ? "protected" : "primary"}
+            disabled={pending}
+            // The reason is ALREADY on screen as the form's own notice above, so the
+            // Button must not render its own copy: passing `reason` here printed the
+            // same sentence a second time, and `title` added it a third time as a
+            // tooltip. Point the control at the existing notice instead -- one visible
+            // explanation, still programmatically tied to the button that is blocked.
+            aria-describedby={writeDisabled ? "new-opp-readiness" : undefined}
+          >
             {pending ? "Creating…" : "Create opportunity"}
-          </button>
-          <button type="button" className="fo-btn-ghost" onClick={requestClose}>Cancel</button>
+          </Button>
+          <Button type="button" variant="tertiary" onClick={requestClose}>Cancel</Button>
         </div>
       </form>
     </Modal>
