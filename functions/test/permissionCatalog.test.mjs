@@ -212,10 +212,20 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
+// Scanner Phase G: inventory.catalog.alias.read -- the resolve-only capability behind barcode/alias
+// LOOKUP, deliberately separate from inventory.catalog.manage (which the five alias ADMINISTRATION
+// callables use), because gating a warehouse lookup on a write capability would hand every scanning
+// user the authority to create and deactivate identifiers. Registered active:false and granted to no
+// Role; paired with its own explicit assertion below.
+//
+// NOTE the prefix is the FULL id, not "inventory.catalog.", because inventory.catalog.manage and
+// .activate are ACTIVE and must stay outside this guard -- a broader prefix would let a future
+// inventory.catalog.* entry declare active:true unnoticed.
+//
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -268,6 +278,27 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
   assert.equal(permission.action, "read");
+});
+
+check("inventory.catalog.alias.read is registered exactly once, active: false, resource/action match the id", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.catalog.alias.read");
+  assert.equal(matches.length, 1, "inventory.catalog.alias.read must be registered exactly once");
+  const [permission] = matches;
+  assert.equal(permission.active, false, "inventory.catalog.alias.read must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.catalog.alias");
+  assert.equal(permission.action, "read");
+});
+
+check("alias LOOKUP and alias ADMINISTRATION stay separate capabilities", () => {
+  // The whole point of Phase G. If these ever became one id, every scanning user would hold the
+  // authority to create, deactivate and reactivate identifiers.
+  const manage = PERMISSION_CATALOG.find((p) => p.id === "inventory.catalog.manage");
+  const aliasRead = PERMISSION_CATALOG.find((p) => p.id === "inventory.catalog.alias.read");
+  assert.ok(manage, "inventory.catalog.manage must still exist");
+  assert.ok(aliasRead, "inventory.catalog.alias.read must still exist");
+  assert.notEqual(manage.resource, aliasRead.resource, "they must not collapse onto one resource");
+  assert.equal(manage.active, undefined, "the administration capability stays active");
+  assert.equal(aliasRead.active, false, "the lookup capability stays inert until separately authorized");
 });
 
 check("fulfillment.coordinatedVisit.read is registered exactly once, active: false, resource/action match the id", () => {

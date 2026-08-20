@@ -296,6 +296,10 @@ export {
   reactivatePartAliasCallable as reactivatePartAlias,
   listPartAliasesCallable as listPartAliases,
   probePartAliasCallable as probePartAlias,
+  // Phase G. Gated on `inventory.catalog.alias.read`, NOT on `inventory.catalog.manage` -- alias
+  // lookup and alias administration have different audiences, and the read capability is registered
+  // INERT and granted to nobody, so this denies for every principal until separately authorized.
+  resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
 } from "./partMaster/partAliasCallables";
 
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---

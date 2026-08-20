@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { resolveScannedIdentifier } from "../../services/partAliasCallableClient.js";
 import {
   buildPartLookup,
   describePartLookup,
   LOOKUP_STATE,
   FIELD_STATE,
+  MATCHED_BY,
+  ALIAS_TYPE_LABEL,
 } from "../../domain/partLookup.js";
 
 // LOOKUP-ONLY SCANNING.
@@ -25,6 +28,18 @@ import {
 // existing `buildScanCandidates` CATALOG scope. All of the decision-making lives in the pure
 // domain/partLookup.js; this component owns the read, the input and the states.
 //
+// ============================ TWO QUESTIONS, ONE ANSWER (Phase G) ============================
+//
+// A scanned value can be a Part's own code OR a registered identifier (barcode, UPC, supplier SKU,
+// manufacturer part number) that points at one. Both are asked in parallel, and domain/partLookup.js
+// combines them — including refusing to answer when they DISAGREE.
+//
+// Identifier resolution is the existing alias transport (partAliasCallableClient), which is gated
+// server-side on `inventory.catalog.alias.read` and fails closed behind
+// PART_IDENTIFIER_TRANSPORT_READY. While that constant is false the callable is never invoked and
+// the screen says identifier lookup is not switched on — rather than reporting "no match" for a
+// barcode it never actually checked.
+//
 // ============================ WHY IT DOES NOT PRE-CHECK ACCESS ============================
 //
 // `parts` is governed by firestore.rules, not by a capability, so there is nothing to consult that
@@ -34,6 +49,7 @@ import {
 
 export default function LookupScan({ deps }) {
   const readCatalog = deps?.fetchParts ?? fetchPartMasterList;
+  const resolveIdentifier = deps?.resolveIdentifier ?? resolveScannedIdentifier;
 
   const [query, setQuery] = useState("");
   const [result, setResult] = useState({ state: LOOKUP_STATE.IDLE, token: "", rows: [], candidates: [], message: null, part: null });
@@ -51,18 +67,25 @@ export default function LookupScan({ deps }) {
       return;
     }
     setLoading(true);
-    let catalogResult;
-    try {
-      catalogResult = await readCatalog();
-    } catch {
-      // A THROWN read is a failed read, never an empty catalog. Collapsing it into "no match" would
-      // tell an operator a part does not exist because the network was down.
-      catalogResult = { ok: false, code: "unavailable" };
-    }
+
+    // Both questions in parallel. The identifier transport never throws by contract, but it is
+    // guarded anyway so one half cannot take down the other: a failed identifier lookup must not
+    // cost the operator a part-code answer that was available.
+    const [catalogResult, aliasOutcome] = await Promise.all([
+      readCatalog().catch(() => (
+        // A THROWN read is a failed read, never an empty catalog. Collapsing it into "no match"
+        // would tell an operator a part does not exist because the network was down.
+        { ok: false, code: "unavailable" }
+      )),
+      Promise.resolve()
+        .then(() => resolveIdentifier({ rawValue: token }))
+        .catch(() => ({ errorStatus: "internal", errorDetail: null })),
+    ]);
+
     if (!alive.current) return;
-    setResult(buildPartLookup({ catalogResult, token }));
+    setResult(buildPartLookup({ catalogResult, aliasOutcome, token }));
     setLoading(false);
-  }, [readCatalog]);
+  }, [readCatalog, resolveIdentifier]);
 
   return (
     <div className="fo-lookup">
@@ -73,8 +96,8 @@ export default function LookupScan({ deps }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Scan or type a part code"
-          aria-label="Part code"
+          placeholder="Scan or type a part code or barcode"
+          aria-label="Part code or barcode"
           enterKeyHint="search"
           autoFocus
         />
@@ -92,8 +115,11 @@ export default function LookupScan({ deps }) {
 
 /**
  * Every outcome gets its own words. LOADING, IDLE, INVALID, NOT_FOUND, AMBIGUOUS, DENIED,
- * READ_FAILED and RESOLVED are eight different situations and are never collapsed — in particular
- * a refusal is never rendered as an absence, and a failed read is never rendered as a result.
+ * READ_FAILED, RESOLVED and the four identifier outcomes (ALIAS_INACTIVE, ALIAS_DENIED,
+ * ALIAS_UNAVAILABLE, ALIAS_PART_UNREADABLE) plus CONFLICT are thirteen different situations, and
+ * none is collapsed into another — in particular a refusal is never rendered as an absence, a
+ * failed read is never rendered as a result, and an identifier that could not be CHECKED is never
+ * rendered as an identifier that does not EXIST.
  */
 function LookupResult({ loading, result }) {
   if (loading) return <p className="fo-muted" role="status">Looking that up…</p>;
@@ -102,8 +128,8 @@ function LookupResult({ loading, result }) {
     case LOOKUP_STATE.IDLE:
       return (
         <p className="fo-muted">
-          Scan a part label or type a part code. You will see what the part is — this does not change
-          anything.
+          Scan a part label or barcode, or type a part code. You will see what the part is — this
+          does not change anything.
         </p>
       );
 
@@ -119,34 +145,89 @@ function LookupResult({ loading, result }) {
     case LOOKUP_STATE.NOT_FOUND:
       return <p className="fo-scan__state" role="status">{result.message}</p>;
 
+    // ── Phase G ────────────────────────────────────────────────────────────────────────────────
+    //
+    // Each of these is a DIFFERENT problem with a different fix, so each gets its own words and its
+    // own urgency. None of them is worded as "no such part": three of them are situations in which
+    // the part may very well exist.
+
+    case LOOKUP_STATE.ALIAS_DENIED:
+      // A refusal, like DENIED — the next step is asking someone for access, not trying again.
+      return <p className="fo-scan__state fo-scan__state--denied" role="alert">{result.message}</p>;
+
+    case LOOKUP_STATE.ALIAS_UNAVAILABLE:
+      // Not a refusal and not an absence: half the search could not run. Status, not alert.
+      return <p className="fo-scan__state" role="status">{result.message}</p>;
+
+    case LOOKUP_STATE.ALIAS_INACTIVE:
+    case LOOKUP_STATE.ALIAS_PART_UNREADABLE:
+      return (
+        <div className="fo-scan__state" role="status">
+          <p>{result.message}</p>
+          <CandidateList candidates={result.candidates} />
+        </div>
+      );
+
+    case LOOKUP_STATE.CONFLICT:
+      // Genuinely wrong data, and the operator is about to act on it. Alert.
+      return (
+        <div className="fo-scan__state fo-scan__state--denied" role="alert">
+          <p>{result.message}</p>
+          <CandidateList candidates={result.candidates} />
+        </div>
+      );
+
     case LOOKUP_STATE.AMBIGUOUS:
       return (
         <div className="fo-scan__state" role="status">
           <p>{result.message}</p>
-          <ul>
-            {result.candidates.map((c) => (
-              <li key={`${c.entityType}:${c.entityId}`}>
-                {c.entityType.replace("_", " ").toLowerCase()} · {c.entityId}
-              </li>
-            ))}
-          </ul>
+          <CandidateList candidates={result.candidates} />
         </div>
       );
 
     case LOOKUP_STATE.RESOLVED:
-      return <ResolvedPart part={result.part} rows={result.rows} />;
+      return (
+        <ResolvedPart
+          part={result.part}
+          rows={result.rows}
+          matchedBy={result.matchedBy}
+          matchedIdentifier={result.matchedIdentifier}
+        />
+      );
 
     default:
       return null;
   }
 }
 
-function ResolvedPart({ part, rows }) {
+/** The parts a scan could not choose between. Never rendered as a pick. */
+function CandidateList({ candidates }) {
+  if (!candidates?.length) return null;
+  return (
+    <ul>
+      {candidates.map((c) => (
+        <li key={`${c.entityType}:${c.entityId}`}>
+          {c.entityType.replace("_", " ").toLowerCase()} · {c.entityId}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ResolvedPart({ part, rows, matchedBy, matchedIdentifier }) {
   const shown = rows?.length ? rows : describePartLookup(part);
   return (
     <section className="fo-scan__result" aria-label={`Part ${part.internalPartNumber}`}>
       <p className="fo-scan__kind">Part</p>
       <h3 className="fo-scan__id">{part.name}</h3>
+      {/* WHICH identifier matched, when it was not the part's own code. Without this, a barcode
+          registered against the wrong part looks exactly like a correct scan. */}
+      {matchedBy === MATCHED_BY.IDENTIFIER && (
+        <p className="fo-lookup__matched">
+          Matched a registered {ALIAS_TYPE_LABEL[matchedIdentifier?.aliasType] ?? "identifier"}, not
+          this part&rsquo;s own code.
+        </p>
+      )}
       <dl className="fo-lookup__fields">
         {shown.map((row) => (
           <div key={row.label} className="fo-lookup__row">

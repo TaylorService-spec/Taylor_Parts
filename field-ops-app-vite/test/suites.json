@@ -792,6 +792,10 @@
     {
       "file": "test/partLookup.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/partLookupAlias.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

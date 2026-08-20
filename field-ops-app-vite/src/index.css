@@ -2334,6 +2334,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-lookup { display: flex; flex-direction: column; gap: 14px; }
 .fo-lookup__assurance { margin: 0; font-size: 13px; }
 
+/* WHICH identifier matched, when it was not the part's own code. Sits directly under the part name
+   because that is where the eye already is, and because a barcode registered against the wrong part
+   is otherwise indistinguishable from a correct scan. Toned as a note, not a warning: matching an
+   alias is normal, and only the operator can tell whether THIS one is right. */
+.fo-lookup__matched {
+  margin: 0; font-size: 13px; color: var(--color-text-secondary);
+  border-left: 3px solid var(--color-brand-accent); padding-left: 10px;
+}
+
 .fo-lookup__fields { margin: 0; display: flex; flex-direction: column; gap: 0; }
 .fo-lookup__row {
   display: grid; grid-template-columns: 1fr; gap: 2px;
