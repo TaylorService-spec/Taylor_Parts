@@ -29,11 +29,43 @@
 //   node scripts/reconcileCrudMatrix.mjs --gaps     # only the rows that disagree
 
 import { pathToFileURL } from "node:url";
+import { statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const lib = (f) => pathToFileURL(join(HERE, "..", "functions", "lib", "access", f)).href;
+
+// STALENESS GUARD. This reads functions/lib -- the COMPILED contracts -- because they are
+// plain JS this script can import directly. That means a lib older than its source would
+// have it report YESTERDAY every bit as confidently as today.
+//
+// For a reconciliation tool that is the worst failure available: the entire purpose is to
+// be the thing that notices drift, and quietly comparing the matrix against a stale build
+// would manufacture exactly the false all-clear it exists to prevent. So it refuses to run
+// rather than print a number nobody can trust.
+const SOURCES = ["governedBusinessRoles", "compatibilityRoles", "permissionCatalog"];
+const stale = [];
+for (const name of SOURCES) {
+  const src = join(HERE, "..", "functions", "src", "access", `${name}.ts`);
+  const out = join(HERE, "..", "functions", "lib", "access", `${name}.js`);
+  let srcStat, outStat;
+  try { srcStat = statSync(src); } catch { continue; }
+  try { outStat = statSync(out); } catch { stale.push(`${name}: never compiled`); continue; }
+  if (srcStat.mtimeMs > outStat.mtimeMs) stale.push(`${name}: source is newer than the build`);
+}
+if (stale.length > 0) {
+  console.error("REFUSING: the compiled access contracts are behind their source.");
+  console.error("");
+  for (const s of stale) console.error(`  ${s}`);
+  console.error("");
+  console.error("This report would describe the previous build, not the current contracts.");
+  console.error("Rebuild first:");
+  console.error("");
+  console.error("  cd functions && npm run build");
+  console.error("");
+  process.exit(1);
+}
 
 const { GOVERNED_BUSINESS_ROLES } = await import(lib("governedBusinessRoles.js"));
 const { COMPATIBILITY_ROLES } = await import(lib("compatibilityRoles.js"));
