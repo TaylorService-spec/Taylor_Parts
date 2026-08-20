@@ -238,6 +238,16 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "customers" && item.key === "opportunities") {
     return <OpportunityWorkspaceConnected />;
   }
+  // The Sales Order INDEX must be dispatched HERE, not by a separate <Route>. The generic
+  // subnav loop below emits a route for EVERY visible nav item and renders whatever this
+  // function returns; an item with no branch and no legacyKey falls through to
+  // PlaceholderPage. Adding a second <Route> at the same path did not win -- the generic
+  // one is emitted first and React Router matched it -- so the deployed page said
+  // "This area isn't built yet" over a list that was very much built. Tests and build
+  // both passed, because neither renders the route table the way the browser does.
+  if (domain.key === "customers" && item.key === "salesOrders") {
+    return <SalesOrdersList />;
+  }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
   // not-yet-connected Serialized Asset surface). accessVersion is threaded so the
@@ -570,10 +580,6 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
-              {/* The Sales Order INDEX. Static prefix, so it outranks the dynamic
-                  :accountId sibling below -- same ordering reasoning as the
-                  sales-order detail route directly above. */}
-              <Route path="sales-orders" element={<SalesOrdersList />} />
               <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>

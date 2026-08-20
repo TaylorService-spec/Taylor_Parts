@@ -486,6 +486,10 @@
       "runner": "node"
     },
     {
+      "file": "test/subnavRouteDispatch.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/notificationScopeVocabulary.test.mjs",
       "runner": "node"
     },
