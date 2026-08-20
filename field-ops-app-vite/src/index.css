@@ -2135,6 +2135,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-tablist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 12px; }
 
 .fo-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+
+/* Role inspector (Administration > Roles & Permissions). Capability lists are SCANNED, not
+   read line by line -- the id is the identifier and carries the weight, the description
+   trails it quietly. Long lists stay dense so a 50-capability role is still one glance. */
+.fo-role-caps { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; gap: 3px; }
+.fo-role-caps li { font-size: 13px; line-height: 1.45; }
+.fo-role-caps code { font-size: 12px; }
+.fo-role-domain h4 { margin: 10px 0 2px; font-size: 13px; text-transform: capitalize; }
 .fo-chip { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer;
   background: var(--color-surface-sunken); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
 .fo-chip:hover { border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }

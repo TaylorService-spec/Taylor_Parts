@@ -36,7 +36,19 @@
 // for). Firestore Rules deny all client-direct access to governed Role/Permission/Audit data
 // by design (Spec sec12) -- unrelated to this surface's own copy, checked directly below.
 //
-// NO CHANGE was made to AdminRolesPermissions.jsx. This is a regression-locking test only.
+// UPDATE (Roles & Permissions gained a read-only Role inspector). This suite fired, which is
+// what it exists for, and the decline was re-evaluated rather than the assertion being relaxed
+// away. It STILL HOLDS: the decline is about migrating a list of PRINCIPALS onto the metadata
+// runtime, and both blockers are unchanged -- no EntityDefinition for a Role/RoleAssignment/
+// principal, and no trusted read to attach one to. The inspector reads the static access
+// CONTRACTS (role definitions, permission catalog, object mapping), which are repo data rather
+// than a collection, so it creates no list to migrate. The first two assertions below still pass
+// unmodified and are what actually pin the decline; only the copy assertion moved, from the old
+// wording to the same fact where the current surface states it.
+//
+// This suite was written as REGISTRATION_PENDING and remains so: it runs under a full `vitest
+// run` but is not named in any workflow's vitest invocation, so CI would not have caught the
+// break. Recorded here rather than silently relied upon.
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -72,15 +84,30 @@ describe("S-ADM-ROLES decline -- no EntityDefinition exists, and the surface has
     expect(importLines).not.toMatch(/useFirestoreCollection|onSnapshot|getDocs/);
   });
 
-  it("renders the read-unavailable copy and keeps the Assign Role form unconditionally disabled", () => {
+  // RE-EVALUATED, and the decline still holds. This assertion fired when the surface gained a
+  // read-only Role inspector, which is exactly what it was built to do -- so the question it
+  // forces got asked rather than skipped.
+  //
+  // The answer: the decline is about migrating a LIST OF PRINCIPALS onto the metadata runtime,
+  // and that is still impossible for the same two reasons (no EntityDefinition, no trusted
+  // read). What the surface gained reads the static access CONTRACTS -- role definitions, the
+  // permission catalog, the object mapping -- which are repo data, not a collection. Nothing
+  // about that creates a list to migrate.
+  //
+  // Only the copy moved. The old sentence promised a trusted read path; the current copy states
+  // the same fact where it actually bites, on the Assign form. Asserting on the substance rather
+  // than the old wording keeps this locking the DECLINE instead of locking a paragraph.
+  it("still states that no trusted read of principals exists, and keeps Assign Role unconditionally disabled", () => {
     render(<AdminRolesPermissions />);
     expect(screen.getByText(/Roles & Permissions/i)).toBeTruthy();
     expect(
-      screen.getByText(/trusted read path, which is not yet deployed and verified/i),
+      screen.getByText(/no trusted read exists yet to list real principals/i),
     ).toBeTruthy();
 
-    const select = screen.getByRole("combobox", { name: "" }) ?? document.querySelector("select");
-    expect(select).toBeTruthy();
+    // Queried by its accessible name. It previously had none, and `{ name: "" }` was how this
+    // reached it; the control is labelled now, which is a fix rather than a regression -- an
+    // unlabelled select is unusable to a screen reader whether or not it is disabled.
+    const select = screen.getByRole("combobox", { name: /select a role/i });
     expect(select.disabled).toBe(true);
 
     const button = screen.getByRole("button", { name: /Assign Role/i });
