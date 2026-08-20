@@ -312,6 +312,10 @@ export type AuditAction =
   // Its own deterministic Audit Event id space, separate from createSalesOrder's, so a replay key never
   // collides across the two callables.
   | "createSalesOrderFromOpportunity"
+  // The ATOMIC WON action -- closes an Opportunity as WON and creates its Sales Order in one
+  // transaction. Its own union member, and its own deterministic Audit Event id space, so a
+  // replay of the atomic action cannot collide with either standalone callable
+  | "closeOpportunityAsWon"
   // P1.1 (Sales->Cash fulfillment spine) -- the trusted transitionWorkOrder Complete-action write-back to
   // the linked Sales Order's `lines[].fulfilledQty`. Traceability only, NOT the idempotency gate (COMPLETED
   // is structurally once-per-Work-Order via canTransition, see transitionWorkOrder.ts's header comment).
