@@ -83,7 +83,7 @@ const previewHasPermission = createPermissionPreviewer(
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import LandingPage from "./navigation/LandingPage";
-import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, deniedDomainIndexItem } from "./navigation/navConfig";
+import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
 import EmptyState from "./shared/ui/EmptyState.jsx";
 import { Button } from "./shared/ui/primitives";
 
@@ -513,22 +513,33 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               let it state the denial. Deliberately not a redirect: bouncing to another
               surface hides the reason and leaves the user believing the area is broken.
               Access is unchanged -- this only gives the refusal somewhere to be said. */}
-          {(() => {
-            const indexItem = deniedDomainIndexItem(domain, role, allowedLegacyKeys, operationalContext);
-            if (!indexItem) return null;
-            return (
+          {/* GENERALIZED from the index item to EVERY denied subnav item, for the same
+              reason and one more.
+              The loop above emits routes only for VISIBLE items, so a hidden item's path
+              matched nothing in this domain and fell through to the domain's dynamic child
+              route below -- which read the path segment as a RECORD ID. A warehouse manager
+              opening /inventory/receiving was told `Unknown part "receiving"`: not a denial,
+              not a 404, but a confident claim about a part that was never a part. The same
+              shape existed on /customers/:accountId and /equipment/:equipmentId.
+              A static segment outranks a dynamic one in the router's own ranking, so simply
+              emitting these routes takes the path back from the record lookup.
+              Access is unchanged -- this only gives the refusal somewhere to be said. */}
+          {domain.subnav
+            .filter((item) => !isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
+            .map((item) => (
               <Route
-                index
+                key={`denied-${item.key}`}
+                path={item.path || undefined}
+                index={item.path === ""}
                 element={
                   <EmptyState
                     variant="filtered"
-                    title={`${indexItem.label} isn't available to your role`}
+                    title={`${item.label} isn't available to your role`}
                     message="Your account doesn't have access to this area. Contact an administrator if you believe this is an error."
                   />
                 }
               />
-            );
-          })()}
+            ))}
           {/* Sprint 2.0.2 -- first parameterized route in this
               generic, subnav-driven route generator. navConfig.js's
               subnav items are all static paths; a per-record detail
