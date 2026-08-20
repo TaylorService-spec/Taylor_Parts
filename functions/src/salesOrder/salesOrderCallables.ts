@@ -124,8 +124,26 @@ export async function persistTransitionedSalesOrder(
   db: Firestore, tx: Transaction, ref: FirebaseFirestore.DocumentReference,
   salesOrderId: string, transition: SalesOrderTransition, actorUid: string, idempotencyKey: string,
 ) {
-  const aid = mkAuditId("transitionSalesOrder", actorUid, idempotencyKey);
+  // TARGET-SCOPED IDEMPOTENCY, with the legacy id still honoured.
+  //
+  // THE DEFECT. mkAuditId hashes actorUid|key with NO target. One actor reusing an
+  // idempotency key across two DIFFERENT Sales Orders therefore collides: the second call
+  // finds the first call's audit event, returns "replayed", and SKIPS EVERY VALIDATION
+  // without applying anything. The caller is told it succeeded.
+  //
+  // THE FIX. Compose the id with the salesOrderId so each record has its own replay space --
+  // the shape createSalesOrderFromOpportunity and updateOpportunity already use.
+  //
+  // BACKWARD COMPATIBILITY, EXPLICITLY. Changing the derivation orphans every id already
+  // written: a genuine retry of an in-flight pre-change call would hash to a NEW id, find
+  // nothing, and RE-APPLY -- turning a safety mechanism into a double-apply during the
+  // rollout window. So the legacy id is still read. If either exists, this is a replay.
+  // Only the NEW id is ever written, so the legacy lookup ages out on its own and no
+  // existing audit record becomes unsafe or unreachable.
+  const aid = mkAuditId("transitionSalesOrder", actorUid, `${salesOrderId}|${idempotencyKey}`);
+  const legacyAid = mkAuditId("transitionSalesOrder", actorUid, idempotencyKey);
   const prior = await tx.get(auditEventDocRef(aid));
+  const legacyPrior = aid === legacyAid ? prior : await tx.get(auditEventDocRef(legacyAid));
   const snap = await tx.get(ref);
   if (!snap.exists) throw new HttpsError("not-found", `No Sales Order with id ${salesOrderId}`);
   const current = snap.data() as SalesOrderDocState;
