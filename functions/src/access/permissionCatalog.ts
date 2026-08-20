@@ -856,6 +856,39 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Scanner Phase G -- barcode/alias LOOKUP, as distinct from alias ADMINISTRATION.
+  //
+  // THE AUDIENCE SPLIT THIS EXISTS FOR. partAliasCallables.ts recorded, at Phase A, that identifier
+  // administration reuses `inventory.catalog.manage` and that a dedicated alias-read capability was
+  // "the option NOT taken, so the choice is visible if the audience ever splits". It has now split:
+  // a warehouse or Parts user scanning a barcode to see WHAT A PART IS needs to resolve an alias,
+  // and gating that on `inventory.catalog.manage` would hand every scanning user the authority to
+  // CREATE, DEACTIVATE and REACTIVATE identifiers. Broadening a write capability to serve a read is
+  // the widening this catalog exists to prevent.
+  //
+  // WHY NOT REUSE `inventory.catalog.read`. That id is scoped to the Manufacturer catalog
+  // projection served by getManufacturerCatalog -- its own description says so. Reusing it here
+  // would make it a synonym for something it does not mean, and the two reads would then be
+  // impossible to grant independently.
+  //
+  // RESOLVE-ONLY, AND NARROWER THAN THE ADMIN LIST. This authorizes exactly one question: "which
+  // Part does this scanned identifier point to?" It does not authorize listing a Part's identifiers
+  // (listPartAliases stays on `inventory.catalog.manage`, because seeing INACTIVE identifiers is
+  // load-bearing for the write path), and it grants nothing about the Part record itself -- reading
+  // the Part is separately governed by firestore.rules.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO compatibility,
+  // default or operational Role, with no per-environment activation override, so
+  // resolveEffectivePermission() denies for every principal. Activation and grant are a separate
+  // Owner decision -- same posture as inventory.serializedAsset.read at its own introduction.
+  Object.freeze({
+    id: "inventory.catalog.alias.read",
+    description:
+      "Resolve a scanned or typed identifier (barcode, UPC/EAN/GTIN, supplier SKU, manufacturer part number or other registered alias) to the Part it points to, via the trusted resolveScannedPartIdentifier read service. Resolve-only: does not authorize listing a Part's identifiers, and does not authorize reading the Part record itself. Backend-resolved scope; no client-direct part_aliases read.",
+    resource: "inventory.catalog.alias",
+    action: "read",
+    active: false,
+  }),
   // Serialized Asset registry, Spec phase M.1 (docs/specifications/serialized-asset-equipment-installation.md
   // §I / §M.1, ADR-010 + DECISIONS #59): trusted Available-Equipment read (functions/src/serializedAsset/
   // serializedAssetReadService.ts). Backend-resolved scope; no client-direct serialized_assets read (no

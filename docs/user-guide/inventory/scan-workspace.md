@@ -28,8 +28,16 @@ scanner, not a relocation, so if you have a shortcut or a habit, it still works.
 
 ### Look something up
 
-Scan a part label, or type a part code, and see what the part is: its part number, name,
+Scan a part label or barcode, or type a part code, and see what the part is: its part number, name,
 description, category, catalog status, control type, stocking class and unit.
+
+It matches on the part's own code **and** on any identifier registered for it — barcode, UPC, EAN,
+GTIN, supplier SKU, manufacturer part number, legacy or customer reference. When a scan matches a
+registered identifier rather than the part's own code, the result says so, so a barcode registered
+against the wrong part does not quietly look like a correct scan.
+
+If the same value means two different things — one part's number and another part's barcode — the
+screen shows both and resolves neither. That is a data problem to fix, not a choice to guess at.
 
 **This changes nothing.** There is no quantity box and no submit button. Looking a part up does not
 move it, count it, reserve it or receive it.
@@ -69,9 +77,19 @@ Put-away, picking, staging, transfers, returns, cycle counting and truck handoff
 screen — not greyed out, not "coming soon", simply absent. Those operations are not built yet, and
 showing you a disabled button would suggest they exist and that you merely lack permission.
 
-Looking a part up by **barcode** is not here yet either — today lookup matches on the part code
-(either the part number or the part ID), not on a scanned barcode value. Barcode matching needs the
-identifier administration feature to be switched on first.
+Barcode matching is **built but not switched on**. Until it is, scanning a barcode tells you that
+identifier lookup is unavailable in this environment — it does *not* tell you the barcode is
+unregistered, because it was never checked.
+
+When it is switched on, these are the answers you may see, and none of them means "no such part":
+
+| What it says | What it means | What to do |
+| --- | --- | --- |
+| Registered but no longer active | The barcode was retired on purpose | Ask whoever manages identifiers whether it should come back |
+| Registered against more than one part | Two parts claim the same barcode | The identifier data needs correcting — do not guess |
+| A part number AND an identifier for a different part | Same problem, from the other direction | The identifier data needs correcting |
+| Points to a part that could not be read | The barcode is fine; you cannot see that part | Ask an administrator about access to that part |
+| You are not authorized to look up identifiers | Your account cannot resolve barcodes | An administrator grants identifier lookup |
 
 ## If a workflow you expected is missing
 

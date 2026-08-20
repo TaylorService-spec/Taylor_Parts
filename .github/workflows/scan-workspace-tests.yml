@@ -1,7 +1,8 @@
 name: Scan Workspace Tests
 
 # THE SCANNING SURFACES — the shared Scan workspace (Phase E), the lookup-only scan it offers
-# (Phase F), and the multi-scan supplier receiving journey it composes (Phase D).
+# (Phase F), barcode/alias resolution behind that lookup (Phase G), and the multi-scan supplier
+# receiving journey it composes (Phase D).
 #
 # WHY THIS WORKFLOW EXISTS. The client's vitest suites run in CI ONLY when a workflow names the file;
 # there is no glob lane. Phase D's two vitest suites (multiScanReceiving.test.jsx, receivingTransport.test.jsx)
@@ -16,6 +17,12 @@ name: Scan Workspace Tests
 #                            command or writer at all.
 #   lookupScan             — the same properties on the mounted surface, plus that it offers exactly
 #                            one control and no way to move stock.
+#   partAliasScanResolver  — the trusted multi-type resolver: ambiguity is never a pick, INACTIVE is
+#                            never NOT_FOUND, and it adds no matcher or normalizer of its own.
+#   partLookupAlias        — how the identifier answer composes with the part-code answer, including
+#                            that an identifier failure never falls back to an unrelated part and
+#                            that a code meaning two different things resolves to neither.
+#   lookupScanAlias        — those outcomes on the mounted surface, each with its own words.
 #   scanWorkflows          — eligibility derives from the EXISTING capability model, never from a role
 #                            name, and no scanner-specific capability was invented. Also asserts, at
 #                            file level, that ROLE_NAV_ACCESS gained no governed business role.
@@ -34,6 +41,11 @@ on:
   pull_request:
     paths:
       - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
+      - "functions/src/partMaster/partAliasScanResolver.ts"
+      - "functions/src/partMaster/partAliasCallables.ts"
+      - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/scannedIdentity.js"
       - "field-ops-app-vite/src/domain/scanCandidates.js"
@@ -50,6 +62,9 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
+      - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
+      - "functions/test/partAliasScanResolver.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -61,6 +76,11 @@ on:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
+      - "functions/src/partMaster/partAliasScanResolver.ts"
+      - "functions/src/partMaster/partAliasCallables.ts"
+      - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/scannedIdentity.js"
       - "field-ops-app-vite/src/domain/scanCandidates.js"
@@ -77,6 +97,9 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
+      - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
+      - "functions/test/partAliasScanResolver.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -112,8 +135,23 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)
-        run: node --test test/partLookup.test.mjs
+        run: node --test test/partLookup.test.mjs test/partLookupAlias.test.mjs
         working-directory: field-ops-app-vite
+
+      # The TRUSTED side of barcode resolution. Pure over an injected per-type resolver, so it needs
+      # no emulator: what it proves is the aggregation (ambiguity, inactive, malformed) and that the
+      # service adds no second matcher.
+      - name: Install Functions dependencies
+        run: npm install
+        working-directory: functions
+
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+
+      - name: Scanned identifier resolver (pure)
+        run: node --test test/partAliasScanResolver.test.mjs
+        working-directory: functions
 
       - name: Receiving scan queue (pure)
         run: node --test test/receivingScanQueue.test.mjs
@@ -125,5 +163,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite

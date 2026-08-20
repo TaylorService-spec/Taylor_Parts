@@ -192,7 +192,12 @@ test("no result shape can carry an action", () => {
   const r = buildPartLookup({ catalogResult: ok(part()), token: "PRT-1001" });
   assert.equal(r.actions, undefined);
   assert.equal(r.part.quantity, undefined);
-  assert.deepEqual(Object.keys(r).sort(), ["candidates", "message", "part", "rows", "state", "token"]);
+  // Phase G added matchedBy/matchedIdentifier — descriptions of HOW the part was reached, not
+  // things to do with it. The exact key set stays pinned so an action field cannot appear quietly.
+  assert.deepEqual(
+    Object.keys(r).sort(),
+    ["candidates", "matchedBy", "matchedIdentifier", "message", "part", "rows", "state", "token"],
+  );
 });
 
 test("results are frozen — a caller cannot upgrade a denial into a result", () => {

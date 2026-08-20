@@ -58,6 +58,7 @@ import {
 } from "./partMasterCommands.js";
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
 import { listPartAliases } from "./partAliasReadService.js";
+import { resolveScannedPartIdentifier } from "./partAliasScanResolver.js";
 import { parsePartId } from "./validation.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
 import type { PartId } from "./types.js";
@@ -140,6 +141,36 @@ async function requireCatalogManage(uid: string): Promise<void> {
   }
   if (!allowed) {
     throw new HttpsError("permission-denied", "You are not authorized to manage part identifiers.", "DENIED");
+  }
+}
+
+// Phase G. The SEPARATE, narrower gate for scan RESOLUTION.
+//
+// Deliberately NOT requireCatalogManage. Alias administration and alias lookup have different
+// audiences: a warehouse user scanning a box to see what a part is needs to resolve an identifier,
+// and gating that on `inventory.catalog.manage` would hand every scanning user the authority to
+// create, deactivate and reactivate identifiers. Broadening a write capability to serve a read is
+// exactly the widening the capability catalog exists to prevent.
+//
+// `inventory.catalog.alias.read` is registered INERT and granted to nobody, so this denies for
+// every principal today. That is the correct state until activation is separately authorized -- and
+// it denies as DENIED, which the client renders as a refusal rather than as "no such part".
+const CAP_ALIAS_READ = "inventory.catalog.alias.read";
+
+async function requireAliasRead(uid: string): Promise<void> {
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: uid,
+      permissionIds: [CAP_ALIAS_READ],
+    });
+    allowed = decisions[CAP_ALIAS_READ] === true;
+  } catch (err) {
+    console.error(`[requireAliasRead] capability resolution failed for ${CAP_ALIAS_READ}`, err);
+    allowed = false;
+  }
+  if (!allowed) {
+    throw new HttpsError("permission-denied", "You are not authorized to look up part identifiers.", "DENIED");
   }
 }
 
@@ -240,6 +271,33 @@ export const probePartAliasCallable = onCall(REGION, async (request) => {
   try {
     return await resolvePartAlias({
       aliasType: d.aliasType as string,
+      rawValue: d.rawValue as string,
+      ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId as string } : {}),
+    });
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * BARCODE / ALIAS LOOKUP (Phase G). Resolve one scanned or typed identifier to the Part it points
+ * to, across every alias type the value could plausibly be.
+ *
+ * READ-ONLY: no transaction, no write, no lifecycle change, no audit event (reads are not audited
+ * anywhere in this platform's model). It returns the resolver's own vocabulary unchanged --
+ * FOUND / INACTIVE / AMBIGUOUS / NOT_FOUND / MALFORMED -- because each calls for a different fix
+ * and collapsing any pair of them would send an operator to the wrong person.
+ *
+ * It does NOT return the Part record. Reading the Part is separately governed by firestore.rules,
+ * and the client performs that read under its own authority; handing back Part fields here would
+ * launder one authority through another.
+ */
+export const resolveScannedPartIdentifierCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  const d = asObject(request.data);
+  await requireAliasRead(actorUid);
+  try {
+    return await resolveScannedPartIdentifier({
       rawValue: d.rawValue as string,
       ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId as string } : {}),
     });

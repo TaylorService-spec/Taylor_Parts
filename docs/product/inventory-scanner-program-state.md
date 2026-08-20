@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20, at Phase F.
+**Last updated:** 2026-08-20, at Phase G.
 
 ---
 
@@ -35,7 +35,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **C** — canonical multi-line receiving command | MERGED (#1354) | n/a (transport) | Written | **NOT DEPLOYED** | `inventory.stock.receive` active and granted; transport unreachable |
 | **D** — multi-scan receiving journey | MERGED (#1355) | COMPLETE | Uses Phase C | **NOT DEPLOYED** | `RECEIVING_TRANSPORT_READY` is `false` outside `eos-platform-sandbox` |
 | **E** — shared Scan workspace | MERGED (#1356) | COMPLETE | Composes C/D + existing scanner | **NOT DEPLOYED** | Reachable; supplier receiving inert until D's transport is ready |
-| **F** — lookup-only scanning | This change | COMPLETE | **No backend change** — reuses the existing client-direct `parts` read | **Hosting release only** | **No activation needed** for the Part-identity slice |
+| **F** — lookup-only scanning | MERGED (#1357) | COMPLETE | **No backend change** — reuses the existing client-direct `parts` read | **Hosting release only** | **No activation needed** for the Part-identity slice |
+| **G** — barcode / alias lookup | This change | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
 
 ### What "not deployed" means concretely
 
@@ -173,7 +174,7 @@ In rough dependency order. None is started.
 | --- | --- |
 | Lookup: serialized-unit and location rows | Activation of `inventory.serializedAsset.read` and `inventory.location.display.read` |
 | Lookup: stock / reserved / available balances | No governed client balance read exists — needs one designed, not a scanner-only projection |
-| Lookup by BARCODE rather than part code | The Phase A alias transport: `resolvePartAlias` is undeployed, `PART_IDENTIFIER_TRANSPORT_READY` is `false` in all four environments, and it is gated on `inventory.catalog.manage` (administration), which is the wrong audience for a warehouse lookup |
+| Lookup by BARCODE: **built** (Phase G) | Activation + grant of `inventory.catalog.alias.read`, plus deploying the alias callables and flipping `PART_IDENTIFIER_TRANSPORT_READY`. The audience problem is solved in the repository; only the operator actions remain |
 | Lookup: Work Order demand and purchasing context | Not designed |
 | Put-away (bin assignment after receipt) | No put-away command; no authoritative bin registry |
 | Offline scan capture and replay | Requires the batch contract in specification §15 |
@@ -193,6 +194,9 @@ Phase E suites, all registered:
 | `test/scanWorkspace.test.jsx` | vitest | `scan-workspace-tests.yml` |
 | `test/partLookup.test.mjs` (Phase F) | `node --test` | `scan-workspace-tests.yml` + `suites.json` |
 | `test/lookupScan.test.jsx` (Phase F) | vitest | `scan-workspace-tests.yml` |
+| `test/partLookupAlias.test.mjs` (Phase G) | `node --test` | `scan-workspace-tests.yml` + `suites.json` |
+| `test/lookupScanAlias.test.jsx` (Phase G) | vitest | `scan-workspace-tests.yml` |
+| `functions/test/partAliasScanResolver.test.mjs` (Phase G) | `node --test` | `scan-workspace-tests.yml` |
 
 ### A CI gap found and closed
 
@@ -225,3 +229,96 @@ The scanning suites (Phase D, E and F) are all named and are not part of that 61
 `.github/workflows/*.yml`, lists every `test/*.test.jsx`, and fails on any suite named nowhere —
 starting with the current 61 in a shrinking allowlist, the same pattern the card/composition program
 used for `LEGACY_BADGE_ALLOWLIST`.
+
+## 8. Phase G — barcode / alias lookup
+
+Lookup now resolves registered identifiers — barcodes, UPC/EAN/GTIN, supplier SKUs, manufacturer part
+numbers, legacy and customer/vendor references — not only direct Part codes.
+
+### The authority finding: administration and lookup are different audiences
+
+Phase A recorded the decision, and recorded the alternative it did not take:
+
+> `inventory.catalog.read` exists but is scoped to the Manufacturer catalog projection and is
+> registered INERT. Reusing it would be a synonym for something it does not mean. The alternative —
+> a dedicated `inventory.catalog.alias.read` — is recorded here as the option NOT taken, so the
+> choice is visible if the audience ever splits.
+> — `functions/src/partMaster/partAliasCallables.ts`
+
+**The audience has now split.** A warehouse or Parts user scanning a box to see what a part is needs
+to resolve an identifier. All five existing alias callables are gated on `inventory.catalog.manage`,
+so reusing it would hand every scanning user the authority to **create, deactivate and reactivate**
+identifiers. Broadening a write capability to serve a read is the widening the capability catalog
+exists to prevent.
+
+**Smallest authority gap:** one new resolve-only read capability, exactly the one Phase A pre-named.
+
+| Option | Verdict |
+| --- | --- |
+| Reuse `inventory.catalog.manage` | **Rejected** — grants identifier writes to every scanning user |
+| Reuse `inventory.catalog.read` | **Rejected** — scoped to the Manufacturer projection; would become a synonym for something it does not mean, and the two reads could never be granted independently |
+| Reuse a Part-read capability | **None exists** — `parts` is governed by `firestore.rules` only (Phase F finding) |
+| New `inventory.catalog.alias.read` | **Taken** — registered `active: false`, granted to no Role, no activation override |
+
+It is **narrower than the administration list on purpose**: it authorizes exactly one question —
+"which Part does this scanned identifier point to?" It does *not* authorize `listPartAliases`
+(seeing INACTIVE identifiers stays load-bearing for the write path) and grants nothing about the Part
+record itself, which `firestore.rules` still governs separately.
+
+### One resolver, one normalizer
+
+`resolvePartAlias` answers "is THIS VALUE registered as THIS TYPE?" — it needs a declared alias type
+because the document id is derived from (type, normalized value). **A scan does not carry its type.**
+
+`partAliasScanResolver.ts` decides which types a bare value could be and asks the existing resolver
+about each. It contains no parsing, no pattern matching, no normalization and no alias store: a test
+asserts the absence structurally. Doing this in the browser instead would have put a matching
+algorithm where it could disagree with the server about what a scan means — the exact failure the
+Phase A scan-to-test probe was built to prevent — and would have leaked the alias namespace one round
+trip at a time.
+
+`MANUFACTURER_PN` is asked only when a manufacturer scope is supplied, because its normalizer
+requires one; without it the type is *not a candidate* rather than an error.
+
+### Fail closed, and never a silent fallback
+
+| Situation | Outcome |
+| --- | --- |
+| Value is a Part code | `RESOLVED`, matched by part code — unchanged from Phase F |
+| Value is an active identifier | `RESOLVED`, and the screen says **which** identifier matched |
+| Registered, switched off | `ALIAS_INACTIVE` — names the part it used to mean, never "not registered" |
+| Registered against two parts | `AMBIGUOUS` — lists both, picks neither |
+| Not a code and not registered | `NOT_FOUND`, in its own words |
+| Resolution refused | `ALIAS_DENIED` — says the check could not be *made* |
+| Transport off or unreachable | `ALIAS_UNAVAILABLE` — the honest form of "we did not check" |
+| Identifier resolves to an unreadable Part | `ALIAS_PART_UNREADABLE` — names the part |
+| Value is one part's code AND another part's identifier | `CONFLICT` — resolves to neither |
+
+The rule enforced by test throughout: **an identifier failure never widens into an unrelated Part
+match.** Every branch either names the Part that identifier actually points to, or reports a failure.
+
+`CONFLICT` is why both questions are asked even when the part code matches. Preferring the direct
+match silently would hide a real data error inside a confident answer, and whichever side was
+preferred would be wrong half the time.
+
+### A copy fix Phase G forced
+
+Phase F's not-found message explained the *shape* of a part code ("part codes look like PRT-1004").
+That was right when a part code was the only valid input and became wrong the moment barcodes were
+too — telling someone their perfectly good UPC does not look like a part code is both false and
+useless. The identifier-checked path now has its own sentence.
+
+### State today
+
+Every environment has `PART_IDENTIFIER_TRANSPORT_READY: false`, so the callable is never invoked and
+lookup reports `ALIAS_UNAVAILABLE` for anything that is not a part code. That is the correct and
+truthful state: it says the barcode was not checked, rather than reporting it as unregistered.
+
+**Owner decision required to make this operable** (three separate actions, none taken):
+
+1. Activate `inventory.catalog.alias.read` (`active: true`).
+2. Grant it to the roles that should scan — a narrower set than `inventory.catalog.manage` holders.
+3. Deploy the alias callables and flip `PART_IDENTIFIER_TRANSPORT_READY` for the target environment.
+
+Doing (3) without (1) and (2) is safe and produces `ALIAS_DENIED` for everyone. Doing (1) without
+(2) is also safe — activation without a grant still denies.

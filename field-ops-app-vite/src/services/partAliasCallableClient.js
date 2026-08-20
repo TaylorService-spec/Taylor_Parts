@@ -1,4 +1,5 @@
-// Part identifier administration — the readiness-gated transport over the five alias callables.
+// Part identifier administration and lookup — the readiness-gated transport over the six alias
+// callables. Five administer identifiers; the sixth (Phase G) resolves a scanned one.
 // Structure mirrors services/receivingCallableClient.js.
 //
 // GOVERNED ACTIVATION BOUNDARY. This module exports only the five public methods. They take NO
@@ -23,6 +24,11 @@ export const CALLABLE_NAMES = Object.freeze({
   reactivate: "reactivatePartAlias",
   list: "listPartAliases",
   probe: "probePartAlias",
+  // Phase G. Gated SERVER-SIDE on `inventory.catalog.alias.read`, a narrower capability than the
+  // five administration callables use -- alias lookup and alias administration have different
+  // audiences. It ships and deploys with them, so it shares this transport and this readiness
+  // constant rather than introducing a second seam.
+  resolveScanned: "resolveScannedPartIdentifier",
 });
 
 // The status returned when the transport is switched off. Deliberately its OWN status rather than a
@@ -88,10 +94,25 @@ export const probePartAlias = ({ aliasType, rawValue, manufacturerId }) =>
     ...(manufacturerId ? { manufacturerId } : {}),
   });
 
+/**
+ * Resolve one scanned or typed identifier to the Part it points to.
+ *
+ * Returns the server's own vocabulary unchanged — FOUND / INACTIVE / AMBIGUOUS / NOT_FOUND /
+ * MALFORMED — or { errorStatus } when denied, unreachable or switched off. It deliberately does NOT
+ * return the Part record: reading the Part is separately governed by firestore.rules and the caller
+ * performs that read under its own authority.
+ */
+export const resolveScannedIdentifier = ({ rawValue, manufacturerId }) =>
+  invoke(CALLABLE_NAMES.resolveScanned, {
+    rawValue,
+    ...(manufacturerId !== undefined ? { manufacturerId } : {}),
+  });
+
 export const partAliasCallableClient = Object.freeze({
   listPartAliases,
   createPartAlias,
   deactivatePartAlias,
   reactivatePartAlias,
   probePartAlias,
+  resolveScannedIdentifier,
 });

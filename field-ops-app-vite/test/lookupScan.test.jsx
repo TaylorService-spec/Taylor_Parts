@@ -20,9 +20,15 @@ const PART = {
 const catalog = (result) => vi.fn().mockResolvedValue(result);
 const readable = (...parts) => catalog({ ok: true, parts, invalid: [] });
 
-const lookUp = (fetchParts, token = "PRT-1001") => {
-  render(<LookupScan deps={{ fetchParts }} />);
-  fireEvent.change(screen.getByLabelText(/part code/i), { target: { value: token } });
+// The identifier half. Phase G made every lookup ask TWO questions, so every test has to answer
+// both — the default is "not a registered identifier either", which is what makes a bare NOT_FOUND
+// an honest answer rather than half a search reported as a whole one.
+const identifier = (outcome) => vi.fn().mockResolvedValue(outcome);
+const noIdentifierMatch = () => identifier({ result: { result: "NOT_FOUND" } });
+
+const lookUp = (fetchParts, token = "PRT-1001", resolveIdentifier = noIdentifierMatch()) => {
+  render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
+  fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: token } });
   fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 };
 
@@ -89,15 +95,17 @@ describe("Lookup (every outcome has its own words)", () => {
   it("starts IDLE, having read nothing", () => {
     const fetchParts = readable(PART);
     render(<LookupScan deps={{ fetchParts }} />);
-    expect(screen.getByText(/scan a part label or type a part code/i)).toBeTruthy();
+    expect(screen.getByText(/scan a part label or barcode/i)).toBeTruthy();
     expect(fetchParts).not.toHaveBeenCalled();
   });
 
-  it("an empty submission reads nothing and stays IDLE", () => {
+  it("an empty submission asks NEITHER question and stays IDLE", () => {
     const fetchParts = readable(PART);
-    render(<LookupScan deps={{ fetchParts }} />);
+    const resolveIdentifier = noIdentifierMatch();
+    render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
     expect(fetchParts).not.toHaveBeenCalled();
+    expect(resolveIdentifier).not.toHaveBeenCalled();
   });
 });
 
@@ -171,13 +179,23 @@ describe("Lookup (reads only)", () => {
     expect(screen.getByText(/reads only.*nothing here moves/i)).toBeTruthy();
   });
 
-  it("imports no command, writer or transport", () => {
-    // Structural, because a future edit could add one without any test noticing.
+  it("imports no writer — checked on the BINDINGS, not the module path", () => {
+    // Phase G made this precise. LookupScan now imports from partAliasCallableClient, which also
+    // exports create/deactivate/reactivate — so a path-level ban would either fail wrongly or have
+    // to be loosened into meaninglessness. What actually matters is WHICH bindings come across.
     // import.meta.url is an http URL under vitest, so resolve from the project root instead.
     const src = readFileSync(resolve(process.cwd(), "src/modules/scan/LookupScan.jsx"), "utf8");
-    const imports = src.split("\n").filter((l) => l.trim().startsWith("import"));
-    for (const line of imports) {
-      expect(line).not.toMatch(/Command|receiving|receive|Transfer|cycleCount|workOrderService|callable/i);
+    const bindings = [...src.matchAll(/import\s+(?:\{([^}]*)\}|(\w+))[^;]*from/g)]
+      .flatMap((m) => (m[1] ? m[1].split(",") : [m[2]]))
+      .map((b) => b.trim().split(/\s+as\s+/)[0])
+      .filter(Boolean);
+
+    expect(bindings.length).toBeGreaterThan(0);
+    for (const b of bindings) {
+      expect(b).not.toMatch(/^(create|update|delete|submit|receive|adjust|transfer|deactivate|reactivate|post|save)/i);
     }
+    // and specifically: exactly ONE thing from the alias transport, the resolve-only read
+    const aliasImport = src.match(/import\s*\{([^}]*)\}\s*from\s*"[^"]*partAliasCallableClient[^"]*"/);
+    expect(aliasImport?.[1].trim()).toBe("resolveScannedIdentifier");
   });
 });
