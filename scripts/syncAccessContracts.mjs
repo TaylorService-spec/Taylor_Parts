@@ -97,6 +97,20 @@ export const GENERATED_BANNER = [
  * its cause. `generate` throws instead of quietly producing that.
  */
 export const PLATFORM_SUBSTITUTIONS = Object.freeze({
+  "compatibilityRoles.ts": Object.freeze([
+    Object.freeze({
+      canonical: 'import { PERMISSION_CATALOG } from "./permissionCatalog";',
+      generated: 'import { PERMISSION_CATALOG } from "./permissionCatalog.ts";',
+      why:
+        "a real module-resolution boundary, not a style difference. The Functions copy is " +
+        "compiled by tsc, which resolves an extensionless relative import. The client copy is " +
+        "loaded DIRECTLY by Node's type stripping in field-ops-app-vite/test/*.test.mjs, and " +
+        "Node's ESM resolver requires the explicit specifier -- extensionless throws " +
+        "ERR_MODULE_NOT_FOUND before a single assertion runs. This surfaced the moment " +
+        "compatibilityRoles gained its first RUNTIME import: while it held only 'import type', " +
+        "the specifier was erased and the difference could not exist.",
+    }),
+  ]),
   "parityFixtures.ts": Object.freeze([
     Object.freeze({
       canonical: 'import type { Timestamp } from "firebase-admin/firestore";',

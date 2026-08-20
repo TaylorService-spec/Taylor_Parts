@@ -39,6 +39,7 @@
 // maintained as ONE canonical source and mechanically synchronized by
 // scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { Role } from "../types/access";
+import { PERMISSION_CATALOG } from "./permissionCatalog.ts";
 
 const PARTS_MANAGER_ONLY = { role: "PARTS_MANAGER" };
 const PARTS_ASSOCIATE_ONLY = { role: "PARTS_ASSOCIATE" };
@@ -140,21 +141,11 @@ const SHARED_ADMIN_DISPATCHER_CONDITIONS = {
   "reorder.purchaseOrder.void": [{ kind: "isOwnAssignment" as const, params: {} }],
 };
 
-// Assessment §1: admin has every capability audited there, including the
-// Issue #175 governed-field write withheld from dispatcher, plus the
-// Row 7 Admin Portal / trusted-writer authorities.
-export const ADMIN_ROLE: Role = Object.freeze({
-  id: "admin",
-  name: "Administrator (compatibility)",
-  description:
-    "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
-  systemSeed: true,
-  compatibility: true,
-  // Privileged (Spec sec2.4 / ADR-005 sec2.4): granting/revoking this
-  // Role requires a second, distinct authorized approver, and it is
-  // never eligible for the single-admin assignApprovedRole path (Row 7).
-  privileged: true,
-  permissions: [
+// Every capability admin holds by CURATION -- each entry below was granted by a
+// specific decision, and the comments are the record of those decisions. Kept
+// verbatim so the reasoning survives; see ADMIN_ALL_PERMISSIONS beneath it for
+// what admin actually resolves with.
+const ADMIN_CURATED_PERMISSIONS = [
     ...SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS,
     "account.governedField.write",
     "admin.userStatus.write",
@@ -209,7 +200,53 @@ export const ADMIN_ROLE: Role = Object.freeze({
     // manufacturer list you cannot see is not (the same reasoning that added the read to
     // inventoryCatalogAdministrator).
     "inventory.catalog.manage",
-  ],
+];
+
+// OWNER RULING (2026-08-19): "Admin and Owner have full access to all possible
+// features and permissions." So admin holds the ENTIRE catalog, not a hand-kept
+// subset of it.
+//
+// WHY THIS IS DERIVED AND NOT A LONGER HAND LIST. The curated list above had
+// drifted 60 ids behind the catalog. Nobody removed them; the catalog simply grew
+// and the list did not, and the gap was invisible until an admin went looking for
+// a screen and found nothing. A literal list of 110 ids would be correct on the
+// day it was written and wrong again at the next capability added. Deriving it
+// means a new capability is admin's the moment it is registered, which is exactly
+// what the ruling says.
+//
+// GRANT IS STILL NOT ACTIVATION. Holding an id that is registered `active: false`
+// resolves DENY with reason `inactivePermission` regardless. This widens WHO holds
+// a capability; it does not turn any capability on, in any environment.
+//
+// SEPARATION-OF-DUTIES NOTE, deliberately recorded rather than silently applied:
+// this puts inventory.cycleCount.create/submit/reconcile in one Role, so an admin
+// can reconcile a count they themselves submitted, and it grants audit.event.read.
+// Both follow from the ruling as stated. If internal controls should override the
+// ruling for those specific ids, they belong in an explicit exclusion list here --
+// not as an accident of the list being out of date.
+const ADMIN_ALL_PERMISSIONS = [
+  ...ADMIN_CURATED_PERMISSIONS,
+  ...PERMISSION_CATALOG.map((permission) => permission.id).filter(
+    (id) => !ADMIN_CURATED_PERMISSIONS.includes(id),
+  ),
+];
+
+// Assessment §1: admin has every capability audited there, including the
+// Issue #175 governed-field write withheld from dispatcher, plus the
+// Row 7 Admin Portal / trusted-writer authorities.
+export const ADMIN_ROLE: Role = Object.freeze({
+
+  id: "admin",
+  name: "Administrator (compatibility)",
+  description:
+    "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
+  systemSeed: true,
+  compatibility: true,
+  // Privileged (Spec sec2.4 / ADR-005 sec2.4): granting/revoking this
+  // Role requires a second, distinct authorized approver, and it is
+  // never eligible for the single-admin assignApprovedRole path (Row 7).
+  privileged: true,
+  permissions: ADMIN_ALL_PERMISSIONS,
   conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
 

@@ -115,6 +115,18 @@ export const NAV_DOMAINS = [
       // (admin/dispatcher). It reads synthetic opportunities through an injected source seam and writes
       // nothing (Opportunity is pre-commitment; a governed write path arrives in a later cycle).
       { key: "opportunities", label: "Opportunities", path: "opportunities" },
+      // Sales Orders -- the cross-account INDEX over the deployed listSalesOrderIndex
+      // callable. Added because the capability was never the thing missing: admin holds
+      // all four salesOrder.* ids, the sandbox activates all four, and an admin still saw
+      // nothing about Sales Orders anywhere in the product -- the only surface was a
+      // detail route reachable by first opening the Opportunity that created the order.
+      // Sits beside Opportunities because that is the stage it follows (Opportunity -> WON
+      // -> Sales Order), not as a new top-level area (Issue #288 removed the old salesCrm
+      // placeholder for exactly that one-area reason).
+      // No legacyKey: new screen, explicit App.jsx branch; nav access falls to
+      // PLACEHOLDER_DEFAULT_ROLES (admin/dispatcher), and the read re-authorizes
+      // server-side against salesOrder.read regardless of who the nav lets through.
+      { key: "salesOrders", label: "Sales Orders", path: "sales-orders" },
     ],
   },
   {

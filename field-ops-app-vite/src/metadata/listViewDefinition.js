@@ -579,9 +579,18 @@ export function requiredIndexes(def, entity) {
   const ranges = filters.filter((f) => classify(f) === "RANGE");
   const arrays = filters.filter((f) => classify(f) === "ARRAY");
 
+  // The tiebreaker direction must MATCH what listRuntime.buildQueryDescriptor actually
+  // appends, which is the direction of the clause before it -- not a hardcoded ASC. These
+  // two must agree: this function decides which indexes get DECLARED, the runtime decides
+  // which query gets ISSUED, and a disagreement between them declares an index no query
+  // uses while the real query goes unserved. That is precisely how the Customers page came
+  // to fail -- the runtime issued updatedAt DESC + __name__ ASC, which needs a composite
+  // index, and the index this generator would have called for did not describe it either.
+  const defaultSort = def.defaultSort ?? [];
+  const lastSortDirection = defaultSort[defaultSort.length - 1]?.direction === "DESC" ? "DESC" : "ASC";
   const ordered = [
-    ...(def.defaultSort ?? []).map((s) => ({ fieldPath: s.fieldId, order: firestoreOrder(s.direction) })),
-    { fieldPath: def.tiebreaker === "__name__" ? "__name__" : def.tiebreaker, order: firestoreOrder("ASC") },
+    ...defaultSort.map((s) => ({ fieldPath: s.fieldId, order: firestoreOrder(s.direction) })),
+    { fieldPath: def.tiebreaker === "__name__" ? "__name__" : def.tiebreaker, order: firestoreOrder(lastSortDirection) },
   ];
 
   // Nothing filtered and nothing ordered needs no composite — Firestore's automatic

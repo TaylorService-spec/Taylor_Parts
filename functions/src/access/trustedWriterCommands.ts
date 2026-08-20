@@ -57,6 +57,7 @@ import {
   GENERAL_EMPLOYEE_ROLE,
   OFFICE_MANAGER_ROLE,
   SALES_MANAGER_ROLE,
+  MARKETING_MANAGER_ROLE,
   SALESPERSON_ROLE,
   GENERAL_MANAGER_ROLE,
   WAREHOUSE_MANAGER_ROLE,
@@ -188,6 +189,11 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,
+  // Owner ruling 2026-08-19. Listed HERE as well as in GOVERNED_BUSINESS_ROLES: this
+  // allowlist is what makes a Role actually grantable, and a Role defined but absent from
+  // it resolves UnknownRoleError at assignment time -- defined, visible in the catalog,
+  // and impossible to give anyone.
+  marketingManager: MARKETING_MANAGER_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,

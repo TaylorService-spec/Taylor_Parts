@@ -197,7 +197,11 @@ async function main() {
 
   // === Compatibility roles (real, production catalog) ===
 
-  await check("admin: real grants ALLOW, report.* still DENY (Owner-only, admin unaffected by Issue #325 W1)", async () => {
+  // Report access moved on 2026-08-19. Issue #325 W1 made report.* Owner-only and this
+  // test pinned admin OUT of it; the Owner ruling "Admin and Owner have full access to all
+  // possible features and permissions" put admin in. The assertion is flipped rather than
+  // dropped, so admin's report access stays something the suite states on purpose.
+  await check("admin: real grants ALLOW, and report.* now ALLOWs too (2026-08-19 full-catalog ruling)", async () => {
     const principalUid = await seedUser(1);
     await grantRole(principalUid, "admin");
     const result = await resolveEffectiveAccess({
@@ -206,7 +210,11 @@ async function main() {
     });
     assert.equal(result.decisions["account.record.read"], true);
     assert.equal(result.decisions["workOrder.create"], true);
-    assert.equal(result.decisions["report.customer.read"], false);
+    assert.equal(
+      result.decisions["report.customer.read"],
+      true,
+      "admin holds the full catalog since 2026-08-19; report.customer.read is registered active, so it resolves ALLOW",
+    );
   });
 
   await check("technician: unconditional grant ALLOWs, admin-only capability DENIEs", async () => {

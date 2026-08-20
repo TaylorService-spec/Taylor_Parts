@@ -531,7 +531,12 @@ check("D-226: an ACTIVE, registered field capability ALLOWs normally when actual
 check("D-226: an active, registered field capability with NO grant at all denies as noQualifyingGrant (not inactivePermission/unknownPermission)", () => {
   const result = resolveEffectivePermission({
     permissionId: "report.customer.field.name.read",
-    assignments: [activeAssignment("admin")], // admin's real grants never include report.* (A3 deferral)
+    // technician, NOT admin. This case needs a Role that genuinely holds no grant
+    // for the id, and admin is no longer that Role -- the 2026-08-19 Owner ruling
+    // ("Admin and Owner have full access to all possible features and permissions")
+    // gives admin the entire catalog, report.* included. technician holds no
+    // report.* id and is the honest subject for "no grant at all".
+    assignments: [activeAssignment("technician")],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
     target: baseTarget(),
@@ -540,13 +545,31 @@ check("D-226: an active, registered field capability with NO grant at all denies
   assert.equal(result.reason, "noQualifyingGrant");
 });
 
-check("D-226: no compatibility Role (admin/dispatcher/technician) is granted any report.* id today (catalog-only, no premature grant)", () => {
+// NARROWED, not deleted. This began as "no compatibility Role holds any report.*
+// id" while reports were still catalog-only. The 2026-08-19 Owner ruling gives
+// admin the whole catalog, so admin is now a legitimate report.* holder and the
+// original blanket form would assert against a standing decision.
+//
+// What the test was actually protecting is still worth protecting, and is what
+// remains: dispatcher and technician must NOT pick up report access. They gain
+// capabilities only through SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS and their own
+// short lists, so a report.* id appearing on either means something leaked out of
+// admin's set into the shared base -- exactly the accident the module's
+// "derive each Role separately, never by filtering another" note is built to prevent.
+check("dispatcher and technician hold no report.* id -- admin's catalog-wide grant must not leak into the shared base", () => {
   const reportIds = new Set(PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id));
   for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    if (role.id === "admin") continue; // holds the full catalog by Owner ruling
     for (const id of role.permissions) {
       assert.ok(!reportIds.has(id), `compatibility Role "${role.id}" unexpectedly grants "${id}"`);
     }
   }
+});
+
+check("admin holds the ENTIRE permission catalog (2026-08-19 Owner ruling), so no capability can silently fall out of its reach", () => {
+  const held = new Set(COMPATIBILITY_ROLES.admin.permissions);
+  const missing = PERMISSION_CATALOG.map((p) => p.id).filter((id) => !held.has(id));
+  assert.deepEqual(missing, [], `admin is missing ${missing.length} catalog id(s): ${missing.join(", ")}`);
 });
 
 // ---------------------------------------------------------------------------

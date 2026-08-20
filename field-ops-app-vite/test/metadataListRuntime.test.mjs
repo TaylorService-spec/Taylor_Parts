@@ -106,6 +106,23 @@ test("the tiebreaker is appended by the runtime, so no request can produce a par
   const { descriptor } = build({ sort: [{ fieldId: "status", direction: "DESC" }] });
   const last = descriptor.sort[descriptor.sort.length - 1];
   assert.equal(last.fieldId, "__name__", "documentId() closes the order");
+});
+
+// This pair is what the Customers outage came down to. Firestore serves
+// "orderBy(field), orderBy(__name__)" from its free implicit index only when both point the
+// same way; a mixed pair is a composite query that fails with failed-precondition unless an
+// index was declared for it. The runtime hardcoded ASC, so every list with a DESC sort --
+// Accounts, Work Orders, Purchase Orders, Sales Orders, Transfer Orders, Reorder Requests --
+// issued an unservable query and rendered as a retryable outage that retrying could never fix.
+test("the tiebreaker follows a DESC sort, so the query stays on Firestore implicit index", () => {
+  const { descriptor } = build({ sort: [{ fieldId: "status", direction: "DESC" }] });
+  const last = descriptor.sort[descriptor.sort.length - 1];
+  assert.equal(last.direction, "DESC", "a DESC sort must not be followed by an ASC tiebreaker");
+});
+
+test("the tiebreaker follows an ASC sort too -- it tracks its neighbour, it is not just always DESC", () => {
+  const { descriptor } = build({ sort: [{ fieldId: "status", direction: "ASC" }] });
+  const last = descriptor.sort[descriptor.sort.length - 1];
   assert.equal(last.direction, "ASC");
 });
 
