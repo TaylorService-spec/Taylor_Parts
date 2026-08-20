@@ -152,9 +152,11 @@ ok("adding Equipment did not disturb the CRM/Sales area (union)", () => {
   const c = NAV_DOMAINS.find((x) => x.key === "customers");
   assert.equal(c.label, "CRM/Sales");
   assert.equal(c.path, "customers");
-  // "customers" (customer list) + "opportunities" (Sales Cycle 2 Opportunity workspace); Equipment did not
-  // add or remove either. The Opportunities item is validated in crmSalesNav.test.mjs.
-  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities"]);
+  // "customers" (customer list) + "opportunities" (Sales Cycle 2 Opportunity workspace)
+  // + "salesOrders" (the Sales Order index); Equipment did not add or remove any of them,
+  // which is the only thing THIS test is asserting. The items themselves are validated in
+  // crmSalesNav.test.mjs.
+  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders"]);
   // The retired customers/equipment SUBNAV entry stays retired -- the new area is a
   // separate top-level domain, not a resurrection of the old placeholder.
   assert.equal(c.subnav.some((i) => (i.path ?? "") === "equipment"), false);

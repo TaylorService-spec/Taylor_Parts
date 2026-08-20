@@ -12,6 +12,7 @@ import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboa
 import AccountsList from "./modules/accounts/AccountsList";
 import SalesWorkspace from "./modules/sales/SalesWorkspace";
 import SalesOrderDetail from "./modules/sales/SalesOrderDetail.jsx";
+import SalesOrdersList from "./modules/sales/SalesOrdersList.jsx";
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
@@ -558,6 +559,10 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   Opportunity's detail pane; a static "opportunities/sales-order" prefix outranks
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
+              {/* The Sales Order INDEX. Static prefix, so it outranks the dynamic
+                  :accountId sibling below -- same ordering reasoning as the
+                  sales-order detail route directly above. */}
+              <Route path="sales-orders" element={<SalesOrdersList />} />
               <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>

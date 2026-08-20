@@ -116,7 +116,11 @@ ok("the CRM/Sales area is untouched by the Equipment addition (preserved by unio
   assert.equal(customersDomain.label, "CRM/Sales");
   // Sales Cycle 2 adds the Opportunities workspace as a second subnav item under this same CRM/Sales area
   // (rather than a second top-level "Sales" domain -- Issue #288's one-area rule, below).
-  assert.deepEqual(customersDomain.subnav.map((i) => i.key), ["customers", "opportunities"]);
+  // Sales Orders joins them as the third: it is the stage that FOLLOWS Opportunity
+  // (Opportunity -> WON -> Sales Order), so the one-area rule this assertion protects puts
+  // it here rather than in a new top-level domain. Asserted as an exact ordered list on
+  // purpose -- a fourth item appearing here should have to be a decision, not a surprise.
+  assert.deepEqual(customersDomain.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders"]);
 });
 
 ok("Sales Cycle 2: the Opportunities item is admin/dispatcher-only (no legacyKey), technician fail-closed", () => {

@@ -8,6 +8,14 @@
     "allowJs": true,
     "skipLibCheck": true,
     "noEmit": true,
+    // Required by src/access/compatibilityRoles.ts, whose import of ./permissionCatalog
+    // carries an explicit .ts extension. That extension is not a style choice: the file is
+    // GENERATED from functions/src/access/ and is loaded directly by Node ESM in
+    // test/*.test.mjs, where an extensionless specifier throws ERR_MODULE_NOT_FOUND. The
+    // difference is declared as a platform substitution in scripts/syncAccessContracts.mjs.
+    // Safe here because this project only ever typechecks (noEmit above) -- TypeScript
+    // requires exactly that pairing, since it will not rewrite the specifier on emit.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
