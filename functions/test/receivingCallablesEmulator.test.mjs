@@ -97,7 +97,14 @@ await check("INACTIVE warehouse (granted) -> failed-precondition, zero writes", 
 
 await check("missing approved source (granted) -> not-found", async () => {
   const sc = await seed();
-  const data = reqData(sc, { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: nextId("ghost"), purchaseOrderId: nextId("ghost2") } });
+  // ONE ghost id for both. The legacy invariant is that a purchase order's id IS its reorder
+  // request's id (firestore.rules pins it on create), and that coherence is now checked in the
+  // resolver BEFORE the existence read rather than in the validator after it. This fixture used two
+  // different ghost ids, so it was really exercising the identity mismatch and only reaching
+  // not-found because the old ordering looked up existence first. Same id → this tests what it says:
+  // a well-formed source that does not exist is not-found.
+  const ghost = nextId("ghost");
+  const data = reqData(sc, { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: ghost, purchaseOrderId: ghost } });
   await assert.rejects(runReceiveInventoryStock(callReq(sc.actorId, data), wiring(grantedPermission)), (e) => e instanceof HttpsError && e.code === "not-found");
 });
 

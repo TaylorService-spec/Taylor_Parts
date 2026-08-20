@@ -22,9 +22,24 @@ export const RECEIVING_INITIAL_VERSION = 1;
 export const RECEIVING_ORDER_STATUSES = ["EXPECTED", "CHECKED_IN", "PUTAWAY_COMPLETE", "CANCELLED"] as const;
 export type ReceivingOrderStatus = (typeof RECEIVING_ORDER_STATUSES)[number];
 
-// First supported source only (spec §2): the live reorder purchasing chain.
-export const RECEIVING_SOURCE_TYPES = ["REORDER_PURCHASE_ORDER"] as const;
+// The receiving SOURCE AUTHORITIES, as a closed set.
+//
+// REORDER_PURCHASE_ORDER -- the immutable legacy single-part reorder chain. Full-quantity receipt
+//   only, and the PO document is never written (firestore.rules:1092 makes it immutable, and that
+//   contract is preserved exactly).
+// PURCHASE_ORDER         -- the canonical multi-line supplier PO (purchase_orders). Partial and
+//   multi-line receipts, and the PO document IS written on every receipt (its version), which is
+//   what serializes concurrent receipts. See
+//   docs/specifications/multi-line-receiving-transaction-order.md §1 for the proof.
+//
+// This discriminator is why there is NO ambiguous collection lookup: the request STATES which
+// authority it addresses, it is checked against this closed set, and anything else fails closed.
+// Nothing sniffs a document to work out which collection it came from.
+export const RECEIVING_SOURCE_TYPES = ["REORDER_PURCHASE_ORDER", "PURCHASE_ORDER"] as const;
 export type ReceivingSourceType = (typeof RECEIVING_SOURCE_TYPES)[number];
+
+export const LEGACY_SOURCE_TYPE = "REORDER_PURCHASE_ORDER";
+export const CANONICAL_SOURCE_TYPE = "PURCHASE_ORDER";
 
 // NONE remains the default/first-slice mode. Kept as its own constant because a great deal of existing
 // code and test data refers to "the NONE line".
@@ -41,8 +56,11 @@ export const RECEIVING_LINE_STATUS = "RECEIVED" as const;
 
 export interface ReceivingSourceRef {
   readonly type: ReceivingSourceType;
-  readonly reorderRequestId: string;
-  readonly purchaseOrderId: string; // == reorderRequestId (spec §2)
+  // LEGACY ONLY, and ABSENT for a canonical PO rather than blank-filled. A canonical purchase order
+  // has no reorder request; writing an empty string would assert it has one whose id we do not know.
+  // Absence is the true statement, and the deserializer enforces the pairing in both directions.
+  readonly reorderRequestId?: string;
+  readonly purchaseOrderId: string; // legacy: == reorderRequestId (spec §2)
 }
 export interface LocationRef {
   readonly type: string;
@@ -56,6 +74,10 @@ export interface ReceivingLineValue {
   readonly lineId: string;
   readonly partId: string;
   readonly trackingMode: ReceivingLineTrackingMode;
+  // EXPECTED is what REMAINED on this PO line when the receipt was taken; RECEIVED is what was
+  // actually observed now. The first slice required them EQUAL. From Phase C they may differ, and
+  // that is the whole point: received < expected IS a partial receipt. received > expected is still
+  // rejected -- by the batch validator, before any write, measured against REMAINING not ordered.
   readonly expectedQuantity: number;
   readonly receivedQuantity: number;
   readonly status: typeof RECEIVING_LINE_STATUS;

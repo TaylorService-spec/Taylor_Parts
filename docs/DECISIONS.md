@@ -1738,3 +1738,64 @@ against the incorrect table, and was re-confirmed against the corrected one befo
 **Boundary.** Repository implementation only. No Role is *assigned* to any principal by this change,
 no capability is activated, nothing is deployed. Assignment, activation and deployment remain
 protected actions requiring separate authorization.
+
+## #115 — Multi-line purchase orders receive against `purchase_orders`, and the PO document is the concurrency serialization point
+
+**Owner, 2026-08-20.** A supplier purchase order may contain multiple part lines. A delivery may
+receive several lines together, partially receive a line, leave a remainder open, complete lines
+independently, and complete the PO only when every line is satisfied.
+
+**`purchase_orders` is the canonical multi-line authority.** No third collection was created.
+`reorder_purchase_orders` remains the immutable legacy single-part reorder authority and continues to
+work through compatibility normalization — it is normalized to one line `L1` for shared domain logic
+and is **written at no point**.
+
+Why not extend the legacy collection: the constraint is document IDENTITY, not field shape. Its
+document id *is* the reorder request id (`firestore.rules:1049,1073`), its field set is pinned by
+`keys().hasOnly` (`:1068`), and it is immutable (`:1092`). A multi-line PO spanning three parts has
+no reorder request to be named after.
+
+### The concurrency proof
+
+A Firestore transaction **query takes no predicate lock**. Deriving remaining quantity from a
+receipts query is therefore unsafe on its own: two concurrent receipts each fail to see the other's
+uncommitted receipt, both compute the same remaining, and both commit — an over-receipt no amount of
+re-checking inside the transaction can prevent.
+
+**Every canonical receipt therefore reads AND writes the purchase-order document.** Firestore aborts
+a commit whose read document changed, so the loser retries and re-derives against committed state.
+The document-level guarantee is what makes it safe; the query never had to be.
+
+The written value is a `version` increment. It is **concurrency control only** and never represents
+quantity received, quantity remaining, receipt count, or business progress. Received and remaining
+are derived from immutable committed receipts and are **not stored on the PO**.
+
+### Derived progress is separate from stored lifecycle
+
+Derived: `NOT_RECEIVED` / `PARTIALLY_RECEIVED` / `RECEIVED`, computed from receipts.
+Stored: `purchase_orders.status`, which stays `SENT` through a partial receipt and becomes `RECEIVED`
+only when every line has zero remaining. **There is no persisted `PARTIALLY_RECEIVED` status** — a
+derived value cannot drift from the receipts it is derived from, and adopting it needed no migration.
+
+### Receipt identity is target-scoped for canonical receipts
+
+The legacy derivation hashes the idempotency key alone, so one raw client key used against two
+different purchase orders resolved to one document — the second PO's receipt would silently replay
+the first. Canonical identity hashes operation + authority + purchaseOrderId + actor + key, and the
+`rcvc_` prefix makes the two namespaces provably disjoint in one collection. **Legacy identity is
+preserved exactly**: changing it would orphan every receipt deployed callers already hold.
+
+### Not done, deliberately
+
+Procurement create/approve/send remain **unexported** — `procurementService.ts` has no capability
+enforcement, actor, audit or idempotency, so exporting it would create an ungoverned purchasing write
+path. The only write to a canonical PO is the receipt-related lifecycle and version change made
+*inside* the already-governed receiving transaction; `inventory.stock.receive` was **not** broadened
+into general purchasing authority.
+
+Close-short, returns and PO amendments are separate future work. The supplier-name resolution
+migration was not run. No put-away or location authority was added, no new ledger vocabulary, and no
+Rules or index change.
+
+Recorded in `docs/product/multi-line-purchase-order-phase-b.md` §10 and
+`docs/specifications/multi-line-receiving-transaction-order.md`.

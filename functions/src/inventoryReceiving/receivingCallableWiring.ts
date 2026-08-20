@@ -87,7 +87,19 @@ export function stageReceiveAuditEvent(txn: Transaction, a: ReceiveAuditInput): 
   // receiving order, the ledger events and the assets, and the audit summary is a bounded, sanitized
   // line rather than a second copy of inventory identity.
   const serials = typeof a.serialCount === "number" ? `, ${a.serialCount} serialized asset(s)` : "";
-  const summary = `Received qty ${a.quantity} of part ${a.partId} into ${a.locationType}:${a.locationId} (reorder ${a.reorderRequestId}, ledger ${a.ledgerEventId}${serials})`.slice(0, 500);
+  // WHAT WAS RECEIVED, described honestly for both shapes.
+  //
+  // A single-line receipt keeps its original wording exactly, so existing audit records and any
+  // reader of them are unaffected. A multi-line receipt says how many lines and the batch total
+  // instead of naming one part -- naming one line's part as if it were the whole receipt would be a
+  // false summary of what happened.
+  const what = a.partId !== undefined && a.quantity !== undefined
+    ? `qty ${a.quantity} of part ${a.partId}`
+    : `${a.lineCount} line(s), total qty ${a.totalQuantity}`;
+  // Legacy receipts name their reorder request; a canonical receipt has none and names its purchase
+  // order instead, rather than printing "reorder undefined".
+  const against = a.reorderRequestId !== undefined ? `reorder ${a.reorderRequestId}` : `purchase order ${a.purchaseOrderId}`;
+  const summary = `Received ${what} into ${a.locationType}:${a.locationId} (${against}, ledger ${a.ledgerEventId}${serials})`.slice(0, 500);
   stageAuditEvent(txn, {
     actorUid: a.actorId,
     action: a.action,

@@ -293,3 +293,91 @@ untouched. No new ledger event. No location or put-away authority.
 
 **Phase C is blocked on §4.1** (partial-receipt state vocabulary) and should not begin until it is
 answered.
+
+---
+
+## 10. Phase C — IMPLEMENTED
+
+Owner decisions of 2026-08-20 settled §4.1 and authorized Phase C. Built as one PR.
+
+**Classification: `RELEASE CANDIDATE — NOT USER-OPERABLE`.**
+
+| Axis | State |
+|---|---|
+| Repository-complete behaviour | **Yes** — source resolver, batch validator, evolved command, client transport, tests, CI |
+| Capability definition / grant / activation | **Not required.** `inventory.stock.receive` is unchanged and was **not** broadened into purchasing authority |
+| **Deployment** | **Required** — the runtime change is not deployed |
+| Data migration | **Not required** — zero backfill; legacy and canonical coexist permanently |
+| Rules / indexes | **Unchanged** — the derivation query is single-field equality by construction |
+
+### What was built
+
+`docs/specifications/multi-line-receiving-transaction-order.md` carries the exact read/write order and
+the concurrency proof. In short:
+
+- **`purchase_orders` is the canonical multi-line authority.** No third collection was created.
+- **The canonical PO document is the concurrency serialization point.** Every canonical receipt reads
+  *and writes* it (a `version` increment). A Firestore transaction query takes **no predicate lock**,
+  so deriving remaining from a receipts query is unsafe on its own; the document-level abort
+  guarantee is what makes it safe. The losing transaction retries and re-derives against committed
+  state.
+- **`version` is concurrency control only.** It never represents quantity received, quantity
+  remaining, receipt count, or business progress.
+- **Received and remaining are derived from immutable committed receipts**, never stored on the PO.
+- **Derived progress** (`NOT_RECEIVED` / `PARTIALLY_RECEIVED` / `RECEIVED`) is separate from the
+  **stored lifecycle** (`purchase_orders.status`). A partial receipt leaves the stored status `SENT`;
+  it becomes `RECEIVED` only when every line has zero remaining. There is **no persisted
+  `PARTIALLY_RECEIVED` status**.
+
+### Legacy boundary
+
+Legacy `reorder_purchase_orders` remain one part, one line, full ordered quantity, and **immutable —
+the legacy PO document is written at no point**. Partial receipt is a canonical-only capability, and
+that is a consequence of the legacy document being immutable by contract rather than a choice.
+
+Two compatibility facts worth recording:
+
+- **The legacy line label stays the caller's.** A legacy PO normalizes to line `L1`, but deployed
+  clients generate their own label and have always been free to — with exactly one line there was
+  never any ambiguity. Requiring `L1` would have rejected every deployed caller.
+- **`expectedQuantity` on a stored receipt is the line's ORDERED quantity, not the remaining.**
+  Remaining would be more descriptive and is wrong: the receipt fingerprint covers this value, and
+  remaining changes the moment the receipt commits — so an identical retry would compute a different
+  fingerprint and be refused as a payload conflict instead of replaying. Ordered is stable, and it is
+  exactly what the legacy contract already meant.
+
+### Receipt identity (§4 correction)
+
+The legacy derivation hashes the idempotency key **alone**, so the same raw client key against two
+different purchase orders resolved to one document — a second PO's receipt would silently replay the
+first. Contained for one-shot legacy receipts; unacceptable for canonical ones.
+
+Canonical identity is **target-scoped**: `operation + authority + purchaseOrderId + actorId +
+idempotencyKey`, hashed over the module's existing canonical (key-sorted) encoding. Actor scoping
+matches `partMasterCommands`' `auditDocId` precedent.
+
+The `rcvc_` prefix makes the two namespaces **provably disjoint** while sharing one collection.
+Legacy identity is preserved exactly — changing it would orphan every receipt deployed callers
+already hold.
+
+### Procurement writes remain unexported
+
+`procurementService.ts` has **zero** capability enforcement, actor identity, audit, or idempotency.
+Exporting `createPurchaseOrder` / `updatePurchaseOrderStatus` as callables would create an ungoverned
+purchasing write path. **They are not exported.** The only write to a canonical PO is the
+receipt-related lifecycle and version change performed *inside* the already-governed receiving
+transaction. Governed create/approve/send commands are a separate future work package.
+
+### Still open, recorded here rather than assumed
+
+- **Close-short**, **returns**, and **PO amendments** are separate future work. A line with remaining
+  quantity stays open; a partially received PO stays `SENT`; nothing is silently closed, reduced or
+  cancelled.
+- **Supplier migration was not run.** Legacy POs keep `supplierName` (a string) and normalize with a
+  null `supplierId` rather than a guess.
+- **No put-away or location authority was added.** Receiving still selects and validates its
+  destination at receipt time through the existing authority; `PUTAWAY_COMPLETE` remains a naming
+  mismatch recorded for the future location slice, not proof of scanned bin placement.
+- **No new ledger vocabulary.** Every event is `RECEIVED`.
+- **Identifier administration (Phase A) still awaits deployment and a
+  `PART_IDENTIFIER_TRANSPORT_READY` flip.**

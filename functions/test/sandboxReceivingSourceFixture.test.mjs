@@ -32,6 +32,10 @@ const ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const TRANSACTIONAL = readFileSync(resolvePath(ROOT, "scripts/seedSandboxTransactional.js"), "utf8");
 const BASELINE = readFileSync(resolvePath(ROOT, "scripts/seedSandboxBaseline.js"), "utf8");
 const COMMAND = readFileSync(resolvePath(ROOT, "src/inventoryReceiving/receiveInventoryStockCommand.ts"), "utf8");
+// The LEGACY source read moved out of the command and into the source resolver when receiving gained
+// a second authority (Phase C). The contract it pins is unchanged -- a legacy purchase order is still
+// keyed by its reorder request id -- so the assertion follows the code rather than being relaxed.
+const RESOLVER = readFileSync(resolvePath(ROOT, "src/inventoryReceiving/receivingSourceResolver.ts"), "utf8");
 
 // Extract a `set("<collection>", "<id>", { ... })` call from the seed source.
 function seededDoc(collection, id) {
@@ -57,15 +61,25 @@ const RECEIVABLE_RRID = "ro-sbx-001";
 const SERIAL_RRID = "ro-sbx-006";
 
 // ---- the contract itself, read from the command ------------------------------------------------
-test("the command still keys the purchase order by reorderRequestId", () => {
+test("the command still keys the LEGACY purchase order by reorderRequestId", () => {
   // If this ever changes, the fixture below is wrong in a new way and must be revisited rather than
   // silently continuing to pass.
+  //
+  // THE READ MOVED, THE CONTRACT DID NOT. Receiving gained a second authority in Phase C, so source
+  // resolution now lives in receivingSourceResolver.ts. A legacy purchase order is still keyed by its
+  // reorder request id, so this assertion follows the code to where it went rather than being
+  // loosened -- which is the whole reason the tripwire exists.
   assert.match(
-    COMMAND,
+    RESOLVER,
     /collection\(REORDER_PURCHASE_ORDERS_COLLECTION\)\.doc\(reorderRequestId\)/,
-    "Receiving no longer reads the PO by reorderRequestId -- re-derive the fixture contract",
+    "Receiving no longer reads the LEGACY PO by reorderRequestId -- re-derive the fixture contract",
   );
+  // The reorder-request coherence check stayed in the command, on its legacy branch, and applies only
+  // there: a canonical purchase order has no reorder request to be coherent with.
   assert.match(COMMAND, /req\.purchaseOrderId !== undefined && req\.purchaseOrderId !== reorderRequestId/);
+  // The fixture also depends on the legacy authority remaining a member of the closed source set --
+  // without it a legacy request could not be routed at all.
+  assert.match(RESOLVER, /LEGACY_SOURCE_TYPE/);
 });
 
 // ---- required source document is emitted, under the key Receiving actually reads ---------------
