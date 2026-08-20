@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Persona sweep artifacts (scripts/personaSweep.mjs): per-run screenshots and a
+# findings JSON, regenerated on every run and specific to whichever environment
+# was swept. Evidence for a moment, not a record of the codebase.
+sweep-output/
+sweep-*.log
