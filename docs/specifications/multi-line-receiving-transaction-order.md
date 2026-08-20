@@ -191,3 +191,27 @@ trusted server-side caller, which is the correct fail-closed position.
 No Rules change. No index change (R4 is single-field equality by construction). No new ledger
 vocabulary. No location or bin authority. No close-short. No amendment. No returns. No supplier
 migration. No second receiving service — one core, two transports (§G).
+
+---
+
+## 7. A locking fact found by running it in CI
+
+The derivation read (R4) is a **transaction query** over `receiving_orders`. In the Firestore
+**emulator**, transaction locking is coarser than production: that query contends with any other
+suite writing the same collection. It surfaced as `ABORTED: Transaction lock timeout` in the
+*serialized-asset* suite running after the canonical one in the same job — **not** as a failure of the
+canonical assertions, which passed.
+
+Two things follow, and they are different:
+
+- **In CI**, the canonical suite runs in its **own job with its own emulator**. That removes the
+  cross-suite contention, and it also makes the concurrency assertions trustworthy: they must contend
+  with *each other*, not with an unrelated suite.
+- **In production**, Firestore takes locks on the documents an indexed equality query actually reads.
+  `where source.purchaseOrderId == X` reads only that order's receipts, so contention is bounded per
+  purchase order rather than per collection. That bound is a property of the query being a
+  single-field equality — the same property that keeps it index-free — so it is worth preserving if
+  the derivation is ever extended.
+
+This does not change the §1 proof. Correctness never depended on the query's locking behaviour; it
+depends on the purchase-order document being read and written by every competing receipt.

@@ -75,16 +75,6 @@ jobs:
         run: npm run test:receiveInventoryStock
         working-directory: functions
 
-      # CANONICAL multi-line receiving: partial receipts, per-line derivation, target-scoped receipt
-      # identity, and the concurrency proof that two simultaneous receipts cannot collectively exceed
-      # the remaining quantity. Runs against the SAME emulator as the legacy suite above -- both
-      # authorities, one receiving core.
-      - name: Canonical multi-line receiving (emulator)
-        run: node test/receiveCanonicalMultiLine.test.mjs
-        working-directory: functions
-        env:
-          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
-
       # Wave 7: SERIAL receipt through the SAME governed command -- atomicity with the receipt,
       # duplicate-serial refusal, replay safety, and the NONE/LOT regressions.
       - name: SERIAL receipt + Serialized Asset activation tests
@@ -100,3 +90,67 @@ jobs:
             /tmp/receiving-emulator.log
             functions/firestore-debug.log
           if-no-files-found: ignore
+
+  # ISOLATED EMULATOR, deliberately.
+  #
+  # Canonical receipts derive remaining quantity with a transaction QUERY over receiving_orders. In
+  # the Firestore EMULATOR transaction locking is coarser than production, so that query contends
+  # with any other suite writing the same collection -- which showed up as "ABORTED: Transaction lock
+  # timeout" in the SERIAL suite running after it, not as a failure of these assertions (this suite
+  # passed).
+  #
+  # Production locks are taken on the documents an indexed equality query actually reads, so the real
+  # contention is bounded per purchase order. The isolation here is about the emulator, and it also
+  # makes the concurrency assertions below trustworthy: they fire genuinely simultaneous transactions
+  # and must contend with EACH OTHER, not with an unrelated suite.
+  canonical-multi-line-receiving:
+    name: Canonical multi-line receiving (isolated emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build
+        run: npm run build
+        working-directory: functions
+
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Canonical multi-line receiving (partial, multi-line, identity, concurrency)
+        run: node test/receiveCanonicalMultiLine.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-receiving-emulator-logs
+          path: |
+            /tmp/receiving-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 7
