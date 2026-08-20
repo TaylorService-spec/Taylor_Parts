@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
+import PartIdentifiersSection from "../../shared/partMaster/PartIdentifiersSection.jsx";
 import PartWorkOrderDemandSection from "./PartWorkOrderDemandSection";
 import {
   buildPartDetailView,
@@ -1553,6 +1554,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
           hidden for everyone). A compatibility failure is scoped to this card and never affects the
           Part identity / stock / reorder behavior above or below it. */}
       <UsedInEquipmentSection hasCapability={hasCapability} accessVersion={accessVersion} partId={resolvedPartId} />
+
+      {/* Barcode & Identifiers -- the missing front end for the governed part_aliases
+          authority. Every control is protected/disabled and names the exact missing
+          deployment, because the commands exist while no endpoint reaches them. */}
+      <PartIdentifiersSection partId={resolvedPartId} partNumber={canonicalPart?.partNumber} />
 
       {loading ? (
         <p className="fo-muted">Loading stock position...</p>
