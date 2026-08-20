@@ -26,13 +26,20 @@ const keys = (items) => items.map((i) => i.key);
 const groupByKey = (model, key) => model.groups.find((g) => g.key === key);
 
 // ===== Group model shape (from the config) =====
-ok("three groups defined in order", () =>
-  assert.deepEqual(SERVICE_NAV_GROUPS.map((g) => g.key), ["workManagement", "dispatch", "technicianWorkspace"]));
+// FOUR groups since Phase E. Scanning is its own group rather than a child of Technician
+// Workspace: the shared Scan workspace serves warehouse and Parts personas too, and a Parts
+// Associate who can see only that one item would otherwise be told they are inside "Technician
+// Workspace" -- the group label is the only context they get, and it would be wrong.
+ok("four groups defined in order", () =>
+  assert.deepEqual(SERVICE_NAV_GROUPS.map((g) => g.key), ["workManagement", "dispatch", "technicianWorkspace", "scanning"]));
 
 // ===== admin: every group + Control Tower standalone =====
-ok("admin: all three groups present with their children in display order", () => {
+ok("admin: all four groups present with their children in display order", () => {
   const m = groupsFor(ROLES.ADMIN);
-  assert.deepEqual(m.groups.map((g) => g.key), ["workManagement", "dispatch", "technicianWorkspace"]);
+  assert.deepEqual(m.groups.map((g) => g.key), ["workManagement", "dispatch", "technicianWorkspace", "scanning"]);
+  // Scan reaches admin through the SAME legacyKey "fieldMode" the Technician Workspace uses -- no new
+  // ROLE_NAV_ACCESS key was invented, and no business role was added to that map.
+  assert.deepEqual(keys(groupByKey(m, "scanning").items), ["scan"]);
   assert.deepEqual(keys(groupByKey(m, "workManagement").items), ["workOrders", "jobAssignments", "warranty"]);
   // Coordinated Visits (admin/dispatcher, no legacyKey) is grouped under Dispatch.
   assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"]);
@@ -60,6 +67,11 @@ ok("dispatcher: Technician Workspace group is hidden (empty -> omitted)", () => 
   const m = groupsFor(ROLES.DISPATCHER);
   assert.deepEqual(m.groups.map((g) => g.key), ["workManagement", "dispatch"]);
   assert.equal(groupByKey(m, "technicianWorkspace"), undefined);
+  // A dispatcher has no fieldMode key, so Scan is hidden on the LEGACY path -- exactly as before.
+  // It can still appear via capabilityAccess for a principal the trusted feed says holds
+  // inventory.stock.receive; groupsFor() supplies no capability previewer, so this is the
+  // legacy-only answer and it must stay closed.
+  assert.equal(groupByKey(m, "scanning"), undefined);
 });
 ok("dispatcher: no ungrouped Service items either (Control Tower promoted)", () =>
   assert.deepEqual(groupsFor(ROLES.DISPATCHER).ungrouped, []));
@@ -74,6 +86,10 @@ ok("technician: Dispatch group hidden (all its children are dispatcher/admin-onl
   assert.equal(groupByKey(groupsFor(ROLES.TECHNICIAN), "dispatch"), undefined));
 ok("technician: Technician Workspace present, incl. Coordinated Mission (shares fieldMode access)", () =>
   assert.deepEqual(keys(groupByKey(groupsFor(ROLES.TECHNICIAN), "technicianWorkspace").items), ["technicianWorkspace", "coordinatedMission"]));
+// The technician journey is NOT moved by Phase E -- the existing Technician Workspace item is
+// untouched above, and Scan is an ADDITIONAL entry point reached through the same fieldMode key.
+ok("technician: Scanning group present through the existing fieldMode key", () =>
+  assert.deepEqual(keys(groupByKey(groupsFor(ROLES.TECHNICIAN), "scanning").items), ["scan"]));
 ok("technician: Control Tower NOT exposed (fails closed, no broadening)", () => {
   const m = groupsFor(ROLES.TECHNICIAN);
   assert.deepEqual(m.ungrouped, []);
