@@ -135,7 +135,7 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the two workflows that exist can ever appear", () => {
+test("ONLY the three workflows that exist can ever appear", () => {
   // Put-away, pick, stage, transfer, return, cycle count and truck handoff have no command. Listing
   // one — even disabled — would say it exists and that access is the only obstacle.
   const everything = deriveScanWorkflows({
@@ -143,29 +143,48 @@ test("ONLY the two workflows that exist can ever appear", () => {
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 2);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 3);
 });
 
-test("no put-away, transfer, pick, count or lookup workflow is even nameable", () => {
-  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "TRANSFER", "RETURN", "CYCLE_COUNT", "TRUCK_HANDOFF", "LOOKUP"]) {
+test("no put-away, transfer, pick or count workflow is even nameable", () => {
+  // LOOKUP left this list in Phase F, when a governed read that could truthfully answer it was
+  // found. The rest stay: none of them has a command or a read behind it.
+  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "TRANSFER", "RETURN", "CYCLE_COUNT", "TRUCK_HANDOFF"]) {
     assert.equal(SCAN_WORKFLOW[absent], undefined, `${absent} must not exist as a workflow`);
   }
 });
 
 // ─────────────────────────────────────────── the empty state
 
-test("a caller with nothing available is EMPTY, and every reason is stated", () => {
+test("the least-authorized caller still gets LOOKUP, and every other absence is explained", () => {
+  // Phase F changed this. Lookup needs no capability and no readiness, so the workspace now always
+  // has something to offer — but the workflows the caller CANNOT use still explain themselves
+  // rather than silently vanishing.
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
-  assert.equal(r.empty, true);
-  assert.equal(r.available.length, 0);
-  assert.equal(r.unavailable.length, 2, "both workflows explain themselves rather than vanishing");
+  assert.equal(r.empty, false);
+  assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
+  assert.equal(r.unavailable.length, 2, "receiving and technician scanning both explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 
-test("empty is false as soon as anything is available", () => {
+test("NO caller can currently reach the empty workspace, because lookup is unconditional", () => {
+  // The empty branch is KEPT as a guard rather than deleted: it becomes reachable again the moment
+  // any future gating is put on lookup. This records that it is unreachable TODAY, deliberately, so
+  // the guard is not mistaken for a state someone has actually seen.
+  for (const ctx of [
+    {},
+    { hasCapability: null },
+    { hasCapability: () => { throw new Error("feed down"); } },
+    { hasCapability: gate(), receivingReady: false, role: null, technicianId: null, assignedWorkOrderCount: 0 },
+  ]) {
+    assert.equal(deriveScanWorkflows(ctx).empty, false, `${JSON.stringify(Object.keys(ctx))} must still offer lookup`);
+  }
+});
+
+test("empty stays false when more becomes available", () => {
   const r = deriveScanWorkflows({ hasCapability: gate(RECEIVE_CAPABILITY), receivingReady: true });
   assert.equal(r.empty, false);
 });

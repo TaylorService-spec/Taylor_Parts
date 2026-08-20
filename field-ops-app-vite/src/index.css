@@ -2318,6 +2318,41 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-scan-workflows { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
   .fo-scan-workflows > li > button { width: auto; align-self: flex-start; }
 }
+
+/* ---------------------------------------------------------------------------
+   LOOKUP-ONLY SCANNING
+   ---------------------------------------------------------------------------
+   A read surface. It is styled to look like a label rather than a form: no
+   primary-coloured commit button beyond "Look up", no quantity controls, and an
+   explicit standing assurance that nothing here moves stock.
+
+   THE ABSENT ROWS ARE THE POINT. A field with no value is never a blank cell --
+   a blank cell in a warehouse reads as "there are none of these". Absent values
+   are muted and italic so they are visibly a STATEMENT rather than data, and
+   they carry their own reason inline.
+   ------------------------------------------------------------------------- */
+.fo-lookup { display: flex; flex-direction: column; gap: 14px; }
+.fo-lookup__assurance { margin: 0; font-size: 13px; }
+
+.fo-lookup__fields { margin: 0; display: flex; flex-direction: column; gap: 0; }
+.fo-lookup__row {
+  display: grid; grid-template-columns: 1fr; gap: 2px;
+  padding: 9px 0; border-bottom: 1px solid var(--color-border);
+}
+.fo-lookup__row:last-child { border-bottom: none; }
+.fo-lookup__row dt { font-size: 12px; color: var(--color-text-muted); }
+.fo-lookup__row dd { margin: 0; font-size: 15px; color: var(--color-text-primary); }
+
+/* Visibly not a value. */
+.fo-lookup__absent { color: var(--color-text-muted); font-style: italic; }
+.fo-lookup__absent-word { font-weight: 600; }
+.fo-lookup__absent-why { font-size: 13px; }
+
+@media (min-width: 700px) {
+  /* Label beside value once there is room, which is how a spec sheet reads. */
+  .fo-lookup__row { grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; }
+  .fo-lookup__row dt { font-size: 13px; }
+}
 /* Sales Opportunity Operating Workspace (Cycle 2). A scannable pipeline table + a read-only detail aside,
    composed on the Wave-0 primitives. No new colour tokens — tone comes from the shared StatusPill layer. */
 .fo-sales-banner { margin: 0 0 12px; font-size: 13px; }

@@ -1,9 +1,10 @@
 // SHARED SCAN WORKSPACE — the assembled entry point (vitest + jsdom).
 //
 // The availability rules are proved as pure functions in test/scanWorkflows.test.mjs. These cover
-// what only the assembled workspace shows: that it composes the two existing journeys rather than
-// reimplementing either, that an empty workspace explains itself, and that the Phase D receiving
-// properties survive being launched from here — because it is the same component.
+// what only the assembled workspace shows: that it composes the three journeys rather than
+// reimplementing any of them, that a workflow the caller cannot use still explains itself, and that
+// the Phase D receiving properties survive being launched from here — because it is the same
+// component. Lookup's own behaviour lives in test/lookupScan.test.jsx.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import ScanWorkspace from "../src/modules/scan/ScanWorkspace.jsx";
@@ -102,14 +103,22 @@ describe("Scan workspace (eligibility comes from authority, not role name)", () 
 // ────────────────────────────────────────────── the empty state
 
 describe("Scan workspace (nothing available is SAID, never a blank screen)", () => {
-  it("states plainly that nothing is available, and why", () => {
+  // Phase F changed the shape of this. Lookup needs no capability and no readiness, so the LEAST
+  // authorized caller now lands on something they can actually do rather than on an explanation of
+  // why they cannot. What must survive is that the workflows they CANNOT use still say so.
+  it("the least-authorized caller gets lookup, and every absence still explains itself", () => {
     render(<ScanWorkspace deps={{ hasCapability: () => false, receivingReady: false, role: null, technicianId: null, assignedWorkOrderCount: 0 }} />);
-    expect(screen.getByRole("heading", { name: /no scanning workflows are available/i })).toBeTruthy();
-    expect(screen.getByText(/nothing here is broken/i)).toBeTruthy();
-    // and every missing workflow explains itself
+    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
     const notAvailable = screen.getByRole("region", { name: /not available to you/i });
     expect(within(notAvailable).getByText(/not authorized to receive stock/i)).toBeTruthy();
     expect(within(notAvailable).getByText(/for technicians working an assigned job/i)).toBeTruthy();
+  });
+
+  it("the empty-workspace guard is kept, and is unreachable today rather than deleted", () => {
+    // It becomes reachable again the moment any future gating is put on lookup. Asserting its
+    // absence here records that this is by construction, not an accident.
+    render(<ScanWorkspace deps={{ hasCapability: () => false, receivingReady: false, role: null, technicianId: null, assignedWorkOrderCount: 0 }} />);
+    expect(screen.queryByRole("heading", { name: /no scanning workflows are available/i })).toBeNull();
   });
 
   it("a technician with no assigned work gets that reason, not a permission message", () => {
@@ -123,9 +132,12 @@ describe("Scan workspace (nothing available is SAID, never a blank screen)", () 
 describe("Scan workspace (operations that do not exist are ABSENT)", () => {
   it("offers no put-away, pick, stage, transfer, return, cycle count or truck handoff — enabled or disabled", () => {
     render(<ScanWorkspace deps={{ hasCapability: () => true, receivingReady: true, role: "technician", technicianId: "T1", assignedWorkOrderCount: 3 }} />);
-    for (const forbidden of [/put.?away/i, /^pick/i, /stage/i, /transfer/i, /return/i, /cycle count/i, /truck/i, /look ?up/i]) {
+    // Lookup is deliberately NOT in this list any more: Phase F found a governed read that can
+    // answer it truthfully, so it is a real workflow now. The rest still have no command behind them.
+    for (const forbidden of [/put.?away/i, /^pick/i, /stage/i, /transfer/i, /return/i, /cycle count/i, /truck/i]) {
       expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
     }
+    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
   });
 
   it("has NO disabled workflow buttons at all", () => {
@@ -280,7 +292,6 @@ describe("Scan workspace (reachable without a mouse)", () => {
   it("the unavailable list is an announced region, not unlabelled decoration", () => {
     render(<ScanWorkspace deps={{ hasCapability: () => false, receivingReady: false, role: null, technicianId: null, assignedWorkOrderCount: 0 }} />);
     expect(screen.getByRole("region", { name: /not available to you/i })).toBeTruthy();
-    expect(screen.getByRole("region", { name: /no scanning workflows available/i })).toBeTruthy();
   });
 });
 
@@ -296,5 +307,56 @@ describe("Scan workspace (a failed read is Phase D's own state, not a blank pane
     expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
     // and the user is not trapped there
     expect(screen.getByRole("button", { name: /all scanning workflows/i })).toBeTruthy();
+  });
+});
+
+// ────────────────────────────────────────────── Phase F: lookup, composed
+
+describe("Scan workspace (lookup is composed like the others)", () => {
+  it("launches lookup for a caller with no capability and no readiness at all", async () => {
+    render(<ScanWorkspace deps={{ hasCapability: () => false, receivingReady: false, role: null, technicianId: null, assignedWorkOrderCount: 0 }} />);
+    fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
+    // LookupScan's own control, not one the workspace invented.
+    expect(await screen.findByLabelText(/part code/i)).toBeTruthy();
+    expect(screen.getByText(/reads only/i)).toBeTruthy();
+  });
+
+  it("says on the chooser that lookup changes nothing, before it is opened", () => {
+    render(<ScanWorkspace deps={warehouseUser()} />);
+    expect(screen.getByText(/nothing is moved, counted or changed/i)).toBeTruthy();
+  });
+
+  it("leaving lookup returns to the full workflow list", async () => {
+    render(<ScanWorkspace deps={warehouseUser()} />);
+    fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
+    await screen.findByLabelText(/part code/i);
+    fireEvent.click(screen.getByRole("button", { name: /all scanning workflows/i }));
+    expect(screen.getByRole("button", { name: /receive a supplier purchase order/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
+  });
+
+  it("adding lookup did not change the RECEIVING journey", async () => {
+    const rd = receivingDeps();
+    render(<ScanWorkspace deps={warehouseUser({ receivingDeps: rd })} />);
+    fireEvent.click(screen.getByRole("button", { name: /receive a supplier purchase order/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "PO-1" }));
+    await screen.findByLabelText(/^part$/i);
+    fireEvent.change(screen.getByLabelText(/^part$/i), { target: { value: "P1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    expect(screen.getByText(/1 scan · 1 unit queued/i)).toBeTruthy();
+  });
+
+  it("adding lookup did not change the TECHNICIAN scanner", async () => {
+    render(<ScanWorkspace deps={technicianUser()} />);
+    fireEvent.click(screen.getByRole("button", { name: /scan parts for my work order/i }));
+    expect(await screen.findByLabelText(/part or work order code/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /scan a code/i })).toBeTruthy();
+  });
+
+  it("lookup and the technician scanner are separate surfaces, not one merged input", async () => {
+    render(<ScanWorkspace deps={technicianUser()} />);
+    fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
+    await screen.findByLabelText(/part code/i);
+    expect(screen.queryByLabelText(/part or work order code/i)).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import {
 } from "../../access/scanWorkflows.js";
 import MultiScanReceiving from "../receiving/MultiScanReceiving.jsx";
 import PartsScanner from "../mobile/PartsScanner.jsx";
+import LookupScan from "./LookupScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -43,10 +44,11 @@ import PartsScanner from "../mobile/PartsScanner.jsx";
 // DISABLED, not listed at all. A disabled control would say the operation exists and that access is
 // the only obstacle. Those commands are not built, so saying so would be false.
 //
-// Lookup-only scanning is likewise absent: every read it would need
-// (inventory.catalog.read, inventory.serializedAsset.read, inventory.location.display.read) is
-// registered active:false and denies for everyone, so a lookup screen could only show blanks or
-// invented values. Recorded as the immediate follow-on rather than shallow-built.
+// Lookup-only scanning IS here (LookupScan.jsx), but only as far as it can be truthful. It reads
+// the governed Part Master, which is governed by firestore.rules and needs no capability
+// activation. The rows it CANNOT fill -- serialized units and location, whose capabilities are
+// registered active:false, and stock balances, which have no governed client read at all -- are
+// shown as stated absences rather than omitted or invented.
 
 export default function ScanWorkspace({ deps }) {
   const [active, setActive] = useState(null);
@@ -72,6 +74,19 @@ export default function ScanWorkspace({ deps }) {
     technicianId,
     assignedWorkOrderCount,
   });
+
+  if (active === SCAN_WORKFLOW.LOOKUP) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Look up" />
+        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
+          ← All scanning workflows
+        </button>
+        {/* Read-only. It has no command and cannot move anything. */}
+        <LookupScan deps={deps?.lookupDeps} />
+      </div>
+    );
+  }
 
   if (active === SCAN_WORKFLOW.SUPPLIER_RECEIVING) {
     return (

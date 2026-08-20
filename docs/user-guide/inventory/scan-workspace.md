@@ -1,9 +1,8 @@
 # The Scan workspace
 
-**Status: built, not switched on.** The screen described here exists in the application, but supplier
-receiving through it cannot run in your environment until the receiving backend is deployed and
-switched on. Everything on this page describes what the screen does once that happens; the
-"[If you see nothing here](#if-you-see-nothing-here)" section describes what you see before it.
+**Status: partly live.** Looking a part up works as soon as the app is released — it needs nothing
+switched on. **Supplier receiving** through this screen cannot run until the receiving backend is
+deployed and switched on.
 
 ---
 
@@ -26,6 +25,21 @@ Technician Workspace > Scan**. Nothing moved. The Scan workspace is an additiona
 scanner, not a relocation, so if you have a shortcut or a habit, it still works.
 
 ## What you can do here
+
+### Look something up
+
+Scan a part label, or type a part code, and see what the part is: its part number, name,
+description, category, catalog status, control type, stocking class and unit.
+
+**This changes nothing.** There is no quantity box and no submit button. Looking a part up does not
+move it, count it, reserve it or receive it.
+
+Some rows on the result say **Not switched on** or **Not available yet** rather than showing a
+value — serialized units, location and quantity on hand. That is deliberate: those readings are not
+available to this screen yet, and showing a blank would look like the part has none of them.
+
+**You need:** permission to read the part catalog. If you do not have it, the screen says so
+plainly rather than telling you the part does not exist.
 
 ### Receive a supplier purchase order
 
@@ -55,12 +69,14 @@ Put-away, picking, staging, transfers, returns, cycle counting and truck handoff
 screen — not greyed out, not "coming soon", simply absent. Those operations are not built yet, and
 showing you a disabled button would suggest they exist and that you merely lack permission.
 
-Scanning a part just to look it up is also not here yet. It is the next thing planned for this screen.
+Looking a part up by **barcode** is not here yet either — today lookup matches on the part code
+(either the part number or the part ID), not on a scanned barcode value. Barcode matching needs the
+identifier administration feature to be switched on first.
 
-## If you see nothing here
+## If a workflow you expected is missing
 
-If the workspace tells you no scanning workflows are available, nothing is broken. It lists the reason
-for each workflow you might have expected, and each reason has a different fix:
+You will always have at least **Look something up**. Anything else you expected but cannot see is
+listed under **Not available to you**, with the reason — and each reason has a different fix:
 
 | What it says | What it means | What fixes it |
 | --- | --- | --- |
@@ -69,8 +85,12 @@ for each workflow you might have expected, and each reason has a different fix:
 | Work order scanning is for technicians working an assigned job | You are not a technician, or your account has no technician record | An administrator links your account to a technician record |
 | You have no assigned work orders to scan against right now | You are a technician, but nothing is assigned to you | A dispatcher assigns you work |
 
-The distinction between the first two matters: being told you lack permission when the real reason is
-that a feature is switched off would send you to ask for access you may already have.
+The distinction between the first two rows matters: being told you lack permission when the real
+reason is that a feature is switched off would send you to ask for access you may already have.
+
+Lookup is different — it does not check your access up front, it simply tries. If you are not
+allowed to read the part catalog, the lookup screen tells you that directly, and it never disguises
+a refusal as "no such part".
 
 ## On a phone
 

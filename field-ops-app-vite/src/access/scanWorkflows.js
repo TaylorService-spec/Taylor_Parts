@@ -26,6 +26,7 @@
 export const SCAN_WORKFLOW = Object.freeze({
   SUPPLIER_RECEIVING: "SUPPLIER_RECEIVING",
   TECHNICIAN_WORK_ORDER: "TECHNICIAN_WORK_ORDER",
+  LOOKUP: "LOOKUP",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -83,6 +84,27 @@ export function deriveScanWorkflows(ctx = {}) {
     available.push({ workflow: SCAN_WORKFLOW.SUPPLIER_RECEIVING });
   }
 
+  // ── Lookup-only scanning ────────────────────────────────────────────────────────────────────
+  //
+  // ALWAYS OFFERED, and that is a deliberate decision rather than a missing gate.
+  //
+  // Lookup reads the governed Part Master, which has NO capability in the permission catalog: the
+  // `parts` collection is governed exclusively by firestore.rules (admin/dispatcher, or an ACTIVE
+  // employee holding the PARTS_MANAGER or WAREHOUSE_MANAGER operational role). There is therefore
+  // nothing here to consult that would honestly predict the outcome.
+  //
+  // The two ways to fake one are both worse than offering the attempt:
+  //   - Re-implementing the Rules predicate client-side would create a second, weaker copy of the
+  //     access rule that can drift, and drift lies in BOTH directions — hiding a workflow from
+  //     someone who may use it, or offering one to someone who may not.
+  //   - Inventing an `inventory.part.read` capability would be a client-side authority the backend
+  //     never agreed to, and Phase E already rejected that shape.
+  //
+  // So the governed read IS the gate: the attempt is offered, and a refusal comes back as an
+  // explicit DENIED state that says so. Lookup moves nothing, so an attempt costs nothing but a
+  // refused read. See domain/partLookup.js.
+  available.push({ workflow: SCAN_WORKFLOW.LOOKUP });
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -112,11 +134,14 @@ export function deriveScanWorkflows(ctx = {}) {
 
 /** Plain-language labels. The workspace shows what a workflow IS, never an enum. */
 export const SCAN_WORKFLOW_LABEL = Object.freeze({
+  [SCAN_WORKFLOW.LOOKUP]: "Look something up",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
 });
 
 export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
+  [SCAN_WORKFLOW.LOOKUP]:
+    "Scan or type a part code to see what it is. Reads only — nothing is moved, counted or changed.",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]:
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
