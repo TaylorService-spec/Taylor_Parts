@@ -23,6 +23,9 @@ import { RECEIVING_TRANSPORT_READY } from "../config/receivingReadiness.js";
 import { adaptReceivingLocationOptions } from "../domain/receivingLocationOptionAdapter.js";
 import {
   CALLABLE_NAMES,
+  buildCanonicalReceiveRequest,
+  validateCanonicalReceiveResponse,
+  validatePurchaseOrderProgress,
   RECEIVING_OUTCOME,
   OPTIONS_REQUEST,
   buildReceiveRequest,
@@ -94,4 +97,62 @@ export async function fetchReceivingLocationOptions() {
 export async function submitReceiveInventoryStock(request) {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE };
   return submitReceiveCore(request, defaultInvoke);
+}
+
+// ═══════════════════════ CANONICAL MULTI-LINE RECEIVING (Phase D) ═══════════════════════
+//
+// Three additional methods, all behind the SAME governed RECEIVING_TRANSPORT_READY constant and the
+// same private invoker. No new readiness flag, no new override seam, and no parameter that could
+// select the invoker — while readiness is false these make ZERO callable attempts, exactly as the
+// legacy pair do.
+//
+// The two reads exist because remaining quantity cannot be derived in a browser: `purchase_orders` is
+// client-readable but `receiving_orders` is deny-all by design.
+
+// List the canonical purchase orders that may currently be received.
+export async function fetchReceivablePurchaseOrders() {
+  if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, purchaseOrders: [] };
+  try {
+    const data = await defaultInvoke(CALLABLE_NAMES.listReceivable, {});
+    const list = Array.isArray(data?.purchaseOrders) ? data.purchaseOrders : null;
+    // A malformed response is UNAVAILABLE, never a partially-trusted list. An empty list is a
+    // legitimate answer and is NOT the same thing.
+    if (list === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE, purchaseOrders: [] };
+    return { status: RECEIVING_OUTCOME.READY, purchaseOrders: list };
+  } catch (err) {
+    return { status: mapCallableErrorToStatus(err), purchaseOrders: [] };
+  }
+}
+
+// One purchase order's ordered lines plus SERVER-DERIVED remaining quantities. This is what the scan
+// queue reconciles against; without it the surface could show what was ordered and never what is
+// outstanding.
+export async function fetchPurchaseOrderProgress(purchaseOrderId) {
+  if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, progress: null };
+  try {
+    const data = await defaultInvoke(CALLABLE_NAMES.progress, { purchaseOrderId });
+    const progress = validatePurchaseOrderProgress(data);
+    if (progress === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE, progress: null };
+    return { status: RECEIVING_OUTCOME.READY, progress };
+  } catch (err) {
+    return { status: mapCallableErrorToStatus(err), progress: null };
+  }
+}
+
+// Submit a canonical multi-line receipt. `request` must already carry a stable idempotencyKey; it is
+// preserved verbatim and never regenerated, so a retry of the same intent replays rather than
+// applying twice.
+export async function submitCanonicalReceive(request) {
+  if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null };
+  const built = buildCanonicalReceiveRequest(request);
+  // Refused CLIENT-SIDE without invoking: a malformed request never reaches the callable.
+  if (built === null) return { status: RECEIVING_OUTCOME.INVALID, receipt: null };
+  try {
+    const data = await defaultInvoke(CALLABLE_NAMES.receive, built);
+    const receipt = validateCanonicalReceiveResponse(data);
+    if (receipt === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null };
+    return { status: receipt.outcome === "replayed" ? RECEIVING_OUTCOME.REPLAYED : RECEIVING_OUTCOME.APPLIED, receipt };
+  } catch (err) {
+    return { status: mapCallableErrorToStatus(err), receipt: null };
+  }
 }

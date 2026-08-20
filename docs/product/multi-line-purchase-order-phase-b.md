@@ -381,3 +381,72 @@ transaction. Governed create/approve/send commands are a separate future work pa
 - **No new ledger vocabulary.** Every event is `RECEIVED`.
 - **Identifier administration (Phase A) still awaits deployment and a
   `PART_IDENTIFIER_TRANSPORT_READY` flip.**
+
+---
+
+## 11. Phase D — multi-scan receiving UX, IMPLEMENTED
+
+The warehouse journey over the Phase C transport: pick or scan a purchase order → ordered lines with
+outstanding quantities → continuous multi-scan queue → aggregation and serial handling →
+expected-versus-observed reconciliation → corrections → atomic submission → per-line receipt →
+updated progress.
+
+**Classification: `RELEASE CANDIDATE — NOT USER-OPERABLE`** — the Functions and client changes are
+not deployed and `RECEIVING_TRANSPORT_READY` is false everywhere except `platform-sandbox`.
+
+### Two reads had to exist
+
+`purchase_orders` is client-readable, but `receiving_orders` is **deny-all by design** — so a browser
+cannot derive what REMAINS. Without a trusted read the scanning surface could show what was ordered
+and never what is outstanding, which is the one number the whole reconciliation is about.
+
+`getPurchaseOrderReceivingProgress` and `listReceivablePurchaseOrders` are gated on the **same
+`inventory.stock.receive` capability** as the write — no new capability, and the people who may take a
+receipt are exactly the people who need to see what is left on it. Both are **read-only and open no
+transaction**: a read decides nothing, and a transaction query over `receiving_orders` is what
+produced the emulator lock contention Phase C recorded. They reuse the same normalizer and receipt
+fold the command uses, so the number the screen shows and the number the command enforces cannot
+disagree.
+
+### The queue keeps raw observations, not a running total
+
+Every scan is stored in order and the per-line totals are a **projection** over them. Undo is dropping
+the last observation rather than reversing arithmetic; correcting one entry cannot corrupt a total,
+because there is no total to corrupt; and "each scan = +1" and "type a quantity" are the same
+mechanism. A running counter would make undo and correction into inverse operations that have to
+agree with what they invert, which is where off-by-one bugs live.
+
+Serialized units are never aggregated — one serial is one physical unit — and a repeated serial is a
+**duplicate**, blocked rather than counted.
+
+### Blocked scans are never silently dropped or silently included
+
+Over-receipt, not-on-order, duplicate serial, already-satisfied, and both serial mismatches each get
+their own state and plain-language reason. **Any** blocked entry prevents submission, and
+`buildSubmissionLines` returns null for such a queue so no payload can be built from one. Over-receipt
+is attributed to the scan that crossed the limit, not to the whole line — the operator needs to know
+which box was the extra one.
+
+### The legacy journey is untouched
+
+`ReceiveAgainstPurchaseOrder` is composed exactly as before, with the same props and the same
+remount-on-done behaviour. The workspace presents two journeys because a reorder PO and a supplier PO
+are genuinely different things — one part at a full quantity against an immutable document, versus
+several lines accepting partial receipts over time — not two skins on one thing.
+
+### Out of scope, and ABSENT rather than disabled
+
+No put-away, bins, transfers, returns, close-short or amendments. A disabled control would imply a
+governed command exists and that the operator merely lacks permission; none exists, so there is no
+control. A short line stays open and a partially received order stays `SENT`.
+
+### Evidence
+
+28 pure queue assertions · 23 journey assertions · 14 emulator assertions on the progress read ·
+Phase C's 37 canonical assertions re-run green · client 196 node suites, 131 vitest files / 1362
+tests · `tsc` 0 · `test:access` 0 · build clean.
+
+Two governance tripwires fired and were **extended rather than widened**: the pinned callable-name
+list and the "exports ONLY governed public methods" guard. Each new method now carries its own
+readiness-false assertion proving zero callable attempts, so the guard protects five methods instead
+of two.

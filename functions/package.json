@@ -130,7 +130,8 @@
     "test:e2eEmulatorSuite": "npm run build && node scripts/runE2eEmulatorSuite.mjs",
     "test:seedOperationsDemoData": "node test/seedOperationsDemoData.test.mjs",
     "test:partIdentifiersEmulator": "npm run build && node --test test/partAliasCallables.test.mjs",
-    "test:receivingMultiLineEmulator": "npm run build && node --test test/receiveInventoryStockCommand.test.mjs test/inventoryReceivingFoundation.test.mjs && node test/receiveCanonicalMultiLine.test.mjs"
+    "test:receivingMultiLineEmulator": "npm run build && node --test test/receiveInventoryStockCommand.test.mjs test/inventoryReceivingFoundation.test.mjs && node test/receiveCanonicalMultiLine.test.mjs",
+    "test:receivingProgressRead": "npm run build && node test/purchaseOrderProgressRead.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

@@ -15,6 +15,7 @@ on:
       - "functions/test/receiveInventoryStockCommand.test.mjs"
       - "functions/src/purchasing/**"
       - "functions/test/receiveCanonicalMultiLine.test.mjs"
+      - "functions/test/purchaseOrderProgressRead.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -28,6 +29,7 @@ on:
       - "functions/test/receiveInventoryStockCommand.test.mjs"
       - "functions/src/purchasing/**"
       - "functions/test/receiveCanonicalMultiLine.test.mjs"
+      - "functions/test/purchaseOrderProgressRead.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -140,6 +142,16 @@ jobs:
 
       - name: Canonical multi-line receiving (partial, multi-line, identity, concurrency)
         run: node test/receiveCanonicalMultiLine.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      # The trusted progress READ the multi-scan surface reconciles against. Runs in the SAME
+      # isolated emulator as the command suite above, deliberately: what these prove is that the
+      # number the screen shows and the number the command enforces are the same number, derived
+      # from the same committed receipts.
+      - name: Purchase order receiving progress read (emulator)
+        run: node test/purchaseOrderProgressRead.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080

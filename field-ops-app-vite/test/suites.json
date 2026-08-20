@@ -780,6 +780,10 @@
     {
       "file": "test/canonicalReceivingTransport.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/receivingScanQueue.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
