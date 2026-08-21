@@ -801,6 +801,107 @@ export const INVENTORY_CYCLE_COUNT_RECONCILER_ROLE: Role = Object.freeze({
   permissions: ["inventory.cycleCount.reconcile"],
 }) as Role;
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// SCANNER OPERATIONS -- the four Roles that make the scanner reachable by the people it was built for.
+//
+// WHY NEW ROLES RATHER THAN PERMISSIONS ON warehouseAssociate / partsAssociate. Those four are
+// ORG-CHART POSITIONS and carry no permissions by design -- "Carries no permissions of its own" is
+// written into each of them. Position says where someone sits; a functional Role says what they may
+// do, and a principal holds both. Putting scanner capabilities onto a position Role would collapse
+// that distinction and make every future warehouse hire an inventory writer by virtue of their job
+// title. These follow INVENTORY_TRANSFER_OPERATOR_ROLE's pattern exactly.
+//
+// DECLARING ANY OF THESE GRANTS NOTHING. A principal holds one only via a governed, audited
+// roleAssignment.
+
+// Put-away operator -- the floor job: stow what has arrived, stage what is going out.
+//
+// Carries bin.read because a stow must confirm the rack is real before anything goes into it, and
+// placement.record because that is the act itself. It deliberately does NOT carry bin.manage:
+// putAwayCommand.ts states the rule plainly -- "a warehouse operator stows all day and should never
+// be able to retire a rack." Nor does it carry inventory.stock.receive: accepting stock into the
+// company's custody and recording where it was put are different authorities, and Decision #116 is
+// what makes that separation possible. A placement writes no ledger event, changes no quantity and
+// touches no balance, which is precisely why this Role is safe to hand out widely.
+export const INVENTORY_PUT_AWAY_OPERATOR_ROLE: Role = Object.freeze({
+  id: "inventoryPutAwayOperator",
+  name: "Inventory Put-Away Operator",
+  description:
+    "Durable least-privilege Role for stowing and staging stock: confirming a bin exists and recording that stock was placed in it. Carries exactly inventory.location.bin.read and inventory.placement.record. It confers NO authority to create or retire racking, no receiving authority, and no ability to change any quantity -- a placement records where stock is, never what there is (Decision #116). Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.location.bin.read",
+    "inventory.placement.record",
+  ],
+}) as Role;
+
+// Bin administrator -- labelling the racking, and retiring it.
+//
+// A different audience from the operator above, and a much smaller one. Retiring a bin moves no
+// stock, but it removes a destination the floor depends on, and a bin that vanishes mid-shift is how
+// a stow ends up recorded somewhere nobody intended. bin.read is included because administering a
+// bin requires resolving it first.
+export const INVENTORY_BIN_ADMINISTRATOR_ROLE: Role = Object.freeze({
+  id: "inventoryBinAdministrator",
+  name: "Inventory Bin Administrator",
+  description:
+    "Durable least-privilege Role for maintaining the physical bin registry: creating, deactivating and reactivating bins within a warehouse. Carries exactly inventory.location.bin.manage and inventory.location.bin.read. A bin is a DESCRIPTIVE sub-location -- the warehouse remains the custody authority (Decision #116) -- so this Role moves no stock and changes no balance. It carries no authority to place stock into a bin. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.location.bin.manage",
+    "inventory.location.bin.read",
+  ],
+}) as Role;
+
+// Returns intake clerk -- recording that something came back.
+//
+// Carries intake and NOTHING adjacent, because Decision #118 makes intake and disposition separate
+// authorities and a return must never automatically restore sellable stock. There is deliberately no
+// disposition capability here -- not because it was forgotten, but because disposition does not
+// exist, and its open decisions are packaged in
+// docs/product/returns-disposition-decision-package.md. When it exists it gets its own Role.
+export const INVENTORY_RETURNS_INTAKE_CLERK_ROLE: Role = Object.freeze({
+  id: "inventoryReturnsIntakeClerk",
+  name: "Inventory Returns Intake Clerk",
+  description:
+    "Durable least-privilege Role for taking a return in: recording what came back, from where, in what condition, and leaving it AWAITING_DISPOSITION. Carries exactly inventory.returns.intake. It confers NO disposition authority and cannot restore anything to sellable stock -- intake and disposition are separate authorities (Decision #118). Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.returns.intake",
+  ],
+}) as Role;
+
+// Inventory lookup reader -- the read bundle a scanning operator needs to answer "what is this".
+//
+// Every id here is a READ. Nothing in this Role can write anything, which is what makes it the one
+// scanner Role safe to grant broadly -- including to people who never touch stock.
+//
+// A BUNDLE rather than four Roles because these four reads answer one question between them: what is
+// this thing, what is it called elsewhere, how many are there, and where. Splitting them would
+// produce Roles nobody would ever grant separately, which is fragmentation rather than least
+// privilege.
+export const INVENTORY_LOOKUP_READER_ROLE: Role = Object.freeze({
+  id: "inventoryLookupReader",
+  name: "Inventory Lookup Reader",
+  description:
+    "Durable least-privilege READ-ONLY Role for looking a part up by code, barcode or serial and seeing what is on hand and where. Carries exactly inventory.balance.read, inventory.catalog.alias.read, inventory.serializedAsset.read and inventory.location.display.read. Every id is a read: this Role writes nothing, moves nothing, and confers no catalog administration -- notably NOT inventory.catalog.manage, which administers aliases rather than resolving them. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.serializedAsset.read",
+    "inventory.location.display.read",
+  ],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -828,4 +929,8 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   inventoryTransferOperator: INVENTORY_TRANSFER_OPERATOR_ROLE,
   inventoryCycleCountCounter: INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
   inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+  inventoryPutAwayOperator: INVENTORY_PUT_AWAY_OPERATOR_ROLE,
+  inventoryBinAdministrator: INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  inventoryReturnsIntakeClerk: INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
+  inventoryLookupReader: INVENTORY_LOOKUP_READER_ROLE,
 });

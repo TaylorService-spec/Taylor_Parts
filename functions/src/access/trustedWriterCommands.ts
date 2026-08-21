@@ -54,6 +54,10 @@ import {
   INVENTORY_TRANSFER_OPERATOR_ROLE,
   INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
   INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+  INVENTORY_PUT_AWAY_OPERATOR_ROLE,
+  INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
+  INVENTORY_LOOKUP_READER_ROLE,
   GENERAL_EMPLOYEE_ROLE,
   OFFICE_MANAGER_ROLE,
   SALES_MANAGER_ROLE,
@@ -188,6 +192,14 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   inventoryTransferOperator: INVENTORY_TRANSFER_OPERATOR_ROLE,
   inventoryCycleCountCounter: INVENTORY_CYCLE_COUNT_COUNTER_ROLE,
   inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
+  // SCANNER PROMOTION 2026-08-20. Listed here as well as in GOVERNED_BUSINESS_ROLES for exactly the
+  // reason the comment above gives: without an entry here a Role is defined, visible in the catalog,
+  // and impossible to give anyone. All four are non-privileged, and adding them still grants
+  // NOTHING -- it only makes them reachable by the governed, audited grantRole path.
+  inventoryPutAwayOperator: INVENTORY_PUT_AWAY_OPERATOR_ROLE,
+  inventoryBinAdministrator: INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  inventoryReturnsIntakeClerk: INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
+  inventoryLookupReader: INVENTORY_LOOKUP_READER_ROLE,
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
   salesManager: SALES_MANAGER_ROLE,

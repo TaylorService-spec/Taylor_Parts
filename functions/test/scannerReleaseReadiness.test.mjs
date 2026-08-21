@@ -85,17 +85,87 @@ test("TECHNICIAN holds NO scanner capability — their scanner needs none", () =
   assert.deepEqual(held, []);
 });
 
-test("NO WAREHOUSE OR PARTS PERSONA HOLDS ANY SCANNER CAPABILITY", () => {
-  // THE RELEASE-BLOCKING FACT, pinned so it cannot be mistaken for an oversight or quietly assumed
-  // fixed. Activation alone would change nothing for the people the scanner was built for: a Parts
-  // Associate still could not receive, count, stow, pick or transfer.
+// ═══════════════════════════════════════════ the four scanner Roles (sandbox promotion)
+//
+// THE CORRECTION THIS SECTION RECORDS. The test below was written as "the release-blocking fact",
+// and the fact was true -- but the fix it implied was wrong. warehouseManager, warehouseAssociate,
+// partsManager and partsAssociate carry no permissions BY DESIGN: they are org-chart POSITIONS, and
+// each one says so in its own description. Operational authority has always lived in separate
+// FUNCTIONAL Roles (inventoryTransferOperator, inventoryCycleCountCounter), and a principal holds
+// both a position and one or more functions.
+//
+// So the scanner became reachable by adding four functional Roles, NOT by putting capabilities onto
+// the positions -- which would have made every future warehouse hire an inventory writer by virtue
+// of their job title. These tests pin what each new Role carries, and just as importantly what it
+// does not.
+
+const SCANNER_ROLE_CONTRACT = Object.freeze({
+  INVENTORY_PUT_AWAY_OPERATOR_ROLE: ["inventory.location.bin.read", "inventory.placement.record"],
+  INVENTORY_BIN_ADMINISTRATOR_ROLE: ["inventory.location.bin.manage", "inventory.location.bin.read"],
+  INVENTORY_RETURNS_INTAKE_CLERK_ROLE: ["inventory.returns.intake"],
+  INVENTORY_LOOKUP_READER_ROLE: [
+    "inventory.balance.read", "inventory.catalog.alias.read",
+    "inventory.serializedAsset.read", "inventory.location.display.read",
+  ],
+});
+
+test("each scanner Role carries EXACTLY its stated capabilities and nothing else", () => {
+  for (const [key, expected] of Object.entries(SCANNER_ROLE_CONTRACT)) {
+    const role = governedRoles[key];
+    assert.ok(role, `${key} must exist`);
+    assert.deepEqual([...role.permissions].sort(), [...expected].sort(), `${role.id} drifted`);
+    assert.equal(role.privileged, false, `${role.id} administers no security policy`);
+  }
+});
+
+test("STOWING AND RETIRING RACKING STAY SEPARATE", () => {
+  // putAwayCommand.ts states the rule: "a warehouse operator stows all day and should never be able
+  // to retire a rack." Two Roles is how that sentence is enforced rather than merely written down.
+  const operator = governedRoles.INVENTORY_PUT_AWAY_OPERATOR_ROLE;
+  const admin = governedRoles.INVENTORY_BIN_ADMINISTRATOR_ROLE;
+  assert.equal(holds(operator, "inventory.location.bin.manage"), false, "a stower must not retire racking");
+  assert.equal(holds(admin, "inventory.placement.record"), false, "a bin administrator must not stow stock");
+});
+
+test("NO scanner Role carries inventory.stock.receive — the deferral is still in force", () => {
+  // Accepting stock into the company's custody is a different authority from recording where it went,
+  // and widening who may do it stays the separately deferred Owner decision it already was.
+  for (const key of Object.keys(SCANNER_ROLE_CONTRACT)) {
+    assert.equal(holds(governedRoles[key], "inventory.stock.receive"), false, `${key} must not confer receiving`);
+  }
+});
+
+test("the LOOKUP Role is read-only — every id it carries is a read", () => {
+  // The one scanner Role safe to grant broadly. If a write ever appears here, that stops being true.
+  for (const id of governedRoles.INVENTORY_LOOKUP_READER_ROLE.permissions) {
+    assert.match(id, /\.read$/, `${id} is not a read and must not be in the lookup bundle`);
+  }
+  // Resolving an alias is not administering one. Reusing catalog.manage here was the exact mistake
+  // the alias-lookup capability was created to avoid.
+  assert.equal(holds(governedRoles.INVENTORY_LOOKUP_READER_ROLE, "inventory.catalog.manage"), false);
+});
+
+test("returns intake confers NO disposition authority, because disposition does not exist", () => {
+  // Decision #118. The Role carries intake and nothing adjacent; when disposition exists it gets its
+  // own Role. A capability id containing "disposition" appearing here would mean #118 was crossed.
+  const clerk = governedRoles.INVENTORY_RETURNS_INTAKE_CLERK_ROLE;
+  assert.deepEqual(clerk.permissions, ["inventory.returns.intake"]);
+  assert.equal(clerk.permissions.some((id) => /disposition/i.test(id)), false);
+});
+
+test("THE POSITIONS STILL CARRY NOTHING — and that is the design, not an oversight", () => {
+  // Each of these four says "Carries no permissions of its own" in its own description. A position
+  // describes where somebody sits in the org chart; it must never be what makes them an inventory
+  // writer. If a scanner capability ever appears on one of them, somebody has taken the shortcut
+  // this project deliberately did not take -- and this test is where that gets caught.
   //
-  // Granting these is a ROLLOUT ACTION and an Owner decision, not a repository fix. There is already
-  // a recorded deferral on the nearest one -- compatibilityRoles.ts notes PARTS_ASSOCIATE is
-  // DEFERRED for `inventory.stock.receive` "until a separately ratified scoped model or an explicit
-  // Owner acceptance of global Receiving authority".
+  // The scanner is reached instead by holding one of the four functional Roles above, granted per
+  // principal through an audited roleAssignment. That grant is a rollout action, not a repo change,
+  // and it stays that way.
   //
-  // When grants are made, this test is where the change is declared.
+  // The recorded deferral is unaffected: compatibilityRoles.ts notes PARTS_ASSOCIATE is DEFERRED for
+  // `inventory.stock.receive` "until a separately ratified scoped model or an explicit Owner
+  // acceptance of global Receiving authority", and no Role added here confers receiving.
   for (const key of WAREHOUSE_PERSONAS) {
     const role = governedRoles[key];
     assert.ok(role, `${key} should exist in the governed role model`);

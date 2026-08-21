@@ -12,21 +12,43 @@ If a grant or an activation changes, those tests fail until they are updated in 
 
 ---
 
-## 1. The release-blocking finding
+## 1. The release-blocking finding — and how it was actually resolved
 
-> **No warehouse or parts persona holds any scanner capability.**
+> **RESOLVED 2026-08-20 by the sandbox promotion.** The finding below was true, and the fix it
+> originally implied was **wrong**. Both are recorded, because the correction is the useful part.
 
-`warehouseManager`, `warehouseAssociate`, `partsManager` and `partsAssociate` hold **none** of the
-thirteen. Activation alone would therefore change nothing for the people the scanner was built for: a
-Parts Associate still could not receive, count, stow, pick or transfer. They reach **lookup only**,
-and lookup is reachable because it is governed by `firestore.rules` rather than by a capability.
+### What was found
 
-This is not an oversight to fix in code. Granting is a **rollout action and an Owner decision**, and
-there is already a recorded deferral on the nearest one — `compatibilityRoles.ts` notes that
-`PARTS_ASSOCIATE` is deferred for `inventory.stock.receive` *"until a separately ratified scoped
-model or an explicit Owner acceptance of global Receiving authority."*
+`warehouseManager`, `warehouseAssociate`, `partsManager` and `partsAssociate` held **none** of the
+thirteen capabilities. Activation alone would have changed nothing for the people the scanner was
+built for: a Parts Associate still could not count, stow, pick or transfer.
 
-The same question now applies to twelve more capabilities. **§5 states the exact grant list.**
+### Why the obvious fix was wrong
+
+This document originally proposed granting capabilities **to those four roles**. That would have been
+a mistake. Those four are **org-chart positions** and carry no permissions by design — each says
+*"Carries no permissions of its own"* in its own description. Operational authority has always lived
+in separate **functional roles** (`inventoryTransferOperator`, `inventoryCycleCountCounter`), and a
+principal holds a position *and* one or more functions.
+
+Putting scanner capabilities on a position would have made every future warehouse hire an inventory
+writer by virtue of their job title.
+
+### What was done instead — four functional roles
+
+| Role | Carries | Deliberately excludes |
+| --- | --- | --- |
+| `inventoryLookupReader` | The four lookup **reads** | Any write; `inventory.catalog.manage` |
+| `inventoryPutAwayOperator` | `bin.read` + `placement.record` | `bin.manage` — a stower must not retire racking |
+| `inventoryBinAdministrator` | `bin.manage` + `bin.read` | `placement.record` — a labeller must not stow |
+| `inventoryReturnsIntakeClerk` | `returns.intake` | Any disposition authority (#118) |
+
+All four are `privileged: false`, registered in the governed catalog **and** in the assignable
+allowlist — a role missing from the latter is visible everywhere and impossible to actually grant.
+
+**`inventory.stock.receive` is carried by none of them.** The recorded deferral stands:
+`compatibilityRoles.ts` notes `PARTS_ASSOCIATE` is deferred for it *"until a separately ratified
+scoped model or an explicit Owner acceptance of global Receiving authority."*
 
 ## 2. Capability matrix
 
@@ -57,20 +79,34 @@ ids and reads live authorities. Seeded data is a *demonstration* concern, not a 
 
 `VISIBLE` = offered and usable · `DENIED` = listed with a stated reason · `N/A` = never applies
 
+As assigned in **platform-sandbox** after the promotion. A position with no functional role assigned
+still reaches lookup and nothing else — that invariant is separately asserted.
+
 | Persona | Lookup | Receiving | Transfers | Cycle count | Put-away | Pick/stage | Tech scanner |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Admin / Owner | VISIBLE | VISIBLE¹ | VISIBLE | VISIBLE | VISIBLE | VISIBLE | N/A |
 | Dispatcher | VISIBLE | VISIBLE¹ | DENIED | DENIED | DENIED | DENIED | N/A |
-| Technician | VISIBLE | DENIED | DENIED | DENIED | DENIED | DENIED | VISIBLE |
-| Parts Associate | VISIBLE | **DENIED** | **DENIED** | **DENIED** | **DENIED** | **DENIED** | N/A |
-| Parts Manager | VISIBLE | **DENIED** | **DENIED** | **DENIED** | **DENIED** | **DENIED** | N/A |
-| Warehouse Associate | VISIBLE | **DENIED** | **DENIED** | **DENIED** | **DENIED** | **DENIED** | N/A |
-| Warehouse Manager | VISIBLE | **DENIED** | **DENIED** | **DENIED** | **DENIED** | **DENIED** | N/A |
+| Technician | VISIBLE | DENIED | DENIED² | DENIED | DENIED | DENIED | VISIBLE |
+| Parts Associate | VISIBLE | **DENIED** | DENIED | VISIBLE | VISIBLE | VISIBLE | N/A |
+| Parts Manager | VISIBLE | **DENIED** | DENIED | VISIBLE | VISIBLE | VISIBLE | N/A |
+| Warehouse Associate | VISIBLE | **DENIED** | VISIBLE | VISIBLE | VISIBLE | VISIBLE | N/A |
+| Warehouse Manager | VISIBLE | **DENIED** | VISIBLE | DENIED³ | VISIBLE | VISIBLE | N/A |
 
 ¹ Only where `RECEIVING_TRANSPORT_READY` is true — the sandbox. Elsewhere it is DENIED for
 **readiness**, and the screen says so rather than claiming a permission problem.
 
-The bold column is the finding in §1.
+² **A real gap, recorded rather than fudged.** Accepting a truck handoff needs
+`inventory.transfer.receive`, and the only role carrying it is `inventoryTransferOperator`, which also
+confers create/dispatch/cancel — far too much for a van. A receive-only role is required before a
+technician can take a handoff; inventing one was out of scope for this promotion.
+
+³ **Deliberate.** Warehouse Manager holds `inventoryCycleCountReconciler` and **not**
+`inventoryCycleCountCounter`, so they cannot open a count and then approve their own variance
+(DECISIONS #111). A manager reconciling what an associate counted is the control working; one person
+holding both halves is the control being waived, and that must be an explicit grant decision rather
+than a default.
+
+The bold column is what remains withheld: **receiving**, per §1.
 
 ## 4. What is NOT a gap
 
@@ -97,21 +133,19 @@ Each is independent: activating one lights its workflow and leaves the rest sayi
 
 ### 5b. Grants by persona — the Owner decision
 
-A **suggested** mapping, offered as a starting point rather than a recommendation to adopt as-is.
-Who may receive stock, and whether that authority is global or scoped to an assigned warehouse, is
-exactly the question already deferred once.
+Grants are made by assigning **functional roles**, never by adding capabilities to a position (§1).
 
-| Persona | Suggested grants | Why |
+| Persona | Roles assigned in sandbox | Why |
 | --- | --- | --- |
-| Parts Associate | bin.read, placement.record, cycleCount.create/submit, balance.read, alias.read, serializedAsset.read, location.display.read | The floor job: stow, pick, count, look things up |
-| Warehouse Associate | same as Parts Associate, plus transfer.dispatch/receive | Also moves stock between sites and onto trucks |
-| Parts Manager | Associate's set, plus bin.manage | Also labels racking |
-| Warehouse Manager | Associate's set, plus bin.manage, returns.intake | Also labels racking and takes returns in |
-| Technician | transfer.receive, cycleCount.create/submit | Accepts a truck handoff; counts their own van |
-| Dispatcher | unchanged | Receiving only, as today |
+| Parts Associate | lookupReader · putAwayOperator · cycleCountCounter | The floor job: look things up, stow, pick, count |
+| Warehouse Associate | the above, plus transferOperator | Also moves stock between sites and onto trucks |
+| Parts Manager | Associate's set, plus binAdministrator | Also labels racking |
+| Warehouse Manager | lookupReader · putAwayOperator · binAdministrator · transferOperator · returnsIntakeClerk · **cycleCountReconciler** | Labels racking, takes returns in, and **approves** counts — with no counter role, so they cannot approve their own |
+| Technician | lookupReader | See §3 note ² — a receive-only transfer role does not exist yet |
+| Dispatcher / Admin | unchanged | Compatibility roles, as today |
 
-**`inventory.stock.receive` is deliberately absent from every row.** That is the deferred decision,
-and it should be settled on its own terms rather than swept in with twelve others.
+**`inventory.stock.receive` is carried by no role in this table.** That is the deferred decision, and
+it should be settled on its own terms rather than swept in with the rest.
 
 ### 5c. Readiness flips — 3
 

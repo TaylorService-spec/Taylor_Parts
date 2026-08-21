@@ -78,6 +78,25 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "inventory.cycleCount.submit",
   "inventory.cycleCount.reconcile",
   "inventory.cycleCount.cancel",
+  // SCANNER PROMOTION. The six capabilities the scanner program added, made ELIGIBLE so the sandbox
+  // can exercise them at all -- without these, put-away, pick, bin administration, returns intake
+  // and every lookup read are permanently denied and there is nothing to validate.
+  //
+  // Same posture as every id above, and worth restating because it is the whole safety argument:
+  // ELIGIBILITY IS NOT ACTIVATION, AND NEITHER IS AUTHORIZATION. This set only bounds what an
+  // environment MAY activate; config/environments.json decides what it DOES activate; and a
+  // principal still needs a qualifying Role grant on top of both. Production stays triple-blocked --
+  // role-keyed resolution returns EMPTY for production regardless of data, no production entry
+  // carries an override key, and a test asserts it.
+  //
+  // inventory.stock.receive is deliberately ABSENT. It is not active:false and needs no override,
+  // and widening who may accept stock remains the separately deferred decision it already was.
+  "inventory.catalog.alias.read",
+  "inventory.balance.read",
+  "inventory.location.bin.manage",
+  "inventory.location.bin.read",
+  "inventory.placement.record",
+  "inventory.returns.intake",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
