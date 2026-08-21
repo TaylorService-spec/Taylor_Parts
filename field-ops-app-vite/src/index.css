@@ -2357,6 +2357,24 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-lookup__absent-word { font-weight: 600; }
 .fo-lookup__absent-why { font-size: 13px; }
 
+/* ---------------------------------------------------------------------------
+   TRANSFERS BY SCAN
+   ---------------------------------------------------------------------------
+   Verification, not authoring. The one prominent control is the commit; the
+   location prompt sits above the scan field because being at the wrong end of a
+   transfer invalidates everything scanned after it.
+   ------------------------------------------------------------------------- */
+.fo-transfer-scan { display: flex; flex-direction: column; gap: 14px; }
+.fo-transfer-scan__where {
+  margin: 0; padding: 10px 12px; font-size: 14px;
+  background: var(--color-surface-sunken); border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.fo-transfer-scan__ok { color: var(--color-success); font-weight: 600; }
+/* Every reason submission is blocked, listed together -- fixing one at a time
+   and re-discovering the next is how a dock task turns into four trips. */
+.fo-transfer-scan__blockers { margin: 0; font-size: 13.5px; }
+
 @media (min-width: 700px) {
   /* Label beside value once there is room, which is how a spec sheet reads. */
   .fo-lookup__row { grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; }

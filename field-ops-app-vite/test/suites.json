@@ -800,6 +800,10 @@
     {
       "file": "test/partLookupInventoryRows.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/transferScanVerification.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -5,7 +5,8 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   deriveScanWorkflows, SCAN_WORKFLOW, UNAVAILABLE_REASON, RECEIVE_CAPABILITY,
-  SCAN_WORKFLOW_LABEL, SCAN_WORKFLOW_DESCRIPTION, UNAVAILABLE_TEXT,
+  TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY,
+  SCAN_WORKFLOW_LABEL, SCAN_WORKFLOW_DESCRIPTION, UNAVAILABLE_TEXT, unavailableText,
 } from "../src/access/scanWorkflows.js";
 
 const gate = (...held) => (id) => held.includes(id);
@@ -135,24 +136,24 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the three workflows that exist can ever appear", () => {
-  // Put-away, pick, stage, transfer, return, cycle count and truck handoff have no command. Listing
-  // one — even disabled — would say it exists and that access is the only obstacle.
+test("ONLY the four workflows that exist can ever appear", () => {
+  // Put-away, pick, stage, return, cycle count and truck handoff have no command. Listing one —
+  // even disabled — would say it exists and that access is the only obstacle.
   const everything = deriveScanWorkflows({
     hasCapability: () => true, receivingReady: true, role: "technician", technicianId: "T1", assignedWorkOrderCount: 5,
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 3);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 4);
 });
 
-test("no put-away, transfer, pick or count workflow is even nameable", () => {
-  // LOOKUP left this list in Phase F, when a governed read that could truthfully answer it was
-  // found. The rest stay: none of them has a command or a read behind it.
-  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "TRANSFER", "RETURN", "CYCLE_COUNT", "TRUCK_HANDOFF"]) {
+test("no put-away, pick, return or count workflow is even nameable", () => {
+  // LOOKUP left this list in Phase F and TRANSFER in Phase J1 — each when a real governed authority
+  // behind it was found. The rest stay: none of them has a command or a read.
+  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "RETURN", "CYCLE_COUNT", "TRUCK_HANDOFF"]) {
     assert.equal(SCAN_WORKFLOW[absent], undefined, `${absent} must not exist as a workflow`);
   }
 });
@@ -166,7 +167,7 @@ test("the least-authorized caller still gets LOOKUP, and every other absence is 
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
   assert.equal(r.empty, false);
   assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
-  assert.equal(r.unavailable.length, 2, "receiving and technician scanning both explain themselves");
+  assert.equal(r.unavailable.length, 3, "receiving, transfer and technician scanning each explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 
@@ -199,4 +200,67 @@ test("every workflow has a plain-language label and description — never an enu
 test("the result is frozen — a caller cannot add an availability it was not given", () => {
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false });
   assert.throws(() => { r.available.push({ workflow: "ANYTHING" }); }, TypeError);
+});
+
+// ─────────────────────────────────────────── transfers (Phase J1)
+
+test("EITHER transfer capability offers the workflow — one end of a transfer is useful work", () => {
+  for (const held of [TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY]) {
+    const r = deriveScanWorkflows({ hasCapability: gate(held) });
+    assert.equal(has(r, SCAN_WORKFLOW.TRANSFER), true, `holding ${held} should offer transfers`);
+  }
+});
+
+test("neither transfer capability means no transfer workflow, with a stated reason", () => {
+  const r = deriveScanWorkflows({ hasCapability: gate(RECEIVE_CAPABILITY), receivingReady: true });
+  assert.equal(has(r, SCAN_WORKFLOW.TRANSFER), false);
+  assert.equal(reasonFor(r, SCAN_WORKFLOW.TRANSFER), UNAVAILABLE_REASON.NO_CAPABILITY);
+});
+
+test("transfers need NO readiness constant — the capability is the only gate", () => {
+  // The transfer transport has never had a readiness flag, and adding a second gate in front of a
+  // capability that already denies would be belt-and-braces around an inert command.
+  const r = deriveScanWorkflows({ hasCapability: gate(TRANSFER_DISPATCH_CAPABILITY), receivingReady: false });
+  assert.equal(has(r, SCAN_WORKFLOW.TRANSFER), true);
+});
+
+test("the transfer capabilities are the REAL catalog ids, not invented ones", () => {
+  assert.equal(TRANSFER_DISPATCH_CAPABILITY, "inventory.transfer.dispatch");
+  assert.equal(TRANSFER_RECEIVE_CAPABILITY, "inventory.transfer.receive");
+});
+
+test("receiving stock and moving a transfer are separate authorities", () => {
+  const receiver = deriveScanWorkflows({ hasCapability: gate(RECEIVE_CAPABILITY), receivingReady: true });
+  assert.equal(has(receiver, SCAN_WORKFLOW.TRANSFER), false);
+
+  const mover = deriveScanWorkflows({ hasCapability: gate(TRANSFER_DISPATCH_CAPABILITY), receivingReady: true });
+  assert.equal(has(mover, SCAN_WORKFLOW.SUPPLIER_RECEIVING), false);
+});
+
+test("a shared REASON does not force a shared SENTENCE", () => {
+  // Receiving and transfers both fail with NO_CAPABILITY, but they send the reader to ask for
+  // different grants. Collapsing them into "you are not authorized" drops the only useful word.
+  const receiving = unavailableText(SCAN_WORKFLOW.SUPPLIER_RECEIVING, UNAVAILABLE_REASON.NO_CAPABILITY);
+  const transfer = unavailableText(SCAN_WORKFLOW.TRANSFER, UNAVAILABLE_REASON.NO_CAPABILITY);
+  assert.match(receiving, /receive stock/i);
+  assert.match(transfer, /transfers/i);
+  assert.notEqual(receiving, transfer);
+});
+
+test("a workflow with no wording of its own falls back to the reason's general sentence", () => {
+  const generic = unavailableText(SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, UNAVAILABLE_REASON.NO_ASSIGNED_WORK);
+  assert.equal(generic, UNAVAILABLE_TEXT[UNAVAILABLE_REASON.NO_ASSIGNED_WORK]);
+});
+
+test("every reason a workflow can actually produce resolves to a sentence", () => {
+  const contexts = [
+    { hasCapability: gate() },
+    { hasCapability: gate(RECEIVE_CAPABILITY) },
+    { hasCapability: gate(), role: "technician", technicianId: "T1", assignedWorkOrderCount: 0 },
+  ];
+  for (const ctx of contexts) {
+    for (const u of deriveScanWorkflows(ctx).unavailable) {
+      assert.ok(unavailableText(u.workflow, u.reason), `${u.workflow}/${u.reason} has no words`);
+    }
+  }
 });
