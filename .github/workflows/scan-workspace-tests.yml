@@ -17,6 +17,10 @@ name: Scan Workspace Tests
 #                            command or writer at all.
 #   lookupScan             — the same properties on the mounted surface, plus that it offers exactly
 #                            one control and no way to move stock.
+#   putAwayCommand         — the DECISIONS #116 invariant, asserted on the code: put-away writes no
+#                            ledger event, touches no balance, emits no location reference and cannot
+#                            name quarantine. A comment promising it would not be enough.
+#   putAwaySession         — the same boundary on the client, plus the bin vocabulary preserved.
 #   binRegistry            — a bin DESCRIBES where stock sits; the warehouse still owns it. Asserts
 #                            structurally that no BIN location reference and no quantity can be
 #                            emitted, which is the shape that would let a bin leak into custody math.
@@ -74,6 +78,9 @@ on:
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
       - "field-ops-app-vite/src/domain/scanInputPolicy.js"
+      - "field-ops-app-vite/src/domain/putAwaySession.js"
+      - "field-ops-app-vite/src/services/binCommandClient.js"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
@@ -105,6 +112,9 @@ on:
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
+      - "field-ops-app-vite/test/putAwaySession.test.mjs"
+      - "field-ops-app-vite/test/putAwayScan.test.jsx"
+      - "functions/test/putAwayCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
@@ -136,6 +146,9 @@ on:
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
       - "field-ops-app-vite/src/domain/scanInputPolicy.js"
+      - "field-ops-app-vite/src/domain/putAwaySession.js"
+      - "field-ops-app-vite/src/services/binCommandClient.js"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
@@ -167,6 +180,9 @@ on:
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
+      - "field-ops-app-vite/test/putAwaySession.test.mjs"
+      - "field-ops-app-vite/test/putAwayScan.test.jsx"
+      - "functions/test/putAwayCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
@@ -233,7 +249,7 @@ jobs:
         working-directory: functions
 
       - name: Descriptive bin registry (pure)
-        run: node --test test/binRegistry.test.mjs
+        run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs
         working-directory: functions
 
       - name: Transfer scan verification (pure)
@@ -248,6 +264,10 @@ jobs:
         run: node --test test/scanInputPolicy.test.mjs
         working-directory: field-ops-app-vite
 
+      - name: Put-away session (pure)
+        run: node --test test/putAwaySession.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: Receiving scan queue (pure)
         run: node --test test/receivingScanQueue.test.mjs
         working-directory: field-ops-app-vite
@@ -258,5 +278,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/putAwayScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite

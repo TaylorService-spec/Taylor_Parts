@@ -7,6 +7,7 @@ import {
   deriveScanWorkflows, SCAN_WORKFLOW, UNAVAILABLE_REASON, RECEIVE_CAPABILITY,
   TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY,
   CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY,
+  PLACEMENT_RECORD_CAPABILITY, BIN_READ_CAPABILITY,
   SCAN_WORKFLOW_LABEL, SCAN_WORKFLOW_DESCRIPTION, UNAVAILABLE_TEXT, unavailableText,
 } from "../src/access/scanWorkflows.js";
 
@@ -137,7 +138,7 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the five workflows that exist can ever appear", () => {
+test("ONLY the six workflows that exist can ever appear", () => {
   // Put-away, pick, stage, return, cycle count and truck handoff have no command. Listing one —
   // even disabled — would say it exists and that access is the only obstacle.
   const everything = deriveScanWorkflows({
@@ -145,16 +146,16 @@ test("ONLY the five workflows that exist can ever appear", () => {
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 5);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 6);
 });
 
-test("no put-away, pick, stage, return or truck-handoff workflow is even nameable", () => {
-  // LOOKUP left this list in Phase F, TRANSFER in J1 and CYCLE_COUNT in J2 — each when a real
-  // governed authority behind it was found. The rest stay: none of them has a command or a read.
-  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "RETURN", "TRUCK_HANDOFF"]) {
+test("no pick, stage, return or truck-handoff workflow is even nameable", () => {
+  // LOOKUP left this list in Phase F, TRANSFER in J1, CYCLE_COUNT in J2 and PUT_AWAY in L — each
+  // when a real governed authority behind it was found. The rest stay: none has a command.
+  for (const absent of ["PICK", "STAGE", "RETURN", "TRUCK_HANDOFF"]) {
     assert.equal(SCAN_WORKFLOW[absent], undefined, `${absent} must not exist as a workflow`);
   }
 });
@@ -168,7 +169,7 @@ test("the least-authorized caller still gets LOOKUP, and every other absence is 
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
   assert.equal(r.empty, false);
   assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
-  assert.equal(r.unavailable.length, 4, "receiving, transfer, counting and technician scanning each explain themselves");
+  assert.equal(r.unavailable.length, 5, "receiving, transfer, counting, put-away and technician scanning each explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 
@@ -306,4 +307,42 @@ test("counting, transferring and receiving are three separate authorities", () =
   });
   assert.equal(has(counter, SCAN_WORKFLOW.SUPPLIER_RECEIVING), false);
   assert.equal(has(counter, SCAN_WORKFLOW.TRANSFER), false);
+});
+
+// ─────────────────────────────────────────── put-away (Phase L)
+
+test("put-away needs BOTH the placement authority and the bin CHECK", () => {
+  // Without the read an operator could only stow into an unvalidated code, which is how stock gets
+  // recorded onto racking that does not exist.
+  for (const held of [[PLACEMENT_RECORD_CAPABILITY], [BIN_READ_CAPABILITY]]) {
+    const r = deriveScanWorkflows({ hasCapability: gate(...held) });
+    assert.equal(has(r, SCAN_WORKFLOW.PUT_AWAY), false, `${held.join()} alone must not offer put-away`);
+  }
+  const both = deriveScanWorkflows({ hasCapability: gate(PLACEMENT_RECORD_CAPABILITY, BIN_READ_CAPABILITY) });
+  assert.equal(has(both, SCAN_WORKFLOW.PUT_AWAY), true);
+});
+
+test("stowing all day does NOT confer the authority to retire racking", () => {
+  const code = codeOf("../src/access/scanWorkflows.js");
+  assert.doesNotMatch(code, /bin\.manage/, "put-away eligibility must not consult the write capability");
+  const stower = deriveScanWorkflows({ hasCapability: gate("inventory.location.bin.manage") });
+  assert.equal(has(stower, SCAN_WORKFLOW.PUT_AWAY), false, "the manage grant alone is not a stow grant");
+});
+
+test("put-away is NOT gated on receiving — stowing is not accepting stock", () => {
+  const receiver = deriveScanWorkflows({ hasCapability: gate(RECEIVE_CAPABILITY), receivingReady: true });
+  assert.equal(has(receiver, SCAN_WORKFLOW.PUT_AWAY), false);
+  assert.equal(PLACEMENT_RECORD_CAPABILITY, "inventory.placement.record");
+  assert.notEqual(PLACEMENT_RECORD_CAPABILITY, RECEIVE_CAPABILITY);
+});
+
+test("put-away has its own refusal sentence", () => {
+  const text = unavailableText(SCAN_WORKFLOW.PUT_AWAY, UNAVAILABLE_REASON.NO_CAPABILITY);
+  assert.match(text, /put stock away/i);
+  assert.notEqual(text, unavailableText(SCAN_WORKFLOW.CYCLE_COUNT, UNAVAILABLE_REASON.NO_CAPABILITY));
+});
+
+test("the put-away description says counts do not change", () => {
+  // An operator could reasonably assume a stow "moved" something. It does not.
+  assert.match(SCAN_WORKFLOW_DESCRIPTION[SCAN_WORKFLOW.PUT_AWAY], /counts do not change|not what there is/i);
 });

@@ -16,6 +16,7 @@ import PartsScanner from "../mobile/PartsScanner.jsx";
 import LookupScan from "./LookupScan.jsx";
 import TransferScan from "./TransferScan.jsx";
 import CycleCountScan from "./CycleCountScan.jsx";
+import PutAwayScan from "./PutAwayScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -112,6 +113,19 @@ export default function ScanWorkspace({ deps }) {
         </button>
         {/* Blind by design, and counting is not adjusting: reconcile is a separate authority. */}
         <CycleCountScan deps={deps?.cycleCountDeps} />
+      </div>
+    );
+  }
+
+  if (active === SCAN_WORKFLOW.PUT_AWAY) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Put away" />
+        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
+          ← All scanning workflows
+        </button>
+        {/* Records WHERE, never WHAT: a stow changes no balance (DECISIONS #116). */}
+        <PutAwayScan deps={deps?.putAwayDeps} />
       </div>
     );
   }

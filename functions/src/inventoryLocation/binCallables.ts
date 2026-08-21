@@ -20,6 +20,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Transaction } from "firebase-admin/firestore";
+import { recordPutAway, PlacementInvalidError, PlacementUnauthorizedError, PlacementBinError } from "./putAwayCommand.js";
 import {
   createBin,
   setBinStatus,
@@ -139,6 +140,36 @@ export const listBinsCallable = onCall(REGION, async (request) => {
   try {
     return await listBinsForWarehouse(getFirestore(), warehouseId);
   } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * PUT-AWAY. Record where stock was stowed.
+ *
+ * Gated on `inventory.placement.record` -- its own capability, because stowing is a third audience
+ * again: not labelling racking, not merely checking a bin is real, and emphatically not receiving.
+ *
+ * The command writes a placement record and NOTHING else -- no ledger event, no quantity change, no
+ * balance -- which is the DECISIONS #116 invariant that keeps stowed stock in warehouse on-hand.
+ */
+export const recordPutAwayCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  try {
+    return await recordPutAway(request.data, productionDeps(actorUid));
+  } catch (err) {
+    if (err instanceof PlacementUnauthorizedError) {
+      throw new HttpsError("permission-denied", "You are not authorized to put stock away.", "DENIED");
+    }
+    if (err instanceof PlacementBinError) {
+      // The bin's own vocabulary is preserved: INACTIVE, WRONG_WAREHOUSE and NOT_FOUND are three
+      // different physical problems, and collapsing them would send an operator to the wrong shelf
+      // or to the wrong building.
+      throw new HttpsError("failed-precondition", "That bin cannot be used.", err.resolution);
+    }
+    if (err instanceof PlacementInvalidError) {
+      throw new HttpsError("invalid-argument", "That put-away could not be accepted.", err.message || "INVALID");
+    }
     throw mapError(err);
   }
 });

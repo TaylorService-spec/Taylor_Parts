@@ -856,6 +856,26 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Scanner Phase L -- PUT-AWAY (functions/src/inventoryLocation/putAwayCommand.ts).
+  //
+  // Records WHERE stock was stowed inside a warehouse it already belongs to. Per DECISIONS #116 this
+  // writes a PLACEMENT RECORD and nothing else: no ledger event, no quantity change, no balance --
+  // because putting stock into a bin must not remove it from warehouse on-hand or available.
+  //
+  // A THIRD audience, and therefore a third capability. `inventory.location.bin.manage` labels
+  // racking and `.read` checks a bin is real; stowing is neither. It is also deliberately NOT
+  // `inventory.stock.receive`: receiving is a custody event that changes what the company has, and
+  // reusing it would make every stow look like an authority to accept stock.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role.
+  Object.freeze({
+    id: "inventory.placement.record",
+    description:
+      "Record a physical put-away: which bin stock was stowed in, within the warehouse that already holds it. Placement only -- authors no ledger movement, no quantity change and no inventory custody (DECISIONS #116).",
+    resource: "inventory.placement",
+    action: "record",
+    active: false,
+  }),
   // Scanner Phase K -- the DESCRIPTIVE BIN REGISTRY (functions/src/inventoryLocation/bin*.ts).
   //
   // WHAT A BIN IS, PER DECISIONS #116: the warehouse is the inventory custody authority and a bin is

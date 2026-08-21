@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–K merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–L merged.
 
 ---
 
@@ -42,7 +42,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **J1** — transfers by scan | MERGED (#1362) | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
 | **J2** — warehouse-level cycle count by scan | MERGED (#1363) | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
 | **J3** — shared scanner input hardening | MERGED (#1364) | COMPLETE | n/a — client input layer only | n/a | n/a |
-| **K** — descriptive bin registry | This change | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
+| **K** — descriptive bin registry | MERGED (#1365) | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
+| **L** — put-away | This change | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
 
 ### What "not deployed" means concretely
 
@@ -680,3 +681,65 @@ erase that decision without anyone seeing it.
 
 Both capabilities are `active: false` and granted to no Role, so every call denies. No UI yet —
 Phase L (put-away) is the first consumer.
+
+## 15. Phase L — put-away
+
+Scan the bin you are standing at, scan what is going into it, confirm.
+
+### The invariant, asserted on the code
+
+**DECISIONS #116: putting stock into a bin must not remove it from warehouse on-hand or available.**
+
+Put-away writes a **placement record** and nothing else — no ledger event, no quantity change, no
+balance. That is not a promise in a comment; a test greps the command and requires that
+`inventory_transactions`, `stageOperationalMovement`, every movement type,
+`sumLedgerEligibleOnHand`, `openWorkOrderReserved`, `onHand`, `available`, `reserved` and any
+`WAREHOUSE`/`BIN` location literal are all **absent**. Another restricts the collections it may reach
+to placements (write) plus bins and serialized assets (read).
+
+The screen says it out loud too, because an operator could reasonably assume a stow moved something:
+*"Stock counts are unchanged: putting it away records where it is, not what there is."*
+
+### Placement is an event, not a balance
+
+A bin is not a custody location, so there is no authoritative "how many are in A-14". What **is**
+authoritative is what somebody recorded doing. Placements are append-only events, and a test forbids
+`increment` and `.update(` so no per-bin total can accumulate.
+
+This is the honest cost of #116, and it is stated rather than papered over. If warehouse operations
+later need bin-level accuracy, that is the separate custody decision the Phase I assessment already
+frames.
+
+### Serialized units are placed individually
+
+One placement record per serial, so *"where is SN-42"* has a single answer rather than "somewhere
+among the twelve we stowed that day". A serialized stow must scan the **unit**, not the part code —
+scanning the kind is refused, because otherwise the question could not be answered later.
+
+### A third audience, a third capability
+
+`inventory.placement.record`. Not `inventory.location.bin.manage` (stowing all day must not confer
+the authority to retire racking), and emphatically not `inventory.stock.receive` — receiving is a
+custody event that changes what the company has, and reusing it would make every stow look like an
+authority to accept stock. A catalog test asserts all three govern distinct resources.
+
+The workflow requires the placement capability **and** `inventory.location.bin.read`: without the
+check, an operator could only stow into an unvalidated code, which is how stock gets recorded onto
+racking that does not exist.
+
+### The bin vocabulary survives end to end
+
+`FOUND` / `INACTIVE` / `WRONG_WAREHOUSE` / `NOT_FOUND` / `MALFORMED`, from the resolver through the
+transport to the screen — including when a bin goes bad *between* scanning and confirming.
+**`WRONG_WAREHOUSE` keeps its own words** because it means the operator is in the wrong building.
+
+### No quarantine
+
+DECISIONS #117. There is nowhere in the command or the session to express condition, a hold, or a
+disposition, and tests forbid the vocabulary in both.
+
+### State today
+
+`inventory.placement.record` is `active: false` and granted to no Role, so every stow resolves
+`permission-denied`. Put-away is launched from a receipt or a lookup; arriving without a starting
+part, the screen explains what it needs rather than showing an empty form.

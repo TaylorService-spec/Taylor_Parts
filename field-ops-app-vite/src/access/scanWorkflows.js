@@ -29,6 +29,7 @@ export const SCAN_WORKFLOW = Object.freeze({
   LOOKUP: "LOOKUP",
   TRANSFER: "TRANSFER",
   CYCLE_COUNT: "CYCLE_COUNT",
+  PUT_AWAY: "PUT_AWAY",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -61,6 +62,17 @@ export const TRANSFER_RECEIVE_CAPABILITY = "inventory.transfer.receive";
  */
 export const CYCLE_COUNT_CREATE_CAPABILITY = "inventory.cycleCount.create";
 export const CYCLE_COUNT_SUBMIT_CAPABILITY = "inventory.cycleCount.submit";
+
+/**
+ * PUT-AWAY needs BOTH: the authority to record a placement, and the authority to check that the bin
+ * scanned is a real, active bin at this warehouse. Without the read the operator could only stow
+ * into an unvalidated code, which is how stock gets recorded onto racking that does not exist.
+ *
+ * Deliberately NOT `inventory.location.bin.manage`: stowing all day must not confer the authority to
+ * create and retire racking.
+ */
+export const PLACEMENT_RECORD_CAPABILITY = "inventory.placement.record";
+export const BIN_READ_CAPABILITY = "inventory.location.bin.read";
 
 /**
  * Derive the available workflows.
@@ -149,6 +161,17 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.CYCLE_COUNT, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
+  // ── Put-away (Phase L; DECISIONS #116) ──────────────────────────────────────────────────────
+  //
+  // Put-away also needs a STARTING POINT — which part, at which warehouse. It is launched from a
+  // receipt or a lookup rather than started cold, so the workflow is offered on authority alone and
+  // the surface itself explains what it needs when it arrives without one.
+  if (holds(PLACEMENT_RECORD_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.PUT_AWAY });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.PUT_AWAY, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -181,6 +204,7 @@ export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.LOOKUP]: "Look something up",
   [SCAN_WORKFLOW.TRANSFER]: "Send or receive a transfer",
   [SCAN_WORKFLOW.CYCLE_COUNT]: "Count what is on the shelf",
+  [SCAN_WORKFLOW.PUT_AWAY]: "Put stock away",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
 });
@@ -192,6 +216,8 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
     "Check a transfer against what you are physically holding, then send it or receive it.",
   [SCAN_WORKFLOW.CYCLE_COUNT]:
     "Scan everything you can find of one part at one location, and record what you saw. Counting changes nothing on its own.",
+  [SCAN_WORKFLOW.PUT_AWAY]:
+    "Record which bin you stowed stock in. It notes where the stock is, not what there is — counts do not change.",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]:
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
@@ -221,6 +247,9 @@ const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
   }),
   [SCAN_WORKFLOW.CYCLE_COUNT]: Object.freeze({
     [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to count stock. An administrator can grant it.",
+  }),
+  [SCAN_WORKFLOW.PUT_AWAY]: Object.freeze({
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to put stock away. An administrator can grant it.",
   }),
 });
 
