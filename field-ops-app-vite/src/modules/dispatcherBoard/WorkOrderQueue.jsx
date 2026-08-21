@@ -28,7 +28,9 @@ function formatAge(createdAt) {
 }
 
 function WorkOrderQueue({ workOrders, customerNames, recommendationsByWorkOrderId, technicians, selectedId, onSelect }) {
-  const techName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
+  // document id, printing an opaque key where a person's name belongs.
+  const techName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
 
   // Dragging a card also selects it -- keeps the Preview/Technician
   // panes' recommendation scores in sync with whatever is actually

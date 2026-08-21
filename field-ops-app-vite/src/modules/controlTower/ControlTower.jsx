@@ -3,6 +3,7 @@ import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { useAuth } from "../../auth/AuthContext";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { groupJobsByTechnician } from "./techUtils";
@@ -121,7 +122,11 @@ export default function ControlTower() {
   ));
 
   const techGroups = useMemo(() => groupJobsByTechnician(workOrders), [workOrders]);
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
+  // Shared resolver (domain/actorDisplayName.js). The inline copy this replaces fell back to the
+  // raw technician document id when a name was missing, printing an opaque key where a person
+  // belongs.
+  const technicianName = (id) =>
+    resolveTechnicianIdentity(id, { technicians, error: techniciansError }).name;
 
   // A zero is only reported when zero is KNOWN. While the first snapshot is pending, or after a read
   // that was refused or failed, the numbers are withheld and the reason is stated instead.

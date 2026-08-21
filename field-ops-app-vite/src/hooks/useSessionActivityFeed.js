@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { resolveTechnicianIdentity } from "../domain/actorDisplayName";
 
 // Dispatcher Activity Panel -- session-only, in-memory feed of Work
 // Order changes observed via useWorkOrders()'s live onSnapshot data.
@@ -44,7 +45,9 @@ export function useSessionActivityFeed(workOrders, technicians) {
     const previous = previousRef.current;
 
     if (previous) {
-      const techName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+      // Shared resolver -- see domain/actorDisplayName.js. This fell back to the raw technician
+      // document id, so an activity entry could read "Dispatched to fieldops_tech_7a2f".
+      const techName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
       const newEntries = [];
 
       for (const wo of workOrders) {

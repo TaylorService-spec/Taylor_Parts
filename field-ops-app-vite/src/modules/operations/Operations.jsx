@@ -219,7 +219,9 @@ export default function Operations({ accessVersion } = {}) {
     consumptionSnapshot,
     technicianVolume,
   } = state.data;
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
+  // document id, printing an opaque key where a person's name belongs.
+  const technicianName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
 
   return (
     <div className="fo-panel">

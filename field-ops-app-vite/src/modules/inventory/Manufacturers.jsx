@@ -46,7 +46,7 @@
 // dropped entirely (manufacturerIndexList declares none), and both dialog headers now read
 // the manufacturer's `name`. manufacturerId is still used -- as the row's routing/keying
 // value and as the write commands' addressing key -- but never as displayed content.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { fetchManufacturerList } from "../../services/manufacturerQueries";
 import { useManufacturerWrite } from "../../hooks/useManufacturerWrite";
 import { allowedStatusTransitions } from "../../domain/manufacturerWrite";
@@ -121,6 +121,12 @@ export default function Manufacturers(props) {
   const [state, setState] = useState({ phase: "loading" });
   const [panel, setPanel] = useState(null); // {mode:"create"} | {mode:"edit", m} | {mode:"status", m}
   const [form, setForm] = useState({});
+  // A <label> that only sits NEXT TO its input is not associated with it: clicking the label does
+  // not focus the field, and a screen reader announces the input unlabelled. Every other form in
+  // this app wraps its input in the <label> instead, which associates implicitly -- these two were
+  // the only siblings, which is why the sweep found exactly two.
+  const manufacturerIdFieldId = useId();
+  const nameFieldId = useId();
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState(null);
   const { writeReady, runCreate, runRename, runChangeStatus } = useManufacturerWrite(props?.writeDeps);
@@ -215,9 +221,9 @@ export default function Manufacturers(props) {
           ) : (
             <div className="fo-mfr__form">
               {panel.mode === "create" && (
-                <div className="fo-mfr__field"><label className="fo-mfr__label">Manufacturer ID</label><input className="fo-mfr__input" value={form.manufacturerId ?? ""} onChange={(e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }))} disabled={busy || !writeReady} /></div>
+                <div className="fo-mfr__field"><label className="fo-mfr__label" htmlFor={manufacturerIdFieldId}>Manufacturer ID</label><input id={manufacturerIdFieldId} className="fo-mfr__input" value={form.manufacturerId ?? ""} onChange={(e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }))} disabled={busy || !writeReady} /></div>
               )}
-              <div className="fo-mfr__field"><label className="fo-mfr__label">Name</label><input className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
+              <div className="fo-mfr__field"><label className="fo-mfr__label" htmlFor={nameFieldId}>Name</label><input id={nameFieldId} className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
               <div className="fo-mfr__form-actions">
                 <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create manufacturer" : "Save name"}</Button>
                 <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>

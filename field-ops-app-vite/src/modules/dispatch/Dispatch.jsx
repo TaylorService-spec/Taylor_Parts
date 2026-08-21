@@ -98,7 +98,10 @@ export default function Dispatch() {
   const [pendingReassignment, setPendingReassignment] = useState(null);
   const [reassignReasonInput, setReassignReasonInput] = useState("");
 
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
+  // Shared resolver -- see domain/actorDisplayName.js. Returned undefined before, leaving each
+  // call site to fall back to the raw id on its own.
+  const technicianName = (id) =>
+    resolveTechnicianIdentity(id, { technicians, error: techniciansError }).name;
 
   // Governed dispatch: the server sets assignedTechId, enforces the
   // CREATED/READY_TO_DISPATCH/SCHEDULED -> DISPATCHED transition and the
@@ -195,7 +198,7 @@ export default function Dispatch() {
               {!getAllowedActions(job.status, "dispatcher", false).includes("Dispatch") ? (
                 <div className="fo-muted">
                   {job.assignedTechId
-                    ? `Assigned to ${technicianName(job.assignedTechId) ?? job.assignedTechId}`
+                    ? `Assigned to ${technicianName(job.assignedTechId)}`
                     : job.status === "CANCELLED"
                     ? "This work order was cancelled before it was dispatched — no further action is needed."
                     : "Not ready to dispatch — this work order must be scheduled first."}
@@ -207,7 +210,7 @@ export default function Dispatch() {
                       Picking anyone else in the select below is then a visible choice, not an accident. */}
                   {job.scheduledTechId && (
                     <div className="fo-muted">
-                      Scheduled for: {technicianName(job.scheduledTechId) ?? job.scheduledTechId}
+                      Scheduled for: {technicianName(job.scheduledTechId)}
                     </div>
                   )}
                   <select
@@ -232,7 +235,7 @@ export default function Dispatch() {
                     <div className="fo-form" role="group" aria-label="Reassignment reason required">
                       <p className="fo-muted">
                         Reassigning from {technicianName(job.scheduledTechId) ?? job.scheduledTechId} to{" "}
-                        {technicianName(pendingReassignment.technicianId) ?? pendingReassignment.technicianId} —
+                        {technicianName(pendingReassignment.technicianId)} —
                         a reason is required.
                       </p>
                       <textarea
@@ -254,7 +257,7 @@ export default function Dispatch() {
                   )}
                 </>
               ) : (
-                <div className="fo-muted">Assigned to {technicianName(job.assignedTechId) ?? job.assignedTechId}</div>
+                <div className="fo-muted">Assigned to {technicianName(job.assignedTechId)}</div>
               )}
             </div>
           );

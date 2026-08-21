@@ -31,6 +31,8 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
       - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
+      - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
       - "field-ops-app-vite/src/metadata/definitions/**"
       - "scripts/deployHosting.mjs"
@@ -58,6 +60,8 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
       - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
+      - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
       - "field-ops-app-vite/src/metadata/definitions/**"
       - "scripts/deployHosting.mjs"
@@ -129,4 +133,10 @@ jobs:
       # newly created Prospect became invisible while still being findable by search.
       - name: A created record is reachable from its list
         run: node --test test/createdRecordIsReachable.test.mjs
+        working-directory: field-ops-app-vite
+
+      # Ten surfaces each hand-rolled the same technician lookup and nine of them fell back to
+      # rendering the raw document id where a person's name belongs.
+      - name: A technician is shown by name, never by id
+        run: node --test test/technicianNameIsNotAnId.test.mjs
         working-directory: field-ops-app-vite

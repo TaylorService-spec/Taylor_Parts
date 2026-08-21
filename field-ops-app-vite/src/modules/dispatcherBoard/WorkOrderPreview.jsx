@@ -44,7 +44,9 @@ function qualitativeSummary(breakdown) {
 function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchToTechnician, isDispatching }) {
   const [expandedTechId, setExpandedTechId] = useState(null);
   const [pickerTechId, setPickerTechId] = useState("");
-  const techName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
+  // document id, printing an opaque key where a person's name belongs.
+  const techName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
   const accountNames = useAccountNames(workOrder?.customerId ? [workOrder.customerId] : []);
   const customerIdentity = resolveCustomerIdentity(
     workOrder,

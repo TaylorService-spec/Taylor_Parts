@@ -62,7 +62,15 @@ export default function AccountSalesOrdersSection({ accountId }) {
               const updated = formatDate(row.updatedAtMillis);
               return (
                 <li key={row.key}>
-                  <Link to={`/customers/opportunities/sales-order/${row.id}`}>{row.customerPO || row.id}</Link>{" "}
+                  {/* The order's own number identifies it. An order predating the salesOrderNumber
+                      rollout genuinely has none -- readSalesOrdersForAccount applies no orderBy, so
+                      unlike the global list it DOES return them -- and it is labelled as unnumbered
+                      rather than with its raw document id, which identifies nothing to a reader. */}
+                  <Link to={`/customers/opportunities/sales-order/${row.id}`}>
+                    {row.salesOrderNumber ?? "Unnumbered sales order"}
+                  </Link>{" "}
+                  {/* Shown as what it is: the customer's own reference, not this order's number. */}
+                  {row.customerPO && <span className="fo-muted">Customer PO {row.customerPO}</span>}{" "}
                   <StatusPill tone={row.tone} label={row.state ?? "—"} />{" "}
                   {row.hasServiceLineage && (
                     <StatusPill tone="positive" label={`${row.serviceWorkOrderCount} Work Order${row.serviceWorkOrderCount === 1 ? "" : "s"}`} />

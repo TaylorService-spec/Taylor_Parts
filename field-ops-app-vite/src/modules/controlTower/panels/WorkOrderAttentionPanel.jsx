@@ -20,14 +20,15 @@ import {
 // degradation, never a fabricated result" pattern workOrderPartsReadiness.js itself uses for
 // truckInventory -- not a bug, a documented boundary.
 //
-// `technicianName` mirrors ControlTower.jsx's own existing resolver (`technicians.find(t => t.id ===
-// id)?.name || id`) -- these are Technician collection docs with a plain `name` field, NOT Firebase auth
-// uids, so this is not the F-UID-1 "raw uid" case domain/actorDisplayName.js guards against. A technician
-// id that resolves to nothing still falls back to a labeled placeholder, never a bare id string.
+// `technicianLabel` now delegates to the SHARED resolver in domain/actorDisplayName.js. This panel's
+// version was the model for it: of the ten inline copies that existed across this app, it was the only
+// one that refused to print a bare id when a name was missing. These are Technician collection docs with
+// a plain `name` field, NOT Firebase auth uids, so this is not the F-UID-1 "raw uid" case that module
+// also guards -- it is the same UX rule, that an id is not a name.
 function technicianLabel(techId, technicians) {
-  if (!techId) return null;
-  const match = technicians.find((t) => t.id === techId);
-  return match?.name || "Unassigned technician";
+  // Delegates to the shared resolver this panel's own version was the model for -- it was the
+  // only one of ten copies that refused to print a raw id. Behaviour is unchanged.
+  return resolveTechnicianIdentity(techId, { technicians }).name;
 }
 
 function AttentionRow({ item, technicians }) {
