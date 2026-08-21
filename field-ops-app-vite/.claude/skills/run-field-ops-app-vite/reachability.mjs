@@ -48,10 +48,18 @@ const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-
 // the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
 const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
 const EMU = IS_LOCAL ? "?emulator=1" : "";
+// THE APP'S BASE PATH IS NOT A CONSTANT. Locally Vite serves under /Taylor_Parts/field-ops; the
+// deployed sandbox is built with base '/' (see its version.json). Hardcoding the local prefix made
+// the expected path unmatchable against a deployed build, and the first deployed sweep duly
+// reported NAV_REDIRECTED on 108 of 108 visits -- i.e. "the entire site redirects", which is
+// alarming, specific, and false. Derive it from BASE so the check means the same thing on both.
+const RAW_BASE_PATH = new URL(BASE).pathname;
+const BASE_PATH = RAW_BASE_PATH.endsWith("/") ? RAW_BASE_PATH.slice(0, -1) : RAW_BASE_PATH;
 const accountKey = process.argv[2] ?? "admin";
 const WIDTH = Number(process.argv[3] ?? 1440);
 const routes = JSON.parse(readFileSync(join(APP_ROOT, ".certification", "routes.json"), "utf8"));
 const { DRIVER_ACCOUNTS } = await import("./seed.mjs");
+const { establishSession } = await import("./deployedSession.mjs");
 const acct = DRIVER_ACCOUNTS[accountKey];
 if (!acct) throw new Error(`unknown account '${accountKey}'`);
 
@@ -73,11 +81,10 @@ async function openSession() {
   if (browser) { try { await browser.close(); } catch { /* already gone */ } }
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: WIDTH, height: 900 } });
-  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
-  await page.locator('input[type="email"]').fill(acct.email);
-  await page.locator('input[type="password"]').fill(acct.password);
-  await page.locator('button[type="submit"]').click();
-  await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+  // Dual-target: the real form against the emulator (which certifies Login.jsx itself), a
+  // token-seeded session against a deployed sandbox (whose accounts the emulator never seeds,
+  // and where no password is typed into a field). See deployedSession.mjs.
+  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS });
 }
 const rows = [];
 try {
@@ -99,7 +106,9 @@ try {
         const text = (main.innerText || "").replace(/\s+/g, " ").trim();
         return { text: text.slice(0, 160), len: text.length, dataRows: document.querySelectorAll("tbody tr").length };
       });
-      rec.landed = new URL(page.url()).pathname.replace("/Taylor_Parts/field-ops", "") || "/";
+      rec.landed = (new URL(page.url()).pathname.startsWith(BASE_PATH)
+        ? new URL(page.url()).pathname.slice(BASE_PATH.length)
+        : new URL(page.url()).pathname) || "/";
     } catch (err) {
       rows.push({ route: r.route, label: r.label, classification: "VISIT_FAILED", detail: String(err?.message).slice(0, 90) });
       continue;

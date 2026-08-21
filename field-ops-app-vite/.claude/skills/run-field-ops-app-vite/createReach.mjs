@@ -32,6 +32,7 @@ const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
 const EMU = IS_LOCAL ? "?emulator=1" : "";
 const accountKey = process.argv[2] ?? "admin";
 const { DRIVER_ACCOUNTS } = await import("./seed.mjs");
+const { establishSession } = await import("./deployedSession.mjs");
 const acct = DRIVER_ACCOUNTS[accountKey];
 
 // Unique per run so a rerun never passes on the PREVIOUS run's record -- the failure mode that would
@@ -45,11 +46,10 @@ const step = (name, ok, detail = "") => { results.push({ name, ok, detail }); co
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 try {
-  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
-  await page.locator('input[type="email"]').fill(acct.email);
-  await page.locator('input[type="password"]').fill(acct.password);
-  await page.locator('button[type="submit"]').click();
-  await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+  // Dual-target: the real form against the emulator (which certifies Login.jsx itself), a
+  // token-seeded session against a deployed sandbox (whose accounts the emulator never seeds,
+  // and where no password is typed into a field). See deployedSession.mjs.
+  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS });
 
   console.log(`\nCREATE -> REACH  persona=${accountKey}  record="${NAME}"`);
 
