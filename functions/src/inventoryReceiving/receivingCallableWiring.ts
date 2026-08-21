@@ -15,6 +15,7 @@ import { stageAuditEvent } from "../access/auditEventWriter.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
 import type { PartId } from "../partMaster/types.js";
 import type { ReceiveAuditInput, ResolvedPart } from "./receiveInventoryStockCommand.js";
+import { controlTypeToTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 
 export const RECEIVE_CAPABILITY = "inventory.stock.receive";
 const USERS_COLLECTION = "users";
@@ -58,14 +59,6 @@ export async function resolveReceivePermissionThroughTxn(txn: Transaction, db: F
 // Map the Part-Master controlType vocabulary to the ledger trackingMode vocabulary. NONE and SERIAL are
 // both accepted by the receiving validator (Wave 7); LOT and any unrecognized controlType resolve to a
 // mode the validator rejects as "tracking mode not supported" -- fail closed on the unknown.
-function controlTypeToTrackingMode(controlType: string): string {
-  switch (controlType) {
-    case "STANDARD": return "NONE";
-    case "SERIALIZED": return "SERIAL";
-    case "LOT": return "LOT";
-    default: return "LOT";
-  }
-}
 
 // The trusted Part authority, read through the txn: adapt the canonical Part to the command's ResolvedPart
 // ({partId, trackingMode, active}). `active` = status === "ACTIVE".

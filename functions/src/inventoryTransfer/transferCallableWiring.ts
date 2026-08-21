@@ -14,6 +14,7 @@ import { stageAuditEvent } from "../access/auditEventWriter.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
 import type { PartId } from "../partMaster/types.js";
 import type { ResolvedTransferPart, TransferAuditInput } from "./transferOrderCommand.js";
+import { controlTypeToTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
@@ -56,18 +57,6 @@ export function makeResolveTransferPermissionThroughTxn(capability: string) {
   };
 }
 
-function controlTypeToTrackingMode(controlType: string): string {
-  switch (controlType) {
-    case "STANDARD":
-      return "NONE";
-    case "SERIALIZED":
-      return "SERIAL";
-    case "LOT":
-      return "LOT";
-    default:
-      return "LOT";
-  }
-}
 
 export async function resolveTransferPartThroughTxn(txn: Transaction, db: Firestore, partId: string): Promise<ResolvedTransferPart | null> {
   const stored = await buildFirestorePartRepository(db).getById(txn, partId as PartId);
