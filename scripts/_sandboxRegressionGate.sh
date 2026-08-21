@@ -33,7 +33,7 @@ ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
 # fourth time in this program a fix landed in one sibling and not the other.
 #
 # The deployed artifact SELF-DESCRIBES its base in version.json, so ask it rather than assume.
-DEPLOYED_BASE="$(curl -fsS "${ORIGIN}/version.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const b=(JSON.parse(d).base||"/");process.stdout.write(b==="/"?"":b.replace(//$/,""))})')"
+DEPLOYED_BASE="$(curl -fsS "${ORIGIN}/version.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{let b=JSON.parse(d).base||"/";if(b==="/")b="";else if(b.endsWith("/"))b=b.slice(0,-1);process.stdout.write(b)})')"
 export CERT_BASE="${ORIGIN}${DEPLOYED_BASE}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
