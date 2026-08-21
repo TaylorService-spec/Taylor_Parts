@@ -135,23 +135,27 @@ describe("Scan workspace (nothing available is SAID, never a blank screen)", () 
 // ────────────────────────────────────────────── absent, not disabled
 
 describe("Scan workspace (operations that do not exist are ABSENT)", () => {
-  it("offers no returns or truck handoff — enabled or disabled", () => {
+  it("offers returns now that it has an authority — and still offers no truck handoff or disposition", () => {
     render(<ScanWorkspace deps={{ hasCapability: () => true, receivingReady: true, role: "technician", technicianId: "T1", assignedWorkOrderCount: 3 }} />);
-    // The list has shrunk one phase at a time, each time a REAL governed authority was found:
-    // lookup (F), transfers (J1), counting (J2), put-away (L), picking (M). What remains has no
-    // command at all. "Stage" never joins them — staging is how a pick ends, not its own workflow.
-    for (const forbidden of [/return/i, /truck/i]) {
+    // The list has grown one phase at a time, each time a REAL governed authority was found: lookup
+    // (F), transfers (J1), counting (J2), put-away (L), picking (M), and returns intake once
+    // recordReturnIntake was deployed, activated and granted.
+    //
+    // WHAT STILL HAS NO CONTROL, and must not gain one by association:
+    //   TRUCK HANDOFF — a handoff IS a transfer with a mobile endpoint, not a second state machine.
+    //   DISPOSITION   — deciding what becomes of a return is a separate authority that does not
+    //                   exist (#118). Taking returns in must never imply putting them back.
+    //   STAGE         — staging is how a pick ends, not its own workflow.
+    for (const forbidden of [/truck/i, /disposition/i, /back to stock/i, /restock/i]) {
       expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
     }
     for (const present of [
       /look something up/i, /send or receive a transfer/i, /count what is on the shelf/i,
-      /put stock away/i, /pick and stage for a job/i,
+      /put stock away/i, /pick and stage for a job/i, /take a return in/i,
     ]) {
       expect(screen.getByRole("button", { name: present })).toBeTruthy();
     }
-  });
-
-  it("has NO disabled workflow buttons at all", () => {
+  });  it("has NO disabled workflow buttons at all", () => {
     // A disabled control would imply the operation exists and access is the only obstacle.
     render(<ScanWorkspace deps={warehouseUser()} />);
     for (const b of screen.getAllByRole("button")) expect(b.disabled).toBeFalsy();

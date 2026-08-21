@@ -2252,6 +2252,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    should not be written through a two-line slot. */
 .fo-jobnote { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .fo-jobnote__open { width: 100%; min-height: 52px; font-size: 16px; }
+/* ---------------------------------------------------------------------------
+   RETURN INTAKE -- one structured observation at a time.
+   ---------------------------------------------------------------------------
+   Stacked full-width fields, because this is filled in one-handed at a desk or
+   a bench with the part in the other hand. 16px inputs so focusing one does not
+   zoom the page on iOS, and 48px controls throughout.
+   ------------------------------------------------------------------------- */
+.fo-returns { display: flex; flex-direction: column; gap: 14px; }
+.fo-returns__field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
+.fo-returns__field select,
+.fo-returns__field input {
+  min-height: 48px; padding: 12px 14px; font-size: 16px; font-weight: 400; font-family: inherit;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated); color: var(--color-text-primary);
+}
+.fo-returns__submit { width: 100%; min-height: 52px; font-size: 16px; }
+
 .fo-jobnote__actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .fo-jobnote__actions button { width: 100%; min-height: 48px; }
 @media (min-width: 380px) {
@@ -3026,8 +3043,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   transform: translateY(-50%);
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  /* 44px, not 34. Measured at 375px in a browser: this was a 34px target, and it is pressed with a
+     glove on, in a van, by someone who has just mistyped a password. The icon inside stays visually
+     small -- the TARGET grew, not the ornament. */
+  width: 44px;
+  height: 44px;
   padding: 0;
   color: var(--color-text-muted);
   background: none;
@@ -3061,8 +3081,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .eos-auth__secondary {
   align-self: flex-start;
-  margin-top: 18px;
-  padding: 0;
+  /* Measured at 18px tall. A forgot-password link is reached precisely when somebody is already
+     locked out and frustrated, so it is the worst possible place for a target a thumb keeps missing.
+     The padding grows the hit area without changing where the text sits: margin-top is reduced by
+     the same amount the padding adds, so the layout is unmoved. */
+  margin-top: 6px;
+  padding: 12px 4px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   font: inherit;
   font-size: 13.5px;
   color: var(--color-text-secondary);

@@ -31,6 +31,7 @@ export const SCAN_WORKFLOW = Object.freeze({
   CYCLE_COUNT: "CYCLE_COUNT",
   PUT_AWAY: "PUT_AWAY",
   PICK: "PICK",
+  RETURN_INTAKE: "RETURN_INTAKE",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -74,6 +75,9 @@ export const CYCLE_COUNT_SUBMIT_CAPABILITY = "inventory.cycleCount.submit";
  */
 export const PLACEMENT_RECORD_CAPABILITY = "inventory.placement.record";
 export const BIN_READ_CAPABILITY = "inventory.location.bin.read";
+// Taking a return in. Its own capability and its own audience: the returns desk is not the shelf.
+// Carries NO disposition authority, because disposition does not exist (DECISIONS #118).
+export const RETURNS_INTAKE_CAPABILITY = "inventory.returns.intake";
 
 /**
  * Derive the available workflows.
@@ -184,6 +188,21 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.PICK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
+  // ── Return intake ───────────────────────────────────────────────────────────────────────────
+  //
+  // Recording that something came back. A SEPARATE authority from everything above it: an operator
+  // who stows and picks all day has no business deciding what re-enters the building, and the
+  // capability model already says so.
+  //
+  // Offered only to a holder of inventory.returns.intake. It confers nothing about DISPOSITION,
+  // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
+  // record an arrival and can never put anything back into sellable stock.
+  if (holds(RETURNS_INTAKE_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -220,6 +239,7 @@ export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.PICK]: "Pick and stage for a job",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
+  [SCAN_WORKFLOW.RETURN_INTAKE]: "Take a return in",
 });
 
 export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
@@ -237,6 +257,8 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
     "Scan a part to record that you used it on the job you are working.",
+  [SCAN_WORKFLOW.RETURN_INTAKE]:
+    "Record something that came back, and what condition it is in. It does not go back into sellable stock — that is a separate decision.",
 });
 
 /**

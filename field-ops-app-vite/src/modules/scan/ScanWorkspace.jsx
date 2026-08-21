@@ -18,6 +18,7 @@ import TransferScan from "./TransferScan.jsx";
 import CycleCountScan from "./CycleCountScan.jsx";
 import PutAwayScan from "./PutAwayScan.jsx";
 import PickScan from "./PickScan.jsx";
+import ReturnIntakeScan from "./ReturnIntakeScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -219,6 +220,18 @@ export default function ScanWorkspace({ deps }) {
         {/* A pick is a placement with a reason. It reserves nothing (DECISIONS #116 + the existing
             DISPATCHED -> reserveParts lifecycle effect). */}
         <PickScan deps={deps?.pickDeps} />
+      </div>
+    );
+  }
+
+  if (active === SCAN_WORKFLOW.RETURN_INTAKE) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Take a return in" />
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
+        {/* Records an ARRIVAL. Disposition is a separate authority that does not exist (#118), so
+            nothing here can put stock back on the shelf. */}
+        <ReturnIntakeScan deps={deps?.returnDeps} />
       </div>
     );
   }
