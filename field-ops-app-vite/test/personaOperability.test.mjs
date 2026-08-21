@@ -28,25 +28,93 @@ import {
 } from "../src/access/scanWorkflows.js";
 
 /**
- * What each persona holds TODAY, transcribed from the governed role model.
+ * The functional Roles, transcribed from the governed role model.
  *
  * Kept as data rather than imported so this file states the expectation and
  * functions/test/scannerReleaseReadiness.test.mjs proves it — two files that must agree, rather than
  * one file agreeing with itself.
  */
-const PERSONA_CAPABILITIES = Object.freeze({
-  admin: [
+const ROLE_CAPABILITIES = Object.freeze({
+  inventoryLookupReader: [
+    "inventory.balance.read", "inventory.catalog.alias.read",
+    "inventory.serializedAsset.read", "inventory.location.display.read",
+  ],
+  inventoryPutAwayOperator: ["inventory.location.bin.read", "inventory.placement.record"],
+  inventoryBinAdministrator: ["inventory.location.bin.manage", "inventory.location.bin.read"],
+  inventoryReturnsIntakeClerk: ["inventory.returns.intake"],
+  inventoryTransferOperator: [
+    "inventory.transfer.create", "inventory.transfer.dispatch",
+    "inventory.transfer.receive", "inventory.transfer.cancel",
+  ],
+  inventoryCycleCountCounter: [
+    "inventory.cycleCount.create", "inventory.cycleCount.submit", "inventory.cycleCount.cancel",
+  ],
+  inventoryCycleCountReconciler: ["inventory.cycleCount.reconcile"],
+});
+
+/**
+ * What each persona is ASSIGNED — a position plus its functional Roles.
+ *
+ * ============================ THE THING THIS FILE GOT WRONG FIRST ============================
+ *
+ * This started as a flat list of capabilities per persona, and concluded that no warehouse persona
+ * could do anything. That was TRUE and the implied fix was WRONG: `warehouseAssociate`,
+ * `partsAssociate`, `warehouseManager` and `partsManager` are ORG-CHART POSITIONS that carry no
+ * permissions by design. Authority has always come from separate functional Roles held alongside the
+ * position — which is why the fix was four new Roles, not permissions bolted onto a job title.
+ *
+ * `[]` below therefore means "this position has been assigned no functional Role", which is a
+ * grant-side fact about the sandbox, not a statement about the position itself.
+ */
+const PERSONA_ROLES = Object.freeze({
+  // Compatibility roles carry their capabilities directly; modelled as a pseudo-Role for uniformity.
+  admin: ["__adminCompatibility"],
+  dispatcher: ["__dispatcherCompatibility"],
+
+  // A technician gets the read bundle and nothing else. NOTE A REAL GAP: accepting a truck handoff
+  // needs `inventory.transfer.receive`, and the only Role carrying it is inventoryTransferOperator,
+  // which also confers create/dispatch/cancel — far too much for a van. A receive-only Role is
+  // required before a technician can take a handoff, and inventing one here was out of scope.
+  technician: ["inventoryLookupReader"],
+
+  // The floor: look things up, stow them, count them.
+  partsAssociate: ["inventoryLookupReader", "inventoryPutAwayOperator", "inventoryCycleCountCounter"],
+  // Also moves stock between sites and onto trucks.
+  warehouseAssociate: [
+    "inventoryLookupReader", "inventoryPutAwayOperator", "inventoryCycleCountCounter",
+    "inventoryTransferOperator",
+  ],
+  // Also labels racking.
+  partsManager: [
+    "inventoryLookupReader", "inventoryPutAwayOperator", "inventoryCycleCountCounter",
+    "inventoryBinAdministrator",
+  ],
+  // Also takes returns in, and RECONCILES counts — deliberately WITHOUT the counter Role.
+  // Decision #111: a counter may not approve their own material variance. A manager reconciling what
+  // an associate counted is the control working; one person holding both halves is the control being
+  // waived, which must be an explicit grant decision rather than a default.
+  warehouseManager: [
+    "inventoryLookupReader", "inventoryPutAwayOperator", "inventoryBinAdministrator",
+    "inventoryTransferOperator", "inventoryReturnsIntakeClerk", "inventoryCycleCountReconciler",
+  ],
+});
+
+const COMPATIBILITY_CAPABILITIES = Object.freeze({
+  __adminCompatibility: [
     "inventory.stock.receive", "inventory.transfer.dispatch", "inventory.transfer.receive",
     "inventory.cycleCount.create", "inventory.cycleCount.submit",
     "inventory.placement.record", "inventory.location.bin.read",
   ],
-  dispatcher: ["inventory.stock.receive"],
-  technician: [],
-  partsAssociate: [],
-  partsManager: [],
-  warehouseAssociate: [],
-  warehouseManager: [],
+  __dispatcherCompatibility: ["inventory.stock.receive"],
 });
+
+const capabilitiesOf = (persona) => (PERSONA_ROLES[persona] ?? []).flatMap(
+  (roleId) => ROLE_CAPABILITIES[roleId] ?? COMPATIBILITY_CAPABILITIES[roleId] ?? [],
+);
+
+const PERSONA_CAPABILITIES = Object.freeze(
+  Object.fromEntries(Object.keys(PERSONA_ROLES).map((p) => [p, capabilitiesOf(p)])),
+);
 
 /** How a workflow stands for a persona. */
 const VISIBLE = "VISIBLE";        // offered and usable
@@ -112,24 +180,51 @@ test("TECHNICIAN reaches their own scanner and lookup", () => {
   assert.equal(m[SCAN_WORKFLOW.LOOKUP], VISIBLE);
 });
 
-test("THE HEADLINE: every warehouse and parts persona reaches ONLY lookup", () => {
-  // Not because the workflows are broken — because these personas hold no scanner capability. This
-  // is the release-blocking gap, stated from the persona side.
+test("THE HEADLINE: every warehouse and parts persona can now do the floor job", () => {
+  // The state this file was written to record was "nobody can do anything". That has deliberately
+  // changed: the four functional Roles exist and the sandbox assigns them. What must NOT change is
+  // that each persona reaches exactly what their Roles carry and nothing beyond it.
   for (const persona of ["partsAssociate", "partsManager", "warehouseAssociate", "warehouseManager"]) {
     const m = operability(persona, { receivingReady: true });
-    assert.equal(m[SCAN_WORKFLOW.LOOKUP], VISIBLE, `${persona} should still reach lookup`);
-    for (const w of [SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK]) {
-      assert.equal(m[w], DENIED, `${persona}/${w} is denied until a grant exists`);
-    }
+    assert.equal(m[SCAN_WORKFLOW.LOOKUP], VISIBLE, `${persona} should reach lookup`);
+    assert.equal(m[SCAN_WORKFLOW.PUT_AWAY], VISIBLE, `${persona} should be able to stow`);
+    assert.equal(m[SCAN_WORKFLOW.PICK], VISIBLE, `${persona} should be able to pick`);
+    // RECEIVING STAYS DENIED FOR ALL FOUR. Accepting stock is the separately deferred decision, and
+    // no Role added by the promotion confers it.
+    assert.equal(m[SCAN_WORKFLOW.SUPPLIER_RECEIVING], DENIED, `${persona} must NOT gain receiving`);
     assert.equal(m[SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER], NOT_APPLICABLE, `${persona} is not a technician`);
   }
 });
 
-test("a DENIED warehouse workflow always states WHY, so the gap is legible", () => {
+test("counting follows the Roles, not the job title — the manager reconciles, the associate counts", () => {
+  // Decision #111 expressed as access. warehouseManager holds the reconciler Role and NOT the
+  // counter Role, so they cannot open a count and then approve their own variance.
+  assert.equal(operability("warehouseAssociate", { receivingReady: true })[SCAN_WORKFLOW.CYCLE_COUNT], VISIBLE);
+  assert.equal(operability("partsAssociate", { receivingReady: true })[SCAN_WORKFLOW.CYCLE_COUNT], VISIBLE);
+  assert.equal(
+    operability("warehouseManager", { receivingReady: true })[SCAN_WORKFLOW.CYCLE_COUNT], DENIED,
+    "a manager holding reconcile must not also be able to open and submit the count",
+  );
+});
+
+test("transfers follow the Role too — parts personas move nothing between sites", () => {
+  assert.equal(operability("warehouseAssociate", { receivingReady: true })[SCAN_WORKFLOW.TRANSFER], VISIBLE);
+  assert.equal(operability("partsAssociate", { receivingReady: true })[SCAN_WORKFLOW.TRANSFER], DENIED);
+});
+
+test("a DENIED workflow always states WHY, so what is missing stays legible", () => {
   const m = operability("partsAssociate", { receivingReady: true });
-  for (const w of [SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK]) {
+  for (const w of [SCAN_WORKFLOW.TRANSFER]) {
     assert.equal(m[`${w}_reason`], UNAVAILABLE_REASON.NO_CAPABILITY, `${w} should say a grant is missing`);
   }
+});
+
+test("A POSITION ALONE STILL REACHES ONLY LOOKUP", () => {
+  // The invariant underneath the whole grant model: holding `warehouseAssociate` and no functional
+  // Role must confer nothing. If this ever passes with more than lookup, a capability has been put
+  // onto a job title.
+  const bare = deriveScanWorkflows({ hasCapability: () => false, receivingReady: true, role: null });
+  assert.deepEqual(bare.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
 });
 
 // ═══════════════════════════════════════════ no accidental access
@@ -183,14 +278,16 @@ test("the derivation cannot branch on a persona — it never receives one", () =
   assert.deepEqual(asParts.unavailable, asWarehouse.unavailable);
 });
 
-test("granting a capability is the ONLY thing that changes a warehouse persona's access", () => {
-  // Proves the fix is a grant and nothing else: no code change, no nav change, no role rename.
+test("granting a Role is the ONLY thing that changes a persona's access", () => {
+  // Proves the lever is a grant and nothing else: no code change, no nav change, no role rename.
+  // Demonstrated on the one workflow still withheld from every warehouse persona — receiving.
   const before = operability("partsAssociate", { receivingReady: true });
-  assert.equal(before[SCAN_WORKFLOW.CYCLE_COUNT], DENIED);
+  assert.equal(before[SCAN_WORKFLOW.SUPPLIER_RECEIVING], DENIED);
 
   const after = deriveScanWorkflows({
-    hasCapability: (id) => ["inventory.cycleCount.create", "inventory.cycleCount.submit"].includes(id),
+    hasCapability: (id) => id === "inventory.stock.receive",
+    receivingReady: true,
     role: null,
   });
-  assert.equal(after.available.some((a) => a.workflow === SCAN_WORKFLOW.CYCLE_COUNT), true);
+  assert.equal(after.available.some((a) => a.workflow === SCAN_WORKFLOW.SUPPLIER_RECEIVING), true);
 });

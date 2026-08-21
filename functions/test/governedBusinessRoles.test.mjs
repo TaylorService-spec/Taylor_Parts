@@ -77,6 +77,14 @@ const EXPECTED_IDS = [
   "inventoryTransferOperator",
   "inventoryCycleCountCounter",
   "inventoryCycleCountReconciler",
+  // SCANNER PROMOTION 2026-08-20. Four functional Roles that make the scanner reachable by warehouse
+  // and parts staff. Added as FUNCTIONS rather than as permissions on the warehouse/parts POSITIONS
+  // above, which carry none by design -- a job title must never be what makes somebody an inventory
+  // writer. Each Role's exact contents are pinned in test/scannerReleaseReadiness.test.mjs.
+  "inventoryPutAwayOperator",
+  "inventoryBinAdministrator",
+  "inventoryReturnsIntakeClerk",
+  "inventoryLookupReader",
 ];
 
 function grant(roleId, roles) {
@@ -104,12 +112,12 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the twenty-six ids (twenty-four, plus Purchasing Manager and Shop Manager)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the thirty ids (twenty-six, plus the four scanner Roles)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 26);
+  assert.equal(ALL_GOVERNED_ROLES.length, 30);
 });
 
 check("salesperson and salesManager are intentionally identical in capability today", () => {
@@ -197,14 +205,17 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all twenty-six governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all thirty governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+  // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
+  // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
+  // actually grant it. The two lists are asserted equal in both directions so neither can drift.
   for (const id of EXPECTED_IDS) {
     assert.ok(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST[id], `${id} must be governed-assignable`);
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    26,
-    "the governed allowlist must contain exactly the 26 declared governed business Roles",
+    30,
+    "the governed allowlist must contain exactly the 30 declared governed business Roles",
   );
 });
 

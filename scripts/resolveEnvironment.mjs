@@ -83,6 +83,15 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'inventory.cycleCount.submit',
   'inventory.cycleCount.reconcile',
   'inventory.cycleCount.cancel',
+  // SCANNER PROMOTION -- mirrors environmentCapabilityOverrides.ts. Parity is asserted, so these two
+  // lists cannot drift: a capability eligible on the backend but not here would be denied by the UI
+  // and allowed by the command, which is the worst of both answers.
+  'inventory.catalog.alias.read',
+  'inventory.balance.read',
+  'inventory.location.bin.manage',
+  'inventory.location.bin.read',
+  'inventory.placement.record',
+  'inventory.returns.intake',
 ]);
 
 /**
