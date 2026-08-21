@@ -112,7 +112,18 @@ interface PutAwayRequest {
    * reserveParts), not an operator action, and picking does not pre-empt it.
    */
   readonly pickedForWorkOrderId?: string;
+  /**
+   * An operator's exception note (Phase N): why this stow or pick was not routine.
+   *
+   * FREE TEXT, STORED AS WRITTEN. It is never parsed, matched or acted on — a note explains a
+   * placement to the next human, and giving it meaning to the system would make what someone typed
+   * into an input the system obeys.
+   */
+  readonly note?: string;
 }
+
+/** Long enough for a real explanation; short enough that it is a note and not a document. */
+export const MAX_PLACEMENT_NOTE = 500;
 
 /** Shape validation only. What is TRUE about the bin and the serials is checked in the transaction. */
 export function validatePutAwayRequest(input: unknown): { valid: true; value: PutAwayRequest } | { valid: false; reason: string } {
@@ -125,6 +136,15 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
 
   const binCode = normalizeBinCode(d.binCode);
   if (!binCode.valid) return { valid: false, reason: binCode.reason };
+
+  let note: string | undefined;
+  if (d.note !== undefined && d.note !== null) {
+    if (typeof d.note !== "string") return { valid: false, reason: "note_invalid" };
+    const trimmed = d.note.trim();
+    // Refused, never truncated: silently cutting an explanation in half is worse than not taking it.
+    if (trimmed.length > MAX_PLACEMENT_NOTE) return { valid: false, reason: "note_too_long" };
+    if (trimmed !== "") note = trimmed;
+  }
 
   const hasSerials = d.serialNumbers !== undefined;
   const hasQuantity = d.quantity !== undefined;
@@ -145,6 +165,7 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
         binCode: binCode.value.code,
         serialNumbers: (d.serialNumbers as string[]).map((s) => s.trim()),
         ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
+        ...(note !== undefined ? { note } : {}),
       },
     };
   }
@@ -158,6 +179,7 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
       warehouseId: d.warehouseId, partId: d.partId, idempotencyKey: d.idempotencyKey,
       binCode: binCode.value.code, quantity: d.quantity,
       ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
+      ...(note !== undefined ? { note } : {}),
     },
   };
 }
@@ -217,6 +239,8 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       // as null rather than omitted -- a missing field and a deliberate "not picked for anything"
       // must not be the same thing to a later reader.
       pickedForWorkOrderId: req.pickedForWorkOrderId ?? null,
+      // Stored as written. Null rather than omitted, so "no note" is a fact rather than an absence.
+      note: req.note ?? null,
       schemaVersion: 1,
     };
 

@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N (Warehouse/Parts mobile UX).
 
 ---
 
@@ -45,7 +45,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **K** — descriptive bin registry | MERGED (#1365) | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
 | **L** — put-away | MERGED (#1366) | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
 | **M** — pick and stage | MERGED (#1367) | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
-| **O** — warehouse ↔ truck handoff | This change | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
+| **O** — warehouse ↔ truck handoff | MERGED (#1368) | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
+| **N** — Warehouse/Parts mobile UX | This change | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
 
 ### What "not deployed" means concretely
 
@@ -839,3 +840,67 @@ unit that is not on the handoff is refused; the outstanding serials are named so
 ### State today
 
 Both transfer capabilities remain `active: false` and granted to no Role.
+
+## 18. Phase N — the Warehouse/Parts mobile experience
+
+Composition and ergonomics over the workflows the earlier phases built. No new inventory authority.
+
+### Type **or** dictate
+
+`shared/ui/DictatableNote.jsx` — one free-text field for gloved hands in a loud building.
+
+**Dictation is an input method, not an assistant.** It turns speech into text in a field and stops:
+it sends nothing anywhere, interprets no commands, extracts no intent and makes no decision. A test
+asserts the component reaches no transport, resolves no identity, and cannot name `intent`,
+`parseCommand`, `assistant` or `nlp`.
+
+That boundary is stated because the obvious next step — *"let them say what they want and work out
+what they meant"* — is the conversational assistant, which is a **separate future add-on** and
+explicitly not this.
+
+The transcript lands in an ordinary editable textarea, typing works **during** dictation, and there
+is no save button here at all: saving is the workflow's own deliberate act. **There is no path where
+spoken words are stored without a human having seen them.**
+
+It degrades honestly. No recogniser, a refused microphone and a failure are **three different
+messages** — a refusal and a breakage send the operator to different places — and typing is never
+removed or hidden behind the microphone.
+
+### Where free text actually exists
+
+Two places, both genuine exceptions rather than invented fields:
+
+- **Put-away** — "Anything unusual about this stow?"
+- **Pick** — and when the line is short, the label asks the useful question directly: **"Why is it
+  short?"** A short line without a reason tells the next person a number; with one it tells them what
+  to do about it.
+
+The note is **optional in both directions**: it never blocks, and an empty one is never sent. It is
+stored as written and **never parsed, matched or acted on** — giving a note meaning to the system
+would turn what somebody typed into an input the system obeys. An over-long note is refused rather
+than truncated, because the half that survives reads as the whole story.
+
+### Where the operator left off
+
+A warehouse phone locks in a pocket; a browser tab gets reclaimed. The workspace now returns to the
+workflow the operator was in, so they do not re-choose "Put stock away" every time — the kind of
+friction that sends people back to paper.
+
+**Only the choice is remembered.** Nothing scanned, no bin, no queue: resuming a half-finished
+physical count from an hour ago would be worse than starting it again, because the shelf has moved on
+and the operator has not. A stale or tampered stored value routes nowhere, and storage being blocked
+does not stop the workspace rendering.
+
+### One task at a time, at 48px
+
+The shared ergonomics moved into one place so a new workflow inherits them rather than re-deciding:
+single column, large targets, and a **48px floor rather than 44** — Apple's 44pt assumes a bare
+fingertip, and a warehouse in winter does not have one. Link-styled controls like "Undo last scan"
+are sized as targets too, rather than left as a 20px line of text on a one-handed device.
+
+### Explicitly out of scope
+
+Conversational warehouse assistant, general voice commands, AI route optimization, automatic
+replenishment, camera damage recognition, autonomous exception classification. **None was built or
+scaffolded**, and the dictation boundary above is what keeps the first of them from arriving by
+accident.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -54,8 +54,41 @@ import PickScan from "./PickScan.jsx";
 // registered active:false, and stock balances, which have no governed client read at all -- are
 // shown as stated absences rather than omitted or invented.
 
+/**
+ * WHERE THE OPERATOR LEFT OFF.
+ *
+ * A warehouse phone locks in a pocket, a call comes in, a browser tab is reclaimed for memory. On the
+ * way back the operator should land in the workflow they were in, not at a menu — re-choosing
+ * "Put stock away" every time is the kind of friction that makes people go back to paper.
+ *
+ * ONLY the workflow choice is remembered. Nothing scanned, no bin, no queue: resuming a half-finished
+ * physical count from an hour ago would be worse than starting it again, because the shelf has moved
+ * on and the operator has not.
+ */
+const ACTIVE_WORKFLOW_KEY = "eos.scan.activeWorkflow";
+
+function rememberedWorkflow() {
+  try {
+    const stored = window.sessionStorage?.getItem(ACTIVE_WORKFLOW_KEY);
+    // Validated against the real vocabulary: a stale or tampered value must not route anywhere.
+    return stored && Object.values(SCAN_WORKFLOW).includes(stored) ? stored : null;
+  } catch {
+    // Private browsing and locked-down devices refuse storage. Losing the memory is fine; failing to
+    // render the workspace is not.
+    return null;
+  }
+}
+
 export default function ScanWorkspace({ deps }) {
-  const [active, setActive] = useState(null);
+  const [active, setActiveState] = useState(() => (deps?.rememberWorkflow === false ? null : rememberedWorkflow()));
+
+  const setActive = useCallback((workflow) => {
+    setActiveState(workflow);
+    try {
+      if (workflow) window.sessionStorage?.setItem(ACTIVE_WORKFLOW_KEY, workflow);
+      else window.sessionStorage?.removeItem(ACTIVE_WORKFLOW_KEY);
+    } catch { /* storage is a convenience, never a requirement */ }
+  }, []);
 
   // TECHNICIAN CONTEXT IS RESOLVED HERE, not passed in. `renderSubnavItem` in App.jsx is a plain
   // function rather than a component and cannot call hooks, so the shell can hand over the

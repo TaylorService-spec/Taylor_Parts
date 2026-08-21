@@ -222,3 +222,44 @@ describe("Put-away (refusals are told truthfully)", () => {
     expect(screen.queryByLabelText(/scan bin/i)).toBeNull();
   });
 });
+
+// ────────────────────────────────────────────── exception notes (Phase N)
+
+describe("Put-away (an exception note, typed or dictated)", () => {
+  it("offers a note only once there is something to stow into", async () => {
+    // A note field above the scan input would make every routine stow look like it wanted a comment.
+    mount();
+    expect(screen.queryByLabelText(/note/i)).toBeNull();
+    await scanBin();
+    expect(screen.getByLabelText(/note \(optional\)/i)).toBeTruthy();
+  });
+
+  it("sends the note with the stow when there is one", async () => {
+    const c = mount();
+    await scanBin();
+    scanInto(/scan item/i, "PRT-1001");
+    fireEvent.change(screen.getByLabelText(/note \(optional\)/i), { target: { value: "  Box was crushed.  " } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
+    expect(c.recordPutAway.mock.calls[0][0].note).toBe("Box was crushed.");
+  });
+
+  it("sends NO note when there is nothing to say", async () => {
+    const c = mount();
+    await scanBin();
+    scanInto(/scan item/i, "PRT-1001");
+    fireEvent.change(screen.getByLabelText(/note \(optional\)/i), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
+    expect(c.recordPutAway.mock.calls[0][0].note).toBeUndefined();
+  });
+
+  it("a note never blocks the stow — it is optional in both directions", async () => {
+    const c = mount();
+    await scanBin();
+    scanInto(/scan item/i, "PRT-1001");
+    expect(screen.getByRole("button", { name: /confirm put-away/i }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
+  });
+});

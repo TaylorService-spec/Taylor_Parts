@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
+import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { binCommandClient } from "../../services/binCommandClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { BIN_RESULT, BIN_RESULT_TEXT } from "../../domain/putAwaySession.js";
@@ -55,6 +56,7 @@ export default function PickScan({ deps }) {
   const [activePartId, setActivePartId] = useState(null);
   const [observations, setObservations] = useState(Object.freeze([]));
   const [stagingBin, setStagingBin] = useState(null);
+  const [note, setNote] = useState("");
   const [staged, setStaged] = useState(Object.freeze({}));
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -103,11 +105,14 @@ export default function PickScan({ deps }) {
     setBusy(true);
     setError(null);
     try {
-      await client.recordPutAway(toStageRequest({
-        warehouseId, line, lineState: state, stagingBin,
-        workOrderId: workOrder?.id ?? workOrder?.woNumber,
-        idempotencyKey: `${pickKey.current}__${line.partId}`,
-      }));
+      await client.recordPutAway({
+        ...toStageRequest({
+          warehouseId, line, lineState: state, stagingBin,
+          workOrderId: workOrder?.id ?? workOrder?.woNumber,
+          idempotencyKey: `${pickKey.current}__${line.partId}`,
+        }),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
       if (!alive.current) return;
       // The line's outcome is kept so the job list shows what is done and what came up short.
       setStaged((prev) => Object.freeze({
@@ -116,12 +121,13 @@ export default function PickScan({ deps }) {
       }));
       setActivePartId(null);
       setObservations(Object.freeze([]));
+      setNote("");
     } catch (err) {
       if (alive.current) fail(err);
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, warehouseId, line, stagingBin, workOrder, fail]);
+  }, [state, busy, client, warehouseId, line, stagingBin, workOrder, note, fail]);
 
   if (!workOrder || !warehouseId) {
     return (
@@ -215,6 +221,16 @@ export default function PickScan({ deps }) {
               </button>
             </>
           )}
+
+          {/* Where a shortage gets EXPLAINED. A short line without a reason tells the next person
+              a number; a short line with one tells them what to do about it. */}
+          <DictatableNote
+            value={note}
+            onChange={setNote}
+            label={state.state === LINE_STATE.SHORT ? "Why is it short? (optional)" : "Note (optional)"}
+            placeholder="Anything the next person should know?"
+            deps={deps?.noteDeps}
+          />
 
           {state.blockers.length > 0 && (
             <ul className="fo-list fo-transfer-scan__blockers" aria-label="Before you can stage">
