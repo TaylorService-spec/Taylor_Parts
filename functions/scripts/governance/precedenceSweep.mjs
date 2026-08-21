@@ -14,6 +14,7 @@
 //
 // Run: node scripts/governance/precedenceSweep.mjs
 import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -130,7 +131,13 @@ const out = {
     "historical/current implementation", "stale or generated summaries"],
   totals: byClass, rows,
   reverseSweep: { missingDecidedMappings: missing },
-  decisionsFileSha: `bytes:${decisions.length}`,
+  // A real content hash, over LINE-ENDING-NORMALISED text.
+  //
+  // This field was a byte COUNT, and it made the artifact irreproducible: a Windows checkout with
+  // CRLF and CI's LF produce different lengths for identical content, so the drift guard failed on
+  // its first live run against a file nobody had edited. Caught by the guard itself, which is the
+  // only reason it is not still there.
+  decisionsFileSha: `sha256:${createHash("sha256").update(decisions.split("' + chr(92) + 'r' + chr(92) + 'n").join("' + chr(92) + 'n")).digest("hex")}`,
 };
 writeFileSync(path.join(REPO, "docs/governance/precedence-sweep.json"), JSON.stringify(out, null, 1));
 console.log("roles swept:", BUSINESS.length, "| pairs:", rows.length);
