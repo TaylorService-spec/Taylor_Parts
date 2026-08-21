@@ -212,7 +212,13 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
-// Scanner Phase H: inventory.balance.read -- the shared governed balance read (on-hand, reserved,
+// Scanner Phase K: inventory.location.bin.manage / .read -- the descriptive bin registry
+// (DECISIONS #116: the warehouse owns custody; a bin describes where stock sits inside one). TWO ids
+// because there are two audiences: an operator putting stock away needs to check a bin is real, and
+// gating that on the write capability would let them create and retire racking. Both active:false
+// and granted to no Role; paired with their own explicit assertions below.
+//
+// // Scanner Phase H: inventory.balance.read -- the shared governed balance read (on-hand, reserved,
 // available, on order for one Part). Its numbers come from fulfillment's Owner-ratified pure
 // functions, so it is not a second on-hand authority; it needed its own id because
 // warehouse.stockLocation.read names a collection the ledger superseded and is granted to the wrong
@@ -232,7 +238,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -285,6 +291,28 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
   assert.equal(permission.action, "read");
+});
+
+check("both bin capabilities are registered exactly once, active: false, resource/action match", () => {
+  for (const [id, action] of [["inventory.location.bin.manage", "manage"], ["inventory.location.bin.read", "read"]]) {
+    const matches = PERMISSION_CATALOG.filter((p) => p.id === id);
+    assert.equal(matches.length, 1, `${id} must be registered exactly once`);
+    const [permission] = matches;
+    assert.equal(permission.active, false, `${id} must be inactive (registered-but-ungranted)`);
+    assert.equal(permission.resource, "inventory.location.bin");
+    assert.equal(permission.action, action);
+  }
+});
+
+check("bin READ and bin MANAGE stay separate capabilities", () => {
+  // The whole point. If these collapsed into one id, every put-away operator would hold the
+  // authority to create and retire racking.
+  const manage = PERMISSION_CATALOG.find((p) => p.id === "inventory.location.bin.manage");
+  const read = PERMISSION_CATALOG.find((p) => p.id === "inventory.location.bin.read");
+  assert.ok(manage && read);
+  assert.notEqual(manage.action, read.action);
+  assert.equal(manage.active, false);
+  assert.equal(read.active, false);
 });
 
 check("inventory.balance.read is registered exactly once, active: false, resource/action match the id", () => {

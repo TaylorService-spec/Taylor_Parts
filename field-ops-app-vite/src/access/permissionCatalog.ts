@@ -862,6 +862,39 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Scanner Phase K -- the DESCRIPTIVE BIN REGISTRY (functions/src/inventoryLocation/bin*.ts).
+  //
+  // WHAT A BIN IS, PER DECISIONS #116: the warehouse is the inventory custody authority and a bin is
+  // a descriptive physical sub-location within one. Putting stock into a bin must NOT remove it from
+  // warehouse on-hand or available, so these capabilities govern PLACE IDENTITY only -- they author
+  // no quantity, no ledger event and no location reference any movement command would accept.
+  //
+  // TWO CAPABILITIES BECAUSE THERE ARE TWO AUDIENCES. An operator putting stock away needs to check
+  // that a scanned bin is real; an administrator labels racking. Gating the check on the write
+  // capability would let every put-away operator create and retire bins -- the same broadening the
+  // catalog exists to prevent, and the same split Phase G drew for alias lookup vs administration.
+  //
+  // `bins` has NO firestore.rules match block, so it is deny-all to every client including admin.
+  // That needed no Rules change: these run on the Admin SDK, which Rules do not govern.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: both `active: false`, granted to NO Role, no
+  // per-environment activation override.
+  Object.freeze({
+    id: "inventory.location.bin.manage",
+    description:
+      "Create, retire or revive a descriptive bin (a physical sub-location within one warehouse) via the trusted bin registry commands. Place identity only: authors no quantity, no ledger movement and no inventory custody.",
+    resource: "inventory.location.bin",
+    action: "manage",
+    active: false,
+  }),
+  Object.freeze({
+    id: "inventory.location.bin.read",
+    description:
+      "Resolve a scanned bin code within a warehouse, or list a warehouse's bins, via the trusted bin read services. Resolve-only: does not authorize creating or retiring bins, and grants nothing about inventory.",
+    resource: "inventory.location.bin",
+    action: "read",
+    active: false,
+  }),
   // Scanner Phase H -- the shared INVENTORY BALANCE read (functions/src/inventory/
   // partBalanceReadService.ts): on-hand, reserved, available and on-order for one Part.
   //

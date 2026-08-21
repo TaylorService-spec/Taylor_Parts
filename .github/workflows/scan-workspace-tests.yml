@@ -17,6 +17,9 @@ name: Scan Workspace Tests
 #                            command or writer at all.
 #   lookupScan             — the same properties on the mounted surface, plus that it offers exactly
 #                            one control and no way to move stock.
+#   binRegistry            — a bin DESCRIBES where stock sits; the warehouse still owns it. Asserts
+#                            structurally that no BIN location reference and no quantity can be
+#                            emitted, which is the shape that would let a bin leak into custody math.
 #   partBalanceReadService — the shared balance read: UNKNOWN is never zero, a serialized part never
 #                            claims a quantity, the per-location breakdown sums to its own total, and
 #                            no fourth on-hand implementation exists.
@@ -62,6 +65,9 @@ on:
       - "field-ops-app-vite/src/services/partAliasCallableClient.js"
       - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
       - "functions/src/partMaster/partAliasScanResolver.ts"
+      - "functions/src/inventoryLocation/binRegistry.ts"
+      - "functions/src/inventoryLocation/binCommands.ts"
+      - "functions/src/inventoryLocation/binCallables.ts"
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
@@ -106,6 +112,7 @@ on:
       - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
+      - "functions/test/binRegistry.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -120,6 +127,9 @@ on:
       - "field-ops-app-vite/src/services/partAliasCallableClient.js"
       - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
       - "functions/src/partMaster/partAliasScanResolver.ts"
+      - "functions/src/inventoryLocation/binRegistry.ts"
+      - "functions/src/inventoryLocation/binCommands.ts"
+      - "functions/src/inventoryLocation/binCallables.ts"
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
@@ -164,6 +174,7 @@ on:
       - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
+      - "functions/test/binRegistry.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -219,6 +230,10 @@ jobs:
 
       - name: Shared inventory balance read (pure)
         run: node --test test/partBalanceReadService.test.mjs
+        working-directory: functions
+
+      - name: Descriptive bin registry (pure)
+        run: node --test test/binRegistry.test.mjs
         working-directory: functions
 
       - name: Transfer scan verification (pure)

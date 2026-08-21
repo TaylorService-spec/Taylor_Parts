@@ -302,6 +302,20 @@ export {
   resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
 } from "./partMaster/partAliasCallables";
 
+// --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
+// A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
+// quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read
+// (resolve/list) -- two capabilities because a put-away operator needs the check without the ability
+// to create racking. Both registered INERT and granted to nobody. `bins` has no Rules match block,
+// so it is deny-all to every client; these run on the Admin SDK. EXPORT != DEPLOY.
+export {
+  createBinCallable as createBin,
+  deactivateBinCallable as deactivateBin,
+  reactivateBinCallable as reactivateBin,
+  resolveBinCallable as resolveBin,
+  listBinsCallable as listBins,
+} from "./inventoryLocation/binCallables";
+
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
 // Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every
 // principal until separately authorized. EXPORT != DEPLOY.
