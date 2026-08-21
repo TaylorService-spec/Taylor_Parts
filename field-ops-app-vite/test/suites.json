@@ -808,6 +808,10 @@
     {
       "file": "test/cycleCountScanSession.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/scanInputPolicy.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
+import ScanInput from "../../shared/ui/ScanInput.jsx";
+import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { transferCommandClient } from "../../services/transferCommandClient.js";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
 import {
@@ -118,7 +120,6 @@ function TransferVerify({ order, deps, onBack }) {
 
   const [observations, setObservations] = useState([]);
   const [confirmedLocation, setConfirmedLocation] = useState(null);
-  const [query, setQuery] = useState("");
   const [outcome, setOutcome] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -127,13 +128,19 @@ function TransferVerify({ order, deps, onBack }) {
 
   const state = buildTransferVerification({ order, observations, confirmedLocation });
 
+  // The shared input asks what the WORKFLOW made of the scan, so the beep and the buzz reflect the
+  // verdict rather than merely "a code arrived". A refused scan sounds refused.
   const scan = useCallback((raw) => {
-    if (typeof raw !== "string" || raw.trim() === "") return;
+    let observation = null;
     setObservations((prev) => {
       const verified = prev.filter((o) => o.state === OBSERVATION_STATE.VERIFIED);
-      return [...prev, classifyObservation(raw, order, verified)];
+      observation = classifyObservation(raw, order, verified);
+      return [...prev, observation];
     });
-    setQuery("");
+    if (!observation) return FEEDBACK.ACCEPTED;
+    if (observation.state === OBSERVATION_STATE.VERIFIED) return FEEDBACK.ACCEPTED;
+    if (observation.state === OBSERVATION_STATE.DUPLICATE) return FEEDBACK.NEUTRAL;
+    return { feedback: FEEDBACK.REJECTED, detail: OBSERVATION_TEXT[observation.state] };
   }, [order]);
 
   const submit = useCallback(async () => {
@@ -189,17 +196,12 @@ function TransferVerify({ order, deps, onBack }) {
             onClear={() => setConfirmedLocation(null)}
           />
 
-          <form className="fo-scan__entry" onSubmit={(e) => { e.preventDefault(); scan(query); }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
-              aria-label="Scan item"
-              enterKeyHint="done"
-              autoFocus
-            />
-            <Button type="submit" className="fo-scan__find">Add</Button>
-          </form>
+          <ScanInput
+            onScan={scan}
+            label="Scan item"
+            placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
+            deps={deps?.scanInputDeps}
+          />
 
           {state.outstandingSerials.length > 0 && (
             // Naming what is missing beats "3 of 5": the operator has to go and find specific boxes.

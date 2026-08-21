@@ -2394,6 +2394,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--color-surface-elevated); color: var(--color-text-primary);
 }
 
+/* ---------------------------------------------------------------------------
+   THE SHARED SCAN INPUT
+   ---------------------------------------------------------------------------
+   One input for every scanning workflow. The feedback line is not decoration --
+   it is the accessibility channel and the only confirmation an operator gets
+   when the phone is in a holster and the room is loud, so it holds its space
+   even when empty rather than shifting the layout on every scan.
+   ------------------------------------------------------------------------- */
+.fo-scan-input { display: flex; flex-direction: column; gap: 8px; }
+.fo-scan-input__feedback {
+  margin: 0; min-height: 1.4em; font-size: 14px; font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.fo-scan-input__feedback--accepted { color: var(--color-success); }
+.fo-scan-input__feedback--rejected { color: var(--color-danger); }
+.fo-scan-input__feedback--neutral { color: var(--color-text-muted); font-style: italic; }
+
 @media (min-width: 700px) {
   /* Label beside value once there is room, which is how a spec sheet reads. */
   .fo-lookup__row { grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; }
