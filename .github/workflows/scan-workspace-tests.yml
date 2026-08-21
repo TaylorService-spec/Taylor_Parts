@@ -120,6 +120,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
@@ -194,6 +195,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
@@ -245,7 +247,7 @@ jobs:
 
       # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
       - name: Scan workflow availability (pure)
-        run: node --test test/scanWorkflows.test.mjs
+        run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)

@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N (Warehouse/Parts mobile UX).
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N and P.
 
 ---
 
@@ -46,7 +46,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **L** — put-away | MERGED (#1366) | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
 | **M** — pick and stage | MERGED (#1367) | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
 | **O** — warehouse ↔ truck handoff | MERGED (#1368) | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
-| **N** — Warehouse/Parts mobile UX | This change | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
+| **N** — Warehouse/Parts mobile UX | MERGED (#1369) | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
+| **P** — technician inventory | This change | Verified, not rebuilt | **No new authority** | **NOT DEPLOYED** | Existing transfer + cycle-count capabilities |
 
 ### What "not deployed" means concretely
 
@@ -904,3 +905,42 @@ Conversational warehouse assistant, general voice commands, AI route optimizatio
 replenishment, camera damage recognition, autonomous exception classification. **None was built or
 scaffolded**, and the dictation boundary above is what keeps the first of them from arriving by
 accident.
+
+## 19. Phase P — technician inventory
+
+### Most of it was already reachable
+
+Phase P asked for accept/load truck stock, issue to a Work Order, consume/install, return unused
+stock, serialized install/remove/RMA, and truck count. Reconciliation found that **most of it is
+already reachable**, because eligibility is derived from **capabilities rather than role names** — a
+technician holding the transfer or cycle-count capability sees those workflows through the same
+shared Scan workspace a warehouse operator uses.
+
+| Phase P capability | How it is already served |
+| --- | --- |
+| Accept / load truck stock | The Phase O handoff — a transfer received at the truck (`inventory.transfer.receive`) |
+| Return unused stock | The same transfer workflow, dispatched from a MOBILE origin |
+| Truck count | The Phase J2 cycle count — the command already accepts MOBILE |
+| Issue to a Work Order | The existing `PartsScanner`, unchanged |
+| Consume | A Work Order **lifecycle** effect (`COMPLETED → consumeParts`), not an operator action |
+
+So Phase P **verified** rather than rebuilt. The tests make the technician journey a checked property
+instead of an assumption, and assert two things that matter as much as the reachability:
+
+- **Being a technician grants nothing** beyond their own work-order scanner. The role is consulted
+  for exactly one thing — the scanner's own server-side rule — and is not a back door into warehouse
+  authority.
+- **The same workflows serve both audiences.** There is no technician-only duplicate of transfers or
+  counting, because a parallel surface could disagree with the warehouse one about what happened.
+
+### What genuinely has no command
+
+**Serialized install and remove.** The Serialized Asset ↔ Equipment installation authority is
+specified (ADR-010) but not built — `functions/src/serializedAsset/` holds a read service and
+receipt-time registration only. Offering an install action would be a button with nothing behind it,
+so none is offered and a test enforces that.
+
+**RMA** is returns, and DECISIONS #118 keeps disposition separate from intake.
+
+Neither is a scanner-program gap: both belong to programs of their own, and are recorded in the
+backlog rather than improvised here.

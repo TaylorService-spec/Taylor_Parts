@@ -790,6 +790,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/technicianInventory.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/partLookup.test.mjs",
       "runner": "node --test"
     },
