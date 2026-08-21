@@ -138,7 +138,7 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the six workflows that exist can ever appear", () => {
+test("ONLY the seven workflows that exist can ever appear", () => {
   // Put-away, pick, stage, return, cycle count and truck handoff have no command. Listing one —
   // even disabled — would say it exists and that access is the only obstacle.
   const everything = deriveScanWorkflows({
@@ -146,16 +146,17 @@ test("ONLY the six workflows that exist can ever appear", () => {
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 6);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 7);
 });
 
-test("no pick, stage, return or truck-handoff workflow is even nameable", () => {
-  // LOOKUP left this list in Phase F, TRANSFER in J1, CYCLE_COUNT in J2 and PUT_AWAY in L — each
-  // when a real governed authority behind it was found. The rest stay: none has a command.
-  for (const absent of ["PICK", "STAGE", "RETURN", "TRUCK_HANDOFF"]) {
+test("no stage, return or truck-handoff workflow is even nameable", () => {
+  // LOOKUP left this list in Phase F, TRANSFER in J1, CYCLE_COUNT in J2, PUT_AWAY in L and PICK in
+  // M — each when a real governed authority behind it was found. STAGE is absent because staging is
+  // not a separate workflow: it is how a pick ends.
+  for (const absent of ["STAGE", "RETURN", "TRUCK_HANDOFF"]) {
     assert.equal(SCAN_WORKFLOW[absent], undefined, `${absent} must not exist as a workflow`);
   }
 });
@@ -169,7 +170,7 @@ test("the least-authorized caller still gets LOOKUP, and every other absence is 
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
   assert.equal(r.empty, false);
   assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
-  assert.equal(r.unavailable.length, 5, "receiving, transfer, counting, put-away and technician scanning each explain themselves");
+  assert.equal(r.unavailable.length, 6, "receiving, transfer, counting, put-away, picking and technician scanning each explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 

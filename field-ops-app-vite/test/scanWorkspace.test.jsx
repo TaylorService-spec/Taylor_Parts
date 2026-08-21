@@ -130,15 +130,20 @@ describe("Scan workspace (nothing available is SAID, never a blank screen)", () 
 // ────────────────────────────────────────────── absent, not disabled
 
 describe("Scan workspace (operations that do not exist are ABSENT)", () => {
-  it("offers no put-away, pick, stage, return, cycle count or truck handoff — enabled or disabled", () => {
+  it("offers no returns or truck handoff — enabled or disabled", () => {
     render(<ScanWorkspace deps={{ hasCapability: () => true, receivingReady: true, role: "technician", technicianId: "T1", assignedWorkOrderCount: 3 }} />);
-    // Lookup left this list in Phase F and transfers in Phase J1 — each when a real governed
-    // authority behind it was found. The rest still have no command at all.
-    for (const forbidden of [/put.?away/i, /^pick/i, /stage/i, /return/i, /cycle count/i, /truck/i]) {
+    // The list has shrunk one phase at a time, each time a REAL governed authority was found:
+    // lookup (F), transfers (J1), counting (J2), put-away (L), picking (M). What remains has no
+    // command at all. "Stage" never joins them — staging is how a pick ends, not its own workflow.
+    for (const forbidden of [/return/i, /truck/i]) {
       expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
     }
-    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /send or receive a transfer/i })).toBeTruthy();
+    for (const present of [
+      /look something up/i, /send or receive a transfer/i, /count what is on the shelf/i,
+      /put stock away/i, /pick and stage for a job/i,
+    ]) {
+      expect(screen.getByRole("button", { name: present })).toBeTruthy();
+    }
   });
 
   it("has NO disabled workflow buttons at all", () => {
