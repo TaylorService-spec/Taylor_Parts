@@ -1,0 +1,826 @@
+<title>Sandbox Access Register</title>
+<style>
+  /* ------------------------------------------------------------------
+     A permissions register, set like one: capability ids, role ids and
+     matrix cells are monospace objects, so the mono face carries the
+     page and the sans is reserved for prose. Palette is a cool slate
+     with a green bias -- authority reads teal, granted-but-inert reads
+     ochre, and absence is left genuinely empty rather than marked.
+     ------------------------------------------------------------------ */
+  :root {
+    --ground:   #E9EDEB;
+    --surface:  #FFFFFF;
+    --sunk:     #DFE5E2;
+    --line:     #C9D2CE;
+    --line-soft:#DEE5E2;
+    --ink:      #141C1A;
+    --ink-2:    #48524F;
+    --ink-3:    #77827E;
+    --grant:    #14614F;
+    --grant-bg: #DCEBE6;
+    --inert:    #7E5F16;
+    --inert-bg: #F2E8D2;
+    --alarm:    #93332F;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0E1413;
+      --surface:  #151D1B;
+      --sunk:     #1B2523;
+      --line:     #2C3936;
+      --line-soft:#222E2C;
+      --ink:      #DEE6E3;
+      --ink-2:    #9DA9A5;
+      --ink-3:    #6F7B77;
+      --grant:    #58C0A5;
+      --grant-bg: #10322A;
+      --inert:    #D9AC50;
+      --inert-bg: #33280F;
+      --alarm:    #E08A85;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0E1413;
+    --surface:  #151D1B;
+    --sunk:     #1B2523;
+    --line:     #2C3936;
+    --line-soft:#222E2C;
+    --ink:      #DEE6E3;
+    --ink-2:    #9DA9A5;
+    --ink-3:    #6F7B77;
+    --grant:    #58C0A5;
+    --grant-bg: #10322A;
+    --inert:    #D9AC50;
+    --inert-bg: #33280F;
+    --alarm:    #E08A85;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 24px 96px; display: flex; flex-direction: column; gap: 52px; }
+
+  code { font-family: var(--mono); font-size: 0.86em; }
+  .dim { color: var(--ink-2); }
+  .none { color: var(--ink-3); font-style: italic; }
+
+  /* --- masthead --- */
+  .mast { display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  h1 {
+    margin: 0; font-family: var(--mono); font-size: clamp(28px, 4.5vw, 42px);
+    font-weight: 600; letter-spacing: -0.02em; text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 66ch; color: var(--ink-2); font-size: 16px; }
+
+  /* --- counts --- */
+  .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .count { background: var(--surface); padding: 16px 18px; display: flex; flex-direction: column; gap: 3px; }
+  .count b { font-family: var(--mono); font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .count span { font-size: 12.5px; color: var(--ink-2); }
+  .count.flag b { color: var(--inert); }
+
+  /* --- sections --- */
+  section { display: flex; flex-direction: column; gap: 18px; }
+  h2 {
+    margin: 0; font-family: var(--mono); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2);
+    padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  h2 .n { color: var(--ink-3); font-weight: 400; }
+  .note { margin: 0; max-width: 72ch; color: var(--ink-2); font-size: 14.5px; }
+
+  /* --- tables --- */
+  .scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; white-space: nowrap; }
+  thead th {
+    position: sticky; top: 0; z-index: 2; background: var(--sunk);
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2);
+    border-bottom: 1px solid var(--line);
+  }
+  tbody tr:last-child td, tbody tr:last-child th { border-bottom: none; }
+  .nm { font-weight: 600; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.05em; padding: 1px 7px; border: 1px solid currentColor;
+    border-radius: 2px; white-space: nowrap;
+  }
+  .tag-ok    { color: var(--grant); }
+  .tag-warn  { color: var(--inert); }
+  .tag-inert { color: var(--inert); margin-left: 7px; }
+  .tag-gov   { color: var(--grant); }
+  .tag-compat{ color: var(--ink-3); }
+
+  /* --- roles --- */
+  .roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .role { background: var(--surface); padding: 16px 18px; display: flex; flex-direction: column; gap: 9px; }
+  .role-idle { background: var(--sunk); }
+  .role header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .role h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .held { margin: 0; font-size: 13px; color: var(--ink-2); }
+  .perms { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+  .perms li { display: flex; align-items: center; }
+
+  /* --- matrix --- */
+  .matrix th[scope="row"] {
+    position: sticky; left: 0; z-index: 1; background: var(--surface);
+    border-right: 1px solid var(--line); font-weight: 400; min-width: 210px;
+  }
+  .matrix thead th:first-child { z-index: 3; left: 0; background: var(--sunk); }
+  .matrix td { text-align: center; padding: 7px 8px; min-width: 46px; }
+  .matrix .y { background: var(--grant-bg); color: var(--grant); font-family: var(--mono); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; }
+  .matrix .y-inert { background: var(--inert-bg); color: var(--inert); }
+  .matrix .x { background: transparent; }
+  .matrix tr.dead th[scope="row"] { color: var(--ink-3); }
+  .matrix tr.dead { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--sunk) 6px 7px); }
+  .matrix thead th { writing-mode: vertical-rl; transform: rotate(180deg); padding: 12px 6px; height: 168px; text-align: left; }
+  .matrix thead th:first-child { writing-mode: horizontal-tb; transform: none; height: auto; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--ink-2); }
+  .legend b { font-family: var(--mono); color: var(--ink); }
+
+  .callout { border-left: 2px solid var(--inert); background: var(--surface); padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .callout h4 { margin: 0; font-size: 14px; font-weight: 600; }
+  .callout p { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 72ch; }
+  .callout code { color: var(--ink); }
+
+  footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 12.5px; color: var(--ink-3); max-width: 72ch; }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">eos-platform-sandbox · read-only · 2026-08-18</div>
+    <h1>Sandbox Access Register</h1>
+    <p class="lede">Everyone who exists in the sandbox, every role defined in the platform, and exactly what
+    each role can do to each object. Read live from Firestore, Firebase Auth and the shipped access
+    definitions — nothing here is hand-maintained, so it cannot drift from what actually resolves.</p>
+  </header>
+
+  <div class="counts">
+    <div class="count"><b>12</b><span>people</span></div>
+    <div class="count"><b>18</b><span>roles defined</span></div>
+    <div class="count"><b>70</b><span>objects</span></div>
+    <div class="count flag"><b>9</b><span>roles granted to nobody</span></div>
+    <div class="count flag"><b>4</b><span>accounts that cannot sign in</span></div>
+    <div class="count flag"><b>25</b><span>granted-but-inert capabilities</span></div>
+  </div>
+
+  <section>
+    <h2>People <span class="n">· 12</span></h2>
+    <p class="note">Identity spans three stores: the employee record, the user record, and the Firebase Auth
+    account. "Capabilities" is the union across every role actually granted to that person — the real
+    answer to what they can do today.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Persona</th><th>Email</th><th>Employee&nbsp;id</th><th>Sign-in</th><th>securityRole</th><th>Warehouse</th><th>Roles granted</th><th>Caps</th></tr>
+        </thead>
+        <tbody>
+        <tr>
+          <td class="nm">Alex Warehouse Manager</td>
+          <td><code>whmgr</code></td>
+          <td><code class="dim">whmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-whmgr</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">technician</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>inventoryTransferOperator</code></td>
+          <td class="num">4</td>
+        </tr>
+        <tr>
+          <td class="nm">Bob Parts Manager</td>
+          <td><code>partsmgr</code></td>
+          <td><code class="dim">partsmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-partsmgr</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">technician</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>inventoryCatalogAdministrator</code> <code>inventoryCycleCountReconciler</code></td>
+          <td class="num">4</td>
+        </tr>
+        <tr>
+          <td class="nm">Erik Accounting Manager</td>
+          <td><code>acctmgr</code></td>
+          <td><code class="dim">acctmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-acctmgr</code></td>
+          <td><span class="tag tag-warn">no password</span></td>
+          <td><code class="dim">dispatcher</code></td>
+          <td><span class="none">none</span></td>
+          <td><span class="none">no role granted</span></td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td class="nm">Jake Field Manager</td>
+          <td><code>fieldmgr</code></td>
+          <td><code class="dim">fieldmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-fieldmgr</code></td>
+          <td><span class="tag tag-warn">no password</span></td>
+          <td><code class="dim">dispatcher</code></td>
+          <td><span class="none">none</span></td>
+          <td><span class="none">no role granted</span></td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td class="nm">Jim Owner</td>
+          <td><code>owner</code></td>
+          <td><code class="dim">owner@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-owner</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">Owner</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>admin</code></td>
+          <td class="num">47</td>
+        </tr>
+        <tr>
+          <td class="nm">Joel Technician</td>
+          <td><code>tech</code></td>
+          <td><code class="dim">tech@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-tech</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">technician</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>technician</code></td>
+          <td class="num">14</td>
+        </tr>
+        <tr>
+          <td class="nm">Justin Dispatcher</td>
+          <td><code>dispatcher</code></td>
+          <td><code class="dim">dispatcher@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-dispatcher</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">dispatcher</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>dispatcher</code> <code>crmActivityContributor</code> <code>workOrderPartsPlanner</code></td>
+          <td class="num">41</td>
+        </tr>
+        <tr>
+          <td class="nm">Mike Operations Manager</td>
+          <td><code>opsmgr</code></td>
+          <td><code class="dim">opsmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-opsmgr</code></td>
+          <td><span class="tag tag-warn">no password</span></td>
+          <td><code class="dim">dispatcher</code></td>
+          <td><span class="none">none</span></td>
+          <td><span class="none">no role granted</span></td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td class="nm">Mr Nobody Restricted</td>
+          <td><code>restricted</code></td>
+          <td><code class="dim">restricted@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-restricted</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">technician</code></td>
+          <td><span class="none">none</span></td>
+          <td><span class="none">no role granted</span></td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td class="nm">Rick Parts Assoc</td>
+          <td><code>partsassoc</code></td>
+          <td><code class="dim">partsassoc@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-partsassoc</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">technician</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>inventoryCycleCountCounter</code></td>
+          <td class="num">3</td>
+        </tr>
+        <tr>
+          <td class="nm">Rudy Admin</td>
+          <td><code>admin</code></td>
+          <td><code class="dim">admin@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-admin</code></td>
+          <td><span class="tag tag-ok">can sign in</span></td>
+          <td><code class="dim">admin</code></td>
+          <td><span class="none">none</span></td>
+          <td><code>admin</code></td>
+          <td class="num">47</td>
+        </tr>
+        <tr>
+          <td class="nm">Santana Sales Manager</td>
+          <td><code>salesmgr</code></td>
+          <td><code class="dim">salesmgr@sandbox.invalid</code></td>
+          <td><code class="dim">sbx-salesmgr</code></td>
+          <td><span class="tag tag-warn">no password</span></td>
+          <td><code class="dim">dispatcher</code></td>
+          <td><span class="none">none</span></td>
+          <td><span class="none">no role granted</span></td>
+          <td class="num">0</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <h4>5 of 12 people hold no role at all</h4>
+      <p>Erik Accounting Manager, Jake Field Manager, Mike Operations Manager, Mr Nobody Restricted, Santana Sales Manager. Four of them are the newly provisioned managers —
+      their accounts exist and are enabled, but they have no password provider and no role assignment, so
+      they can neither sign in nor do anything if they did. No one has a warehouse assignment, which means
+      every warehouse-scoped check denies for everyone.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Roles <span class="n">· 18</span></h2>
+    <p class="note">Shaded cards are defined but granted to nobody. <code>inert</code> marks a capability
+    registered <code>active: false</code> — the grant is recorded, and it still resolves DENY until a
+    separate per-environment activation. Granting is not activating.</p>
+    <div class="roles">
+      <article class="role">
+        <header>
+          <h3>Administrator (compatibility)</h3>
+          <code class="dim">admin</code>
+          <span class="tag tag-compat">compatibility</span>
+        </header>
+        <p class="held">Held by Jim Owner, Rudy Admin</p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>account.record.update</code></li><li><code>workOrder.create</code></li><li><code>workOrder.transition</code></li><li><code>workOrder.cancel</code></li><li><code>reorder.request.read.queue</code></li><li><code>reorder.request.read.own</code></li><li><code>reorder.request.create.manual</code></li><li><code>reorder.request.create.system</code></li><li><code>reorder.request.assign</code></li><li><code>reorder.request.startPurchasing</code></li><li><code>reorder.request.postPurchasingUpdate</code></li><li><code>reorder.request.recordPurchaseOrder</code></li><li><code>reorder.request.markReceived</code></li><li><code>reorder.request.approve</code></li><li><code>reorder.request.reject</code></li><li><code>reorder.request.cancel</code></li><li><code>reorder.purchaseOrder.read</code></li><li><code>reorder.purchaseOrder.create</code></li><li><code>reorder.purchaseOrder.void</code></li><li><code>inventory.analytics.read</code></li><li><code>inventory.transaction.read</code></li><li><code>inventory.action.read</code></li><li><code>inventory.action.create</code></li><li><code>inventory.catalog.read</code><span class="tag tag-inert">inert</span></li><li><code>inventory.stock.receive</code></li><li><code>warehouse.record.read</code></li><li><code>warehouse.stockLocation.read</code></li><li><code>warehouse.transferOrder.read</code></li><li><code>opportunity.write</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.read</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.createSalesOrder</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.write</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.fulfill</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.service</code><span class="tag tag-inert">inert</span></li><li><code>fulfillment.coordinatedVisit.read</code><span class="tag tag-inert">inert</span></li><li><code>account.governedField.write</code></li><li><code>admin.userStatus.write</code></li><li><code>admin.roleAssignment.write</code></li><li><code>admin.accessRequest.decide</code></li><li><code>finance.invoice.issue</code><span class="tag tag-inert">inert</span></li><li><code>finance.payment.apply</code><span class="tag tag-inert">inert</span></li><li><code>finance.adjustment.record</code><span class="tag tag-inert">inert</span></li><li><code>finance.refund.record</code><span class="tag tag-inert">inert</span></li><li><code>finance.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Dispatcher (compatibility)</h3>
+          <code class="dim">dispatcher</code>
+          <span class="tag tag-compat">compatibility</span>
+        </header>
+        <p class="held">Held by Justin Dispatcher</p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>account.record.update</code></li><li><code>workOrder.create</code></li><li><code>workOrder.transition</code></li><li><code>workOrder.cancel</code></li><li><code>reorder.request.read.queue</code></li><li><code>reorder.request.read.own</code></li><li><code>reorder.request.create.manual</code></li><li><code>reorder.request.create.system</code></li><li><code>reorder.request.assign</code></li><li><code>reorder.request.startPurchasing</code></li><li><code>reorder.request.postPurchasingUpdate</code></li><li><code>reorder.request.recordPurchaseOrder</code></li><li><code>reorder.request.markReceived</code></li><li><code>reorder.request.approve</code></li><li><code>reorder.request.reject</code></li><li><code>reorder.request.cancel</code></li><li><code>reorder.purchaseOrder.read</code></li><li><code>reorder.purchaseOrder.create</code></li><li><code>reorder.purchaseOrder.void</code></li><li><code>inventory.analytics.read</code></li><li><code>inventory.transaction.read</code></li><li><code>inventory.action.read</code></li><li><code>inventory.action.create</code></li><li><code>inventory.catalog.read</code><span class="tag tag-inert">inert</span></li><li><code>inventory.stock.receive</code></li><li><code>warehouse.record.read</code></li><li><code>warehouse.stockLocation.read</code></li><li><code>warehouse.transferOrder.read</code></li><li><code>opportunity.write</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.read</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.createSalesOrder</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.write</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.fulfill</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.service</code><span class="tag tag-inert">inert</span></li><li><code>fulfillment.coordinatedVisit.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Technician (compatibility)</h3>
+          <code class="dim">technician</code>
+          <span class="tag tag-compat">compatibility</span>
+        </header>
+        <p class="held">Held by Joel Technician</p>
+        <ul class="perms"><li><code>workOrder.transition</code></li><li><code>reorder.request.read.queue</code></li><li><code>reorder.request.read.own</code></li><li><code>reorder.request.create.manual</code></li><li><code>reorder.request.assign</code></li><li><code>reorder.request.startPurchasing</code></li><li><code>reorder.request.postPurchasingUpdate</code></li><li><code>reorder.request.recordPurchaseOrder</code></li><li><code>reorder.request.markReceived</code></li><li><code>reorder.purchaseOrder.read</code></li><li><code>reorder.purchaseOrder.create</code></li><li><code>inventory.transaction.read</code></li><li><code>inventory.action.read</code></li><li><code>inventory.catalog.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>General Employee</h3>
+          <code class="dim">generalEmployee</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li class="none">No capabilities</li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Office Manager</h3>
+          <code class="dim">officeManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>account.record.update</code></li><li><code>workOrder.create</code></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Sales Manager</h3>
+          <code class="dim">salesManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>account.record.update</code></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>inventory.transaction.read</code></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Accounting Manager</h3>
+          <code class="dim">accountingManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.governedField.write</code></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>reorder.purchaseOrder.read</code></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Finance Manager</h3>
+          <code class="dim">financeManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.governedField.write</code></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>reorder.purchaseOrder.read</code></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Field Manager</h3>
+          <code class="dim">fieldManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>workOrder.create</code></li><li><code>workOrder.transition</code></li><li><code>workOrder.cancel</code></li><li><code>inventory.transaction.read</code></li><li><code>fulfillment.coordinatedVisit.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Operations Manager</h3>
+          <code class="dim">operationsManager</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>workOrder.create</code></li><li><code>workOrder.transition</code></li><li><code>workOrder.cancel</code></li><li><code>inventory.transaction.read</code></li><li><code>inventory.action.read</code></li><li><code>reorder.request.read.queue</code></li><li><code>reorder.purchaseOrder.read</code></li><li><code>warehouse.record.read</code></li><li><code>warehouse.stockLocation.read</code></li><li><code>warehouse.transferOrder.read</code></li><li><code>fulfillment.coordinatedVisit.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Owner</h3>
+          <code class="dim">owner</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>account.record.read</code></li><li><code>account.record.create</code></li><li><code>account.record.update</code></li><li><code>workOrder.create</code></li><li><code>workOrder.transition</code></li><li><code>workOrder.cancel</code></li><li><code>reorder.request.read.queue</code></li><li><code>reorder.request.read.own</code></li><li><code>reorder.request.create.manual</code></li><li><code>reorder.request.create.system</code></li><li><code>reorder.request.assign</code></li><li><code>reorder.request.startPurchasing</code></li><li><code>reorder.request.postPurchasingUpdate</code></li><li><code>reorder.request.recordPurchaseOrder</code></li><li><code>reorder.request.markReceived</code></li><li><code>reorder.request.approve</code></li><li><code>reorder.request.reject</code></li><li><code>reorder.request.cancel</code></li><li><code>reorder.purchaseOrder.read</code></li><li><code>reorder.purchaseOrder.create</code></li><li><code>reorder.purchaseOrder.void</code></li><li><code>inventory.analytics.read</code></li><li><code>inventory.transaction.read</code></li><li><code>inventory.action.read</code></li><li><code>inventory.action.create</code></li><li><code>inventory.catalog.read</code><span class="tag tag-inert">inert</span></li><li><code>inventory.stock.receive</code></li><li><code>warehouse.record.read</code></li><li><code>warehouse.stockLocation.read</code></li><li><code>warehouse.transferOrder.read</code></li><li><code>opportunity.write</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.read</code><span class="tag tag-inert">inert</span></li><li><code>opportunity.createSalesOrder</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.read</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.write</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.fulfill</code><span class="tag tag-inert">inert</span></li><li><code>salesOrder.service</code><span class="tag tag-inert">inert</span></li><li><code>fulfillment.coordinatedVisit.read</code><span class="tag tag-inert">inert</span></li><li><code>account.governedField.write</code></li><li><code>admin.userStatus.write</code></li><li><code>admin.roleAssignment.write</code></li><li><code>admin.accessRequest.decide</code></li><li><code>finance.invoice.issue</code><span class="tag tag-inert">inert</span></li><li><code>finance.payment.apply</code><span class="tag tag-inert">inert</span></li><li><code>finance.adjustment.record</code><span class="tag tag-inert">inert</span></li><li><code>finance.refund.record</code><span class="tag tag-inert">inert</span></li><li><code>finance.read</code><span class="tag tag-inert">inert</span></li><li><code>report.customer.read</code></li><li><code>report.customer.field.name.read</code></li><li><code>report.customer.field.status.read</code></li><li><code>report.customer.field.relationshipTypes.read</code></li><li><code>report.customer.field.billingAddress.read</code></li><li><code>report.customer.field.tags.read</code></li><li><code>report.customer.field.externalIds.read</code></li><li><code>report.customer.field.createdAt.read</code></li><li><code>report.customer.field.paymentTerms.read</code></li><li><code>report.customer.field.taxStatus.read</code></li><li><code>report.customer.field.commercialProfile.read</code></li><li><code>report.customer.field.billingContact.read</code></li><li><code>report.contact.read</code></li><li><code>report.contact.field.name.read</code></li><li><code>report.contact.field.email.read</code></li><li><code>report.contact.field.phone.read</code></li><li><code>report.contact.field.role.read</code></li><li><code>report.contact.field.customer.read</code></li><li><code>report.location.read</code></li><li><code>report.location.field.name.read</code></li><li><code>report.location.field.address.read</code></li><li><code>report.location.field.customer.read</code></li><li><code>report.equipment.read</code></li><li><code>report.equipment.field.name.read</code></li><li><code>report.equipment.field.status.read</code></li><li><code>report.equipment.field.identity.read</code></li><li><code>report.equipment.field.dates.read</code></li><li><code>report.equipment.field.notes.read</code></li><li><code>report.equipment.field.customer.read</code></li><li><code>report.equipment.field.location.read</code></li><li><code>report.equipment.field.createdAt.read</code></li><li><code>report.definition.create</code></li><li><code>report.definition.read</code></li><li><code>report.definition.rename</code></li><li><code>report.definition.duplicate</code></li><li><code>report.definition.delete</code></li></ul>
+      </article>
+      <article class="role role-idle">
+        <header>
+          <h3>Inventory CREATE Executor (temporary)</h3>
+          <code class="dim">inventoryCreateExecutor</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held"><span class="none">Not granted to anyone</span></p>
+        <ul class="perms"><li><code>inventory.catalog.manage</code></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Inventory Catalog Administrator</h3>
+          <code class="dim">inventoryCatalogAdministrator</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Bob Parts Manager</p>
+        <ul class="perms"><li><code>inventory.catalog.read</code><span class="tag tag-inert">inert</span></li><li><code>inventory.catalog.manage</code></li><li><code>inventory.catalog.activate</code></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Work Order Parts Planner</h3>
+          <code class="dim">workOrderPartsPlanner</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Justin Dispatcher</p>
+        <ul class="perms"><li><code>workOrder.parts.plan</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>CRM Activity Contributor</h3>
+          <code class="dim">crmActivityContributor</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Justin Dispatcher</p>
+        <ul class="perms"><li><code>crm.activity.create</code><span class="tag tag-inert">inert</span></li><li><code>crm.activity.read</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Inventory Transfer Operator</h3>
+          <code class="dim">inventoryTransferOperator</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Alex Warehouse Manager</p>
+        <ul class="perms"><li><code>inventory.transfer.create</code><span class="tag tag-inert">inert</span></li><li><code>inventory.transfer.dispatch</code><span class="tag tag-inert">inert</span></li><li><code>inventory.transfer.receive</code><span class="tag tag-inert">inert</span></li><li><code>inventory.transfer.cancel</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Inventory Cycle Count Counter</h3>
+          <code class="dim">inventoryCycleCountCounter</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Rick Parts Assoc</p>
+        <ul class="perms"><li><code>inventory.cycleCount.create</code><span class="tag tag-inert">inert</span></li><li><code>inventory.cycleCount.submit</code><span class="tag tag-inert">inert</span></li><li><code>inventory.cycleCount.cancel</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+      <article class="role">
+        <header>
+          <h3>Inventory Cycle Count Reconciler</h3>
+          <code class="dim">inventoryCycleCountReconciler</code>
+          <span class="tag tag-gov">governed</span>
+        </header>
+        <p class="held">Held by Bob Parts Manager</p>
+        <ul class="perms"><li><code>inventory.cycleCount.reconcile</code><span class="tag tag-inert">inert</span></li></ul>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Role × object authority</h2>
+    <p class="note">Rows are objects, columns are roles, cells are what that role may do. Actions outside
+    create/read/update/delete keep their own names — <code>transition</code>, <code>approve</code> and
+    <code>reconcile</code> are not "update", and flattening them into a letter would misstate the
+    authority. Hatched rows are objects no role can touch at all.</p>
+    <div class="legend">
+      <span><b>C R U D</b> create · read · update · delete</span>
+      <span><b style="color:var(--inert)">ochre</b> includes a granted-but-inert capability</span>
+      <span><b>empty</b> no authority</span>
+    </div>
+    <div class="scroll">
+      <table class="matrix">
+        <thead>
+          <tr><th>Object</th><th>Administrator (compatibility)</th><th>Dispatcher (compatibility)</th><th>Technician (compatibility)</th><th>General Employee</th><th>Office Manager</th><th>Sales Manager</th><th>Accounting Manager</th><th>Finance Manager</th><th>Field Manager</th><th>Operations Manager</th><th>Owner</th><th>Inventory CREATE Executor (temporary)</th><th>Inventory Catalog Administrator</th><th>Work Order Parts Planner</th><th>CRM Activity Contributor</th><th>Inventory Transfer Operator</th><th>Inventory Cycle Count Counter</th><th>Inventory Cycle Count Reconciler</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>account.governedField</code></th>
+            <td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>U</b></td><td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>account.record</code></th>
+            <td class="y"><b>C</b><b>R</b><b>U</b></td><td class="y"><b>C</b><b>R</b><b>U</b></td><td class="x"></td><td class="x"></td><td class="y"><b>C</b><b>R</b><b>U</b></td><td class="y"><b>C</b><b>R</b><b>U</b></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="y"><b>C</b><b>R</b></td><td class="y"><b>C</b><b>R</b><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>admin.accessRequest</code></th>
+            <td class="y"><b>decide</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>decide</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>admin.credentialReset</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>admin.roleAssignment</code></th>
+            <td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>admin.userStatus</code></th>
+            <td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>U</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>audit.event</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>coverage</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>crm.activity</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>C</b><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>equipment.compatibility</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>equipment.model</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>finance</code></th>
+            <td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>finance.adjustment</code></th>
+            <td class="y y-inert"><b>record</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>record</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>finance.invoice</code></th>
+            <td class="y y-inert"><b>issue</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>issue</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>finance.payment</code></th>
+            <td class="y y-inert"><b>apply</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>apply</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>finance.refund</code></th>
+            <td class="y y-inert"><b>record</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>record</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>fulfillment.coordinatedVisit</code></th>
+            <td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.action</code></th>
+            <td class="y"><b>C</b><b>R</b></td><td class="y"><b>C</b><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>C</b><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.analytics</code></th>
+            <td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.catalog</code></th>
+            <td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b></td><td class="y"><b>manage</b></td><td class="y y-inert"><b>R</b><b>activate</b><b>manage</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.cycleCount</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>C</b><b>cancel</b><b>submit</b></td><td class="y y-inert"><b>reconcile</b></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>inventory.location.display</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>inventory.serializedAsset</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.stock</code></th>
+            <td class="y"><b>receive</b></td><td class="y"><b>receive</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>receive</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.transaction</code></th>
+            <td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>inventory.transfer</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>C</b><b>cancel</b><b>dispatch</b><b>receive</b></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>opportunity</code></th>
+            <td class="y y-inert"><b>R</b><b>U</b><b>createSalesOrder</b></td><td class="y y-inert"><b>R</b><b>U</b><b>createSalesOrder</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b><b>U</b><b>createSalesOrder</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>reorder.purchaseOrder</code></th>
+            <td class="y"><b>C</b><b>R</b><b>void</b></td><td class="y"><b>C</b><b>R</b><b>void</b></td><td class="y"><b>C</b><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>C</b><b>R</b><b>void</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>reorder.request</code></th>
+            <td class="y"><b>approve</b><b>assign</b><b>cancel</b><b>create.manual</b><b>create.system</b><b>markReceived</b><b>postPurchasingUpdate</b><b>read.own</b><b>read.queue</b><b>recordPurchaseOrder</b><b>reject</b><b>startPurchasing</b></td><td class="y"><b>approve</b><b>assign</b><b>cancel</b><b>create.manual</b><b>create.system</b><b>markReceived</b><b>postPurchasingUpdate</b><b>read.own</b><b>read.queue</b><b>recordPurchaseOrder</b><b>reject</b><b>startPurchasing</b></td><td class="y"><b>assign</b><b>create.manual</b><b>markReceived</b><b>postPurchasingUpdate</b><b>read.own</b><b>read.queue</b><b>recordPurchaseOrder</b><b>startPurchasing</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>read.queue</b></td><td class="y"><b>approve</b><b>assign</b><b>cancel</b><b>create.manual</b><b>create.system</b><b>markReceived</b><b>postPurchasingUpdate</b><b>read.own</b><b>read.queue</b><b>recordPurchaseOrder</b><b>reject</b><b>startPurchasing</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact.field.customer</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact.field.email</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact.field.name</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact.field.phone</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.contact.field.role</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>report.customer.field.accountOwner</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.billingAddress</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.billingContact</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.commercialProfile</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.createdAt</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.externalIds</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.name</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>report.customer.field.notes</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.paymentTerms</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.relationshipTypes</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.status</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.tags</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.customer.field.taxStatus</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.definition</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>C</b><b>R</b><b>D</b><b>duplicate</b><b>rename</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.createdAt</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.customer</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.dates</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.identity</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.location</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.name</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.notes</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.equipment.field.status</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.location</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr class="dead">
+            <th scope="row"><code>report.location.field.accessNotes</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.location.field.address</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.location.field.customer</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report.location.field.name</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>salesOrder</code></th>
+            <td class="y y-inert"><b>R</b><b>U</b><b>fulfill</b><b>service</b></td><td class="y y-inert"><b>R</b><b>U</b><b>fulfill</b><b>service</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="y y-inert"><b>R</b></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>R</b><b>U</b><b>fulfill</b><b>service</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>warehouse.record</code></th>
+            <td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>warehouse.stockLocation</code></th>
+            <td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>warehouse.transferOrder</code></th>
+            <td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>R</b></td><td class="y"><b>R</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>workOrder</code></th>
+            <td class="y"><b>C</b><b>cancel</b><b>transition</b></td><td class="y"><b>C</b><b>cancel</b><b>transition</b></td><td class="y"><b>transition</b></td><td class="x"></td><td class="y"><b>C</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y"><b>C</b><b>cancel</b><b>transition</b></td><td class="y"><b>C</b><b>cancel</b><b>transition</b></td><td class="y"><b>C</b><b>cancel</b><b>transition</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>workOrder.parts</code></th>
+            <td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="y y-inert"><b>plan</b></td><td class="x"></td><td class="x"></td><td class="x"></td><td class="x"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <h4>10 objects are unreachable by every role</h4>
+      <p><code>admin.credentialReset</code>, <code>audit.event</code>, <code>coverage</code>, <code>equipment.compatibility</code>, <code>equipment.model</code>, <code>inventory.location.display</code>, <code>inventory.serializedAsset</code>, <code>report.customer.field.accountOwner</code>, <code>report.customer.field.notes</code>, <code>report.location.field.accessNotes</code> — capabilities exist in
+      the catalog for these, but no role holds them, so the authority is defined and unconferrable.</p>
+    </div>
+  </section>
+
+  <footer>
+    Generated from <code>functions/lib/access/</code> (permission catalog, governed business roles,
+    compatibility roles) joined against a read-only export of the sandbox <code>employees</code>,
+    <code>users</code>, <code>roleAssignments</code> and <code>warehouses</code> collections plus Firebase
+    Auth account metadata. No credential, password or token was read or recorded. Reflects
+    <code>feat/manager-role-capability-expansion</code>, which is open as PR #1314 and not yet merged.
+  </footer>
+
+</div>

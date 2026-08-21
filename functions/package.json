@@ -132,7 +132,8 @@
     "test:partIdentifiersEmulator": "npm run build && node --test test/partAliasCallables.test.mjs",
     "test:receivingMultiLineEmulator": "npm run build && node --test test/receiveInventoryStockCommand.test.mjs test/inventoryReceivingFoundation.test.mjs && node test/receiveCanonicalMultiLine.test.mjs",
     "test:receivingProgressRead": "npm run build && node test/purchaseOrderProgressRead.test.mjs",
-    "test:scannerEndToEndContract": "npm run build && node test/scannerEndToEndContract.test.mjs"
+    "test:scannerEndToEndContract": "npm run build && node test/scannerEndToEndContract.test.mjs",
+    "test:governance": "npm run build && node --test test/semanticMappingGuards.test.mjs test/generalManagerNoAdmin.test.mjs test/ownerDecisionPrecedence.test.mjs test/workbookReconciliation.test.mjs test/certificationWorldNotInRefresh.test.js && node scripts/governance/buildContract.mjs && node scripts/governance/buildWorkbookV2.mjs && node scripts/governance/precedenceSweep.mjs && node scripts/governance/effectiveAuthority.mjs && git diff --exit-code -- ../docs/governance"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

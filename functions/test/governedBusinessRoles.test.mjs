@@ -54,6 +54,7 @@ const EXPECTED_IDS = [
   // second role alongside Accounting Manager; Willie holds Shop Manager.
   "purchasingManager",
   "shopManager",
+  "shopAssociate",
   "generalEmployee",
   "officeManager",
   "salesManager",
@@ -112,28 +113,50 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the thirty ids (twenty-six, plus the four scanner Roles)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-one ids (twenty-six, four scanner Roles, and shopAssociate)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
+  //
+  // shopAssociate added 2026-08-21 during the CRUD-matrix reconciliation. The canonical
+  // Detailed CRUD sheet declares 24 Role x Object rows for Shop Associate, and this registry
+  // had no such Role -- so the business had defined a position the platform could not
+  // represent, let alone grant. This pin failing on that addition is the guard working.
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 30);
+  assert.equal(ALL_GOVERNED_ROLES.length, 31);
 });
 
-check("salesperson and salesManager are intentionally identical in capability today", () => {
-  // The distinction between them is ORGANISATIONAL, not authorizational. A manager
-  // holds no authority over a report record, because that needs the coverage/
-  // territory model the Owner deferred. Pinned so a later widening of salesManager
-  // is a decision someone makes here, not a drift that quietly builds that model.
+check("salesperson and salesManager differ ONLY by audit read, which the canonical matrix declares", () => {
+  // Reconciliation 2026-08-21. These were byte-identical, and the comment below explains why that was
+  // correct. The canonical Detailed CRUD sheet now differentiates them in exactly one place:
+  // Sales Manager / Audit Log = R, Salesperson / Audit Log = blank. That is a real business
+  // distinction the Owner's matrix makes, not a manufactured one -- everything else stays identical,
+  // and the INTENTIONAL_OVERLAP reasoning below still governs the rest.
+  const mgr = new Set(GOVERNED_BUSINESS_ROLES.salesManager.permissions);
+  const rep = new Set(GOVERNED_BUSINESS_ROLES.salesperson.permissions);
+  const mgrOnly = [...mgr].filter((p) => !rep.has(p)).sort();
+  const repOnly = [...rep].filter((p) => !mgr.has(p)).sort();
+  assert.deepEqual(mgrOnly, ["audit.event.read"], "the only manager-side difference is audit visibility");
+  assert.deepEqual(repOnly, [], "the salesperson holds nothing the manager lacks");
+});
+
+check("neither sales Role may convert an Opportunity into a Sales Order... until the matrix says so", () => {
+  // Retained from the pre-reconciliation assertion, because two of its three claims still hold and
+  // are worth keeping pinned. What changed: the canonical Detailed CRUD sheet grants BOTH sales
+  // Roles Opportunities CRE, which maps to opportunity.createSalesOrder -- converting a won
+  // opportunity is exactly the business action that cell describes, so it is now granted.
+  //
+  // The coverage/territory point below is UNCHANGED and still deferred: neither Role has scope
+  // authority, because that model does not exist. Recorded as COVERAGE_TERRITORY_AUTHORITY_GAP.
   const sp = [...GOVERNED_BUSINESS_ROLES.salesperson.permissions].sort();
-  const sm = [...GOVERNED_BUSINESS_ROLES.salesManager.permissions].sort();
-  assert.deepEqual(sp, sm);
   for (const id of ["opportunity.read", "opportunity.write"]) {
     assert.ok(sp.includes(id), `salesperson must hold ${id}`);
   }
-  // Converting a WON Opportunity into a Sales Order creates a different object and
-  // was not part of the ruling -- neither Role holds it.
-  assert.equal(sp.includes("opportunity.createSalesOrder"), false);
+  assert.ok(sp.includes("opportunity.createSalesOrder"), "granted by the canonical Opportunities CRE row");
+  // No scope/territory capability is smuggled in alongside it.
+  for (const scoped of ["coverage.read", "coverage.write"]) {
+    assert.equal(sp.includes(scoped), false, `salesperson must not hold ${scoped} -- territory model is deferred`);
+  }
 });
 
 // Cycle Count segregation of duties. The counting authority and the approving authority are split
@@ -205,7 +228,7 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all thirty governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all thirty-one governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
   // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
   // actually grant it. The two lists are asserted equal in both directions so neither can drift.
@@ -214,8 +237,8 @@ check("all thirty governed business Roles are governed-assignable (no UnknownRol
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    30,
-    "the governed allowlist must contain exactly the 30 declared governed business Roles",
+    31,
+    "the governed allowlist must contain exactly the 31 declared governed business Roles",
   );
 });
 
@@ -431,7 +454,17 @@ check("Shop Manager exists, is assignable, and deliberately holds nothing", () =
   // and an invented grant is indistinguishable from a decided one once it is in the file.
   const shop = GOVERNED_BUSINESS_ROLES.shopManager;
   assert.ok(shop, "shopManager must exist");
-  assert.deepEqual(shop.permissions, [], "shopManager holds nothing until the matrix declares a row");
+  // The matrix HAS declared its rows. This assertion previously required an empty grant "until the
+  // matrix declares a row" -- the canonical Detailed CRUD sheet declares all 24, and the authority
+  // below is derived from those rows alone. Deliberately service-shaped: Work Orders CRE, dispatch
+  // schedule, technician time, equipment; and deliberately NOT warehouse-shaped -- no receiving, no
+  // transfers, no inventory adjustment. The stale Summary sheet had those, copied from Warehouse.
+  assert.ok(shop.permissions.includes("workOrder.create"), "Shop Manager runs the shop floor");
+  assert.ok(shop.permissions.includes("workOrder.transition"));
+  for (const warehouseOnly of ["inventory.stock.receive", "inventory.transfer.create", "inventory.cycleCount.reconcile"]) {
+    assert.equal(shop.permissions.includes(warehouseOnly), false,
+      `Shop is a service role: ${warehouseOnly} belongs to Parts/Warehouse`);
+  }
 });
 
 check("the purchasing merge did not hand Accounting Manager approval or void authority", () => {
@@ -773,12 +806,29 @@ check("without any assignment, inventory.catalog.manage remains DENIED (grant re
 // -- once dedup exists, if the Owner then wants curation back with the catalog administrator --
 // is a decision someone makes here rather than a drift nobody notices.
 check("catalog MANAGE is held by the three management Roles plus the purpose-built catalog Roles; catalog ACTIVATE is still confined", () => {
+  // WIDENED 2026-08-21 by the CRUD-matrix reconciliation, each addition traced to an exact canonical
+  // row granting "Parts Catalog CRE" -- writing the parts catalog, which is precisely what
+  // inventory.catalog.manage governs. Semantic equivalence, not adjacency:
+  //
+  //   generalManager     Parts Catalog CRE, scope Enterprise
+  //   warehouseManager   Parts Catalog CRE, scope Warehouse / enterprise inventory
+  //   partsManager       Parts Catalog CRE, scope Service organization
+  //
+  // fieldManager is retained on a DIFFERENT basis: the canonical row says Parts Catalog = R, which
+  // conflicts with a specific recorded Owner ruling granting it manage. Owner precedence rule
+  // 2026-08-21 keeps the recorded decision and logs the conflict as MATRIX_OWNER_DECISION_CONFLICT
+  // rather than letting a spreadsheet silently revoke it.
+  //
+  // ACTIVATE is deliberately NOT widened -- see below.
   const EXPECTED_MANAGE = [
     "fieldManager",
+    "generalManager",
     "inventoryCatalogAdministrator",
     "inventoryCreateExecutor",
     "operationsManager",
     "owner",
+    "partsManager",
+    "warehouseManager",
   ];
   const granting = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
     (id) => resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
@@ -923,30 +973,39 @@ check("technician gains none of the three warehouse ids (no operational-role Rul
   );
 });
 
-check("warehouse.*.read stays confined: Operations Manager holds all three, Purchasing Manager only transferOrder, nobody else any (Spec §27.4)", () => {
-  const warehouseIds = new Set(["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]);
+check("warehouse RECORD and STOCK-LOCATION read stay confined; transferOrder read follows the canonical matrix (Spec 27.4)", () => {
+  // SPLIT 2026-08-21. This check previously treated all three warehouse ids as one confined set. The
+  // canonical Detailed CRUD sheet grants Transfer Orders R or CRE to seven roles, so they are no
+  // longer one thing, and the reasoning the purchasingManager branch already recorded -- "a buyer who
+  // cannot see stock movements is buying blind" -- generalises to the others.
+  //
+  // The claim worth protecting is the NARROW one, and it is unchanged: warehouse.record.read and
+  // warehouse.stockLocation.read remain confined to Operations Manager and owner. Seeing that a
+  // transfer happened is not the same authority as reading the warehouse register or its bins.
+  //
+  // Note CRE rows grant READ ONLY here. Transfer EXECUTION is inventoryTransferOperator, a functional
+  // Role assigned per employee -- a CRUD cell does not confer it.
+  const CONFINED = ["warehouse.record.read", "warehouse.stockLocation.read"];
   for (const role of Object.values(GOVERNED_BUSINESS_ROLES)) {
-    const holdsAny = role.permissions.some((id) => warehouseIds.has(id));
     if (role.id === "operationsManager") {
-      assert.equal(holdsAny, true, "Operations Manager must hold all three");
-      for (const id of warehouseIds) assert.ok(role.permissions.includes(id), id);
-    } else if (role.id === "owner") {
-      // Owner mirrors admin, which (as of this addendum) DOES hold these -- see the dedicated Owner check below.
+      for (const id of CONFINED) assert.ok(role.permissions.includes(id), `operationsManager must hold ${id}`);
       continue;
-    } else if (role.id === "purchasingManager") {
-      // Owner roster 2026-08-20. The CRUD matrix Purchasing row grants Transfer Orders R,
-      // and a buyer who cannot see stock movements is buying blind. It holds ONLY the
-      // transferOrder read -- not warehouse.record.read or stockLocation.read -- so the
-      // narrower claim this check exists to protect still holds and is asserted here.
-      assert.ok(role.permissions.includes("warehouse.transferOrder.read"), "purchasingManager reads transfer orders");
-      for (const id of ["warehouse.record.read", "warehouse.stockLocation.read"]) {
-        assert.equal(role.permissions.includes(id), false, `purchasingManager must NOT hold ${id}`);
-      }
-      continue;
-    } else {
-      assert.equal(holdsAny, false, `${role.id} must not hold a warehouse id`);
+    }
+    if (role.id === "owner") continue; // mirrors admin; pinned by its own dedicated check
+    for (const id of CONFINED) {
+      assert.equal(role.permissions.includes(id), false, `${role.id} must not hold ${id}`);
     }
   }
+
+  // transferOrder.read is granted, and only to roles whose canonical row declares it.
+  const EXPECTED_TRANSFER_READ = [
+    "accountingManager", "controller", "generalManager", "operationsManager", "owner",
+    "purchasingManager", "warehouseAssociate", "warehouseManager",
+  ];
+  const actual = Object.values(GOVERNED_BUSINESS_ROLES)
+    .filter((r) => r.permissions.includes("warehouse.transferOrder.read"))
+    .map((r) => r.id).sort();
+  assert.deepEqual(actual, EXPECTED_TRANSFER_READ, "exactly the roles the canonical matrix grants Transfer Orders read");
 });
 
 check("Owner mirrors admin's warehouse grant too, since Owner always includes every ADMIN_ROLE id", () => {

@@ -397,6 +397,48 @@ check("fulfillment.coordinatedVisit.read is registered exactly once, active: fal
   assert.equal(permission.action, "read");
 });
 
+
+// ============================ CAPABILITIES THAT MUST NOT BE INVENTED ============================
+//
+// PRECEDENCE SWEEP 2026-08-21, rank HIGH, previously unguarded. Three separate decisions each
+// refused to create a capability, and each refusal was recorded only in prose.
+//
+// The failure this prevents is not a privilege escalation; it is worse in a quieter way. A
+// symmetry-only permission makes a Role LOOK authorized while nothing enforces it. The CRUD matrix
+// asks for Marketing Initiatives CRED and for Commissions; no engine governs either. Registering
+// `marketing.initiative.write` to make the workbook tidy would produce a Role that reads as
+// authorized in every report, every audit and every UI gate, and grants nothing.
+//
+// The honest form is a recorded GAP, which is what these are. Each entry names the decision that
+// refused it, so adding one has to be someone's argued choice rather than a spreadsheet symmetry.
+const MUST_NOT_EXIST = [
+  { prefix: "supplier.", why: "DECISIONS #78: Supplier is a CATALOG-governed object and reuses inventory.catalog.manage/.activate. A supplier.manage/supplier.read pair would be a symmetry-only permission and a temporary path R-1 would then have to retire." },
+  { prefix: "marketing.", why: "Owner ruling 2026-08-19: the matrix gives Marketing CRED over Marketing Initiatives and no engine governs them. Marketing Manager was created with the reads it can really hold; the rest is a recorded catalog gap, not an unenforced grant." },
+  { prefix: "commission.", why: "Recorded catalog gap beside Marketing Initiatives, Technician Time and Notifications. Commissions are UNMODELLED -- the matrix expresses intent the platform does not implement." },
+];
+
+check("no capability is invented to make the business-intent matrix look symmetrical", () => {
+  const ids = PERMISSION_CATALOG.map((p) => p.id);
+  for (const entry of MUST_NOT_EXIST) {
+    const found = ids.filter((id) => id.startsWith(entry.prefix));
+    assert.deepEqual(
+      found, [],
+      `Capability ids beginning "${entry.prefix}" were registered: ${found.join(", ")}.` +
+      "\n\nDECISION: " + entry.why +
+      "\n\nIf the platform now genuinely governs this object, that is a real capability with an " +
+      "engine behind it -- register it deliberately and remove this entry, saying what enforces it. " +
+      "Registering it to complete a CRUD row is the thing this guard exists to stop.",
+    );
+  }
+});
+
+check("the uninvented-capability list cannot be quietly emptied", () => {
+  // A guard whose data can be deleted is a guard that can be disabled without touching its logic.
+  assert.ok(MUST_NOT_EXIST.length >= 3, "recorded refusals must not be removed to make a change pass");
+  for (const e of MUST_NOT_EXIST) {
+    assert.ok(e.why.length > 80, `${e.prefix} must carry the decision that refused it`);
+  }
+});
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);

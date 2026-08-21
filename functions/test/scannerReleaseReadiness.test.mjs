@@ -153,11 +153,11 @@ test("returns intake confers NO disposition authority, because disposition does 
   assert.equal(clerk.permissions.some((id) => /disposition/i.test(id)), false);
 });
 
-test("THE POSITIONS STILL CARRY NOTHING — and that is the design, not an oversight", () => {
+test("THE POSITIONS CONFER NO SCANNER WRITE — a position must never make somebody an inventory writer", () => {
   // Each of these four says "Carries no permissions of its own" in its own description. A position
   // describes where somebody sits in the org chart; it must never be what makes them an inventory
-  // writer. If a scanner capability ever appears on one of them, somebody has taken the shortcut
-  // this project deliberately did not take -- and this test is where that gets caught.
+  // writer. If a scanner WRITE ever appears on one of them, somebody has taken the shortcut this
+  // project deliberately did not take -- and this test is where that gets caught.
   //
   // The scanner is reached instead by holding one of the four functional Roles above, granted per
   // principal through an audited roleAssignment. That grant is a rollout action, not a repo change,
@@ -166,12 +166,46 @@ test("THE POSITIONS STILL CARRY NOTHING — and that is the design, not an overs
   // The recorded deferral is unaffected: compatibilityRoles.ts notes PARTS_ASSOCIATE is DEFERRED for
   // `inventory.stock.receive` "until a separately ratified scoped model or an explicit Owner
   // acceptance of global Receiving authority", and no Role added here confers receiving.
+  //
+  // SPLIT 2026-08-21, governance reconciliation. This test previously asserted the positions hold
+  // NO scanner capability at all, reads included. The canonical Detailed CRUD sheet grants all four
+  // positions Inventory Stock R and Serialized Assets R, so two reads now land here legitimately --
+  // and the test said so itself: "if deliberate, this test must be updated in the same commit".
+  //
+  // The claim worth protecting is the one this test was named for, and it is UNCHANGED and now
+  // stated directly rather than implied: a position confers no authority to CHANGE inventory.
+  // Seeing a balance is not moving stock. Asserting "holds nothing" was a proxy for "writes
+  // nothing", and the proxy is what the matrix broke -- not the invariant.
   for (const key of WAREHOUSE_PERSONAS) {
     const role = governedRoles[key];
     assert.ok(role, `${key} should exist in the governed role model`);
-    const held = ALL_SCANNER_CAPABILITIES.filter((id) => holds(role, id));
-    assert.deepEqual(held, [], `${role.id} unexpectedly holds ${held.join(", ")} — if deliberate, this test must be updated in the same commit`);
+    const writes = ALL_SCANNER_CAPABILITIES.filter((id) => !id.endsWith(".read") && holds(role, id));
+    assert.deepEqual(writes, [], `${role.id} holds scanner WRITE authority ${writes.join(", ")} by position alone`);
   }
+});
+
+test("the reads a position does carry are exactly the two the canonical matrix grants", () => {
+  // The other half of the split. Loosening the check to "no writes" without pinning the reads would
+  // let a third scanner read appear on a position with nothing failing, which is how the original
+  // assertion would have died quietly instead of being deliberately narrowed.
+  //
+  // Both ids come from the Detailed CRUD sheet: Inventory Stock R and Serialized Assets R. All four
+  // positions carry the same pair -- Manager and Associate are NOT differentiated here, and that is
+  // the canonical matrix's own answer, not an oversight to be tidied up.
+  const EXPECTED_READS = ["inventory.balance.read", "inventory.serializedAsset.read"];
+  for (const key of WAREHOUSE_PERSONAS) {
+    const role = governedRoles[key];
+    const reads = ALL_SCANNER_CAPABILITIES.filter((id) => id.endsWith(".read") && holds(role, id)).sort();
+    assert.deepEqual(
+      reads, EXPECTED_READS,
+      `${role.id} scanner reads changed. These follow the canonical Detailed CRUD sheet; a change ` +
+      `here means the matrix moved or somebody granted a read outside it.`,
+    );
+  }
+  // inventory.catalog.alias.read is deliberately NOT here: resolving an alias belongs to the
+  // lookup functional Role, and reusing it by position is the mistake that capability was created
+  // to avoid.
+  assert.equal(EXPECTED_READS.includes("inventory.catalog.alias.read"), false);
 });
 
 test("OWNER inherits the admin grants by composition, and no persona inherits by accident", () => {

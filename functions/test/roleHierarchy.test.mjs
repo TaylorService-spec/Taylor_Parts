@@ -170,21 +170,30 @@ check("an unknown or unplaced Role is fail-closed in both directions", () => {
   assert.equal(canSeeAcrossHierarchy("owner", ""), false);
 });
 
-check("the org-chart positions carry NO permissions", () => {
-  // Position and authority are separate systems. These Roles exist to place people
-  // in the tree; granting them capability is a separate Owner decision, and doing
-  // it by accident here would be seven live authority changes at once.
-  for (const id of [
-    "generalManager",
-    "warehouseManager",
-    "warehouseAssociate",
-    "partsManager",
-    "partsAssociate",
-    "controller",
-    "supportStaff",
-  ]) {
-    assert.deepEqual(GOVERNED_BUSINESS_ROLES[id].permissions, [], `${id} must carry no permissions yet`);
+check("org-chart position still does not CONFER authority, even now that these Roles hold some", () => {
+  // This check previously required these seven Roles to hold nothing, on the stated grounds that
+  // "granting them capability is a separate Owner decision". That decision was made on 2026-08-21:
+  // authority was derived for each from the canonical Detailed CRUD matrix, and this assertion is
+  // updated because the precondition it named actually happened -- not to make a failure go away.
+  //
+  // The PRINCIPLE it protected is unchanged and still pinned below: position and authority are
+  // separate systems. Where a Role sits in the tree confers nothing; what it holds comes from an
+  // explicit grant. So the assertion now checks that the tree is not a back door -- no positional
+  // Role picked up SECURITY administration, and none of them out-ranks its way to authority.
+  const POSITIONS = [
+    "generalManager", "warehouseManager", "warehouseAssociate",
+    "partsManager", "partsAssociate", "controller", "supportStaff",
+  ];
+  for (const id of POSITIONS) {
+    const perms = GOVERNED_BUSINESS_ROLES[id].permissions || [];
+    const admin = perms.filter((p) => p.startsWith("admin."));
+    assert.deepEqual(admin, [], `${id} must not hold security administration by virtue of its position`);
   }
+  // The two that remain deliberately narrow, so a future widening is a decision made here.
+  assert.deepEqual(GOVERNED_BUSINESS_ROLES.supportStaff.permissions, ["account.record.read"],
+    "Support Staff is Read on Accounts only -- the stale Summary sheet's finance authority was copy-paste");
+  assert.deepEqual(GOVERNED_BUSINESS_ROLES.generalEmployee.permissions, [],
+    "the least-privilege baseline still grants nothing");
 });
 
 check("remaining placement gaps are declared rather than silently resolved", () => {
@@ -192,6 +201,65 @@ check("remaining placement gaps are declared rather than silently resolved", () 
   // property of the DEAL, not a Role, and resolving it is the deferred coverage model.
   assert.equal(PLACEMENT_GAPS.length, 1);
   assert.match(PLACEMENT_GAPS[0], /National Accounts/);
+});
+
+// ============================ PEER BRANCHES, PINNED BY RULING ============================
+//
+// PRECEDENCE SWEEP 2026-08-21 found this decision recorded in a code comment and in a commit
+// message, and asserted nowhere. A parent is one string. Changing it breaks no build, fails no
+// test, and renders identically -- while silently moving an entire branch inside another
+// branch's visibility. That is the exact failure mode this file's own header calls the one
+// worth testing hardest, and it was unguarded for the two roles a ruling specifically named.
+//
+// Owner ruling 2026-08-19: "need a marketing top top equal to salesManager". Equality here is
+// STRUCTURAL -- the same parent, not a similar capability count. The easy misreading was to
+// place Marketing under Sales, which would put every salesperson inside Marketing's visibility
+// and Marketing inside the Sales Manager's.
+//
+// CORRECTION 2026-08-19, same file: salesManager had been placed UNDER operationsManager. The
+// Owner's org chart shows Sales, Operations and Finance as SIBLING columns. The wrong version
+// let operational oversight read the entire sales pipeline.
+const PEER_BRANCH_HEADS = ["salesManager", "marketingManager", "operationsManager", "financeManager"];
+
+check("the branch heads a ruling made peers share one parent, and none is inside another", () => {
+  for (const r of PEER_BRANCH_HEADS) {
+    assert.ok(ROLE_HIERARCHY[r], `${r} must be placed in the tree at all`);
+    assert.equal(
+      ROLE_HIERARCHY[r].parent, "admin",
+      `${r} must be parented to admin. Owner ruling 2026-08-19 makes these branch heads peers, ` +
+      `and equality here is the SAME PARENT -- reparenting one under another moves a whole ` +
+      `branch into its peer's visibility with nothing else changing.`,
+    );
+  }
+  // Stated as visibility too, not only as a string, so the guard survives a refactor that keeps
+  // the parents and changes how they are read.
+  for (const a of PEER_BRANCH_HEADS) {
+    for (const b of PEER_BRANCH_HEADS) {
+      if (a === b) continue;
+      assert.equal(
+        canSeeAcrossHierarchy(a, b), false,
+        `${a} must not see ${b}: peers in different branches see neither across nor into each other`,
+      );
+      assert.ok(!descendantsOf(a).includes(b), `${b} must not be a descendant of ${a}`);
+    }
+  }
+});
+
+check("no peer branch head can see another branch head's people", () => {
+  // The consequence the ruling was actually about. salesperson sits under salesManager; no peer
+  // branch may reach it.
+  const salespeople = descendantsOf("salesManager");
+  assert.ok(salespeople.includes("salesperson"), "salesperson must sit under salesManager for this to test anything");
+  for (const head of PEER_BRANCH_HEADS) {
+    if (head === "salesManager") continue;
+    for (const sub of salespeople) {
+      assert.equal(
+        canSeeAcrossHierarchy(head, sub), false,
+        `${head} must not see ${sub} -- placing a peer branch above Sales was the misreading the ` +
+        `Owner ruling of 2026-08-19 explicitly rejected`,
+      );
+    }
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);

@@ -1,0 +1,83 @@
+{
+ "ownerRuling": "2026-08-21 - for rows granting access whose note says 'No business need identified', the NOTE WINS.",
+ "corrections": [
+  {
+   "role": "Parts Manager",
+   "object": "Inventory Adjustments",
+   "was": {
+    "C": "Yes",
+    "R": "Yes",
+    "E": "Yes",
+    "D": "No",
+    "code": "CRE"
+   },
+   "now": "NO ACCESS",
+   "classification": "CANONICAL_SOURCE_INTERNAL_CONTRADICTION - RESOLVED",
+   "reason": "The row granted CRE while its own note said 'No business need identified'. 160 other rows carry that note and correctly grant nothing, so the note is meaningful and these four were the anomaly. Owner ruling 2026-08-21: the NOTE WINS.",
+   "note": "Counts, corrections, and governed adjustments. No business need identified in this baseline."
+  },
+  {
+   "role": "Parts Manager",
+   "object": "Purchase Orders",
+   "was": {
+    "C": "Yes",
+    "R": "Yes",
+    "E": "Yes",
+    "D": "No",
+    "code": "CRE"
+   },
+   "now": "NO ACCESS",
+   "classification": "CANONICAL_SOURCE_INTERNAL_CONTRADICTION - RESOLVED",
+   "reason": "The row granted CRE while its own note said 'No business need identified'. 160 other rows carry that note and correctly grant nothing, so the note is meaningful and these four were the anomaly. Owner ruling 2026-08-21: the NOTE WINS.",
+   "note": "Procurement commitments. No business need identified in this baseline."
+  },
+  {
+   "role": "Parts Manager",
+   "object": "Receiving",
+   "was": {
+    "C": "Yes",
+    "R": "Yes",
+    "E": "Yes",
+    "D": "No",
+    "code": "CRE"
+   },
+   "now": "NO ACCESS",
+   "classification": "CANONICAL_SOURCE_INTERNAL_CONTRADICTION - RESOLVED",
+   "reason": "The row granted CRE while its own note said 'No business need identified'. 160 other rows carry that note and correctly grant nothing, so the note is meaningful and these four were the anomaly. Owner ruling 2026-08-21: the NOTE WINS.",
+   "note": "Receipt and intake transactions. No business need identified in this baseline."
+  },
+  {
+   "role": "Parts Manager",
+   "object": "Transfer Orders",
+   "was": {
+    "C": "Yes",
+    "R": "Yes",
+    "E": "Yes",
+    "D": "No",
+    "code": "CRE"
+   },
+   "now": "NO ACCESS",
+   "classification": "CANONICAL_SOURCE_INTERNAL_CONTRADICTION - RESOLVED",
+   "reason": "The row granted CRE while its own note said 'No business need identified'. 160 other rows carry that note and correctly grant nothing, so the note is meaningful and these four were the anomaly. Owner ruling 2026-08-21: the NOTE WINS.",
+   "note": "Warehouse/mobile/location movements. No business need identified in this baseline."
+  }
+ ],
+ "accessCodeDefects": [
+  {
+   "role": "Support Staff",
+   "object": "Accounts",
+   "was": "(blank)",
+   "now": "R",
+   "classification": "WORKBOOK_ACCESS_CODE_DEFECT - RESOLVED",
+   "reason": "Read=Yes with a blank Access Code. The code is now DERIVED from the C/R/E/D booleans, so transcription cannot disagree with intent."
+  },
+  {
+   "role": "Support Staff",
+   "object": "Contacts",
+   "was": "(blank)",
+   "now": "R",
+   "classification": "WORKBOOK_ACCESS_CODE_DEFECT - RESOLVED",
+   "reason": "Read=Yes with a blank Access Code. The code is now DERIVED from the C/R/E/D booleans, so transcription cannot disagree with intent."
+  }
+ ]
+}

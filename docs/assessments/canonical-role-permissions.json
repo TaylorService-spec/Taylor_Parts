@@ -1,0 +1,414 @@
+{
+ "Sales Manager": {
+  "caps": [
+   "account.record.create",
+   "account.record.read",
+   "account.record.update",
+   "audit.event.read",
+   "crm.activity.create",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.transaction.read",
+   "opportunity.createSalesOrder",
+   "opportunity.read",
+   "opportunity.write",
+   "salesOrder.read",
+   "salesOrder.write"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": [
+   "Commissions",
+   "Marketing Initiatives"
+  ]
+ },
+ "Salesperson": {
+  "caps": [
+   "account.record.create",
+   "account.record.read",
+   "account.record.update",
+   "crm.activity.create",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.transaction.read",
+   "opportunity.createSalesOrder",
+   "opportunity.read",
+   "opportunity.write",
+   "salesOrder.read",
+   "salesOrder.write"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": [
+   "Commissions",
+   "Marketing Initiatives"
+  ]
+ },
+ "Marketing Manager": {
+  "caps": [
+   "account.record.read",
+   "crm.activity.read",
+   "opportunity.read",
+   "salesOrder.read"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Notifications"
+  ],
+  "unmodelled": [
+   "Marketing Initiatives"
+  ]
+ },
+ "Service Manager": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "salesOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "Dispatcher": {
+  "caps": [
+   "account.record.read",
+   "crm.activity.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "reorder.purchaseOrder.read",
+   "salesOrder.read",
+   "warehouse.transferOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "Technician": {
+  "caps": [
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "Warehouse Manager": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.manage",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.stock.receive",
+   "inventory.transaction.read",
+   "reorder.purchaseOrder.read",
+   "salesOrder.read",
+   "warehouse.transferOrder.read"
+  ],
+  "ruleGoverned": [
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": []
+ },
+ "Warehouse Associate": {
+  "caps": [
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.stock.receive",
+   "inventory.transaction.read",
+   "reorder.purchaseOrder.read",
+   "salesOrder.read",
+   "warehouse.transferOrder.read"
+  ],
+  "ruleGoverned": [
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": []
+ },
+ "Purchasing Manager": {
+  "caps": [
+   "finance.read",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "reorder.purchaseOrder.create",
+   "reorder.purchaseOrder.read",
+   "reorder.request.postPurchasingUpdate",
+   "salesOrder.read",
+   "warehouse.transferOrder.read"
+  ],
+  "ruleGoverned": [
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": []
+ },
+ "Accounting Manager": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.adjustment.record",
+   "finance.invoice.issue",
+   "finance.payment.apply",
+   "finance.read",
+   "finance.refund.record",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "opportunity.read",
+   "reorder.purchaseOrder.read",
+   "salesOrder.read",
+   "warehouse.transferOrder.read"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": [
+   "Commissions"
+  ]
+ },
+ "Controller": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.adjustment.record",
+   "finance.invoice.issue",
+   "finance.payment.apply",
+   "finance.read",
+   "finance.refund.record",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "opportunity.read",
+   "reorder.purchaseOrder.read",
+   "salesOrder.read",
+   "warehouse.transferOrder.read"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications"
+  ],
+  "unmodelled": [
+   "Commissions"
+  ]
+ },
+ "Shop Manager": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "salesOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "Shop Associate": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "salesOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "General Manager": {
+  "caps": [
+   "account.record.create",
+   "account.record.read",
+   "account.record.update",
+   "audit.event.read",
+   "crm.activity.create",
+   "crm.activity.read",
+   "finance.adjustment.record",
+   "finance.invoice.issue",
+   "finance.payment.apply",
+   "finance.read",
+   "finance.refund.record",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.manage",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.stock.receive",
+   "inventory.transaction.read",
+   "opportunity.createSalesOrder",
+   "opportunity.read",
+   "opportunity.write",
+   "reorder.purchaseOrder.create",
+   "reorder.purchaseOrder.read",
+   "reorder.request.postPurchasingUpdate",
+   "salesOrder.read",
+   "salesOrder.write",
+   "warehouse.transferOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": [
+   "Commissions",
+   "Marketing Initiatives"
+  ]
+ },
+ "Parts Associate": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.read",
+   "inventory.balance.read",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.transaction.read",
+   "salesOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ },
+ "Support Staff": {
+  "caps": [
+   "account.record.read",
+   "crm.activity.read"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Notifications"
+  ],
+  "unmodelled": []
+ },
+ "Parts Manager": {
+  "caps": [
+   "account.record.read",
+   "audit.event.read",
+   "crm.activity.read",
+   "finance.adjustment.record",
+   "finance.invoice.issue",
+   "finance.read",
+   "inventory.action.read",
+   "inventory.balance.read",
+   "inventory.catalog.manage",
+   "inventory.catalog.read",
+   "inventory.serializedAsset.read",
+   "inventory.stock.receive",
+   "inventory.transaction.read",
+   "reorder.purchaseOrder.create",
+   "reorder.purchaseOrder.read",
+   "reorder.request.postPurchasingUpdate",
+   "salesOrder.read",
+   "warehouse.transferOrder.read",
+   "workOrder.create",
+   "workOrder.transition"
+  ],
+  "ruleGoverned": [
+   "Contacts",
+   "Customer Locations",
+   "Equipment / Installed Base",
+   "Notifications",
+   "Technician Time / Non-work"
+  ],
+  "unmodelled": []
+ }
+}
