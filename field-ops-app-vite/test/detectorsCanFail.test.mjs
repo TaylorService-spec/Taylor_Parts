@@ -111,3 +111,34 @@ test("the CSS coverage guard still owns a real, shrink-only backlog", () => {
   assert.match(cov, /SHRINK ONLY/, "the burn-down list must still be declared shrink-only");
   assert.match(cov, /may only SHRINK/, "the staleness assertion must still exist");
 });
+
+test("the reachability profiler cannot report a partial profile as a complete one", () => {
+  // The sibling tool learned this the same way certify.mjs did, one program later. A technician
+  // profile reported 46 denied / 1 unmeasured and looked finished; the unmeasured route was
+  // /reporting/builder at index 32, and that identical route loads in ~1.2s when probed directly
+  // after login. It was position in the run, not the page -- the profiler visited 54 routes in one
+  // browser with no recycling and no recovery, which is exactly the defect certify.mjs had already
+  // been hardened against.
+  //
+  // Recorded here rather than left to the tool alone, because an unmeasured route produces NO
+  // classification, and a missing classification is indistinguishable from a clean one.
+  const reach = readFileSync(
+    path.join(ROOT, ".claude/skills/run-field-ops-app-vite/reachability.mjs"), "utf8",
+  );
+  assert.match(reach, /openSession/, "must be able to reopen a session, not just launch one");
+  assert.match(reach, /visitIndex % 15/, "must recycle before the browser degrades");
+  assert.match(reach, /never measured/, "must say when a profile is incomplete");
+  assert.match(reach, /process\.exitCode = 1/, "an incomplete profile must exit non-zero");
+});
+
+test("both sweep tools scope the emulator switch to local runs", () => {
+  // CERT_BASE lets these run against a DEPLOYED sandbox. `?emulator=1` carried into a deployed run
+  // would point the app at emulators that do not exist and fail every route for a reason unrelated
+  // to the build -- a confidently wrong number, which is this program's signature failure. It stays
+  // mandatory locally: dropping it repoints the app at PRODUCTION mid-run.
+  for (const f of ["certify.mjs", "reachability.mjs", "createReach.mjs"]) {
+    const src = readFileSync(path.join(ROOT, ".claude/skills/run-field-ops-app-vite", f), "utf8");
+    assert.match(src, /CERT_BASE/, `${f} must accept a deployed base`);
+    assert.match(src, /IS_LOCAL/, `${f} must scope the emulator switch to local runs`);
+  }
+});

@@ -43,6 +43,13 @@ Each was traced to an introducing commit before being fixed.
 
 ## INTENTIONAL DENIALS — not defects
 
+* **Report Builder and Saved Reports are denied to EVERY persona, admin included.** Both declare
+  `capabilityAccess: [REPORT_DEFINITION_CAPABILITIES...]` and no principal holds those capabilities
+  today, so the governed denial renders for everyone. This is the Issue #325 state — the governed
+  report creator's Customer foundation is merged and live, the Functions lane is still open — not a
+  role-resolution defect. Stated explicitly because "admin is denied a route" reads like a superset
+  bug and is not one.
+
 * **admin denied `/inventory-role/manager|warehouse|mine`** and **eligiblePartsManager denied the
   same three.** `navConfig.js` states the design in its own words: every item declares
   `operationalRoleAccess` "so `isDomainVisible()` is false … for admin/dispatcher and for any
@@ -102,6 +109,32 @@ reads exactly like a clean one.
 
 The four guards were also **none of them in `test/suites.json`** — they ran only as path-filtered CI
 steps, so the certification guards had weaker coverage than the code they guard. Now unconditional.
+
+## HARNESS NOTE — TWO CAUSES THAT LOOKED LIKE ONE
+
+`/reporting/builder` came back as an unmeasured visit for three personas across several runs. It was
+first attributed entirely to CONTENTION — the five-width sweep and the reachability profiles were
+running concurrently against one dev server and one emulator, starving `page.goto`. That explanation
+was half right, and stating it as the whole answer was wrong.
+
+Contention did explain `ineligibleDispatcher`: run sequentially, it cleared. But `technicianMultiRole`
+**reproduced with nothing else running**, which disconfirms the contention story outright.
+
+The real cause was BROWSER ACCUMULATION. The profiler visits 54 routes in a single browser and failed
+at INDEX 32; that identical route loads in ~1.2s when probed directly after login, rendering its
+governed denial. Position in the run, not the page — and precisely the defect `certify.mjs` had
+already been hardened against, which its sibling `reachability.mjs` never received: no session
+recovery, no recycling, and no coverage rule at all.
+
+Fixed by porting the hardening across (reusable session, recycle every 15 routes, incomplete-profile
+report that exits non-zero). All four personas now measure 54/54 with no unmeasured routes.
+
+Two lessons, both already this program's recurring ones. A plausible explanation that accounts for
+SOME of the evidence is not a diagnosis — the case that did not fit was the informative one. And an
+unmeasured route produces no classification, which is indistinguishable from a clean one, so coverage
+has to be part of the result in every instrument, not just the one that learned it first.
+
+`_sandboxRegressionGate.sh` runs its steps sequentially, so the contention half cannot recur there.
 
 ## SANDBOX REFRESH GATE
 

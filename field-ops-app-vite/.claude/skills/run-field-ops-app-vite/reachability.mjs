@@ -59,17 +59,35 @@ if (!acct) throw new Error(`unknown account '${accountKey}'`);
 // of the sentence, since the leading "<label>" varies per route.
 const DENIAL = /isn['’]t available to your role/i;
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: WIDTH, height: 900 } });
-const rows = [];
-try {
+// THE SAME HARDENING certify.mjs ALREADY NEEDED, applied to its sibling. A profile run visits 54
+// routes in one browser and this one did not recycle or recover, so a technician run failed at
+// index 32 -- /reporting/builder -- while that identical route, probed directly after login, loads
+// in ~1.2s and renders its governed denial. Position, not the page.
+//
+// It was briefly misdiagnosed as contention from running sweeps in parallel. That was true of a
+// DIFFERENT pair of failures and false here: this one reproduced with nothing else running, which
+// is what ruled the explanation out. Recycling every 15 routes removes the window.
+let browser = null;
+let page = null;
+async function openSession() {
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
+  browser = await chromium.launch();
+  page = await browser.newPage({ viewport: { width: WIDTH, height: 900 } });
   await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+}
+const rows = [];
+try {
+  await openSession();
 
+  let visitIndex = 0;
   for (const r of routes) {
+    // Recycle before the browser degrades, rather than only after. See the note at openSession().
+    if (visitIndex > 0 && visitIndex % 15 === 0) await openSession();
+    visitIndex += 1;
     let rec;
     try {
       // `?emulator=1` on EVERY navigation -- without it a full page load silently repoints the app at
@@ -99,7 +117,8 @@ try {
     });
   }
 } finally {
-  await browser.close();
+  // openSession() may have replaced it; closing a null browser would mask the real error.
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
 }
 
 mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
@@ -112,4 +131,14 @@ for (const [k, n] of Object.entries(by).sort((a, b) => b[1] - a[1])) console.log
 console.log("\nCONTENT routes (business data actually rendered):");
 for (const r of rows.filter((x) => x.classification === "CONTENT")) {
   console.log(`   ${r.route.padEnd(38)} rows=${String(r.dataRows).padStart(3)}  ${r.sample.slice(0, 46)}`);
+}
+
+
+// COVERAGE IS PART OF THE RESULT, exactly as in certify.mjs: an unmeasured route produces no
+// classification, and a missing classification is indistinguishable from a clean one.
+const unmeasured = rows.filter((r) => r.classification === "VISIT_FAILED").length;
+if (unmeasured > 0) {
+  console.log(`
+!! ${unmeasured} of ${routes.length} routes were never measured -- this profile is INCOMPLETE.`);
+  process.exitCode = 1;
 }
