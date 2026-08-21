@@ -86,7 +86,10 @@ function statusChipFor(job) {
 
 export default function Dispatch() {
   const { data: jobs, loading, error } = useWorkOrders();
-  const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  // The technicians read can fail independently of the work-order read. Unchecked, the assignment
+  // dropdown rendered with zero options and no explanation -- silently non-functional, and
+  // indistinguishable from "there are no technicians".
+  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const [dispatchError, setDispatchError] = useState(null);
   // H20 fix: reassigning a job away from the technician it was Scheduled for is a distinct, audited,
   // reason-required action (Owner ruling) -- never a silent side effect of picking someone else from this
@@ -147,6 +150,15 @@ export default function Dispatch() {
     <div className="fo-panel">
       <h2>Dispatch</h2>
       {dispatchError && <p className="fo-error" role="alert">{dispatchError}</p>}
+      {/* Announced rather than left to look like "no technicians exist". Work orders are still worth
+          showing when only the technician read failed, but the assignment control cannot work and
+          the screen must say why instead of offering an empty dropdown. */}
+      {techniciansError && (
+        <p className="fo-scan__notice fo-scan__notice--warn" role="alert">
+          Technicians could not be loaded, so assignment is unavailable.
+          {" "}{loadErrorMessage(techniciansError, { entity: "technicians" })}
+        </p>
+      )}
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>

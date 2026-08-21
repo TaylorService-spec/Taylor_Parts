@@ -105,7 +105,7 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
         emptyText="No logged activity yet for this part."
       >
         <div className="fo-table-scroll">
-          <table className="fo-table">
+          <table className="fo-table fo-table--stack">
             <thead>
               <tr>
                 <th>Type</th>
@@ -322,7 +322,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
           >
             <>
               <div className="fo-table-scroll">
-                <table className="fo-table">
+                <table className="fo-table fo-table--stack">
                   <thead>
                     <tr>
                       <th>Part</th>

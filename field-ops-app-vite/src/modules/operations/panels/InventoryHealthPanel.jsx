@@ -89,7 +89,10 @@ export default function InventoryHealthPanel({
       {sorted.length === 0 ? (
         <p className="fo-muted">{emptyText}</p>
       ) : (
-        <table className="fo-table">
+        // Above the phone breakpoint this still needs a scroll container: it was the one table in
+        // the app with none at all, so at tablet widths it was clipped rather than scrollable.
+        <div className="fo-table-scroll">
+        <table className="fo-table fo-table--stack">
           <thead>
             <tr>
               <th>Part</th>
@@ -106,18 +109,18 @@ export default function InventoryHealthPanel({
               const hasHistory = hasUsageHistory(usage);
               return (
               <tr key={partId}>
-                <td>{resolveName(partId)}</td>
-                <td>{stock.availableStock}</td>
-                <td>{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
-                <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
-                <td>
+                <td data-label="Part">{resolveName(partId)}</td>
+                <td data-label="Available">{stock.availableStock}</td>
+                <td data-label="Avg daily usage">{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td data-label="Days remaining">{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
+                <td data-label="Risk">
                   {hasHistory ? (
                     <StatusPill tone={inventoryUrgencyTone(recommendation.urgency)} label={recommendation.urgency} />
                   ) : (
                     <StatusPill tone="unknown" label="Needs planning" />
                   )}
                 </td>
-                <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td data-label="Recommended qty">{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
                   <td>
                     <RequestReorderControl
@@ -133,6 +136,7 @@ export default function InventoryHealthPanel({
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
