@@ -89,6 +89,30 @@ export default function Transfers({ accessVersion }) {
 
   const intro = <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>;
 
+  // THE AUTHORITY NOTICE BELONGS WITH THE CONTROLS, not on a loading or error screen.
+  //
+  // It first rendered inside `intro`, which every branch shows -- so a user waiting for the read
+  // was told about their permissions before there was anything to act on, and two role="status"
+  // regions existed at once during loading. Telling somebody what they may not do is only useful
+  // next to the thing they were about to try.
+  const authorityNotice = (
+    <>
+      {/* SAY WHAT THE BACKEND WILL DO, BEFORE THE BUTTON IS PRESSED.
+          Every inventory.transfer.* capability is registered active:false and granted to no default
+          Role, so for almost everyone who can reach this page the write resolves permission-denied
+          server-side. The controls below were offered anyway, with the concession recorded only in a
+          code comment nobody using the app can read.
+          Receiving, with the identical posture, states its reason up front instead. This does the
+          same. It changes no authority and hides no control -- a holder of the transfer Role still
+          uses them exactly as before; it just stops the screen implying an action it cannot honour. */}
+      <p className="fo-scan__notice fo-scan__notice--warn" role="status">
+        Transfer actions need the inventory transfer authority, which is not switched on for most
+        accounts here. You can review transfers below; creating, dispatching, receiving or cancelling
+        one will be refused unless that authority has been granted to you.
+      </p>
+    </>
+  );
+
   if (read.loading) {
     return (
       <div className="fo-panel">
@@ -121,6 +145,7 @@ export default function Transfers({ accessVersion }) {
         )}
       </WorkspaceHeader>
       {intro}
+      {authorityNotice}
       {status && (
         <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
           {status.message}{" "}

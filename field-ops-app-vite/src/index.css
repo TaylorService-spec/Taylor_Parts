@@ -4209,3 +4209,32 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    left it unbalanced. Restoring it manually was safer than loosening the balance check that caught
    the problem in the first place. */
 .fo-customer-picker { position: relative; width: 100%; }
+
+/* =============================================================================
+   HANDHELD TABLE RECOMPOSE -- .fo-table--stack
+   =============================================================================
+   Certification found 6-7 column tables rendering on the /inventory-role handheld
+   routes: one with no scroll container at all, others relying on horizontal
+   scrolling. Both are wrong for a surface used one-handed on a phone.
+
+   NOT A NEW PATTERN. .fo-sales-pipeline already solves exactly this -- at phone
+   widths the header is hidden, each row becomes a card, and every cell carries
+   its own label via data-label. This generalises that same treatment behind an
+   opt-in modifier so a desktop workspace table is unaffected: scroll is a fine
+   answer at a desk and a bad one in an aisle.
+
+   A cell needs data-label="..." for its label to appear. Cells without one still
+   stack correctly, they simply show no label -- degrading quietly rather than
+   rendering an empty pseudo-element.
+   ========================================================================== */
+@media (max-width: 640px) {
+  .fo-table--stack thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .fo-table--stack, .fo-table--stack tbody, .fo-table--stack tr, .fo-table--stack td { display: block; }
+  .fo-table--stack tr { border: 1px solid var(--color-border); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px; }
+  .fo-table--stack td { border: 0; padding: 4px 0; display: flex; justify-content: space-between;
+    gap: 12px; align-items: baseline; }
+  .fo-table--stack td[data-label]::before { content: attr(data-label); color: var(--color-text-muted);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .03em; flex: none; }
+}

@@ -54,7 +54,7 @@ export default function AssignedWorkOversightTable({
         emptyText="No requests are currently assigned to anyone."
       >
         <div className="fo-table-scroll">
-          <table className="fo-table">
+          <table className="fo-table fo-table--stack">
             <thead>
               <tr>
                 <th>Part</th>
