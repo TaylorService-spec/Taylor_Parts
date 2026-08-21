@@ -163,18 +163,46 @@ const PROBE = (MOBILE_SURFACE) => {
   return out;
 };
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const findings = [];
-let visited = 0, failedNav = 0;
+// A DEAD BROWSER IS NOT A PAGE DEFECT, and the per-visit guard below could not tell the difference.
+//
+// A run died a third of the way through and every remaining visit recorded the identical
+// "Target page, context or browser has been closed" -- 133 of them. The guard faithfully turned ONE
+// fatal condition into 133 findings and then printed a summary that looked like a completed sweep,
+// when half the site had never been measured at all.
+//
+// That is the same failure this file already warns about twice, in a new costume: NOISE LOOKING
+// LIKE SUCCESS. The session is now recoverable, and the run refuses to report itself as complete
+// when it is not (see the coverage check at the end).
+const acct = DRIVER_ACCOUNTS[accountKey];
+let browser = null;
+let page = null;
 
-try {
-  const acct = DRIVER_ACCOUNTS[accountKey];
+async function openSession() {
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
+  browser = await chromium.launch();
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(`${BASE}/?emulator=1`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+}
+
+// A browser that has gone away fails in a recognizable way. Anything else is a real finding about
+// the page and must NOT trigger a relaunch.
+const sessionIsDead = (err) =>
+  !browser || browser.isConnected() === false ||
+  /has been closed|Target crashed|Session closed|browser has disconnected/i.test(String((err && err.message) || ""));
+
+const MAX_RELAUNCHES = 5;
+let relaunches = 0;
+let aborted = null;
+
+const findings = [];
+let visited = 0, failedNav = 0, attempted = 0;
+
+try {
+  await openSession();
 
   // ONE BAD VISIT MUST NOT COST 269 GOOD ONES.
   //
@@ -189,7 +217,10 @@ try {
   mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
 
   for (const r of routes) {
+    if (aborted) break;
     for (const w of WIDTHS) {
+     if (aborted) break;
+     attempted += 1;
      try {
       await page.setViewportSize({ width: w, height: w <= 430 ? 812 : 900 });
       // PATH navigation, not hash. The app uses BrowserRouter with a basename; `#/route` leaves you
@@ -221,12 +252,24 @@ try {
       for (const f of probe) findings.push({ route: r.route, label: r.label, width: w, ...f });
      } catch (err) {
        findings.push({ route: r.route, label: r.label, width: w, kind: "VISIT_FAILED", detail: String(err && err.message).slice(0, 100) });
+       // Only a DEAD SESSION is recoverable here. A page-level failure is a real finding and was
+       // just recorded as one; relaunching for that would retry a broken route forever.
+       if (sessionIsDead(err)) {
+         if (relaunches >= MAX_RELAUNCHES) {
+           aborted = `browser died ${relaunches + 1} times; gave up after ${attempted} of ${routes.length * WIDTHS.length} visits`;
+         } else {
+           relaunches += 1;
+           try { await openSession(); } catch (e) { aborted = `could not reopen a session: ${String(e && e.message).slice(0, 120)}`; }
+         }
+       }
      }
      flush();
     }
   }
 } finally {
-  await browser.close();
+  // openSession() may have replaced or failed to create it; closing a null browser here would
+  // mask the real error with a TypeError from the finally block.
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
 }
 
 mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
@@ -236,7 +279,27 @@ const byKind = {};
 for (const f of findings) byKind[f.kind] = (byKind[f.kind] ?? 0) + 1;
 const routesWithIssues = new Set(findings.map((f) => f.route)).size;
 
-console.log(`\npersona=${accountKey}  routes=${routes.length}  visits=${visited}  navFailures=${failedNav}`);
-console.log(`routes with >=1 finding: ${routesWithIssues}/${routes.length}\n`);
+const planned = routes.length * WIDTHS.length;
+
+console.log("");
+console.log(`persona=${accountKey}  routes=${routes.length}  widths=${WIDTHS.join("/")}`);
+console.log(`visits measured: ${visited}/${planned}   navFailures=${failedNav}   browser relaunches=${relaunches}`);
+console.log(`routes with >=1 finding: ${routesWithIssues}/${routes.length}`);
+
+// COVERAGE IS PART OF THE RESULT. A sweep that measured half the site and then prints a tidy
+// findings table is making a claim it has not earned: on an unmeasured route, the ABSENCE of a
+// finding reads exactly like a clean result. A run died a third of the way through and recorded
+// 133 identical "browser has been closed" entries, then reported "routes=54" as if it had swept
+// them. Say so loudly, and exit non-zero so no caller can mistake this for a pass.
+if (visited < planned || aborted) {
+  console.log("");
+  console.log(`!! COVERAGE INCOMPLETE -- ${planned - visited} of ${planned} visits were never measured.`);
+  if (aborted) console.log(`!! run aborted: ${aborted}`);
+  console.log("!! Findings below describe ONLY what was measured. An unmeasured route is not a clean route.");
+}
+console.log("");
 console.log("FINDINGS BY KIND (the cluster IS the diagnosis):");
 for (const [k, n] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(5)}  ${k}`);
+
+
+if (visited < planned || aborted) process.exitCode = 1;
