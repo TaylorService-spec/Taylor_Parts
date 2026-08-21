@@ -1,0 +1,133 @@
+// DETERMINISTIC WORLD CONSTRUCTION. Pure: no database, no clock, no randomness.
+//
+// Everything is a function of a fixed input list and an index, so buildWorld() called twice returns
+// byte-identical records. That is what makes "seed twice, expect zero creates" a meaningful assertion
+// rather than a hope, and what makes a diff between two seeds evidence of a real change.
+//
+// TIME IS PINNED for the same reason. A dataset stamped with Date.now() is a different dataset every
+// run, which would make idempotence unprovable and every count drift-prone.
+import { CERTIFICATION_WORLD_VERSION, PROVENANCE, SYNTHETIC_OWNERSHIP_DISCLAIMER, marker } from "./manifest.mjs";
+import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/accounts.mjs";
+import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
+import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
+
+export const EPOCH = Date.parse("2026-01-05T09:00:00.000Z");
+export const DAY = 86400000;
+export const SYNTHETIC_ACCOUNT_COUNT = 75;
+
+const pad = (n, w = 4) => String(n).padStart(w, "0");
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "").replace(/-+$/, "").slice(0, 40);
+
+// Deliberate visual-stress values, applied to a SMALL NAMED subset. A dataset that is uniformly
+// pathological tests nothing about normal use and makes every screenshot unreadable.
+const STRESS_SUFFIX = " Hospitality Holdings and Restaurant Management Group of the Greater Phoenix Metropolitan Area, LLC";
+const STRESS_NOTE = "Extended operational note retained for visual-stress certification. This record deliberately carries a long free-text body so that detail panels, table cells, truncation rules, wrapping behaviour and overflow containers are exercised against realistic worst-case content rather than short fixture strings that never reveal a layout defect.";
+
+const FIRST = ["Dana", "Alex", "Sam", "Jordan", "Riley", "Casey"];
+const LAST = ["Reyes", "Chen", "Patel", "Okafor", "Nguyen", "Alvarez"];
+const TITLES = ["General Manager", "Operations Lead", "Facilities Manager", "Owner"];
+
+export function buildWorld() {
+  const accounts = [];
+  const locations = [];
+  const contacts = [];
+  const equipmentModels = [];
+  const trucks = [];
+
+  for (const m of ALL_MODELS) {
+    equipmentModels.push({
+      collection: "equipment_models",
+      id: "cw-model-" + slug(m.manufacturer) + "-" + slug(m.modelNumber),
+      data: {
+        modelNumber: m.modelNumber, manufacturer: m.manufacturer, family: m.family,
+        configuration: m.config, lineOfBusiness: m.lineOfBusiness, status: "ACTIVE",
+        fieldProvenance: { modelNumber: PROVENANCE.PUBLIC, manufacturer: PROVENANCE.PUBLIC, family: PROVENANCE.PUBLIC, configuration: PROVENANCE.PUBLIC },
+        publicSource: m.manufacturer === "Taylor"
+          ? "taylor-company.com/equipment/soft-serve-fro-yo/ (retrieved 2026-08-21)"
+          : "icetroamerica.com product listings (retrieved 2026-08-21)",
+      },
+    });
+  }
+
+  const businesses = [
+    ...REAL_BUSINESSES.map((b) => ({ ...b, real: true })),
+    ...syntheticBusinesses(SYNTHETIC_ACCOUNT_COUNT).map((b) => ({ ...b, real: false })),
+  ];
+
+  businesses.forEach((b, i) => {
+    // Deterministic spread so the Taylor/Ventana reporting separation has all three shapes to measure.
+    const lineMode = i % 5 === 0 ? "MIXED" : i % 3 === 0 ? "VENTANA" : "TAYLOR";
+    const isStress = i === 3 || i === 41;
+    const isSparse = i % 17 === 0 && !b.real;
+    const accountId = "cw-acct-" + pad(i);
+    const name = isStress ? b.name + STRESS_SUFFIX : b.name;
+
+    const acct = {
+      name,
+      lineOfBusiness: lineMode === "MIXED" ? "TAYLOR" : lineMode,
+      certLineMode: lineMode,
+      status: i % 23 === 0 ? "DORMANT" : "ACTIVE",
+      category: b.category,
+      city: b.city, state: "AZ",
+      fixtureCompleteness: isSparse ? "SPARSE" : "FULL_FIXTURE",
+      dataProvenance: b.real ? PROVENANCE.PUBLIC : PROVENANCE.SYNTHETIC,
+      fieldProvenance: b.real ? FIELD_PROVENANCE.real : FIELD_PROVENANCE.synthetic,
+    };
+    if (!isSparse) {
+      acct.addressLine1 = (1000 + i * 7) + " W Certification Way";
+      acct.phone = "602-555-" + pad(1000 + i, 4);
+      acct.website = "https://" + slug(b.name) + ".invalid";
+      acct.notes = isStress ? STRESS_NOTE : "Certification account " + i + ".";
+    }
+    if (b.real) {
+      acct.publicSource = "public business listings (Yelp / Phoenix New Times / Axios / VisitPhoenix), retrieved 2026-08-21";
+      acct.syntheticDataDisclaimer = SYNTHETIC_OWNERSHIP_DISCLAIMER;
+    }
+    accounts.push({ collection: "accounts", id: accountId, data: acct });
+
+    const locCount = isStress ? 12 : b.locations;
+    for (let L = 0; L < locCount; L += 1) {
+      const locationId = accountId + "-loc-" + pad(L, 2);
+      locations.push({
+        collection: "locations", id: locationId,
+        data: {
+          accountId,
+          name: b.name + " - " + b.city + " #" + (L + 1) + (isStress ? STRESS_SUFFIX : ""),
+          city: b.city, state: "AZ",
+          addressLine1: (2000 + i * 3 + L) + " E Certification Blvd",
+          fieldProvenance: {
+            city: PROVENANCE.PUBLIC, state: PROVENANCE.PUBLIC,
+            name: b.real ? PROVENANCE.PUBLIC : PROVENANCE.SYNTHETIC,
+            addressLine1: PROVENANCE.SYNTHETIC,
+          },
+        },
+      });
+
+      const contactCount = isStress ? 6 : isSparse ? 0 : 1 + (L % 2);
+      for (let c = 0; c < contactCount; c += 1) {
+        const n = contacts.length;
+        contacts.push({
+          collection: "contacts", id: locationId + "-con-" + pad(c, 2),
+          data: {
+            accountId, locationId,
+            name: isStress ? "Alexandra Featherstone-Whitmore " + (c + 1) : FIRST[n % 6] + " " + LAST[n % 6],
+            title: isStress ? "Regional Director of Food and Beverage Operations and Equipment Services" : TITLES[n % 4],
+            email: (isStress ? "alexandra.featherstone.whitmore.regional.director" : "contact" + n) + "@" + slug(b.name) + ".invalid",
+            dataProvenance: PROVENANCE.SYNTHETIC,
+          },
+        });
+      }
+    }
+  });
+
+  CERT_TRUCKS.forEach((t) => {
+    trucks.push({
+      collection: "mobile_locations", id: t.id,
+      data: { displayLabel: t.displayLabel, homeWarehouseId: t.homeWarehouseId, active: t.active, locationType: "MOBILE", dataProvenance: PROVENANCE.SYNTHETIC },
+    });
+  });
+
+  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, trucks, marker };
+}
+
+export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };
