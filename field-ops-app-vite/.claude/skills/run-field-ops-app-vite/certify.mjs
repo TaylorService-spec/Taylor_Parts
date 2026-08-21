@@ -52,12 +52,49 @@ const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-
 // the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
 const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
 const EMU = IS_LOCAL ? "?emulator=1" : "";
+// THE APP'S BASE PATH IS NOT A CONSTANT. Locally Vite serves under /Taylor_Parts/field-ops; the
+// deployed sandbox is built with base '/' (see its version.json). Hardcoding the local prefix made
+// the expected path unmatchable against a deployed build, and the first deployed sweep duly
+// reported NAV_REDIRECTED on 108 of 108 visits -- i.e. "the entire site redirects", which is
+// alarming, specific, and false. Derive it from BASE so the check means the same thing on both.
+const RAW_BASE_PATH = new URL(BASE).pathname;
+const BASE_PATH = RAW_BASE_PATH.endsWith("/") ? RAW_BASE_PATH.slice(0, -1) : RAW_BASE_PATH;
+
+// WAIT FOR CONTENT, NOT FOR A NUMBER.
+//
+// This was `waitForTimeout(900)` -- a constant tuned on localhost, where the bundle is already warm
+// and there is no network. Pointed at a deployed origin the same 900ms lands BEFORE React paints,
+// and the probe then measures an empty page. A deployed technician sweep duly reported EMPTY_PAGE on
+// /administration/permission-preview; probed directly with a longer wait, that route renders 169
+// characters of the correct governed denial. Nothing was wrong with the build.
+//
+// Seventh false-positive family, same root as the other six: the harness encoded an assumption
+// about its environment and reported the assumption's violation as a defect in the thing under
+// test. So this waits for the CONDITION that actually matters -- the main region having rendered
+// something -- and falls through after a bounded ceiling rather than hanging. A route that is
+// genuinely empty still reports EMPTY_PAGE; it just has to earn it.
+async function settle(page) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const m = document.querySelector('main') || document.body;
+        return (m.innerText || '').trim().length > 20;
+      },
+      { timeout: 8000 },
+    );
+  } catch {
+    // Bounded, not fatal: a genuinely blank route must still be measured and reported as blank.
+  }
+  await page.waitForTimeout(250);
+}
+
 
 const accountKey = process.argv[2] ?? "admin";
 const WIDTHS = (process.argv[3] ?? "1440,768,375").split(",").map(Number);
 const routes = JSON.parse(readFileSync(join(APP_ROOT, ".certification", "routes.json"), "utf8"));
 
 const { DRIVER_ACCOUNTS } = await import("./seed.mjs");
+const { establishSession } = await import("./deployedSession.mjs");
 
 // Firestore auto-ids are 20 chars of [A-Za-z0-9]. Deliberately narrow: business codes like
 // "WO-2026-SBX004" or "PRT-1001" must never match, or every page would report a false positive.
@@ -212,11 +249,10 @@ async function openSession() {
   if (browser) { try { await browser.close(); } catch { /* already gone */ } }
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
-  await page.locator('input[type="email"]').fill(acct.email);
-  await page.locator('input[type="password"]').fill(acct.password);
-  await page.locator('button[type="submit"]').click();
-  await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+  // Dual-target: the real form against the emulator (which certifies Login.jsx itself), a
+  // token-seeded session against a deployed sandbox (whose accounts the emulator never seeds,
+  // and where no password is typed into a field). See deployedSession.mjs.
+  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS });
 }
 
 // A browser that has gone away fails in a recognizable way. Anything else is a real finding about
@@ -283,11 +319,11 @@ try {
         // a full page load silently repoints the app at PRODUCTION -- the session dies, the app
         // bounces to login, and the sweep crashes. It is not optional decoration on the first URL.
         await page.goto(`${BASE}${r.route}${EMU}`, { waitUntil: "domcontentloaded" });
-        await page.waitForTimeout(900);
+        await settle(page);
       } catch { failedNav += 1; findings.push({ route: r.route, label: r.label, width: w, kind: "NAV_FAILED", detail: "goto threw" }); continue; }
 
       const landed = new URL(page.url()).pathname;
-      const want = `/Taylor_Parts/field-ops${r.route}`;
+      const want = `${BASE_PATH}${r.route}`;
       const onLogin = await page.locator('input[type="password"]').count() > 0;
       if (onLogin) { findings.push({ route: r.route, label: r.label, width: w, kind: "SESSION_LOST", detail: "bounced to login" }); continue; }
       if (landed !== want) {
