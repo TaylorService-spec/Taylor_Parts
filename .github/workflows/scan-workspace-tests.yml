@@ -340,6 +340,7 @@ jobs:
 
       - name: Shared inventory balance read (pure)
         run: node --test test/partBalanceReadService.test.mjs
+        working-directory: functions
 
       # Whether a part is serial-tracked is the SERVER's fact. Caller-supplied, it let a shelf with
       # two serialized units report a confident zero -- found in sandbox validation 2026-08-21.
