@@ -59,10 +59,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { formatTransferOrderNumber, transferOrderCounterDocId } = await import("../lib/inventoryTransfer/transferOrderNumbering.js");
 const { formatReceivingOrderNumber, receivingOrderCounterDocId } = await import("../lib/inventoryReceiving/receivingOrderNumbering.js");
 const { formatReorderRequestNumber, reorderRequestCounterDocId } = await import("../lib/reorderRequest/reorderRequestNumbering.js");
+const { formatSalesOrderNumber, salesOrderCounterDocId } = await import("../lib/salesOrder/salesOrderNumbering.js");
 const { COUNTERS_COLLECTION } = await import("../lib/constants/collections.js");
 
 // ---- family registry: the one place that ties a collection to its field/format/counter -----------------
 const FAMILIES = {
+  // SALES ORDER. Added by the full-site certification. salesOrderReadService.ts documents that
+  // Firestore's .orderBy() excludes any document missing the ordered field, so a Sales Order created
+  // before the numbering rollout carries no `salesOrderNumber` and is INVISIBLE to the global list
+  // read -- not filtered out after projection, but never returned by the query at all. It is the same
+  // rule behind the Prospect regression that certification fixed on the write side.
+  //
+  // The WRITE path is already correct and is not what this addresses: salesOrderCallables.ts allocates
+  // the number inside the SAME transaction as the document write, so a Sales Order can never appear
+  // without one. Only records predating that rollout are affected, and the count can only be measured
+  // against a real dataset -- run this tool with no flags to get it, which writes nothing.
+  //
+  // Added HERE rather than as a second migration script, so it inherits this tool's whole safety model
+  // unchanged: dry-run by default, an idempotent per-record re-read inside the write transaction,
+  // collision checks at both report and write time, and the production double-confirmation gate.
+  salesOrder: {
+    collection: "sales_orders",
+    field: "salesOrderNumber",
+    counterDocId: salesOrderCounterDocId,
+    format: formatSalesOrderNumber,
+  },
   transferOrder: {
     collection: "transfer_orders",
     field: "transferOrderNumber",

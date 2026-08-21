@@ -13,6 +13,7 @@ import {
 } from "../../../domain/reconciliationRowHonesty.js";
 import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
+import { resolveWarehouseIdentity } from "../../../domain/actorDisplayName";
 
 // One transfer endpoint cell: a WAREHOUSE shows its resolved name; every
 // other location type shows a type badge plus the raw locationId (no
@@ -27,7 +28,9 @@ function TransferEndpoint({ endpoint }) {
 }
 
 export default function WarehousePanel({ warehouses, stockLocations, transferOrderDocs, reconciliationReport, resolveName }) {
-  const warehouseName = (id) => warehouses.find((w) => w.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw warehouse
+  // document id, printing an opaque key where a business name belongs.
+  const warehouseName = (id) => resolveWarehouseIdentity(id, { warehouses }).name;
   const { rows: transferRows, hiddenInvalidCount } = buildTransferOrdersView(transferOrderDocs, warehouses);
 
   return (

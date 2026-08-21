@@ -25,7 +25,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   resolveTechnicianIdentity,
+  resolveSupplierIdentity,
+  resolveWarehouseIdentity,
   UNKNOWN_TECHNICIAN_DISPLAY_NAME,
+  UNKNOWN_SUPPLIER_DISPLAY_NAME,
+  UNKNOWN_WAREHOUSE_DISPLAY_NAME,
 } from "../src/domain/actorDisplayName.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src");
@@ -96,5 +100,50 @@ test("no surface hand-rolls its own technician-name lookup", () => {
     "Use resolveTechnicianIdentity from domain/actorDisplayName.js instead of an inline lookup.\n" +
     "Every inline copy but one fell back to rendering the raw technician id:\n  " +
     offenders.join("\n  "),
+  );
+});
+
+// ═══════════════════════════════════════════ the same defect, two more entities
+
+// ProcurementPanel.jsx and WarehousePanel.jsx each carried `find(...)?.name ?? id`, so a supplier or
+// warehouse whose record was missing printed its raw Firestore key where a business name belongs.
+// Found by the same sweep as the technician case, kept as separate assertions so a failure names
+// which entity regressed rather than just "an identity resolver".
+const SUPPLIER_LOOKUP = /suppliers\s*\.\s*find\b[^\n]*?\?\.\s*name/g;
+const WAREHOUSE_LOOKUP = /warehouses\s*\.\s*find\b[^\n]*?\?\.\s*name/g;
+
+test("no surface hand-rolls its own supplier- or warehouse-name lookup", () => {
+  const offenders = [];
+  for (const file of jsxFiles(SRC)) {
+    const src = readFileSync(file, "utf8");
+    for (const [re, what] of [[SUPPLIER_LOOKUP, "supplier"], [WAREHOUSE_LOOKUP, "warehouse"]]) {
+      for (const m of src.matchAll(re)) {
+        offenders.push(`${path.relative(SRC, file)}:${src.slice(0, m.index).split("\n").length} (${what})`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders, [],
+    "Use resolveSupplierIdentity / resolveWarehouseIdentity from domain/actorDisplayName.js:\n  " +
+    offenders.join("\n  "),
+  );
+});
+
+test("a supplier or warehouse id is never returned as if it were a name", () => {
+  assert.deepEqual(
+    resolveSupplierIdentity("8fKq2LmZ0aBcDeFgHiJk", { suppliers: [] }),
+    { state: "unknown", name: UNKNOWN_SUPPLIER_DISPLAY_NAME },
+  );
+  assert.deepEqual(
+    resolveWarehouseIdentity("WH-GONE", { warehouses: [] }),
+    { state: "unknown", name: UNKNOWN_WAREHOUSE_DISPLAY_NAME },
+  );
+  // The four states stay distinct for these entities too, not only for technicians.
+  assert.equal(resolveSupplierIdentity(null).state, "unset");
+  assert.equal(resolveSupplierIdentity("s1", { loading: true }).state, "loading");
+  assert.equal(resolveWarehouseIdentity("w1", { error: new Error("denied") }).state, "error");
+  assert.deepEqual(
+    resolveWarehouseIdentity("w1", { warehouses: [{ id: "w1", name: "Phoenix Main" }] }),
+    { state: "resolved", name: "Phoenix Main" },
   );
 });
