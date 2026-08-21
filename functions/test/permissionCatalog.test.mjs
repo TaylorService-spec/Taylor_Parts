@@ -212,7 +212,12 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
-// Scanner Phase L: inventory.placement.record -- put-away. A THIRD audience again: not labelling
+// Scanner Phase Q: inventory.returns.intake -- recording that something came back. NOT
+// inventory.stock.receive, because receiving accepts stock INTO sellable inventory, which is
+// precisely what DECISIONS #118 forbids a return from doing. Disposition will need its own id when
+// the policy exists; none is registered, because none has been decided. active:false, ungranted.
+//
+// // Scanner Phase L: inventory.placement.record -- put-away. A THIRD audience again: not labelling
 // racking, not checking a bin is real, and deliberately NOT inventory.stock.receive, because reusing
 // the receive capability would make every stow look like an authority to accept stock. It writes a
 // placement record and no ledger movement (DECISIONS #116). active:false, granted to no Role.
@@ -243,7 +248,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -296,6 +301,22 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
   assert.equal(permission.action, "read");
+});
+
+check("inventory.returns.intake is registered exactly once, active: false, resource/action match", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.returns.intake");
+  assert.equal(matches.length, 1);
+  const [permission] = matches;
+  assert.equal(permission.active, false, "returns intake must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.returns");
+  assert.equal(permission.action, "intake");
+});
+
+check("no DISPOSITION capability exists, because no disposition policy has been decided", () => {
+  // DECISIONS #118. Registering one before the policy exists would invite something to be built
+  // against an authority whose meaning nobody has settled.
+  const disposition = PERMISSION_CATALOG.filter((p) => /disposition|restock|scrap|quarantine/i.test(p.id));
+  assert.deepEqual(disposition.map((p) => p.id), []);
 });
 
 check("inventory.placement.record is registered exactly once, active: false, resource/action match", () => {

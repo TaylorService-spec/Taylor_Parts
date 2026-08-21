@@ -862,6 +862,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Scanner Phase Q -- RETURNS INTAKE (functions/src/inventoryReturns/returnIntakeCommand.ts).
+  //
+  // DECISIONS #118: intake and disposition are SEPARATE authorities, and a return must not
+  // automatically restore inventory to sellable stock. This authorizes recording that something came
+  // back -- source, item, quantity, condition, reason -- and nothing else. It writes no ledger event,
+  // which is exactly why `RETURNED` still has no writer in this platform.
+  //
+  // NOT `inventory.stock.receive`: receiving accepts stock INTO sellable inventory, which is
+  // precisely what a return must not do. Reusing it would put intake behind an authority whose whole
+  // meaning is the thing #118 forbids.
+  //
+  // Disposition -- return to stock, inspect/quarantine, repair, vendor RMA, scrap -- will need its
+  // OWN capability when the policy exists. None is registered here, because none has been decided.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role.
+  Object.freeze({
+    id: "inventory.returns.intake",
+    description:
+      "Record a returned item (source, identity, quantity or serials, condition, reason) as AWAITING_DISPOSITION via the trusted returns intake command. Intake only: authors no ledger movement and never restores stock to sellable inventory (DECISIONS #118).",
+    resource: "inventory.returns",
+    action: "intake",
+    active: false,
+  }),
   // Scanner Phase L -- PUT-AWAY (functions/src/inventoryLocation/putAwayCommand.ts).
   //
   // Records WHERE stock was stowed inside a warehouse it already belongs to. Per DECISIONS #116 this
