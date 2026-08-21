@@ -45,12 +45,25 @@ function main() {
     process.exit(2);
   }
 
+  // WINDOWS: `gcloud` is gcloud.cmd, a BATCH FILE. execFileSync cannot exec a .cmd directly, so it
+  // fails with ENOENT even when the SDK is installed and on PATH -- which reads exactly like "gcloud
+  // is missing" and is not. On 2026-08-21 that turned a completely successful sandbox deploy into
+  // eighteen lines of "FAIL: query failed". `shell` on win32 is what lets the .cmd shim resolve.
+  //
+  // shell:true means the command string is parsed by cmd.exe, so `project` must not be able to carry
+  // shell metacharacters. Firebase project ids are already constrained to this shape; asserting it
+  // here keeps the shell path from ever being an injection surface.
+  if (!/^[a-z][a-z0-9-]{3,29}$/.test(project)) {
+    console.error(`FAIL: refusing to query an implausible project id: ${project}`);
+    process.exit(2);
+  }
+
   let stdout;
   try {
     stdout = execFileSync(
       'gcloud',
       ['functions', 'list', '--project', project, '--v2', '--format=json'],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 16 * 1024 * 1024 },
     );
   } catch (err) {
     console.error(`FAIL: gcloud functions list --v2 --project ${project} failed: ${err.message}`);
