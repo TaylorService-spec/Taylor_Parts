@@ -14,9 +14,12 @@
 // viewStatus), not the old supplierId/items/totalCost shape.
 import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
+import { resolveSupplierIdentity } from "../../../domain/actorDisplayName";
 
 export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName }) {
-  const supplierName = (id) => suppliers.find((s) => s.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw supplier
+  // document id, printing an opaque key where a business name belongs.
+  const supplierName = (id) => resolveSupplierIdentity(id, { suppliers }).name;
 
   return (
     <div className="fo-card">

@@ -840,6 +840,22 @@
     {
       "file": "test/pickSession.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/cssClassCoverage.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/createdRecordIsReachable.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/technicianNameIsNotAnId.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/detectorsCanFail.test.mjs",
+      "runner": "node"
     }
   ]
 }

@@ -85,3 +85,40 @@ export function resolveTechnicianIdentity(
   if (match?.name) return { state: "resolved", name: match.name };
   return { state: "unknown", name: UNKNOWN_TECHNICIAN_DISPLAY_NAME };
 }
+
+// Certification Wave G -- the SAME defect as resolveTechnicianIdentity above, on two more entities.
+//
+// ProcurementPanel.jsx and WarehousePanel.jsx each carried `find(...)?.name ?? id`, so a supplier or
+// warehouse whose record was missing printed its raw Firestore document key where a business name
+// belongs. Found by the certification sweep at the same time as the technician case and deliberately
+// NOT folded into that change -- these are different collections with different vocabulary, and a
+// single generic "name resolver" would have to invent a label that fits none of them.
+//
+// Entity-specific exports over one shared implementation: each caller says what it is resolving and
+// gets wording that suits it, while the state machine -- unset / loading / error / resolved /
+// unknown, never collapsed -- lives in exactly one place.
+function resolveNamedRecordIdentity(id, records, loading, error, errorLabel, unknownLabel) {
+  if (!id) return { state: "unset", name: null };
+  if (error) return { state: "error", name: errorLabel };
+  if (loading) return { state: "loading", name: null };
+  const match = records?.find?.((r) => r?.id === id);
+  if (match?.name) return { state: "resolved", name: match.name };
+  return { state: "unknown", name: unknownLabel };
+}
+
+export const UNKNOWN_SUPPLIER_DISPLAY_NAME = "Unknown supplier";
+export const UNKNOWN_WAREHOUSE_DISPLAY_NAME = "Unknown warehouse";
+
+/** Supplier document id -> supplier name. Never the raw id. */
+export function resolveSupplierIdentity(supplierId, { suppliers = [], loading = false, error = null } = {}) {
+  return resolveNamedRecordIdentity(
+    supplierId, suppliers, loading, error, "Supplier name unavailable", UNKNOWN_SUPPLIER_DISPLAY_NAME,
+  );
+}
+
+/** Warehouse document id -> warehouse name. Never the raw id. */
+export function resolveWarehouseIdentity(warehouseId, { warehouses = [], loading = false, error = null } = {}) {
+  return resolveNamedRecordIdentity(
+    warehouseId, warehouses, loading, error, "Warehouse name unavailable", UNKNOWN_WAREHOUSE_DISPLAY_NAME,
+  );
+}

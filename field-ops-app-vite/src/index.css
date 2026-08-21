@@ -4346,3 +4346,43 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* =============================================================================
+   THE TOUCH FLOOR, IN ONE PLACE
+   =============================================================================
+   Persona certification swept /inventory-role/warehouse as a technician at 375px
+   and measured 21 controls under the 44px touch minimum: thirteen .fo-button at
+   40px, seven .fo-filter-btn at 34px, and a text input at 30px.
+
+   The floor itself is not new. This stylesheet already enforces it in at least
+   six separate places, each added when somebody measured one specific control
+   and found it short -- the comments still record the readings: "Logout measured
+   61x24 in field testing", "it measured 43 -- one pixel under", "measured 40.9px
+   before". Every one of those was a correct fix and a per-site one.
+
+   That is the same shape of drift this certification already had to undo once,
+   where ten surfaces each hand-rolled the same lookup and nine got it wrong. A
+   floor applied control-by-control is only ever as complete as the last audit,
+   and .fo-button -- the SHARED primitive, min-height 40px -- was itself four
+   pixels under on every handheld surface that used it.
+
+   So the floor moves to one rule. Scoped to the handheld breakpoint because that
+   is where the promise applies: a desk pointer does not need 44px, and forcing it
+   there would inflate dense desktop workspaces for no one's benefit.
+
+   Checkboxes and radios are excluded deliberately. Their hit area belongs to the
+   wrapping <label>, which this app already uses everywhere (that is why only two
+   sibling labels existed to fix), and stretching the box itself to 44px would
+   distort the control rather than the target.
+   ========================================================================== */
+@media (max-width: 640px) {
+  .fo-button,
+  .fo-filter-btn,
+  .fo-filters input,
+  .fo-filters select,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
