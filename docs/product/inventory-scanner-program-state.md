@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–J3 merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–K merged.
 
 ---
 
@@ -41,7 +41,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **I** — location reconciliation | ANALYSIS MERGED (#1360) | n/a | n/a | n/a | Resolved by DECISIONS #116 |
 | **J1** — transfers by scan | MERGED (#1362) | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
 | **J2** — warehouse-level cycle count by scan | MERGED (#1363) | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
-| **J3** — shared scanner input hardening | This change | COMPLETE | n/a — client input layer only | n/a | n/a |
+| **J3** — shared scanner input hardening | MERGED (#1364) | COMPLETE | n/a — client input layer only | n/a | n/a |
+| **K** — descriptive bin registry | This change | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
 
 ### What "not deployed" means concretely
 
@@ -612,3 +613,70 @@ Transfers and cycle count use it now. Receiving (`MultiScanReceiving`) and the t
 `PartsScanner` keep their own inputs for the moment: both are covered by their own passing suites,
 and migrating them is mechanical but belongs in its own change so a regression is attributable.
 Recorded as a follow-up rather than bundled.
+## 14. Phase K — the descriptive bin registry
+
+The first new backend authority the scanner program has needed. It implements **exactly** what
+DECISIONS #116 permits and nothing more.
+
+### A bin describes; the warehouse owns
+
+The invariant #116 protects: **putting stock into a bin must not remove it from warehouse on-hand or
+available.** Every governed authority counts a movement only at `type === "WAREHOUSE"`, so a bin that
+became a custody location would make put-away stock vanish from sellable inventory.
+
+So the registry deliberately does **not**:
+
+- produce a `LocationRef` of type `BIN`, or anything a movement command would accept;
+- carry a quantity, balance or reservation;
+- establish a hierarchy anything rolls up through.
+
+Both absences are asserted **structurally** — a test greps the module and requires that no `BIN`
+location type and no `locationId`, `quantity`, `onHand`, `reserved`, `balance` or `ledger` reference
+can appear. That is the shape which would let a bin leak into custody math, so its absence is checked
+rather than trusted.
+
+### Duplicates are structurally impossible
+
+The document id is derived from `(warehouseId, normalized code)`. Two bins with the same code in the
+same warehouse **are the same document** — a uniqueness check could race; a derived id cannot. The
+same discipline `part_aliases` already uses.
+
+Codes normalize by collapsing whitespace and upper-casing, because `a-14` and `A-14` are the same
+physical rack and treating them as two bins would split a shelf in half in the data. What was typed
+is preserved separately so a label can be reprinted exactly as it reads. An unsupported character is
+**refused, never stripped**: silently deleting one produces a code that will never match the wall.
+
+### Two capabilities, two audiences
+
+| Capability | For |
+| --- | --- |
+| `inventory.location.bin.manage` | Labelling racking: create, retire, revive |
+| `inventory.location.bin.read` | Checking a scanned bin is real; listing a warehouse's bins |
+
+Separate because an operator putting stock away needs the *check*, and giving them it must not also
+let them create and retire racking. The same split Phase G drew between alias lookup and alias
+administration, avoiding the same mistake — broadening a write capability to serve a read.
+
+### No Rules change was needed
+
+`bins` has **no `firestore.rules` match block**, so it is deny-all to every client including admin.
+The callables run on the Admin SDK, which Rules do not govern — the established `part_aliases`
+posture. Nothing was weakened to add a collection.
+
+### Resolution vocabulary
+
+`FOUND` / `INACTIVE` / `WRONG_WAREHOUSE` / `NOT_FOUND` / `MALFORMED`, none collapsed.
+**`WRONG_WAREHOUSE` is its own answer**: a real bin at the wrong site means the operator is standing
+in the wrong building, which is a different problem from a code nobody registered — and the one they
+most need told plainly. An unrecognized stored status fails closed as `INACTIVE`: a bin whose state
+cannot be read is not one anyone should be told to put stock into.
+
+Retiring never deletes: a put-away recorded against a bin last year still resolves to a place with a
+name rather than a dangling code. And creating an existing code reports `unchanged` rather than
+failing — but never revives a retired bin, because quietly undoing a deliberate retirement would
+erase that decision without anyone seeing it.
+
+### State today
+
+Both capabilities are `active: false` and granted to no Role, so every call denies. No UI yet —
+Phase L (put-away) is the first consumer.
