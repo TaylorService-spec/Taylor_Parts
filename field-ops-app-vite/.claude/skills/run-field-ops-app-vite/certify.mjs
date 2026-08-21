@@ -65,14 +65,58 @@ const PROBE = (MOBILE_SURFACE) => {
     const m = text.match(pat);
     if (m) push("ERROR_TEXT", m[0]);
   }
-  const rawId = text.match(/\b[A-Za-z0-9]{20}\b/);
-  if (rawId && !/^[0-9]+$/.test(rawId[0])) push("RAW_ID", rawId[0]);
+  // RAW_ID -- A FIRESTORE KEY IS NOT MERELY A LONG WORD, which is what this used to test.
+  //
+  // The first version matched any 20-character alphanumeric token and duly reported
+  // "postPurchasingUpdate" on /administration/roles-permissions at all five widths. That is a
+  // CAPABILITY ID: it is supposed to be on that screen, it is the screen's subject matter, and a
+  // sweep that calls it a defect is telling the reader to remove the content the page exists to show.
+  //
+  // The fifth false-positive family in this file, and the same root cause as the other four: the
+  // check measured a SHAPE and inferred an INTENT it cannot see. A 20-char word is a shape shared by
+  // random keys and ordinary camelCase identifiers alike.
+  //
+  // Firestore auto-ids are 20 characters drawn from a 62-character alphabet, so a digit appears in
+  // roughly 97% of them; hand-written camelCase identifiers essentially never carry one. Requiring a
+  // digit keeps the check pointed at random keys and lets the vocabulary this app is built to
+  // display through. It will miss the ~3% of genuine ids that happen to be all-letters -- the right
+  // trade, because a false positive here asks someone to delete correct content.
+  const rawId = (text.match(/[A-Za-z0-9]{20}/g) || []).find((t) => /[0-9]/.test(t) && /[a-z]/.test(t) && /[A-Z]/.test(t));
+  if (rawId) push("RAW_ID", rawId);
 
   const controls = [...main.querySelectorAll("button,a,input,select,textarea,[role=button],[role=tab]")].filter(visible);
   for (const el of controls) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
-    if (r.right > vw + 1 || r.left < -1) push("OFFSCREEN_CONTROL", `${name(el)} @${Math.round(r.left)}..${Math.round(r.right)} vw=${vw}`);
+    // OFFSCREEN, BUT REACHABLE, IS NOT A DEFECT -- and this check could not tell the difference.
+    //
+    // It compared the control's viewport rect against the viewport width and stopped there. A
+    // control sitting inside a deliberately horizontally-scrollable container is outside the
+    // viewport and perfectly reachable by scrolling that container, which is the entire point of
+    // the container. The Scheduling board is exactly this: a 7-day grid whose overflow is
+    // scroll-contained ON PURPOSE, documented as such in its own component. It was being reported
+    // as broken at EVERY width, 1440 included, which is what gave the false cluster away -- a real
+    // responsive defect does not appear on a wide desktop.
+    //
+    // This is the fourth false-positive family this sweep has produced (after hash navigation,
+    // screen-reader landmarks counted as clipped, and desktop controls measured against a touch
+    // floor they never promised). Each one produced a confident, wrong number. The pattern is
+    // always the same: geometry alone under-describes intent, so the check has to ask what the
+    // page was TRYING to do before calling the result a defect.
+    //
+    // Reported as a separate kind rather than dropped: a control parked inside a scroller is worth
+    // seeing, it is simply not the same finding as one that cannot be reached at all.
+    const offscreen = r.right > vw + 1 || r.left < -1;
+    if (offscreen) {
+      let scroller = null;
+      for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+        const ov = getComputedStyle(a).overflowX;
+        if ((ov === "auto" || ov === "scroll") && a.scrollWidth > a.clientWidth + 1) { scroller = a; break; }
+      }
+      const where = `${name(el)} @${Math.round(r.left)}..${Math.round(r.right)} vw=${vw}`;
+      if (scroller) push("OFFSCREEN_IN_SCROLLER", `${where} (reachable inside ${scroller.className || scroller.tagName})`);
+      else push("OFFSCREEN_CONTROL", where);
+    }
     // TOUCH TARGETS ARE ONLY PROMISED ON SURFACES MEANT FOR TOUCH.
     //
     // Flagging every control on the Administration or Reporting screens at 375px would produce a
@@ -135,18 +179,47 @@ const PROBE = (MOBILE_SURFACE) => {
   return out;
 };
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const findings = [];
-let visited = 0, failedNav = 0;
+// A DEAD BROWSER IS NOT A PAGE DEFECT, and the per-visit guard below could not tell the difference.
+//
+// A run died a third of the way through and every remaining visit recorded the identical
+// "Target page, context or browser has been closed" -- 133 of them. The guard faithfully turned ONE
+// fatal condition into 133 findings and then printed a summary that looked like a completed sweep,
+// when half the site had never been measured at all.
+//
+// That is the same failure this file already warns about twice, in a new costume: NOISE LOOKING
+// LIKE SUCCESS. The session is now recoverable, and the run refuses to report itself as complete
+// when it is not (see the coverage check at the end).
+const acct = DRIVER_ACCOUNTS[accountKey];
+let browser = null;
+let page = null;
 
-try {
-  const acct = DRIVER_ACCOUNTS[accountKey];
+async function openSession() {
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
+  browser = await chromium.launch();
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(`${BASE}/?emulator=1`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
+}
+
+// A browser that has gone away fails in a recognizable way. Anything else is a real finding about
+// the page and must NOT trigger a relaunch.
+const sessionIsDead = (err) =>
+  !browser || browser.isConnected() === false ||
+  /has been closed|Target crashed|Session closed|browser has disconnected/i.test(String((err && err.message) || ""));
+
+const MAX_RELAUNCHES = 5;
+let relaunches = 0;
+let aborted = null;
+
+const findings = [];
+let visited = 0, failedNav = 0, attempted = 0;
+let routeIndex = 0;
+
+try {
+  await openSession();
 
   // ONE BAD VISIT MUST NOT COST 269 GOOD ONES.
   //
@@ -161,7 +234,25 @@ try {
   mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
 
   for (const r of routes) {
+    if (aborted) break;
+    // RECYCLE BEFORE IT CRASHES, rather than only recovering after.
+    //
+    // A full run crashed the browser FOUR times, and each crash cost two visits: the goto that hit
+    // it (NAV_FAILED) and the next viewport call (VISIT_FAILED). Those 8 visits were the entire
+    // difference between 262/270 and a complete sweep, and the routes they landed on -- receipts,
+    // reporting, users, duplicate-rules -- had nothing in common except being far into the run.
+    // That is accumulation, not a property of those pages.
+    //
+    // Recovery already works; this simply stops paying for it. A fresh session every 10 routes
+    // Every 5 routes. At 10 the browser still died twice per full run, on DIFFERENT routes each
+    // time -- which is the proof that it is accumulation and not a property of any page.
+    if (routeIndex > 0 && routeIndex % 5 === 0) {
+      try { await openSession(); } catch (e) { aborted = `could not recycle the session: ${String(e && e.message).slice(0, 120)}`; break; }
+    }
+    routeIndex += 1;
     for (const w of WIDTHS) {
+     if (aborted) break;
+     attempted += 1;
      try {
       await page.setViewportSize({ width: w, height: w <= 430 ? 812 : 900 });
       // PATH navigation, not hash. The app uses BrowserRouter with a basename; `#/route` leaves you
@@ -193,12 +284,24 @@ try {
       for (const f of probe) findings.push({ route: r.route, label: r.label, width: w, ...f });
      } catch (err) {
        findings.push({ route: r.route, label: r.label, width: w, kind: "VISIT_FAILED", detail: String(err && err.message).slice(0, 100) });
+       // Only a DEAD SESSION is recoverable here. A page-level failure is a real finding and was
+       // just recorded as one; relaunching for that would retry a broken route forever.
+       if (sessionIsDead(err)) {
+         if (relaunches >= MAX_RELAUNCHES) {
+           aborted = `browser died ${relaunches + 1} times; gave up after ${attempted} of ${routes.length * WIDTHS.length} visits`;
+         } else {
+           relaunches += 1;
+           try { await openSession(); } catch (e) { aborted = `could not reopen a session: ${String(e && e.message).slice(0, 120)}`; }
+         }
+       }
      }
      flush();
     }
   }
 } finally {
-  await browser.close();
+  // openSession() may have replaced or failed to create it; closing a null browser here would
+  // mask the real error with a TypeError from the finally block.
+  if (browser) { try { await browser.close(); } catch { /* already gone */ } }
 }
 
 mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
@@ -208,7 +311,27 @@ const byKind = {};
 for (const f of findings) byKind[f.kind] = (byKind[f.kind] ?? 0) + 1;
 const routesWithIssues = new Set(findings.map((f) => f.route)).size;
 
-console.log(`\npersona=${accountKey}  routes=${routes.length}  visits=${visited}  navFailures=${failedNav}`);
-console.log(`routes with >=1 finding: ${routesWithIssues}/${routes.length}\n`);
+const planned = routes.length * WIDTHS.length;
+
+console.log("");
+console.log(`persona=${accountKey}  routes=${routes.length}  widths=${WIDTHS.join("/")}`);
+console.log(`visits measured: ${visited}/${planned}   navFailures=${failedNav}   browser relaunches=${relaunches}`);
+console.log(`routes with >=1 finding: ${routesWithIssues}/${routes.length}`);
+
+// COVERAGE IS PART OF THE RESULT. A sweep that measured half the site and then prints a tidy
+// findings table is making a claim it has not earned: on an unmeasured route, the ABSENCE of a
+// finding reads exactly like a clean result. A run died a third of the way through and recorded
+// 133 identical "browser has been closed" entries, then reported "routes=54" as if it had swept
+// them. Say so loudly, and exit non-zero so no caller can mistake this for a pass.
+if (visited < planned || aborted) {
+  console.log("");
+  console.log(`!! COVERAGE INCOMPLETE -- ${planned - visited} of ${planned} visits were never measured.`);
+  if (aborted) console.log(`!! run aborted: ${aborted}`);
+  console.log("!! Findings below describe ONLY what was measured. An unmeasured route is not a clean route.");
+}
+console.log("");
 console.log("FINDINGS BY KIND (the cluster IS the diagnosis):");
 for (const [k, n] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(5)}  ${k}`);
+
+
+if (visited < planned || aborted) process.exitCode = 1;

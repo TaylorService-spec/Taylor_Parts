@@ -3456,7 +3456,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   line-height: var(--line-height-relaxed); color: var(--color-text-secondary);
   max-width: 68ch;
 }
-.fo-page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; flex-wrap: wrap; }
+/* `flex: none` is `flex: 0 0 auto` -- it refused to SHRINK, so this block held its full content
+   width (550px measured on truck-inventory) inside a 292px header and pushed the document sideways.
+   Tracing the overflow up the ancestor chain landed here every time: the button and action-rail
+   rules underneath were innocent, they were simply being sized by a parent that would not give.
+   It still refuses to GROW (flex-grow stays 0, which is what `flex: none` was protecting); it may
+   now shrink and, since it already wraps, its contents fall onto their own line instead. */
+.fo-page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
 
 .fo-section-header {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
@@ -3595,7 +3601,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    contrast ratio is introduced here. */
 
 /* -- Manufacturers.jsx -- */
-.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+/* flex-wrap: a space-between row with no wrap has nowhere to put its second child once the two no
+   longer fit, so the action button simply left the header -- measured 11px past its own container at
+   320px. Wrapping is what every other header row in this file already does. */
+.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .fo-mfr__title { margin: 0; }
 .fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
 .fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
@@ -4271,4 +4280,69 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   padding: 0.3rem 0.4rem;
   justify-content: flex-start;
   text-align: left;
+}
+
+/* =============================================================================
+   PHONE WIDTHS: A BUTTON MUST NOT PUSH THE PAGE SIDEWAYS
+   =============================================================================
+   Certification measured the document scrolling horizontally at 320px on
+   /inventory (82px), /inventory/truck-inventory (244px) and
+   /administration/objects (64px). Two shared causes, both in the button
+   primitive rather than on those pages -- which is why the same defect appeared
+   on unrelated routes.
+
+   1. THE PROTECTED REASON BECAME A FLEX SIBLING. Button.jsx renders the button
+      and its explanation as a fragment, and its own comment says the reason
+      renders "in a SIBLING paragraph below". That holds in normal block flow.
+      Dropped into a flex ROW like .fo-action-rail__end, the paragraph becomes a
+      flex ITEM and lands BESIDE the button instead: on truck-inventory its right
+      edge measured 564px inside a 320px viewport.
+
+      Fixed where the assumption breaks rather than by restructuring the DOM:
+      the reason claims a full row of its own, and the rail is allowed to wrap so
+      it can take one. .fo-action-rail already wraps; its __end child did not.
+
+   2. LABELS COULD NOT WRAP. .fo-button sets white-space: nowrap, so
+      "+ Add truck (not yet enabled)" forced a 224px-wide button that no
+      container could shrink. At a desk that is right -- a wrapped button label
+      looks broken. On a phone a two-line button is ordinary and a page that
+      scrolls sideways is not, so the trade flips below the handheld breakpoint.
+      Scoped to the media query for exactly that reason.
+   ========================================================================== */
+.fo-action-rail__end { flex-wrap: wrap; min-width: 0; }
+.fo-button__protected-reason { flex-basis: 100%; }
+
+@media (max-width: 640px) {
+  .fo-button { white-space: normal; max-width: 100%; }
+  .fo-button__label { white-space: normal; }
+}
+
+/* =============================================================================
+   A TABLE MUST NOT PAN THE PAGE -- the safety net under .fo-table-scroll
+   =============================================================================
+   .fo-table-scroll is the intended wrapper and stays the right way to do this.
+   But it is markup, so it is only present where somebody remembered it, and the
+   sweep found bare tables scrolling the whole document sideways on
+   /inventory and /administration/objects.
+
+   Wrapping every call site by hand was tried first and is exactly the wrong
+   shape of fix: there are ~20 of them, the edit is fiddly (one attempt produced
+   a duplicated wrapper and a broken build), and the twenty-first table written
+   next month is unprotected again.
+
+   So the floor moves into CSS, where it cannot be forgotten. Below the handheld
+   breakpoint an unwrapped table becomes its own scroll container. Already-
+   wrapped tables are unaffected (their ancestor scrolls first) and .fo-table
+   --stack is excluded, because it does something better: it stops being a table
+   at all and becomes labelled cards.
+
+   This is a NET, not a replacement. A table that a phone user must read is
+   still better recomposed than scrolled -- see the .fo-table--stack block. */
+@media (max-width: 640px) {
+  .fo-table:not(.fo-table--stack) {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
 }
