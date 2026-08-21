@@ -20,7 +20,32 @@ echo "== [1/5] build functions lib =="
 
 echo "== [2/5] deploy Functions -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs
-firebase deploy --only functions --project eos-platform-sandbox --force
+# DEPLOYED IN SMALL NAMED BATCHES, not one `--only functions` call.
+#
+# A large single batch transiently fails a SUBSET of the estate for reasons unrelated
+# to IAM or org policy, and the failure mode is the bad one: the command exits
+# non-zero after some functions have already updated, so the estate is left
+# half-new. Named batches make a failure specific, and make the retry cheap and
+# obvious -- rerun the one batch, not all eighty.
+#
+# `|| true` is deliberately NOT used. A failed batch must stop the script, because
+# continuing to Hosting would ship a frontend that calls callables that are not there.
+deploy_batch() {
+  local label="$1"; shift
+  echo "-- functions batch: ${label}"
+  firebase deploy --only "$1" --project eos-platform-sandbox --force
+}
+
+deploy_batch "scanner: identity + balance reads" \
+  "functions:resolveScannedPartIdentifier,functions:getPartBalance"
+deploy_batch "scanner: bin registry" \
+  "functions:createBin,functions:deactivateBin,functions:reactivateBin,functions:resolveBin,functions:listBins"
+deploy_batch "scanner: placement + returns" \
+  "functions:recordPutAway,functions:recordReturnIntake"
+deploy_batch "receiving: canonical multi-line reads" \
+  "functions:getPurchaseOrderReceivingProgress,functions:listReceivablePurchaseOrders"
+# Everything else, after the scanner set is known good.
+deploy_batch "remaining estate" "functions"
 
 echo "== [3a/5] verify the build-base contract =="
 # MUST RUN BEFORE THE ENVIRONMENT BUILD. verifyBuildBase.mjs deletes dist/ and
@@ -50,9 +75,38 @@ node scripts/_sandboxDeployGuard.mjs
 firebase deploy --only hosting --project eos-platform-sandbox
 
 echo "== [5/5] verify deployed revision (D2) =="
-echo "expected commit: $(git rev-parse --short HEAD)"
+EXPECTED="$(git rev-parse --short HEAD)"
+echo "expected commit: ${EXPECTED}"
 echo "deployed version.json:"
 curl -s https://eos-platform-sandbox.web.app/version.json
 echo
-echo "Compare 'commit' above to expected. NOTE: Rules/indexes are UNCHANGED vs the"
-echo "currently-deployed sandbox SHA (9758ed2->HEAD), so no Rules deploy is required."
+echo "Compare 'commit' above to expected -- the ENVIRONMENT is the authority here, not this"
+echo "script's exit code. A clean exit does not mean the artifact is live."
+
+echo
+echo "== [5b/5] verify the scanner callables are ACTIVE (read-only) =="
+# Export is not deployment and deployment is not readiness. This asks the live estate.
+node scripts/verifySandboxFunctions.mjs --project eos-platform-sandbox \
+  receiveInventoryStock getPurchaseOrderReceivingProgress listReceivablePurchaseOrders \
+  resolveScannedPartIdentifier getPartBalance getAvailableEquipment getLocationDisplay \
+  createBin deactivateBin reactivateBin resolveBin listBins recordPutAway \
+  recordReturnIntake dispatchTransferOrder receiveTransferOrder createCycleCount submitCycleCount
+
+echo
+echo "== Rules / indexes =="
+# COMPUTED, not asserted from memory. An earlier version of this script carried a
+# hardcoded "unchanged vs 9758ed2" note, which is the kind of claim that silently stops
+# being true. This diffs the two files against the commit the sandbox is actually serving.
+DEPLOYED_SHA="$(curl -s https://eos-platform-sandbox.web.app/version.json \
+  | sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+if [ -n "${DEPLOYED_SHA}" ] && git cat-file -e "${DEPLOYED_SHA}^{commit}" 2>/dev/null; then
+  if git diff --quiet "${DEPLOYED_SHA}" HEAD -- firestore.rules firestore.indexes.json; then
+    echo "UNCHANGED vs ${DEPLOYED_SHA} -- no Rules or index deploy is required."
+  else
+    echo "CHANGED vs ${DEPLOYED_SHA}:"
+    git diff --stat "${DEPLOYED_SHA}" HEAD -- firestore.rules firestore.indexes.json
+    echo "A Rules/index deploy is a SEPARATE protected action. STOP and get it authorized."
+  fi
+else
+  echo "Could not resolve the deployed commit locally -- verify Rules parity by hand."
+fi
