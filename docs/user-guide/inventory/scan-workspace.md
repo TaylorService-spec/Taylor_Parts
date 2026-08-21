@@ -42,9 +42,27 @@ screen shows both and resolves neither. That is a data problem to fix, not a cho
 **This changes nothing.** There is no quantity box and no submit button. Looking a part up does not
 move it, count it, reserve it or receive it.
 
-Some rows on the result say **Not switched on** or **Not available yet** rather than showing a
-value — serialized units, location and quantity on hand. That is deliberate: those readings are not
-available to this screen yet, and showing a blank would look like the part has none of them.
+The result also shows what you have and where: **serialized units**, **location**, **on hand**,
+**reserved**, **available** and **on order**.
+
+Those six rows read live inventory, and that reading is **not switched on yet** — so today each of
+them says exactly that rather than showing a number. It is deliberate. A blank would look like the
+part has none, and a zero would be worse: "nothing has ever been recorded for this part" and "there
+are none on the shelf" are different facts, and this screen will never show you one when it means
+the other.
+
+When a row cannot answer, it tells you which kind of nothing it is:
+
+| It says | It means |
+| --- | --- |
+| **Not switched on** | The reading is built and governed, but not enabled here yet |
+| **Reading…** | It is being fetched right now |
+| **Could not be read** | It was tried and failed — worth retrying |
+| **Unknown** | It was read, and there is genuinely no record to report |
+| **Not applicable** | The question does not apply — e.g. a non-serialized part has no serial units |
+
+Serialized parts are counted **individually**, not as a quantity, so they show a unit count rather
+than an on-hand number.
 
 **You need:** permission to read the part catalog. If you do not have it, the screen says so
 plainly rather than telling you the part does not exist.

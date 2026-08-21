@@ -856,6 +856,32 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Scanner Phase H -- the shared INVENTORY BALANCE read (functions/src/inventory/
+  // partBalanceReadService.ts): on-hand, reserved, available and on-order for one Part.
+  //
+  // NOT A SCANNER CAPABILITY. It answers a general inventory question and the scanner is merely its
+  // first consumer. The numbers come from fulfillment/fulfillmentAvailability.ts's Owner-ratified
+  // pure functions -- no fourth parallel on-hand implementation.
+  //
+  // WHY NOT REUSE AN EXISTING ID. `warehouse.stockLocation.read` names the stock_locations
+  // collection, which the Owner's 2026-08-17 ruling SUPERSEDED as a stock authority (nothing writes
+  // it; it diverged from the ledger in both directions); pointing it at a ledger-derived read would
+  // make it a synonym for something it no longer means. It is also granted only to
+  // admin/dispatcher/owner, which is the wrong audience for a warehouse balance question.
+  // `inventory.analytics.read` is a dashboard projection over the whole estate, not a per-part
+  // answer. Neither fits, so this is the smallest id that does.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role, no
+  // per-environment activation override -- resolveEffectivePermission() denies for every principal
+  // until activation and grant are separately authorized.
+  Object.freeze({
+    id: "inventory.balance.read",
+    description:
+      "Read the governed inventory balance for one Part (on-hand at ACTIVE warehouses, open Work Order reservations, available, and outstanding ordered quantity) via the trusted getPartBalance read service. Backend-resolved scope; composed from the ratified fulfillment availability functions, not a second on-hand authority.",
+    resource: "inventory.balance",
+    action: "read",
+    active: false,
+  }),
   // Scanner Phase G -- barcode/alias LOOKUP, as distinct from alias ADMINISTRATION.
   //
   // THE AUDIENCE SPLIT THIS EXISTS FOR. partAliasCallables.ts recorded, at Phase A, that identifier

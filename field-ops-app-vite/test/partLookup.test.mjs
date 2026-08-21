@@ -143,22 +143,44 @@ test("the mappings that ARE unambiguous are reported exactly", () => {
   assert.equal(rowFor(describePartLookup(part({ controlType: "SERIALIZED" })), "Tracking").value, "SERIAL");
 });
 
-test("rows whose CAPABILITY IS INERT say so, and are not omitted", () => {
-  const rows = describePartLookup(part());
-  for (const label of ["Serialized units", "Location"]) {
+// Phase H turned these three rows into real governed reads. Their capabilities are still inert, so
+// the production state is a DENIED read — which is what these now assert, rather than a hardcoded
+// placeholder.
+const DENIED_READS = {
+  serialized: { status: "DENIED" },
+  location: { status: "DENIED" },
+  balance: { status: "DENIED" },
+};
+
+test("rows whose governing read is DENIED say so, and are not omitted", () => {
+  const rows = describePartLookup(part({ controlType: "SERIALIZED" }), DENIED_READS);
+  for (const label of ["Serialized units", "Location", "On hand", "Reserved", "Available", "On order"]) {
     const row = rowFor(rows, label);
     assert.ok(row, `${label} must be present so its absence is not read as "none"`);
-    assert.equal(row.state, FIELD_STATE.CAPABILITY_INACTIVE);
+    assert.equal(row.state, FIELD_STATE.CAPABILITY_INACTIVE, `${label} should read as not-switched-on`);
     assert.match(row.detail, /not switched on/i);
+    assert.equal(row.value, null, `${label} must never carry a value it does not have`);
   }
 });
 
-test("stock balance is NO_GOVERNED_READ, which is a different fact from inert", () => {
-  // Saying "not switched on" would imply a balance read exists behind a switch. None exists.
-  const row = rowFor(describePartLookup(part()), "On hand");
-  assert.equal(row.state, FIELD_STATE.NO_GOVERNED_READ);
-  assert.notEqual(row.state, FIELD_STATE.CAPABILITY_INACTIVE);
-  assert.equal(row.value, null, "never zero — an unreadable balance is not a balance of zero");
+test("a balance row is never rendered as zero when the read did not happen", () => {
+  for (const status of ["DENIED", "UNAVAILABLE", "LOADING"]) {
+    const row = rowFor(describePartLookup(part(), { balance: { status } }), "On hand");
+    assert.equal(row.value, null, `${status} must not produce a number`);
+    assert.notEqual(row.state, FIELD_STATE.KNOWN);
+  }
+});
+
+test("NO_GOVERNED_READ was retired once the balance read existed", () => {
+  // A field state nothing can produce is worse than none: it invites a future row to reach for it.
+  assert.equal(FIELD_STATE.NO_GOVERNED_READ, undefined);
+});
+
+test("a non-serialized part reports serialized units as NOT APPLICABLE, not as a gap", () => {
+  // "Unknown" would send someone looking for a registry entry that should not exist.
+  const row = rowFor(describePartLookup(part({ controlType: "STANDARD" }), DENIED_READS), "Serialized units");
+  assert.equal(row.state, FIELD_STATE.NOT_APPLICABLE);
+  assert.match(row.detail, /not serialized/i);
 });
 
 test("the inert capabilities are named exactly, and are the real catalog ids", () => {

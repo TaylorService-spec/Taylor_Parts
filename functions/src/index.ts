@@ -302,6 +302,11 @@ export {
   resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
 } from "./partMaster/partAliasCallables";
 
+// --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
+// Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every
+// principal until separately authorized. EXPORT != DEPLOY.
+export { getPartBalanceCallable as getPartBalance } from "./inventory/partBalanceReadService";
+
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
 // production project. NO UI wired yet, NO capability granted, NO App Check.

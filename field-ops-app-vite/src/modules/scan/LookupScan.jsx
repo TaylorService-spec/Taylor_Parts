@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import { resolveScannedIdentifier } from "../../services/partAliasCallableClient.js";
+import { fetchPartBalance } from "../../services/inventoryBalanceCallableClient.js";
+import { fetchAvailableEquipment } from "../../services/serializedAssetReadCallableClient.js";
+import { fetchLocationDisplay } from "../../services/locationDisplayReadCallableClient.js";
+import { mapLocationDisplayResultToMap } from "../../domain/locationDisplayProjection.js";
 import {
   buildPartLookup,
   describePartLookup,
@@ -9,6 +13,7 @@ import {
   FIELD_STATE,
   MATCHED_BY,
   ALIAS_TYPE_LABEL,
+  READ_STATUS,
 } from "../../domain/partLookup.js";
 
 // LOOKUP-ONLY SCANNING.
@@ -40,6 +45,20 @@ import {
 // the screen says identifier lookup is not switched on — rather than reporting "no match" for a
 // barcode it never actually checked.
 //
+// ============================ THREE MORE GOVERNED READS (Phase H) ============================
+//
+// Serialized units, stock balances and location labels each come from the authority that already
+// owns them — the serialized-asset registry read, the balance service, and the location-display
+// resolver. This surface performs no inventory math and holds no inventory model; it asks three
+// questions and renders three answers.
+//
+// They are fetched only AFTER a part resolves, and only for that part. Reading balances for a scan
+// that turned out to be a typo would be work nobody asked for, and reading them before knowing which
+// part would be impossible anyway.
+//
+// All three capabilities are registered active:false today, so all three deny and the rows say so.
+// Nothing here changes on the day they are activated.
+//
 // ============================ WHY IT DOES NOT PRE-CHECK ACCESS ============================
 //
 // `parts` is governed by firestore.rules, not by a capability, so there is nothing to consult that
@@ -50,6 +69,9 @@ import {
 export default function LookupScan({ deps }) {
   const readCatalog = deps?.fetchParts ?? fetchPartMasterList;
   const resolveIdentifier = deps?.resolveIdentifier ?? resolveScannedIdentifier;
+  const readBalance = deps?.fetchBalance ?? fetchPartBalance;
+  const readSerialized = deps?.fetchSerialized ?? fetchAvailableEquipment;
+  const readLocations = deps?.fetchLocations ?? fetchLocationDisplay;
 
   const [query, setQuery] = useState("");
   const [result, setResult] = useState({ state: LOOKUP_STATE.IDLE, token: "", rows: [], candidates: [], message: null, part: null });
@@ -83,9 +105,27 @@ export default function LookupScan({ deps }) {
     ]);
 
     if (!alive.current) return;
-    setResult(buildPartLookup({ catalogResult, aliasOutcome, token }));
+    const identity = buildPartLookup({ catalogResult, aliasOutcome, token });
+
+    if (identity.state !== LOOKUP_STATE.RESOLVED || !identity.part) {
+      setResult(identity);
+      setLoading(false);
+      return;
+    }
+
+    // Show the part IMMEDIATELY, with its inventory rows marked as still being read. Composing this
+    // first render with no reads at all would have those rows say "could not be read" — false, and
+    // alarming, when nothing has been attempted yet.
+    setResult(buildPartLookup({ catalogResult, aliasOutcome, reads: LOADING_READS, token }));
     setLoading(false);
-  }, [readCatalog, resolveIdentifier]);
+
+    // The three detail reads settle AFTER the identity does, so the part card appears immediately
+    // and fills in rather than making the operator wait on inventory they may not have asked about.
+    const detail = await loadPartDetailReads(identity.part, { readBalance, readSerialized, readLocations });
+    if (!alive.current) return;
+    // Recompose with the answers. Same pure function, same identity inputs — only the reads changed.
+    setResult(buildPartLookup({ catalogResult, aliasOutcome, reads: detail, token }));
+  }, [readCatalog, resolveIdentifier, readBalance, readSerialized, readLocations]);
 
   return (
     <div className="fo-lookup">
@@ -111,6 +151,70 @@ export default function LookupScan({ deps }) {
       <LookupResult loading={loading} result={result} />
     </div>
   );
+}
+
+const LOADING_READS = Object.freeze({
+  serialized: { status: READ_STATUS.LOADING },
+  location: { status: READ_STATUS.LOADING },
+  balance: { status: READ_STATUS.LOADING },
+});
+
+/** Map a transport envelope onto the READ_STATUS vocabulary partLookup.js reasons about. */
+function statusOf({ errorStatus }) {
+  if (!errorStatus) return READ_STATUS.READY;
+  // A denial and a switched-off transport are the same fact to the reader — the read refused, and
+  // an administrator or an operator has to change something. A network failure is not.
+  return errorStatus === "permission-denied" || errorStatus === "transport-not-ready"
+    ? READ_STATUS.DENIED
+    : READ_STATUS.UNAVAILABLE;
+}
+
+/**
+ * The three detail reads for one resolved part.
+ *
+ * Run together, and each guarded independently: one refusing must not cost the operator the other
+ * two. Location display is asked LAST because it needs the ids the first two produce — resolving
+ * labels for locations nothing is at would be a pointless read.
+ */
+async function loadPartDetailReads(part, { readBalance, readSerialized, readLocations }) {
+  const serialTracked = part.controlType === "SERIALIZED" || part.controlType === "SERIALIZED_LOT";
+
+  const [balanceRes, serializedRes] = await Promise.all([
+    Promise.resolve().then(() => readBalance({ partId: part.partId, serialTracked }))
+      .catch(() => ({ errorStatus: "internal" })),
+    serialTracked
+      ? Promise.resolve().then(() => readSerialized()).catch(() => ({ errorStatus: "internal" }))
+      // A non-serialized part has no registry entries to read. Not asking is not a gap: the row
+      // reports NOT_APPLICABLE, which is the true answer.
+      : Promise.resolve({ result: { availableEquipment: [] } }),
+  ]);
+
+  const balance = { status: statusOf(balanceRes), projection: balanceRes.result ?? null };
+  const assets = Array.isArray(serializedRes.result?.availableEquipment) ? serializedRes.result.availableEquipment : [];
+  const serialized = { status: serialTracked ? statusOf(serializedRes) : READ_STATUS.READY, assets };
+
+  const locationIds = [
+    ...(balance.projection?.byLocation ?? []).map((l) => l.locationId),
+    ...assets.filter((a) => a.partId === part.partId).map((a) => a.currentLocationId),
+  ].filter(Boolean);
+
+  if (locationIds.length === 0) {
+    // Nothing to label. READY with an empty map is honest: the resolver was not needed, and the
+    // rows that consume it already state their own emptiness.
+    return { balance, serialized, location: { status: READ_STATUS.READY, displayMap: new Map() } };
+  }
+
+  const locationRes = await Promise.resolve()
+    .then(() => readLocations([...new Set(locationIds)]))
+    .catch(() => ({ errorStatus: "internal" }));
+
+  // The EXISTING pure mapper, not a second one: it already fails closed on a malformed envelope and
+  // never fabricates an entry, and two mappers could disagree about what UNRESOLVED means.
+  return {
+    balance,
+    serialized,
+    location: { status: statusOf(locationRes), displayMap: mapLocationDisplayResultToMap(locationRes.result) },
+  };
 }
 
 /**
@@ -252,8 +356,9 @@ function ResolvedPart({ part, rows, matchedBy, matchedIdentifier }) {
 function UnknownValue({ row }) {
   const word =
     row.state === FIELD_STATE.CAPABILITY_INACTIVE ? "Not switched on"
-      : row.state === FIELD_STATE.NO_GOVERNED_READ ? "Not available yet"
-        : "Unknown";
+      : row.state === FIELD_STATE.READ_FAILED ? "Could not be read"
+        : row.state === FIELD_STATE.NOT_APPLICABLE ? "Not applicable"
+          : "Unknown";
   return (
     <>
       <span className="fo-lookup__absent-word">{word}</span>

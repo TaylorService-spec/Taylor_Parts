@@ -212,6 +212,13 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
+// Scanner Phase H: inventory.balance.read -- the shared governed balance read (on-hand, reserved,
+// available, on order for one Part). Its numbers come from fulfillment's Owner-ratified pure
+// functions, so it is not a second on-hand authority; it needed its own id because
+// warehouse.stockLocation.read names a collection the ledger superseded and is granted to the wrong
+// audience, and inventory.analytics.read is an estate dashboard rather than a per-part answer.
+// Registered active:false and granted to no Role; paired with its own explicit assertion below.
+//
 // Scanner Phase G: inventory.catalog.alias.read -- the resolve-only capability behind barcode/alias
 // LOOKUP, deliberately separate from inventory.catalog.manage (which the five alias ADMINISTRATION
 // callables use), because gating a warehouse lookup on a write capability would hand every scanning
@@ -225,7 +232,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -277,6 +284,15 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   const [permission] = matches;
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
+  assert.equal(permission.action, "read");
+});
+
+check("inventory.balance.read is registered exactly once, active: false, resource/action match the id", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.balance.read");
+  assert.equal(matches.length, 1, "inventory.balance.read must be registered exactly once");
+  const [permission] = matches;
+  assert.equal(permission.active, false, "inventory.balance.read must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.balance");
   assert.equal(permission.action, "read");
 });
 

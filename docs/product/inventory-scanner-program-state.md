@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20, at Phase G.
+**Last updated:** 2026-08-20, at Phase H.
 
 ---
 
@@ -36,7 +36,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **D** — multi-scan receiving journey | MERGED (#1355) | COMPLETE | Uses Phase C | **NOT DEPLOYED** | `RECEIVING_TRANSPORT_READY` is `false` outside `eos-platform-sandbox` |
 | **E** — shared Scan workspace | MERGED (#1356) | COMPLETE | Composes C/D + existing scanner | **NOT DEPLOYED** | Reachable; supplier receiving inert until D's transport is ready |
 | **F** — lookup-only scanning | MERGED (#1357) | COMPLETE | **No backend change** — reuses the existing client-direct `parts` read | **Hosting release only** | **No activation needed** for the Part-identity slice |
-| **G** — barcode / alias lookup | This change | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
+| **G** — barcode / alias lookup | MERGED (#1358) | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
+| **H** — complete read-only lookup | This change | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
 
 ### What "not deployed" means concretely
 
@@ -172,8 +173,7 @@ In rough dependency order. None is started.
 
 | Item | Blocked on |
 | --- | --- |
-| Lookup: serialized-unit and location rows | Activation of `inventory.serializedAsset.read` and `inventory.location.display.read` |
-| Lookup: stock / reserved / available balances | No governed client balance read exists — needs one designed, not a scanner-only projection |
+| Lookup: serialized-unit, location and balance rows: **built** (Phase H) | Activation + grant of `inventory.serializedAsset.read`, `inventory.location.display.read` and `inventory.balance.read`, plus deploying `getPartBalance` and flipping `INVENTORY_BALANCE_READ_READY` |
 | Lookup by BARCODE: **built** (Phase G) | Activation + grant of `inventory.catalog.alias.read`, plus deploying the alias callables and flipping `PART_IDENTIFIER_TRANSPORT_READY`. The audience problem is solved in the repository; only the operator actions remain |
 | Lookup: Work Order demand and purchasing context | Not designed |
 | Put-away (bin assignment after receipt) | No put-away command; no authoritative bin registry |
@@ -197,6 +197,8 @@ Phase E suites, all registered:
 | `test/partLookupAlias.test.mjs` (Phase G) | `node --test` | `scan-workspace-tests.yml` + `suites.json` |
 | `test/lookupScanAlias.test.jsx` (Phase G) | vitest | `scan-workspace-tests.yml` |
 | `functions/test/partAliasScanResolver.test.mjs` (Phase G) | `node --test` | `scan-workspace-tests.yml` |
+| `test/partLookupInventoryRows.test.mjs` (Phase H) | `node --test` | `scan-workspace-tests.yml` + `suites.json` |
+| `functions/test/partBalanceReadService.test.mjs` (Phase H) | `node --test` | `scan-workspace-tests.yml` |
 
 ### A CI gap found and closed
 
@@ -322,3 +324,85 @@ truthful state: it says the barcode was not checked, rather than reporting it as
 
 Doing (3) without (1) and (2) is safe and produces `ALIAS_DENIED` for everyone. Doing (1) without
 (2) is also safe — activation without a grant still denies.
+
+## 9. Phase H — complete read-only lookup
+
+The lookup result's three placeholder rows became real governed reads, and gained three more
+(reserved, available, on order).
+
+### H1/H2 — serialized units and location: pure composition
+
+Both authorities already existed, complete, with client stacks: `getAvailableEquipment` +
+`useAvailableEquipmentSource` + `availableEquipmentGovernedProjection`, and `getLocationDisplay` +
+`locationDisplayProjection`. Nothing was built for these; the lookup consumes them, including the
+existing `mapLocationDisplayResultToMap` rather than a second mapper.
+
+A location id the resolver cannot name stays an **id**, never a fabricated label — that resolver
+deliberately answers UNRESOLVED for CUSTOMER and other categories.
+
+### H3 — the balance read: the math existed, the read did not
+
+**Reconciliation result.** There IS an authoritative on-hand rule and the Owner has ratified it
+twice. It lives in `fulfillment/fulfillmentAvailability.ts`:
+
+- `sumLedgerEligibleOnHand` — physical stock at ACTIVE warehouses from the append-only ledger.
+  The 2026-08-17 ruling made the **ledger** the authority, superseding `stock_locations`, after the
+  two diverged in both directions in the sandbox (real stock refused; imaginary stock promised).
+- `openWorkOrderReserved` — open commitments (RESERVED − RELEASED − CONSUMED).
+
+Both are exported and pure. But that rule was reachable **only inside write commands' transactions**,
+and had been reimplemented three times (transfer, cycle count, fulfillment) — each file noting it was
+"a parallel, behaviorally-identical implementation … not a competing authority."
+
+**There was no client-facing balance read at all.** So Phase H added the smallest one:
+`getPartBalance`, which supplies the reads and calls those exported functions. It computes nothing
+itself — a test asserts the movement-type vocabulary does not appear in the file.
+
+The per-location breakdown is the **same function** called once per warehouse with a one-warehouse
+eligible set, so a location figure can never disagree with the total it belongs to.
+
+### H4 — operational context
+
+**Reserved** (open Work Order demand) and **on order** (outstanding purchase-order quantity) both
+come from reads that already exist: the commitment ledger, and `purchase_orders` in both the
+canonical multi-line and legacy single-line shapes. Nothing else was added — Work Order *scheduling*
+context and supplier context have no read that supports them yet.
+
+### UNKNOWN survived every hop
+
+| Situation | Reported as |
+| --- | --- |
+| No movement evidence for the part | **UNKNOWN** — never 0 |
+| Evidence that nets to zero | KNOWN 0 — a real, empty shelf |
+| On-hand unknown, reservations known | **available is UNKNOWN** — unknown is infectious |
+| No reservation evidence | KNOWN 0 — the commitment ledger's silence genuinely means none |
+| A SERIAL part's quantity | **NOT_COUNTED_BY_QUANTITY** — its units are counted individually |
+| Read refused / capability inert | "Not switched on" — never an empty shelf |
+| Read still in flight | "Reading…" — never "could not be read" |
+| Read failed | "Could not be read" — distinct from refused |
+
+A bug was found and fixed on the way: the part card renders as soon as identity resolves, and
+composing that first render with no reads made the inventory rows say "could not be read" before
+anything had been attempted.
+
+### State today
+
+All three capabilities are `active: false` and granted to nobody, and `INVENTORY_BALANCE_READ_READY`
+is false in all four environments. Every inventory row therefore says "not switched on" — which is
+the truthful answer, and the reason the rows were routed through real reads anyway: on the day they
+are activated the values appear and no code changes.
+
+**Owner decision required** — three activations and their grants, plus deploying `getPartBalance`:
+
+1. `inventory.serializedAsset.read` — serialized units and their locations.
+2. `inventory.location.display.read` — warehouse names instead of ids.
+3. `inventory.balance.read` — on hand / reserved / available / on order.
+
+Each is independent: activating one fills its rows and leaves the others saying "not switched on".
+
+### A note for whoever converges the duplicates
+
+Three parallel on-hand implementations remain inside their own command transactions. They are
+behaviorally identical and each is emulator-tested, so converging them on the now-shared function is
+a safe, valuable follow-up — but it touches live receiving, transfer and cycle-count authorities and
+was deliberately **not** bundled into a read-only phase.

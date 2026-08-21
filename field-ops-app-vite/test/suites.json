@@ -796,6 +796,10 @@
     {
       "file": "test/partLookupAlias.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/partLookupInventoryRows.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
