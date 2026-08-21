@@ -33,10 +33,27 @@ DEPLOYED="$(curl -fsS "${ORIGIN}/version.json")"
 echo "$DEPLOYED"
 DEPLOYED_SHA="$(printf '%s' "$DEPLOYED" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).commit||""))')"
 LOCAL_SHA="$(git rev-parse --short=8 HEAD)"
-if [ "$DEPLOYED_SHA" != "$LOCAL_SHA" ]; then
-  echo "!! deployed ${DEPLOYED_SHA} != local HEAD ${LOCAL_SHA} -- refusing to certify a build that is not this one."
+# WHAT THIS ACTUALLY NEEDS TO ASSERT: that the deployed bytes are the current CLIENT SURFACE --
+# not that the repo HEAD hash matches. Those differ whenever a commit lands that cannot change the
+# artifact, and this gate's own harness lives in field-ops-app-vite/.claude/, which never ships.
+# Strict hash equality would fail a perfectly valid certification and, worse, create a loop: a
+# tooling fix could only be gate-clean after a deploy that the tooling fix does not affect.
+#
+# So: the deployed commit must be reachable from HEAD (never a build from some other line of
+# development), and nothing that CAN change the artifact may differ between it and HEAD.
+if ! git merge-base --is-ancestor "$DEPLOYED_SHA" HEAD 2>/dev/null; then
+  echo "!! deployed ${DEPLOYED_SHA} is not an ancestor of HEAD -- refusing to certify a build from another line."
   exit 1
 fi
+CLIENT_PATHS="field-ops-app-vite/src field-ops-app-vite/index.html field-ops-app-vite/vite.config.js field-ops-app-vite/package.json functions/src firestore.rules firestore.indexes.json"
+DRIFT="$(git diff --name-only "$DEPLOYED_SHA"..HEAD -- $CLIENT_PATHS)"
+if [ -n "$DRIFT" ]; then
+  echo "!! the deployed build is stale -- these artifact-affecting paths changed since ${DEPLOYED_SHA}:"
+  echo "$DRIFT" | sed "s/^/     /"
+  echo "!! redeploy before certifying."
+  exit 1
+fi
+echo "   deployed ${DEPLOYED_SHA} is an ancestor of HEAD (${LOCAL_SHA}) with no artifact-affecting drift."
 
 # 2. REPO-SIDE GUARDS. Cheap, and they catch the classes that render fine and are still wrong --
 #    orphaned CSS classes, a created record that cannot be reached, an id rendered where a name

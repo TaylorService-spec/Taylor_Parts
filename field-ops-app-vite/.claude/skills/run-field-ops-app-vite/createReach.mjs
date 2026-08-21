@@ -30,6 +30,25 @@ const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-
 // the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
 const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
 const EMU = IS_LOCAL ? "?emulator=1" : "";
+
+// WAIT FOR CONTENT, NOT FOR A NUMBER -- the same fix certify.mjs and reachability.mjs received.
+// This file kept its fixed waits and was therefore still tuned for localhost: against the deployed
+// sandbox the create step intermittently queried for the New Customer control before React had
+// painted it, and the regression gate failed on a journey that had passed 6/6 an hour earlier.
+// Flaky, not broken -- which is worse, because a gate that fails at random teaches people to rerun
+// it until it passes, and that habit would have hidden a real defect eventually.
+async function settle(page, ms = 400) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const m = document.querySelector('main') || document.body;
+        return (m.innerText || '').trim().length > 20;
+      },
+      { timeout: 10000 },
+    );
+  } catch { /* bounded: a genuinely blank surface must still be measured */ }
+  await page.waitForTimeout(ms);
+}
 const accountKey = process.argv[2] ?? "admin";
 const { DRIVER_ACCOUNTS } = await import("./seed.mjs");
 const { establishSession } = await import("./deployedSession.mjs");
@@ -54,13 +73,20 @@ try {
   console.log(`\nCREATE -> REACH  persona=${accountKey}  record="${NAME}"`);
 
   await page.goto(`${BASE}/customers${EMU}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1200);
+  await settle(page);
 
-  const newBtn = page.getByRole("button", { name: /New Customer/i }).first();
-  const link = page.getByRole("link", { name: /New Customer/i }).first();
-  if (await newBtn.count()) await newBtn.click();
-  else await link.click();
-  await page.waitForTimeout(900);
+  // WAIT FOR THE CONTROL, THEN DECIDE WHICH IT IS. The earlier form probed count() once and
+  // committed to a branch: if neither the button nor the link had rendered yet it chose the link and
+  // then waited 30s for something that was never going to appear in that branch. It reported a
+  // TimeoutError on a journey that had passed minutes before -- a false failure produced entirely by
+  // asking too early. This waits for EITHER to exist first, so the branch is chosen on fact.
+  const newControl = page
+    .getByRole("button", { name: /New Customer/i })
+    .or(page.getByRole("link", { name: /New Customer/i }))
+    .first();
+  await newControl.waitFor({ state: "visible", timeout: 20000 });
+  await newControl.click();
+  await settle(page, 600);
 
   const nameField = page.locator('input[name="name"], input[id*="name" i]').first();
   await nameField.waitFor({ timeout: 10000 });
@@ -69,13 +95,13 @@ try {
 
   const save = page.getByRole("button", { name: /^(Save|Create|Add)/i }).first();
   await save.click();
-  await page.waitForTimeout(2500);
+  await settle(page, 1200);
   const saveError = await page.locator('[role="alert"]').first().innerText().catch(() => "");
   step("save reports no error", !/error|failed|could ?n[o']t/i.test(saveError), saveError.slice(0, 60));
 
   // THE REGRESSION ITSELF: back to the list, unfiltered, and the record must be there.
   await page.goto(`${BASE}/customers${EMU}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2000);
+  await settle(page, 800);
   const inList = await page.locator("tbody tr", { hasText: NAME }).count();
   step("appears in the default list (the Prospect regression)", inList > 0, `matches=${inList}`);
 
@@ -90,7 +116,7 @@ try {
   let bySearch = 0;
   if (await search.count()) {
     await search.fill(NAME);
-    await page.waitForTimeout(1600);
+    await settle(page, 800);
     bySearch = await page.locator("tbody tr", { hasText: NAME }).count();
     step("findable by search", bySearch > 0, `matches=${bySearch}`);
   } else {
@@ -103,7 +129,7 @@ try {
   if (await row.count()) {
     const rowLink = row.getByRole("link").first();
     if (await rowLink.count()) { await rowLink.click(); } else { await row.click(); }
-    await page.waitForTimeout(2000);
+    await settle(page, 800);
     opened = (await page.locator(`text=${NAME}`).count()) > 0;
   }
   step("opens to its detail page", opened);
@@ -111,7 +137,7 @@ try {
   // Re-read from a cold navigation: proves the value PERSISTED, not that it lingered in a store.
   const url = page.url();
   await page.goto(url.includes("emulator=1") ? url : `${url}${EMU}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1800);
+  await settle(page, 800);
   const persisted = (await page.locator(`text=${NAME}`).count()) > 0;
   step("re-read after a cold reload still shows it", persisted);
 } finally {
