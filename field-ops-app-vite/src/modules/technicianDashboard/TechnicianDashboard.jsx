@@ -129,7 +129,7 @@ export default function TechnicianDashboard() {
           <p className="fo-muted">
             This account is set up for inventory and purchasing work, not field work.
           </p>
-          <p><Link to="/inventory-role">Go to My Inventory Role</Link></p>
+          <p><Link className="fo-inline-action" to="/inventory-role">Go to My Inventory Role</Link></p>
         </WorkspaceShell>
       );
     }

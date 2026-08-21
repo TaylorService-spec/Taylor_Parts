@@ -352,6 +352,9 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-skip-link {
   position: absolute; left: -9999px; top: 0; z-index: 100;
   background: var(--color-brand-primary); color: var(--color-text-inverse);
+  /* 44px minimum. It measured 43 -- one pixel under, and it is the one control that exists FOR
+     accessibility, so it is the last one that should miss the floor. */
+  min-height: 44px; display: inline-flex; align-items: center;
   padding: 12px 18px; border-radius: 0 0 var(--radius-sm) 0;
   font-size: var(--font-size-base); font-weight: 600; text-decoration: none;
 }
@@ -2259,6 +2262,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    a bench with the part in the other hand. 16px inputs so focusing one does not
    zoom the page on iOS, and 48px controls throughout.
    ------------------------------------------------------------------------- */
+/* An inline link that is the ONLY way forward on a screen needs to be a target, not a phrase.
+   Measured at 21px on a phone: reachable with a mouse, a coin-flip with a thumb. */
+.fo-inline-action {
+  display: inline-flex; align-items: center;
+  min-height: 44px; padding: 10px 0;
+  font-weight: 600;
+}
+
 /* ---------------------------------------------------------------------------
    PRIMARY MOBILE NAVIGATION -- the thumb bar.
    ---------------------------------------------------------------------------
