@@ -28,6 +28,8 @@ on:
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/powershellEncoding.test.mjs"
       - "**/*.ps1"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -50,6 +52,8 @@ on:
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/powershellEncoding.test.mjs"
       - "**/*.ps1"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -106,3 +110,10 @@ jobs:
       # here once, to this repository's own sandbox refresh launcher.
       - name: PowerShell scripts are ASCII (or declare a BOM)
         run: node --test scripts/powershellEncoding.test.mjs
+
+      # A component naming a class is asserting that rule exists. 887a0a50 replaced index.css
+      # wholesale and deleted 811 net lines that live components still referenced -- nothing threw,
+      # no test failed, and two accepted surfaces rendered unstyled for two weeks.
+      - name: Every rendered CSS class is actually styled
+        run: node --test test/cssClassCoverage.test.mjs
+        working-directory: field-ops-app-vite

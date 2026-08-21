@@ -2254,6 +2254,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* The note editor. Deliberately roomy: a service note somebody may later rely on
    should not be written through a two-line slot. */
 .fo-jobnote { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+/* The open editor gets a little more room and a visible edge, so it reads as a distinct place you
+   are working rather than a control that merely expanded. Caught by cssClassCoverage: the component
+   rendered this modifier and nothing styled it. */
+.fo-jobnote--open {
+  gap: 12px; padding: 12px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
 .fo-jobnote__open { width: 100%; min-height: 52px; font-size: 16px; }
 /* ---------------------------------------------------------------------------
    RETURN INTAKE -- one structured observation at a time.
@@ -3842,3 +3850,362 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-duprule__detail { grid-template-columns: 1fr; gap: var(--space-1); }
   .fo-duprule__detail dt { margin-top: var(--space-2); }
 }
+
+/* =============================================================================
+   RESTORED FROM 887a0a50 -- CSS that was deleted while still in use.
+   =============================================================================
+   On 2026-08-06, commit 887a0a50 ("W5 handoff: inherit App.jsx-coupled surface
+   from the parallel session") replaced this stylesheet wholesale: -923 / +112.
+   It deleted rules that live components still referenced and changed none of
+   their JSX. Nothing failed, no test broke, and two accepted surfaces rendered
+   unstyled for two weeks.
+
+   Restored VERBATIM -- a restoration, not a redesign.
+
+   THE EXTRACTION TOOK THREE ATTEMPTS, and each failure is worth recording
+   because each produced plausible-looking output:
+
+     1. A regex matching innermost brace pairs STRIPPED the enclosing @media
+        from nested rules, so responsive overrides applied at every width and
+        the Equipment filter grid collapsed to one column on desktop. Caught by
+        the certification sweep, not by me.
+     2. Brace counting without stripping comments mis-tracked depth on a brace
+        inside a comment and emitted an unbalanced block that failed the build.
+     3. deleted.css is a diff of REMOVED lines, not standalone CSS: a partially
+        removed structure leaves a stray brace. Blocks are now validated for
+        balance individually and an unbalanced one is dropped rather than
+        emitted.
+
+   A restoration that reintroduces a different regression is worse than the gap
+   it closed.
+   ========================================================================== */
+.fo-equipment-compat-model-sub { font-size: 13px; }
+.fo-equipment-compat-complete { margin-top: 6px; }
+@media (max-width: 640px) {
+  .fo-equipment-compat-table thead {position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .fo-equipment-compat-table, .fo-equipment-compat-table tbody, .fo-equipment-compat-table tr, .fo-equipment-compat-table td {display: block; width: 100%; }
+  .fo-equipment-compat-table tr {border: 1px solid #E3E8E6; border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
+  .fo-equipment-compat-table td {border: none; padding: 4px 0; }
+  .fo-equipment-compat-table td::before {content: attr(data-label) ": "; font-weight: 600; color: #667; }
+}
+.fo-inline-error { color: #B23B3B; font-size: 14px; display: inline-flex; align-items: baseline; gap: 6px; }
+.fo-account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+.fo-account-form input,
+.fo-account-form select,
+.fo-account-form textarea {
+  min-width: 0;
+  box-sizing: border-box;
+}
+.fo-account-form > input,
+.fo-account-form > select {
+  width: 100%;
+  margin: 0;
+}
+.fo-account-form > fieldset,
+.fo-account-form > textarea,
+.fo-account-form > .fo-btn-row,
+.fo-account-form > .fo-warning,
+.fo-account-form > .fo-link-btn {
+  grid-column: 1 / -1;
+}
+.fo-account-form > textarea { width: 100%; }
+.fo-account-form > .fo-link-btn { justify-self: start; }
+.fo-account-form .fo-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+.fo-account-form .fo-form-field > input,
+.fo-account-form .fo-form-field > select {
+  width: 100%;
+}
+.fo-account-form .fo-fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: start;
+}
+.fo-account-form .fo-fieldset > legend { flex-basis: 100%; }
+.fo-account-form .fo-fieldset > .fo-form-field {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 0;
+}
+.fo-account-form .fo-fieldset > .fo-account-form-wide { flex-basis: 100%; }
+.fo-account-form .fo-employee-picker { width: 100%; }
+.fo-account-form .fo-employee-picker input { width: 100%; }
+.fo-account-form .fo-checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .fo-account-form {grid-template-columns: 1fr; }
+  .fo-account-form .fo-fieldset > .fo-form-field {flex-basis: 100%; }
+}
+.fo-account-form { max-width: 56rem; }
+.fo-account-form > .fo-form-field-wide { grid-column: 1 / -1; }
+.fo-account-form .fo-form-field > textarea { width: 100%; }
+.fo-account-form .fo-form-field > .fo-wizard-control { width: 100%; }
+.fo-account-form .fo-form-field .fo-wizard-hint { margin: 0; }
+.fo-forecast-families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.fo-forecast-family {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.fo-forecast-family h5 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #667;
+}
+.fo-forecast-labels {
+  margin: 0 0 4px;
+}
+.fo-portfolio-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #23383D; }
+.fo-portfolio-card-label { font-size: 13px; color: #667; }
+.fo-portfolio-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.fo-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fo-filter-label { font-size: 13px; color: #445559; }
+.fo-result-count { margin: 4px 0 8px; font-size: 13px; }
+.fo-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(110px, 1fr));
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0 20px;
+  padding: 16px;
+  border: 1px solid #E1E6E5;
+  border-radius: 10px;
+  background: #F7F9F8;
+}
+.fo-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: #445559;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.fo-filters input,
+.fo-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #C8D1CF;
+  border-radius: 7px;
+  background: #fff;
+  color: #23383D;
+  font: inherit;
+  font-size: 14px;
+}
+.fo-filters input:focus-visible,
+.fo-filters select:focus-visible {
+  border-color: #2E4A50;
+  outline: 2px solid rgba(46, 74, 80, 0.22);
+  outline-offset: 1px;
+}
+@media (max-width: 760px) {
+  .fo-filters {grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .fo-filters {grid-template-columns: minmax(0, 1fr);
+    padding: 12px; }
+}
+.fo-filter-reset {
+  background: none;
+  border: 1px solid #D6DCDA;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fo-equipment-detail { display: flex; flex-direction: column; gap: 12px; }
+.fo-equipment-detail .fo-back-link { font-size: 13px; align-self: flex-start; }
+.fo-equipment-detail .fo-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fo-equipment-detail .fo-equipment-title { margin: 0; font-size: 20px; }
+.fo-equipment-detail .fo-equipment-subtitle { flex-basis: 100%; margin: 0; }
+.fo-equipment-detail .fo-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.fo-equipment-detail .fo-detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.fo-equipment-detail .fo-detail-list dt { font-size: 13px; color: #8A9694; }
+.fo-equipment-detail .fo-detail-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fo-equipment-detail .fo-action-reason { margin: 8px 0 0; }
+.fo-equipment-detail .fo-history-year + .fo-history-year { margin-top: 12px; }
+.fo-equipment-detail .fo-history-year-heading { margin: 0 0 4px; font-size: 14px; }
+.fo-equipment-detail .fo-history-list { margin: 0; padding-left: 18px; }
+.fo-equipment-name { display: block; }
+.fo-equipment-summary { display: block; }
+.fo-equipment-table { width: 100%; }
+.fo-account-save-error { margin-top: 4px; }
+.fo-wizard-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 4px 0 16px;
+}
+.fo-wizard-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #E1E6E5;
+  color: #445559;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-wizard-step-active .fo-wizard-step-num {
+  background: #2E4A50;
+  color: #fff;
+}
+.fo-wizard-step-done .fo-wizard-step-num {
+  background: #5B7A80;
+  color: #fff;
+}
+.fo-wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fo-wizard-panel-wide { max-width: 56rem; }
+.fo-wizard-step-title { margin: 0; }
+.fo-wizard-context { margin: 0; }
+.fo-wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.fo-wizard-control,
+.fo-wizard-field .fo-global-search,
+.fo-wizard-field .fo-global-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.fo-wizard-field-wide { width: 100%; }
+.fo-wizard-review {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+  width: 100%;
+}
+.fo-wizard-review dt { font-size: 13px; color: #667; }
+.fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; word-break: break-word; }
+@media (max-width: 480px) {
+  .fo-wizard-panel {max-width: 100%; }
+  .fo-wizard-review {grid-template-columns: 1fr; gap: 2px 0; }
+  .fo-wizard-review dd {margin-bottom: 6px; }
+}
+.fo-customer-picker-input { width: 100%; box-sizing: border-box; }
+.fo-customer-picker-input:focus-visible { outline: 2px solid #2E4A50; outline-offset: 1px; }
+.fo-customer-picker-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #33474C;
+  border-bottom: 1px solid #EDF1F0;
+  flex-shrink: 0; 
+}
+.fo-customer-picker-retry { font-size: 13px; }
+.fo-customer-picker-loc-error { color: #9a3412; }
+.fo-customer-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto; 
+  flex: 1 1 auto;
+  min-height: 0; 
+  overscroll-behavior: contain; 
+}
+.fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; overflow-wrap: anywhere; }
+.fo-customer-picker-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.fo-customer-picker-secondary { font-size: 13px; color: #445559; overflow-wrap: anywhere; }
+.fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; min-width: 0; }
+.fo-customer-picker-loc { color: #2F4247; overflow-wrap: anywhere; }
+.fo-customer-picker-more-locs { white-space: nowrap; }
+.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; flex-shrink: 0; }
+@media (max-width: 480px) {
+  .fo-customer-picker-locs {flex-direction: column; gap: 2px; }
+}
+.fo-confirm-note { margin: 0; font-size: 13px; }
+.fo-state {
+  margin: 12px 0;
+  max-width: 60ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fo-state-action { margin-top: 2px; }
+.fo-tone-info { border-left: 3px solid #2E4A50; padding-left: 12px; }
+.fo-tone-warning { border-left: 3px solid #A9740D; padding-left: 12px; }
+.fo-saved-report-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.fo-saved-report { border-top: 1px solid #EEF1F0; padding: 10px 0; }
+.fo-saved-report-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fo-saved-report-name { font-weight: 600; }
+.fo-saved-report-meta { margin-right: auto; }
+.fo-contact-import { display: flex; flex-direction: column; gap: 12px; }
+.fo-contact-import-context { margin: 0; }
+.fo-contact-import-map {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+}
+.fo-contact-import-preview { max-height: 220px; overflow: auto; }
+.fo-contact-import-errors { margin: 4px 0 0; padding-left: 18px; }
+.fo-contact-import-errors li { font-size: 13px; }
+.fo-contact-import-summary { margin: 0; }
+.fo-contact-import-rejected { font-size: 13px; }
+.fo-contact-import-save-error { margin-top: 4px; }
+
+/* Recovered by hand: the automated pass dropped this one block because the diff of removed lines
+   left it unbalanced. Restoring it manually was safer than loosening the balance check that caught
+   the problem in the first place. */
+.fo-customer-picker { position: relative; width: 100%; }
