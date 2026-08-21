@@ -72,6 +72,21 @@ export default function CycleCountScan({ deps }) {
 
   const state = buildCountSession({ session, observations });
 
+  // UNCOMMITTED WORK EXISTS NOWHERE ELSE. These counted observations are not on the server, not in the
+  // offline queue and not in storage until submit succeeds -- and the "back to all workflows"
+  // control sits one thumb-width from the scan field. Unmounting silently destroys the lot.
+  //
+  // The host is told how much is at stake so it can make leaving a DECISION rather than an
+  // accident. Reported as a count, not a boolean: "discard 24 scans" is a different sentence from
+  // "discard your work", and the operator deserves the first one.
+  const reportPending = deps?.onPendingWorkChange;
+  useEffect(() => {
+    reportPending?.(observations.length);
+    // Leaving reports zero, so a host that outlives this component is never left guarding work
+    // that no longer exists.
+    return () => reportPending?.(0);
+  }, [reportPending, observations.length]);
+
   const fail = useCallback((err) => {
     const raw = typeof err?.code === "string" ? err.code : "";
     setError(raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal"));

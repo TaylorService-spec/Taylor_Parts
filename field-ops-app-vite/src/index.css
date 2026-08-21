@@ -2235,6 +2235,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-scan__plan { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
 
+/* Leaving a workflow that is holding unsubmitted scans. Stacked, full-width targets: the two
+   choices are opposite in consequence and must not sit side by side under one thumb. */
+.fo-scan__leave {
+  display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px;
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--color-warning-surface); border-left: 3px solid var(--color-warning);
+  font-size: 14px; line-height: 1.45;
+}
+.fo-scan__leave button { min-height: 44px; text-align: left; }
+.fo-scan__leave-discard { color: var(--color-danger); font-weight: 600; }
+
 /* Every outcome states which outcome it is. A denial is never styled or worded
    as an absence. */
 .fo-scan__state { margin: 0; font-size: 14.5px; color: var(--color-text-secondary); line-height: 1.45; }
@@ -2250,7 +2261,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--color-brand-accent);
 }
-.fo-scan__id { margin: 0; font-size: 20px; line-height: 1.2; }
+/* A part number or serial is one unbroken string with no natural break point. A 40-character
+   serial without this is the single most common source of real horizontal overflow on a 360px
+   phone -- and horizontal scrolling on a scanning screen hides the field being typed into. */
+.fo-scan__id { margin: 0; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
 .fo-scan__actions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 /* The reason a disabled action is disabled sits with the action, not in a
    toast that disappears before it is read. */

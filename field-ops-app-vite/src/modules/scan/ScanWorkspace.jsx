@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -79,6 +79,56 @@ function rememberedWorkflow() {
   }
 }
 
+/**
+ * THE BACK CONTROL — and the one thing it must not do quietly.
+ *
+ * Two of these workflows accumulate work that exists NOWHERE ELSE until submit succeeds: a cycle
+ * count's observations and a transfer's verified scans are not on the server, not in the offline
+ * queue and not in storage. Leaving unmounts the workflow and destroys all of it — and this control
+ * sits one thumb-width from the scan field, on a phone, held by someone wearing a glove.
+ *
+ * So when work is pending, leaving becomes a DECISION: the first press states exactly how much is at
+ * stake, the second discards it. Deliberately NOT a modal — a dialog on a warehouse phone is a
+ * second target to hit and a layer to dismiss, and it steals focus from the scan field on cancel.
+ *
+ * The count is named rather than summarised. "Discard 24 scans" is a different sentence from
+ * "discard your work", and the operator deserves the first one.
+ */
+function ScanBackControl({ pendingWork, onLeave }) {
+  const [confirming, setConfirming] = useState(false);
+
+  // Work finishing (a successful submit reports zero) must clear an armed confirmation, or the next
+  // press asks about scans that no longer exist.
+  useEffect(() => { if (pendingWork === 0) setConfirming(false); }, [pendingWork]);
+
+  if (pendingWork > 0 && confirming) {
+    return (
+      <p className="fo-scan__leave" role="alert">
+        <span>
+          {pendingWork === 1 ? "1 scan has not been submitted." : `${pendingWork} scans have not been submitted.`}
+          {" "}Leaving discards them.
+        </span>
+        <button type="button" className="fo-link-btn fo-scan__leave-discard" onClick={onLeave}>
+          Discard and leave
+        </button>
+        <button type="button" className="fo-link-btn" onClick={() => setConfirming(false)}>
+          Keep counting
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="fo-link-btn"
+      onClick={() => (pendingWork > 0 ? setConfirming(true) : onLeave())}
+    >
+      ← All scanning workflows
+    </button>
+  );
+}
+
 export default function ScanWorkspace({ deps }) {
   const [active, setActiveState] = useState(() => (deps?.rememberWorkflow === false ? null : rememberedWorkflow()));
 
@@ -96,6 +146,11 @@ export default function ScanWorkspace({ deps }) {
   //
   // These are the SAME two hooks FieldMode uses, so the two entry points cannot disagree about who
   // the technician is or what they are assigned. `deps` overrides them in tests.
+  // How much unsubmitted work the active workflow is holding. Only the two workflows that
+  // accumulate report it; the rest commit per scan and have nothing to lose by leaving.
+  const [pendingWork, setPendingWork] = useState(0);
+  const leave = useCallback(() => { setPendingWork(0); setActive(null); }, [setActive]);
+
   const liveTechnician = useCurrentTechnician();
   const technicianId = deps?.technicianId !== undefined ? deps.technicianId : liveTechnician.technicianId;
   const liveWorkOrders = useAssignedWorkOrders(technicianId);
@@ -116,9 +171,7 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Look up" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Read-only. It has no command and cannot move anything. */}
         <LookupScan deps={deps?.lookupDeps} />
       </div>
@@ -129,11 +182,9 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Transfer" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The EXISTING transfer commands. Scanning verifies; it authors nothing. */}
-        <TransferScan deps={deps?.transferDeps} />
+        <TransferScan deps={{ ...deps?.transferDeps, onPendingWorkChange: setPendingWork }} />
       </div>
     );
   }
@@ -142,11 +193,9 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Count" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Blind by design, and counting is not adjusting: reconcile is a separate authority. */}
-        <CycleCountScan deps={deps?.cycleCountDeps} />
+        <CycleCountScan deps={{ ...deps?.cycleCountDeps, onPendingWorkChange: setPendingWork }} />
       </div>
     );
   }
@@ -155,9 +204,7 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Put away" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Records WHERE, never WHAT: a stow changes no balance (DECISIONS #116). */}
         <PutAwayScan deps={deps?.putAwayDeps} />
       </div>
@@ -168,9 +215,7 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Pick" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* A pick is a placement with a reason. It reserves nothing (DECISIONS #116 + the existing
             DISPATCHED -> reserveParts lifecycle effect). */}
         <PickScan deps={deps?.pickDeps} />
@@ -182,9 +227,7 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Receive" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The Phase D journey, unchanged. */}
         <MultiScanReceiving deps={deps?.receivingDeps} />
       </div>
@@ -195,9 +238,7 @@ export default function ScanWorkspace({ deps }) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Work order" />
-        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
-          ← All scanning workflows
-        </button>
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The existing technician scanner, unchanged and still mounted in FieldMode too. */}
         <PartsScanner technicianId={technicianId} />
       </div>

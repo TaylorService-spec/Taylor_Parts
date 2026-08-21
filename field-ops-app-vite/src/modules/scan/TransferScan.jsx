@@ -140,6 +140,21 @@ function TransferVerify({ order, deps, onBack }) {
 
   const state = buildTransferVerification({ order, observations, confirmedLocation });
 
+  // UNCOMMITTED WORK EXISTS NOWHERE ELSE. These verified scans are not on the server, not in the
+  // offline queue and not in storage until submit succeeds -- and the "back to all workflows"
+  // control sits one thumb-width from the scan field. Unmounting silently destroys the lot.
+  //
+  // The host is told how much is at stake so it can make leaving a DECISION rather than an
+  // accident. Reported as a count, not a boolean: "discard 24 scans" is a different sentence from
+  // "discard your work", and the operator deserves the first one.
+  const reportPending = deps?.onPendingWorkChange;
+  useEffect(() => {
+    reportPending?.(observations.length);
+    // Leaving reports zero, so a host that outlives this component is never left guarding work
+    // that no longer exists.
+    return () => reportPending?.(0);
+  }, [reportPending, observations.length]);
+
   // The shared input asks what the WORKFLOW made of the scan, so the beep and the buzz reflect the
   // verdict rather than merely "a code arrived". A refused scan sounds refused.
   const scan = useCallback((raw) => {
