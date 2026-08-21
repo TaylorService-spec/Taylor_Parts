@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P and Q.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P, Q and R.
 
 ---
 
@@ -48,7 +48,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **O** — warehouse ↔ truck handoff | MERGED (#1368) | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
 | **N** — Warehouse/Parts mobile UX | MERGED (#1369) | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
 | **P** — technician inventory | MERGED (#1370) | Verified, not rebuilt | **No new authority** | **NOT DEPLOYED** | Existing transfer + cycle-count capabilities |
-| **Q** — returns intake | This change | n/a (no UI yet) | **NEW** — `inventory_returns` + `recordReturnIntake` | **NOT DEPLOYED** | `inventory.returns.intake` inert, granted to nobody |
+| **Q** — returns intake | MERGED (#1371) | n/a (no UI yet) | **NEW** — `inventory_returns` + `recordReturnIntake` | **NOT DEPLOYED** | `inventory.returns.intake` inert, granted to nobody |
+| **R** — offline / retry layer | This change | Layer complete; **adoption pending** | **No backend change** | n/a | No new capability |
 
 ### What "not deployed" means concretely
 
@@ -993,3 +994,69 @@ belongs with a returns desk, which is a different workflow from the scanner floo
 **Recorded future command:** a disposition authority, once the policy exists. Its options are known
 (return to stock, inspect/quarantine, repair, vendor RMA, scrap); which apply, and who may choose
 them, is not.
+
+## 21. Phase R — the offline / retry layer
+
+### UNVERIFIED is a first-class state, not a spinner
+
+A warehouse has dead zones. An operator finishes a stow behind a steel rack, presses confirm, and the
+request never leaves the phone. The hard question is not how to retry — that part is easy — but
+**what to tell them it means in the meantime**.
+
+The answer is **UNVERIFIED**: *"Sent, but not confirmed yet — do not assume it is done."* Stated in
+words, holding its space, not auto-dismissing. A spinner would be a lie of omission: an operator who
+sees one assumes it will resolve, walks away, and never learns it did not.
+
+An UNVERIFIED submission is **never re-sent automatically**. We do not know whether the first attempt
+landed, and hammering an unknown is how one stow becomes two.
+
+### Reconnection is a READ
+
+Resolving an unverified submission asks the server *"do you already hold this?"* — it never
+re-sends on the strength of a guess. And **not knowing is its own answer**: a check that fails or
+returns null leaves the submission unverified rather than deciding in either direction.
+
+### Committed groups are never replayed
+
+Every command in this platform already derives a **stable id** from its idempotency key — `rcvc_`
+for canonical receipts, `plc_` for placements, `ret_` for returns — so a replay is safe at the
+server. The queue is stricter anyway: a CONFIRMED submission is never sent again, and a stale copy
+restored from storage cannot resurrect it. **Safe-to-replay and will-replay are different promises,
+and only the second is ours to make.**
+
+### A refusal is not a retry
+
+`permission-denied`, `invalid-argument`, `failed-precondition`, `not-found` and `unauthenticated` are
+terminal — retrying will not turn a no into a yes, and retrying forever would bury the one submission
+that needs a human among ones that do not. **Everything else is retryable**, which is the safe
+direction: retrying a transient failure costs one request; giving up on one loses the operator's work.
+
+Refusals are shown **separately** from work still trying, with their reason, and are never counted as
+completions.
+
+### Conservative batching
+
+Five per pass. A phone leaving a dead zone with forty queued stows must not open forty concurrent
+requests on a connection that is barely back — that is how a marginal link becomes a failed one, and
+how a server sees a burst it cannot distinguish from an attack.
+
+### It never interprets a submission
+
+The queue stores a callable **name**, an **opaque payload**, and the operation's own idempotency
+**key**. It cannot read a quantity, does not know what a put-away is, and cannot merge two
+submissions — a test forbids the vocabulary. A queue that understood payloads would start making
+domain decisions with none of the authority to do so, which is exactly the "one generic movement
+command" the brief warns against.
+
+The hook imports **no transport**: sending is the caller's, so this cannot become the place a new
+ungoverned call path appears.
+
+### Adoption status — stated plainly
+
+The layer is **complete and tested**; **no workflow submits through it yet**. Each surface currently
+calls its command directly and reports the outcome synchronously, which is correct behaviour with a
+connection and the status quo without one.
+
+Adopting it per workflow is mechanical — each already has a stable idempotency key, which is the hard
+part — but it changes what an operator sees at the moment of submission, and that deserves its own
+change per surface rather than six at once inside a layer PR.
