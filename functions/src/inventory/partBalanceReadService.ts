@@ -43,6 +43,9 @@ import {
 } from "../constants/collections.js";
 import { sumLedgerEligibleOnHand, openWorkOrderReserved } from "../fulfillment/fulfillmentAvailability.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
+import { isSerialTracked } from "../partMaster/controlTypeTrackingMode.js";
+import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
+import type { PartId } from "../partMaster/types.js";
 
 export const INVENTORY_BALANCE_READ_CAPABILITY = "inventory.balance.read";
 
@@ -288,9 +291,34 @@ export const getPartBalanceCallable = onCall({ region: "us-central1" }, async (r
   const partId = typeof data.partId === "string" ? data.partId.trim() : "";
   if (partId === "") throw new HttpsError("invalid-argument", "A partId is required.");
 
+  // WHETHER A PART IS SERIAL-TRACKED IS A FACT THE SERVER OWNS, NOT A CLAIM THE CALLER MAKES.
+  //
+  // This previously read `data.serialTracked`, which let the CALLER decide the shape of the answer.
+  // Found in sandbox validation, and it is the exact failure this whole service exists to prevent:
+  //
+  //   PRT-2001, which has two serialized units on the shelf at wh-main, answered
+  //   { state: "KNOWN", value: 0 } when asked with serialTracked:false.
+  //
+  // A confident zero for a shelf that is not empty. The mirror-image error was equally reachable:
+  // asking about a quantity-tracked part with serialTracked:true hid a real number behind
+  // NOT_COUNTED_BY_QUANTITY.
+  //
+  // The Part Master's `controlType` is the authority, mapped through the SAME vocabulary receiving
+  // and transfer already use (controlTypeToTrackingMode) rather than a second mapping free to
+  // disagree with them.
+  //
+  // FAIL CLOSED ON AN UNKNOWN PART. A part nobody can resolve is not assumed quantity-tracked --
+  // assuming would reintroduce the confident zero by a different route.
   try {
-    return await readPartBalance(getFirestore(), partId, data.serialTracked === true);
+    const db = getFirestore();
+    const stored = await buildFirestorePartRepository(db).getById(null, partId as PartId);
+    if (stored === null) {
+      throw new HttpsError("not-found", "That part could not be found.");
+    }
+    const serialTracked = isSerialTracked(stored.part.controlType);
+    return await readPartBalance(db, partId, serialTracked);
   } catch (err) {
+    if (err instanceof HttpsError) throw err;
     console.error("[getPartBalance] read failed", err);
     throw new HttpsError("internal", "The request could not be completed.");
   }

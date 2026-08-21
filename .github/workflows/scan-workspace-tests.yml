@@ -181,6 +181,8 @@ on:
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
+      - "functions/test/partBalanceTrackingModeAuthority.test.mjs"
+      - "functions/src/partMaster/controlTypeTrackingMode.ts"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "functions/test/binRegistry.test.mjs"
@@ -278,6 +280,8 @@ on:
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
+      - "functions/test/partBalanceTrackingModeAuthority.test.mjs"
+      - "functions/src/partMaster/controlTypeTrackingMode.ts"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "functions/test/binRegistry.test.mjs"
@@ -336,6 +340,11 @@ jobs:
 
       - name: Shared inventory balance read (pure)
         run: node --test test/partBalanceReadService.test.mjs
+
+      # Whether a part is serial-tracked is the SERVER's fact. Caller-supplied, it let a shelf with
+      # two serialized units report a confident zero -- found in sandbox validation 2026-08-21.
+      - name: Part balance tracking-mode authority (the caller does not choose the answer)
+        run: node --test test/partBalanceTrackingModeAuthority.test.mjs
         working-directory: functions
 
       - name: Descriptive bin registry (pure)
