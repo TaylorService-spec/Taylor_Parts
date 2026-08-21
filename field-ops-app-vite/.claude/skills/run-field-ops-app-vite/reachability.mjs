@@ -32,7 +32,22 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "..", "..", "..");
-const BASE = "http://localhost:5173/Taylor_Parts/field-ops";
+// BASE is overridable so the SAME gate can run against a DEPLOYED sandbox, not only the local dev
+// server. A regression gate that can only be pointed at localhost certifies the developer's machine;
+// the deployed build is the thing that actually has to be certified. Set CERT_BASE to the deployed
+// origin plus the app base path, e.g.
+//   CERT_BASE=https://eos-platform-sandbox.web.app/Taylor_Parts/field-ops
+const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-ops";
+// `?emulator=1` IS A LOCAL-ONLY SWITCH, and appending it blindly would make CERT_BASE a trap.
+// firebase.js reads it to connect the Auth/Firestore emulators; against a DEPLOYED sandbox there are
+// no emulators to connect to, so carrying it over would point the app at nothing and produce a run
+// that fails everywhere for a reason that has nothing to do with the build under test -- another
+// confidently wrong number, which this file has produced enough of.
+//
+// It is still MANDATORY on every local navigation: dropping it on a full page load silently repoints
+// the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
+const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
+const EMU = IS_LOCAL ? "?emulator=1" : "";
 const accountKey = process.argv[2] ?? "admin";
 const WIDTH = Number(process.argv[3] ?? 1440);
 const routes = JSON.parse(readFileSync(join(APP_ROOT, ".certification", "routes.json"), "utf8"));
@@ -48,7 +63,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: WIDTH, height: 900 } });
 const rows = [];
 try {
-  await page.goto(`${BASE}/?emulator=1`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
@@ -59,7 +74,7 @@ try {
     try {
       // `?emulator=1` on EVERY navigation -- without it a full page load silently repoints the app at
       // production, the session dies, and every subsequent route reads as denied.
-      await page.goto(`${BASE}${r.route}?emulator=1`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}${r.route}${EMU}`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(900);
       rec = await page.evaluate(() => {
         const main = document.querySelector("main") || document.body;

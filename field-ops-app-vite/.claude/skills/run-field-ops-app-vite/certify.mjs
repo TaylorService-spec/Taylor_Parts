@@ -36,7 +36,22 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "..", "..", "..");
-const BASE = "http://localhost:5173/Taylor_Parts/field-ops";
+// BASE is overridable so the SAME gate can run against a DEPLOYED sandbox, not only the local dev
+// server. A regression gate that can only be pointed at localhost certifies the developer's machine;
+// the deployed build is the thing that actually has to be certified. Set CERT_BASE to the deployed
+// origin plus the app base path, e.g.
+//   CERT_BASE=https://eos-platform-sandbox.web.app/Taylor_Parts/field-ops
+const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-ops";
+// `?emulator=1` IS A LOCAL-ONLY SWITCH, and appending it blindly would make CERT_BASE a trap.
+// firebase.js reads it to connect the Auth/Firestore emulators; against a DEPLOYED sandbox there are
+// no emulators to connect to, so carrying it over would point the app at nothing and produce a run
+// that fails everywhere for a reason that has nothing to do with the build under test -- another
+// confidently wrong number, which this file has produced enough of.
+//
+// It is still MANDATORY on every local navigation: dropping it on a full page load silently repoints
+// the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
+const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
+const EMU = IS_LOCAL ? "?emulator=1" : "";
 
 const accountKey = process.argv[2] ?? "admin";
 const WIDTHS = (process.argv[3] ?? "1440,768,375").split(",").map(Number);
@@ -197,7 +212,7 @@ async function openSession() {
   if (browser) { try { await browser.close(); } catch { /* already gone */ } }
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${BASE}/?emulator=1`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
@@ -267,7 +282,7 @@ try {
         // connectAuthEmulator/connectFirestoreEmulator when that param is present, so dropping it on
         // a full page load silently repoints the app at PRODUCTION -- the session dies, the app
         // bounces to login, and the sweep crashes. It is not optional decoration on the first URL.
-        await page.goto(`${BASE}${r.route}?emulator=1`, { waitUntil: "domcontentloaded" });
+        await page.goto(`${BASE}${r.route}${EMU}`, { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(900);
       } catch { failedNav += 1; findings.push({ route: r.route, label: r.label, width: w, kind: "NAV_FAILED", detail: "goto threw" }); continue; }
 

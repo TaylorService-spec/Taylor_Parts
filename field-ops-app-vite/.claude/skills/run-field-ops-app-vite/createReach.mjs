@@ -14,7 +14,22 @@
 //
 // Usage:  node createReach.mjs [accountKey]
 import { chromium } from "@playwright/test";
-const BASE = "http://localhost:5173/Taylor_Parts/field-ops";
+// BASE is overridable so the SAME gate can run against a DEPLOYED sandbox, not only the local dev
+// server. A regression gate that can only be pointed at localhost certifies the developer's machine;
+// the deployed build is the thing that actually has to be certified. Set CERT_BASE to the deployed
+// origin plus the app base path, e.g.
+//   CERT_BASE=https://eos-platform-sandbox.web.app/Taylor_Parts/field-ops
+const BASE = process.env.CERT_BASE || "http://localhost:5173/Taylor_Parts/field-ops";
+// `?emulator=1` IS A LOCAL-ONLY SWITCH, and appending it blindly would make CERT_BASE a trap.
+// firebase.js reads it to connect the Auth/Firestore emulators; against a DEPLOYED sandbox there are
+// no emulators to connect to, so carrying it over would point the app at nothing and produce a run
+// that fails everywhere for a reason that has nothing to do with the build under test -- another
+// confidently wrong number, which this file has produced enough of.
+//
+// It is still MANDATORY on every local navigation: dropping it on a full page load silently repoints
+// the app at PRODUCTION, the session dies, and the sweep reads as a site-wide failure.
+const IS_LOCAL = /localhost|127.0.0.1/.test(BASE);
+const EMU = IS_LOCAL ? "?emulator=1" : "";
 const accountKey = process.argv[2] ?? "admin";
 const { DRIVER_ACCOUNTS } = await import("./seed.mjs");
 const acct = DRIVER_ACCOUNTS[accountKey];
@@ -30,7 +45,7 @@ const step = (name, ok, detail = "") => { results.push({ name, ok, detail }); co
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 try {
-  await page.goto(`${BASE}/?emulator=1`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/${EMU}`, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
@@ -38,7 +53,7 @@ try {
 
   console.log(`\nCREATE -> REACH  persona=${accountKey}  record="${NAME}"`);
 
-  await page.goto(`${BASE}/customers?emulator=1`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/customers${EMU}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1200);
 
   const newBtn = page.getByRole("button", { name: /New Customer/i }).first();
@@ -59,7 +74,7 @@ try {
   step("save reports no error", !/error|failed|could ?n[o']t/i.test(saveError), saveError.slice(0, 60));
 
   // THE REGRESSION ITSELF: back to the list, unfiltered, and the record must be there.
-  await page.goto(`${BASE}/customers?emulator=1`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/customers${EMU}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
   const inList = await page.locator("tbody tr", { hasText: NAME }).count();
   step("appears in the default list (the Prospect regression)", inList > 0, `matches=${inList}`);
@@ -95,7 +110,7 @@ try {
 
   // Re-read from a cold navigation: proves the value PERSISTED, not that it lingered in a store.
   const url = page.url();
-  await page.goto(url.includes("emulator=1") ? url : `${url}?emulator=1`, { waitUntil: "domcontentloaded" });
+  await page.goto(url.includes("emulator=1") ? url : `${url}${EMU}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1800);
   const persisted = (await page.locator(`text=${NAME}`).count()) > 0;
   step("re-read after a cold reload still shows it", persisted);
