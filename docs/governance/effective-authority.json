@@ -1,0 +1,1470 @@
+{
+ "catalog": {
+  "total": 116,
+  "active": 72,
+  "inactive": 44
+ },
+ "heldByNobody": [],
+ "ownerAdminOnly": {
+  "total": 50,
+  "byStatus": {
+   "UNASSIGNED_UNRESOLVED": 46,
+   "DELIBERATELY_PRIVILEGED_ONLY": 4
+  },
+  "capabilities": [
+   {
+    "capability": "coverage.write",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Commercial Coverage & Territory is a recorded roadmap requirement with seams preserved and no build authorized. Assigning these now would model a design that has not been decided."
+   },
+   {
+    "capability": "coverage.read",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Commercial Coverage & Territory is a recorded roadmap requirement with seams preserved and no build authorized. Assigning these now would model a design that has not been decided."
+   },
+   {
+    "capability": "report.customer.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.name.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.status.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.relationshipTypes.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.billingAddress.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.tags.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.externalIds.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.notes.read",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.createdAt.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.paymentTerms.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.taxStatus.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.commercialProfile.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.billingContact.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.customer.field.accountOwner.read",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.field.name.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.field.email.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.field.phone.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.field.role.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.contact.field.customer.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.location.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.location.field.name.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.location.field.address.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.location.field.accessNotes.read",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.location.field.customer.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.name.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.status.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.identity.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.dates.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.notes.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.customer.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.location.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.equipment.field.createdAt.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.definition.create",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.definition.read",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.definition.rename",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.definition.duplicate",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "report.definition.delete",
+    "active": true,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+   },
+   {
+    "capability": "admin.userStatus.write",
+    "active": true,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "admin.roleAssignment.write",
+    "active": true,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "admin.accessRequest.decide",
+    "active": true,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "admin.credentialReset.initiate",
+    "active": false,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "equipment.compatibility.view",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+   },
+   {
+    "capability": "equipment.compatibility.import",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+   },
+   {
+    "capability": "equipment.compatibility.verify",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+   },
+   {
+    "capability": "equipment.compatibility.correct",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+   },
+   {
+    "capability": "equipment.model.manage",
+    "active": false,
+    "status": "UNASSIGNED_UNRESOLVED",
+    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+   }
+  ]
+ },
+ "roles": [
+  {
+   "roleId": "owner",
+   "label": "Owner",
+   "composedFunctionalRoles": [],
+   "grantedCount": 116,
+   "operableCount": 72,
+   "blockedCount": 44,
+   "granted": [
+    "account.governedField.write",
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "admin.accessRequest.decide",
+    "admin.credentialReset.initiate",
+    "admin.roleAssignment.write",
+    "admin.userStatus.write",
+    "audit.event.read",
+    "coverage.read",
+    "coverage.write",
+    "crm.activity.create",
+    "crm.activity.read",
+    "equipment.compatibility.correct",
+    "equipment.compatibility.import",
+    "equipment.compatibility.verify",
+    "equipment.compatibility.view",
+    "equipment.model.manage",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.action.create",
+    "inventory.action.read",
+    "inventory.analytics.read",
+    "inventory.balance.read",
+    "inventory.catalog.activate",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.submit",
+    "inventory.location.bin.manage",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.returns.intake",
+    "inventory.serializedAsset.read",
+    "inventory.stock.receive",
+    "inventory.transaction.read",
+    "inventory.transfer.cancel",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.purchaseOrder.void",
+    "reorder.request.approve",
+    "reorder.request.assign",
+    "reorder.request.cancel",
+    "reorder.request.create.manual",
+    "reorder.request.create.system",
+    "reorder.request.markReceived",
+    "reorder.request.postPurchasingUpdate",
+    "reorder.request.read.own",
+    "reorder.request.read.queue",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.reject",
+    "reorder.request.startPurchasing",
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
+    "report.customer.field.accountOwner.read",
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
+    "report.customer.field.notes.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.field.taxStatus.read",
+    "report.customer.read",
+    "report.definition.create",
+    "report.definition.delete",
+    "report.definition.duplicate",
+    "report.definition.read",
+    "report.definition.rename",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
+    "report.location.field.accessNotes.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read",
+    "salesOrder.fulfill",
+    "salesOrder.read",
+    "salesOrder.service",
+    "salesOrder.write",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.parts.plan",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.governedField.write",
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "admin.accessRequest.decide",
+    "admin.roleAssignment.write",
+    "admin.userStatus.write",
+    "audit.event.read",
+    "inventory.action.create",
+    "inventory.action.read",
+    "inventory.analytics.read",
+    "inventory.catalog.activate",
+    "inventory.catalog.manage",
+    "inventory.stock.receive",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.purchaseOrder.void",
+    "reorder.request.approve",
+    "reorder.request.assign",
+    "reorder.request.cancel",
+    "reorder.request.create.manual",
+    "reorder.request.create.system",
+    "reorder.request.markReceived",
+    "reorder.request.postPurchasingUpdate",
+    "reorder.request.read.own",
+    "reorder.request.read.queue",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.reject",
+    "reorder.request.startPurchasing",
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.field.taxStatus.read",
+    "report.customer.read",
+    "report.definition.create",
+    "report.definition.delete",
+    "report.definition.duplicate",
+    "report.definition.read",
+    "report.definition.rename",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "admin.credentialReset.initiate",
+    "coverage.read",
+    "coverage.write",
+    "crm.activity.create",
+    "crm.activity.read",
+    "equipment.compatibility.correct",
+    "equipment.compatibility.import",
+    "equipment.compatibility.verify",
+    "equipment.compatibility.view",
+    "equipment.model.manage",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.submit",
+    "inventory.location.bin.manage",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.returns.intake",
+    "inventory.serializedAsset.read",
+    "inventory.transfer.cancel",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "report.customer.field.accountOwner.read",
+    "report.customer.field.notes.read",
+    "report.location.field.accessNotes.read",
+    "salesOrder.fulfill",
+    "salesOrder.read",
+    "salesOrder.service",
+    "salesOrder.write",
+    "workOrder.parts.plan"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "label": "General Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 26,
+   "operableCount": 13,
+   "blockedCount": 13,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "salesOrder.read",
+    "salesOrder.write",
+    "warehouse.transferOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "warehouse.transferOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "label": "Accounting Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 17,
+   "operableCount": 7,
+   "blockedCount": 10,
+   "granted": [
+    "account.governedField.write",
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "account.governedField.write",
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "opportunity.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "label": "Controller",
+   "composedFunctionalRoles": [],
+   "grantedCount": 16,
+   "operableCount": 6,
+   "blockedCount": 10,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "opportunity.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "label": "Sales Manager",
+   "composedFunctionalRoles": [
+    "crmActivityContributor"
+   ],
+   "grantedCount": 15,
+   "operableCount": 5,
+   "blockedCount": 10,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "audit.event.read",
+    "crm.activity.create",
+    "crm.activity.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.transaction.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "audit.event.read",
+    "inventory.transaction.read"
+   ],
+   "grantedButInactive": [
+    "crm.activity.create",
+    "crm.activity.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "label": "Purchasing Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 15,
+   "operableCount": 10,
+   "blockedCount": 5,
+   "granted": [
+    "account.record.read",
+    "finance.read",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "reorder.request.read.queue",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.startPurchasing",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "inventory.action.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "reorder.request.read.queue",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.startPurchasing",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "label": "Parts Manager",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader"
+   ],
+   "grantedCount": 15,
+   "operableCount": 6,
+   "blockedCount": 9,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "label": "Salesperson",
+   "composedFunctionalRoles": [
+    "crmActivityContributor"
+   ],
+   "grantedCount": 14,
+   "operableCount": 4,
+   "blockedCount": 10,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "crm.activity.create",
+    "crm.activity.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.transaction.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "inventory.transaction.read"
+   ],
+   "grantedButInactive": [
+    "crm.activity.create",
+    "crm.activity.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "label": "Parts Associate",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "grantedCount": 14,
+   "operableCount": 5,
+   "blockedCount": 9,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.transaction.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "operationsManager",
+   "label": "Operations Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 14,
+   "operableCount": 13,
+   "blockedCount": 1,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "fulfillment.coordinatedVisit.read"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "label": "Warehouse Manager",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader"
+   ],
+   "grantedCount": 13,
+   "operableCount": 7,
+   "blockedCount": 6,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "label": "Service Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 13,
+   "operableCount": 7,
+   "blockedCount": 6,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "label": "Warehouse Associate",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "grantedCount": 12,
+   "operableCount": 4,
+   "blockedCount": 8,
+   "granted": [
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "inventory.action.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "label": "Shop Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 10,
+   "operableCount": 5,
+   "blockedCount": 5,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.transaction.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "label": "Shop Associate",
+   "composedFunctionalRoles": [],
+   "grantedCount": 10,
+   "operableCount": 5,
+   "blockedCount": 5,
+   "granted": [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.transaction.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "marketingManager",
+   "label": "Marketing Manager",
+   "composedFunctionalRoles": [
+    "crmActivityContributor"
+   ],
+   "grantedCount": 5,
+   "operableCount": 1,
+   "blockedCount": 4,
+   "granted": [
+    "account.record.read",
+    "crm.activity.create",
+    "crm.activity.read",
+    "opportunity.read",
+    "salesOrder.read"
+   ],
+   "operableNow": [
+    "account.record.read"
+   ],
+   "grantedButInactive": [
+    "crm.activity.create",
+    "crm.activity.read",
+    "opportunity.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "officeManager",
+   "label": "Office Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 4,
+   "blockedCount": 0,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "workOrder.create"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "workOrder.create"
+   ],
+   "grantedButInactive": []
+  },
+  {
+   "roleId": "financeManager",
+   "label": "Finance Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 3,
+   "blockedCount": 1,
+   "granted": [
+    "account.governedField.write",
+    "account.record.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read"
+   ],
+   "operableNow": [
+    "account.governedField.write",
+    "account.record.read",
+    "reorder.purchaseOrder.read"
+   ],
+   "grantedButInactive": [
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "inventoryTransferOperator",
+   "label": "Inventory Transfer Operator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 0,
+   "blockedCount": 4,
+   "granted": [
+    "inventory.transfer.cancel",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.transfer.cancel",
+    "inventory.transfer.create",
+    "inventory.transfer.dispatch",
+    "inventory.transfer.receive"
+   ]
+  },
+  {
+   "roleId": "inventoryLookupReader",
+   "label": "Inventory Lookup Reader",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 0,
+   "blockedCount": 4,
+   "granted": [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read"
+   ]
+  },
+  {
+   "roleId": "inventoryCatalogAdministrator",
+   "label": "Inventory Catalog Administrator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 3,
+   "operableCount": 2,
+   "blockedCount": 1,
+   "granted": [
+    "inventory.catalog.activate",
+    "inventory.catalog.manage",
+    "inventory.catalog.read"
+   ],
+   "operableNow": [
+    "inventory.catalog.activate",
+    "inventory.catalog.manage"
+   ],
+   "grantedButInactive": [
+    "inventory.catalog.read"
+   ]
+  },
+  {
+   "roleId": "inventoryCycleCountCounter",
+   "label": "Inventory Cycle Count Counter",
+   "composedFunctionalRoles": [],
+   "grantedCount": 3,
+   "operableCount": 0,
+   "blockedCount": 3,
+   "granted": [
+    "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.submit"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.submit"
+   ]
+  },
+  {
+   "roleId": "crmActivityContributor",
+   "label": "CRM Activity Contributor",
+   "composedFunctionalRoles": [],
+   "grantedCount": 2,
+   "operableCount": 0,
+   "blockedCount": 2,
+   "granted": [
+    "crm.activity.create",
+    "crm.activity.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "crm.activity.create",
+    "crm.activity.read"
+   ]
+  },
+  {
+   "roleId": "inventoryPutAwayOperator",
+   "label": "Inventory Put-Away Operator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 2,
+   "operableCount": 0,
+   "blockedCount": 2,
+   "granted": [
+    "inventory.location.bin.read",
+    "inventory.placement.record"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.location.bin.read",
+    "inventory.placement.record"
+   ]
+  },
+  {
+   "roleId": "inventoryBinAdministrator",
+   "label": "Inventory Bin Administrator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 2,
+   "operableCount": 0,
+   "blockedCount": 2,
+   "granted": [
+    "inventory.location.bin.manage",
+    "inventory.location.bin.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.location.bin.manage",
+    "inventory.location.bin.read"
+   ]
+  },
+  {
+   "roleId": "supportStaff",
+   "label": "Support Staff",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 1,
+   "blockedCount": 0,
+   "granted": [
+    "account.record.read"
+   ],
+   "operableNow": [
+    "account.record.read"
+   ],
+   "grantedButInactive": []
+  },
+  {
+   "roleId": "inventoryCreateExecutor",
+   "label": "Inventory CREATE Executor (temporary)",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 1,
+   "blockedCount": 0,
+   "granted": [
+    "inventory.catalog.manage"
+   ],
+   "operableNow": [
+    "inventory.catalog.manage"
+   ],
+   "grantedButInactive": []
+  },
+  {
+   "roleId": "workOrderPartsPlanner",
+   "label": "Work Order Parts Planner",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "workOrder.parts.plan"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "workOrder.parts.plan"
+   ]
+  },
+  {
+   "roleId": "inventoryCycleCountReconciler",
+   "label": "Inventory Cycle Count Reconciler",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "inventory.cycleCount.reconcile"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.cycleCount.reconcile"
+   ]
+  },
+  {
+   "roleId": "inventoryReturnsIntakeClerk",
+   "label": "Inventory Returns Intake Clerk",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "inventory.returns.intake"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.returns.intake"
+   ]
+  },
+  {
+   "roleId": "generalEmployee",
+   "label": "General Employee",
+   "composedFunctionalRoles": [],
+   "grantedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 0,
+   "granted": [],
+   "operableNow": [],
+   "grantedButInactive": []
+  }
+ ]
+}

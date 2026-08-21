@@ -1,0 +1,77 @@
+name: Role Governance Contract Tests
+
+# The role/permission governance reconciliation (2026-08-21). These guards do not
+# test behaviour -- they test that the AUTHORITY MODEL still says what recorded
+# decisions decided, which no behavioural suite can observe.
+#
+# It needs its own workflow. The existing access workflow covers
+# functions/src/access/** and the suites named in test:access; these five suites
+# and the four generators under scripts/governance/ are outside both path filters,
+# so without this file a change to the object->capability map -- the one file in
+# this program that silently grants real authority -- would merge CI-uncovered.
+#
+# Pure logic: no emulator, no deployment, no production access, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/access/**"
+      - "field-ops-app-vite/src/access/**"
+      - "functions/scripts/governance/**"
+      - "functions/test/semanticMappingGuards.test.mjs"
+      - "functions/test/generalManagerNoAdmin.test.mjs"
+      - "functions/test/ownerDecisionPrecedence.test.mjs"
+      - "functions/test/workbookReconciliation.test.mjs"
+      - "functions/test/certificationWorldNotInRefresh.test.js"
+      - "docs/governance/**"
+      - "docs/assessments/detailed-crud.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/role-governance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/access/**"
+      - "field-ops-app-vite/src/access/**"
+      - "functions/scripts/governance/**"
+      - "functions/test/semanticMappingGuards.test.mjs"
+      - "functions/test/generalManagerNoAdmin.test.mjs"
+      - "functions/test/ownerDecisionPrecedence.test.mjs"
+      - "functions/test/workbookReconciliation.test.mjs"
+      - "functions/test/certificationWorldNotInRefresh.test.js"
+      - "docs/governance/**"
+      - "docs/assessments/detailed-crud.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/role-governance-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  role-governance-tests:
+    name: Role governance contract + precedence guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      # Runs the five guard suites, then REGENERATES every governance artifact and
+      # fails if the committed copy differs. The generators are the contract: a
+      # hand-edited contract, workbook or sweep is a third independent design, which
+      # is the exact failure this whole reconciliation exists to end.
+      - name: Governance guards + generated-artifact drift
+        run: npm run test:governance
+        working-directory: functions
