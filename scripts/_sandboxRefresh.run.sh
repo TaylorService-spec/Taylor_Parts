@@ -84,13 +84,33 @@ echo "Compare 'commit' above to expected -- the ENVIRONMENT is the authority her
 echo "script's exit code. A clean exit does not mean the artifact is live."
 
 echo
-echo "== [5b/5] verify the scanner callables are ACTIVE (read-only) =="
+echo "== [5b/5] verify the scanner callables (read-only) =="
 # Export is not deployment and deployment is not readiness. This asks the live estate.
-node scripts/verifySandboxFunctions.mjs --project eos-platform-sandbox \
-  receiveInventoryStock getPurchaseOrderReceivingProgress listReceivablePurchaseOrders \
-  resolveScannedPartIdentifier getPartBalance getAvailableEquipment getLocationDisplay \
-  createBin deactivateBin reactivateBin resolveBin listBins recordPutAway \
-  recordReturnIntake dispatchTransferOrder receiveTransferOrder createCycleCount submitCycleCount
+#
+# TWO CHECKERS, BECAUSE THEY NEED DIFFERENT TOOLS AND PROVE DIFFERENT THINGS.
+#
+# gcloud gives the stronger answer -- EXISTS, is ACTIVE, and runs the expected runtime -- so it is
+# preferred when the SDK is installed. But it is NOT installed on every operator's machine, and on
+# 2026-08-21 this step printed eighteen "FAIL: query failed" lines after a completely successful
+# deploy, every one of them caused by `spawnSync gcloud ENOENT`. A verification step that reports
+# FAILED after a good deploy is worse than none: the next real failure gets ignored as noise.
+#
+# The firebase fallback needs no extra tooling (the CLI is already required to deploy) and answers
+# the weaker question -- IS IT DEPLOYED. It says so in those words rather than implying more.
+SCANNER_CALLABLES="receiveInventoryStock getPurchaseOrderReceivingProgress listReceivablePurchaseOrders
+  resolveScannedPartIdentifier getPartBalance getAvailableEquipment getLocationDisplay
+  createBin deactivateBin reactivateBin resolveBin listBins recordPutAway
+  recordReturnIntake dispatchTransferOrder receiveTransferOrder createCycleCount submitCycleCount"
+
+if command -v gcloud >/dev/null 2>&1; then
+  echo "(using gcloud: EXISTS + ACTIVE + runtime)"
+  # shellcheck disable=SC2086
+  node scripts/verifySandboxFunctions.mjs --project eos-platform-sandbox $SCANNER_CALLABLES
+else
+  echo "(gcloud not installed -- falling back to the firebase CLI: PRESENCE only)"
+  # shellcheck disable=SC2086
+  node scripts/verifyDeployedCallablesFirebase.mjs --project eos-platform-sandbox $SCANNER_CALLABLES
+fi
 
 echo
 echo "== Rules / indexes =="

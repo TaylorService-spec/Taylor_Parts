@@ -13,12 +13,12 @@ target: eos-platform-sandbox (platform-sandbox) — sandbox only, never taylor-p
 | Phase | State |
 | --- | --- |
 | Repo: four functional Roles + sandbox activation | **MERGED** — main `c9fd788c` |
-| Deploy: Functions + Hosting | **NOT DONE** — `firebase deploy` is denied to this session |
-| Grants: role assignments to personas | **NOT DONE** — needs the deploy first, and a named-recipient manifest |
-| After-validation | **NOT RUN** — there is nothing deployed to validate |
+| Deploy: Functions + Hosting | **DONE** — operator-run 2026-08-21, sandbox now at `1e10f63e` |
+| Grants: role assignments to personas | **NOT DONE** — needs a named-recipient manifest (§3b) |
+| After-validation: callables | **DONE** — all 18 ACTIVE / nodejs22 |
+| After-validation: the 12 persona scenarios | **NOT RUN** — blocked on grants |
 
-**The before-state below is measured, not assumed.** The after-state is empty because the
-promotion has not been executed, and no part of this document should be read as saying it has.
+**Both states below are measured, not assumed.** Where something has not been done, it says so.
 
 ---
 
@@ -115,6 +115,53 @@ Two deliberate omissions, both of which would be easy to grant and wrong to:
 
 There is **no `sbx-whassoc` persona** in the sandbox register, so Warehouse Associate cannot be
 exercised until one exists.
+
+---
+
+## 3c. AFTER — measured 2026-08-21, post-deploy
+
+### Deployed revision
+
+```
+{
+  "commit": "1e10f63e",
+  "environmentId": "platform-sandbox",
+  "environmentRole": "sandbox",
+  "buildTime": "2026-08-21T04:55:59.098Z"
+}
+```
+
+Matches the expected commit. **The sandbox is no longer 43 commits behind.**
+
+### Callables — 102 deployed, up from 84
+
+All eighteen scanner callables verified **ACTIVE / nodejs22** against the live estate:
+
+`receiveInventoryStock` · `getPurchaseOrderReceivingProgress` · `listReceivablePurchaseOrders` ·
+`resolveScannedPartIdentifier` · `getPartBalance` · `getAvailableEquipment` · `getLocationDisplay` ·
+`createBin` · `deactivateBin` · `reactivateBin` · `resolveBin` · `listBins` · `recordPutAway` ·
+`recordReturnIntake` · `dispatchTransferOrder` · `receiveTransferOrder` · `createCycleCount` ·
+`submitCycleCount`
+
+The eleven that were absent before are present. No Rules or index deploy was performed, and none was
+required.
+
+### One defect the run exposed
+
+The runbook's own verification step reported **eighteen failures after a completely successful
+deploy** — `spawnSync gcloud ENOENT`. gcloud was installed the whole time.
+
+`verifySandboxFunctions.mjs` called `execFileSync('gcloud', …)` with no `shell` option. On Windows
+`gcloud` is `gcloud.cmd`, a **batch file**, which `execFileSync` cannot execute directly. The error
+reads exactly like "gcloud is missing" and is not.
+
+Fixed by enabling `shell` on win32, with a project-id shape assertion so the shell path can never be
+an injection surface. A firebase-CLI fallback was also added for machines that genuinely lack the
+SDK — it answers the weaker question (*is it deployed*) and says so in those words rather than
+implying it checked health.
+
+> A verification step that reports FAILED after a good deploy is worse than no verification step: the
+> next real failure gets ignored as noise.
 
 ---
 
