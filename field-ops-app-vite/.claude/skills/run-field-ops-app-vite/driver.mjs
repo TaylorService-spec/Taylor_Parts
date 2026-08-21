@@ -446,7 +446,15 @@ async function fillAndSubmitLogin(page, accountKey) {
   await page.locator('button[type="submit"]').click();
   // Login.jsx's own gate: the authenticated shell renders once
   // AuthContext resolves `user`, not immediately on click.
-  await page.locator("nav.fo-nav, .fo-header").first().waitFor({ timeout: 15000 });
+  //
+  // SELECTOR DRIFT, fixed 2026-08-21. This waited on `nav.fo-nav, .fo-header`, neither of which the
+  // shell has rendered since AppShell/AppHeader were introduced -- it renders `.fo-appheader` inside
+  // `.fo-workspace`, with `.fo-rail` alongside. Every driver command timed out at login as a result,
+  // and the failure looked like "the app is broken" rather than "the driver is looking for a class
+  // that no longer exists". Kept as an OR across the current shell landmarks so a future rename
+  // degrades to one stale alternative rather than a total failure.
+  await page.locator(".fo-appheader, .fo-workspace, .fo-rail, nav.fo-nav, .fo-header").first()
+    .waitFor({ timeout: 15000 });
 }
 
 async function login(page, accountKey) {
@@ -7117,6 +7125,84 @@ async function verifyInventoryRolePartsAssociate(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+
+// ─────────────────────────────────────────── HANDHELD v1
+//
+// Drives the phone experience at the two validation widths and MEASURES it, rather than screenshotting
+// it and calling that evidence. Every assertion below is a number read out of the live DOM.
+//
+// What it cannot prove is stated plainly: this runs against the EMULATOR, so it validates layout,
+// sizing, focus, drafts and navigation -- not the sandbox's governed grants, which are separately
+// proven 40/40 against the deployed callables by scripts/runSandboxScannerScenarios.mjs.
+async function verifyHandheld(browser, page, accountKey) {
+  const WIDTHS = [{ w: 375, label: "primary" }, { w: 320, label: "stress" }];
+  let ok = true;
+  const say = (pass, msg) => { console.log(`${pass ? "PASS" : "FAIL"}  ${msg}`); if (!pass) ok = false; };
+
+  await login(page, accountKey);
+
+  for (const { w, label } of WIDTHS) {
+    await page.setViewportSize({ width: w, height: 812 });
+    await page.waitForTimeout(400);
+
+    const geom = await page.evaluate(() => {
+      const d = document.documentElement;
+      const small = [...document.querySelectorAll("button,a,input,select,textarea")]
+        .filter((el) => el.offsetParent !== null)
+        .map((el) => { const r = el.getBoundingClientRect(); return { c: (el.className || "").toString().slice(0, 40) || el.tagName, t: (el.textContent || "").trim().slice(0, 24), h: Math.round(r.height) }; })
+        .filter((x) => x.h > 0 && x.h < 44);
+      const past = [...document.querySelectorAll("*")]
+        .filter((el) => el.getBoundingClientRect().right > d.clientWidth + 1)
+        .map((el) => el.tagName + "." + (el.className || "").toString().slice(0, 30));
+      return { overflow: d.scrollWidth - d.clientWidth, small, past: past.slice(0, 4) };
+    });
+
+    say(geom.overflow === 0, `${label} ${w}px: horizontal overflow = ${geom.overflow}px${geom.past.length ? ` (${geom.past.join(", ")})` : ""}`);
+    say(geom.small.length === 0, `${label} ${w}px: controls under 44px = ${geom.small.length}${geom.small.length ? ` (${geom.small.map((s) => `${s.c}["${s.t}"]:${s.h}px`).join(", ")})` : ""}`);
+
+    // THE THUMB BAR. Present on a phone, and every destination past the touch floor.
+    const bar = await page.evaluate(() => {
+      const nav = document.querySelector("nav.fo-tabbar");
+      if (!nav) return null;
+      const links = [...nav.querySelectorAll(".fo-tabbar__link")];
+      return {
+        labels: links.map((l) => l.textContent.trim()),
+        minHeight: Math.min(...links.map((l) => Math.round(l.getBoundingClientRect().height))),
+        current: links.filter((l) => l.getAttribute("aria-current") === "page").map((l) => l.textContent.trim()),
+        bottom: Math.round(nav.getBoundingClientRect().bottom),
+        viewportBottom: window.innerHeight,
+      };
+    });
+    if (bar) {
+      say(bar.minHeight >= 48, `${label} ${w}px: tab bar min target = ${bar.minHeight}px [${bar.labels.join(" | ")}]`);
+      say(bar.current.length <= 1, `${label} ${w}px: exactly one tab announced current (${bar.current.join(", ") || "none"})`);
+      say(Math.abs(bar.bottom - bar.viewportBottom) <= 2, `${label} ${w}px: bar is anchored to the bottom`);
+    } else {
+      console.log(`NOTE  ${label} ${w}px: no thumb bar for this persona (expected when they hold no scanner capability)`);
+    }
+
+    await page.screenshot({ path: join(SCREENSHOT_DIR, `handheld-${accountKey}-${w}.png`), fullPage: false });
+  }
+
+  // THE KEYBOARD. A fixed bottom bar and an open keyboard fight over the same space; the bar must
+  // yield. Focus is the trigger, so focusing any text input is the honest simulation.
+  await page.setViewportSize({ width: 375, height: 812 });
+  const typing = await page.evaluate(() => {
+    const input = document.querySelector('input[type="text"], input:not([type]), textarea');
+    if (!input) return "no-text-input-on-this-screen";
+    input.focus();
+    return new Promise((r) => setTimeout(() => r(document.querySelector("nav.fo-tabbar") ? "STILL VISIBLE" : "hidden"), 250));
+  });
+  if (typing !== "no-text-input-on-this-screen") {
+    say(typing === "hidden", `keyboard open: thumb bar ${typing}`);
+  } else {
+    console.log(`NOTE  keyboard test skipped: ${typing}`);
+  }
+
+  console.log(ok ? "HANDHELD: all measured checks passed" : "HANDHELD: failures above");
+  return ok;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -7303,6 +7389,10 @@ async function main() {
     } else if (command === "verify-inventory-role-parts-associate") {
       const [accountKey = "technicianPartsAssociate"] = args;
       const ok = await verifyInventoryRolePartsAssociate(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-handheld") {
+      const [accountKey = "technicianPartsAssociate"] = args;
+      const ok = await verifyHandheld(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

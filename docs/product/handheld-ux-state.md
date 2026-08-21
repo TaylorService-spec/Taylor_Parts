@@ -87,14 +87,30 @@ No generic mobile mega-component was created. Domain workflow components stayed 
 
 ## 4. Mobile accessibility — measured, not asserted
 
-Verified in a **real browser** at 375px, and at 320px as a stress width:
+Verified in a **real browser**, signed in, at 375px and at 320px as a stress width — four personas,
+via `driver.mjs verify-handheld`. Every figure is read out of the live DOM.
 
-- **zero** horizontal overflow at both widths;
-- **zero** interactive controls under 44px.
+| Measured | Result |
+| --- | --- |
+| Horizontal overflow | **0px** at both widths, every persona |
+| Controls under 44px | **0** at both widths, every persona |
+| Thumb bar smallest target | **56px** |
+| Thumb bar anchoring | flush to viewport bottom |
+| Tabs announced current | at most one, ever |
 
-Two were found and fixed in the process, both on the sign-in screen every handheld user passes
-through: the password reveal (34px) and the forgot-password link (18px) — the latter reached
-precisely when somebody is already locked out.
+**Four undersized targets were found this way and fixed** — none by reading CSS:
+
+| Control | Was | Where |
+| --- | --- | --- |
+| Password reveal | 34px | Sign-in, which every handheld user passes through |
+| Forgot-password link | 18px | Sign-in, reached when somebody is already locked out |
+| Skip-to-content link | 43px | One pixel under — and it exists *for* accessibility |
+| "Go to My Inventory Role" | 21px | The **only** way forward on that screen for a parts persona |
+
+**The browser run also found the driver itself was broken**: every command timed out at login on a
+shell selector that had not existed since `AppShell` was introduced. It read as "the app is broken"
+rather than "the driver is stale" — so a future verification would have been abandoned or
+misdiagnosed.
 
 The static half is held by `scanMobileRegression.test.jsx`: 44px floors, 16px inputs so focusing does
 not zoom iOS, single-column-by-default layout, no rule pinning a width past 360px, focus returning
@@ -111,7 +127,7 @@ wrapping.
 | Dimension | Technician | Warehouse / Parts |
 | --- | --- | --- |
 | Repository complete | Yes | Yes |
-| Deployed | Pending next Hosting release | Pending next Hosting release |
+| Deployed | Sandbox at `cb78119e` | Sandbox at `cb78119e` |
 | Capability active | n/a (role-based) | Sandbox only |
 | Granted | n/a | Four personas |
 | Persona user-operable | Lookup, scan, notes | Lookup, put-away, pick, count, transfer, returns |
@@ -124,7 +140,16 @@ wrapping.
 1. **A technician cannot accept a truck handoff.** Needs `inventory.transfer.receive`; the only role
    carrying it also confers create/dispatch/cancel — too much for a van. A receive-only role is
    required.
-2. **No phone-first primary navigation** (Home / Jobs / Scan / More). Both surfaces are reached
-   through the existing shell. Contextual entry points were the higher-value half and shipped first.
+2. ~~No phone-first primary navigation.~~ **SHIPPED.** A thumb bar below 640px, confirmed in a real
+   browser. The rail and drawer are untouched above that width, and "More" opens the existing drawer
+   rather than a second menu.
+
+   The two shells are deliberately **different sizes**: the technician gets Home / Jobs / Scan /
+   More, the warehouse floor gets Home / Scan / More. Every warehouse workflow lives inside Scan, so
+   a fourth tab would be a second door into the same room — on a phone, worse than no door.
 3. **No `sbx-whassoc` persona**, so Warehouse Associate remains unexercised in the sandbox.
-4. **`getPartBalance` redeploy outstanding** — a merged, tested fix not yet deployed.
+4. ~~`getPartBalance` redeploy outstanding.~~ **DONE** — deployed and verified live: the caller can
+   no longer choose whether a part has a quantity. Sandbox scenarios now read **40/40**.
+5. **Browser validation ran against the emulator, not the sandbox.** It proves layout, sizing, focus
+   and navigation. It does not prove the sandbox's governed grants — those are separately proven
+   40/40 against the deployed callables, which is the stronger evidence for that question anyway.
