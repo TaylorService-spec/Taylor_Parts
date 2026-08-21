@@ -55,6 +55,18 @@ const NOT_ACTIONABLE_TEXT = Object.freeze({
   [NOT_ACTIONABLE.UNKNOWN_STATUS]: "This transfer is in a state this screen does not recognize, so it offers no action.",
 });
 
+/**
+ * How an endpoint reads to an operator.
+ *
+ * A MOBILE endpoint is a TRUCK. Rendering "TRUCK-7" beside "WH-1" as two bare ids makes a handoff to
+ * a van look identical to a transfer between two buildings — and they are physically different jobs
+ * with different people at the other end. The type is already in the data; saying it costs nothing.
+ */
+function endpointLabel(location) {
+  if (!location?.locationId) return "?";
+  return location.type === "MOBILE" ? `truck ${location.locationId}` : location.locationId;
+}
+
 const ACTION_LABEL = Object.freeze({
   [TRANSFER_ACTION.DISPATCH]: "Send this transfer",
   [TRANSFER_ACTION.RECEIVE]: "Receive this transfer",
@@ -105,7 +117,7 @@ function TransferPicker({ orders, loading, error, onPick }) {
           <li key={id}>
             <Button type="button" variant="primary" onClick={() => onPick(id)}>{id}</Button>
             <p className="fo-muted">
-              {o.partId} · {o.origin?.locationId ?? "?"} → {o.destination?.locationId ?? "?"} ·{" "}
+              {o.partId} · {endpointLabel(o.origin)} → {endpointLabel(o.destination)} ·{" "}
               {o.status === "REQUESTED" ? "waiting to be sent" : "in transit"}
             </p>
           </li>
@@ -174,7 +186,7 @@ function TransferVerify({ order, deps, onBack }) {
         <p className="fo-scan__kind">{state.action === TRANSFER_ACTION.RECEIVE ? "Receive" : "Send"}</p>
         <h3 className="fo-scan__id">{transferOrderId}</h3>
         <p className="fo-scan__job">
-          {order.partId} · {order.origin?.locationId ?? "?"} → {order.destination?.locationId ?? "?"}
+          {order.partId} · {endpointLabel(order.origin)} → {endpointLabel(order.destination)}
         </p>
         <p className="fo-muted">
           {state.serialTracked
@@ -234,12 +246,12 @@ function LocationConfirm({ expected, confirmed, onConfirm, onClear }) {
     <p className="fo-transfer-scan__where">
       {confirmed ? (
         <>
-          <span className="fo-transfer-scan__ok">✓ At {expected.locationId}</span>{" "}
+          <span className="fo-transfer-scan__ok">✓ At {endpointLabel(expected)}</span>{" "}
           <button type="button" className="fo-link-btn" onClick={onClear}>Not here</button>
         </>
       ) : (
         <>
-          <span>Are you at <strong>{expected.locationId}</strong>?</span>{" "}
+          <span>Are you at <strong>{endpointLabel(expected)}</strong>?</span>{" "}
           <Button type="button" variant="secondary" onClick={onConfirm}>Yes, I am here</Button>
         </>
       )}

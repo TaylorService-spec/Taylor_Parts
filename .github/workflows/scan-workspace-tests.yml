@@ -41,6 +41,9 @@ name: Scan Workspace Tests
 #   cycleCountScanSession  — the count is BLIND (no expected figure is accepted, stored, derived or
 #                            displayed) and observation is not adjustment (no reconcile path at all).
 #   cycleCountScan         — those two properties on the mounted surface.
+#   truckHandoff           — warehouse<->truck handoff is a TRANSFER, proved end to end on the same
+#                            surface: the warehouse releases at the origin, the technician accepts at
+#                            the truck, and no parallel handoff state machine exists.
 #   transferScanVerification — scanning VERIFIES a transfer, it never authors one: no payload is
 #                            derived from scans, wrong part / wrong location / excess / stale status
 #                            each block, and the module imports no command or ledger.
@@ -115,6 +118,7 @@ on:
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/truckHandoff.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
       - "field-ops-app-vite/test/putAwaySession.test.mjs"
@@ -186,6 +190,7 @@ on:
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/truckHandoff.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
       - "field-ops-app-vite/test/putAwaySession.test.mjs"
@@ -262,8 +267,8 @@ jobs:
         run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs
         working-directory: functions
 
-      - name: Transfer scan verification (pure)
-        run: node --test test/transferScanVerification.test.mjs
+      - name: Transfer scan verification + truck handoff (pure)
+        run: node --test test/transferScanVerification.test.mjs test/truckHandoff.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Cycle count scan session (pure)

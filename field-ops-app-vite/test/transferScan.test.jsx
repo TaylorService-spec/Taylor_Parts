@@ -264,3 +264,43 @@ describe("Transfer scan (a read failure is not an empty warehouse)", () => {
     vi.doUnmock("../src/hooks/useTransferOrders");
   });
 });
+
+// ────────────────────────────────────────────── warehouse ↔ truck handoff (Phase O)
+
+describe("Transfer scan (a handoff to a truck is a transfer, and reads like one)", () => {
+  const TRUCK = { type: "MOBILE", locationId: "TRUCK-7" };
+
+  it("names a MOBILE endpoint as a TRUCK, not as a bare id", () => {
+    // Two bare ids make a handoff to a van look identical to a transfer between two buildings, and
+    // they are physically different jobs with different people at the other end.
+    render(<TransferScan deps={{ orders: [order({ destination: TRUCK })], transferClient: client(), scanInputDeps }} />);
+    expect(screen.getByText(/truck TRUCK-7/i)).toBeTruthy();
+  });
+
+  it("the warehouse RELEASES at the origin", async () => {
+    const c = open([order({ destination: TRUCK })]);
+    expect(screen.getByText(/are you at/i).closest("p").textContent).toMatch(/WH-1/);
+    confirmHere();
+    scan("PRT-1001");
+    scan("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /send this transfer/i }));
+    await waitFor(() => expect(c.dispatchTransferOrder).toHaveBeenCalledWith({ transferOrderId: "TO-1" }));
+  });
+
+  it("the technician ACCEPTS at the truck, and the prompt says truck", async () => {
+    const c = open([order({ status: "IN_TRANSIT", destination: TRUCK })]);
+    expect(screen.getByText(/are you at/i).closest("p").textContent).toMatch(/truck TRUCK-7/i);
+    confirmHere();
+    scan("PRT-1001");
+    scan("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /receive this transfer/i }));
+    await waitFor(() => expect(c.receiveTransferOrder).toHaveBeenCalledWith({ transferOrderId: "TO-1" }));
+  });
+
+  it("no truck-specific control exists — it is the same screen", () => {
+    render(<TransferScan deps={{ orders: [order({ destination: TRUCK })], transferClient: client(), scanInputDeps }} />);
+    for (const invented of [/hand ?off/i, /load truck/i, /accept delivery/i]) {
+      expect(screen.queryByRole("button", { name: invented })).toBeNull();
+    }
+  });
+});
