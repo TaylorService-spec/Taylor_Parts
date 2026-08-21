@@ -151,6 +151,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
+      - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
+      - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/partsScannerQtyReset.test.jsx"
       - "field-ops-app-vite/test/receivingLocationOptionAdapter.test.jsx"
       - "field-ops-app-vite/test/cycleCountsBlindReview.test.jsx"
@@ -245,6 +247,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
+      - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
+      - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/partsScannerQtyReset.test.jsx"
       - "field-ops-app-vite/test/receivingLocationOptionAdapter.test.jsx"
       - "field-ops-app-vite/test/cycleCountsBlindReview.test.jsx"
@@ -366,5 +370,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/useTransferOrders.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/useTransferOrders.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite
