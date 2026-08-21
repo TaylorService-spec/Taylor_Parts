@@ -1,0 +1,62 @@
+name: Client Suite Manifest
+
+# THE FULL node:test MANIFEST, run whenever the client changes.
+#
+# WHY THIS EXISTS. `field-ops-app-vite/test/suites.json` lists every node:test suite the client has —
+# 208 of them — and `npm test` runs the lot. But until this workflow, the only lane that invoked it
+# was `inventory-parts-ui-tests.yml`, behind a path filter aimed at the Parts UI.
+#
+# So the manifest was comprehensive and almost never consulted: a change to
+# `domain/scannedIdentity.js` — the resolver every scanning workflow depends on — did not match that
+# filter, and its suite therefore did not run on the PR that changed it. The suites were registered
+# and effectively dormant, which is worse than absent because the registration reads as coverage.
+#
+# This lane runs the manifest on ANY change under field-ops-app-vite. It is fast (no emulator, no
+# browser, no network) and duplicating a few suites that other lanes also name is a far smaller cost
+# than a suite that only runs by coincidence.
+#
+# See docs/product/inventory-scanner-program-state.md §7 for the companion finding about vitest
+# suites, which have no manifest and are named file-by-file.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/**"
+      - ".github/workflows/client-suite-manifest-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/**"
+      - ".github/workflows/client-suite-manifest-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client-suite-manifest:
+    name: Full client node:test manifest (suites.json)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      # Also proves the manifest itself is honest: runSuites fails on a listed file that does not
+      # exist, so a deleted suite cannot linger as a registration nobody notices.
+      - name: Every registered node:test suite
+        run: npm test
+        working-directory: field-ops-app-vite
+
+      # The companion guard: no vitest suite may be added without a workflow naming it.
+      - name: No orphaned vitest suites
+        run: node --test test/ciSuiteCoverage.test.mjs
+        working-directory: field-ops-app-vite

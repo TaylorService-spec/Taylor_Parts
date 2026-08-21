@@ -82,6 +82,45 @@ from the Scan workspace is exactly the same screen with exactly the same behavio
 
 **You need:** authority to receive stock, and receiving switched on in your environment.
 
+### Send or receive a transfer
+
+Check a transfer against what you are physically holding, then send it or receive it. Sending happens
+at the origin, receiving at the destination — the screen asks which you are at, and will not let you
+commit from the wrong end.
+
+A transfer to a **truck** works the same way and reads as a truck: the warehouse sends it, and the
+technician accepts it at their van.
+
+**You need:** authority to send or receive transfers.
+
+### Count what is on the shelf
+
+Scan everything you can find of one part at one location, then submit what you saw.
+
+**You will not be shown what was expected until after you submit.** That is deliberate — knowing the
+number first tells you when to stop looking. Counting changes nothing on its own; a manager reviews
+any difference separately.
+
+**You need:** authority to start and submit counts.
+
+### Put stock away
+
+Scan the bin you are stowing into, scan what goes in it, confirm.
+
+**Stock counts do not change.** Putting something away records *where it is*, not *what there is* —
+the warehouse still owns it either way.
+
+**You need:** authority to record placements, and to look up bins.
+
+### Pick and stage for a job
+
+Gather what a job asked for and stage it where the driver will find it. Short is fine and gets
+recorded — the button tells you exactly what it is about to do, and you can say why.
+
+**Picking does not hold the stock.** It stays available to other jobs until this one is dispatched.
+
+**You need:** the same authority as put-away.
+
 ### Scan parts for my work order
 
 Scan a part to record that you used it on the job you are working. This is the existing parts scanner,
@@ -91,9 +130,12 @@ unchanged — see [Parts scanner](parts-scanner.md).
 
 ## What is *not* here
 
-Put-away, picking, staging, transfers, returns, cycle counting and truck handoffs are **not** on this
-screen — not greyed out, not "coming soon", simply absent. Those operations are not built yet, and
-showing you a disabled button would suggest they exist and that you merely lack permission.
+**Returns** and **serialized install or removal** are not on this screen — not greyed out, not
+"coming soon", simply absent. Returns can be *taken in* (that is a returns desk, not a scanning job),
+but deciding what happens to a returned item is a separate step that does not exist yet. Serialized
+install and removal have no command behind them at all.
+
+Showing you a disabled button for either would suggest it exists and that you merely lack permission.
 
 Barcode matching is **built but not switched on**. Until it is, scanning a barcode tells you that
 identifier lookup is unavailable in this environment — it does *not* tell you the barcode is
@@ -130,6 +172,32 @@ a refusal as "no such part".
 
 ## On a phone
 
-The workspace is built for a phone held one-handed in a warehouse. Workflow cards are large targets,
-and every control is a real button, so it is reachable by keyboard and by screen reader as well as by
-thumb.
+The workspace is built for a phone held one-handed in a warehouse. Every control is at least 48
+pixels tall — bigger than the usual guideline, because that one assumes a bare fingertip and a
+warehouse in winter does not have one — and every control is a real button, so it is reachable by
+keyboard and by screen reader as well as by thumb.
+
+**It remembers where you were.** If your phone locks or the browser reloads, you come back to the
+workflow you were in rather than to the menu. Only the *choice* is remembered — anything you had
+half-scanned is not, because the shelf has moved on even if you have not.
+
+### Scanning
+
+Three ways in, and all of them work:
+
+- **A hardware scanner** that types and presses Enter — nothing to set up.
+- **The camera**, which keeps scanning so you can work through a pallet without reopening it.
+- **Typing**, always available, for a label that is too damaged to read.
+
+Every scan tells you what happened three ways at once — a sound, a buzz, and a line of text naming
+the code — because a warehouse defeats any one of them on its own. A rejected scan sounds different
+from an accepted one.
+
+If your scanner double-fires, the second one is ignored. Scanning the same part twice on purpose is
+**not** ignored — that is how you count two.
+
+### Notes
+
+Where a screen offers a note, you can **type it or dictate it**. Dictation puts words in the box and
+nothing more: it never sends anything, never interprets what you said, and never decides anything.
+Check the text and correct it before you save — what gets saved is what you read.
