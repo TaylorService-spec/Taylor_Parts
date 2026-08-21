@@ -30,6 +30,9 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
+      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "field-ops-app-vite/src/firebase/collectionStore.js"
+      - "field-ops-app-vite/src/metadata/definitions/**"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -54,6 +57,9 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
+      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "field-ops-app-vite/src/firebase/collectionStore.js"
+      - "field-ops-app-vite/src/metadata/definitions/**"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -116,4 +122,11 @@ jobs:
       # no test failed, and two accepted surfaces rendered unstyled for two weeks.
       - name: Every rendered CSS class is actually styled
         run: node --test test/cssClassCoverage.test.mjs
+        working-directory: field-ops-app-vite
+
+      # Firestore's orderBy silently drops documents missing the sorted field, so a list that sorts
+      # on a field not set at creation omits newly created records with NO error. That is how a
+      # newly created Prospect became invisible while still being findable by search.
+      - name: A created record is reachable from its list
+        run: node --test test/createdRecordIsReachable.test.mjs
         working-directory: field-ops-app-vite
