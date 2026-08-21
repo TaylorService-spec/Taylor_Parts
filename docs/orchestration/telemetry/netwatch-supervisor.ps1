@@ -1,17 +1,17 @@
-# EOS netwatch supervisor (Phase 5) — machine-local, token-free.
+# EOS netwatch supervisor (Phase 5) -- machine-local, token-free.
 #
 # The netwatch logger (netwatch.ps1) self-exits after ~12h. This supervisor keeps
 # EOS network telemetry alive across that window WITHOUT any Claude/token cost: it is
 # intended to be run periodically by a per-user Windows Scheduled Task (see
 # install-netwatch-supervisor.ps1). It NEVER modifies the logger, NEVER starts a
-# second monitor, and NEVER launches a duplicate logger — it detects an existing
+# second monitor, and NEVER launches a duplicate logger -- it detects an existing
 # logger process first and (re)launches ONLY when the logger is not running.
 #
 # Raw telemetry stays machine-local. The only thing written here besides a relaunch
 # is a small sanitized health file the Network Health Adapter can read.
 $ErrorActionPreference = 'SilentlyContinue'
 
-$root      = Join-Path $env:LOCALAPPDATA 'EOS\netwatch'   # durable machine-local home (not $HOME — reserved)
+$root      = Join-Path $env:LOCALAPPDATA 'EOS\netwatch'   # durable machine-local home (not $HOME -- reserved)
 $logger    = Join-Path $root 'netwatch.ps1'
 $csv       = Join-Path $root 'netwatch-standalone.csv'
 $pidFile   = Join-Path $root 'netwatch.pid'

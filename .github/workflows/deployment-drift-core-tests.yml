@@ -26,6 +26,8 @@ on:
       - "field-ops-app-vite/src/firebase/firebase.js"
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
+      - "scripts/powershellEncoding.test.mjs"
+      - "**/*.ps1"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -46,6 +48,8 @@ on:
       - "field-ops-app-vite/src/firebase/firebase.js"
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
+      - "scripts/powershellEncoding.test.mjs"
+      - "**/*.ps1"
       - "scripts/deployHosting.mjs"
       - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
@@ -94,3 +98,11 @@ jobs:
       # BEFORE it ships, not discovered afterwards in the live manifest.
       - name: Deploy target identity is fail-closed
         run: node --test scripts/deployHosting.test.mjs
+
+      # A .ps1 that will not parse on the operator's machine is a deploy runbook that
+      # cannot be run. Windows PowerShell 5.1 reads .ps1 as CP1252 unless the file has a
+      # UTF-8 BOM, so a single em dash in a COMMENT breaks string parsing seventy lines
+      # later and reports a line that is perfectly correct. This has already happened
+      # here once, to this repository's own sandbox refresh launcher.
+      - name: PowerShell scripts are ASCII (or declare a BOM)
+        run: node --test scripts/powershellEncoding.test.mjs

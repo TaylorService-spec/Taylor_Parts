@@ -1,4 +1,4 @@
-# Sandbox refresh — PowerShell entry point.
+# Sandbox refresh -- PowerShell entry point.
 #
 # WHY THIS EXISTS. `_sandboxRefresh.run.sh` is a bash script, and PowerShell cannot execute a .sh
 # file directly: `./scripts/_sandboxRefresh.run.sh` fails with "not recognized as the name of a
@@ -6,9 +6,16 @@
 # machine, and it has already cost one attempt.
 #
 # THIS IS A LAUNCHER, NOT A SECOND IMPLEMENTATION. It locates bash and hands off. The deploy
-# ordering — build-base BEFORE the environment build, artifact verification before Hosting — is
-# subtle, load-bearing, and the direct cause of the 2026-08-19 incident. A PowerShell reimplementation
-# would be a second copy of that ordering, free to drift from the first. There must only ever be one.
+# ordering -- build-base BEFORE the environment build, artifact verification before Hosting -- is
+# subtle, load-bearing, and the direct cause of the 2026-08-19 incident. A PowerShell
+# reimplementation would be a second copy of that ordering, free to drift from the first. There must
+# only ever be one.
+#
+# ASCII ONLY, DELIBERATELY. Windows PowerShell 5.1 reads a .ps1 as ANSI (CP1252) unless it carries a
+# UTF-8 BOM. A UTF-8 em dash decodes to three CP1252 characters, the last of which (0x94) is a
+# closing curly quote -- so a stray em dash in a COMMENT silently breaks string parsing further down
+# the file. That is exactly how the first version of this script failed. Keep every character in
+# this file inside plain ASCII.
 #
 # Usage, from the repo root:
 #   .\scripts\Invoke-SandboxRefresh.ps1
@@ -65,10 +72,10 @@ finally {
 Write-Host ""
 if ($code -ne 0) {
     # Said explicitly, because a half-finished deploy is the dangerous outcome: some functions may
-    # already have updated. Re-running is safe — every step is idempotent — but check WHICH batch
+    # already have updated. Re-running is safe (every step is idempotent), but check WHICH batch
     # failed before assuming nothing shipped.
     Write-Host "FAILED (exit $code). Some functions may already have deployed." -ForegroundColor Red
-    Write-Host "Check which batch failed above, then re-run — every step is idempotent." -ForegroundColor Red
+    Write-Host "Check which batch failed above, then re-run. Every step is idempotent." -ForegroundColor Red
     exit $code
 }
 
