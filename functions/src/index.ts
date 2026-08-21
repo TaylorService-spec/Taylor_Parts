@@ -314,6 +314,9 @@ export {
   reactivateBinCallable as reactivateBin,
   resolveBinCallable as resolveBin,
   listBinsCallable as listBins,
+  // Scanner Phase L. Gated on inventory.placement.record -- its own capability. Writes a placement
+  // record and nothing else: no ledger event, no quantity change, no balance (DECISIONS #116).
+  recordPutAwayCallable as recordPutAway,
 } from "./inventoryLocation/binCallables";
 
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---

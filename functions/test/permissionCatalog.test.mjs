@@ -212,7 +212,12 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // the same additive posture as the inactive entries above (registered-but-ungranted pending separate
 // Owner grant gates). Both landed in the same wave and are merged here deliberately rather than one
 // overwriting the other.
-// Scanner Phase K: inventory.location.bin.manage / .read -- the descriptive bin registry
+// Scanner Phase L: inventory.placement.record -- put-away. A THIRD audience again: not labelling
+// racking, not checking a bin is real, and deliberately NOT inventory.stock.receive, because reusing
+// the receive capability would make every stow look like an authority to accept stock. It writes a
+// placement record and no ledger movement (DECISIONS #116). active:false, granted to no Role.
+//
+// // Scanner Phase K: inventory.location.bin.manage / .read -- the descriptive bin registry
 // (DECISIONS #116: the warehouse owns custody; a bin describes where stock sits inside one). TWO ids
 // because there are two audiences: an operator putting stock away needs to check a bin is real, and
 // gating that on the write capability would let them create and retire racking. Both active:false
@@ -238,7 +243,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -291,6 +296,23 @@ check("inventory.serializedAsset.read is registered exactly once, active: false,
   assert.equal(permission.active, false, "inventory.serializedAsset.read must be inactive (registered-but-ungranted)");
   assert.equal(permission.resource, "inventory.serializedAsset");
   assert.equal(permission.action, "read");
+});
+
+check("inventory.placement.record is registered exactly once, active: false, resource/action match", () => {
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.placement.record");
+  assert.equal(matches.length, 1);
+  const [permission] = matches;
+  assert.equal(permission.active, false, "put-away must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.placement");
+  assert.equal(permission.action, "record");
+});
+
+check("stowing stock is NOT the authority to receive it, nor to retire racking", () => {
+  // Three audiences, three ids. Collapsing any pair would hand a warehouse operator authority they
+  // have no business holding all day.
+  const ids = ["inventory.placement.record", "inventory.stock.receive", "inventory.location.bin.manage"];
+  const resources = ids.map((id) => PERMISSION_CATALOG.find((p) => p.id === id)?.resource);
+  assert.equal(new Set(resources).size, 3, "each must govern its own resource");
 });
 
 check("both bin capabilities are registered exactly once, active: false, resource/action match", () => {

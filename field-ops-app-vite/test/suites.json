@@ -812,6 +812,10 @@
     {
       "file": "test/scanInputPolicy.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/putAwaySession.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
