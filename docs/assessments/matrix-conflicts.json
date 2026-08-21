@@ -1,0 +1,410 @@
+[
+ [
+  "Technician",
+  "Accounts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Technician",
+  "Contacts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Warehouse Manager",
+  "Contacts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Warehouse Associate",
+  "Accounts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Warehouse Associate",
+  "Contacts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Purchasing Manager",
+  "Accounts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Purchasing Manager",
+  "Contacts",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Purchasing Manager",
+  "Customer Locations",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Shop Manager",
+  "Work Orders",
+  "R",
+  "CRE"
+ ],
+ [
+  "Shop Manager",
+  "Dispatch Schedule",
+  "R",
+  "CRE"
+ ],
+ [
+  "Shop Manager",
+  "Technician Time / Non-work",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Shop Manager",
+  "Parts Catalog",
+  "CRE",
+  "R"
+ ],
+ [
+  "Shop Manager",
+  "Inventory Stock",
+  "CRE",
+  "R"
+ ],
+ [
+  "Shop Manager",
+  "Inventory Adjustments",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Shop Manager",
+  "Purchase Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Shop Manager",
+  "Receiving",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Shop Manager",
+  "Transfer Orders",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Shop Manager",
+  "Serialized Assets",
+  "CRE",
+  "R"
+ ],
+ [
+  "Shop Manager",
+  "Equipment / Installed Base",
+  "R",
+  "CRE"
+ ],
+ [
+  "Shop Manager",
+  "Invoices / AR",
+  "(blank)",
+  "R"
+ ],
+ [
+  "Shop Associate",
+  "Work Orders",
+  "R",
+  "CRE"
+ ],
+ [
+  "Shop Associate",
+  "Dispatch Schedule",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Shop Associate",
+  "Technician Time / Non-work",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Shop Associate",
+  "Inventory Stock",
+  "RE",
+  "R"
+ ],
+ [
+  "Shop Associate",
+  "Inventory Adjustments",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Shop Associate",
+  "Purchase Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Shop Associate",
+  "Receiving",
+  "RE",
+  "(blank)"
+ ],
+ [
+  "Shop Associate",
+  "Transfer Orders",
+  "RE",
+  "(blank)"
+ ],
+ [
+  "Shop Associate",
+  "Serialized Assets",
+  "RE",
+  "R"
+ ],
+ [
+  "Shop Associate",
+  "Equipment / Installed Base",
+  "R",
+  "CRE"
+ ],
+ [
+  "Shop Associate",
+  "Invoices / AR",
+  "(blank)",
+  "R"
+ ],
+ [
+  "Shop Associate",
+  "Audit Log",
+  "(blank)",
+  "R"
+ ],
+ [
+  "General Manager",
+  "Roles / Permissions",
+  "CRE",
+  "CRED"
+ ],
+ [
+  "Parts Associate",
+  "Work Orders",
+  "R",
+  "CRE"
+ ],
+ [
+  "Parts Associate",
+  "Dispatch Schedule",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Parts Associate",
+  "Technician Time / Non-work",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Parts Associate",
+  "Inventory Stock",
+  "RE",
+  "R"
+ ],
+ [
+  "Parts Associate",
+  "Inventory Adjustments",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Parts Associate",
+  "Purchase Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Parts Associate",
+  "Receiving",
+  "RE",
+  "(blank)"
+ ],
+ [
+  "Parts Associate",
+  "Transfer Orders",
+  "RE",
+  "(blank)"
+ ],
+ [
+  "Parts Associate",
+  "Serialized Assets",
+  "RE",
+  "R"
+ ],
+ [
+  "Parts Associate",
+  "Equipment / Installed Base",
+  "R",
+  "CRE"
+ ],
+ [
+  "Parts Associate",
+  "Invoices / AR",
+  "(blank)",
+  "R"
+ ],
+ [
+  "Parts Associate",
+  "Audit Log",
+  "(blank)",
+  "R"
+ ],
+ [
+  "Support Staff",
+  "Customer Locations",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Opportunities",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Sales Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Commissions",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Work Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Parts Catalog",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Inventory Stock",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Inventory Adjustments",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Purchase Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Receiving",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Transfer Orders",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Serialized Assets",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Equipment / Installed Base",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Invoices / AR",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Payments",
+  "CRE",
+  "(blank)"
+ ],
+ [
+  "Support Staff",
+  "Audit Log",
+  "R",
+  "(blank)"
+ ],
+ [
+  "Parts Manager",
+  "Work Orders",
+  "R",
+  "CRE"
+ ],
+ [
+  "Parts Manager",
+  "Dispatch Schedule",
+  "R",
+  "RE"
+ ],
+ [
+  "Parts Manager",
+  "Technician Time / Non-work",
+  "(blank)",
+  "RE"
+ ],
+ [
+  "Parts Manager",
+  "Purchase Orders",
+  "R",
+  "CRE"
+ ],
+ [
+  "Parts Manager",
+  "Equipment / Installed Base",
+  "R",
+  "CRE"
+ ],
+ [
+  "Parts Manager",
+  "Invoices / AR",
+  "(blank)",
+  "CRE"
+ ],
+ [
+  "Parts Manager",
+  "Notifications",
+  "R",
+  "CR"
+ ]
+]
