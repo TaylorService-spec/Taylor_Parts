@@ -7,6 +7,7 @@ import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import PartsScanner from "./PartsScanner";
+import JobNote from "./JobNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // F1 -- Field shell + Technician Home + Current Job.
@@ -35,7 +36,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // denial can never render as "no customer". See
 // docs/assessments/f1-technician-customer-identity.md.
 
-export default function FieldMode() {
+export default function FieldMode({ deps } = {}) {
   const {
     technicianId,
     loading: technicianLoading,
@@ -153,6 +154,8 @@ export default function FieldMode() {
           pending={pending.id === job.workOrderId ? pending.action : null}
           failure={failure?.id === job.workOrderId ? failure : null}
           onAdvance={advance}
+          technicianId={technicianId}
+          deps={deps}
         />
       )}
 
@@ -186,8 +189,14 @@ export default function FieldMode() {
 }
 
 /** Context -> State -> Attention -> Readiness -> Next Best Action, in that order. */
-function CurrentJob({ job, pending, failure, onAdvance }) {
+function CurrentJob({ job, pending, failure, onAdvance, technicianId, deps }) {
+  // Scanning and note-taking are opened FROM the job, so both inherit its context. Collapsed by
+  // default: the job's own answer -- where am I, what is wrong, what next -- must not be pushed off
+  // the top of a phone by tools nobody has asked for yet.
+  const [tool, setTool] = useState(null);
   if (!job) return null;
+  const toggle = (which) => setTool((open) => (open === which ? null : which));
+
   return (
     <article className="fo-job" aria-label="Current job">
       <CustomerContext context={job.context} reference={job.reference} />
@@ -195,6 +204,34 @@ function CurrentJob({ job, pending, failure, onAdvance }) {
       <Attention items={job.attention} />
       <Readiness readiness={job.readiness} />
       <NextAction job={job} pending={pending} failure={failure} onAdvance={onAdvance} />
+
+      <div className="fo-job__tools">
+        <Button
+          type="button"
+          variant="secondary"
+          className="fo-job__tool"
+          onClick={() => toggle("scan")}
+          aria-expanded={tool === "scan"}
+        >
+          Scan a part
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="fo-job__tool"
+          onClick={() => toggle("note")}
+          aria-expanded={tool === "note"}
+        >
+          Add a note
+        </Button>
+      </div>
+
+      {/* THE WORK ORDER IS PASSED DOWN, never re-picked. The technician opened this from a specific
+          job and the screen already knows which one. */}
+      {tool === "scan" && (
+        <PartsScanner technicianId={technicianId} workOrderId={job.workOrderId} />
+      )}
+      {tool === "note" && <JobNote workOrderId={job.workOrderId} deps={deps?.note} />}
     </article>
   );
 }
