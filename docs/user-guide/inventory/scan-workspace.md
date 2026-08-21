@@ -196,6 +196,32 @@ from an accepted one.
 If your scanner double-fires, the second one is ignored. Scanning the same part twice on purpose is
 **not** ignored — that is how you count two.
 
+
+### Leaving before you have finished
+
+Counting and transfer verification build up on the phone and are only sent when you press submit.
+If you press **← All scanning workflows** with scans still unsent, the screen stops you and says how
+many: *"3 scans have not been submitted. Leaving discards them."* You then choose — **Discard and
+leave**, or **Keep counting**. Nothing is thrown away because you brushed the wrong part of the screen.
+
+Putting stock away and picking are different: each item is sent as you scan it, so there is nothing
+to lose by walking away.
+
+### Putting stock away with no signal
+
+The back aisles have dead spots, and the rack you are stowing into is often the thing in the way.
+If a put-away cannot reach the server, **it is kept on your phone** and sends itself when you are
+back in range.
+
+The screen will not tell you it is done, because it is not. It says *"Saved on this phone… do not
+assume it is done — until it lands, nothing was changed."* A running count of anything still unsent
+stays on screen until it is confirmed.
+
+Two things this does **not** do. It never queues a **refusal** — if you are not allowed to stow
+somewhere, you are told so straight away rather than left waiting on a retry that can never work.
+And you cannot **start** a put-away offline: the bin has to be checked against the real bin list
+first, so that stock is never recorded into racking that does not exist.
+
 ### Notes
 
 Where a screen offers a note, you can **type it or dictate it**. Dictation puts words in the box and

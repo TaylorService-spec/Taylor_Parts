@@ -1149,3 +1149,90 @@ governed by `firestore.rules` and live today. It becomes operable on a routine H
 Three new collections were added — `bins`, `bin_placements`, `inventory_returns` — and **none needed
 a `firestore.rules` match block**, because absent means deny-all and the commands run on the Admin
 SDK. Nothing was weakened to add them.
+
+---
+
+## Release-readiness batch — reconciled 2026-08-20
+
+The feature program above is repository-complete. This batch shifted from adding features to
+establishing whether any of it could actually be released, and it found things.
+
+### The release-blocking finding
+
+> **No warehouse or parts persona holds any scanner capability.**
+
+`warehouseManager`, `warehouseAssociate`, `partsManager` and `partsAssociate` hold **none** of the
+thirteen. Activation and deployment alone would therefore change nothing for the people the scanner
+was built for — they reach lookup, and nothing else, because lookup is governed by `firestore.rules`
+rather than by a capability.
+
+This is not a defect to fix in code. Granting is a rollout action and an Owner decision (#119), and
+there is already a recorded deferral on the nearest one. Two suites now pin the fact so it cannot be
+mistaken for an oversight or quietly assumed fixed:
+`functions/test/scannerReleaseReadiness.test.mjs` (from the grant side) and
+`field-ops-app-vite/test/personaOperability.test.mjs` (from the persona side).
+
+The exact rollout actions are enumerated in
+[`scanner-release-readiness.md`](scanner-release-readiness.md), and the release itself — with twelve
+validation scenarios, six of which must REFUSE — in
+[`../deployment/scanner-sandbox-release-package.md`](../deployment/scanner-sandbox-release-package.md).
+
+### The chain is now tested as a chain
+
+`functions/test/scannerEndToEndContract.test.mjs` carries ONE part through identify → lookup →
+receive → put away → pick/stage → transfer → truck handoff against the real emulator, re-asking
+`readPartBalance` after every stage rather than inspecting the documents each command wrote. Cycle
+count and return intake run separately, because neither is a step in the custody journey.
+
+Three findings it surfaced, now pinned rather than smoothed over:
+
+1. **Van stock is invisible to the part balance read** — correct, since a truck is not sellable
+   warehouse stock, but it means the balance screen does not answer *"does my technician have one"*.
+   The mobile-location presence probe does.
+2. **`WRONG_WAREHOUSE` is unreachable from put-away's normal path**, because bin ids are derived per
+   warehouse; another site's code is `NOT_FOUND` by construction. It is reachable only from a record
+   contradicting its own id, so the test seeds that corruption and proves the command fails closed.
+3. **A staging area is a bin like any other** and must be registered first. There is no implicit
+   staging location, which is what keeps *"where is it"* answerable.
+
+### Two mobile defects found and fixed
+
+- **Leaving a workflow silently destroyed the work.** A cycle count's observations and a transfer's
+  verified scans exist nowhere until submit succeeds, and the back control sits one thumb-width from
+  the scan field. Leaving is now a decision: the workflows that accumulate report *how much* is
+  pending, and the control states it — *"3 scans have not been submitted."* The three workflows that
+  commit per scan report nothing, because they have nothing to lose.
+- **A long serial could push the page sideways.** `.fo-scan__id` had no `overflow-wrap`.
+
+Nineteen assertions in `scanMobileRegression.test.jsx` now hold the rest. Its evidence boundary is
+stated rather than implied: sizing is read from the real stylesheet as text, because jsdom computes
+no layout, so genuine overflow and true tap accuracy remain a device check.
+
+### The offline layer has its first consumer
+
+**Put-away, and only put-away** — because a stow writes no ledger event, changes no quantity and
+touches no balance (#116). A placement that lands twenty minutes late changes nothing about what the
+company has. Receiving, transfer and cycle count are deliberately not adopted, with the reasoning
+recorded at the adoption site and a test asserting they do not import the queue. Cycle count in
+particular *cannot* be adopted: `createCycleCount` derives its expected quantity from the live
+ledger, so a count cannot even be started offline.
+
+A put-away still cannot be *started* offline — the bin must be resolved by the server first, and an
+unvalidated bin is how stock gets recorded into racking that does not exist.
+
+### CI
+
+The orphaned-suite allowlist came down from **61 to 54**, and the stated ceiling with it, so the space
+freed cannot be quietly reoccupied. Six scanner-adjacent suites were adopted into the lane that owns
+their subsystems; all six passed immediately, which is exactly the failure the guard exists to
+surface — dormant, not broken. The end-to-end contract has its own emulator lane with a deliberately
+broad path filter, because a change to one subsystem is precisely what breaks a seam in another.
+
+### Still open, and deliberately so
+
+- **Grants** — the release-blocking decision above.
+- **Returns disposition** — packaged as decisions, not built. Two structural gaps must be settled
+  first: a returned item has **no location**, and nothing records **whose property it is**.
+- **Three parallel on-hand implementations** inside transfer, cycle count and fulfillment
+  transactions. Behaviourally identical, each emulator-tested; convergence stays a recorded
+  follow-up rather than something smuggled into a readiness batch.
