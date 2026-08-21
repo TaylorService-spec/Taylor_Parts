@@ -112,23 +112,61 @@ describe("Lookup (every outcome has its own words)", () => {
 // ────────────────────────────────────────────── UNKNOWN is visible
 
 describe("Lookup (a missing value is a statement, not a blank)", () => {
-  it("renders an inert-capability row with its reason instead of omitting it", async () => {
-    lookUp(readable(PART));
+  // Phase H made these three rows real governed reads. Their capabilities are inert, so the
+  // production answer is a refusal — injected here so the assertion is deterministic rather than
+  // whatever the ambient transports happen to do under jsdom.
+  const deniedReads = {
+    fetchBalance: vi.fn().mockResolvedValue({ errorStatus: "transport-not-ready" }),
+    fetchSerialized: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
+    fetchLocations: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
+  };
+
+  it("renders a refused inventory row with its reason instead of omitting it", async () => {
+    render(<LookupScan deps={{ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads }} />);
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+
     const card = await screen.findByRole("region", { name: /part TS-1001/i });
-    for (const label of ["Serialized units", "Location"]) {
+    for (const label of ["Serialized units", "Location", "On hand"]) {
       expect(within(card).getByText(label)).toBeTruthy();
-      }
-    expect(within(card).getAllByText(/not switched on/i).length).toBeGreaterThan(0);
+    }
+    await waitFor(() => expect(within(card).getAllByText(/not switched on/i).length).toBeGreaterThan(0));
   });
 
-  it("stock balance says NOT AVAILABLE YET — never zero, never blank", async () => {
-    lookUp(readable(PART));
+  it("a refused balance is NEVER rendered as zero or blank", async () => {
+    render(<LookupScan deps={{ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads }} />);
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+
     const card = await screen.findByRole("region", { name: /part TS-1001/i });
-    const onHand = within(card).getByText("On hand").closest(".fo-lookup__row");
-    const value = onHand.querySelector("dd").textContent;
-    expect(value).toMatch(/not available yet/i);
-    expect(value.trim()).not.toBe("");
-    expect(value).not.toMatch(/^0$|^-$|^—$/);
+    await waitFor(() => {
+      const value = within(card).getByText("On hand").closest(".fo-lookup__row").querySelector("dd").textContent;
+      expect(value).toMatch(/not switched on/i);
+      expect(value).not.toMatch(/^0$|^-$|^—$/);
+    });
+  });
+
+  it("inventory rows say they are READING before the answers arrive — never that they failed", async () => {
+    // The part card renders as soon as identity resolves. Saying "could not be read" at that moment
+    // would be false and alarming: nothing had been attempted yet.
+    let releaseBalance;
+    render(<LookupScan deps={{
+      fetchParts: readable(PART),
+      resolveIdentifier: noIdentifierMatch(),
+      fetchBalance: vi.fn(() => new Promise((r) => { releaseBalance = () => r({ errorStatus: "transport-not-ready" }); })),
+      fetchSerialized: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
+      fetchLocations: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
+    }} />);
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+
+    const card = await screen.findByRole("region", { name: /part TS-1001/i });
+    const onHand = () => within(card).getByText("On hand").closest(".fo-lookup__row").querySelector("dd").textContent;
+    expect(onHand()).toMatch(/reading/i);
+    expect(onHand()).not.toMatch(/could not be read/i);
+
+    releaseBalance();
+    await waitFor(() => expect(onHand()).toMatch(/not switched on/i));
   });
 
   it("an empty description says UNKNOWN with a reason rather than showing nothing", async () => {

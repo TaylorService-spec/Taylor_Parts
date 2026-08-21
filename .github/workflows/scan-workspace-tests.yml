@@ -17,6 +17,11 @@ name: Scan Workspace Tests
 #                            command or writer at all.
 #   lookupScan             — the same properties on the mounted surface, plus that it offers exactly
 #                            one control and no way to move stock.
+#   partBalanceReadService — the shared balance read: UNKNOWN is never zero, a serialized part never
+#                            claims a quantity, the per-location breakdown sums to its own total, and
+#                            no fourth on-hand implementation exists.
+#   partLookupInventoryRows — what those reads turn into rows: a refused read is never an empty
+#                            shelf, a loading read never says it failed.
 #   partAliasScanResolver  — the trusted multi-type resolver: ambiguity is never a pick, INACTIVE is
 #                            never NOT_FOUND, and it adds no matcher or normalizer of its own.
 #   partLookupAlias        — how the identifier answer composes with the part-code answer, including
@@ -47,6 +52,13 @@ on:
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
+      - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
+      - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
+      - "field-ops-app-vite/src/services/locationDisplayReadCallableClient.js"
+      - "field-ops-app-vite/src/domain/locationDisplayProjection.js"
+      - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "field-ops-app-vite/src/domain/scannedIdentity.js"
       - "field-ops-app-vite/src/domain/scanCandidates.js"
       - "field-ops-app-vite/src/services/partMasterQueries.js"
@@ -63,6 +75,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
+      - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
@@ -82,6 +96,13 @@ on:
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
+      - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
+      - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
+      - "field-ops-app-vite/src/services/locationDisplayReadCallableClient.js"
+      - "field-ops-app-vite/src/domain/locationDisplayProjection.js"
+      - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "field-ops-app-vite/src/domain/scannedIdentity.js"
       - "field-ops-app-vite/src/domain/scanCandidates.js"
       - "field-ops-app-vite/src/services/partMasterQueries.js"
@@ -98,6 +119,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
+      - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
@@ -135,7 +158,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)
-        run: node --test test/partLookup.test.mjs test/partLookupAlias.test.mjs
+        run: node --test test/partLookup.test.mjs test/partLookupAlias.test.mjs test/partLookupInventoryRows.test.mjs
         working-directory: field-ops-app-vite
 
       # The TRUSTED side of barcode resolution. Pure over an injected per-type resolver, so it needs
@@ -151,6 +174,10 @@ jobs:
 
       - name: Scanned identifier resolver (pure)
         run: node --test test/partAliasScanResolver.test.mjs
+        working-directory: functions
+
+      - name: Shared inventory balance read (pure)
+        run: node --test test/partBalanceReadService.test.mjs
         working-directory: functions
 
       - name: Receiving scan queue (pure)

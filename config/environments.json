@@ -33,6 +33,7 @@
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "INVENTORY_BALANCE_READ_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -61,6 +62,7 @@
       "readiness": {
         "RECEIVING_TRANSPORT_READY": true,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "INVENTORY_BALANCE_READ_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -120,6 +122,7 @@
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "INVENTORY_BALANCE_READ_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -149,6 +152,7 @@
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "INVENTORY_BALANCE_READ_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": false,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,

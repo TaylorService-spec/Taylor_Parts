@@ -23,12 +23,22 @@
 // gated on an invented capability — the governed read is attempted and ITS answer is the authority.
 // A refusal comes back as DENIED and is displayed as a refusal, never as an absence.
 //
-// ============================ WHAT A LOOKUP CANNOT SAY YET ============================
+// ============================ SERIALIZED, LOCATION AND BALANCE ============================
 //
-// Serialized-asset identity, location display and stock balances are each governed by a capability
-// that is registered `active: false`, which denies regardless of grant. Rather than omit those rows
-// (which would read as "this part has none") or fill them (which would be invented), each is carried
-// as an explicit field state naming why it is missing. See FIELD_STATE below.
+// Those three rows are now real reads rather than placeholders (Phase H), each through the
+// authority that already owns it:
+//
+//   serialized units   the getAvailableEquipment registry read (inventory.serializedAsset.read)
+//   location           the getLocationDisplay resolver (inventory.location.display.read), plus the
+//                      per-warehouse breakdown the balance read returns
+//   balances           the getPartBalance service (inventory.balance.read), whose numbers come from
+//                      fulfillment's Owner-ratified on-hand and reservation functions
+//
+// ALL THREE CAPABILITIES ARE REGISTERED `active: false` and granted to nobody, so today every one of
+// them denies and the rows say so. That is the point of routing them through real reads anyway: the
+// day they are activated, the rows fill in with governed values and nothing here changes. Until
+// then a row states WHY it is empty — never omitted (which reads as "this part has none") and never
+// filled with a placeholder.
 
 import { resolveScannedIdentity, SCAN_RESOLUTION } from "./scannedIdentity.js";
 import { buildScanCandidates, CANDIDATE_SCOPE, notFoundReason } from "./scanCandidates.js";
@@ -107,8 +117,26 @@ export const ALIAS_TYPE_LABEL = Object.freeze({
 export const FIELD_STATE = Object.freeze({
   KNOWN: "KNOWN",                           // an authoritative value
   UNKNOWN: "UNKNOWN",                       // authority read, value absent or unrecognized
-  CAPABILITY_INACTIVE: "CAPABILITY_INACTIVE", // governing capability registered but inert
-  NO_GOVERNED_READ: "NO_GOVERNED_READ",     // nothing in the repository can answer this yet
+  CAPABILITY_INACTIVE: "CAPABILITY_INACTIVE", // governing capability registered but inert / denied
+  READ_FAILED: "READ_FAILED",               // the read was attempted and did not complete
+  NOT_APPLICABLE: "NOT_APPLICABLE",         // the question does not apply to this part
+  // NO_GOVERNED_READ was removed in Phase H. It meant "nothing in the repository can answer this",
+  // and after the balance read was built nothing could produce it any more. A state no code can
+  // reach is worse than no state: it invites a future row to reach for the wrong one.
+});
+
+/**
+ * The shape a caller passes for each of the three governed reads.
+ *
+ * Each is `{ status, ... }` where status is one of READY / DENIED / UNAVAILABLE / LOADING — the
+ * SAME envelope the existing hooks (useAvailableEquipmentSource, useLocationDisplaySource) already
+ * resolve to, so no adapter layer exists to drift.
+ */
+export const READ_STATUS = Object.freeze({
+  READY: "READY",
+  DENIED: "DENIED",
+  UNAVAILABLE: "UNAVAILABLE",
+  LOADING: "LOADING",
 });
 
 /**
@@ -158,7 +186,7 @@ const known = (label, value) => field(label, FIELD_STATE.KNOWN, value);
  * Every row is either an authoritative value from the governed Part projection or an explicit
  * statement of why there is none. Nothing is computed from something it is not.
  */
-export function describePartLookup(part) {
+export function describePartLookup(part, context = {}) {
   if (!part || typeof part !== "object") return Object.freeze([]);
 
   const rows = [
@@ -197,35 +225,145 @@ export function describePartLookup(part) {
         ),
   );
 
-  // ── Rows that exist so their absence is not read as a value ────────────────────────────────────
-  rows.push(
-    field(
-      "Serialized units",
-      FIELD_STATE.CAPABILITY_INACTIVE,
-      null,
-      "Serialized asset lookup is built but not switched on.",
-    ),
-  );
-  rows.push(
-    field(
-      "Location",
-      FIELD_STATE.CAPABILITY_INACTIVE,
-      null,
-      "Location display is built but not switched on.",
-    ),
-  );
-  // NOT a capability problem: no governed stock-balance read exists for a client at all. Saying
-  // "not switched on" would imply one is waiting behind a switch.
-  rows.push(
-    field(
-      "On hand",
-      FIELD_STATE.NO_GOVERNED_READ,
-      null,
-      "Stock balances are not available to look up yet.",
-    ),
-  );
+  // ── Rows fed by the three governed reads ───────────────────────────────────────────────────────
+  //
+  // Each states WHY it is empty when it is. A row is never dropped: an absent row reads as "this
+  // part has none of these", which is a claim none of these reads has made.
+  const serialTracked = part.controlType === "SERIALIZED" || part.controlType === "SERIALIZED_LOT";
+  rows.push(serializedRow(context.serialized, part.partId, serialTracked));
+  rows.push(...balanceRows(context.balance, serialTracked));
+  rows.push(locationRow(context.location, context.balance, context.serialized, part.partId, serialTracked));
 
   return Object.freeze(rows.map(Object.freeze));
+}
+
+/**
+ * Turn a read envelope into the field state that describes it.
+ *
+ * DENIED and inert-capability are the same fact to a user — the read refused — and both point at
+ * the same fix, so they share a state. A read that FAILED is different: nothing is wrong with
+ * access, and retrying may work.
+ */
+function stateForStatus(status) {
+  if (status === READ_STATUS.DENIED) return FIELD_STATE.CAPABILITY_INACTIVE;
+  if (status === READ_STATUS.LOADING) return FIELD_STATE.UNKNOWN;
+  if (status === READ_STATUS.READY) return FIELD_STATE.KNOWN;
+  return FIELD_STATE.READ_FAILED;
+}
+
+const NOT_SWITCHED_ON = "Built and governed, but not switched on in this environment yet.";
+const STILL_READING = "Reading…";
+
+/** The reason line for a read that has not produced a value, in that read's own terms. */
+function detailForStatus(status, failureDetail) {
+  if (status === READ_STATUS.DENIED) return NOT_SWITCHED_ON;
+  if (status === READ_STATUS.LOADING) return STILL_READING;
+  return failureDetail;
+}
+
+/** Serialized units of this part that the registry says are AVAILABLE. */
+function serializedRow(serialized, partId, serialTracked) {
+  if (!serialTracked) {
+    // Not a gap. A STANDARD part has no serialized units by definition, and reporting "unknown"
+    // would invite someone to go looking for a registry entry that should not exist.
+    return field("Serialized units", FIELD_STATE.NOT_APPLICABLE, null, "This part is not serialized.");
+  }
+  const status = serialized?.status ?? READ_STATUS.UNAVAILABLE;
+  if (status !== READ_STATUS.READY) {
+    return field("Serialized units", stateForStatus(status), null,
+      detailForStatus(status, "The serialized asset registry could not be read."));
+  }
+  const units = (serialized.assets ?? []).filter((a) => a?.partId === partId);
+  // A READY read that returned none is a real, known answer: none available. Distinct from a read
+  // that never happened, which is why it is only reachable through the READY branch.
+  return field("Serialized units", FIELD_STATE.KNOWN, String(units.length), units.length === 0 ? "None available." : null);
+}
+
+/** On hand, reserved, available and on order. */
+function balanceRows(balance, serialTracked) {
+  const status = balance?.status ?? READ_STATUS.UNAVAILABLE;
+
+  if (status !== READ_STATUS.READY) {
+    const state = stateForStatus(status);
+    const detail = detailForStatus(status, "Stock balances could not be read.");
+    return ["On hand", "Reserved", "Available", "On order"].map((label) => field(label, state, null, detail));
+  }
+
+  const projection = balance.projection ?? {};
+  const figure = (label, key, applicableDetail) => {
+    const f = projection[key];
+    if (!f || typeof f !== "object") {
+      return field(label, FIELD_STATE.UNKNOWN, null, "The balance read did not report this.");
+    }
+    if (f.state === "KNOWN" && typeof f.value === "number") return field(label, FIELD_STATE.KNOWN, String(f.value));
+    if (f.state === "NOT_COUNTED_BY_QUANTITY") {
+      return field(label, FIELD_STATE.NOT_APPLICABLE, null, applicableDetail);
+    }
+    // UNKNOWN is carried straight through. It is NEVER rendered as 0: "no movement evidence for
+    // this part" and "evidence that nets to zero" are different facts with different fixes.
+    return field(label, FIELD_STATE.UNKNOWN, null, "No stock movement has been recorded for this part.");
+  };
+
+  const serialDetail = "Serialized units are counted individually, not as a quantity.";
+  return [
+    figure("On hand", "onHand", serialDetail),
+    figure("Reserved", "reserved", serialDetail),
+    figure("Available", "available", serialDetail),
+    figure("On order", "onOrder", serialTracked ? null : undefined),
+  ];
+}
+
+/**
+ * Where the stock is.
+ *
+ * Two different questions depending on the part. A quantity part is somewhere in bulk, so the answer
+ * is the per-warehouse breakdown the balance read returns. A serialized part is a set of individual
+ * units, each with its own location, so the answer comes from the registry. Labels for both come
+ * from the location-display resolver, and an id that will not resolve stays an id rather than being
+ * dressed up as a name.
+ */
+function locationRow(location, balance, serialized, partId, serialTracked) {
+  const displayMap = location?.status === READ_STATUS.READY ? (location.displayMap ?? new Map()) : null;
+  const label = (locationId) => {
+    const resolved = displayMap?.get?.(locationId);
+    // UNRESOLVED is a real answer from that resolver (CUSTOMER and other categories), and it is
+    // never fabricated into a type or a name.
+    return resolved?.label ? resolved.label : locationId;
+  };
+
+  if (serialTracked) {
+    const status = serialized?.status ?? READ_STATUS.UNAVAILABLE;
+    if (status !== READ_STATUS.READY) {
+      return field("Location", stateForStatus(status), null,
+        detailForStatus(status, "Unit locations could not be read."));
+    }
+    const units = (serialized.assets ?? []).filter((a) => a?.partId === partId);
+    if (units.length === 0) return field("Location", FIELD_STATE.KNOWN, "—", "No available units to locate.");
+    const places = [...new Set(units.map((u) => u.currentLocationId).filter(Boolean))];
+    if (places.length === 0) {
+      return field("Location", FIELD_STATE.UNKNOWN, null, "The registry holds no location for these units.");
+    }
+    return field("Location", FIELD_STATE.KNOWN, places.map(label).join(", "));
+  }
+
+  const status = balance?.status ?? READ_STATUS.UNAVAILABLE;
+  if (status !== READ_STATUS.READY) {
+    return field("Location", stateForStatus(status), null,
+      detailForStatus(status, "Stock locations could not be read."));
+  }
+  const byLocation = balance.projection?.byLocation;
+  if (!Array.isArray(byLocation)) {
+    return field("Location", FIELD_STATE.UNKNOWN, null, "The balance read did not report locations.");
+  }
+  if (byLocation.length === 0) {
+    // A READY balance with no location holding stock is a known answer, not a gap.
+    return field("Location", FIELD_STATE.KNOWN, "—", "No warehouse currently holds this part.");
+  }
+  return field(
+    "Location",
+    FIELD_STATE.KNOWN,
+    byLocation.map((l) => `${label(l.locationId)} (${l.quantity})`).join(", "),
+  );
 }
 
 /**
@@ -241,7 +379,7 @@ export function describePartLookup(part) {
  * Returns { state, token, part, rows, candidates, message } — never throws, never partially applies
  * a state. `part` and `rows` are populated only in RESOLVED.
  */
-export function buildPartLookup({ catalogResult, aliasOutcome = null, token } = {}) {
+export function buildPartLookup({ catalogResult, aliasOutcome = null, reads = {}, token } = {}) {
   const base = {
     token: typeof token === "string" ? token.trim() : "",
     part: null,
@@ -308,6 +446,7 @@ export function buildPartLookup({ catalogResult, aliasOutcome = null, token } = 
     return lookupFromAlias({
       base,
       parts,
+      reads,
       alias: readAliasResolution(aliasOutcome),
       // The EXISTING scoped-search copy. CATALOG scope is allowed to say the catalog holds no match,
       // because the whole readable catalog was searched — but it still says nothing about existence
@@ -359,7 +498,7 @@ export function buildPartLookup({ catalogResult, aliasOutcome = null, token } = 
     ...base,
     state: LOOKUP_STATE.RESOLVED,
     part,
-    rows: describePartLookup(part),
+    rows: describePartLookup(part, reads),
     matchedBy: MATCHED_BY.PART_CODE,
     message: null,
   });
@@ -391,7 +530,7 @@ function readAliasResolution(aliasOutcome) {
  * branch below either names the Part that identifier actually points to, or reports a failure -- it
  * never widens the search to find something to show.
  */
-function lookupFromAlias({ base, parts, alias, directNotFoundMessage }) {
+function lookupFromAlias({ base, parts, alias, reads, directNotFoundMessage }) {
   if (alias.kind === "NOT_ATTEMPTED") {
     return Object.freeze({ ...base, state: LOOKUP_STATE.NOT_FOUND, message: directNotFoundMessage });
   }
@@ -458,7 +597,7 @@ function lookupFromAlias({ base, parts, alias, directNotFoundMessage }) {
       ...base,
       state: LOOKUP_STATE.RESOLVED,
       part,
-      rows: describePartLookup(part),
+      rows: describePartLookup(part, reads),
       matchedBy: MATCHED_BY.IDENTIFIER,
       matchedIdentifier: Object.freeze({ aliasType: value.aliasType ?? null, partId: value.partId }),
       message: null,

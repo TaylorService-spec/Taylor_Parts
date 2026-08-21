@@ -36,6 +36,9 @@ export const READINESS_KEYS = Object.freeze([
   // Scanner Program Phase A. Registered here so an environment that FORGETS it is a build
   // error rather than a silent default -- the same fail-closed rule every other flag follows.
   'PART_IDENTIFIER_TRANSPORT_READY',
+  // Scanner Program Phase H. The shared inventory-balance read's transport gate. Same fail-closed
+  // rule: an environment that omits it is a build error, never a silent default-to-enabled.
+  'INVENTORY_BALANCE_READ_READY',
   'TRUCK_MANAGEMENT_WRITE_READY',
   'TRUSTED_COMPLETION_ENABLED',
 ]);
