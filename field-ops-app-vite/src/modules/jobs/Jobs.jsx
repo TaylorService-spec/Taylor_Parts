@@ -9,12 +9,12 @@ import Button from "../../shared/ui/primitives/Button.jsx";
 import { useAuth } from "../../auth/AuthContext";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
-import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,

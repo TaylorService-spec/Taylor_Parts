@@ -10,6 +10,7 @@ import { SEVERITY } from "../../domain/controlTower/types";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // F0 -- this IS now the canonical Work Order dispatch surface. It reads
 // fieldops_wos and assigns by invoking the governed `Dispatch` transition

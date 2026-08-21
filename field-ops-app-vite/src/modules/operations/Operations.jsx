@@ -31,6 +31,7 @@ import InventoryHealthPanel from "./panels/InventoryHealthPanel";
 import WarehousePanel from "./panels/WarehousePanel";
 import ProcurementPanel from "./panels/ProcurementPanel";
 import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // ROLE DEFINITION (load-bearing, don't blur this):
 // Operations is a READ-ONLY EXECUTIVE / MONITORING layer over Epics

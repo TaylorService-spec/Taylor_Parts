@@ -6,6 +6,7 @@ import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in

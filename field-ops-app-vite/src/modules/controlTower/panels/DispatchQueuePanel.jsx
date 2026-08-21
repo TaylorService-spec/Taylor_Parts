@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { computeDispatchRecommendations } from "../../../domain/dispatchScoring";
 import { assertPanelProps, assertValidSignal } from "../../../domain/controlTower/types";
+import { resolveTechnicianIdentity } from "../../../domain/actorDisplayName";
 
 // Read-only panel: renders DispatchRecommendation signals from
 // dispatchScoring. Takes only { jobs, technicians, workOrders } -- never

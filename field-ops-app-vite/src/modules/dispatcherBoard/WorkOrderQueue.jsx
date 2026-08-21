@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { workOrderPriorityText, workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Epic 2 Phase 2C -- left pane. Pure renderer: takes already-computed
 // recommendations (from DispatcherBoard.jsx) and already-loaded

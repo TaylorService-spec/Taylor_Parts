@@ -5,6 +5,7 @@ import {
   workOrderAttentionItems,
   groupWorkOrderAttentionItemsBySection,
 } from "../../../domain/workOrderAttentionProjection";
+import { resolveTechnicianIdentity } from "../../../domain/actorDisplayName";
 
 // Wave 7 extension, PART 5 -- the WO / Dispatch Attention Panel, mirroring NotificationPanel.jsx's
 // transitional-bell role for Parts: a purely presentational consumer of

@@ -146,7 +146,7 @@ describe("AccountSalesOrdersSection", () => {
         skipped: 0,
         salesOrders: [
           {
-            id: "SO-1", customerPO: "PO-9", state: "IN_FULFILLMENT", ownerEmployeeId: null, updatedAtMillis: Date.now(),
+            id: "SO-1", salesOrderNumber: "SO-1042", customerPO: "PO-9", state: "IN_FULFILLMENT", ownerEmployeeId: null, updatedAtMillis: Date.now(),
             serviceWorkOrderIds: ["WO-1", "WO-2"],
             lines: [{ lineId: "line-1", kind: "PART", ref: "P1", orderedQty: 1, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }],
           },
@@ -154,13 +154,41 @@ describe("AccountSalesOrdersSection", () => {
       },
     };
     renderWithRouter(<AccountSalesOrdersSection accountId="acc-1" />);
-    expect(screen.getByText("PO-9")).toBeTruthy();
+    // The order is identified by its OWN number. customerPO is the customer's external reference and
+    // is shown as such -- it is not the order's identifier, and the link used to be labelled with it
+    // (falling back to the raw document id when absent).
+    expect(screen.getByText(/Customer PO PO-9/)).toBeTruthy();
     expect(screen.getByText("IN_FULFILLMENT")).toBeTruthy();
     expect(screen.getByText(/2 Work Orders/i)).toBeTruthy();
-    const link = screen.getByRole("link", { name: "PO-9" });
+    const link = screen.getByRole("link", { name: "SO-1042" });
     expect(link.getAttribute("href")).toBe("/customers/opportunities/sales-order/SO-1");
     // No amount/price is rendered anywhere -- PR #991's exclusion holds through the whole client stack.
     expect(document.body.textContent).not.toMatch(/\$\d/);
+  });
+
+  it("an order with no number is labeled unnumbered, never by its raw document id", () => {
+    // Orders predating the salesOrderNumber rollout genuinely have none, and this account-scoped read
+    // applies no orderBy -- so unlike the global list it DOES return them. The previous rendering
+    // (`customerPO || id`) put a raw Firestore document id in the link text for any such order that
+    // also lacked a customer PO.
+    soState.current = {
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        truncated: false,
+        skipped: 0,
+        salesOrders: [
+          {
+            id: "8fKq2LmZ0aBcDeFgHiJk", salesOrderNumber: null, customerPO: null, state: "IN_FULFILLMENT",
+            ownerEmployeeId: null, updatedAtMillis: Date.now(), serviceWorkOrderIds: [], lines: [],
+          },
+        ],
+      },
+    };
+    renderWithRouter(<AccountSalesOrdersSection accountId="acc-1" />);
+    expect(screen.getByRole("link", { name: /Unnumbered sales order/i })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/8fKq2LmZ0aBcDeFgHiJk/);
   });
 
   it("never renders a raw Firebase uid for the owner field", () => {

@@ -3,7 +3,6 @@ import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { useAuth } from "../../auth/AuthContext";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { groupJobsByTechnician } from "./techUtils";
@@ -17,6 +16,7 @@ import ActivityTimelinePanel from "./panels/ActivityTimelinePanel";
 import PartsOverviewPanel from "./panels/PartsOverviewPanel";
 import WorkOrderAttentionPanel from "./panels/WorkOrderAttentionPanel";
 import WorkOrderDetail from "./WorkOrderDetail";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Work Order-centric operational dashboard. Job state, technician state,
 // and work-order grouping all come from main's domain layer — this view

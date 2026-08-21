@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
 import { useCycleCountActions } from "../../hooks/useCycleCountActions";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { normalizeScanToken, resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIdentity";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -48,11 +49,15 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // silently reject it). The candidate set itself is only available once expectedSerialNumbers has
 // arrived (post-submit) -- see SerialCountEntry's own note on scanning blind.
 
-function LocationLabel({ location }) {
+// A count's location was rendered as its raw warehouse/truck document id. The same labels the
+// picker already offers are used here, so the count reads as the place an operator knows. An id with
+// no label resolves to the id rather than to nothing -- a location that no longer exists is still a
+// real fact about this count, and hiding it would be worse than showing the key.
+function LocationLabel({ location, labels }) {
   if (!location) return <span className="fo-muted">—</span>;
   return (
     <span>
-      {location.locationId}
+      {labels?.get(location.locationId) ?? location.locationId}
       {location.type === "MOBILE" && <span className="fo-transfer-endpoint-type"> truck</span>}
     </span>
   );
@@ -69,12 +74,14 @@ function statusTone(status) {
   }
 }
 
-function CreateCycleCountForm({ warehouseOptions, truckOptions, submitting, onCancel, onSubmit }) {
+function CreateCycleCountForm({ warehouseOptions, truckOptions, warehousesError, trucksError, submitting, onCancel, onSubmit }) {
   const [partId, setPartId] = useState("");
   const [locationType, setLocationType] = useState("WAREHOUSE");
   const [locationId, setLocationId] = useState("");
   const [errors, setErrors] = useState({});
   const options = locationType === "MOBILE" ? truckOptions : warehouseOptions;
+  const optionsError = locationType === "MOBILE" ? trucksError : warehousesError;
+  const locationNoun = locationType === "MOBILE" ? "trucks" : "warehouses";
 
   return (
     <form
@@ -99,12 +106,31 @@ function CreateCycleCountForm({ warehouseOptions, truckOptions, submitting, onCa
       </label>
       <label>
         Location
-        <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-          <option value="">Select…</option>
+        <select
+          value={locationId}
+          onChange={(e) => setLocationId(e.target.value)}
+          disabled={options.length === 0}
+        >
+          <option value="">
+            {optionsError ? "Unavailable" : options.length === 0 ? `No ${locationNoun} available` : "Select…"}
+          </option>
           {options.map((o) => (
             <option key={o.id} value={o.id}>{o.label}</option>
           ))}
         </select>
+        {/* THREE DIFFERENT FACTS, THREE DIFFERENT MESSAGES. An empty dropdown previously meant
+            "denied", "the read failed" or "none are configured" indistinguishably, and the operator
+            could only guess which. A failure says so and stays actionable; a genuine zero says the
+            system needs configuring, which is a different person's job. */}
+        {optionsError ? (
+          <span className="fo-form-error" role="alert">
+            {loadErrorMessage(optionsError, { entity: locationNoun })}
+          </span>
+        ) : options.length === 0 ? (
+          <span className="fo-muted">
+            No {locationNoun} are set up yet, so a count cannot be started against one.
+          </span>
+        ) : null}
         {errors.locationId && <span className="fo-form-error">{errors.locationId}</span>}
       </label>
       <div className="fo-form-actions">
@@ -290,7 +316,7 @@ function ManagerReviewForm({ count, busy, onSubmit }) {
   );
 }
 
-function CycleCountRow({ count, busy, onSubmitCount, onReconcile, onCancel }) {
+function CycleCountRow({ count, busy, locationLabels, onSubmitCount, onReconcile, onCancel }) {
   return (
     <li className="fo-panel fo-panel--nested">
       <div className="fo-transfer-status-row">
@@ -298,7 +324,7 @@ function CycleCountRow({ count, busy, onSubmitCount, onReconcile, onCancel }) {
         <span className={`fo-transfer-status fo-transfer-status--${statusTone(count.status)}`}>{count.status}</span>
       </div>
       <p className="fo-muted">
-        Location: <LocationLabel location={count.location} /> · Mode: {count.trackingMode ?? "…"}
+        Location: <LocationLabel location={count.location} labels={locationLabels} /> · Mode: {count.trackingMode ?? "…"}
       </p>
 
       {count.status === "OPEN" && (
@@ -348,23 +374,44 @@ export default function CycleCounts() {
   const [showForm, setShowForm] = useState(false);
   const { status, clearStatus, busyId, counts, createCount, submitCount, reconcileCount, cancelCount } = useCycleCountActions();
 
-  const [locations, setLocations] = useState({ loading: true, warehouses: [], trucks: [] });
+  // A FAILED LOCATION READ IS NOT AN EMPTY WAREHOUSE LIST. This used to `.catch()` into
+  // `{ warehouses: [], trucks: [] }`, so a permission denial, a dropped connection and a genuinely
+  // unconfigured system all produced the same silent, empty dropdown -- and the operator was left to
+  // conclude no locations existed. The error is now kept and reported.
+  //
+  // allSettled, not all: the warehouse and truck reads hit different collections and fail
+  // independently. Promise.all discarded BOTH lists when either rejected, so a truck-read failure
+  // hid every warehouse. This mirrors Dispatch.jsx, which already treats its technicians read as
+  // independently failable for exactly this reason.
+  const [locations, setLocations] = useState({
+    loading: true, warehouses: [], trucks: [], warehousesError: null, trucksError: null,
+  });
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchWarehouses(), fetchMobileLocationDocs()])
-      .then(([warehouses, truckDocs]) => {
+    Promise.allSettled([fetchWarehouses(), fetchMobileLocationDocs()])
+      .then(([warehouseResult, truckResult]) => {
         if (cancelled) return;
+        const warehouses = warehouseResult.status === "fulfilled" ? warehouseResult.value : [];
+        const truckDocs = truckResult.status === "fulfilled" ? truckResult.value : [];
         setLocations({
           loading: false,
+          warehousesError: warehouseResult.status === "rejected" ? warehouseResult.reason : null,
+          trucksError: truckResult.status === "rejected" ? truckResult.reason : null,
           warehouses: (Array.isArray(warehouses) ? warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
           trucks: (Array.isArray(truckDocs) ? truckDocs : [])
             .filter((d) => d?.data?.active !== false)
             .map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId })),
         });
-      })
-      .catch(() => { if (!cancelled) setLocations({ loading: false, warehouses: [], trucks: [] }); });
+      });
     return () => { cancelled = true; };
   }, []);
+
+  // id -> human label, for rendering a count's location as something a reader recognizes.
+  const locationLabels = useMemo(() => {
+    const map = new Map();
+    for (const o of [...locations.warehouses, ...locations.trucks]) map.set(o.id, o.label);
+    return map;
+  }, [locations.warehouses, locations.trucks]);
 
   const intro = (
     <p className="fo-muted">
@@ -395,6 +442,8 @@ export default function CycleCounts() {
         <CreateCycleCountForm
           warehouseOptions={locations.warehouses}
           truckOptions={locations.trucks}
+          warehousesError={locations.warehousesError}
+          trucksError={locations.trucksError}
           submitting={busyId === "create"}
           onCancel={() => setShowForm(false)}
           onSubmit={async (draft) => {
@@ -418,6 +467,7 @@ export default function CycleCounts() {
               key={count.cycleCountId}
               count={count}
               busy={busyId === count.cycleCountId}
+              locationLabels={locationLabels}
               onSubmitCount={submitCount ? (id, draft) => submitCount(id, count.trackingMode, draft) : undefined}
               onReconcile={reconcileCount}
               onCancel={cancelCount}
