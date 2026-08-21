@@ -16,6 +16,7 @@ import ActivityTimelinePanel from "./panels/ActivityTimelinePanel";
 import PartsOverviewPanel from "./panels/PartsOverviewPanel";
 import WorkOrderAttentionPanel from "./panels/WorkOrderAttentionPanel";
 import WorkOrderDetail from "./WorkOrderDetail";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Work Order-centric operational dashboard. Job state, technician state,
 // and work-order grouping all come from main's domain layer — this view
@@ -121,7 +122,11 @@ export default function ControlTower() {
   ));
 
   const techGroups = useMemo(() => groupJobsByTechnician(workOrders), [workOrders]);
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
+  // Shared resolver (domain/actorDisplayName.js). The inline copy this replaces fell back to the
+  // raw technician document id when a name was missing, printing an opaque key where a person
+  // belongs.
+  const technicianName = (id) =>
+    resolveTechnicianIdentity(id, { technicians, error: techniciansError }).name;
 
   // A zero is only reported when zero is KNOWN. While the first snapshot is pending, or after a read
   // that was refused or failed, the numbers are withheld and the reason is stated instead.

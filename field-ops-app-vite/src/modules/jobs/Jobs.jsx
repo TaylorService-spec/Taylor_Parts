@@ -7,10 +7,14 @@ import ActionRail from "../../shared/ui/ActionRail.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import Button from "../../shared/ui/primitives/Button.jsx";
 import { useAuth } from "../../auth/AuthContext";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -32,6 +36,17 @@ const previewHasPermission = createPermissionPreviewer(
 
 export default function Jobs() {
   const { data: jobs, loading, error } = useWorkOrders();
+  // The "Assigned" column showed a bare `fieldops_technicians` document id, which tells the reader
+  // nothing about who is doing the work. Naming a technician requires reading the technician names,
+  // so this surface now reads that collection -- the SAME read Dispatch and Control Tower already
+  // perform. It fails independently and never blocks the work-order table: a technician who cannot
+  // read the collection still gets the full list, with the assignment column honestly reporting that
+  // the name is unavailable rather than falling back to the id.
+  const {
+    data: technicians,
+    loading: techniciansLoading,
+    error: techniciansError,
+  } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const [announcement, setAnnouncement] = useState("");
   // The new row keeps a stable tabIndex=-1 (focusRowId is not cleared) so focusing
   // it never blurs when a follow-up render runs -- removing tabIndex from the
@@ -60,6 +75,17 @@ export default function Jobs() {
     fallback: role === "admin" || role === "dispatcher",
   });
 
+  // "Nobody is assigned" and "assigned to someone we cannot name" are different facts, and an
+  // em dash for both would hide the second one entirely.
+  const assignedLabel = (job) => {
+    const identity = resolveTechnicianIdentity(job.assignedTechId, {
+      technicians,
+      loading: techniciansLoading,
+      error: techniciansError,
+    });
+    return identity.state === "unset" ? "Unassigned" : identity.name ?? "…";
+  };
+
   const actions = (
     <ActionRail
       primary={
@@ -82,12 +108,22 @@ export default function Jobs() {
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
       ) : error ? (
-        // Fail VISIBLY. This is an unfiltered collection read, which a
-        // technician is not permitted to perform -- the denial used to be
-        // swallowed, leaving the page spinning forever.
+        // Fail VISIBLY -- the denial used to be swallowed, leaving the page spinning forever.
+        //
+        // It then failed visibly but INACCURATELY: every failure was reported as "you don't have
+        // access", so an offline device, a dropped connection or a broken index all accused the user
+        // of lacking permission they may well have. The cause now comes from the shared
+        // loadErrorMessage helper that Dispatch and Control Tower already use, which keeps
+        // permission-denied, unavailable and unknown distinct.
+        //
+        // The wayfinding half is kept, because it is genuinely useful -- but ONLY when the cause is
+        // actually a permission denial. Telling someone whose network dropped to go look somewhere
+        // else sends them on an errand that will not work either.
         <p className="fo-muted" role="alert">
-          You don’t have access to the full work order list. Your own assigned
-          work is available in Technician Workspace.
+          {loadErrorMessage(error, { entity: "work orders" })}
+          {(error?.code === "permission-denied" || error?.code === "firestore/permission-denied") && (
+            <> Your own assigned work is available in Technician Workspace.</>
+          )}
         </p>
       ) : jobs.length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
@@ -109,9 +145,14 @@ export default function Jobs() {
                   ref={job.id === focusRowId ? newRowRef : null}
                   tabIndex={job.id === focusRowId ? -1 : undefined}
                 >
-                  <td>{job.woNumber ?? job.id}</td>
+                  {/* A listed work order was a dead end -- the row named a record with no way to
+                      open it. Linking the WO number is how every other list in this app navigates
+                      (WorkOrdersList, ServiceActivitySection, EquipmentTimeline,
+                      PartWorkOrderDemandSection), so this follows that convention rather than
+                      introducing a whole-row click handler those surfaces deliberately avoid. */}
+                  <td><Link to={`/service/work-orders/${job.id}`}>{job.woNumber ?? job.id}</Link></td>
                   <td>{job.complaint ?? job.description ?? "—"}</td>
-                  <td className="fo-muted">{job.assignedTechId ?? "—"}</td>
+                  <td className="fo-muted">{assignedLabel(job)}</td>
                   <td>
                     <StatusPill tone={fieldPhaseTone(job)} label={job.status} />
                   </td>

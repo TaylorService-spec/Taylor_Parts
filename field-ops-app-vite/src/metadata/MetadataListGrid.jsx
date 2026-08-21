@@ -168,7 +168,19 @@ export default function MetadataListGrid({
       tabIndex={-1}
     >
       <div className="fo-table-scroll">
-        <table className="fo-table">
+        {/* fo-table--stack: at phone widths each row becomes a labelled card instead of something
+            you drag sideways. Certification found the Contacts and Locations related lists doing the
+            latter -- reading a contact meant scrolling the table horizontally to see the column you
+            wanted, one-handed.
+
+            Applied HERE, on the shared metadata grid, rather than on those two lists: every
+            metadata-driven list has the same columns-wider-than-a-phone problem, and the label each
+            cell needs is already in scope at the cell (see data-label below). The modifier is
+            deliberately opt-in per its own definition -- scroll is a fine answer at a desk and a bad
+            one in an aisle -- and every consumer of THIS grid is a list of records, which is exactly
+            the case it was written for. The scroll container stays for the widths above the
+            breakpoint, where it is still the right answer. */}
+        <table className="fo-table fo-table--stack">
           <caption className="fo-sr-only">{caption ?? `${columns.length} column list`}</caption>
           <thead>
             <tr>
@@ -226,7 +238,14 @@ export default function MetadataListGrid({
                     const column = columns[cellIndex];
                     const isNumeric = NUMERIC_CELL_TYPES.has(column?.type);
                     return (
-                      <td key={cell.fieldId} className={isNumeric ? "fo-tabular-nums" : undefined}>
+                      // data-label carries the column heading into the stacked card, because the
+                      // <thead> is hidden at that width -- without it a phone reader sees values
+                      // with nothing saying which field each one is.
+                      <td
+                        key={cell.fieldId}
+                        data-label={column?.label || undefined}
+                        className={isNumeric ? "fo-tabular-nums" : undefined}
+                      >
                         {cell.value}
                       </td>
                     );

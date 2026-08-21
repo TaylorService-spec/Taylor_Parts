@@ -42,9 +42,16 @@ export function accountSalesOrdersView({ loading = false, errorStatus = null, re
       return {
         key: so.id,
         id: so.id,
-        // The order id is the only stable identifier the projection carries -- customerPO is an
-        // external reference, not a substitute order number, so it is surfaced separately, not blended
-        // into the identifier.
+        // customerPO is an EXTERNAL reference -- the customer's own purchase-order string. It is not
+        // a substitute order number, so it is surfaced separately rather than blended into the
+        // identifier. That principle was already recorded here and the rendering then did exactly
+        // what it warns against: the link read `customerPO || id`, so an order without a customer PO
+        // was labelled with its raw Firestore document id.
+        //
+        // The claim that the id was "the only stable identifier the projection carries" was simply
+        // wrong -- projectSalesOrder returns `salesOrderNumber` and always has. It was available the
+        // whole time and never mapped through.
+        salesOrderNumber: so.salesOrderNumber ?? null,
         customerPO: so.customerPO,
         state: so.state,
         tone: salesOrderStateTone(so.state),

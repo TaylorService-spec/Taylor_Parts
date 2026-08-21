@@ -31,6 +31,7 @@ import InventoryHealthPanel from "./panels/InventoryHealthPanel";
 import WarehousePanel from "./panels/WarehousePanel";
 import ProcurementPanel from "./panels/ProcurementPanel";
 import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // ROLE DEFINITION (load-bearing, don't blur this):
 // Operations is a READ-ONLY EXECUTIVE / MONITORING layer over Epics
@@ -219,7 +220,9 @@ export default function Operations({ accessVersion } = {}) {
     consumptionSnapshot,
     technicianVolume,
   } = state.data;
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
+  // document id, printing an opaque key where a person's name belongs.
+  const technicianName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
 
   return (
     <div className="fo-panel">

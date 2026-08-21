@@ -17,6 +17,7 @@ import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import StageProgressTrack from "../../shared/ui/StageProgressTrack.jsx";
 import NewOpportunityForm from "./NewOpportunityForm.jsx";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
 // Sales — Opportunity OPERATING Workspace. The commercial pipeline is the entry point to Sales (ratified:
 // Opportunity Management, NOT Account→Create Work Order). This surface reads opportunities through the
@@ -517,7 +518,7 @@ function PipelineRow({ row, selected, onSelect }) {
 // trusted capability feed (access/useOpportunityCapabilities); a caller that passes none of these (every
 // existing test here) still gets the seam's own fail-closed default and writes nothing.
 export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory } = {}) {
-  const { opportunities, accountNameById, status, synthetic, refetch } = useOpportunities(source);
+  const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
   // Write-readiness through the seam. Fail-closed by default (governed write built but inert unless a real
@@ -617,9 +618,26 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
           {!createEnabled && <>{" "}{writeReadiness.reason}</>}
         </p>
       )}
-      {status !== "ready" ? (
-        // Distinct from a genuinely-empty pipeline: the source isn't connected/available (an honest
-        // "not connected" state, not "you have zero opportunities").
+      {/* FOUR DIFFERENT FACTS, NOT ONE. The source deliberately reports `ready | denied | unavailable
+          | error` and the hook carries `loading` alongside them -- then every non-ready value was
+          rendered as "the source is not connected yet". That sentence was actively misleading for the
+          most common case: `opportunity.read` is granted to NO Role today, so a real caller is
+          DENIED, and denial was being reported as a missing integration. One tells you to wait for a
+          later cycle; the other tells you to ask for access. They are not the same instruction.
+
+          Distinguishing them here matches AccountSalesOrdersSection, which already refuses to let
+          denied or unavailable borrow the empty state's copy. */}
+      {loading ? (
+        <p className="fo-muted">Loading opportunities…</p>
+      ) : status === "denied" ? (
+        <p className="fo-muted" role="alert">
+          You do not have permission to view the opportunity pipeline.
+        </p>
+      ) : status === "error" ? (
+        <p className="fo-muted" role="alert">{loadErrorMessage(error, { entity: "opportunities" })}</p>
+      ) : status !== "ready" ? (
+        // Genuinely not wired: no source configured for this environment. Distinct from a
+        // successfully-read but empty pipeline below.
         <p className="fo-muted">The opportunity pipeline source is not connected yet.</p>
       ) : pipeline.rows.length === 0 ? (
         <p className="fo-muted">No open opportunities.</p>

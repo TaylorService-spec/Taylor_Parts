@@ -149,10 +149,17 @@ export default function AdminUsers({ client = adminPasswordResetClient, hasCapab
         read exists yet for this action, and no principal currently holds the access-record grant
         every real call requires -- not because the backend is unbuilt.
       </p>
-      <Button type="button" variant="secondary" disabled>
+      {/* variant="protected", not `secondary disabled`. The explanation was already written
+          above, but it was loose prose sitting NEAR the control rather than attached to it --
+          nothing tied the two together for a screen reader. The protected variant is this
+          codebase's existing mechanism for exactly that: it renders the lock, keeps the native
+          disabled attribute, and ties a stated reason to the button via aria-describedby. The
+          paragraph above stays, because it carries the governance context (the backend IS built
+          and deployed) that a control-level reason should not try to hold. */}
+      <Button type="button" variant="protected" reason="No governed target-user directory read exists yet, and no principal holds the required access-record grant.">
         Enable user
       </Button>{" "}
-      <Button type="button" variant="secondary" disabled>
+      <Button type="button" variant="protected" reason="No governed target-user directory read exists yet, and no principal holds the required access-record grant.">
         Disable user
       </Button>
 

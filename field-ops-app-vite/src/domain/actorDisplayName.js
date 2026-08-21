@@ -47,3 +47,41 @@ export function resolveEmployeeIdentity(employeeId, { byEmployeeId, loading = fa
   if (employee?.displayName) return { state: "resolved", name: employee.displayName };
   return { state: "unknown", name: "Unknown owner" };
 }
+
+// Certification Wave E -- resolves a Technician DOC id (WorkOrder.assignedTechId /
+// scheduledTechId; a `fieldops_technicians` doc id, NOT a Firebase uid) to a display name.
+//
+// WHY THIS EXISTS AS ONE FUNCTION. Ten surfaces had each written their own copy inline, and
+// they had drifted into three different behaviours for the same question:
+//
+//   ControlTower.jsx / DispatchQueuePanel.jsx   `?.name || id`      -> renders the RAW ID
+//   Dispatch.jsx                                `?.name` + `?? id`  -> renders the RAW ID
+//   WorkOrderAttentionPanel.jsx                 `?.name || "..."`   -> never renders an id
+//
+// The last one is correct and even documented its reasoning; the other four quietly fell back to
+// showing an opaque `fieldops_technicians` key where a person's name belongs. Job Assignments
+// (Jobs.jsx) rendered `assignedTechId` bare with no resolver at all, which is what the
+// certification sweep reported. Extracting the good version is what stops the drift from
+// re-accumulating -- a sixth inline copy would have been the actual defect.
+//
+// This is NOT the F-UID-1 security invariant: these are Technician documents with a plain `name`
+// field, not auth uids, so nothing here is a uid-leak fix. It is the same UX rule that invariant
+// established -- an id is not a name, and showing one where a name belongs tells the user nothing.
+//
+// State-aware, mirroring resolveEmployeeIdentity above so callers can share rendering logic:
+// loading, error, resolved and unknown stay DISTINCT and are never collapsed into a guessed name.
+// In particular "no technician assigned" and "assigned to someone we could not name" are different
+// facts about the work order, and the UI is allowed to say so.
+export const UNKNOWN_TECHNICIAN_DISPLAY_NAME = "Unknown technician";
+
+export function resolveTechnicianIdentity(
+  technicianId,
+  { technicians = [], loading = false, error = null } = {},
+) {
+  if (!technicianId) return { state: "unset", name: null };
+  if (error) return { state: "error", name: "Technician name unavailable" };
+  if (loading) return { state: "loading", name: null };
+  const match = technicians.find?.((t) => t?.id === technicianId);
+  if (match?.name) return { state: "resolved", name: match.name };
+  return { state: "unknown", name: UNKNOWN_TECHNICIAN_DISPLAY_NAME };
+}

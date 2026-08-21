@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { computeDispatchRecommendations } from "../../../domain/dispatchScoring";
 import { assertPanelProps, assertValidSignal } from "../../../domain/controlTower/types";
+import { resolveTechnicianIdentity } from "../../../domain/actorDisplayName";
 
 // Read-only panel: renders DispatchRecommendation signals from
 // dispatchScoring. Takes only { jobs, technicians, workOrders } -- never
@@ -15,7 +16,8 @@ export default function DispatchQueuePanel({ jobs, technicians, workOrders }) {
   );
   if (import.meta.env.DEV) recommendations.forEach(assertValidSignal);
 
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
+  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw id.
+  const technicianName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
 
   return (
     <div className="tech-overview tech-overview--compact">

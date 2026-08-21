@@ -16,6 +16,7 @@ import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { WORK_ORDER_STATUS_VALUES, workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -225,9 +226,8 @@ export default function DispatcherBoard() {
         <div className="fo-form disp-reassign-confirm" role="group" aria-label="Reassignment reason required">
           <p role="alert">
             Reassigning {pendingReassignment.workOrder.woNumber ?? pendingReassignment.workOrder.id} from{" "}
-            {technicians.find((t) => t.id === pendingReassignment.workOrder.scheduledTechId)?.name ??
-              pendingReassignment.workOrder.scheduledTechId}{" "}
-            to {technicians.find((t) => t.id === pendingReassignment.technicianId)?.name ?? pendingReassignment.technicianId} —
+            {resolveTechnicianIdentity(pendingReassignment.workOrder.scheduledTechId, { technicians }).name}{" "}
+            to {resolveTechnicianIdentity(pendingReassignment.technicianId, { technicians }).name} —
             a reason is required.
           </p>
           <textarea

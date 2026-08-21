@@ -58,7 +58,12 @@ describe("WorkOrderAttentionPanel -- WO/Dispatch attention projection wiring", (
     const a = { id: "WO-3", woNumber: "WO-3001", status: "SCHEDULED", assignedTechId: "GHOST-ID", scheduledStart: TODAY_START + 9 * 3600_000, scheduledEnd: TODAY_START + 11 * 3600_000 };
     const b = { id: "WO-4", woNumber: "WO-3002", status: "SCHEDULED", assignedTechId: "GHOST-ID", scheduledStart: TODAY_START + 10 * 3600_000, scheduledEnd: TODAY_START + 12 * 3600_000 };
     renderPanel({ workOrders: [a, b], technicians: [] });
-    expect(screen.getAllByText("Technician: Unassigned technician").length).toBe(2);
+    // "Unknown technician", not "Unassigned technician": these work orders ARE assigned -- to
+    // GHOST-ID -- and the panel simply cannot name who that is. Calling that "unassigned" stated
+    // something false about the work order. The assertion this test exists for is unchanged and
+    // still enforced below: a labeled placeholder, never a bare id.
+    expect(screen.getAllByText("Technician: Unknown technician").length).toBe(2);
+    expect(document.body.textContent).not.toMatch(/GHOST-ID/);
     expect(screen.queryByText(/GHOST-ID/)).toBeNull();
   });
 
