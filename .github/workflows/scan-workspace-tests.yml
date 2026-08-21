@@ -40,6 +40,11 @@ name: Scan Workspace Tests
 #   scanInputPolicy        — the ONE input policy: a wedge stutter and a camera re-emitting every
 #                            frame are one scan, but counting ten identical boxes is ten. The two
 #                            sources get different repeat windows for exactly that reason.
+#   offlineSubmissionQueue — UNVERIFIED is a first-class state, not a spinner: a sent-but-unanswered
+#                            submission is never silently re-sent, never assumed done, and a
+#                            confirmed group is never replayed. The queue cannot read a payload.
+#   submissionQueue        — the durable half: it survives the tab, revives in-flight work as
+#                            UNVERIFIED rather than confirmed, and reconnection is a READ.
 #   dictatableNote         — dictation is an INPUT METHOD, not an assistant: speech becomes text in
 #                            an editable field and stops. No transport, no intent, no decision — the
 #                            conversational assistant is a separate future add-on, and this asserts
@@ -93,6 +98,9 @@ on:
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
       - "field-ops-app-vite/src/domain/scanInputPolicy.js"
+      - "field-ops-app-vite/src/domain/offlineSubmissionQueue.js"
+      - "field-ops-app-vite/src/hooks/useSubmissionQueue.js"
+      - "field-ops-app-vite/src/shared/ui/SubmissionQueueStatus.jsx"
       - "field-ops-app-vite/src/domain/putAwaySession.js"
       - "field-ops-app-vite/src/domain/pickSession.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
@@ -133,6 +141,8 @@ on:
       - "field-ops-app-vite/test/truckHandoff.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
+      - "field-ops-app-vite/test/offlineSubmissionQueue.test.mjs"
+      - "field-ops-app-vite/test/submissionQueue.test.jsx"
       - "field-ops-app-vite/test/putAwaySession.test.mjs"
       - "field-ops-app-vite/test/pickSession.test.mjs"
       - "field-ops-app-vite/test/pickScan.test.jsx"
@@ -171,6 +181,9 @@ on:
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
       - "field-ops-app-vite/src/domain/scanInputPolicy.js"
+      - "field-ops-app-vite/src/domain/offlineSubmissionQueue.js"
+      - "field-ops-app-vite/src/hooks/useSubmissionQueue.js"
+      - "field-ops-app-vite/src/shared/ui/SubmissionQueueStatus.jsx"
       - "field-ops-app-vite/src/domain/putAwaySession.js"
       - "field-ops-app-vite/src/domain/pickSession.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
@@ -211,6 +224,8 @@ on:
       - "field-ops-app-vite/test/truckHandoff.test.mjs"
       - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
       - "field-ops-app-vite/test/scanInputPolicy.test.mjs"
+      - "field-ops-app-vite/test/offlineSubmissionQueue.test.mjs"
+      - "field-ops-app-vite/test/submissionQueue.test.jsx"
       - "field-ops-app-vite/test/putAwaySession.test.mjs"
       - "field-ops-app-vite/test/pickSession.test.mjs"
       - "field-ops-app-vite/test/pickScan.test.jsx"
@@ -296,7 +311,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Shared scan input policy (pure)
-        run: node --test test/scanInputPolicy.test.mjs
+        run: node --test test/scanInputPolicy.test.mjs test/offlineSubmissionQueue.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Put-away and pick sessions (pure)
@@ -313,5 +328,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite
