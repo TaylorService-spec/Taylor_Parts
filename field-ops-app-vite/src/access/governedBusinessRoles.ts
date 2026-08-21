@@ -132,7 +132,6 @@ export const MARKETING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    // Owner ruling 2026-08-18, "they all should see accounts".
     "account.record.read",
     "opportunity.read",
     "salesOrder.read",
@@ -164,24 +163,21 @@ export const PURCHASING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    // Owner ruling 2026-08-18, "they all should see accounts".
     "account.record.read",
-    "salesOrder.read",
-    // The purchasing workflow itself.
-    "reorder.purchaseOrder.read",
-    "reorder.purchaseOrder.create",
-    "reorder.request.read.queue",
-    "reorder.request.startPurchasing",
-    "reorder.request.recordPurchaseOrder",
-    "reorder.request.postPurchasingUpdate",
-    // Buying context: what is in the catalog, what is on hand, what is moving.
-    "inventory.catalog.read",
-    "inventory.transaction.read",
-    "inventory.action.read",
-    "warehouse.transferOrder.read",
-    "inventory.serializedAsset.read",
-    // Invoices/AR read only, per the matrix's Purchasing row.
     "finance.read",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "reorder.request.read.queue",
+    "reorder.request.recordPurchaseOrder",
+    "reorder.request.startPurchasing",
+    "salesOrder.read",
+    "warehouse.transferOrder.read",
   ],
 }) as Role;
 
@@ -196,14 +192,69 @@ export const PURCHASING_MANAGER_ROLE: Role = Object.freeze({
 // invented grant is indistinguishable from a decided one once it is in the file. An empty
 // Role is honest: the position exists, is assignable, and holds nothing until the matrix
 // says what it holds. Same posture as the other org-chart positions awaiting a row.
+// SHOP MANAGER / SHOP ASSOCIATE -- SERVICE roles, not warehouse roles.
+//
+// The earlier description here said the matrix "declares no Role x Object row for it". That was true
+// of the Role Object Summary sheet consulted at the time; the canonical Detailed CRUD sheet declares
+// all 24 rows for both Shop roles. The authority below is derived from those rows and from nothing
+// else -- deliberately NOT copied from Warehouse Associate, Parts Associate, Technician or Service
+// Manager, all of which the stale Summary sheet had conflated them with.
+//
+// What the canonical rows actually say: Work Orders CRE, Dispatch Schedule CRE, Technician Time CRE,
+// Equipment CRE, with READ on parts catalog, inventory stock and serialized assets. That is a shop
+// floor doing service work -- not receiving, not transfers, not inventory adjustment. The Summary
+// sheet's version of these roles (Receiving CRE, Transfer Orders CRE) was warehouse authority pasted
+// onto a service role.
+//
+// Dispatch Schedule and Technician Time map to workOrder.transition and to no capability
+// respectively; the latter is RULE_GOVERNED, so an empty mapping is the honest answer rather than an
+// invented capability.
 export const SHOP_MANAGER_ROLE: Role = Object.freeze({
   id: "shopManager",
   name: "Shop Manager",
   description:
-    "Service-organization position from the Owner roster. Carries no permissions of its own: the CRUD matrix names the role but declares no Role x Object row for it, and authority is not inferred from a job description.",
+    "Service-organization position running the shop floor. Creates and transitions Work Orders, works the dispatch schedule and technician time, and reads parts catalog, inventory stock and serialized assets. Deliberately holds no receiving, transfer or inventory-adjustment authority -- those belong to Parts and Warehouse.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition",
+  ],
+}) as Role;
+
+// Present in the canonical matrix with its own 24 rows, and previously absent from this registry
+// entirely -- the workbook defined a role the platform had no way to represent or grant.
+//
+// Its capability set equals Shop Manager's today. INTENTIONAL_OVERLAP: the business runs both over
+// the same shop responsibilities, and inventing a difference so the titles diverge would encode a
+// distinction nobody has made. Where they should differ, that is an employee-level assignment.
+export const SHOP_ASSOCIATE_ROLE: Role = Object.freeze({
+  id: "shopAssociate",
+  name: "Shop Associate",
+  description:
+    "Service-organization position beneath the Shop Manager, working the shop floor. Same operational authority as Shop Manager today (INTENTIONAL_OVERLAP); per-person differences are made through employee-level functional-Role assignment rather than by splitting the business Role.",
+  systemSeed: true,
+  compatibility: false,
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition",
+  ],
 }) as Role;
 
 export const SALES_MANAGER_ROLE: Role = Object.freeze({
@@ -214,30 +265,19 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
     "account.record.create",
+    "account.record.read",
     "account.record.update",
-    // Owner ruling 2026-08-18: a Sales Manager who cannot see the committed order
-    // their pipeline produced, or whether the parts exist to fill it, is reading
-    // only half the transaction. salesOrder.read is registered active:false -- the
-    // grant is recorded now and stays inert until per-environment activation.
-    "salesOrder.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
     "inventory.transaction.read",
-    // Owner ruling 2026-08-19: Sales Manager holds full opportunity authority.
-    // opportunity.write covers create AND edit -- the catalog registers no separate
-    // update or delete id, so "CRUD" on an Opportunity is exactly these two ids.
-    //
-    // Both are registered active:false, so this is a GRANT, not activation. They
-    // resolve only where a per-environment override activates them, which today is
-    // eos-platform-sandbox alone; production stays denied.
-    //
-    // opportunity.createSalesOrder is deliberately NOT included. Converting a WON
-    // Opportunity into a Sales Order creates a DIFFERENT object with its own
-    // commercial commitment, and the ruling was about opportunities. Adding it is a
-    // one-line change if that is wanted; guessing it in would be scope the Owner
-    // did not ask for.
+    "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write",
   ],
 }) as Role;
 
@@ -265,13 +305,18 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
     "account.record.create",
+    "account.record.read",
     "account.record.update",
-    "salesOrder.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
     "inventory.transaction.read",
+    "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "salesOrder.read",
+    "salesOrder.write",
   ],
 }) as Role;
 
@@ -293,21 +338,23 @@ export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
     "account.governedField.write",
-    "salesOrder.read",
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.read",
     "reorder.purchaseOrder.read",
-    // PURCHASING MOVED OFF THIS ROLE on 2026-08-20, to PURCHASING_MANAGER_ROLE.
-    //
-    // The 2026-08-19 ruling "Purchasing falls under accounting" was implemented by granting
-    // the purchasing workflow here, because no Purchasing role existed to receive it. The
-    // Owner's roster then named Purchasing Manager AND assigned Erik BOTH Accounting Manager
-    // and Purchasing Manager.
-    //
-    // That honors both statements better than merging the bundles did: purchasing reports
-    // into accounting THROUGH THE PERSON, while the authority sits on the role whose job it
-    // is. Anyone who needs both holds both -- which is exactly what a stacked assignment is
-    // for, and it keeps a pure Accounting Manager from silently acquiring buying power.
+    "salesOrder.read",
+    "warehouse.transferOrder.read",
   ],
 }) as Role;
 
@@ -357,33 +404,19 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    // Owner ruling 2026-08-18, "they all should see accounts": every manager Role
-    // gets Customer read. A Work Order without its customer is an address.
     "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.cancel",
     "workOrder.create",
     "workOrder.transition",
-    "workOrder.cancel",
-    "inventory.transaction.read",
-    // Owner ruling (grantable-governed-roles workstream): Field Manager is one of the five roles
-    // named in Owner's proposed fulfillment.coordinatedVisit.read grant set ({owner, admin,
-    // operationsManager, fieldManager, dispatcher}) -- Coordinated Visits/Mission are a field/
-    // dispatch operational surface, matching this Role's existing Work Order lifecycle authority.
-    // Still active:false (grant is not activation); see compatibilityRoles.ts's own comment.
-    "fulfillment.coordinatedVisit.read",
-    // Catalog curation -- Owner ruling 2026-08-19. A field/service manager standing in front
-    // of a machine is the highest-volume place a new Part gets created, and therefore the
-    // likeliest source of duplicate catalog rows: TST-1234 vs "TST 1234" vs "Compressor Assy"
-    // as three separate Parts, with stock, purchase history and Work Order usage split across
-    // all three, and every resulting count wrong.
-    //
-    // That risk was raised before this grant and the Owner ruled all three management Roles
-    // hold it, with duplicate detection starting immediately as the mitigation rather than the
-    // grant waiting on it. Recorded here so the sequencing stays visible: the inlet was opened
-    // deliberately, on the stated condition that the defence follows.
-    //
-    // MANAGE only, NOT inventory.catalog.activate -- lifecycle status stays with
-    // inventoryCatalogAdministrator.
-    "inventory.catalog.manage",
   ],
 }) as Role;
 
@@ -469,14 +502,59 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
 // operational-role home screens exactly as before; holding the governed Role adds
 // a position in the visibility tree.
 
+// GENERAL MANAGER -- the highest broad BUSINESS role, and deliberately NOT security administration.
+//
+// The capability grant the description above deferred ("a separate Owner decision") was made on
+// 2026-08-21 from the canonical Detailed CRUD sheet, with one explicit override.
+//
+// THE OVERRIDE, because it is the load-bearing part. The workbook grants General Manager CRED on
+// both Users and Roles / Permissions. Implementing that literally would create a NON-PRIVILEGED role
+// holding admin.roleAssignment.write -- a self-escalation path, since a General Manager could grant
+// themselves any Role including owner, through the ordinary grant path rather than the privileged
+// two-person one. Owner decision: General Manager is business operations, not access administration.
+// Owner and Admin retain privileged security administration.
+//
+// So Users and Roles / Permissions map to NO capabilities here, and governedBusinessRoles.test.ts
+// asserts this Role resolves zero `admin.*` -- proven by injecting one and watching it fail.
+//
+// Audit read IS granted: reading the audit log is management visibility, not the ability to change
+// who can do what.
 export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
   id: "generalManager",
   name: "General Manager",
   description:
-    "Org-chart position in the top block, between Owner and the branch heads. Carries no permissions of its own -- its effect is hierarchical visibility over every branch. Capability grants are a separate Owner decision.",
+    "Org-chart position in the top block, between Owner and the branch heads. Holds broad business and operational authority per the canonical business-intent matrix, and NO security administration: no admin.* capability, no Role assignment, no capability grant, and therefore no self-escalation path. Privileged access administration remains with Owner and Admin.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.create",
+    "account.record.read",
+    "account.record.update",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.stock.receive",
+    "inventory.transaction.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "reorder.purchaseOrder.create",
+    "reorder.purchaseOrder.read",
+    "reorder.request.postPurchasingUpdate",
+    "salesOrder.read",
+    "salesOrder.write",
+    "warehouse.transferOrder.read",
+    "workOrder.create",
+    "workOrder.transition",
+  ],
 }) as Role;
 
 export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
@@ -486,7 +564,20 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "Org-chart position: head of the warehouse branch under Operations, with Warehouse Associates beneath. Distinct from the WAREHOUSE_MANAGER operational role on the employee record, which is an operational qualification rather than a security Role. Carries no permissions of its own.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.stock.receive",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read",
+  ],
 }) as Role;
 
 export const WAREHOUSE_ASSOCIATE_ROLE: Role = Object.freeze({
@@ -496,7 +587,17 @@ export const WAREHOUSE_ASSOCIATE_ROLE: Role = Object.freeze({
     "Org-chart position beneath the Warehouse Manager. Carries no permissions of its own.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.stock.receive",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read",
+  ],
 }) as Role;
 
 export const PARTS_MANAGER_ROLE: Role = Object.freeze({
@@ -506,7 +607,21 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
     "Org-chart position: head of the parts branch under Operations, with Parts Associates beneath. Distinct from the PARTS_MANAGER operational role on the employee record. Carries no permissions of its own.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition",
+  ],
 }) as Role;
 
 export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
@@ -516,27 +631,75 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
     "Org-chart position beneath the Parts Manager. Distinct from the PARTS_ASSOCIATE operational role on the employee record. Carries no permissions of its own.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition",
+  ],
 }) as Role;
 
+// CONTROLLER -- financial execution authority, granted 2026-08-21 from the canonical business-intent
+// matrix. The description previously deferred this ("granted separately and deliberately"); this is
+// that grant.
+//
+// Its capability set is identical to Accounting Manager's. That is INTENTIONAL_OVERLAP, not a defect:
+// the business currently runs those two positions over the same financial responsibilities, and
+// manufacturing a difference purely so the titles diverge would encode a distinction the business has
+// not made. Where they should differ later, the difference is made by changing what is assigned to
+// the EMPLOYEE, which is where governance is meant to live.
 export const CONTROLLER_ROLE: Role = Object.freeze({
   id: "controller",
   name: "Controller",
   description:
-    "Org-chart position beneath the Finance Manager, alongside Accounting. Carries no permissions of its own -- financial authority is granted separately and deliberately.",
+    "Org-chart position beneath the Finance Manager, alongside Accounting. Holds financial execution authority -- AR read, invoice issue, payment apply, adjustment and refund record -- plus broad operational read. Deliberately identical to Accounting Manager today (INTENTIONAL_OVERLAP); per-person differences are made through employee-level assignment.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+    "audit.event.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read",
+  ],
 }) as Role;
 
+// SUPPORT STAFF -- deliberately narrow, and worth recording WHY the number is this small.
+//
+// The stale Role Object Summary sheet showed Support Staff with full AR and payments write, identical
+// to Controller. That row was copy-pasted from Accounting Manager: the canonical Detailed CRUD sheet
+// grants Support Staff Read on Accounts, Contacts and Notifications and nothing else.
+//
+// A reconciliation built from the Summary would have handed a support role invoice-issue, payment-
+// apply and refund authority on the strength of a spreadsheet copy-paste. Two capabilities is the
+// honest answer.
 export const SUPPORT_STAFF_ROLE: Role = Object.freeze({
   id: "supportStaff",
   name: "Support Staff",
   description:
-    "Org-chart position beneath Accounting. Carries no permissions of its own.",
+    "Org-chart position beneath Accounting. Read-only on customer records and contact activity per the canonical business-intent matrix. Notifications access is Rules-governed rather than capability-governed.",
   systemSeed: true,
   compatibility: false,
-  permissions: [],
+  permissions: [
+    "account.record.read",
+  ],
 }) as Role;
 
 // Spec §26.2 -- privileged full-platform Role. Matches ADMIN_ROLE's
@@ -915,6 +1078,7 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   marketingManager: MARKETING_MANAGER_ROLE,
   purchasingManager: PURCHASING_MANAGER_ROLE,
   shopManager: SHOP_MANAGER_ROLE,
+  shopAssociate: SHOP_ASSOCIATE_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,

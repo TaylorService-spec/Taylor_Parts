@@ -170,21 +170,30 @@ check("an unknown or unplaced Role is fail-closed in both directions", () => {
   assert.equal(canSeeAcrossHierarchy("owner", ""), false);
 });
 
-check("the org-chart positions carry NO permissions", () => {
-  // Position and authority are separate systems. These Roles exist to place people
-  // in the tree; granting them capability is a separate Owner decision, and doing
-  // it by accident here would be seven live authority changes at once.
-  for (const id of [
-    "generalManager",
-    "warehouseManager",
-    "warehouseAssociate",
-    "partsManager",
-    "partsAssociate",
-    "controller",
-    "supportStaff",
-  ]) {
-    assert.deepEqual(GOVERNED_BUSINESS_ROLES[id].permissions, [], `${id} must carry no permissions yet`);
+check("org-chart position still does not CONFER authority, even now that these Roles hold some", () => {
+  // This check previously required these seven Roles to hold nothing, on the stated grounds that
+  // "granting them capability is a separate Owner decision". That decision was made on 2026-08-21:
+  // authority was derived for each from the canonical Detailed CRUD matrix, and this assertion is
+  // updated because the precondition it named actually happened -- not to make a failure go away.
+  //
+  // The PRINCIPLE it protected is unchanged and still pinned below: position and authority are
+  // separate systems. Where a Role sits in the tree confers nothing; what it holds comes from an
+  // explicit grant. So the assertion now checks that the tree is not a back door -- no positional
+  // Role picked up SECURITY administration, and none of them out-ranks its way to authority.
+  const POSITIONS = [
+    "generalManager", "warehouseManager", "warehouseAssociate",
+    "partsManager", "partsAssociate", "controller", "supportStaff",
+  ];
+  for (const id of POSITIONS) {
+    const perms = GOVERNED_BUSINESS_ROLES[id].permissions || [];
+    const admin = perms.filter((p) => p.startsWith("admin."));
+    assert.deepEqual(admin, [], `${id} must not hold security administration by virtue of its position`);
   }
+  // The two that remain deliberately narrow, so a future widening is a decision made here.
+  assert.deepEqual(GOVERNED_BUSINESS_ROLES.supportStaff.permissions, ["account.record.read"],
+    "Support Staff is Read on Accounts only -- the stale Summary sheet's finance authority was copy-paste");
+  assert.deepEqual(GOVERNED_BUSINESS_ROLES.generalEmployee.permissions, [],
+    "the least-privilege baseline still grants nothing");
 });
 
 check("remaining placement gaps are declared rather than silently resolved", () => {

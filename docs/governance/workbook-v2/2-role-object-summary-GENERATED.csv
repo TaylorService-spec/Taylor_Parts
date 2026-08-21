@@ -1,0 +1,20 @@
+Role,Accounts,Contacts,Customer Locations,Opportunities,Marketing Initiatives,Sales Orders,Commissions,Work Orders,Dispatch Schedule,Technician Time / Non-work,Parts Catalog,Inventory Stock,Inventory Adjustments,Purchase Orders,Receiving,Transfer Orders,Serialized Assets,Equipment / Installed Base,Invoices / AR,Payments,Notifications,Users,Roles / Permissions,Audit Log
+Owner,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRED,CRED,R
+Admin,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRED,CRE,R
+Sales Manager,CRE,CRE,CRE,CRE,R,CRE,R,R,R,,R,R,,,,,,R,R,,R,,,R
+Salesperson,CRE,CRE,CRE,CRE,R,CRE,R,R,,,R,R,,,,,,R,R,,R,,,
+Marketing Manager,R,R,R,R,CRED,R,,,,,,,,,,,,,,,R,,,
+Service Manager,R,R,R,,,R,,CRE,CRE,CRE,R,R,,,,,R,CRE,R,,R,,,R
+Dispatcher,R,R,R,,,R,,CRE,CRE,R,R,R,,R,R,R,R,R,,,R,,,
+Technician,,,R,,,,,RE,R,RE,R,R,,,,,R,RE,,,R,,,
+Warehouse Manager,R,,R,,,R,,R,R,,CRE,CRE,CRE,R,CRE,CRE,CRE,R,,,R,,,R
+Warehouse Associate,,,R,,,R,,R,,,R,RE,R,R,RE,RE,RE,R,,,R,,,
+Purchasing Manager,,,,,,R,,R,,,R,R,R,CRE,R,R,R,R,R,,R,,,
+Accounting Manager,R,R,R,R,,R,CRE,R,,,R,R,R,R,R,R,R,R,CRE,CRE,R,,,R
+Controller,R,R,R,R,,R,CRE,R,,,R,R,R,R,R,R,R,R,CRE,CRE,R,,,R
+Shop Manager,R,R,R,,,R,,CRE,CRE,CRE,R,R,,,,,R,CRE,R,,R,,,R
+Shop Associate,R,R,R,,,R,,CRE,CRE,CRE,R,R,,,,,R,CRE,R,,R,,,R
+General Manager,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRE,CRED,CRED,R
+Parts Associate,R,R,R,,,R,,CRE,CRE,CRE,R,R,,,,,R,CRE,R,,R,,,R
+Support Staff,R,R,,,,,,,,,,,,,,,,,,,R,,,
+Parts Manager,R,R,R,,,R,,CRE,RE,RE,CRE,CRE,,,,,CRE,CRE,CRE,,CR,,,R

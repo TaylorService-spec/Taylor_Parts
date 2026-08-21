@@ -1,0 +1,457 @@
+Role,Object,Create,Read,Edit,Delete,Access Code,Record Scope,Design Status,Control Notes
+Owner,Accounts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Contacts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Customer Locations,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Opportunities,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Marketing Initiatives,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Campaign/initiative tags and activity. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Sales Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Commissions,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Work Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Parts Catalog,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Inventory Stock,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Inventory Adjustments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Purchase Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Receiving,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Transfer Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Serialized Assets,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Invoices / AR,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Payments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Payment records and application. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Owner,Notifications,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Owner,Users,Yes,Yes,Yes,Yes,CRED,Enterprise,Proposed,User identities and activation. Delete reserved for master/configuration cleanup; log the action and require confirmation.
+Owner,Roles / Permissions,Yes,Yes,Yes,Yes,CRED,Enterprise,Proposed,"Role definitions, grants, and protected access. Delete reserved for master/configuration cleanup; log the action and require confirmation."
+Owner,Audit Log,No,Yes,No,No,R,Enterprise,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Accounts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Contacts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Customer Locations,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Opportunities,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Marketing Initiatives,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Campaign/initiative tags and activity. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Sales Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Commissions,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Work Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Parts Catalog,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Inventory Stock,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Inventory Adjustments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Purchase Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Receiving,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Transfer Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Serialized Assets,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Invoices / AR,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Payments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Payment records and application. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Admin,Notifications,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Users,Yes,Yes,Yes,Yes,CRED,Enterprise,Proposed,User identities and activation. Delete reserved for master/configuration cleanup; log the action and require confirmation.
+Admin,Roles / Permissions,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Role definitions, grants, and protected access. Access is subject to role scope, segregation of duties, and audit logging."
+Admin,Audit Log,No,Yes,No,No,R,Enterprise,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Sales Manager,Accounts,Yes,Yes,Yes,No,CRE,Team / Enterprise reporting,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Contacts,Yes,Yes,Yes,No,CRE,Team / Enterprise reporting,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Customer Locations,Yes,Yes,Yes,No,CRE,Team / Enterprise reporting,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Opportunities,Yes,Yes,Yes,No,CRE,Team / Enterprise reporting,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Marketing Initiatives,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Campaign/initiative tags and activity. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Sales Orders,Yes,Yes,Yes,No,CRE,Team / Enterprise reporting,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Sales Manager,Commissions,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Sales Manager,Work Orders,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Sales Manager,Dispatch Schedule,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Technician Time / Non-work,No,No,No,No,,Team / Enterprise reporting,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Sales Manager,Parts Catalog,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Inventory Stock,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Inventory Adjustments,No,No,No,No,,Team / Enterprise reporting,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Sales Manager,Purchase Orders,No,No,No,No,,Team / Enterprise reporting,Proposed,Procurement commitments. No business need identified in this baseline.
+Sales Manager,Receiving,No,No,No,No,,Team / Enterprise reporting,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Sales Manager,Transfer Orders,No,No,No,No,,Team / Enterprise reporting,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Sales Manager,Serialized Assets,No,No,No,No,,Team / Enterprise reporting,Proposed,Serial-controlled identity and custody. No business need identified in this baseline.
+Sales Manager,Equipment / Installed Base,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Invoices / AR,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Sales Manager,Payments,No,No,No,No,,Team / Enterprise reporting,Proposed,Payment records and application. No business need identified in this baseline.
+Sales Manager,Notifications,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Sales Manager,Users,No,No,No,No,,Team / Enterprise reporting,Proposed,User identities and activation. No business need identified in this baseline.
+Sales Manager,Roles / Permissions,No,No,No,No,,Team / Enterprise reporting,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Sales Manager,Audit Log,No,Yes,No,No,R,Team / Enterprise reporting,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Salesperson,Accounts,Yes,Yes,Yes,No,CRE,Own records / assigned territory,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Contacts,Yes,Yes,Yes,No,CRE,Own records / assigned territory,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Customer Locations,Yes,Yes,Yes,No,CRE,Own records / assigned territory,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Opportunities,Yes,Yes,Yes,No,CRE,Own records / assigned territory,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Marketing Initiatives,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Campaign/initiative tags and activity. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Sales Orders,Yes,Yes,Yes,No,CRE,Own records / assigned territory,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Salesperson,Commissions,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Salesperson,Work Orders,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Salesperson,Dispatch Schedule,No,No,No,No,,Own records / assigned territory,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Salesperson,Technician Time / Non-work,No,No,No,No,,Own records / assigned territory,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Salesperson,Parts Catalog,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Inventory Stock,No,Yes,No,No,R,Own records / assigned territory,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Inventory Adjustments,No,No,No,No,,Own records / assigned territory,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Salesperson,Purchase Orders,No,No,No,No,,Own records / assigned territory,Proposed,Procurement commitments. No business need identified in this baseline.
+Salesperson,Receiving,No,No,No,No,,Own records / assigned territory,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Salesperson,Transfer Orders,No,No,No,No,,Own records / assigned territory,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Salesperson,Serialized Assets,No,No,No,No,,Own records / assigned territory,Proposed,Serial-controlled identity and custody. No business need identified in this baseline.
+Salesperson,Equipment / Installed Base,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Invoices / AR,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Salesperson,Payments,No,No,No,No,,Own records / assigned territory,Proposed,Payment records and application. No business need identified in this baseline.
+Salesperson,Notifications,No,Yes,No,No,R,Own records / assigned territory,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Salesperson,Users,No,No,No,No,,Own records / assigned territory,Proposed,User identities and activation. No business need identified in this baseline.
+Salesperson,Roles / Permissions,No,No,No,No,,Own records / assigned territory,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Salesperson,Audit Log,No,No,No,No,,Own records / assigned territory,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Marketing Manager,Accounts,No,Yes,No,No,R,Enterprise marketing,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Marketing Manager,Contacts,No,Yes,No,No,R,Enterprise marketing,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Marketing Manager,Customer Locations,No,Yes,No,No,R,Enterprise marketing,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Marketing Manager,Opportunities,No,Yes,No,No,R,Enterprise marketing,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Marketing Manager,Marketing Initiatives,Yes,Yes,Yes,Yes,CRED,Enterprise marketing,Proposed,Campaign/initiative tags and activity. Delete reserved for master/configuration cleanup; log the action and require confirmation.
+Marketing Manager,Sales Orders,No,Yes,No,No,R,Enterprise marketing,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Marketing Manager,Commissions,No,No,No,No,,Enterprise marketing,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Marketing Manager,Work Orders,No,No,No,No,,Enterprise marketing,Proposed,Service/install job lifecycle. No business need identified in this baseline.
+Marketing Manager,Dispatch Schedule,No,No,No,No,,Enterprise marketing,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Marketing Manager,Technician Time / Non-work,No,No,No,No,,Enterprise marketing,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Marketing Manager,Parts Catalog,No,No,No,No,,Enterprise marketing,Proposed,Part master data. No business need identified in this baseline.
+Marketing Manager,Inventory Stock,No,No,No,No,,Enterprise marketing,Proposed,"On-hand, reserved, and available stock. No business need identified in this baseline."
+Marketing Manager,Inventory Adjustments,No,No,No,No,,Enterprise marketing,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Marketing Manager,Purchase Orders,No,No,No,No,,Enterprise marketing,Proposed,Procurement commitments. No business need identified in this baseline.
+Marketing Manager,Receiving,No,No,No,No,,Enterprise marketing,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Marketing Manager,Transfer Orders,No,No,No,No,,Enterprise marketing,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Marketing Manager,Serialized Assets,No,No,No,No,,Enterprise marketing,Proposed,Serial-controlled identity and custody. No business need identified in this baseline.
+Marketing Manager,Equipment / Installed Base,No,No,No,No,,Enterprise marketing,Proposed,Customer equipment and service history. No business need identified in this baseline.
+Marketing Manager,Invoices / AR,No,No,No,No,,Enterprise marketing,Proposed,Billing and receivables. No business need identified in this baseline.
+Marketing Manager,Payments,No,No,No,No,,Enterprise marketing,Proposed,Payment records and application. No business need identified in this baseline.
+Marketing Manager,Notifications,No,Yes,No,No,R,Enterprise marketing,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Marketing Manager,Users,No,No,No,No,,Enterprise marketing,Proposed,User identities and activation. No business need identified in this baseline.
+Marketing Manager,Roles / Permissions,No,No,No,No,,Enterprise marketing,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Marketing Manager,Audit Log,No,No,No,No,,Enterprise marketing,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Service Manager,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Customer Locations,No,Yes,No,No,R,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Service Manager,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Service Manager,Sales Orders,No,Yes,No,No,R,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Service Manager,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Service Manager,Work Orders,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Service Manager,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Parts Catalog,No,Yes,No,No,R,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Inventory Stock,No,Yes,No,No,R,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Service Manager,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Service Manager,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Service Manager,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Service Manager,Serialized Assets,No,Yes,No,No,R,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Service Manager,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Invoices / AR,No,Yes,No,No,R,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Service Manager,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Service Manager,Notifications,No,Yes,No,No,R,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Service Manager,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Service Manager,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Service Manager,Audit Log,No,Yes,No,No,R,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Accounts,No,Yes,No,No,R,Assigned service region,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Contacts,No,Yes,No,No,R,Assigned service region,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Customer Locations,No,Yes,No,No,R,Assigned service region,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Opportunities,No,No,No,No,,Assigned service region,Proposed,Sales pipeline records. No business need identified in this baseline.
+Dispatcher,Marketing Initiatives,No,No,No,No,,Assigned service region,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Dispatcher,Sales Orders,No,Yes,No,No,R,Assigned service region,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Commissions,No,No,No,No,,Assigned service region,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Dispatcher,Work Orders,Yes,Yes,Yes,No,CRE,Assigned service region,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Assigned service region,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Technician Time / Non-work,No,Yes,No,No,R,Assigned service region,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Parts Catalog,No,Yes,No,No,R,Assigned service region,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Inventory Stock,No,Yes,No,No,R,Assigned service region,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Inventory Adjustments,No,No,No,No,,Assigned service region,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Dispatcher,Purchase Orders,No,Yes,No,No,R,Assigned service region,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Receiving,No,Yes,No,No,R,Assigned service region,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Transfer Orders,No,Yes,No,No,R,Assigned service region,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Serialized Assets,No,Yes,No,No,R,Assigned service region,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Dispatcher,Equipment / Installed Base,No,Yes,No,No,R,Assigned service region,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Invoices / AR,No,No,No,No,,Assigned service region,Proposed,Billing and receivables. No business need identified in this baseline.
+Dispatcher,Payments,No,No,No,No,,Assigned service region,Proposed,Payment records and application. No business need identified in this baseline.
+Dispatcher,Notifications,No,Yes,No,No,R,Assigned service region,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Dispatcher,Users,No,No,No,No,,Assigned service region,Proposed,User identities and activation. No business need identified in this baseline.
+Dispatcher,Roles / Permissions,No,No,No,No,,Assigned service region,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Dispatcher,Audit Log,No,No,No,No,,Assigned service region,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Technician,Accounts,No,No,No,No,,Assigned work only,Proposed,Customer/company master. No business need identified in this baseline.
+Technician,Contacts,No,No,No,No,,Assigned work only,Proposed,People related to accounts. No business need identified in this baseline.
+Technician,Customer Locations,No,Yes,No,No,R,Assigned work only,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Opportunities,No,No,No,No,,Assigned work only,Proposed,Sales pipeline records. No business need identified in this baseline.
+Technician,Marketing Initiatives,No,No,No,No,,Assigned work only,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Technician,Sales Orders,No,No,No,No,,Assigned work only,Proposed,Committed customer orders. No business need identified in this baseline.
+Technician,Commissions,No,No,No,No,,Assigned work only,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Technician,Work Orders,No,Yes,Yes,No,RE,Assigned work only,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Technician,Dispatch Schedule,No,Yes,No,No,R,Assigned work only,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Technician Time / Non-work,No,Yes,Yes,No,RE,Assigned work only,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Parts Catalog,No,Yes,No,No,R,Assigned work only,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Inventory Stock,No,Yes,No,No,R,Assigned work only,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Inventory Adjustments,No,No,No,No,,Assigned work only,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Technician,Purchase Orders,No,No,No,No,,Assigned work only,Proposed,Procurement commitments. No business need identified in this baseline.
+Technician,Receiving,No,No,No,No,,Assigned work only,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Technician,Transfer Orders,No,No,No,No,,Assigned work only,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Technician,Serialized Assets,No,Yes,No,No,R,Assigned work only,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Technician,Equipment / Installed Base,No,Yes,Yes,No,RE,Assigned work only,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Invoices / AR,No,No,No,No,,Assigned work only,Proposed,Billing and receivables. No business need identified in this baseline.
+Technician,Payments,No,No,No,No,,Assigned work only,Proposed,Payment records and application. No business need identified in this baseline.
+Technician,Notifications,No,Yes,No,No,R,Assigned work only,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Technician,Users,No,No,No,No,,Assigned work only,Proposed,User identities and activation. No business need identified in this baseline.
+Technician,Roles / Permissions,No,No,No,No,,Assigned work only,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Technician,Audit Log,No,No,No,No,,Assigned work only,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Warehouse Manager,Accounts,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Contacts,No,No,No,No,,Warehouse / enterprise inventory,Proposed,People related to accounts. No business need identified in this baseline.
+Warehouse Manager,Customer Locations,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Opportunities,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Sales pipeline records. No business need identified in this baseline.
+Warehouse Manager,Marketing Initiatives,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Warehouse Manager,Sales Orders,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Commissions,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Warehouse Manager,Work Orders,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Dispatch Schedule,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Technician Time / Non-work,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Warehouse Manager,Parts Catalog,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Inventory Stock,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Inventory Adjustments,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Purchase Orders,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Receiving,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Transfer Orders,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Serialized Assets,Yes,Yes,Yes,No,CRE,Warehouse / enterprise inventory,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Manager,Equipment / Installed Base,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Invoices / AR,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Billing and receivables. No business need identified in this baseline.
+Warehouse Manager,Payments,No,No,No,No,,Warehouse / enterprise inventory,Proposed,Payment records and application. No business need identified in this baseline.
+Warehouse Manager,Notifications,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Manager,Users,No,No,No,No,,Warehouse / enterprise inventory,Proposed,User identities and activation. No business need identified in this baseline.
+Warehouse Manager,Roles / Permissions,No,No,No,No,,Warehouse / enterprise inventory,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Warehouse Manager,Audit Log,No,Yes,No,No,R,Warehouse / enterprise inventory,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Accounts,No,No,No,No,,Assigned warehouse,Proposed,Customer/company master. No business need identified in this baseline.
+Warehouse Associate,Contacts,No,No,No,No,,Assigned warehouse,Proposed,People related to accounts. No business need identified in this baseline.
+Warehouse Associate,Customer Locations,No,Yes,No,No,R,Assigned warehouse,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Associate,Opportunities,No,No,No,No,,Assigned warehouse,Proposed,Sales pipeline records. No business need identified in this baseline.
+Warehouse Associate,Marketing Initiatives,No,No,No,No,,Assigned warehouse,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Warehouse Associate,Sales Orders,No,Yes,No,No,R,Assigned warehouse,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Commissions,No,No,No,No,,Assigned warehouse,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Warehouse Associate,Work Orders,No,Yes,No,No,R,Assigned warehouse,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Dispatch Schedule,No,No,No,No,,Assigned warehouse,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Warehouse Associate,Technician Time / Non-work,No,No,No,No,,Assigned warehouse,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Warehouse Associate,Parts Catalog,No,Yes,No,No,R,Assigned warehouse,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Associate,Inventory Stock,No,Yes,Yes,No,RE,Assigned warehouse,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Associate,Inventory Adjustments,No,Yes,No,No,R,Assigned warehouse,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Purchase Orders,No,Yes,No,No,R,Assigned warehouse,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Receiving,No,Yes,Yes,No,RE,Assigned warehouse,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Transfer Orders,No,Yes,Yes,No,RE,Assigned warehouse,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Serialized Assets,No,Yes,Yes,No,RE,Assigned warehouse,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Warehouse Associate,Equipment / Installed Base,No,Yes,No,No,R,Assigned warehouse,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Associate,Invoices / AR,No,No,No,No,,Assigned warehouse,Proposed,Billing and receivables. No business need identified in this baseline.
+Warehouse Associate,Payments,No,No,No,No,,Assigned warehouse,Proposed,Payment records and application. No business need identified in this baseline.
+Warehouse Associate,Notifications,No,Yes,No,No,R,Assigned warehouse,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Warehouse Associate,Users,No,No,No,No,,Assigned warehouse,Proposed,User identities and activation. No business need identified in this baseline.
+Warehouse Associate,Roles / Permissions,No,No,No,No,,Assigned warehouse,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Warehouse Associate,Audit Log,No,No,No,No,,Assigned warehouse,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Purchasing Manager,Accounts,No,No,No,No,,Enterprise procurement,Proposed,Customer/company master. No business need identified in this baseline.
+Purchasing Manager,Contacts,No,No,No,No,,Enterprise procurement,Proposed,People related to accounts. No business need identified in this baseline.
+Purchasing Manager,Customer Locations,No,No,No,No,,Enterprise procurement,Proposed,"Service, delivery, and installation sites. No business need identified in this baseline."
+Purchasing Manager,Opportunities,No,No,No,No,,Enterprise procurement,Proposed,Sales pipeline records. No business need identified in this baseline.
+Purchasing Manager,Marketing Initiatives,No,No,No,No,,Enterprise procurement,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Purchasing Manager,Sales Orders,No,Yes,No,No,R,Enterprise procurement,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Commissions,No,No,No,No,,Enterprise procurement,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Purchasing Manager,Work Orders,No,Yes,No,No,R,Enterprise procurement,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Dispatch Schedule,No,No,No,No,,Enterprise procurement,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Purchasing Manager,Technician Time / Non-work,No,No,No,No,,Enterprise procurement,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Purchasing Manager,Parts Catalog,No,Yes,No,No,R,Enterprise procurement,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Purchasing Manager,Inventory Stock,No,Yes,No,No,R,Enterprise procurement,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Purchasing Manager,Inventory Adjustments,No,Yes,No,No,R,Enterprise procurement,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Purchase Orders,Yes,Yes,Yes,No,CRE,Enterprise procurement,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Receiving,No,Yes,No,No,R,Enterprise procurement,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Transfer Orders,No,Yes,No,No,R,Enterprise procurement,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Serialized Assets,No,Yes,No,No,R,Enterprise procurement,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Equipment / Installed Base,No,Yes,No,No,R,Enterprise procurement,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Purchasing Manager,Invoices / AR,No,Yes,No,No,R,Enterprise procurement,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Purchasing Manager,Payments,No,No,No,No,,Enterprise procurement,Proposed,Payment records and application. No business need identified in this baseline.
+Purchasing Manager,Notifications,No,Yes,No,No,R,Enterprise procurement,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Purchasing Manager,Users,No,No,No,No,,Enterprise procurement,Proposed,User identities and activation. No business need identified in this baseline.
+Purchasing Manager,Roles / Permissions,No,No,No,No,,Enterprise procurement,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Purchasing Manager,Audit Log,No,No,No,No,,Enterprise procurement,Proposed,Append-only evidence of governed actions. No business need identified in this baseline.
+Accounting Manager,Accounts,No,Yes,No,No,R,Enterprise finance,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Contacts,No,Yes,No,No,R,Enterprise finance,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Customer Locations,No,Yes,No,No,R,Enterprise finance,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Opportunities,No,Yes,No,No,R,Enterprise finance,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Marketing Initiatives,No,No,No,No,,Enterprise finance,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Accounting Manager,Sales Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Commissions,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Work Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Dispatch Schedule,No,No,No,No,,Enterprise finance,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Accounting Manager,Technician Time / Non-work,No,No,No,No,,Enterprise finance,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Accounting Manager,Parts Catalog,No,Yes,No,No,R,Enterprise finance,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Inventory Stock,No,Yes,No,No,R,Enterprise finance,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Inventory Adjustments,No,Yes,No,No,R,Enterprise finance,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Purchase Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Receiving,No,Yes,No,No,R,Enterprise finance,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Transfer Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Serialized Assets,No,Yes,No,No,R,Enterprise finance,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Equipment / Installed Base,No,Yes,No,No,R,Enterprise finance,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Invoices / AR,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Payments,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Payment records and application. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Accounting Manager,Notifications,No,Yes,No,No,R,Enterprise finance,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Accounting Manager,Users,No,No,No,No,,Enterprise finance,Proposed,User identities and activation. No business need identified in this baseline.
+Accounting Manager,Roles / Permissions,No,No,No,No,,Enterprise finance,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Accounting Manager,Audit Log,No,Yes,No,No,R,Enterprise finance,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Accounts,No,Yes,No,No,R,Enterprise finance,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Contacts,No,Yes,No,No,R,Enterprise finance,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Customer Locations,No,Yes,No,No,R,Enterprise finance,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Opportunities,No,Yes,No,No,R,Enterprise finance,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Marketing Initiatives,No,No,No,No,,Enterprise finance,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Controller,Sales Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Commissions,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Work Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Dispatch Schedule,No,No,No,No,,Enterprise finance,Proposed,Technician schedule and assignment. No business need identified in this baseline.
+Controller,Technician Time / Non-work,No,No,No,No,,Enterprise finance,Proposed,Labor and non-work time records. No business need identified in this baseline.
+Controller,Parts Catalog,No,Yes,No,No,R,Enterprise finance,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Inventory Stock,No,Yes,No,No,R,Enterprise finance,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Inventory Adjustments,No,Yes,No,No,R,Enterprise finance,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Purchase Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Receiving,No,Yes,No,No,R,Enterprise finance,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Transfer Orders,No,Yes,No,No,R,Enterprise finance,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Serialized Assets,No,Yes,No,No,R,Enterprise finance,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Equipment / Installed Base,No,Yes,No,No,R,Enterprise finance,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Invoices / AR,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Payments,Yes,Yes,Yes,No,CRE,Enterprise finance,Proposed,"Payment records and application. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Controller,Notifications,No,Yes,No,No,R,Enterprise finance,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Controller,Users,No,No,No,No,,Enterprise finance,Proposed,User identities and activation. No business need identified in this baseline.
+Controller,Roles / Permissions,No,No,No,No,,Enterprise finance,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Controller,Audit Log,No,Yes,No,No,R,Enterprise finance,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Manager,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Customer Locations,No,Yes,No,No,R,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Shop Manager,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Shop Manager,Sales Orders,No,Yes,No,No,R,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Manager,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Shop Manager,Work Orders,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Manager,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Parts Catalog,No,Yes,No,No,R,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Inventory Stock,No,Yes,No,No,R,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Shop Manager,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Shop Manager,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Shop Manager,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Shop Manager,Serialized Assets,No,Yes,No,No,R,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Manager,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Invoices / AR,No,Yes,No,No,R,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Manager,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Shop Manager,Notifications,No,Yes,No,No,R,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Manager,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Shop Manager,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Shop Manager,Audit Log,No,Yes,No,No,R,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Associate,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Customer Locations,No,Yes,No,No,R,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Shop Associate,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Shop Associate,Sales Orders,No,Yes,No,No,R,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Associate,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Shop Associate,Work Orders,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Associate,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Parts Catalog,No,Yes,No,No,R,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Inventory Stock,No,Yes,No,No,R,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Shop Associate,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Shop Associate,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Shop Associate,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Shop Associate,Serialized Assets,No,Yes,No,No,R,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Associate,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Invoices / AR,No,Yes,No,No,R,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Shop Associate,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Shop Associate,Notifications,No,Yes,No,No,R,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Shop Associate,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Shop Associate,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Shop Associate,Audit Log,No,Yes,No,No,R,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Accounts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Contacts,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Customer Locations,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Opportunities,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Sales pipeline records. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Marketing Initiatives,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Campaign/initiative tags and activity. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Sales Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Commissions,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Calculated and approved sales compensation. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Work Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Parts Catalog,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Inventory Stock,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Inventory Adjustments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Counts, corrections, and governed adjustments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Purchase Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Procurement commitments. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Receiving,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Receipt and intake transactions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Transfer Orders,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Warehouse/mobile/location movements. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Serialized Assets,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Invoices / AR,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Payments,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Payment records and application. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+General Manager,Notifications,Yes,Yes,Yes,No,CRE,Enterprise,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+General Manager,Users,Yes,Yes,Yes,Yes,CRED,Enterprise,Proposed,User identities and activation. Delete reserved for master/configuration cleanup; log the action and require confirmation.
+General Manager,Roles / Permissions,Yes,Yes,Yes,Yes,CRED,Enterprise,Proposed,"Role definitions, grants, and protected access. Delete reserved for master/configuration cleanup; log the action and require confirmation."
+General Manager,Audit Log,No,Yes,No,No,R,Enterprise,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Associate,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Customer Locations,No,Yes,No,No,R,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Parts Associate,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Parts Associate,Sales Orders,No,Yes,No,No,R,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Associate,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Parts Associate,Work Orders,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Associate,Dispatch Schedule,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Technician Time / Non-work,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Parts Catalog,No,Yes,No,No,R,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Inventory Stock,No,Yes,No,No,R,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Parts Associate,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Parts Associate,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Parts Associate,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Parts Associate,Serialized Assets,No,Yes,No,No,R,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Associate,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Invoices / AR,No,Yes,No,No,R,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Associate,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Parts Associate,Notifications,No,Yes,No,No,R,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Associate,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Parts Associate,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Parts Associate,Audit Log,No,Yes,No,No,R,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Support Staff,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Customer Locations,No,No,No,No,,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Support Staff,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Support Staff,Sales Orders,No,No,No,No,,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Support Staff,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Support Staff,Work Orders,No,No,No,No,,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Support Staff,Dispatch Schedule,No,No,No,No,,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Technician Time / Non-work,No,No,No,No,,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Parts Catalog,No,No,No,No,,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Inventory Stock,No,No,No,No,,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Support Staff,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Support Staff,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Support Staff,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Support Staff,Serialized Assets,No,No,No,No,,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Support Staff,Equipment / Installed Base,No,No,No,No,,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Invoices / AR,No,No,No,No,,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Support Staff,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Support Staff,Notifications,No,Yes,No,No,R,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Support Staff,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Support Staff,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Support Staff,Audit Log,No,No,No,No,,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Manager,Accounts,No,Yes,No,No,R,Service organization,Proposed,"Customer/company master. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Contacts,No,Yes,No,No,R,Service organization,Proposed,"People related to accounts. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Customer Locations,No,Yes,No,No,R,Service organization,Proposed,"Service, delivery, and installation sites. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Opportunities,No,No,No,No,,Service organization,Proposed,Sales pipeline records. No business need identified in this baseline.
+Parts Manager,Marketing Initiatives,No,No,No,No,,Service organization,Proposed,Campaign/initiative tags and activity. No business need identified in this baseline.
+Parts Manager,Sales Orders,No,Yes,No,No,R,Service organization,Proposed,"Committed customer orders. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Manager,Commissions,No,No,No,No,,Service organization,Proposed,Calculated and approved sales compensation. No business need identified in this baseline.
+Parts Manager,Work Orders,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Service/install job lifecycle. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Manager,Dispatch Schedule,No,Yes,Yes,No,RE,Service organization,Proposed,"Technician schedule and assignment. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Technician Time / Non-work,No,Yes,Yes,No,RE,Service organization,Proposed,"Labor and non-work time records. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Parts Catalog,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Part master data. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Inventory Stock,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"On-hand, reserved, and available stock. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Inventory Adjustments,No,No,No,No,,Service organization,Proposed,"Counts, corrections, and governed adjustments. No business need identified in this baseline."
+Parts Manager,Purchase Orders,No,No,No,No,,Service organization,Proposed,Procurement commitments. No business need identified in this baseline.
+Parts Manager,Receiving,No,No,No,No,,Service organization,Proposed,Receipt and intake transactions. No business need identified in this baseline.
+Parts Manager,Transfer Orders,No,No,No,No,,Service organization,Proposed,Warehouse/mobile/location movements. No business need identified in this baseline.
+Parts Manager,Serialized Assets,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Serial-controlled identity and custody. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Manager,Equipment / Installed Base,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Customer equipment and service history. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Invoices / AR,Yes,Yes,Yes,No,CRE,Service organization,Proposed,"Billing and receivables. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."
+Parts Manager,Payments,No,No,No,No,,Service organization,Proposed,Payment records and application. No business need identified in this baseline.
+Parts Manager,Notifications,Yes,Yes,No,No,CR,Service organization,Proposed,"Operational alerts and attention items. Access is subject to role scope, segregation of duties, and audit logging."
+Parts Manager,Users,No,No,No,No,,Service organization,Proposed,User identities and activation. No business need identified in this baseline.
+Parts Manager,Roles / Permissions,No,No,No,No,,Service organization,Proposed,"Role definitions, grants, and protected access. No business need identified in this baseline."
+Parts Manager,Audit Log,No,Yes,No,No,R,Service organization,Proposed,"Append-only evidence of governed actions. Use cancel, void, reverse, deactivate, or corrective transaction; hard delete is not permitted."

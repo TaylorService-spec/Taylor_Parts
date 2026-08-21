@@ -92,8 +92,6 @@
     "account.record.read",
     "account.record.update",
     "audit.event.read",
-    "crm.activity.create",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -124,8 +122,6 @@
     "account.record.read",
     "account.record.update",
     "audit.event.read",
-    "crm.activity.create",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -151,6 +147,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -170,8 +167,6 @@
     "account.record.read",
     "account.record.update",
     "audit.event.read",
-    "crm.activity.create",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -203,6 +198,7 @@
     "salesOrder.write"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Equipment / Installed Base",
     "Notifications"
@@ -218,8 +214,6 @@
     "account.record.create",
     "account.record.read",
     "account.record.update",
-    "crm.activity.create",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -250,6 +244,7 @@
     "salesOrder.write"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Equipment / Installed Base",
     "Notifications"
@@ -263,7 +258,6 @@
    "label": "Marketing Manager",
    "directCapabilities": [
     "account.record.read",
-    "crm.activity.read",
     "opportunity.read",
     "salesOrder.read"
    ],
@@ -278,6 +272,7 @@
     "salesOrder.read"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Notifications"
    ],
@@ -290,7 +285,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -304,7 +298,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -315,6 +308,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -326,7 +320,6 @@
    "label": "Dispatcher",
    "directCapabilities": [
     "account.record.read",
-    "crm.activity.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -340,7 +333,6 @@
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
     "account.record.read",
-    "crm.activity.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -352,6 +344,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -505,7 +498,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -525,7 +517,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -542,6 +533,7 @@
     "warehouse.transferOrder.read"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Equipment / Installed Base",
     "Notifications"
@@ -555,7 +547,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -575,7 +566,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -592,6 +582,7 @@
     "warehouse.transferOrder.read"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Equipment / Installed Base",
     "Notifications"
@@ -603,15 +594,14 @@
   "supportStaff": {
    "label": "Support Staff",
    "directCapabilities": [
-    "account.record.read",
-    "crm.activity.read"
+    "account.record.read"
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
-    "crm.activity.read"
+    "account.record.read"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Notifications"
    ],
    "unmodelledObjects": []
@@ -621,7 +611,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -638,7 +627,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -653,6 +641,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -665,22 +654,15 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
-    "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
-    "inventory.stock.receive",
     "inventory.transaction.read",
-    "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
-    "warehouse.transferOrder.read",
     "workOrder.create",
     "workOrder.transition"
    ],
@@ -690,28 +672,22 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
-    "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
     "inventory.catalog.manage",
     "inventory.catalog.read",
     "inventory.location.display.read",
     "inventory.serializedAsset.read",
-    "inventory.stock.receive",
     "inventory.transaction.read",
-    "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
-    "warehouse.transferOrder.read",
     "workOrder.create",
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -724,7 +700,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -738,7 +713,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -749,6 +723,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -761,7 +736,6 @@
    "directCapabilities": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -775,7 +749,6 @@
    "effectiveBaseline": [
     "account.record.read",
     "audit.event.read",
-    "crm.activity.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -786,6 +759,7 @@
     "workOrder.transition"
    ],
    "ruleGovernedObjects": [
+    "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
     "Equipment / Installed Base",
@@ -819,11 +793,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1178,11 +1149,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1537,11 +1505,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Team / Enterprise reporting",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1872,11 +1837,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Own records / assigned territory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2203,10 +2165,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise marketing",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2523,10 +2483,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2857,10 +2815,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Assigned service region",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3190,7 +3146,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "RULE_GOVERNED",
    "scope": "Assigned work only",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3513,7 +3469,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "RULE_GOVERNED",
    "scope": "Warehouse / enterprise inventory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3845,7 +3801,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "RULE_GOVERNED",
    "scope": "Assigned warehouse",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4174,7 +4130,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise procurement",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4506,10 +4462,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4849,10 +4803,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5192,10 +5144,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5526,10 +5476,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5862,11 +5810,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6219,10 +6164,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6536,8 +6479,8 @@
    "businessRoleLabel": "Support Staff",
    "object": "Accounts",
    "accessCode": "R",
-   "accessCodeInWorkbook": "",
-   "accessCodeAgrees": false,
+   "accessCodeInWorkbook": "R",
+   "accessCodeAgrees": true,
    "capabilityIds": [
     "account.record.read"
    ],
@@ -6551,12 +6494,10 @@
    "businessRoleLabel": "Support Staff",
    "object": "Contacts",
    "accessCode": "R",
-   "accessCodeInWorkbook": "",
-   "accessCodeAgrees": false,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "accessCodeInWorkbook": "R",
+   "accessCodeAgrees": true,
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6869,10 +6810,8 @@
    "accessCode": "R",
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "crm.activity.read"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "RULE_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -7024,12 +6963,10 @@
    "businessRoleId": "partsManager",
    "businessRoleLabel": "Parts Manager",
    "object": "Inventory Adjustments",
-   "accessCode": "CRE",
-   "accessCodeInWorkbook": "CRE",
+   "accessCode": "",
+   "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "inventory.action.read"
-   ],
+   "capabilityIds": [],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
@@ -7039,14 +6976,10 @@
    "businessRoleId": "partsManager",
    "businessRoleLabel": "Parts Manager",
    "object": "Purchase Orders",
-   "accessCode": "CRE",
-   "accessCodeInWorkbook": "CRE",
+   "accessCode": "",
+   "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate"
-   ],
+   "capabilityIds": [],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
@@ -7056,12 +6989,10 @@
    "businessRoleId": "partsManager",
    "businessRoleLabel": "Parts Manager",
    "object": "Receiving",
-   "accessCode": "CRE",
-   "accessCodeInWorkbook": "CRE",
+   "accessCode": "",
+   "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "inventory.stock.receive"
-   ],
+   "capabilityIds": [],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",
@@ -7071,12 +7002,10 @@
    "businessRoleId": "partsManager",
    "businessRoleLabel": "Parts Manager",
    "object": "Transfer Orders",
-   "accessCode": "CRE",
-   "accessCodeInWorkbook": "CRE",
+   "accessCode": "",
+   "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "warehouse.transferOrder.read"
-   ],
+   "capabilityIds": [],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
    "designStatus": "Proposed",

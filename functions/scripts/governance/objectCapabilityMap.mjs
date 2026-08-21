@@ -38,9 +38,19 @@ export const UNMODELLED_OBJECTS = Object.freeze(["Marketing Initiatives", "Commi
 
 export const OBJECT_CAPABILITY_MAP = Object.freeze({
   "Accounts": { R: ["account.record.read"], C: ["account.record.create"], E: ["account.record.update"], D: [] },
-  // crm.activity.* is the nearest governed surface for contact interaction; the contact RECORD itself
-  // is Rules-governed, which is why this object appears in both lists.
-  "Contacts": { R: ["crm.activity.read"], C: ["crm.activity.create"], E: [], D: [] },
+  // CORRECTED: Contacts maps to NOTHING. crm.activity.* is ACTIVITY LOGGING -- calls, notes, touches
+  // recorded against a customer. The contact RECORD is a different object, and it is Rules-governed.
+  //
+  // The earlier mapping treated them as the same thing, which would have granted crm.activity.read
+  // and .create to nearly every role, because the matrix gives almost everyone Contacts R. That
+  // silently overrides an explicit Owner ruling of 2026-08-19 confining crm.activity.* to
+  // crmActivityContributor -- a governance decision reversed by a spreadsheet column.
+  //
+  // This is the THIRD mapping of this shape to be caught here: Installed Base -> model catalog,
+  // Inventory Adjustments -> cycle counts, and now Contacts -> activity logging. The pattern is
+  // always the same -- a business object mapped onto a capability that operates on something
+  // RELATED BUT DIFFERENT. When no capability governs the object itself, the honest mapping is empty.
+  "Contacts": { R: [], C: [], E: [], D: [] },
   "Customer Locations": { R: [], C: [], E: [], D: [] },
   "Opportunities": { R: ["opportunity.read"], C: ["opportunity.write", "opportunity.createSalesOrder"], E: ["opportunity.write"], D: [] },
   "Marketing Initiatives": { R: [], C: [], E: [], D: [] },

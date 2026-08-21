@@ -1,0 +1,5 @@
+Kind,Authority A,Authority B,Rationale
+MUTUALLY_EXCLUSIVE,inventoryCycleCountCounter,inventoryCycleCountReconciler,cycle count: counter may not approve their own material variance (DECISIONS #111)
+MUTUALLY_EXCLUSIVE,inventoryBinAdministrator,inventoryPutAwayOperator,the person defining where stock may live is not the person filling those locations unobserved
+DISTINCT_BUT_COMBINABLE,inventory.catalog.alias.read | inventory.catalog.manage | inventory.catalog.activate,,catalog: lookup vs manage vs activate must stay independently grantable
+DISTINCT_BUT_COMBINABLE,inventory.returns.intake | (disposition not implemented),,returns: intake is not disposition (DECISIONS #118). Disposition has no capability -- FUNCTIONAL_GAP.
