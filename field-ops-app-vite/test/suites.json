@@ -816,6 +816,10 @@
     {
       "file": "test/putAwaySession.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/pickSession.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -17,6 +17,7 @@ import LookupScan from "./LookupScan.jsx";
 import TransferScan from "./TransferScan.jsx";
 import CycleCountScan from "./CycleCountScan.jsx";
 import PutAwayScan from "./PutAwayScan.jsx";
+import PickScan from "./PickScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -126,6 +127,20 @@ export default function ScanWorkspace({ deps }) {
         </button>
         {/* Records WHERE, never WHAT: a stow changes no balance (DECISIONS #116). */}
         <PutAwayScan deps={deps?.putAwayDeps} />
+      </div>
+    );
+  }
+
+  if (active === SCAN_WORKFLOW.PICK) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Pick" />
+        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
+          ← All scanning workflows
+        </button>
+        {/* A pick is a placement with a reason. It reserves nothing (DECISIONS #116 + the existing
+            DISPATCHED -> reserveParts lifecycle effect). */}
+        <PickScan deps={deps?.pickDeps} />
       </div>
     );
   }

@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–L merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–M merged.
 
 ---
 
@@ -43,7 +43,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **J2** — warehouse-level cycle count by scan | MERGED (#1363) | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
 | **J3** — shared scanner input hardening | MERGED (#1364) | COMPLETE | n/a — client input layer only | n/a | n/a |
 | **K** — descriptive bin registry | MERGED (#1365) | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
-| **L** — put-away | This change | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
+| **L** — put-away | MERGED (#1366) | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
+| **M** — pick and stage | This change | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
 
 ### What "not deployed" means concretely
 
@@ -743,3 +744,54 @@ disposition, and tests forbid the vocabulary in both.
 `inventory.placement.record` is `active: false` and granted to no Role, so every stow resolves
 `permission-denied`. Put-away is launched from a receipt or a lookup; arriving without a starting
 part, the screen explains what it needs rather than showing an empty form.
+
+## 16. Phase M — pick and stage
+
+Pick a line off the job, scan what you gather, stage it where the driver will find it.
+
+### The reconciliation that shaped this: picking reserves nothing
+
+Reservation in this platform is a **Work Order lifecycle effect**, not an operator action:
+
+| Transition | Effect |
+| --- | --- |
+| `DISPATCHED` | `reserveParts` — writes the RESERVED ledger entries |
+| `COMPLETED` | `consumeParts` |
+| `CANCELLED` | `releaseParts` |
+
+There is **no operator-invokable reserve command**, and inventing one would decide a commitment
+policy nobody has made: whether picked stock is still promisable to other orders.
+
+So a pick is exactly what a put-away is — stock moving to a place inside the warehouse it already
+belongs to, recorded as a **placement**, changing no balance — with one extra fact: the demand it was
+gathered for. It reuses the Phase L command, additively (`pickedForWorkOrderId`), rather than adding
+a second idea of what a placement is.
+
+**The honest consequence, which the screen states plainly rather than hides:** picked stock stays
+available to other jobs until the Work Order dispatches, because availability is ledger-derived and
+picking writes no ledger. That is a real limitation and a candidate for a future policy decision — it
+is not a bug to work around by writing a reservation this surface has no authority for.
+
+### Demand is read, never authored
+
+Lines come from the Work Order's own `inventorySnapshot`, authored by `setWorkOrderPartsPlan`. No
+second demand system. A snapshot row without a usable part or a positive planned quantity is
+**excluded** rather than rendered as a zero line an operator might pick against, and a test asserts
+the plan object is byte-identical after a pick — **a shortage is reported, never resolved by quietly
+lowering what the job asked for.**
+
+### Short is a real, recordable outcome
+
+A warehouse holding four of the five a job asked for can stage the four. The button says what it is
+doing — *"Stage 4 — short by 1"* — so staging short is a deliberate act rather than something that
+happened by accident, and the shortfall stays visible on the job list afterwards rather than
+disappearing when the picker moves on.
+
+**Over-picking is refused.** Taking more than the job needs is stock walking off a shelf for no
+recorded reason, and the operator sees it immediately.
+
+### State today
+
+Picking needs the same two capabilities as put-away — `inventory.placement.record` and
+`inventory.location.bin.read` — both `active: false` and granted to no Role. Staging is not a
+separate workflow: it is how a pick ends.

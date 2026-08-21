@@ -101,6 +101,17 @@ interface PutAwayRequest {
   readonly quantity?: number;
   readonly serialNumbers?: readonly string[];
   readonly idempotencyKey: string;
+  /**
+   * The demand this placement was gathered FOR, when it is a pick rather than a stow (Phase M).
+   *
+   * A pick is the same act as a put-away — stock moving to a place inside the warehouse it already
+   * belongs to — with one extra fact: why it went there. So it is the same record with a tag, not a
+   * second command with its own idea of what a placement is.
+   *
+   * IT STILL RESERVES NOTHING. Reservation is a Work Order LIFECYCLE effect (DISPATCHED ->
+   * reserveParts), not an operator action, and picking does not pre-empt it.
+   */
+  readonly pickedForWorkOrderId?: string;
 }
 
 /** Shape validation only. What is TRUE about the bin and the serials is checked in the transaction. */
@@ -133,6 +144,7 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
         warehouseId: d.warehouseId, partId: d.partId, idempotencyKey: d.idempotencyKey,
         binCode: binCode.value.code,
         serialNumbers: (d.serialNumbers as string[]).map((s) => s.trim()),
+        ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
       },
     };
   }
@@ -145,6 +157,7 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
     value: {
       warehouseId: d.warehouseId, partId: d.partId, idempotencyKey: d.idempotencyKey,
       binCode: binCode.value.code, quantity: d.quantity,
+      ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
     },
   };
 }
@@ -200,6 +213,10 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       placedAt: now,
       placedBy: deps.actor.id,
       idempotencyKey: req.idempotencyKey,
+      // Present only on a PICK. Its absence is what makes a record a plain stow, so it is written
+      // as null rather than omitted -- a missing field and a deliberate "not picked for anything"
+      // must not be the same thing to a later reader.
+      pickedForWorkOrderId: req.pickedForWorkOrderId ?? null,
       schemaVersion: 1,
     };
 

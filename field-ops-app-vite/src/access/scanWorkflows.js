@@ -30,6 +30,7 @@ export const SCAN_WORKFLOW = Object.freeze({
   TRANSFER: "TRANSFER",
   CYCLE_COUNT: "CYCLE_COUNT",
   PUT_AWAY: "PUT_AWAY",
+  PICK: "PICK",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -172,6 +173,17 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.PUT_AWAY, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
+  // ── Pick and stage (Phase M) ────────────────────────────────────────────────────────────────
+  //
+  // The SAME two capabilities put-away needs, because a pick IS a placement: stock moving to a place
+  // inside the warehouse it already belongs to, recorded with the demand it was gathered for.
+  // Picking reserves nothing, so it needs no reservation authority -- there is none to need.
+  if (holds(PLACEMENT_RECORD_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.PICK });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.PICK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -205,6 +217,7 @@ export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.TRANSFER]: "Send or receive a transfer",
   [SCAN_WORKFLOW.CYCLE_COUNT]: "Count what is on the shelf",
   [SCAN_WORKFLOW.PUT_AWAY]: "Put stock away",
+  [SCAN_WORKFLOW.PICK]: "Pick and stage for a job",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
 });
@@ -218,6 +231,8 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
     "Scan everything you can find of one part at one location, and record what you saw. Counting changes nothing on its own.",
   [SCAN_WORKFLOW.PUT_AWAY]:
     "Record which bin you stowed stock in. It notes where the stock is, not what there is — counts do not change.",
+  [SCAN_WORKFLOW.PICK]:
+    "Gather what a job asked for and stage it. Shortages are recorded, not hidden. Picking does not hold the stock.",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]:
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
@@ -250,6 +265,9 @@ const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
   }),
   [SCAN_WORKFLOW.PUT_AWAY]: Object.freeze({
     [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to put stock away. An administrator can grant it.",
+  }),
+  [SCAN_WORKFLOW.PICK]: Object.freeze({
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to pick and stage stock. An administrator can grant it.",
   }),
 });
 
