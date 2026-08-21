@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N and P.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P and Q.
 
 ---
 
@@ -47,7 +47,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **M** — pick and stage | MERGED (#1367) | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
 | **O** — warehouse ↔ truck handoff | MERGED (#1368) | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
 | **N** — Warehouse/Parts mobile UX | MERGED (#1369) | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
-| **P** — technician inventory | This change | Verified, not rebuilt | **No new authority** | **NOT DEPLOYED** | Existing transfer + cycle-count capabilities |
+| **P** — technician inventory | MERGED (#1370) | Verified, not rebuilt | **No new authority** | **NOT DEPLOYED** | Existing transfer + cycle-count capabilities |
+| **Q** — returns intake | This change | n/a (no UI yet) | **NEW** — `inventory_returns` + `recordReturnIntake` | **NOT DEPLOYED** | `inventory.returns.intake` inert, granted to nobody |
 
 ### What "not deployed" means concretely
 
@@ -944,3 +945,51 @@ so none is offered and a test enforces that.
 
 Neither is a scanner-program gap: both belong to programs of their own, and are recorded in the
 backlog rather than improvised here.
+
+## 20. Phase Q — returns intake
+
+### The invariant, from DECISIONS #118
+
+**A return must not automatically restore inventory to sellable stock.**
+
+Intake and disposition are separate authorities. Intake says *"this arrived back, in this shape, for
+this reason"*. Disposition — return to stock, inspect/quarantine, repair, vendor RMA, scrap — decides
+what happens to it, and **none of those decisions exists yet**.
+
+So the command writes a return record and **no ledger event**. This is precisely why `RETURNED`, a
+schema-legal operational movement type, still has no writer anywhere in the platform: writing one at
+intake *would be* the automatic restock #118 forbids. Tests assert the module cannot name `RETURNED`,
+the ledger, any balance function, or the serialized registry.
+
+A returned **serialized** unit is not made AVAILABLE again either. Whether it may be sold is
+disposition's decision, and changing its state at intake would answer that question by accident.
+
+### Every return awaits disposition
+
+There is exactly **one** state a return can be created in, `AWAITING_DISPOSITION`, and no transition
+out of it in this module. That is not a placeholder for something half-built: it is the honest shape
+of a process whose second half is a business decision nobody has made.
+
+**No disposition capability is registered**, and a catalog test enforces that — registering one
+before the policy exists would invite something to be built against an authority whose meaning nobody
+has settled.
+
+### Condition is an observation, not a decision
+
+*"The box is crushed"* is something the person at the dock can see. *"Therefore scrap it"* is policy.
+Intake captures the first and refuses to imply the second: a test asserts behaviour never branches on
+a condition **value**.
+
+`UNKNOWN` is first-class, because a sealed carton's contents genuinely are unknown at the dock. And
+an **unrecognized** condition is refused rather than coerced to `UNKNOWN` — UNKNOWN means "nobody
+could tell", a typo means the caller is broken, and turning one into the other would record a
+deliberate observation that was never made.
+
+### State today
+
+`inventory.returns.intake` is `active: false` and granted to no Role. No UI yet — the intake surface
+belongs with a returns desk, which is a different workflow from the scanner floor.
+
+**Recorded future command:** a disposition authority, once the policy exists. Its options are known
+(return to stock, inspect/quarantine, repair, vendor RMA, scrap); which apply, and who may choose
+them, is not.

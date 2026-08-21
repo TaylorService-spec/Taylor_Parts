@@ -302,6 +302,13 @@ export {
   resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
 } from "./partMaster/partAliasCallables";
 
+// --- Returns INTAKE (Scanner Phase Q; DECISIONS #118) ---
+// Intake and disposition are SEPARATE authorities. This records that something came back and writes
+// NO ledger event -- which is exactly why `RETURNED` still has no writer. Gated on
+// inventory.returns.intake, registered INERT and granted to nobody. `inventory_returns` has no Rules
+// match block, so it is deny-all to every client. EXPORT != DEPLOY.
+export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryReturns/returnCallables";
+
 // --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
 // quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read
