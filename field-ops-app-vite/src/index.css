@@ -3601,7 +3601,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    contrast ratio is introduced here. */
 
 /* -- Manufacturers.jsx -- */
-.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+/* flex-wrap: a space-between row with no wrap has nowhere to put its second child once the two no
+   longer fit, so the action button simply left the header -- measured 11px past its own container at
+   320px. Wrapping is what every other header row in this file already does. */
+.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .fo-mfr__title { margin: 0; }
 .fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
 .fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }

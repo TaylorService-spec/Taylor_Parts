@@ -244,8 +244,9 @@ try {
     // That is accumulation, not a property of those pages.
     //
     // Recovery already works; this simply stops paying for it. A fresh session every 10 routes
-    // costs one login and removes the crash window entirely.
-    if (routeIndex > 0 && routeIndex % 10 === 0) {
+    // Every 5 routes. At 10 the browser still died twice per full run, on DIFFERENT routes each
+    // time -- which is the proof that it is accumulation and not a property of any page.
+    if (routeIndex > 0 && routeIndex % 5 === 0) {
       try { await openSession(); } catch (e) { aborted = `could not recycle the session: ${String(e && e.message).slice(0, 120)}`; break; }
     }
     routeIndex += 1;
