@@ -2375,6 +2375,25 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    and re-discovering the next is how a dock task turns into four trips. */
 .fo-transfer-scan__blockers { margin: 0; font-size: 13.5px; }
 
+/* ---------------------------------------------------------------------------
+   CYCLE COUNT BY SCAN
+   ---------------------------------------------------------------------------
+   Blind by design. The tally is the ONLY number on the screen while counting --
+   deliberately large, because it is the one thing the counter checks against the
+   shelf, and deliberately alone, because an expected figure beside it would tell
+   them when to stop looking.
+   ------------------------------------------------------------------------- */
+.fo-count-scan { display: flex; flex-direction: column; gap: 14px; }
+.fo-count-scan__tally { margin: 0; font-size: 22px; font-weight: 700; color: var(--color-brand-primary); }
+.fo-count-scan__start { display: flex; flex-direction: column; gap: 12px; }
+.fo-count-scan__start label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--color-text-muted); }
+.fo-count-scan__start input,
+.fo-count-scan__start select {
+  min-height: 48px; padding: 12px 14px; font-size: 16px; /* 16px avoids iOS zoom-on-focus */
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated); color: var(--color-text-primary);
+}
+
 @media (min-width: 700px) {
   /* Label beside value once there is room, which is how a spec sheet reads. */
   .fo-lookup__row { grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; }

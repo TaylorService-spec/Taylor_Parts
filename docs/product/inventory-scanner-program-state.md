@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phase J1 (transfers by scan) merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–J2 merged.
 
 ---
 
@@ -40,6 +40,7 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **H** — complete read-only lookup | MERGED (#1359) | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
 | **I** — location reconciliation | ANALYSIS MERGED (#1360) | n/a | n/a | n/a | Resolved by DECISIONS #116 |
 | **J1** — transfers by scan | This change | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
+| **J2** — warehouse-level cycle count by scan | This change | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
 
 ### What "not deployed" means concretely
 
@@ -505,3 +506,53 @@ sentence.**
 a submission resolves `permission-denied` server-side. The screen says exactly that: *"You are not
 authorized to move this transfer. The transfer commands are built and governed; they have not been
 granted or switched on."*
+
+## 12. Phase J2 — warehouse-level cycle count by scan
+
+Pick what you are counting and where, scan every unit you can find, and submit what you saw.
+
+### The count is blind, and stays blind
+
+DECISIONS #111. The server snapshots the expected quantity at CREATE time and does not return it;
+the first response that carries it is the SUBMIT response, by which point the counted value is
+already recorded and there is nothing left to anchor.
+
+So **nothing** in the counting session accepts, stores, derives or displays an expected figure — a
+test greps the module for `expectedQuantity`, `variance` and `discrepanc*` and requires their
+absence, and another asserts the screen renders no expected value even when the create response
+carries one. The only number on the screen while counting is what has been scanned.
+
+The screen also says *why* it is blind, so it reads as a control rather than as missing information.
+
+### Observation is not adjustment
+
+Submitting records what was seen. It moves no stock. The ledger correction happens only when a
+manager **reconciles** — a separate capability and a separate screen, because a counter cannot
+approve their own material variance. There is deliberately **no reconcile path** in this module or
+this surface, asserted structurally.
+
+Eligibility needs `inventory.cycleCount.create` **and** `.submit`, and deliberately does **not**
+consult `.reconcile`: offering counting on the strength of the approval grant would put it behind the
+wrong authority entirely.
+
+### A count of zero is the finding
+
+An empty shelf is submittable with no scans at all. Requiring a scan first would make "there are none
+here" unreportable — which is precisely the result a cycle count most needs to surface.
+
+### Serialized counts stay a list
+
+`countedSerialNumbers` is never collapsed to a number: the server reports **missing** and
+**unexpected** serials separately, and netting them would hide that two different units are involved.
+The result screen keeps them separate too.
+
+### Bin-level counting is still future
+
+Per DECISIONS #116 a bin is descriptive, not a custody location, and the cycle-count command accepts
+WAREHOUSE and MOBILE only. Counting is therefore at the authoritative warehouse/truck level, which is
+exactly where the expected-quantity authority computes.
+
+### State today
+
+`inventory.cycleCount.create` and `.submit` are registered `active: false` and granted to no Role, so
+a real call resolves `permission-denied` and the screen says so.
