@@ -97,7 +97,10 @@ function ByObject({ roles }) {
         Who can do what to each object. The number is how many roles can perform that verb — select
         an object to see the capabilities behind each verb and exactly which roles hold them.
       </p>
-      <table className="fo-table">
+      {/* Wrapped in the existing .fo-table-scroll utility: unwrapped, this table measured 370px
+          inside a 292px region at 320px and scrolled the whole DOCUMENT sideways. A wide table on a
+          desktop admin surface is fine; a page that pans is not. */}
+      <div className="fo-table-scroll"><table className="fo-table">
         <thead>
           <tr>
             <th scope="col">Object</th>
@@ -198,7 +201,7 @@ function ByObject({ roles }) {
             return cells;
           })}
         </tbody>
-      </table>
+      </table></div>
     </>
   );
 }
@@ -342,7 +345,7 @@ export default function AdminObjects() {
       )}
 
       {role && (
-        <table className="fo-table">
+        <div className="fo-table-scroll"><table className="fo-table">
           <thead>
             <tr>
               <th scope="col">Object</th>
@@ -372,7 +375,7 @@ export default function AdminObjects() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {/* The write path is stated, not hidden behind a control that would do nothing. */}

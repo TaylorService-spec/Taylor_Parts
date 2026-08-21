@@ -65,8 +65,24 @@ const PROBE = (MOBILE_SURFACE) => {
     const m = text.match(pat);
     if (m) push("ERROR_TEXT", m[0]);
   }
-  const rawId = text.match(/\b[A-Za-z0-9]{20}\b/);
-  if (rawId && !/^[0-9]+$/.test(rawId[0])) push("RAW_ID", rawId[0]);
+  // RAW_ID -- A FIRESTORE KEY IS NOT MERELY A LONG WORD, which is what this used to test.
+  //
+  // The first version matched any 20-character alphanumeric token and duly reported
+  // "postPurchasingUpdate" on /administration/roles-permissions at all five widths. That is a
+  // CAPABILITY ID: it is supposed to be on that screen, it is the screen's subject matter, and a
+  // sweep that calls it a defect is telling the reader to remove the content the page exists to show.
+  //
+  // The fifth false-positive family in this file, and the same root cause as the other four: the
+  // check measured a SHAPE and inferred an INTENT it cannot see. A 20-char word is a shape shared by
+  // random keys and ordinary camelCase identifiers alike.
+  //
+  // Firestore auto-ids are 20 characters drawn from a 62-character alphabet, so a digit appears in
+  // roughly 97% of them; hand-written camelCase identifiers essentially never carry one. Requiring a
+  // digit keeps the check pointed at random keys and lets the vocabulary this app is built to
+  // display through. It will miss the ~3% of genuine ids that happen to be all-letters -- the right
+  // trade, because a false positive here asks someone to delete correct content.
+  const rawId = (text.match(/[A-Za-z0-9]{20}/g) || []).find((t) => /[0-9]/.test(t) && /[a-z]/.test(t) && /[A-Z]/.test(t));
+  if (rawId) push("RAW_ID", rawId);
 
   const controls = [...main.querySelectorAll("button,a,input,select,textarea,[role=button],[role=tab]")].filter(visible);
   for (const el of controls) {
@@ -200,6 +216,7 @@ let aborted = null;
 
 const findings = [];
 let visited = 0, failedNav = 0, attempted = 0;
+let routeIndex = 0;
 
 try {
   await openSession();
@@ -218,6 +235,20 @@ try {
 
   for (const r of routes) {
     if (aborted) break;
+    // RECYCLE BEFORE IT CRASHES, rather than only recovering after.
+    //
+    // A full run crashed the browser FOUR times, and each crash cost two visits: the goto that hit
+    // it (NAV_FAILED) and the next viewport call (VISIT_FAILED). Those 8 visits were the entire
+    // difference between 262/270 and a complete sweep, and the routes they landed on -- receipts,
+    // reporting, users, duplicate-rules -- had nothing in common except being far into the run.
+    // That is accumulation, not a property of those pages.
+    //
+    // Recovery already works; this simply stops paying for it. A fresh session every 10 routes
+    // costs one login and removes the crash window entirely.
+    if (routeIndex > 0 && routeIndex % 10 === 0) {
+      try { await openSession(); } catch (e) { aborted = `could not recycle the session: ${String(e && e.message).slice(0, 120)}`; break; }
+    }
+    routeIndex += 1;
     for (const w of WIDTHS) {
      if (aborted) break;
      attempted += 1;
