@@ -55,6 +55,35 @@ const EMU = IS_LOCAL ? "?emulator=1" : "";
 // alarming, specific, and false. Derive it from BASE so the check means the same thing on both.
 const RAW_BASE_PATH = new URL(BASE).pathname;
 const BASE_PATH = RAW_BASE_PATH.endsWith("/") ? RAW_BASE_PATH.slice(0, -1) : RAW_BASE_PATH;
+
+// WAIT FOR CONTENT, NOT FOR A NUMBER.
+//
+// This was `waitForTimeout(900)` -- a constant tuned on localhost, where the bundle is already warm
+// and there is no network. Pointed at a deployed origin the same 900ms lands BEFORE React paints,
+// and the probe then measures an empty page. A deployed technician sweep duly reported EMPTY_PAGE on
+// /administration/permission-preview; probed directly with a longer wait, that route renders 169
+// characters of the correct governed denial. Nothing was wrong with the build.
+//
+// Seventh false-positive family, same root as the other six: the harness encoded an assumption
+// about its environment and reported the assumption's violation as a defect in the thing under
+// test. So this waits for the CONDITION that actually matters -- the main region having rendered
+// something -- and falls through after a bounded ceiling rather than hanging. A route that is
+// genuinely empty still reports EMPTY_PAGE; it just has to earn it.
+async function settle(page) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const m = document.querySelector('main') || document.body;
+        return (m.innerText || '').trim().length > 20;
+      },
+      { timeout: 8000 },
+    );
+  } catch {
+    // Bounded, not fatal: a genuinely blank route must still be measured and reported as blank.
+  }
+  await page.waitForTimeout(250);
+}
+
 const accountKey = process.argv[2] ?? "admin";
 const WIDTH = Number(process.argv[3] ?? 1440);
 const routes = JSON.parse(readFileSync(join(APP_ROOT, ".certification", "routes.json"), "utf8"));
@@ -100,7 +129,7 @@ try {
       // `?emulator=1` on EVERY navigation -- without it a full page load silently repoints the app at
       // production, the session dies, and every subsequent route reads as denied.
       await page.goto(`${BASE}${r.route}${EMU}`, { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(900);
+      await settle(page);
       rec = await page.evaluate(() => {
         const main = document.querySelector("main") || document.body;
         const text = (main.innerText || "").replace(/\s+/g, " ").trim();

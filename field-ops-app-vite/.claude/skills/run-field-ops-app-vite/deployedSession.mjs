@@ -41,7 +41,27 @@ export function sandboxFirebaseConfig(environmentId = "platform-sandbox") {
   return entry.firebase;
 }
 
+// ONE SIGN-IN PER PERSONA PER PROCESS. certify.mjs recycles its browser every few routes to avoid
+// the accumulation defect it was hardened against, and each recycle re-established the session --
+// roughly ten sign-ins per run. That is both wasteful and a rate-limit risk against a real auth
+// endpoint, and it is how a five-width deployed sweep died mid-run waiting for a shell that never
+// rendered because the sign-in had stopped succeeding.
+//
+// The token is cached and reused. Firebase ID tokens last an hour, comfortably longer than a sweep,
+// and the refresh token rides along in the seeded record so the SDK renews on its own if one ever
+// runs long. Keyed by persona AND environment so the cache can never hand back a session for the
+// wrong target.
+const SESSION_CACHE = new Map();
+
 export async function signInPersona(personaId, environmentId = "platform-sandbox") {
+  const cacheKey = `${environmentId}::${personaId}`;
+  const cached = SESSION_CACHE.get(cacheKey);
+  // Re-use only while comfortably inside the token's life; never hand back one about to expire.
+  if (cached && cached.expiresAtMs - Date.now() > 5 * 60 * 1000) return cached;
+  return await signInPersonaUncached(personaId, environmentId, cacheKey);
+}
+
+async function signInPersonaUncached(personaId, environmentId, cacheKey) {
   // pathToFileURL, not a bare path: on Windows a dynamic import of "D:\..." is rejected outright
   // ("Only URLs with a scheme in: file, data, and node are supported").
   const { loadSandboxPersona } = await import(pathToFileURL(join(REPO_ROOT, "scripts", "sandboxCredentials.mjs")).href);
@@ -55,8 +75,12 @@ export async function signInPersona(personaId, environmentId = "platform-sandbox
   const body = await res.json();
   // Never echo the response wholesale -- it carries the refresh token.
   if (!res.ok || !body.idToken) throw new Error(`sign-in failed for ${personaId}: ${body?.error?.message ?? res.status}`);
-  return { apiKey: cfg.apiKey, uid: body.localId, email: body.email, idToken: body.idToken,
-           refreshToken: body.refreshToken, expiresIn: Number(body.expiresIn ?? 3600) };
+  const expiresIn = Number(body.expiresIn ?? 3600);
+  const session = { apiKey: cfg.apiKey, uid: body.localId, email: body.email, idToken: body.idToken,
+                    refreshToken: body.refreshToken, expiresIn,
+                    expiresAtMs: Date.now() + expiresIn * 1000 };
+  SESSION_CACHE.set(cacheKey, session);
+  return session;
 }
 
 /** Seed the SDK's persistence record so the app boots already signed in. Call BEFORE the first goto. */
