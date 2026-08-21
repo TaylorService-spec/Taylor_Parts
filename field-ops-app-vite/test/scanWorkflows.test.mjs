@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import {
   deriveScanWorkflows, SCAN_WORKFLOW, UNAVAILABLE_REASON, RECEIVE_CAPABILITY,
   TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY,
+  CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY,
   SCAN_WORKFLOW_LABEL, SCAN_WORKFLOW_DESCRIPTION, UNAVAILABLE_TEXT, unavailableText,
 } from "../src/access/scanWorkflows.js";
 
@@ -136,7 +137,7 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the four workflows that exist can ever appear", () => {
+test("ONLY the five workflows that exist can ever appear", () => {
   // Put-away, pick, stage, return, cycle count and truck handoff have no command. Listing one —
   // even disabled — would say it exists and that access is the only obstacle.
   const everything = deriveScanWorkflows({
@@ -144,16 +145,16 @@ test("ONLY the four workflows that exist can ever appear", () => {
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 4);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 5);
 });
 
-test("no put-away, pick, return or count workflow is even nameable", () => {
-  // LOOKUP left this list in Phase F and TRANSFER in Phase J1 — each when a real governed authority
-  // behind it was found. The rest stay: none of them has a command or a read.
-  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "RETURN", "CYCLE_COUNT", "TRUCK_HANDOFF"]) {
+test("no put-away, pick, stage, return or truck-handoff workflow is even nameable", () => {
+  // LOOKUP left this list in Phase F, TRANSFER in J1 and CYCLE_COUNT in J2 — each when a real
+  // governed authority behind it was found. The rest stay: none of them has a command or a read.
+  for (const absent of ["PUT_AWAY", "PICK", "STAGE", "RETURN", "TRUCK_HANDOFF"]) {
     assert.equal(SCAN_WORKFLOW[absent], undefined, `${absent} must not exist as a workflow`);
   }
 });
@@ -167,7 +168,7 @@ test("the least-authorized caller still gets LOOKUP, and every other absence is 
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
   assert.equal(r.empty, false);
   assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
-  assert.equal(r.unavailable.length, 3, "receiving, transfer and technician scanning each explain themselves");
+  assert.equal(r.unavailable.length, 4, "receiving, transfer, counting and technician scanning each explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 
@@ -263,4 +264,46 @@ test("every reason a workflow can actually produce resolves to a sentence", () =
       assert.ok(unavailableText(u.workflow, u.reason), `${u.workflow}/${u.reason} has no words`);
     }
   }
+});
+
+// ─────────────────────────────────────────── cycle counting (Phase J2)
+
+test("counting needs BOTH create and submit — one without the other is a dead end", () => {
+  // Create-only produces an open count nobody can close; submit-only has nothing to submit to.
+  for (const held of [[CYCLE_COUNT_CREATE_CAPABILITY], [CYCLE_COUNT_SUBMIT_CAPABILITY]]) {
+    const r = deriveScanWorkflows({ hasCapability: gate(...held) });
+    assert.equal(has(r, SCAN_WORKFLOW.CYCLE_COUNT), false, `${held.join()} alone must not offer counting`);
+  }
+  const both = deriveScanWorkflows({ hasCapability: gate(CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY) });
+  assert.equal(has(both, SCAN_WORKFLOW.CYCLE_COUNT), true);
+});
+
+test("RECONCILE is deliberately not consulted — approving is a manager's separate authority", () => {
+  // DECISIONS #111: a counter cannot approve their own material variance. Offering counting on the
+  // strength of the reconcile grant would put it behind the wrong authority entirely.
+  const reconcilerOnly = deriveScanWorkflows({ hasCapability: gate("inventory.cycleCount.reconcile") });
+  assert.equal(has(reconcilerOnly, SCAN_WORKFLOW.CYCLE_COUNT), false);
+
+  const code = codeOf("../src/access/scanWorkflows.js");
+  assert.doesNotMatch(code, /cycleCount\.reconcile/, "counting eligibility must not consult reconcile");
+});
+
+test("the cycle count capabilities are the REAL catalog ids", () => {
+  assert.equal(CYCLE_COUNT_CREATE_CAPABILITY, "inventory.cycleCount.create");
+  assert.equal(CYCLE_COUNT_SUBMIT_CAPABILITY, "inventory.cycleCount.submit");
+});
+
+test("counting has its OWN refusal sentence, not the generic one", () => {
+  const text = unavailableText(SCAN_WORKFLOW.CYCLE_COUNT, UNAVAILABLE_REASON.NO_CAPABILITY);
+  assert.match(text, /count stock/i);
+  assert.notEqual(text, unavailableText(SCAN_WORKFLOW.TRANSFER, UNAVAILABLE_REASON.NO_CAPABILITY));
+});
+
+test("counting, transferring and receiving are three separate authorities", () => {
+  const counter = deriveScanWorkflows({
+    hasCapability: gate(CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY),
+    receivingReady: true,
+  });
+  assert.equal(has(counter, SCAN_WORKFLOW.SUPPLIER_RECEIVING), false);
+  assert.equal(has(counter, SCAN_WORKFLOW.TRANSFER), false);
 });
