@@ -9,6 +9,14 @@ import CycleCountScan from "../src/modules/scan/CycleCountScan.jsx";
 
 afterEach(cleanup);
 
+// Tests fire identical scans within the same millisecond, which no real scanner can do. The shared
+// input suppresses that as a wedge stutter, so every test drives an advancing clock through the
+// documented seam — otherwise these would be measuring the anti-stutter guard, not the workflow.
+let clock = 0;
+const advancingClock = () => { clock += 1000; return clock; };
+const scanInputDeps = { now: advancingClock };
+
+
 const client = (over = {}) => ({
   createCycleCount: vi.fn().mockResolvedValue({ cycleCountId: "CC-1", status: "COUNTING", trackingMode: "NONE" }),
   submitCycleCount: vi.fn().mockResolvedValue({ outcome: "submitted", cycleCountId: "CC-1", status: "SUBMITTED", countedQuantity: 2, variance: -1 }),
@@ -18,7 +26,7 @@ const client = (over = {}) => ({
 });
 
 async function startCount(c = client(), { trackingMode = "NONE" } = {}) {
-  render(<CycleCountScan deps={{ cycleCountClient: c }} />);
+  render(<CycleCountScan deps={{ cycleCountClient: c, scanInputDeps }} />);
   fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
   fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
   if (trackingMode !== "NONE") {
@@ -85,8 +93,7 @@ describe("Cycle count scan (observation is not adjustment)", () => {
     await startCount();
     scan("PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    const ok = await screen.findByRole("status");
-    expect(ok.textContent).toMatch(/nothing has been adjusted/i);
+    const ok = await screen.findByText(/nothing has been adjusted/i);
     expect(ok.textContent).toMatch(/manager reviews/i);
   });
 
@@ -124,7 +131,7 @@ describe("Cycle count scan (what is on the shelf)", () => {
     await startCount();
     scan("PRT-1001");
     scan("PRT-9999");
-    expect(screen.getByText(/different part.*count it separately/i)).toBeTruthy();
+    expect(screen.getAllByText(/different part.*count it separately/i).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /submit this count/i }).disabled).toBe(true);
   });
 
@@ -161,7 +168,7 @@ describe("Cycle count scan (what is on the shelf)", () => {
     );
     scan("SN-5");
     fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    const ok = await screen.findByRole("status");
+    const ok = (await screen.findByText(/expected but not found/i)).closest("section");
     expect(ok.textContent).toMatch(/expected but not found.*SN-9/i);
     expect(ok.textContent).toMatch(/found but not expected.*SN-5/i);
   });
@@ -173,7 +180,7 @@ describe("Cycle count scan (refusals are told truthfully)", () => {
   it("a DENIED create says so, and does not look like a failed count", async () => {
     // Every inventory.cycleCount.* capability is inert today.
     const err = Object.assign(new Error("denied"), { code: "functions/permission-denied" });
-    render(<CycleCountScan deps={{ cycleCountClient: client({ createCycleCount: vi.fn().mockRejectedValue(err) }) }} />);
+    render(<CycleCountScan deps={{ cycleCountClient: client({ createCycleCount: vi.fn().mockRejectedValue(err) }), scanInputDeps }} />);
     fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
     fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
     fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
@@ -193,7 +200,7 @@ describe("Cycle count scan (refusals are told truthfully)", () => {
 
   it("a missing part or location is caught before any call is made", async () => {
     const c = client();
-    render(<CycleCountScan deps={{ cycleCountClient: c }} />);
+    render(<CycleCountScan deps={{ cycleCountClient: c, scanInputDeps }} />);
     fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(c.createCycleCount).not.toHaveBeenCalled();

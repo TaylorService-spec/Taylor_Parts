@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
+import ScanInput from "../../shared/ui/ScanInput.jsx";
+import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { cycleCountCommandClient } from "../../services/cycleCountCommandClient";
 import {
   buildCreateCycleCountRequest,
@@ -61,7 +63,6 @@ export default function CycleCountScan({ deps }) {
 
   const [session, setSession] = useState(null);
   const [observations, setObservations] = useState(Object.freeze([]));
-  const [query, setQuery] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -106,10 +107,15 @@ export default function CycleCountScan({ deps }) {
     }
   }, [client, fail]);
 
+  // The beep reflects the count's own verdict: a wrong part sounds wrong, a re-scan sounds neutral.
   const scan = useCallback((raw) => {
-    if (typeof raw !== "string" || raw.trim() === "" || !session) return;
-    setObservations((prev) => addCountScan(prev, raw, session));
-    setQuery("");
+    if (!session) return FEEDBACK.REJECTED;
+    let next = null;
+    setObservations((prev) => { next = addCountScan(prev, raw, session); return next; });
+    const observation = next?.[next.length - 1];
+    if (!observation || observation.state === COUNT_OBSERVATION.COUNTED) return FEEDBACK.ACCEPTED;
+    if (observation.state === COUNT_OBSERVATION.DUPLICATE_SERIAL) return FEEDBACK.NEUTRAL;
+    return { feedback: FEEDBACK.REJECTED, detail: COUNT_OBSERVATION_TEXT[observation.state] };
   }, [session]);
 
   const submit = useCallback(async () => {
@@ -157,17 +163,12 @@ export default function CycleCountScan({ deps }) {
             after you submit — that is deliberate, so the count reflects the shelf and not the system.
           </p>
 
-          <form className="fo-scan__entry" onSubmit={(e) => { e.preventDefault(); scan(query); }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
-              aria-label="Scan item"
-              enterKeyHint="done"
-              autoFocus
-            />
-            <Button type="submit" className="fo-scan__find">Add</Button>
-          </form>
+          <ScanInput
+            onScan={scan}
+            label="Scan item"
+            placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
+            deps={deps?.scanInputDeps}
+          />
 
           {observations.length > 0 && (
             <>

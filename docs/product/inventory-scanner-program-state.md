@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–J2 merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–J3 merged.
 
 ---
 
@@ -39,8 +39,9 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **G** — barcode / alias lookup | MERGED (#1358) | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
 | **H** — complete read-only lookup | MERGED (#1359) | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
 | **I** — location reconciliation | ANALYSIS MERGED (#1360) | n/a | n/a | n/a | Resolved by DECISIONS #116 |
-| **J1** — transfers by scan | This change | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
-| **J2** — warehouse-level cycle count by scan | This change | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
+| **J1** — transfers by scan | MERGED (#1362) | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
+| **J2** — warehouse-level cycle count by scan | MERGED (#1363) | COMPLETE | **No backend change** — reuses the existing cycle-count commands | **NOT DEPLOYED** | `inventory.cycleCount.create` / `.submit` inert, granted to nobody |
+| **J3** — shared scanner input hardening | This change | COMPLETE | n/a — client input layer only | n/a | n/a |
 
 ### What "not deployed" means concretely
 
@@ -556,3 +557,58 @@ exactly where the expected-quantity authority computes.
 
 `inventory.cycleCount.create` and `.submit` are registered `active: false` and granted to no Role, so
 a real call resolves `permission-denied` and the screen says so.
+
+## 13. Phase J3 — the shared scanner input
+
+One input for every scanning workflow: `shared/ui/ScanInput.jsx` over the pure
+`domain/scanInputPolicy.js`. It owns *input*; what a value MEANS is still
+`resolveScannedIdentity`, untouched.
+
+### The load-bearing distinction: which repeats are real
+
+Three input paths repeat for different reasons, and getting this wrong breaks counting:
+
+| Source | Why it repeats | Window |
+| --- | --- | --- |
+| Hardware wedge / typing | A wedge can double-fire on one trigger pull, milliseconds apart | **250ms** |
+| Camera | A decoder emits the same label **every frame** while it sits in view | **1500ms** |
+
+**Counting ten identical boxes means scanning the same value ten times, deliberately.** Suppressing
+that would silently under-count — the worst failure a cycle count can have. So the keyed window is
+only just long enough to kill a stutter and no longer, while the camera window has to clear sixty
+emissions a second. An unrecognized source defaults to the **shorter** window: a duplicate the
+operator can see and undo beats a swallowed real count.
+
+A suppressed repeat is **NEUTRAL**, never an error — buzzing at an operator whose scanner stuttered
+teaches them to ignore the buzzer.
+
+### Continuous focus
+
+Focus returns to the field after every scan. A wedge types into whatever is focused, so a screen that
+lets focus drift silently drops the second scan and the operator scans harder.
+
+### Feedback is three-channel
+
+Sound (distinguished by **pitch**, so it survives a forklift), vibration (a **rhythm** for rejection,
+because a gloved hand cannot tell one buzz from another), and text. All three are advisory and
+degrade silently — a device with no WebAudio or no vibration still scans.
+
+The text channel **is** the accessibility channel: one `aria-live` sentence that always **names the
+value**, because "scanned" alone is useless at a wall of similar boxes. And it carries the
+*workflow's* verdict, not merely that a code arrived — a refused scan sounds refused.
+
+### The camera degrades honestly
+
+No `getUserMedia`, a refused permission, and no `BarcodeDetector` are three different messages, and
+typing stays available in all of them. It asks for the rear camera with continuous focus (a
+fixed-focus front camera cannot read a small label), keeps decoding so an operator can work through a
+pallet without reopening it, and **always stops the track** — on close and on unmount. A live stream
+behind a closed screen drains a handheld and lights the LED, which people reasonably read as being
+recorded.
+
+### Adoption
+
+Transfers and cycle count use it now. Receiving (`MultiScanReceiving`) and the technician
+`PartsScanner` keep their own inputs for the moment: both are covered by their own passing suites,
+and migrating them is mechanical but belongs in its own change so a regression is attributable.
+Recorded as a follow-up rather than bundled.
