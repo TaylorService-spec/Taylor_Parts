@@ -3855,67 +3855,57 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    RESTORED FROM 887a0a50 -- CSS that was deleted while still in use.
    =============================================================================
    On 2026-08-06, commit 887a0a50 ("W5 handoff: inherit App.jsx-coupled surface
-   from the parallel session") replaced this stylesheet wholesale with another
-   session's copy: -923 lines, +112. It deleted rules that live components still
-   referenced, and it changed none of their JSX.
+   from the parallel session") replaced this stylesheet wholesale: -923 / +112.
+   It deleted rules that live components still referenced and changed none of
+   their JSX. Nothing failed, no test broke, and two accepted surfaces rendered
+   unstyled for two weeks.
 
-   Nothing failed. The components kept rendering, kept passing their unit tests,
-   and silently lost their layout -- a two-column form collapsed to a stack, a
-   checkbox detached from its label, filter chips became default-browser links.
-   Every automated signal in the repository stayed green for two weeks.
+   Restored VERBATIM -- a restoration, not a redesign.
 
-   These are the rules restored VERBATIM from that commit's diff, for classes
-   that are still rendered by components today. Verbatim on purpose: this is a
-   restoration, not a redesign. Re-expressing them in current design tokens is a
-   separate, deliberate piece of work -- doing it here would mix "put back what
-   was lost" with "change how it looks", and make the diff impossible to review.
+   THE EXTRACTION TOOK THREE ATTEMPTS, and each failure is worth recording
+   because each produced plausible-looking output:
 
-   test/cssClassCoverage.test.mjs now fails the build if any class a component
-   renders has no rule at all, so a wholesale replacement can never again pass
-   unnoticed.
+     1. A regex matching innermost brace pairs STRIPPED the enclosing @media
+        from nested rules, so responsive overrides applied at every width and
+        the Equipment filter grid collapsed to one column on desktop. Caught by
+        the certification sweep, not by me.
+     2. Brace counting without stripping comments mis-tracked depth on a brace
+        inside a comment and emitted an unbalanced block that failed the build.
+     3. deleted.css is a diff of REMOVED lines, not standalone CSS: a partially
+        removed structure leaves a stray brace. Blocks are now validated for
+        balance individually and an unbalanced one is dropped rather than
+        emitted.
+
+   A restoration that reintroduces a different regression is worse than the gap
+   it closed.
    ========================================================================== */
 .fo-equipment-compat-model-sub { font-size: 13px; }
 .fo-equipment-compat-complete { margin-top: 6px; }
-.fo-equipment-compat-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.fo-equipment-compat-table, .fo-equipment-compat-table tbody, .fo-equipment-compat-table tr, .fo-equipment-compat-table td { display: block; width: 100%; }
-.fo-equipment-compat-table tr { border: 1px solid #E3E8E6; border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
-.fo-equipment-compat-table td { border: none; padding: 4px 0; }
-.fo-equipment-compat-table td::before { content: attr(data-label) ": "; font-weight: 600; color: #667; }
-/* #291: an inline, non-blocking load failure with an adjacent retry -- used where a
-   FAILED lookup must read differently from empty/unknown without taking over the page. */
+@media (max-width: 640px) {
+  .fo-equipment-compat-table thead {position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .fo-equipment-compat-table, .fo-equipment-compat-table tbody, .fo-equipment-compat-table tr, .fo-equipment-compat-table td {display: block; width: 100%; }
+  .fo-equipment-compat-table tr {border: 1px solid #E3E8E6; border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
+  .fo-equipment-compat-table td {border: none; padding: 4px 0; }
+  .fo-equipment-compat-table td::before {content: attr(data-label) ": "; font-weight: 600; color: #667; }
+}
 .fo-inline-error { color: #B23B3B; font-size: 14px; display: inline-flex; align-items: baseline; gap: 6px; }
-/* Account Commercial Profile and Financial Forecast Horizons -- PR 2.
-   Account-form-SPECIFIC layout. ADDITIVE to (never a modification of) the
-   global `.fo-form` used by LocationForm/ContactForm: the account form carries
-   BOTH classes (`fo-form fo-account-form`), and every rule below is scoped to
-   `.fo-account-form`, so global `.fo-form` behavior is unchanged. Goals:
-   consistent two-column desktop grid / single-column mobile; labels above
-   uniformly-sized controls; full-width fieldsets, notes, errors, action row;
-   aligned checkboxes / owner picker / Commercial Profile fields; and no
-   horizontal overflow at 375px. Behavior and accessibility are untouched
-   (JSX changes are class-only). */
 .fo-account-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 16px;
   align-items: start;
 }
-/* Controls never impose a min-width that could overflow a narrow column, and
-   always include padding/border within their measured width. */
 .fo-account-form input,
 .fo-account-form select,
 .fo-account-form textarea {
   min-width: 0;
   box-sizing: border-box;
 }
-/* Direct-child bare controls (name, status, tags, external IDs) fill one cell. */
 .fo-account-form > input,
 .fo-account-form > select {
   width: 100%;
   margin: 0;
 }
-/* Full-width rows span both columns: both fieldsets, notes, the external-IDs
-   toggle, form-level warnings, and the action row. */
 .fo-account-form > fieldset,
 .fo-account-form > textarea,
 .fo-account-form > .fo-btn-row,
@@ -3924,11 +3914,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   grid-column: 1 / -1;
 }
 .fo-account-form > textarea { width: 100%; }
-/* Keep the standalone external-IDs toggle at its natural size, not stretched. */
 .fo-account-form > .fo-link-btn { justify-self: start; }
-/* A labeled field group: label ABOVE a full-width, uniformly-sized control.
-   Applies to the address fields (direct grid cells) and every Commercial
-   Profile field. */
 .fo-account-form .fo-form-field {
   display: flex;
   flex-direction: column;
@@ -3940,8 +3926,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-account-form .fo-form-field > select {
   width: 100%;
 }
-/* Fieldsets lay their fields two-per-row via flex-basis (NOT grid, so <legend>
-   rendering stays intact). */
 .fo-account-form .fo-fieldset {
   display: flex;
   flex-wrap: wrap;
@@ -3953,38 +3937,22 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   flex: 1 1 calc(50% - 8px);
   min-width: 0;
 }
-/* The owner picker field reads better full-width (combobox + current-owner line
-   + error). */
 .fo-account-form .fo-fieldset > .fo-account-form-wide { flex-basis: 100%; }
 .fo-account-form .fo-employee-picker { width: 100%; }
 .fo-account-form .fo-employee-picker input { width: 100%; }
-/* Checkboxes: box and label on one left-aligned row. */
 .fo-account-form .fo-checkbox-label {
   flex-direction: row;
   align-items: center;
 }
-.fo-account-form { grid-template-columns: 1fr; }
-.fo-account-form .fo-fieldset > .fo-form-field { flex-basis: 100%; }
-/* Issue #214 PR-1 -- the account form is migrated to the shared form primitives
-   (Field / FormActions / FormError / FormStatus) built on the System-A
-   `fo-wizard-*` tokens. Everything here is ADDITIVE and scoped to
-   `.fo-account-form`; the global `.fo-form`, the `.fo-wizard-*` tokens
-   themselves, and every other form are unchanged. */
-/* Readable width cap (~896px) for the form; tables/dashboards keep their own
-   wider patterns. Does not touch `.fo-main`. */
+@media (max-width: 640px) {
+  .fo-account-form {grid-template-columns: 1fr; }
+  .fo-account-form .fo-fieldset > .fo-form-field {flex-basis: 100%; }
+}
 .fo-account-form { max-width: 56rem; }
-/* Full-width field rows (e.g. Notes) span both grid columns. */
 .fo-account-form > .fo-form-field-wide { grid-column: 1 / -1; }
 .fo-account-form .fo-form-field > textarea { width: 100%; }
-/* The System-A control token inside an account-form field fills its cell (same
-   sizing the field already gives its input/select). */
 .fo-account-form .fo-form-field > .fo-wizard-control { width: 100%; }
-/* Hint sits tight under its control. */
 .fo-account-form .fo-form-field .fo-wizard-hint { margin: 0; }
-/* Account Commercial Profile and Financial Forecast Horizons -- PR 4
-   (modules/accounts/FinancialForecastSection.jsx). Two separately-labeled
-   provider-neutral forecast family sub-sections; unconfigured only, no figure.
-   Wraps at narrow widths so there is no horizontal overflow at 375px. */
 .fo-forecast-families {
   display: flex;
   flex-wrap: wrap;
@@ -4002,10 +3970,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-forecast-labels {
   margin: 0 0 4px;
 }
-/* Customer Results Dashboard -- portfolio cards + local filters (AccountsList.jsx).
-   Additive, scoped to the dashboard's own classes. Cards and filter chips wrap
-   on narrow viewports and the results table sits in .fo-table-scroll, so there
-   is no horizontal overflow at 375px. */
 .fo-portfolio-cards {
   display: flex;
   flex-wrap: wrap;
@@ -4029,12 +3993,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   min-width: 0;
 }
 .fo-filter-label { font-size: 13px; color: #445559; }
-/* Equipment register (Issue #232 unit E5). */
 .fo-result-count { margin: 4px 0 8px; font-size: 13px; }
-/* Shared catalog/workspace filters. Truck Inventory and both Equipment registers
-   use this primitive. Labels stay above their controls, fields have a consistent
-   hit target, and the grid collapses without creating the run-together label/control
-   string that an unstyled flex of inline <label> elements produces. */
 .fo-filters {
   display: grid;
   grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(110px, 1fr));
@@ -4076,11 +4035,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   outline: 2px solid rgba(46, 74, 80, 0.22);
   outline-offset: 1px;
 }
-.fo-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.fo-filters {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-  }
+@media (max-width: 760px) {
+  .fo-filters {grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .fo-filters {grid-template-columns: minmax(0, 1fr);
+    padding: 12px; }
+}
 .fo-filter-reset {
   background: none;
   border: 1px solid #D6DCDA;
@@ -4089,24 +4050,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: 13px;
   cursor: pointer;
 }
-/* Equipment detail (Issue #232 unit E7). Every selector is SCOPED under
-   .fo-equipment-detail -- a DESCENDANT scope, which is a different technique from the
-   register's PREFIX-namespaced .fo-badge-equipment-* badges; both are sound, and an
-   earlier version of this comment described the wrong one.
-   Scoping is not tidiness here: fo-detail-grid, fo-back-link, fo-detail-list and
-   friends are generic names in a single shared global stylesheet -- exactly the shape
-   that produced E5's .fo-badge-active collision, where a feature-local rule silently
-   redefined Account status badges. A descendant scope makes that structurally
-   impossible rather than merely absent today. No rule here redefines a global. */
 .fo-equipment-detail { display: flex; flex-direction: column; gap: 12px; }
 .fo-equipment-detail .fo-back-link { font-size: 13px; align-self: flex-start; }
 .fo-equipment-detail .fo-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .fo-equipment-detail .fo-equipment-title { margin: 0; font-size: 20px; }
-/* Full-width so the summary sits UNDER the title rather than running on after the
-   status badge -- the same inline-run-together trap the register's name/summary hit. */
 .fo-equipment-detail .fo-equipment-subtitle { flex-basis: 100%; margin: 0; }
-/* Wraps to a single column at narrow widths; auto-fit keeps 375px free of horizontal
-   overflow without a media query. */
 .fo-equipment-detail .fo-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -4124,22 +4072,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-equipment-detail .fo-history-year + .fo-history-year { margin-top: 12px; }
 .fo-equipment-detail .fo-history-year-heading { margin: 0 0 4px; font-size: 14px; }
 .fo-equipment-detail .fo-history-list { margin: 0; padding-left: 18px; }
-/* The identity cell stacks the display name over its disambiguating summary. Without
-   the block, the two inline spans render as one run-together string
-   ("Rooftop UnitTrane XR14 - S/N ...") -- which defeats the summary's entire purpose,
-   since duplicate names are legal (Spec §8) and the summary is what tells two
-   identically named units apart. Caught by independent review of PR #290. */
 .fo-equipment-name { display: block; }
 .fo-equipment-summary { display: block; }
-/* Long serials/models must not widen the page at 375px; the table scrolls in its own
-   container instead (same treatment as every other wide table here). */
 .fo-equipment-table { width: 100%; }
 .fo-account-save-error { margin-top: 4px; }
-/* Work Order Wizard -- layout & error clarity (Platform Task 1). Everything is
-   scoped under .fo-wizard so no other screen is affected. The per-step body is
-   a genuine vertical panel (NOT the old .fo-form flex-wrap): a single column
-   with a consistent max width, each field stacked label-above-control, and the
-   complaint / review / error / action rows all spanning full width. */
 .fo-wizard-steps {
   list-style: none;
   display: flex;
@@ -4168,7 +4104,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: #5B7A80;
   color: #fff;
 }
-/* Step panel: single-column vertical stack, consistent max width. */
 .fo-wizard-panel {
   display: flex;
   flex-direction: column;
@@ -4177,17 +4112,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   width: 100%;
   box-sizing: border-box;
 }
-/* Step-1 (Customer picker) wide modifier -- opt-in per step, applied ONLY to
-   Step 1 in WorkOrderWizard.jsx (Steps 2-4 keep the 560px panel above). width:100%
-   keeps it capped by the available parent content width (`.fo-main` maxes at
-   960px), and max-width:56rem is the readable desktop ceiling -- so it uses nearly
-   all available width on tablet/small desktop, grows well past 560px, and stops at
-   ~896px, while staying 100% (no overflow) on narrow screens. Placed AFTER
-   .fo-wizard-panel so it wins for the element carrying both classes. */
 .fo-wizard-panel-wide { max-width: 56rem; }
 .fo-wizard-step-title { margin: 0; }
 .fo-wizard-context { margin: 0; }
-/* Each field: label ABOVE control, control full width of the panel. */
 .fo-wizard-field {
   display: flex;
   flex-direction: column;
@@ -4201,7 +4128,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   box-sizing: border-box;
 }
 .fo-wizard-field-wide { width: 100%; }
-/* Review, error, and actions all span the full panel width. */
 .fo-wizard-review {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -4211,14 +4137,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-wizard-review dt { font-size: 13px; color: #667; }
 .fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; word-break: break-word; }
-.fo-wizard-panel { max-width: 100%; }
-.fo-wizard-review { grid-template-columns: 1fr; gap: 2px 0; }
-.fo-wizard-review dd { margin-bottom: 6px; }
-/* ===== Work Order wizard -- Customer picker (combobox/listbox) =====
-   Scoped under .fo-customer-picker. The dropdown is absolutely positioned and
-   layered above the wizard content below; strong contrast on options; results
-   and locations wrap with no horizontal overflow at 375px. */
-.fo-customer-picker { position: relative; width: 100%; }
+@media (max-width: 480px) {
+  .fo-wizard-panel {max-width: 100%; }
+  .fo-wizard-review {grid-template-columns: 1fr; gap: 2px 0; }
+  .fo-wizard-review dd {margin-bottom: 6px; }
+}
 .fo-customer-picker-input { width: 100%; box-sizing: border-box; }
 .fo-customer-picker-input:focus-visible { outline: 2px solid #2E4A50; outline-offset: 1px; }
 .fo-customer-picker-status {
@@ -4230,19 +4153,18 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: 13px;
   color: #33474C;
   border-bottom: 1px solid #EDF1F0;
-  flex-shrink: 0; /* pinned -- never scrolls with the list */
+  flex-shrink: 0; 
 }
 .fo-customer-picker-retry { font-size: 13px; }
 .fo-customer-picker-loc-error { color: #9a3412; }
-/* AA on white; distinct from muted */
 .fo-customer-picker-list {
   list-style: none;
   margin: 0;
   padding: 4px;
-  overflow-y: auto; /* ONLY the result list scrolls */
+  overflow-y: auto; 
   flex: 1 1 auto;
-  min-height: 0; /* allow the flex child to shrink so it (not the page) scrolls */
-  overscroll-behavior: contain; /* don't chain scroll to the page */
+  min-height: 0; 
+  overscroll-behavior: contain; 
 }
 .fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; overflow-wrap: anywhere; }
 .fo-customer-picker-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
@@ -4251,13 +4173,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-customer-picker-loc { color: #2F4247; overflow-wrap: anywhere; }
 .fo-customer-picker-more-locs { white-space: nowrap; }
 .fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; flex-shrink: 0; }
-.fo-customer-picker-locs { flex-direction: column; gap: 2px; }
+@media (max-width: 480px) {
+  .fo-customer-picker-locs {flex-direction: column; gap: 2px; }
+}
 .fo-confirm-note { margin: 0; font-size: 13px; }
-/* Issue #214 PR-4 -- shared application-state primitives (LoadingState /
-   EmptyState / FailureState). ADDITIVE; reuses the existing `.fo-muted` /
-   `.fo-warning` text tokens. Content uses the available panel width up to a
-   readable text measure, wraps safely, and never overflows at 375px. Does not
-   touch `.fo-main`. */
 .fo-state {
   margin: 12px 0;
   max-width: 60ch;
@@ -4265,20 +4184,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   overflow-wrap: anywhere;
 }
 .fo-state-action { margin-top: 2px; }
-/* Issue #325 unit F3 -- report builder result tones. A left accent bar distinguishes an
-   informational result (unavailable/idle) from a warning one (partially-authorized,
-   truncated/widened) without the alert semantics FailureState carries for real errors. */
 .fo-tone-info { border-left: 3px solid #2E4A50; padding-left: 12px; }
 .fo-tone-warning { border-left: 3px solid #A9740D; padding-left: 12px; }
-/* Issue #325 W-SAVE-UI -- inert saved-report list. */
 .fo-saved-report-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .fo-saved-report { border-top: 1px solid #EEF1F0; padding: 10px 0; }
 .fo-saved-report-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .fo-saved-report-name { font-weight: 600; }
 .fo-saved-report-meta { margin-right: auto; }
-/* Contact CSV import (Issue #209) -- scoped under .fo-contact-import; inner
-   content of the shared Modal (.fo-modal-*). Reuses .fo-wizard-field/.fo-table/
-   .fo-warning; only adds the mapping grid, the capped preview, and list styling. */
 .fo-contact-import { display: flex; flex-direction: column; gap: 12px; }
 .fo-contact-import-context { margin: 0; }
 .fo-contact-import-map {
@@ -4292,5 +4204,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-contact-import-summary { margin: 0; }
 .fo-contact-import-rejected { font-size: 13px; }
 .fo-contact-import-save-error { margin-top: 4px; }
-.fo-contact-import-map { grid-template-columns: 1fr; }
-.fo-contact-import-preview { max-height: 40vh; }
+
+/* Recovered by hand: the automated pass dropped this one block because the diff of removed lines
+   left it unbalanced. Restoring it manually was safer than loosening the balance check that caught
+   the problem in the first place. */
+.fo-customer-picker { position: relative; width: 100%; }

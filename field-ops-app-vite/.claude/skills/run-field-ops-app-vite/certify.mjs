@@ -148,8 +148,21 @@ try {
   await page.locator('button[type="submit"]').click();
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 20000 });
 
+  // ONE BAD VISIT MUST NOT COST 269 GOOD ONES.
+  //
+  // Two earlier runs died mid-sweep and wrote NO findings file at all, discarding every measurement
+  // taken up to that point. A certification tool that loses its evidence on the first hiccup is
+  // worse than useless: it produces nothing, slowly, and tempts you to skip it next time.
+  //
+  // Every visit is now individually guarded, the failure is RECORDED as a finding rather than
+  // thrown away, and results are flushed to disk as they accumulate so a hard crash still leaves
+  // partial evidence behind.
+  const flush = () => writeFileSync(join(APP_ROOT, ".certification", `findings-${accountKey}.json`), JSON.stringify(findings, null, 1));
+  mkdirSync(join(APP_ROOT, ".certification"), { recursive: true });
+
   for (const r of routes) {
     for (const w of WIDTHS) {
+     try {
       await page.setViewportSize({ width: w, height: w <= 430 ? 812 : 900 });
       // PATH navigation, not hash. The app uses BrowserRouter with a basename; `#/route` leaves you
       // on whatever page you were already on. A first version of this sweep did exactly that and
@@ -178,6 +191,10 @@ try {
       let probe = [];
       try { probe = await page.evaluate(PROBE, /^\/(service\/(scan|technician-workspace|coordinated-mission)|inventory-role)/.test(r.route)); } catch (e) { probe = [{ kind: "PROBE_FAILED", detail: String(e.message).slice(0, 80) }]; }
       for (const f of probe) findings.push({ route: r.route, label: r.label, width: w, ...f });
+     } catch (err) {
+       findings.push({ route: r.route, label: r.label, width: w, kind: "VISIT_FAILED", detail: String(err && err.message).slice(0, 100) });
+     }
+     flush();
     }
   }
 } finally {
