@@ -24,6 +24,19 @@ const gb = await import(pathToFileURL(path.resolve(REPO, "functions/lib/access/g
 const cr = await import(pathToFileURL(path.resolve(REPO, "functions/lib/access/compatibilityRoles.js")).href);
 const { composedFor } = await import(pathToFileURL(path.resolve(__dirname, "functionalRoleComposition.mjs")).href);
 
+// Content hash over LINE-ENDING-NORMALISED text, with every CR stripped by character code.
+//
+// This field used to be a byte COUNT, which made the artifact irreproducible: a Windows checkout
+// with CRLF measures DECISIONS.md at 372,668 bytes and CI's LF measures 370,799, for a file nobody
+// had edited. The drift guard caught it on its first live run.
+//
+// The FIRST fix was also wrong -- it normalised by splitting on an escape sequence that did not
+// survive being written to disk, so it silently hashed the raw bytes and CI failed again with a
+// different pair of hashes. String.fromCharCode(13) cannot be mangled in transit, which is the
+// whole reason it is used here instead of the obvious escape.
+const sha256Normalised = (text) =>
+  "sha256:" + createHash("sha256").update(text.split(String.fromCharCode(13)).join("")).digest("hex");
+
 const contract = JSON.parse(readFileSync(path.join(REPO, "docs/governance/role-capability-contract.json"), "utf8"));
 const decisions = readFileSync(path.join(REPO, "docs/DECISIONS.md"), "utf8");
 
@@ -131,13 +144,7 @@ const out = {
     "historical/current implementation", "stale or generated summaries"],
   totals: byClass, rows,
   reverseSweep: { missingDecidedMappings: missing },
-  // A real content hash, over LINE-ENDING-NORMALISED text.
-  //
-  // This field was a byte COUNT, and it made the artifact irreproducible: a Windows checkout with
-  // CRLF and CI's LF produce different lengths for identical content, so the drift guard failed on
-  // its first live run against a file nobody had edited. Caught by the guard itself, which is the
-  // only reason it is not still there.
-  decisionsFileSha: `sha256:${createHash("sha256").update(decisions.split("' + chr(92) + 'r' + chr(92) + 'n").join("' + chr(92) + 'n")).digest("hex")}`,
+  decisionsFileSha: sha256Normalised(decisions),
 };
 writeFileSync(path.join(REPO, "docs/governance/precedence-sweep.json"), JSON.stringify(out, null, 1));
 console.log("roles swept:", BUSINESS.length, "| pairs:", rows.length);
