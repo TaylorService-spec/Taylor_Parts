@@ -2235,6 +2235,31 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-scan__plan { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
 
+/* ---------------------------------------------------------------------------
+   TECHNICIAN JOB TOOLS -- scanning and note-taking, opened FROM the job.
+   ---------------------------------------------------------------------------
+   Two equal-weight actions side by side on anything but the narrowest phone,
+   stacked below it. Both clear the touch floor comfortably: they are pressed
+   with a glove on, often while holding something in the other hand.
+   ------------------------------------------------------------------------- */
+.fo-job__tools { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+.fo-job__tools .fo-job__tool { width: 100%; min-height: 52px; font-size: 16px; }
+@media (min-width: 380px) {
+  .fo-job__tools { grid-template-columns: 1fr 1fr; }
+}
+
+/* The note editor. Deliberately roomy: a service note somebody may later rely on
+   should not be written through a two-line slot. */
+.fo-jobnote { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.fo-jobnote__open { width: 100%; min-height: 52px; font-size: 16px; }
+.fo-jobnote__actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.fo-jobnote__actions button { width: 100%; min-height: 48px; }
+@media (min-width: 380px) {
+  /* Save and Cancel are opposite in consequence, so they only sit side by side
+     where there is genuine room between them. */
+  .fo-jobnote__actions { grid-template-columns: 1fr 1fr; }
+}
+
 /* Leaving a workflow that is holding unsubmitted scans. Stacked, full-width targets: the two
    choices are opposite in consequence and must not sit side by side under one thumb. */
 .fo-scan__leave {

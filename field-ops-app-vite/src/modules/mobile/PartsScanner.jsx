@@ -43,7 +43,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 
 const STATE = { IDLE: "IDLE", SCANNING: "SCANNING", RESOLVING: "RESOLVING", DONE: "DONE" };
 
-export default function PartsScanner({ technicianId }) {
+export default function PartsScanner({ technicianId, workOrderId = null }) {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } =
     useAssignedWorkOrders(technicianId);
@@ -67,7 +67,28 @@ export default function PartsScanner({ technicianId }) {
   const candidates = useMemo(() => buildScanCandidates({ workOrders }), [workOrders]);
 
   const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
-  const activeWorkOrder = active[0] ?? null;
+
+  // CONTEXT COMES FROM WHERE THE SCANNER WAS OPENED, when the caller knows.
+  //
+  // THE DEFECT THIS FIXES: this used to be `active[0]` unconditionally -- the FIRST active job,
+  // whichever one that happened to be. A technician with three jobs who opened the scanner from
+  // inside job two had their scan attributed to job one, silently and with a confirmation message
+  // naming the wrong job. Nothing refused it, because the server was told a work order the
+  // technician genuinely is assigned to.
+  //
+  // Launched from inside a Work Order, `workOrderId` is passed and the scanner stays on THAT job --
+  // the operator is never asked to re-pick something the screen already knew. Launched standalone
+  // (the My Day tool tray), no id is passed and the previous behaviour is kept, which is honest
+  // there: with no context to inherit, the current job is the best available guess.
+  //
+  // A supplied id is still matched against the technician's OWN assigned work. An id that is not
+  // theirs resolves to null rather than being trusted, so this prop can widen nothing.
+  const activeWorkOrder = useMemo(() => {
+    if (workOrderId) {
+      return active.find((w) => w.id === workOrderId || w.woNumber === workOrderId) ?? null;
+    }
+    return active[0] ?? null;
+  }, [active, workOrderId]);
 
   const actions = useMemo(
     () => deriveScanActions(identity, { role, technicianId, workOrders, activeWorkOrder }),
