@@ -43,6 +43,13 @@ Each was traced to an introducing commit before being fixed.
 
 ## INTENTIONAL DENIALS — not defects
 
+* **Report Builder and Saved Reports are denied to EVERY persona, admin included.** Both declare
+  `capabilityAccess: [REPORT_DEFINITION_CAPABILITIES...]` and no principal holds those capabilities
+  today, so the governed denial renders for everyone. This is the Issue #325 state — the governed
+  report creator's Customer foundation is merged and live, the Functions lane is still open — not a
+  role-resolution defect. Stated explicitly because "admin is denied a route" reads like a superset
+  bug and is not one.
+
 * **admin denied `/inventory-role/manager|warehouse|mine`** and **eligiblePartsManager denied the
   same three.** `navConfig.js` states the design in its own words: every item declares
   `operationalRoleAccess` "so `isDomainVisible()` is false … for admin/dispatcher and for any
@@ -102,6 +109,16 @@ reads exactly like a clean one.
 
 The four guards were also **none of them in `test/suites.json`** — they ran only as path-filtered CI
 steps, so the certification guards had weaker coverage than the code they guard. Now unconditional.
+
+## HARNESS NOTE — CERTIFICATION RUNS ARE SEQUENTIAL
+
+Running the five-width sweep and the persona reachability profiles CONCURRENTLY against one dev
+server and one emulator starved `page.goto` and produced 30-second timeouts on `/reporting/builder`
+for two personas. Probed alone, that route loads in ~230ms for admin and ~1.2s for a technician, both
+rendering the governed denial. The timeouts were an artifact of the harness, not the build.
+
+Recorded because the failure looked exactly like a product defect and would have been reported as one.
+`_sandboxRegressionGate.sh` runs its steps sequentially for this reason.
 
 ## SANDBOX REFRESH GATE
 
