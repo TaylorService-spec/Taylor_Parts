@@ -201,6 +201,14 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "inventory.cycleCount.submit",
         "inventory.cycleCount.reconcile",
         "inventory.cycleCount.cancel",
+        // SCANNER PROMOTION. Mirrors config/environments.json's platform-sandbox entry, which is the
+        // canonical source; a parity test fails if this snapshot and that file ever disagree.
+        "inventory.catalog.alias.read",
+        "inventory.balance.read",
+        "inventory.location.bin.manage",
+        "inventory.location.bin.read",
+        "inventory.placement.record",
+        "inventory.returns.intake",
       ]),
     }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),
