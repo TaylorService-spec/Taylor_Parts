@@ -806,6 +806,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/truckHandoff.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/cycleCountScanSession.test.mjs",
       "runner": "node --test"
     },

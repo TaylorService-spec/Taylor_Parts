@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–M merged.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged.
 
 ---
 
@@ -44,7 +44,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **J3** — shared scanner input hardening | MERGED (#1364) | COMPLETE | n/a — client input layer only | n/a | n/a |
 | **K** — descriptive bin registry | MERGED (#1365) | n/a (no UI yet) | **NEW** — `bins` collection + 5 callables | **NOT DEPLOYED** | `inventory.location.bin.manage` / `.read` inert, granted to nobody |
 | **L** — put-away | MERGED (#1366) | COMPLETE | **NEW** — `bin_placements` + `recordPutAway` | **NOT DEPLOYED** | `inventory.placement.record` inert, granted to nobody |
-| **M** — pick and stage | This change | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
+| **M** — pick and stage | MERGED (#1367) | COMPLETE | Reuses the Phase L placement command | **NOT DEPLOYED** | Same two capabilities as put-away, both inert |
+| **O** — warehouse ↔ truck handoff | This change | COMPLETE | **No new authority** — it is a transfer with a MOBILE endpoint | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive`, both inert |
 
 ### What "not deployed" means concretely
 
@@ -795,3 +796,46 @@ recorded reason, and the operator sees it immediately.
 Picking needs the same two capabilities as put-away — `inventory.placement.record` and
 `inventory.location.bin.read` — both `active: false` and granted to no Role. Staging is not a
 separate workflow: it is how a pick ends.
+
+## 17. Phase O — warehouse ↔ truck handoff
+
+### Reconciliation: the custody model already says all of it
+
+Phase O asked for stage → select the truck → scan items → warehouse release → technician acceptance →
+authoritative custody movement → audit receipt. **Every step already exists**, in the transfer
+authority:
+
+| Phase O step | Existing mechanism |
+| --- | --- |
+| Warehouse release | `dispatchTransferOrder` — TRANSFER_OUT at the origin, `REQUESTED → IN_TRANSIT` |
+| Custody in flight | `IN_TRANSIT` — counted at **neither** endpoint, deliberately |
+| Technician acceptance | `receiveTransferOrder` — TRANSFER_IN at the destination → `COMPLETED` |
+| The truck itself | `type: "MOBILE"`, validated against `mobile_locations` (EI Truck Registry, ADR-010) and refused when inactive |
+| Audit receipt | The ledger events those two commands already write |
+
+**A handoff IS a transfer whose destination is a truck.** So no new command, no new capability, no
+new collection, and above all **no parallel handoff state machine** — one would be free to disagree
+with the custody model about what is where, which is the duplicate authority this program exists to
+avoid. A test asserts the scan surface cannot even name `handoff`, `truck` or `custody`.
+
+The Phase J1 scan surface handles it **unchanged**, because it was written endpoint-agnostic: a test
+proves a warehouse→warehouse transfer and a warehouse→truck handoff produce identical verification
+state, action and blockers.
+
+### What was actually built
+
+One thing: **a MOBILE endpoint now reads as "truck TRUCK-7"** rather than as a bare id. Two bare ids
+make a handoff to a van look identical to a transfer between two buildings, and they are physically
+different jobs with different people at the other end. The type was already in the data; saying it
+costs nothing.
+
+### The technician's half
+
+Acceptance is `inventory.transfer.receive` — a capability, not a role — so a technician who holds it
+accepts at their truck through the same screen, and the location prompt names the truck. Scanning a
+unit that is not on the handoff is refused; the outstanding serials are named so the technician sees
+*which* box is missing.
+
+### State today
+
+Both transfer capabilities remain `active: false` and granted to no Role.
