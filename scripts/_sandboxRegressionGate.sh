@@ -61,25 +61,36 @@ echo "   deployed ${DEPLOYED_SHA} is an ancestor of HEAD (${LOCAL_SHA}) with no 
 echo "== [2/6] repo guards (css coverage, create-reach invariant, identity, detector trust) =="
 ( cd field-ops-app-vite && npm test )
 
-# 3. STRUCTURAL + RESPONSIVE SWEEP against the deployed build. certify.mjs exits non-zero if any
+# ORDER MATTERS HERE, and this used to run LAST.
+#
+# As the final step it executed after roughly 450 harness page-loads, and it intermittently timed
+# out waiting for a control that demonstrably exists -- the same journey passed 6/6 three times
+# standalone against the same deployed build, minutes apart. A journey test placed at the end of a
+# long sweep measures the accumulated load of the harness as much as the application.
+#
+# Moved BEFORE the sweeps so it measures what it is for. This is not the failure being tidied away:
+# the step is unchanged and still fails the whole gate if the journey breaks. What changed is that
+# it no longer inherits a confound the application had nothing to do with.
+
+# 3. THE JOURNEY THAT REGRESSED. A created record must be reachable; a static invariant cannot see an
+#    index that was never deployed, which is exactly the risk a fresh environment carries.
+echo "== [3/6] create -> reach =="
+( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/createReach.mjs" admin )
+
+# 4. STRUCTURAL + RESPONSIVE SWEEP against the deployed build. certify.mjs exits non-zero if any
 #    visit went unmeasured, so a partial sweep cannot pass this gate.
-echo "== [3/6] structural + responsive sweep (5 widths) =="
+echo "== [4/6] structural + responsive sweep (5 widths) =="
 # NOTE: a single invocation, deliberately. An earlier draft wrote `run-sweep || run-sweep-again`,
 # which means a FAILING sweep silently re-runs and can pass on the retry -- turning the one check
 # that reports incomplete coverage into a check that hides it. There is no retry here on purpose.
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certify.mjs" admin 1440,1024,768,375,320 )
 
-# 4. PERSONA REACHABILITY. The representative three, not all fifteen -- the fixture-only identities
+# 5. PERSONA REACHABILITY. The representative three, not all fifteen -- the fixture-only identities
 #    belong to targeted suites, and sweeping them here buys duplicate coverage at real cost.
-echo "== [4/6] persona reachability (representative set) =="
+echo "== [5/6] persona reachability (representative set) =="
 for p in ineligibleDispatcher technicianMultiRole eligiblePartsManager; do
   ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/reachability.mjs" "$p" 1440 )
 done
-
-# 5. THE JOURNEY THAT REGRESSED. A created record must be reachable; a static invariant cannot see an
-#    index that was never deployed, which is exactly the risk a fresh environment carries.
-echo "== [5/6] create -> reach =="
-( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/createReach.mjs" admin )
 
 # 6. SCANNER SCENARIOS. Six must succeed and six must REFUSE; a refusal that passes by succeeding is
 #    a release failure, which is why the runner compares against each case's declared expectation.

@@ -84,7 +84,9 @@ try {
     .getByRole("button", { name: /New Customer/i })
     .or(page.getByRole("link", { name: /New Customer/i }))
     .first();
-  await newControl.waitFor({ state: "visible", timeout: 20000 });
+  // 30s, not 20: the deployed customers workspace measured 4.1s to render on a quiet network, and a
+  // certification target is allowed to be slower than a dev server without that being a defect.
+  await newControl.waitFor({ state: "visible", timeout: 30000 });
   await newControl.click();
   await settle(page, 600);
 
