@@ -15,6 +15,7 @@ import MultiScanReceiving from "../receiving/MultiScanReceiving.jsx";
 import PartsScanner from "../mobile/PartsScanner.jsx";
 import LookupScan from "./LookupScan.jsx";
 import TransferScan from "./TransferScan.jsx";
+import CycleCountScan from "./CycleCountScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -98,6 +99,19 @@ export default function ScanWorkspace({ deps }) {
         </button>
         {/* The EXISTING transfer commands. Scanning verifies; it authors nothing. */}
         <TransferScan deps={deps?.transferDeps} />
+      </div>
+    );
+  }
+
+  if (active === SCAN_WORKFLOW.CYCLE_COUNT) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Count" />
+        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
+          ← All scanning workflows
+        </button>
+        {/* Blind by design, and counting is not adjusting: reconcile is a separate authority. */}
+        <CycleCountScan deps={deps?.cycleCountDeps} />
       </div>
     );
   }

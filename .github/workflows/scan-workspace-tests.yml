@@ -22,6 +22,9 @@ name: Scan Workspace Tests
 #                            no fourth on-hand implementation exists.
 #   partLookupInventoryRows — what those reads turn into rows: a refused read is never an empty
 #                            shelf, a loading read never says it failed.
+#   cycleCountScanSession  — the count is BLIND (no expected figure is accepted, stored, derived or
+#                            displayed) and observation is not adjustment (no reconcile path at all).
+#   cycleCountScan         — those two properties on the mounted surface.
 #   transferScanVerification — scanning VERIFIES a transfer, it never authors one: no payload is
 #                            derived from scans, wrong part / wrong location / excess / stale status
 #                            each block, and the module imports no command or ledger.
@@ -58,6 +61,9 @@ on:
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
+      - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
+      - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
+      - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
       - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
@@ -84,6 +90,8 @@ on:
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
+      - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
@@ -107,6 +115,9 @@ on:
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
+      - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
+      - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
+      - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
       - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
@@ -133,6 +144,8 @@ on:
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/cycleCountScanSession.test.mjs"
+      - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
@@ -199,6 +212,10 @@ jobs:
         run: node --test test/transferScanVerification.test.mjs
         working-directory: field-ops-app-vite
 
+      - name: Cycle count scan session (pure)
+        run: node --test test/cycleCountScanSession.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: Receiving scan queue (pure)
         run: node --test test/receivingScanQueue.test.mjs
         working-directory: field-ops-app-vite
@@ -209,5 +226,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite

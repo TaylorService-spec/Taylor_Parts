@@ -28,6 +28,7 @@ export const SCAN_WORKFLOW = Object.freeze({
   TECHNICIAN_WORK_ORDER: "TECHNICIAN_WORK_ORDER",
   LOOKUP: "LOOKUP",
   TRANSFER: "TRANSFER",
+  CYCLE_COUNT: "CYCLE_COUNT",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -49,6 +50,17 @@ export const RECEIVE_CAPABILITY = "inventory.stock.receive";
  */
 export const TRANSFER_DISPATCH_CAPABILITY = "inventory.transfer.dispatch";
 export const TRANSFER_RECEIVE_CAPABILITY = "inventory.transfer.receive";
+
+/**
+ * COUNTING, not reconciling.
+ *
+ * A counter needs create + submit. `inventory.cycleCount.reconcile` is deliberately NOT consulted:
+ * approving a variance is a manager's separate authority (DECISIONS #111 — a counter cannot approve
+ * their own material variance), and offering the workflow on the strength of it would put counting
+ * behind the wrong grant.
+ */
+export const CYCLE_COUNT_CREATE_CAPABILITY = "inventory.cycleCount.create";
+export const CYCLE_COUNT_SUBMIT_CAPABILITY = "inventory.cycleCount.submit";
 
 /**
  * Derive the available workflows.
@@ -127,6 +139,16 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.TRANSFER, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
+  // ── Cycle counting (existing governed cycle-count commands) ────────────────────────────────
+  //
+  // BOTH create and submit are required: a counter who can start a count but not submit it produces
+  // an open count nobody can close, and one who can submit but not create has nothing to submit to.
+  if (holds(CYCLE_COUNT_CREATE_CAPABILITY) && holds(CYCLE_COUNT_SUBMIT_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.CYCLE_COUNT });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.CYCLE_COUNT, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -158,6 +180,7 @@ export function deriveScanWorkflows(ctx = {}) {
 export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.LOOKUP]: "Look something up",
   [SCAN_WORKFLOW.TRANSFER]: "Send or receive a transfer",
+  [SCAN_WORKFLOW.CYCLE_COUNT]: "Count what is on the shelf",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
 });
@@ -167,6 +190,8 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
     "Scan or type a part code to see what it is. Reads only — nothing is moved, counted or changed.",
   [SCAN_WORKFLOW.TRANSFER]:
     "Check a transfer against what you are physically holding, then send it or receive it.",
+  [SCAN_WORKFLOW.CYCLE_COUNT]:
+    "Scan everything you can find of one part at one location, and record what you saw. Counting changes nothing on its own.",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]:
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
@@ -193,6 +218,9 @@ const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
   }),
   [SCAN_WORKFLOW.TRANSFER]: Object.freeze({
     [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to send or receive transfers. An administrator can grant it.",
+  }),
+  [SCAN_WORKFLOW.CYCLE_COUNT]: Object.freeze({
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to count stock. An administrator can grant it.",
   }),
 });
 
