@@ -1799,3 +1799,71 @@ Rules or index change.
 
 Recorded in `docs/product/multi-line-purchase-order-phase-b.md` §10 and
 `docs/specifications/multi-line-receiving-transaction-order.md`.
+
+## #116 — A bin describes where stock sits; the warehouse still owns it
+
+**Owner, 2026-08-20.** Resolving the Phase I finding
+(`docs/assessments/inventory-location-registry-2026-08-20.md`).
+
+**Warehouse = inventory custody authority. Bin = descriptive physical sub-location.** A bin does not
+become a separate inventory custody location in this phase.
+
+The finding this answers: every governed authority — availability
+(`fulfillmentAvailability.ts`), receiving, transfer, cycle count and location display — counts a
+movement only at `type === "WAREHOUSE"` (and sometimes MOBILE). Had put-away moved stock to a `BIN`,
+the moment a receipt was put away it would have vanished from sellable on-hand, transfer sufficiency
+and cycle-count expected quantity.
+
+**The load-bearing invariant: putting stock into a bin must not remove it from warehouse on-hand or
+available.** Bin placement describes where a unit physically is within a warehouse it already
+belongs to.
+
+Consequently, and deliberately, this phase adds **no** hierarchical inventory roll-up, **no**
+bin-level reservations, **no** second inventory balance authority, and **no** change to existing
+transfer or cycle-count sufficiency semantics. `BIN` does not become eligible for warehouse custody
+calculations.
+
+The cost is stated rather than hidden: a bin-to-bin move is not an inventory movement under this
+model, and "how many are in rack 14" is only as good as the last placement recorded. True bin-level
+custody remains a separate architecture decision, and the three options (roll-up / descriptive /
+full custody) stay documented in the assessment for when warehouse operations justify revisiting it.
+
+## #117 — Quarantine is not invented as a side effect of put-away
+
+**Owner, 2026-08-20.** Quarantine and inspection are **excluded from initial put-away** and remain a
+future explicit custody/disposition workflow.
+
+Nothing supports quarantine today — no state, no command, no field — and the Phase I brief's
+"where already supported" therefore resolved to nowhere. Taylor parts and Ventana equipment may
+require materially different inspection policies, so inferring one from a put-away screen would
+embed a quality-control decision neither line of business has made.
+
+Put-away records physical placement. It does not classify condition, does not hold stock pending
+inspection, and does not gate availability.
+
+## #118 — A return is intake; disposition is a separate authority
+
+**Owner, 2026-08-20.** Returns intake and returns disposition are **separate authorities**, and a
+return must **not** automatically restore inventory to sellable stock.
+
+Intake captures only what can be authoritative: source / Work Order / RMA context, item or serialized
+identity, quantity, condition, reason, and receipt/custody state. Where disposition policy lacks
+sufficient authority, the return is left **awaiting disposition** and the required future command is
+recorded rather than guessed.
+
+Future disposition may include return to stock, inspection/quarantine, repair, vendor return/RMA, or
+scrap. None of those is implied by intake, and none is invented here.
+
+This is why `RETURNED` — a schema-legal operational movement type — still has no writer: writing one
+at intake would be exactly the automatic restock this decision forbids.
+
+## #119 — Rollout stays separate from repository work
+
+**Owner, 2026-08-20.** Capability activation, grants, deployment and readiness flips remain separate
+rollout actions, and they do **not** block repository work that can be implemented honestly and fail
+closed.
+
+The corollary matters as much as the rule: **an existing capability is never broadened merely to
+avoid a rollout step.** Where least privilege requires a new narrow capability, one is registered
+inert and ungranted — as `inventory.catalog.alias.read` and `inventory.balance.read` already were —
+rather than pointing a scanner at a write capability that happens to be active.

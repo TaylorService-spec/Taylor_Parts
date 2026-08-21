@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20, at Phase I (blocked).
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phase I unblocked.
 
 ---
 
@@ -38,7 +38,7 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **F** — lookup-only scanning | MERGED (#1357) | COMPLETE | **No backend change** — reuses the existing client-direct `parts` read | **Hosting release only** | **No activation needed** for the Part-identity slice |
 | **G** — barcode / alias lookup | MERGED (#1358) | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
 | **H** — complete read-only lookup | MERGED (#1359) | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
-| **I** — authoritative location registry | **NOT STARTED — BLOCKED** | n/a | n/a | n/a | Requires an Owner decision on bin custody roll-up |
+| **I** — location reconciliation | ANALYSIS MERGED (#1360) | n/a | n/a | n/a | Resolved by DECISIONS #116 |
 
 ### What "not deployed" means concretely
 
@@ -408,7 +408,22 @@ behaviorally identical and each is emulator-tested, so converging them on the no
 a safe, valuable follow-up — but it touches live receiving, transfer and cycle-count authorities and
 was deliberately **not** bundled into a read-only phase.
 
-## 10. Phase I — BLOCKED on an Owner decision
+## 10. Phase I — RESOLVED by Owner decision #116
+
+The reconciliation below stood; the Owner answered it on 2026-08-20 with **DECISIONS #116–#119**:
+
+- **#116** — Warehouse is the inventory custody authority; a **bin is a descriptive physical
+  sub-location**. Putting stock into a bin must not remove it from warehouse on-hand or available.
+  No roll-up, no bin-level reservations, no second balance authority.
+- **#117** — Quarantine is **excluded** from initial put-away and stays a future explicit workflow.
+- **#118** — Returns intake and disposition are **separate authorities**; a return never
+  automatically restores sellable stock.
+- **#119** — Activation, grants, deployment and readiness stay separate rollout actions, and an
+  existing capability is never broadened to avoid one.
+
+The original finding, unchanged:
+
+### The finding (as reconciled, before the decision)
 
 Reconciliation is complete and is recorded in
 [the location registry assessment](../assessments/inventory-location-registry-2026-08-20.md). No
