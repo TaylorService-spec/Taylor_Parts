@@ -366,13 +366,10 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
     "account.governedField.write",
-    // Owner ruling 2026-08-18: finance sees what was committed to customers and
-    // what was committed to suppliers. READ on both -- no create/void on either
-    // side. salesOrder.read is active:false and stays inert until activation.
-    "salesOrder.read",
+    "account.record.read",
     "reorder.purchaseOrder.read",
+    "salesOrder.read",
   ],
 }) as Role;
 

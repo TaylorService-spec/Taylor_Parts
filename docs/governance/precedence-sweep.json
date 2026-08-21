@@ -1,0 +1,2854 @@
+{
+ "precedenceOrder": [
+  "explicit Owner governance decision",
+  "canonical reconciled business-intent matrix",
+  "historical/current implementation",
+  "stale or generated summaries"
+ ],
+ "totals": {
+  "EXPLICIT_OWNER_DECISION": 56,
+  "CANONICAL_MATRIX": 118,
+  "WORKFLOW_REQUIRED": 4,
+  "LEGACY_COMPATIBILITY_ONLY": 2
+ },
+ "rows": [
+  {
+   "roleId": "generalManager",
+   "capability": "account.record.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "account.record.update",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.adjustment.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "controller",
+    "accountingManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.invoice.issue",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "controller",
+    "accountingManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.payment.apply",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.refund.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.catalog.manage",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
+   "alsoHeldBy": [
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "opportunity.createSalesOrder",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "opportunity.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "reorder.purchaseOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "purchasingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "reorder.request.postPurchasingUpdate",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "purchasingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesOrder.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "account.record.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "account.record.update",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "opportunity.createSalesOrder",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "marketingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "opportunity.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "salesOrder.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "account.record.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "account.record.update",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "opportunity.createSalesOrder",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "marketingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "opportunity.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesOrder.write",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "marketingManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "marketingManager",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "marketingManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "fulfillment.coordinatedVisit.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #113",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "inventory.catalog.manage",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "workOrder.cancel",
+   "classification": "WORKFLOW_REQUIRED",
+   "basis": "Spec 26.2 Owner direction: Service Manager holds the FULL Work Order lifecycle; cancel is part of that lifecycle",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "dispatcher",
+   "capability": null,
+   "classification": "LEGACY_COMPATIBILITY_ONLY",
+   "basis": "workbook Role implemented as a compatibility Role; Owner ruling: do not reduce"
+  },
+  {
+   "roleId": "technician",
+   "capability": null,
+   "classification": "LEGACY_COMPATIBILITY_ONLY",
+   "basis": "workbook Role implemented as a compatibility Role; Owner ruling: do not reduce"
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.catalog.manage",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.purchaseOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.request.postPurchasingUpdate",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.request.read.queue",
+   "classification": "WORKFLOW_REQUIRED",
+   "basis": "Owner roster 2026-08-20 + ruling 2026-08-19 'Purchasing falls under accounting': the buyer must see what needs buying",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.request.recordPurchaseOrder",
+   "classification": "WORKFLOW_REQUIRED",
+   "basis": "Owner roster 2026-08-20: record the resulting Purchase Order",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "reorder.request.startPurchasing",
+   "classification": "WORKFLOW_REQUIRED",
+   "basis": "Owner roster 2026-08-20: take a request into purchasing",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "purchasingManager",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "finance.adjustment.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "accountingManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "finance.invoice.issue",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "accountingManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "finance.payment.apply",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "finance.refund.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "controller",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "account.governedField.write",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.adjustment.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.invoice.issue",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.payment.apply",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.refund.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "inventory.action.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "opportunity.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "reorder.purchaseOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "warehouse.transferOrder.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller"
+   ]
+  },
+  {
+   "roleId": "supportStaff",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsManager",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "finance.adjustment.record",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "finance.invoice.issue",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "inventory.catalog.manage",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "shopManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopManager",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "account.record.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "supportStaff",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "finance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "inventory.balance.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "inventory.catalog.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "inventory.serializedAsset.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "inventory.transaction.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "salesOrder.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #114",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "marketingManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "purchasingManager",
+    "controller",
+    "accountingManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "workOrder.create",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "shopAssociate",
+   "capability": "workOrder.transition",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "partsAssociate",
+    "partsManager",
+    "shopManager"
+   ]
+  }
+ ],
+ "reverseSweep": {
+  "missingDecidedMappings": []
+ },
+ "decisionsFileSha": "bytes:372668"
+}

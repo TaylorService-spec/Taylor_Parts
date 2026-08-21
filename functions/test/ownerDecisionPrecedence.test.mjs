@@ -73,3 +73,48 @@ test("the precedence list itself is not silently emptied", () => {
     assert.ok(e.holders.length > 0, `${e.capability} must name its holders`);
   }
 });
+
+// ============================ ASSERTED ORDERINGS ============================
+//
+// The reverse sweep (2026-08-21) asked the question the forward guards could not: not "does a Role
+// hold more than a decision allows", but "does a Role hold LESS than a decision requires".
+//
+// Its first candidate finding was wrong, and the way it was wrong is the point of this block.
+// DECISIONS #114 (2026-08-18) makes Accounting Manager and Finance Manager identical, so Accounting
+// widening to 17 capabilities while Finance stayed at 4 looked like a decided equality broken by
+// matrix silence. Raising Finance to match would have handed it the entire purchasing workflow.
+//
+// #114 says "FOR NOW". The Owner ruling of 2026-08-19 -- "Purchasing falls under accounting" --
+// ENDS that parity explicitly, and replaces it with an ORDERING: Accounting retains everything
+// Finance holds and may now hold more. A LATER Owner decision outranks an earlier one, so the live
+// invariant is containment, not equality.
+//
+// The lesson generalises past this pair: reading a decision without checking what superseded it
+// produces a change that cites governance while contradicting it. Recorded here so the next sweep
+// does not rediscover the parity and "restore" it again.
+const ASSERTED_ORDERINGS = [
+  {
+    superset: "accountingManager",
+    subset: "financeManager",
+    decision:
+      "DECISIONS #114 (Owner, 2026-08-18) raised Accounting to Finance rather than lowering Finance. " +
+      "The Owner ruling of 2026-08-19 ('Purchasing falls under accounting') ended the 'for now' parity " +
+      "and left the ordering: Accounting keeps every id Finance holds and may hold more. Finance " +
+      "drifting above Accounting, or Accounting losing parity capability, both reverse a decision.",
+  },
+];
+
+for (const entry of ASSERTED_ORDERINGS) {
+  test(`${entry.superset} retains everything ${entry.subset} holds, per the superseding ordering`, () => {
+    const sup = new Set(GOVERNED_BUSINESS_ROLES[entry.superset]?.permissions || []);
+    const sub = [...(GOVERNED_BUSINESS_ROLES[entry.subset]?.permissions || [])].sort();
+    assert.ok(sub.length > 0, `${entry.subset} must not satisfy the ordering by holding nothing`);
+    const lost = sub.filter((c) => !sup.has(c));
+    assert.deepEqual(
+      lost, [],
+      `${entry.superset} no longer holds capability ${entry.subset} has.
+
+DECISION: ${entry.decision}`,
+    );
+  });
+}
