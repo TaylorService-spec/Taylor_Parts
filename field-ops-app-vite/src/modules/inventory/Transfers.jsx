@@ -87,9 +87,16 @@ export default function Transfers({ accessVersion }) {
     };
   }, [refreshKey]);
 
-  const intro = (
+  const intro = <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>;
+
+  // THE AUTHORITY NOTICE BELONGS WITH THE CONTROLS, not on a loading or error screen.
+  //
+  // It first rendered inside `intro`, which every branch shows -- so a user waiting for the read
+  // was told about their permissions before there was anything to act on, and two role="status"
+  // regions existed at once during loading. Telling somebody what they may not do is only useful
+  // next to the thing they were about to try.
+  const authorityNotice = (
     <>
-      <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>
       {/* SAY WHAT THE BACKEND WILL DO, BEFORE THE BUTTON IS PRESSED.
           Every inventory.transfer.* capability is registered active:false and granted to no default
           Role, so for almost everyone who can reach this page the write resolves permission-denied
@@ -138,6 +145,7 @@ export default function Transfers({ accessVersion }) {
         )}
       </WorkspaceHeader>
       {intro}
+      {authorityNotice}
       {status && (
         <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
           {status.message}{" "}
