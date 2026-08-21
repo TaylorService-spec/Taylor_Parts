@@ -17,6 +17,10 @@ name: Scan Workspace Tests
 #                            command or writer at all.
 #   lookupScan             — the same properties on the mounted surface, plus that it offers exactly
 #                            one control and no way to move stock.
+#   returnIntakeCommand    — the DECISIONS #118 invariant, asserted on the code: a return writes no
+#                            ledger event and never restores stock, every return awaits disposition,
+#                            and CONDITION never branches behaviour — an observation must not
+#                            quietly become a routing decision.
 #   putAwayCommand         — the DECISIONS #116 invariant, asserted on the code: put-away writes no
 #                            ledger event, touches no balance, emits no location reference and cannot
 #                            name quarantine. A comment promising it would not be enough.
@@ -93,6 +97,8 @@ on:
       - "field-ops-app-vite/src/domain/pickSession.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
       - "functions/src/inventoryLocation/putAwayCommand.ts"
+      - "functions/src/inventoryReturns/returnIntakeCommand.ts"
+      - "functions/src/inventoryReturns/returnCallables.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
       - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
@@ -132,6 +138,7 @@ on:
       - "field-ops-app-vite/test/pickScan.test.jsx"
       - "field-ops-app-vite/test/putAwayScan.test.jsx"
       - "functions/test/putAwayCommand.test.mjs"
+      - "functions/test/returnIntakeCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
       - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
@@ -168,6 +175,8 @@ on:
       - "field-ops-app-vite/src/domain/pickSession.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
       - "functions/src/inventoryLocation/putAwayCommand.ts"
+      - "functions/src/inventoryReturns/returnIntakeCommand.ts"
+      - "functions/src/inventoryReturns/returnCallables.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
       - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
@@ -207,6 +216,7 @@ on:
       - "field-ops-app-vite/test/pickScan.test.jsx"
       - "field-ops-app-vite/test/putAwayScan.test.jsx"
       - "functions/test/putAwayCommand.test.mjs"
+      - "functions/test/returnIntakeCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
       - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
@@ -274,7 +284,7 @@ jobs:
         working-directory: functions
 
       - name: Descriptive bin registry (pure)
-        run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs
+        run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs test/returnIntakeCommand.test.mjs
         working-directory: functions
 
       - name: Transfer scan verification + truck handoff (pure)
