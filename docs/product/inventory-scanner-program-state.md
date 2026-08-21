@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P, Q and R.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P, Q, R and the S closeout.
 
 ---
 
@@ -49,7 +49,7 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **N** — Warehouse/Parts mobile UX | MERGED (#1369) | COMPLETE | Optional `note` on the placement record | **NOT DEPLOYED** | No new capability |
 | **P** — technician inventory | MERGED (#1370) | Verified, not rebuilt | **No new authority** | **NOT DEPLOYED** | Existing transfer + cycle-count capabilities |
 | **Q** — returns intake | MERGED (#1371) | n/a (no UI yet) | **NEW** — `inventory_returns` + `recordReturnIntake` | **NOT DEPLOYED** | `inventory.returns.intake` inert, granted to nobody |
-| **R** — offline / retry layer | This change | Layer complete; **adoption pending** | **No backend change** | n/a | No new capability |
+| **R** — offline / retry layer | MERGED (#1372) | Layer complete; **adoption pending** | **No backend change** | n/a | No new capability |
 
 ### What "not deployed" means concretely
 
@@ -224,25 +224,29 @@ The new `scan-workspace-tests.yml` lane names them alongside the Phase E suites,
 enough that a change to the queue, the transport, the readiness constant, the nav config or either
 workspace brings the lane with it.
 
-## 7. Open finding — most client vitest suites do not run in CI
+## 7. CI coverage — the finding, and what closed it
 
-Phase E found that Phase D's two vitest suites were merged with no workflow naming them. Phase F
-measured how far that goes:
+**The original finding (Phase E/F).** This repository has no glob lane for client vitest suites: a
+`.test.jsx` runs in CI only where a workflow names it. Phase D's two suites were merged unnamed and
+had never run once; an audit put the total at **61 of 133**.
 
-**61 of the 133 `field-ops-app-vite/test/*.test.jsx` suites are named by no workflow at all.** They
-have never run in CI. They pass locally, and a regression in any of them would not fail a PR.
+**A second finding at closeout, worse in its way.** The `node:test` side *does* have a manifest —
+`test/suites.json`, 209 suites, run by `npm test`. But the only lane invoking it was
+`inventory-parts-ui-tests.yml`, behind a path filter aimed at the Parts UI. So a change to
+`domain/scannedIdentity.js` — the resolver every scanning workflow depends on — **did not run its own
+suite**. The manifest was comprehensive and effectively dormant, which is worse than absent, because
+registration reads as coverage.
 
-This is not specific to scanning — the unnamed set spans accounts, dispatch, trucks, reporting,
-inventory roles, design-system conformance and error-contract suites. It was **recorded rather than
-fixed** here, because closing it properly is either 61 workflow registrations or a burn-down guard
-with a 61-entry allowlist, and either is a repo-wide CI change rather than part of a scanner phase.
+**What closed it.** `client-suite-manifest-tests.yml` runs the full manifest on **any** change under
+`field-ops-app-vite`, and carries a guard, `test/ciSuiteCoverage.test.mjs`, that fails when a **new**
+vitest suite is added without a workflow naming it.
 
-The scanning suites (Phase D, E and F) are all named and are not part of that 61.
+The 60 pre-existing orphans are seeded into a **shrinking allowlist**, with two guards of its own:
+a stale entry (deleted, or since named) fails the test, so the list cannot be padded back out; and a
+stated ceiling fails if it grows. **An allowlist that can only shrink is a burn-down; one that can
+grow is permission.**
 
-**Recommended shape when it is taken up:** a single guard test that reads
-`.github/workflows/*.yml`, lists every `test/*.test.jsx`, and fails on any suite named nowhere —
-starting with the current 61 in a shrinking allowlist, the same pattern the card/composition program
-used for `LEGACY_BADGE_ALLOWLIST`.
+Every scanner-program suite is named explicitly and none is on the allowlist.
 
 ## 8. Phase G — barcode / alias lookup
 
@@ -1060,3 +1064,83 @@ connection and the status quo without one.
 Adopting it per workflow is mechanical — each already has a stable idempotency key, which is the hard
 part — but it changes what an operator sees at the moment of submission, and that deserves its own
 change per surface rather than six at once inside a layer PR.
+
+## 22. Phase S — closeout reconciliation
+
+Verified against the repository, not against these notes.
+
+### One shared scanner platform
+
+`resolveScannedIdentity` is defined **exactly once** (`domain/scannedIdentity.js`) and consumed by
+all six scanning surfaces plus the alias resolver. There is no second identifier resolver, and the
+trusted multi-type resolver on the server routes every question through the same
+`resolvePartAlias` the administration probe uses.
+
+### No duplicate inventory authority
+
+| Check | Result |
+| --- | --- |
+| `sumLedgerEligibleOnHand` definitions | **1** — the shared, Owner-ratified balance authority |
+| Ledger writers (`stageOperationalMovement`) | receiving, transfer, cycle-count reconcile, and the repository itself |
+| Ledger writers **added by this program** | **none** |
+
+That last row is the headline. The scanner program added three commands — the bin registry,
+placements (put-away and pick) and returns intake — and **not one of them writes the ledger**. Each
+has a test that fails if it ever does.
+
+Three parallel on-hand implementations remain inside their own command transactions (transfer,
+cycle count, fulfillment). They are behaviorally identical and each is emulator-tested; converging
+them on the now-shared function stays recorded as a follow-up rather than smuggled into a
+read-only or UX phase.
+
+### Every supported workflow has a governed backend
+
+| Workflow | Backend |
+| --- | --- |
+| Lookup | `parts` read (Rules) + `getPartBalance`, `getAvailableEquipment`, `getLocationDisplay`, `resolveScannedPartIdentifier` |
+| Receiving | `receiveInventoryStock` (canonical multi-line) |
+| Transfers / truck handoff | `dispatchTransferOrder` / `receiveTransferOrder` |
+| Cycle count | `createCycleCount` / `submitCycleCount` |
+| Put-away / pick | `recordPutAway` |
+| Technician scan | `updateWorkOrderExecutionData` |
+
+### Unsupported workflows are absent
+
+No control exists for returns-by-scan, serialized install/remove, or bin-level counting — not
+disabled, absent — and tripwires in `scanWorkflows.test.mjs` and `scanWorkspace.test.jsx` fail if one
+appears. `SCAN_WORKFLOW` holds exactly the seven that have an authority behind them.
+
+### The technician experience is intact
+
+`PartsScanner` is unchanged and still mounted in FieldMode. A technician reaches warehouse workflows
+only by holding the same capabilities anyone else needs, and being a technician grants nothing beyond
+their own scanner — both asserted in `technicianInventory.test.mjs`.
+
+### Voice dictation stays distinct from future conversational AI
+
+`DictatableNote` turns speech into text in an editable field and stops. Tests assert it reaches no
+transport, resolves no identity, and cannot name `intent`, `parseCommand`, `assistant` or `nlp`. The
+conversational assistant remains a separate future add-on, and that boundary is enforced rather than
+promised.
+
+### Deployment, activation and grants — the truthful state
+
+**Nothing is deployed. Nothing is activated. Nothing is granted.** Every capability the program
+touches or added is `active: false` and held by no Role:
+
+`inventory.catalog.alias.read` · `inventory.balance.read` · `inventory.serializedAsset.read` ·
+`inventory.location.display.read` · `inventory.location.bin.manage` · `inventory.location.bin.read` ·
+`inventory.placement.record` · `inventory.returns.intake` · `inventory.transfer.*` ·
+`inventory.cycleCount.*`
+
+`inventory.stock.receive` is active and granted, but `RECEIVING_TRANSPORT_READY` is false outside
+`eos-platform-sandbox`.
+
+**The one exception worth naming:** part-code lookup needs **no activation at all** — `parts` is
+governed by `firestore.rules` and live today. It becomes operable on a routine Hosting release.
+
+### No Rules or index change, across the whole program
+
+Three new collections were added — `bins`, `bin_placements`, `inventory_returns` — and **none needed
+a `firestore.rules` match block**, because absent means deny-all and the commands run on the Admin
+SDK. Nothing was weakened to add them.
