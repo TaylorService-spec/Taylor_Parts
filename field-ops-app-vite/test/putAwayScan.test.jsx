@@ -207,13 +207,26 @@ describe("Put-away (refusals are told truthfully)", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/retired/i);
   });
 
-  it("any other failure says nothing was changed", async () => {
+  it("a failure that might succeed later KEEPS the work, and still says nothing was changed", async () => {
+    // CHANGED DELIBERATELY when put-away adopted the offline queue. This used to discard the stow
+    // and tell the operator nothing had changed, which was true and unhelpful: they had to walk back
+    // and rescan. `internal` is retryable, so the work is now kept and retried against the SAME
+    // derived id — and the assurance that mattered survives verbatim in the new wording.
+    //
+    // What did NOT change: a refusal the server MEANT is still surfaced as an error rather than
+    // queued (see the two tests above, and test/putAwayOfflineAdoption.test.jsx).
     const err = Object.assign(new Error("boom"), { code: "functions/internal" });
     mount(client({ recordPutAway: vi.fn().mockRejectedValue(err) }));
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    expect((await screen.findByRole("alert")).textContent).toMatch(/nothing was changed/i);
+    const notice = await waitFor(() => {
+      const n = document.querySelector(".fo-scan__notice");
+      expect(n).toBeTruthy();
+      return n;
+    });
+    expect(notice.textContent).toMatch(/nothing was changed/i);
+    expect(notice.textContent).toMatch(/has not reached the server/i);
   });
 
   it("without a starting part it explains what it needs rather than showing an empty form", () => {

@@ -68,6 +68,22 @@ export const TERMINAL_ERROR_CODES = Object.freeze([
 ]);
 
 /**
+ * Would retrying this ever help?
+ *
+ * The single place that question is answered, so a caller deciding whether to QUEUE a failure and
+ * the flush deciding whether a failure is TERMINAL cannot disagree. A refusal the server meant is
+ * not a connectivity problem, and queueing one would turn a clear "no" into an indefinite "maybe".
+ *
+ * Anything unrecognized is retryable, which is the safe direction: retrying a transient failure
+ * costs one request, while giving up on one loses the operator's work.
+ */
+export function isRetryableCode(errorCode) {
+  const raw = typeof errorCode === "string" ? errorCode : "";
+  const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
+  return !TERMINAL_ERROR_CODES.includes(code);
+}
+
+/**
  * The largest number of submissions sent in one pass.
  *
  * Deliberately small. A phone coming out of a dead zone with forty queued stows should not open
@@ -167,7 +183,7 @@ export function markConfirmed(queue, idempotencyKey, at = 0) {
  * one submission that needs a human among ones that do not.
  */
 export function markFailed(queue, idempotencyKey, errorCode, at = 0) {
-  const terminal = TERMINAL_ERROR_CODES.includes(errorCode);
+  const terminal = !isRetryableCode(errorCode);
   return replace(queue, idempotencyKey, (s) => ({
     ...s,
     state: terminal ? SUBMISSION_STATE.REJECTED : SUBMISSION_STATE.FAILED,
