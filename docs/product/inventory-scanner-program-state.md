@@ -4,7 +4,12 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phases J1–O merged, plus N, P, Q, R and the S closeout.
+**Last updated:** 2026-08-20 — program merged through S; release-readiness audit complete.
+
+**Release readiness lives in its own document:** [scanner-release-readiness.md](scanner-release-readiness.md),
+which is asserted by tests so it cannot drift. Its headline: **no warehouse or parts persona holds any
+scanner capability**, so activation alone would change nothing for the people the scanner was built
+for. The exact grant list is §5b there.
 
 ---
 

@@ -68,6 +68,12 @@ name: Scan Workspace Tests
 #                            that an identifier failure never falls back to an unrelated part and
 #                            that a code meaning two different things resolves to neither.
 #   lookupScanAlias        — those outcomes on the mounted surface, each with its own words.
+#   scannerReleaseReadiness — the release matrix, executable: which capabilities are active, who
+#                            holds them, which readiness gates are set, and that the three new
+#                            collections need no Rules block. A grant or activation change fails it.
+#   personaOperability     — the same facts from the persona side: what each role can actually reach.
+#                            Its headline is that no warehouse or parts persona reaches anything but
+#                            lookup, because none holds a scanner capability.
 #   scanWorkflows          — eligibility derives from the EXISTING capability model, never from a role
 #                            name, and no scanner-specific capability was invented. Also asserts, at
 #                            file level, that ROLE_NAV_ACCESS gained no governed business role.
@@ -94,6 +100,9 @@ on:
       - "functions/src/inventoryLocation/binCallables.ts"
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "config/environments.json"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
@@ -135,6 +144,8 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
+      - "field-ops-app-vite/test/personaOperability.test.mjs"
+      - "functions/test/scannerReleaseReadiness.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
@@ -177,6 +188,9 @@ on:
       - "functions/src/inventoryLocation/binCallables.ts"
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "config/environments.json"
       - "field-ops-app-vite/src/domain/partLookup.js"
       - "field-ops-app-vite/src/domain/transferScanVerification.js"
       - "field-ops-app-vite/src/domain/cycleCountScanSession.js"
@@ -218,6 +232,8 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
+      - "field-ops-app-vite/test/personaOperability.test.mjs"
+      - "functions/test/scannerReleaseReadiness.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
       - "field-ops-app-vite/test/transferScanVerification.test.mjs"
@@ -272,7 +288,7 @@ jobs:
 
       # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
       - name: Scan workflow availability (pure)
-        run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs
+        run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs test/personaOperability.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)
@@ -300,6 +316,10 @@ jobs:
 
       - name: Descriptive bin registry (pure)
         run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs test/returnIntakeCommand.test.mjs
+        working-directory: functions
+
+      - name: Scanner release readiness matrix
+        run: node --test test/scannerReleaseReadiness.test.mjs
         working-directory: functions
 
       - name: Transfer scan verification + truck handoff (pure)

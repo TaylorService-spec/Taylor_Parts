@@ -794,6 +794,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/personaOperability.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/partLookup.test.mjs",
       "runner": "node --test"
     },
