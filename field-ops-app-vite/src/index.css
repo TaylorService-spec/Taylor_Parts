@@ -2411,6 +2411,60 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-scan-input__feedback--rejected { color: var(--color-danger); }
 .fo-scan-input__feedback--neutral { color: var(--color-text-muted); font-style: italic; }
 
+/* ---------------------------------------------------------------------------
+   WAREHOUSE / PARTS MOBILE — the free-text note
+   ---------------------------------------------------------------------------
+   Optional, and last on every screen that offers it. Most stows and picks need
+   no explaining, and a note field above the scan input would make every routine
+   one look like it wanted a comment.
+
+   The dictate control sits BESIDE the field rather than inside it: a thumb aiming
+   for an icon inside a textarea hits the text and starts an edit instead.
+   ------------------------------------------------------------------------- */
+.fo-note { display: flex; flex-direction: column; gap: 8px; }
+.fo-note__label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--color-text-muted); }
+.fo-note__field {
+  min-height: 72px; padding: 12px 14px; font-size: 16px; /* 16px avoids iOS zoom-on-focus */
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated); color: var(--color-text-primary);
+  font-family: inherit; resize: vertical;
+}
+.fo-note__controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fo-note__controls button { min-height: 48px; }
+.fo-note__hint { font-size: 12.5px; }
+.fo-note__state { margin: 0; min-height: 1.3em; font-size: 13px; }
+
+/* ---------------------------------------------------------------------------
+   WAREHOUSE / PARTS MOBILE — one task at a time
+   ---------------------------------------------------------------------------
+   Every scanning surface is a single column of large targets. The shared rules
+   live here rather than in each screen, so a new workflow inherits the ergonomics
+   instead of re-deciding them.
+
+   THE FLOOR IS 48px, not 44: gloves. Apple's 44pt assumes a bare fingertip, and a
+   warehouse in winter does not have one.
+   ------------------------------------------------------------------------- */
+.fo-putaway,
+.fo-pick,
+.fo-count-scan,
+.fo-transfer-scan,
+.fo-lookup { display: flex; flex-direction: column; gap: 14px; }
+
+.fo-putaway button,
+.fo-pick button,
+.fo-count-scan button,
+.fo-transfer-scan button,
+.fo-lookup button { min-height: 48px; }
+
+/* A link-styled control is still a target. Left un-sized, "Undo last scan" becomes
+   a 20px-high line of text on a device being operated one-handed. */
+.fo-putaway .fo-link-btn,
+.fo-pick .fo-link-btn,
+.fo-count-scan .fo-link-btn,
+.fo-transfer-scan .fo-link-btn { min-height: 44px; padding: 10px 0; text-align: left; }
+
+.fo-putaway__bin { margin: 0; font-size: 15px; }
+
 @media (min-width: 700px) {
   /* Label beside value once there is room, which is how a spec sheet reads. */
   .fo-lookup__row { grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; }

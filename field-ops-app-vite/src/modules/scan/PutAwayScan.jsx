@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
+import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { binCommandClient } from "../../services/binCommandClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import {
@@ -58,6 +59,7 @@ export default function PutAwayScan({ deps }) {
 
   const [bin, setBin] = useState(null);
   const [observations, setObservations] = useState(Object.freeze([]));
+  const [note, setNote] = useState("");
   const [outcome, setOutcome] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -108,9 +110,11 @@ export default function PutAwayScan({ deps }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await client.recordPutAway(
-        toPutAwayRequest({ session, bin, state, idempotencyKey: stowKey.current }),
-      );
+      const result = await client.recordPutAway({
+        ...toPutAwayRequest({ session, bin, state, idempotencyKey: stowKey.current }),
+        // Only sent when there is something to say. An empty note is not a fact worth storing.
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
       if (!alive.current) return;
       setOutcome(result);
     } catch (err) {
@@ -118,7 +122,7 @@ export default function PutAwayScan({ deps }) {
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, session, bin, fail]);
+  }, [state, busy, client, session, bin, note, fail]);
 
   const startAnother = useCallback(() => {
     // A NEW key: the next stow is a different event, and reusing the key would make it replay the
@@ -126,6 +130,7 @@ export default function PutAwayScan({ deps }) {
     stowKey.current = newStowKey();
     setBin(null);
     setObservations(Object.freeze([]));
+    setNote("");
     setOutcome(null);
     setError(null);
   }, []);
@@ -210,6 +215,18 @@ export default function PutAwayScan({ deps }) {
 
           <button type="button" className="fo-link-btn" onClick={() => setBin(null)}>Change bin</button>
         </>
+      )}
+
+      {state.step === STOW_STEP.CONTENTS && (
+        // Optional, and last: most stows need no explaining, and putting a note above the scan field
+        // would make every routine stow look like it wanted one.
+        <DictatableNote
+          value={note}
+          onChange={setNote}
+          label="Note (optional)"
+          placeholder="Anything unusual about this stow?"
+          deps={deps?.noteDeps}
+        />
       )}
 
       {state.blockers.length > 0 && (

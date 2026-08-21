@@ -9,6 +9,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   validatePutAwayRequest, derivePlacementId, PLACEMENT_RECORD_CAPABILITY, BIN_PLACEMENTS_COLLECTION,
+  MAX_PLACEMENT_NOTE,
 } from "../lib/inventoryLocation/putAwayCommand.js";
 
 const req = (over = {}) => ({
@@ -158,4 +159,40 @@ test("placement is an EVENT — the module never accumulates a per-bin total", (
   const code = codeOnly();
   assert.doesNotMatch(code, /increment|FieldValue\.increment/, "a placement must not accumulate a balance");
   assert.doesNotMatch(code, /\.update\(/, "placements are append-only events");
+});
+
+// ═══════════════════════════════════════════ exception notes (Phase N)
+
+test("a note is optional, trimmed, and stored as written", () => {
+  const r = validatePutAwayRequest(req({ note: "  Box was crushed on arrival.  " }));
+  assert.equal(r.valid, true);
+  assert.equal(r.value.note, "Box was crushed on arrival.");
+});
+
+test("no note at all is fine — most stows need no explaining", () => {
+  assert.equal(validatePutAwayRequest(req()).value.note, undefined);
+  assert.equal(validatePutAwayRequest(req({ note: "" })).value.note, undefined);
+  assert.equal(validatePutAwayRequest(req({ note: "   " })).value.note, undefined);
+  assert.equal(validatePutAwayRequest(req({ note: null })).value.note, undefined);
+});
+
+test("an over-long note is REFUSED, never truncated", () => {
+  // Silently cutting an explanation in half is worse than not taking it: the half that survives
+  // reads as the whole story.
+  assert.equal(validatePutAwayRequest(req({ note: "x".repeat(MAX_PLACEMENT_NOTE + 1) })).valid, false);
+  assert.equal(validatePutAwayRequest(req({ note: "x".repeat(MAX_PLACEMENT_NOTE) })).valid, true);
+});
+
+test("a non-string note is refused", () => {
+  assert.equal(validatePutAwayRequest(req({ note: 42 })).valid, false);
+  assert.equal(validatePutAwayRequest(req({ note: { text: "hi" } })).valid, false);
+});
+
+test("the note is NEVER parsed, matched or acted on", () => {
+  // A note explains a placement to the next human. Giving it meaning to the system would turn what
+  // somebody typed into an input the system obeys.
+  const code = codeOnly();
+  for (const forbidden of [/note\.match/, /note\.includes/, /parseNote/i, /note\.split/, /RegExp/]) {
+    assert.doesNotMatch(code, forbidden, `a note must not be interpreted (${forbidden})`);
+  }
 });

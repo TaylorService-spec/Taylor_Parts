@@ -36,6 +36,10 @@ name: Scan Workspace Tests
 #   scanInputPolicy        — the ONE input policy: a wedge stutter and a camera re-emitting every
 #                            frame are one scan, but counting ten identical boxes is ten. The two
 #                            sources get different repeat windows for exactly that reason.
+#   dictatableNote         — dictation is an INPUT METHOD, not an assistant: speech becomes text in
+#                            an editable field and stops. No transport, no intent, no decision — the
+#                            conversational assistant is a separate future add-on, and this asserts
+#                            the boundary structurally.
 #   scanInput              — the shared input: wedge, camera and typing; focus returns after every
 #                            scan; the camera degrades honestly and never stays on.
 #   cycleCountScanSession  — the count is BLIND (no expected figure is accepted, stored, derived or
@@ -90,6 +94,7 @@ on:
       - "field-ops-app-vite/src/services/binCommandClient.js"
       - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
+      - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
@@ -127,6 +132,7 @@ on:
       - "field-ops-app-vite/test/putAwayScan.test.jsx"
       - "functions/test/putAwayCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
+      - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
@@ -162,6 +168,7 @@ on:
       - "field-ops-app-vite/src/services/binCommandClient.js"
       - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "field-ops-app-vite/src/shared/ui/ScanInput.jsx"
+      - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
@@ -199,6 +206,7 @@ on:
       - "field-ops-app-vite/test/putAwayScan.test.jsx"
       - "functions/test/putAwayCommand.test.mjs"
       - "field-ops-app-vite/test/scanInput.test.jsx"
+      - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/test/cycleCountScan.test.jsx"
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
@@ -293,5 +301,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/putAwayScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite

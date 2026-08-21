@@ -222,3 +222,53 @@ describe("Pick (refusals are told truthfully)", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/nothing was changed/i);
   });
 });
+
+// ────────────────────────────────────────────── explaining a shortage (Phase N)
+
+describe("Pick (a short line can say WHY)", () => {
+  it("asks why, in those words, when the line is short", async () => {
+    // A short line without a reason tells the next person a number; with one it tells them what to
+    // do about it.
+    mount();
+    await stageTo();
+    openLine(/Relay/);
+    scanInto(/scan item/i, "PRT-1001");
+    expect(screen.getByLabelText(/why is it short/i)).toBeTruthy();
+  });
+
+  it("sends the reason with the staged line", async () => {
+    const c = mount();
+    await stageTo();
+    openLine(/Relay/);
+    scanInto(/scan item/i, "PRT-1001");
+    fireEvent.change(screen.getByLabelText(/why is it short/i), { target: { value: "Only one on the shelf." } });
+    fireEvent.click(screen.getByRole("button", { name: /stage 1 — short by 2/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
+    expect(c.recordPutAway.mock.calls[0][0].note).toBe("Only one on the shelf.");
+  });
+
+  it("a COMPLETE line still offers a note, just not as a shortage question", async () => {
+    mount();
+    await stageTo();
+    openLine(/Compressor/);
+    scanInto(/scan item/i, "SN-7");
+    expect(screen.getByLabelText(/^note \(optional\)/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/why is it short/i)).toBeNull();
+  });
+
+  it("the note is cleared between lines — one line's reason is not another's", async () => {
+    const c = mount();
+    await stageTo();
+    openLine(/Relay/);
+    scanInto(/scan item/i, "PRT-1001");
+    fireEvent.change(screen.getByLabelText(/why is it short/i), { target: { value: "Only one on the shelf." } });
+    fireEvent.click(screen.getByRole("button", { name: /stage 1 — short by 2/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalledTimes(1));
+
+    openLine(/Compressor/);
+    scanInto(/scan item/i, "SN-7");
+    fireEvent.click(screen.getByRole("button", { name: /stage this line/i }));
+    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalledTimes(2));
+    expect(c.recordPutAway.mock.calls[1][0].note).toBeUndefined();
+  });
+});

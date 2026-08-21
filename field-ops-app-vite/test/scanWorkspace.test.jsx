@@ -25,7 +25,12 @@ vi.mock("../src/auth/AuthContext", () => ({
   useAuth: () => ({ role: "technician", user: { uid: "U1" } }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The workspace REMEMBERS which workflow the operator was in (Phase N), in real session storage.
+  // Without clearing it, one test's choice would land the next test inside that workflow.
+  try { window.sessionStorage.clear(); } catch { /* storage may be unavailable */ }
+});
 
 const receivingDeps = (over = {}) => ({
   fetchReceivablePurchaseOrders: vi.fn().mockResolvedValue({
@@ -364,5 +369,62 @@ describe("Scan workspace (lookup is composed like the others)", () => {
     fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
     await screen.findByLabelText(/part code/i);
     expect(screen.queryByLabelText(/part or work order code/i)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────── where the operator left off (Phase N)
+
+describe("Scan workspace (it remembers where you were)", () => {
+  it("returns to the workflow the operator was in", () => {
+    const { unmount } = render(<ScanWorkspace deps={warehouseUser()} />);
+    fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
+    unmount();
+
+    // A locked phone, a reclaimed tab: on the way back they should not have to re-choose.
+    render(<ScanWorkspace deps={warehouseUser()} />);
+    expect(screen.getByLabelText(/part code or barcode/i)).toBeTruthy();
+  });
+
+  it("leaving a workflow forgets it — going back to the list is a choice too", () => {
+    const { unmount } = render(<ScanWorkspace deps={warehouseUser()} />);
+    fireEvent.click(screen.getByRole("button", { name: /look something up/i }));
+    fireEvent.click(screen.getByRole("button", { name: /all scanning workflows/i }));
+    unmount();
+
+    render(<ScanWorkspace deps={warehouseUser()} />);
+    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
+  });
+
+  it("remembers ONLY the choice — nothing scanned is resumed", () => {
+    // Resuming a half-finished physical count from an hour ago would be worse than starting again:
+    // the shelf has moved on and the operator has not.
+    const rd = receivingDeps();
+    const { unmount } = render(<ScanWorkspace deps={warehouseUser({ receivingDeps: rd })} />);
+    fireEvent.click(screen.getByRole("button", { name: /receive a supplier purchase order/i }));
+    unmount();
+
+    render(<ScanWorkspace deps={warehouseUser({ receivingDeps: receivingDeps() })} />);
+    // Back in receiving, but at its own start — no queue, no purchase order selected.
+    expect(screen.queryByText(/scans ·/i)).toBeNull();
+  });
+
+  it("a STALE or tampered stored value routes nowhere", () => {
+    window.sessionStorage.setItem("eos.scan.activeWorkflow", "PUT_AWAY_TO_MARS");
+    render(<ScanWorkspace deps={warehouseUser()} />);
+    expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
+  });
+
+  it("storage being unavailable does not stop the workspace rendering", () => {
+    const original = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get() { throw new Error("blocked by the browser"); },
+    });
+    try {
+      render(<ScanWorkspace deps={warehouseUser()} />);
+      expect(screen.getByRole("button", { name: /look something up/i })).toBeTruthy();
+    } finally {
+      if (original) Object.defineProperty(window, "sessionStorage", original);
+    }
   });
 });
