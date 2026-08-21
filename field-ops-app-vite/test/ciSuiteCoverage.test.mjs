@@ -39,8 +39,7 @@ const KNOWN_UNNAMED = new Set([
   "accountArSection.test.jsx", "accountPageComponents.test.jsx", "activeLabelConformance.test.jsx",
   "activitySection.test.jsx", "administrationVersionDeploymentInfo.test.jsx",
   "appRailActiveServiceGroup.test.jsx", "appShellDrawerLocation.test.jsx",
-  "compositionPrimitives.test.jsx", "cycleCountsBlindReview.test.jsx",
-  "designSystemFoundationPrimitives.test.jsx", "dispatchCancelledChip.test.jsx",
+  "compositionPrimitives.test.jsx", "designSystemFoundationPrimitives.test.jsx", "dispatchCancelledChip.test.jsx",
   "dispatchCancelledMessage.test.jsx", "emptyStateGuidance.test.jsx",
   "equipmentDetailAccountFailClosed.test.jsx", "equipmentTimeline.test.jsx",
   "executionAnalyticsService.test.jsx", "executionCaptureOverPlanGuard.test.jsx",
@@ -49,11 +48,9 @@ const KNOWN_UNNAMED = new Set([
   "loadingEmptyStateFailure.test.jsx", "loginHistoryNavigation.test.jsx",
   "manageTruckDrawerReadinessGate.test.jsx", "mobileInventorySections.test.jsx",
   "onHandGovernedLedger.test.jsx", "operationalCard.test.jsx",
-  "operationsProcurementLiveSource.test.jsx", "operationsQueriesTransferOrdersPage.test.jsx",
-  "operationsTransferOrders.test.jsx", "opportunitySectionSaveUi.test.jsx", "ownerSelect.test.jsx",
-  "partDetailReorderReenable.test.jsx", "partsScannerQtyReset.test.jsx",
-  "partsStockSection.test.jsx", "performanceSnapshotErrorState.test.jsx",
-  "receivingLocationOptionAdapter.test.jsx", "reconciliationHonestyM15.test.jsx",
+  "operationsProcurementLiveSource.test.jsx", "opportunitySectionSaveUi.test.jsx", "ownerSelect.test.jsx",
+  "partDetailReorderReenable.test.jsx", "partsStockSection.test.jsx", "performanceSnapshotErrorState.test.jsx",
+  "reconciliationHonestyM15.test.jsx",
   "reconciliationSection.test.jsx", "reorderConsumersDeniedVsAbsent.test.jsx",
   "reorderPurchaseOrderReadErrorContract.test.jsx",
   "reportBuilderArrayFilterAndSavedWiring.test.jsx", "reservationsSection.test.jsx",
@@ -62,8 +59,7 @@ const KNOWN_UNNAMED = new Set([
   "technicianWorkOrderActionsCompletionHonesty.test.jsx", "techniciansErrorState.test.jsx",
   "truckManagementCommandClient.test.jsx", "truckManagementView.test.jsx",
   "useInstalledEquipmentPage.test.jsx", "useSalesOrderActions.test.jsx",
-  "useSchedulingDataErrorState.test.jsx", "useTransferOrders.test.jsx",
-  "useTruckManagement.test.jsx", "useTruckRegistrySource.test.jsx",
+  "useSchedulingDataErrorState.test.jsx", "useTruckManagement.test.jsx", "useTruckRegistrySource.test.jsx",
   "workOrderAndLocationReadErrorContract.test.jsx", "workOrderDetailPageErrorState.test.jsx",
   "workOrderPreviewCustomerIdentity.test.jsx",
 ]);
@@ -109,7 +105,11 @@ test("the allowlist may only SHRINK — every entry must still be a real, unname
 test("the debt is going DOWN, and the number is stated rather than implied", () => {
   // A count nobody looks at is a count nobody reduces. When this figure drops, lower the ceiling —
   // that is what makes the list a burn-down rather than a parking space.
-  const CEILING = 61;
+  //
+  // 61 -> 54: the six scanner-adjacent suites were registered in scan-workspace-tests.yml, which is
+  // the lane that owns their subsystems. The ceiling came down with them, so the space they freed
+  // cannot be quietly reoccupied.
+  const CEILING = 54;
   assert.ok(
     KNOWN_UNNAMED.size <= CEILING,
     `The unnamed-suite allowlist grew to ${KNOWN_UNNAMED.size}. It may only shrink.`,
