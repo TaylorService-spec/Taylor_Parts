@@ -27,6 +27,7 @@ export const SCAN_WORKFLOW = Object.freeze({
   SUPPLIER_RECEIVING: "SUPPLIER_RECEIVING",
   TECHNICIAN_WORK_ORDER: "TECHNICIAN_WORK_ORDER",
   LOOKUP: "LOOKUP",
+  TRANSFER: "TRANSFER",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -38,6 +39,16 @@ export const UNAVAILABLE_REASON = Object.freeze({
 });
 
 export const RECEIVE_CAPABILITY = "inventory.stock.receive";
+
+/**
+ * Moving a transfer needs BOTH ends: dispatch sends stock out and receive takes it in, and a caller
+ * who holds only one of them can still do useful work. So the workflow is offered when EITHER is
+ * held, and the screen then offers only the action the selected transfer is actually waiting for.
+ *
+ * Both are registered active:false and granted to no Role today, so this denies for everyone.
+ */
+export const TRANSFER_DISPATCH_CAPABILITY = "inventory.transfer.dispatch";
+export const TRANSFER_RECEIVE_CAPABILITY = "inventory.transfer.receive";
 
 /**
  * Derive the available workflows.
@@ -105,6 +116,17 @@ export function deriveScanWorkflows(ctx = {}) {
   // refused read. See domain/partLookup.js.
   available.push({ workflow: SCAN_WORKFLOW.LOOKUP });
 
+  // ── Transfers (existing governed transfer commands) ─────────────────────────────────────────
+  //
+  // No readiness constant: the transfer transport has never had one, and adding a second gate in
+  // front of a capability that already denies would be belt-and-braces around an inert command.
+  // The capability IS the gate, and a refusal is rendered as a refusal.
+  if (holds(TRANSFER_DISPATCH_CAPABILITY) || holds(TRANSFER_RECEIVE_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.TRANSFER });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.TRANSFER, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
   //
   // MIRRORS the conditions updateWorkOrderExecutionData already enforces, which is where
@@ -135,6 +157,7 @@ export function deriveScanWorkflows(ctx = {}) {
 /** Plain-language labels. The workspace shows what a workflow IS, never an enum. */
 export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.LOOKUP]: "Look something up",
+  [SCAN_WORKFLOW.TRANSFER]: "Send or receive a transfer",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
 });
@@ -142,6 +165,8 @@ export const SCAN_WORKFLOW_LABEL = Object.freeze({
 export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
   [SCAN_WORKFLOW.LOOKUP]:
     "Scan or type a part code to see what it is. Reads only — nothing is moved, counted or changed.",
+  [SCAN_WORKFLOW.TRANSFER]:
+    "Check a transfer against what you are physically holding, then send it or receive it.",
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]:
     "Scan a delivery against one purchase order, check it against what was ordered, and receive it.",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]:
@@ -154,9 +179,26 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
  * Each says what would change it, because "unavailable" without a next step is indistinguishable
  * from broken.
  */
+/**
+ * Per-workflow wording, where the generic sentence for a reason would lose the one word the reader
+ * needs in order to ask for the right thing.
+ *
+ * NO_CAPABILITY is shared by receiving and transfers, but "not authorized to receive stock" and "not
+ * authorized to move transfers" send an operator to ask for different grants. A shared REASON must
+ * not force a shared SENTENCE.
+ */
+const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
+  [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: Object.freeze({
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to receive stock. An administrator can grant it.",
+  }),
+  [SCAN_WORKFLOW.TRANSFER]: Object.freeze({
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to send or receive transfers. An administrator can grant it.",
+  }),
+});
+
 export const UNAVAILABLE_TEXT = Object.freeze({
   [UNAVAILABLE_REASON.NO_CAPABILITY]:
-    "You are not authorized to receive stock. An administrator can grant it.",
+    "You are not authorized. An administrator can grant it.",
   [UNAVAILABLE_REASON.NOT_READY]:
     "Receiving is built and you are authorized, but it is not switched on in this environment yet.",
   [UNAVAILABLE_REASON.NO_TECHNICIAN_IDENTITY]:
@@ -164,3 +206,11 @@ export const UNAVAILABLE_TEXT = Object.freeze({
   [UNAVAILABLE_REASON.NO_ASSIGNED_WORK]:
     "You have no assigned work orders to scan against right now.",
 });
+
+/**
+ * The sentence for one unavailable workflow: its own wording where it has one, and the reason's
+ * general wording otherwise.
+ */
+export function unavailableText(workflow, reason) {
+  return WORKFLOW_UNAVAILABLE_TEXT[workflow]?.[reason] ?? UNAVAILABLE_TEXT[reason] ?? null;
+}

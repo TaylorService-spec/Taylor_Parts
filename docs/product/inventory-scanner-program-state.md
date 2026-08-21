@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phase I unblocked.
+**Last updated:** 2026-08-20 — Owner decisions #116–#119 recorded; Phase J1 (transfers by scan) merged.
 
 ---
 
@@ -39,6 +39,7 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **G** — barcode / alias lookup | MERGED (#1358) | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
 | **H** — complete read-only lookup | MERGED (#1359) | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
 | **I** — location reconciliation | ANALYSIS MERGED (#1360) | n/a | n/a | n/a | Resolved by DECISIONS #116 |
+| **J1** — transfers by scan | This change | COMPLETE | **No backend change** — reuses the existing transfer commands | **NOT DEPLOYED** | `inventory.transfer.dispatch` / `.receive` inert, granted to nobody |
 
 ### What "not deployed" means concretely
 
@@ -447,3 +448,60 @@ and complete. What is blocked is everything below the warehouse: put-away (J), p
 bin-level counting (N).
 
 The assessment carries a recommendation. It is not a decision, and nothing was built either way.
+
+## 11. Phase J1 — transfers by scan
+
+Pick the transfer in front of you, confirm you are at the right end of it, scan what you are holding,
+and commit — or find out why you cannot.
+
+### Scanning verifies; it never authors
+
+`dispatchTransferOrder` and `receiveTransferOrder` take a **transferOrderId and nothing else**. They
+re-read the order and re-derive every quantity, serial and location inside their own transaction, and
+re-verify each serial's current location and state at commit time.
+
+So this surface sends **no payload derived from scans**. Scanning answers one question before the
+operator commits — *is what I am holding the thing this order is about?* — and a scan that disagrees
+**blocks** submission rather than editing the order to match. Authoring a transfer with a barcode
+would make the scanner an inventory authority, which it is not.
+
+A test asserts the order object is byte-identical after a verification run.
+
+### What blocks, and why each is separate
+
+| Blocker | Why it is its own state |
+| --- | --- |
+| Wrong location | Dispatching from the wrong end moves stock that is not there |
+| Wrong part | A real code, but not this order's part |
+| Unknown serial | Right part, wrong unit — a different mistake from the wrong part |
+| Excess | One more than the order moves; never silently dropped |
+| Unreadable | Not a usable code — not the same as the wrong part |
+| Incomplete | This command has no partial dispatch |
+| Not actionable | Already complete, cancelled, or an unrecognized status |
+
+A **duplicate** scan deliberately does *not* block: re-scanning is the operator checking their work,
+not an error, and it never counts twice.
+
+Serialized transfers name the units still outstanding rather than reporting "3 of 5" — the operator
+has to go and find specific boxes.
+
+### No readiness constant
+
+The transfer transport has never had one, and both capabilities are already inert. A second gate in
+front of a command that already denies would be belt-and-braces; the capability is the gate, and the
+refusal is rendered as a refusal.
+
+### A wording fix this forced
+
+`NO_CAPABILITY` is now shared by receiving and transfers, and collapsing it into one sentence would
+have dropped the only useful word — "not authorized to receive stock" and "not authorized to send or
+receive transfers" send an operator to ask for different grants. `unavailableText(workflow, reason)`
+gives a workflow its own wording where it has one. **A shared reason must not force a shared
+sentence.**
+
+### State today
+
+`inventory.transfer.dispatch` and `.receive` are registered `active: false` and granted to no Role, so
+a submission resolves `permission-denied` server-side. The screen says exactly that: *"You are not
+authorized to move this transfer. The transfer commands are built and governed; they have not been
+granted or switched on."*

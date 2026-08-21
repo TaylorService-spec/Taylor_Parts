@@ -9,11 +9,12 @@ import {
   SCAN_WORKFLOW,
   SCAN_WORKFLOW_LABEL,
   SCAN_WORKFLOW_DESCRIPTION,
-  UNAVAILABLE_TEXT,
+  unavailableText,
 } from "../../access/scanWorkflows.js";
 import MultiScanReceiving from "../receiving/MultiScanReceiving.jsx";
 import PartsScanner from "../mobile/PartsScanner.jsx";
 import LookupScan from "./LookupScan.jsx";
+import TransferScan from "./TransferScan.jsx";
 
 // THE SHARED SCAN WORKSPACE.
 //
@@ -88,6 +89,19 @@ export default function ScanWorkspace({ deps }) {
     );
   }
 
+  if (active === SCAN_WORKFLOW.TRANSFER) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Transfer" />
+        <button type="button" className="fo-link-btn" onClick={() => setActive(null)}>
+          ← All scanning workflows
+        </button>
+        {/* The EXISTING transfer commands. Scanning verifies; it authors nothing. */}
+        <TransferScan deps={deps?.transferDeps} />
+      </div>
+    );
+  }
+
   if (active === SCAN_WORKFLOW.SUPPLIER_RECEIVING) {
     return (
       <div className="fo-panel">
@@ -152,7 +166,7 @@ export default function ScanWorkspace({ deps }) {
           <ul className="fo-list">
             {workflows.unavailable.map(({ workflow, reason }) => (
               <li key={workflow} className="fo-muted">
-                <strong>{SCAN_WORKFLOW_LABEL[workflow]}</strong> — {UNAVAILABLE_TEXT[reason]}
+                <strong>{SCAN_WORKFLOW_LABEL[workflow]}</strong> — {unavailableText(workflow, reason)}
               </li>
             ))}
           </ul>

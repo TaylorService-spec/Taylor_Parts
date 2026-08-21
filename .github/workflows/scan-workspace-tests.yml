@@ -1,8 +1,8 @@
 name: Scan Workspace Tests
 
 # THE SCANNING SURFACES — the shared Scan workspace (Phase E), the lookup-only scan it offers
-# (Phase F), barcode/alias resolution behind that lookup (Phase G), and the multi-scan supplier
-# receiving journey it composes (Phase D).
+# (Phase F), barcode/alias resolution behind that lookup (Phase G), transfers by scan (Phase J1),
+# and the multi-scan supplier receiving journey it composes (Phase D).
 #
 # WHY THIS WORKFLOW EXISTS. The client's vitest suites run in CI ONLY when a workflow names the file;
 # there is no glob lane. Phase D's two vitest suites (multiScanReceiving.test.jsx, receivingTransport.test.jsx)
@@ -22,6 +22,11 @@ name: Scan Workspace Tests
 #                            no fourth on-hand implementation exists.
 #   partLookupInventoryRows — what those reads turn into rows: a refused read is never an empty
 #                            shelf, a loading read never says it failed.
+#   transferScanVerification — scanning VERIFIES a transfer, it never authors one: no payload is
+#                            derived from scans, wrong part / wrong location / excess / stale status
+#                            each block, and the module imports no command or ledger.
+#   transferScan           — those rules on the mounted surface, plus that submission sends only the
+#                            transfer id and a refusal renders as a refusal.
 #   partAliasScanResolver  — the trusted multi-type resolver: ambiguity is never a pick, INACTIVE is
 #                            never NOT_FOUND, and it adds no matcher or normalizer of its own.
 #   partLookupAlias        — how the identifier answer composes with the part-code answer, including
@@ -52,6 +57,9 @@ on:
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
+      - "field-ops-app-vite/src/domain/transferScanVerification.js"
+      - "field-ops-app-vite/src/services/transferCommandClient.js"
+      - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
       - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
       - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
@@ -75,6 +83,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
@@ -96,6 +106,9 @@ on:
       - "functions/src/partMaster/partAliasCallables.ts"
       - "functions/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/partLookup.js"
+      - "field-ops-app-vite/src/domain/transferScanVerification.js"
+      - "field-ops-app-vite/src/services/transferCommandClient.js"
+      - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
       - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
       - "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
@@ -119,6 +132,8 @@ on:
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
       - "field-ops-app-vite/test/partLookupAlias.test.mjs"
+      - "field-ops-app-vite/test/transferScanVerification.test.mjs"
+      - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
@@ -180,6 +195,10 @@ jobs:
         run: node --test test/partBalanceReadService.test.mjs
         working-directory: functions
 
+      - name: Transfer scan verification (pure)
+        run: node --test test/transferScanVerification.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: Receiving scan queue (pure)
         run: node --test test/receivingScanQueue.test.mjs
         working-directory: field-ops-app-vite
@@ -190,5 +209,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx
         working-directory: field-ops-app-vite
