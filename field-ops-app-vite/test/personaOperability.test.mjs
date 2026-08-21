@@ -97,6 +97,9 @@ const PERSONA_ROLES = Object.freeze({
     "inventoryLookupReader", "inventoryPutAwayOperator", "inventoryBinAdministrator",
     "inventoryTransferOperator", "inventoryReturnsIntakeClerk", "inventoryCycleCountReconciler",
   ],
+  // NOTE: the returns clerk Role is what makes RETURN_INTAKE reachable, and it is held by the
+  // warehouse manager ALONE. The parts floor stows and counts; it does not decide what re-enters
+  // the building, and a test below asserts that separation rather than trusting this list.
 });
 
 const COMPATIBILITY_CAPABILITIES = Object.freeze({
@@ -104,6 +107,10 @@ const COMPATIBILITY_CAPABILITIES = Object.freeze({
     "inventory.stock.receive", "inventory.transfer.dispatch", "inventory.transfer.receive",
     "inventory.cycleCount.create", "inventory.cycleCount.submit",
     "inventory.placement.record", "inventory.location.bin.read",
+    // RETURN_INTAKE joined SCAN_WORKFLOW when recordReturnIntake became a deployed, granted
+    // authority. Admin holds inventory.returns.intake in the governed catalog, so the compatibility
+    // transcription must say so too -- otherwise this file describes a narrower admin than exists.
+    "inventory.returns.intake",
   ],
   __dispatcherCompatibility: ["inventory.stock.receive"],
 });
@@ -210,6 +217,19 @@ test("counting follows the Roles, not the job title — the manager reconciles, 
 test("transfers follow the Role too — parts personas move nothing between sites", () => {
   assert.equal(operability("warehouseAssociate", { receivingReady: true })[SCAN_WORKFLOW.TRANSFER], VISIBLE);
   assert.equal(operability("partsAssociate", { receivingReady: true })[SCAN_WORKFLOW.TRANSFER], DENIED);
+});
+
+test("RETURN INTAKE is the warehouse manager's alone -- the floor does not decide what comes back", () => {
+  // Stowing and picking all day confers no say over what re-enters the building, and the capability
+  // model already says so. Asserted rather than left to the grant table above, because the grant
+  // table is a transcription and this is the behaviour.
+  assert.equal(operability("warehouseManager", { receivingReady: true })[SCAN_WORKFLOW.RETURN_INTAKE], VISIBLE);
+  for (const persona of ["partsAssociate", "partsManager", "warehouseAssociate", "technician"]) {
+    assert.equal(
+      operability(persona, { receivingReady: true })[SCAN_WORKFLOW.RETURN_INTAKE], DENIED,
+      `${persona} must not be able to take returns in`,
+    );
+  }
 });
 
 test("a DENIED workflow always states WHY, so what is missing stays legible", () => {
