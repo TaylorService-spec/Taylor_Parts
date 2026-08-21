@@ -45,7 +45,22 @@ export const WORKSTREAM = Object.freeze({
 // [ count, securityRole, governedRoles, assignments, workloadPattern ]
 const ROSTER = [
   [1, "admin", ["owner"], ["ADMINISTRATION", "REPORTING", "ACCOUNTING"], "normal"],
-  [2, "admin", ["generalManager"], ["ADMINISTRATION", "REPORTING"], "normal"],
+  // GENERAL MANAGER CARRIES THE dispatcher COMPATIBILITY ROLE, NOT admin.
+  //
+  // This row said "admin", and the capacity report caught what that meant. The Owner decided on
+  // 2026-08-21 (Option 2) that General Manager is the highest BUSINESS role and is NOT security
+  // administration: generalManager holds zero admin.* capabilities, and a guard enforces it.
+  //
+  // Giving the EMPLOYEE the legacy admin role handed both General Managers all four admin.* ids
+  // straight back -- userStatus.write, roleAssignment.write, accessRequest.decide,
+  // credentialReset.initiate. The governed model said no and the fixture said yes, and the fixture
+  // would have won, because the server resolves the UNION of the legacy role and the governed
+  // grants. A decision enforced on the Role and defeated on the person is not enforced.
+  //
+  // dispatcher is the widest compatibility role carrying NO admin.* (38 capabilities, verified),
+  // so it models a broad business operator without reversing the ruling. The compatibility roles
+  // themselves are untouched -- this is a fixture correction, not a change to legacy authority.
+  [2, "dispatcher", ["generalManager"], ["ADMINISTRATION", "REPORTING"], "normal"],
   [2, "dispatcher", ["operationsManager"], ["DISPATCH", "SERVICE", "REPORTING"], "heavy"],
   [2, "dispatcher", ["officeManager"], ["CRM_SALES", "ADMINISTRATION"], "normal"],
   [3, "dispatcher", [], ["DISPATCH"], "mixed"],
