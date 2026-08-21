@@ -4,7 +4,7 @@ Companion to [the program specification](inventory-scanner-program.md). The spec
 the scanner *should* be; this file says what is actually true in the repository right now, and is the
 document to update when that changes.
 
-**Last updated:** 2026-08-20, at Phase H.
+**Last updated:** 2026-08-20, at Phase I (blocked).
 
 ---
 
@@ -37,7 +37,8 @@ Hosting release** — it introduced no backend and needs no capability activatio
 | **E** — shared Scan workspace | MERGED (#1356) | COMPLETE | Composes C/D + existing scanner | **NOT DEPLOYED** | Reachable; supplier receiving inert until D's transport is ready |
 | **F** — lookup-only scanning | MERGED (#1357) | COMPLETE | **No backend change** — reuses the existing client-direct `parts` read | **Hosting release only** | **No activation needed** for the Part-identity slice |
 | **G** — barcode / alias lookup | MERGED (#1358) | COMPLETE | Written (trusted resolver + callable) | **NOT DEPLOYED** | **`inventory.catalog.alias.read` registered INERT, granted to nobody**; `PART_IDENTIFIER_TRANSPORT_READY` false in all four environments |
-| **H** — complete read-only lookup | This change | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
+| **H** — complete read-only lookup | MERGED (#1359) | COMPLETE | Written (shared balance read; the other two already existed) | **NOT DEPLOYED** | Three inert capabilities: `inventory.serializedAsset.read`, `inventory.location.display.read`, `inventory.balance.read` |
+| **I** — authoritative location registry | **NOT STARTED — BLOCKED** | n/a | n/a | n/a | Requires an Owner decision on bin custody roll-up |
 
 ### What "not deployed" means concretely
 
@@ -406,3 +407,28 @@ Three parallel on-hand implementations remain inside their own command transacti
 behaviorally identical and each is emulator-tested, so converging them on the now-shared function is
 a safe, valuable follow-up — but it touches live receiving, transfer and cycle-count authorities and
 was deliberately **not** bundled into a read-only phase.
+
+## 10. Phase I — BLOCKED on an Owner decision
+
+Reconciliation is complete and is recorded in
+[the location registry assessment](../assessments/inventory-location-registry-2026-08-20.md). No
+code was written.
+
+**The finding.** `BIN` is a location type the pure reference contract accepts and **every governed
+authority rejects or ignores** — availability, receiving, transfer, cycle count and location display
+all admit WAREHOUSE (and sometimes MOBILE) only. `binCode` exists solely as a field on
+`stock_locations`, a seeded legacy projection nothing writes and which the Owner superseded as a
+stock authority on 2026-08-17. There is no bin document, no bin registry, and no validation that a
+scanned bin refers to anything real.
+
+**Why it is a decision and not a task.** `sumLedgerEligibleOnHand` counts a movement only at
+`type === "WAREHOUSE"`. If put-away moves stock to a `BIN`, then the moment a receipt is put away it
+disappears from sellable on-hand, transfer sufficiency and cycle-count expected quantity. Whether
+binned stock is still warehouse stock is a warehouse-operations policy with three coherent answers
+(roll-up / descriptive attribute / full custody), and they are materially different businesses.
+
+**Warehouse and truck locations are NOT blocked** and need no work — they are already authoritative
+and complete. What is blocked is everything below the warehouse: put-away (J), pick/stage (L) and
+bin-level counting (N).
+
+The assessment carries a recommendation. It is not a decision, and nothing was built either way.
