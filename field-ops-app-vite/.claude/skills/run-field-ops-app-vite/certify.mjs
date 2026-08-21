@@ -72,7 +72,35 @@ const PROBE = (MOBILE_SURFACE) => {
   for (const el of controls) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
-    if (r.right > vw + 1 || r.left < -1) push("OFFSCREEN_CONTROL", `${name(el)} @${Math.round(r.left)}..${Math.round(r.right)} vw=${vw}`);
+    // OFFSCREEN, BUT REACHABLE, IS NOT A DEFECT -- and this check could not tell the difference.
+    //
+    // It compared the control's viewport rect against the viewport width and stopped there. A
+    // control sitting inside a deliberately horizontally-scrollable container is outside the
+    // viewport and perfectly reachable by scrolling that container, which is the entire point of
+    // the container. The Scheduling board is exactly this: a 7-day grid whose overflow is
+    // scroll-contained ON PURPOSE, documented as such in its own component. It was being reported
+    // as broken at EVERY width, 1440 included, which is what gave the false cluster away -- a real
+    // responsive defect does not appear on a wide desktop.
+    //
+    // This is the fourth false-positive family this sweep has produced (after hash navigation,
+    // screen-reader landmarks counted as clipped, and desktop controls measured against a touch
+    // floor they never promised). Each one produced a confident, wrong number. The pattern is
+    // always the same: geometry alone under-describes intent, so the check has to ask what the
+    // page was TRYING to do before calling the result a defect.
+    //
+    // Reported as a separate kind rather than dropped: a control parked inside a scroller is worth
+    // seeing, it is simply not the same finding as one that cannot be reached at all.
+    const offscreen = r.right > vw + 1 || r.left < -1;
+    if (offscreen) {
+      let scroller = null;
+      for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+        const ov = getComputedStyle(a).overflowX;
+        if ((ov === "auto" || ov === "scroll") && a.scrollWidth > a.clientWidth + 1) { scroller = a; break; }
+      }
+      const where = `${name(el)} @${Math.round(r.left)}..${Math.round(r.right)} vw=${vw}`;
+      if (scroller) push("OFFSCREEN_IN_SCROLLER", `${where} (reachable inside ${scroller.className || scroller.tagName})`);
+      else push("OFFSCREEN_CONTROL", where);
+    }
     // TOUCH TARGETS ARE ONLY PROMISED ON SURFACES MEANT FOR TOUCH.
     //
     // Flagging every control on the Administration or Reporting screens at 375px would produce a
