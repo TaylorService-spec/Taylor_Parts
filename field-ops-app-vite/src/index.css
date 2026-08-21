@@ -4238,3 +4238,37 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-table--stack td[data-label]::before { content: attr(data-label); color: var(--color-text-muted);
     font-size: 11px; text-transform: uppercase; letter-spacing: .03em; flex: none; }
 }
+
+/* =============================================================================
+   SCHEDULING BOARD x BUTTON PRIMITIVE -- the compact-context override.
+   =============================================================================
+   64096edb (#1321) migrated 170 raw <button>s onto the shared Button primitive.
+   Two of them were load-bearing LAYOUT elements: the scheduling grid's day
+   headers and its job chips, which sit inside
+   grid-template-columns: minmax(140px,200px) repeat(7, minmax(120px, 1fr)).
+
+   .fo-button is defined LATER in this file, so at equal specificity it wins and
+   imposes white-space:nowrap, min-height:40px and 16px of horizontal padding.
+   CSS Grid sizes a track to its item's min-content, and unwrappable text plus
+   that padding pushes every one of the seven day columns well past its 120px
+   floor -- turning the board's INTENTIONAL, scroll-contained overflow into a
+   severe one.
+
+   The hazard was understood in that very commit: its sibling diff on
+   DispatchSchedulingWorkspace.jsx deliberately did NOT wrap that board's chips,
+   with the comment "The Button primitive's fixed inline-flex centered box has no
+   variant for this shape; wrapping it would fight the chip's own positioning /
+   layout CSS without an index.css change." That index.css change is this block.
+   The reasoning was right and was simply applied to one board and not the other.
+
+   Scoped to these two selectors only -- every other Button keeps its standard
+   sizing.
+   ========================================================================== */
+.fo-sched-grid__dayhead.fo-button,
+.fo-sched-chip.fo-button {
+  white-space: normal;
+  min-height: 0;
+  padding: 0.3rem 0.4rem;
+  justify-content: flex-start;
+  text-align: left;
+}
