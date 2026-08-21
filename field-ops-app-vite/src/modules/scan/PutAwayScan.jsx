@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
+import { isRetryableCode } from "../../domain/offlineSubmissionQueue.js";
+import SubmissionQueueStatus from "../../shared/ui/SubmissionQueueStatus.jsx";
+import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { binCommandClient } from "../../services/binCommandClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
@@ -53,6 +56,46 @@ function newStowKey() {
   return `stow_${Date.now().toString(36)}_${random}`;
 }
 
+// ============================ THE OFFLINE LAYER'S FIRST ADOPTION ============================
+//
+// A warehouse has dead zones. The steel rack an operator is stowing into is frequently the thing
+// between their phone and the access point, so the confirm press that fails is not an edge case here
+// — it is the normal case in the back aisles.
+//
+// PUT-AWAY IS THE ONE SCANNER WRITE SAFE TO QUEUE, and the reason is DECISIONS #116 rather than
+// anything about connectivity: a stow writes no ledger event, changes no quantity and touches no
+// balance. A placement that lands twenty minutes late therefore changes NOTHING about what the
+// company has — only about where it says something was put. There is no window in which the queue
+// can make inventory wrong, because the queue is not carrying inventory.
+//
+// Every other workflow was considered and deliberately NOT adopted:
+//
+//   * RECEIVING moves custody. A receipt sitting in a queue is stock the company believes it does
+//     not have, and a late flush changes real availability. Not first, and possibly not ever.
+//   * CYCLE COUNT cannot be queued end-to-end at all: createCycleCount derives its expected quantity
+//     from the LIVE ledger, so a count cannot even be started offline. Queueing only the submit half
+//     would mean posting an observation against an expectation nobody could compute — which is worse
+//     than refusing.
+//   * TRANSFER moves stock between two custody authorities. Same objection as receiving, twice.
+//   * PICK/STAGE shares put-away's command and could follow, but it is a placement made against a
+//     work order, and a queued pick invites the operator to believe a job is staged when the record
+//     of it has not left the phone. It waits for evidence from this one.
+//   * LOOKUP is a read and has nothing to queue.
+//
+// ============================ WHAT IS STILL REQUIRED TO BE ONLINE ============================
+//
+// THE BIN MUST BE RESOLVED BEFORE ANYTHING CAN GO INTO IT, and that is a server read. So a put-away
+// cannot be STARTED offline — only finished. That is not a limitation to route around: an
+// unvalidated bin is how stock gets recorded into racking that does not exist, and the whole
+// destination-first design exists to prevent exactly that.
+//
+// ============================ AND WHAT IS NOT CLAIMED ============================
+//
+// No `confirmExists` reader is supplied, because no callable answers "does placement plc_<key>
+// exist?". A submission therefore stays UNVERIFIED until a flush actually succeeds, rather than
+// being resolved by a guess. UNVERIFIED is the honest state and the screen says so in those words:
+// an operator who believes a stow committed and walks away has left the warehouse in a state nobody
+// recorded.
 export default function PutAwayScan({ deps }) {
   const client = deps?.binClient ?? binCommandClient;
   const session = deps?.session ?? null;
@@ -105,24 +148,59 @@ export default function PutAwayScan({ deps }) {
     return { feedback: FEEDBACK.REJECTED, detail: STOW_OBSERVATION_TEXT[observation.state] };
   }, [session]);
 
+  // The transport the queue uses is the SAME client every other call goes through, so an offline
+  // submission and an online one are literally the same request — the queue adds persistence and
+  // honest state, never a second code path.
+  const invoke = useCallback(async (callable, payload) => {
+    if (callable !== "recordPutAway") throw new Error(`unsupported callable ${callable}`);
+    return client.recordPutAway(payload);
+  }, [client]);
+
+  const { queue, summary, add, flush, clearConfirmed } = useSubmissionQueue({
+    invoke,
+    deps: deps?.queueDeps,
+  });
+
+  // Try again whenever the browser says the network is back. Not a poll: a timer that retries into a
+  // dead zone every few seconds drains a handheld battery for nothing.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [flush]);
+
   const confirm = useCallback(async () => {
     if (!state.canSubmit || busy) return;
     setBusy(true);
     setError(null);
+    const payload = {
+      ...toPutAwayRequest({ session, bin, state, idempotencyKey: stowKey.current }),
+      // Only sent when there is something to say. An empty note is not a fact worth storing.
+      ...(note.trim() ? { note: note.trim() } : {}),
+    };
     try {
-      const result = await client.recordPutAway({
-        ...toPutAwayRequest({ session, bin, state, idempotencyKey: stowKey.current }),
-        // Only sent when there is something to say. An empty note is not a fact worth storing.
-        ...(note.trim() ? { note: note.trim() } : {}),
-      });
+      const result = await client.recordPutAway(payload);
       if (!alive.current) return;
       setOutcome(result);
     } catch (err) {
-      if (alive.current) fail(err);
+      if (!alive.current) return;
+      // A refusal the server MEANT is not a connectivity problem, and queueing it would turn a clear
+      // "no" into an indefinite "maybe". Only a failure that might succeed later is queued; the
+      // queue's own terminal-code list is the authority on which is which.
+      if (isRetryableCode(err?.code) && add({
+        callable: "recordPutAway",
+        payload,
+        idempotencyKey: stowKey.current,
+        describe: `Put ${session.partId} into ${bin?.code ?? "a bin"}`,
+      })) {
+        setOutcome({ ...payload, binCode: bin?.code, queued: true });
+      } else {
+        fail(err);
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, session, bin, note, fail]);
+  }, [state, busy, client, session, bin, note, fail, add]);
 
   const startAnother = useCallback(() => {
     // A NEW key: the next stow is a different event, and reusing the key would make it replay the
@@ -147,11 +225,22 @@ export default function PutAwayScan({ deps }) {
   if (outcome) {
     return (
       <div className="fo-putaway">
-        <p className="fo-scan__notice fo-scan__notice--ok" role="status">
-          ✓ Recorded — {session.partId} is in {outcome.binCode}.{" "}
-          {/* Said plainly, because an operator could reasonably assume a stow moved something. */}
-          Stock counts are unchanged: putting it away records where it is, not what there is.
-        </p>
+        <SubmissionQueueStatus summary={summary} queue={queue} onRetry={flush} onDismissConfirmed={clearConfirmed} />
+        {outcome.queued ? (
+          // NOT a success message wearing a different colour. The operator is told the truth in the
+          // words that matter: we have it, we have not been told it landed, do not assume it is done.
+          <p className="fo-scan__notice fo-scan__notice--warn" role="status">
+            Saved on this phone — {session.partId} into {outcome.binCode}. It has not reached the
+            server yet and will send itself when you are back in range. Do not assume it is done —
+            until it lands, nothing was changed.
+          </p>
+        ) : (
+          <p className="fo-scan__notice fo-scan__notice--ok" role="status">
+            ✓ Recorded — {session.partId} is in {outcome.binCode}.{" "}
+            {/* Said plainly, because an operator could reasonably assume a stow moved something. */}
+            Stock counts are unchanged: putting it away records where it is, not what there is.
+          </p>
+        )}
         <Button type="button" variant="primary" onClick={startAnother}>Stow something else</Button>
       </div>
     );
@@ -159,6 +248,8 @@ export default function PutAwayScan({ deps }) {
 
   return (
     <div className="fo-putaway">
+      {/* Outstanding work is stated wherever the operator is, not only where they finished. */}
+      <SubmissionQueueStatus summary={summary} queue={queue} onRetry={flush} onDismissConfirmed={clearConfirmed} />
       <section className="fo-scan__result" aria-label={`Put away ${session.partId}`}>
         <p className="fo-scan__kind">Put away</p>
         <h3 className="fo-scan__id">{session.partId}</h3>
