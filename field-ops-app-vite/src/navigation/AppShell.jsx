@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { X } from "lucide-react";
 import AppRail, { RailBrand } from "./AppRail";
-import { NAV_DOMAINS } from "./navConfig";
+import { NAV_DOMAINS, isNavItemVisible } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
+import MobileTabBar from "./MobileTabBar.jsx";
+import { buildMobileNav } from "./mobilePrimaryNav.js";
 import Icon from "../shared/ui/Icon";
 
 // Sprint 2.0.1 -- real <NavLink> anchors (not onClick + setState) so the
@@ -53,6 +55,19 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
   // actually says where you are.
   const activeDomainLabel =
     NAV_DOMAINS.find((d) => d.path === activeDomainPath)?.label ?? "Field Ops";
+
+  // THE PHONE BAR. Derived from the SAME visibility authority the rail uses -- a destination the
+  // rail would hide is dropped here too, so this can never become a second access model.
+  const mobileNav = buildMobileNav({
+    role,
+    hasCapability: (id) => operationalContext?.hasCapability?.(id) === true,
+    isVisible: (to) => {
+      const [, domainPath, itemPath = ""] = to.split("/");
+      const domain = NAV_DOMAINS.find((d) => d.path === domainPath);
+      const item = domain?.subnav?.find((n) => n.path === itemPath);
+      return item ? isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) : false;
+    },
+  });
 
   const isDrawer = useIsDrawer();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -166,6 +181,9 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           <h1 className="fo-visually-hidden">{activeDomainLabel}</h1>
           {children}
         </main>
+        {/* Phone only, and it unmounts above 640px rather than hiding -- a hidden-but-mounted bar
+            still lands in the tab order. "More" opens the drawer that already exists. */}
+        <MobileTabBar destinations={mobileNav.destinations} onOpenDrawer={() => setDrawerOpen(true)} />
       </div>
     </div>
   );

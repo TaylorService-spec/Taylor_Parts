@@ -2259,6 +2259,57 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    a bench with the part in the other hand. 16px inputs so focusing one does not
    zoom the page on iOS, and 48px controls throughout.
    ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   PRIMARY MOBILE NAVIGATION -- the thumb bar.
+   ---------------------------------------------------------------------------
+   Phone widths ONLY. The rail and drawer are untouched above 640px, so tablet
+   and desktop navigation is exactly what it was.
+   ------------------------------------------------------------------------- */
+.fo-tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 60;
+  background: var(--color-surface-elevated);
+  border-top: 1px solid var(--color-border);
+  /* Clears the iOS home indicator, which otherwise sits ON the last row of
+     targets and eats roughly a third of their height. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.fo-tabbar__list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex;
+}
+.fo-tabbar__item { flex: 1 1 0; min-width: 0; }
+.fo-tabbar__link {
+  /* 56px, comfortably past the 48px floor: this is the most-pressed control in
+     the product and it is pressed without looking. */
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 56px;
+  padding: 8px 4px;
+  font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--color-text-secondary);
+  background: none; border: none; cursor: pointer;
+  text-decoration: none;
+  /* A long label truncates rather than wrapping to two lines and shoving the
+     bar taller mid-shift. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The selected tab is marked by COLOUR AND A BAR, never colour alone -- a
+   colour-only indicator says nothing on a washed-out screen in daylight, which
+   is the normal viewing condition here. aria-current carries it for screen
+   readers. */
+.fo-tabbar__link[data-active="true"] {
+  color: var(--color-brand-primary);
+  box-shadow: inset 0 3px 0 var(--color-brand-primary);
+}
+.fo-tabbar__link:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -3px; }
+
+/* The bar is fixed, so the last of the page's own content would otherwise sit
+   under it and be unreachable. */
+@media (max-width: 639.98px) {
+  .fo-main { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+}
+
 .fo-returns { display: flex; flex-direction: column; gap: 14px; }
 .fo-returns__field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
 .fo-returns__field select,
