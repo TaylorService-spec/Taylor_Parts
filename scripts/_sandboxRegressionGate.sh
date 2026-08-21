@@ -19,7 +19,22 @@
 set -euo pipefail
 
 ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
-export CERT_BASE="${ORIGIN}/Taylor_Parts/field-ops"
+# CERT_BASE IS NOT KNOWN UNTIL THE ENVIRONMENT IS ASKED. This line used to hardcode
+# "${ORIGIN}/Taylor_Parts/field-ops" -- the path the LOCAL dev server uses. The deployed build is
+# built with base "/", so that URL still returns 200 (Firebase rewrites every path to index.html)
+# and the app then boots on a route its router does not recognise. Nothing 404s; the gate simply
+# certifies a page that is not the app.
+#
+# It failed loudly and correctly -- the sweep reported NAV_REDIRECTED on 270 of 270 visits -- and I
+# read the tail of the log instead of that line, and spent a cycle diagnosing load. The answer was
+# already printed.
+#
+# Same defect class as the hardcoded BASE_PATH inside certify.mjs, fixed there and left here: the
+# fourth time in this program a fix landed in one sibling and not the other.
+#
+# The deployed artifact SELF-DESCRIBES its base in version.json, so ask it rather than assume.
+DEPLOYED_BASE="$(curl -fsS "${ORIGIN}/version.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const b=(JSON.parse(d).base||"/");process.stdout.write(b==="/"?"":b.replace(//$/,""))})')"
+export CERT_BASE="${ORIGIN}${DEPLOYED_BASE}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
