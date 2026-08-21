@@ -77,6 +77,12 @@ await expectAllowed("2 empty scan is MALFORMED", "partsAssociate", "resolveScann
 console.log("\n-- 3. Serialized lookup --");
 await expectAllowed("3 serialized lookup", "partsAssociate", "getAvailableEquipment", { partId: SERIAL_PART },
   (r) => (r && typeof r === "object" ? true : "unexpected payload"), "serialized identity read");
+const forced = await callAs("partsAssociate", "getPartBalance", { partId: SERIAL_PART, serialTracked: false });
+const forcedZero = forced.ok && forced.result?.onHand?.state === "KNOWN" && forced.result?.onHand?.value === 0;
+record("3 caller cannot force a confident zero", "partsAssociate", "server decides trackingMode",
+  forcedZero ? "KNOWN 0 for a shelf with serialized units" : (forced.ok ? forced.result.onHand.state : forced.code),
+  !forcedZero,
+  "serialTracked must come from the Part controlType, never the request -- redeploy getPartBalance if this fails");
 const serialBal = await balanceOf("partsAssociate", SERIAL_PART);
 record("3 serialized is not aggregated", "partsAssociate", "no fabricated quantity",
   serialBal ? `onHand=${serialBal.onHand?.state}` : "unreadable",
