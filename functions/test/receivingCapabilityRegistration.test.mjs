@@ -33,12 +33,30 @@ check("catalog resolves the EXACT tuple exactly once", () => {
 // (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...reports]), so it necessarily inherits this capability
 // by explicit role composition -- NOT a wildcard/claim/users.role bypass, and it cannot be excluded without
 // breaking the owner>=admin invariant. Flagged for Owner/Codex ratification.
-const RECEIVE_HOLDERS = ["admin", "dispatcher", "owner"];
-check("inventory.stock.receive is granted by EXACTLY admin + dispatcher (+ owner, which inherits admin)", () => {
+// AMENDED 2026-08-21 by Owner decision. inventoryReceivingClerk joins this set -- and only it.
+//
+// The capacity report found Receiving had ZERO assigned workers and 32 operable ones, every one of
+// them through legacy compatibility authority: everybody able to receive, nobody accountable for it.
+// The Owner directed a NARROW STANDALONE receiving Role rather than composition into an associate
+// title, so receiving became a named station granted per employee.
+//
+// WHAT THIS AMENDMENT DOES NOT DO, which is the part worth checking on every future edit:
+//   - it grants receiving to NO business title. warehouseAssociate, partsAssociate, partsManager
+//     and warehouseManager still do not hold it, and the checks below still prove that.
+//   - it does not resolve the PARTS_ASSOCIATE deferral recorded in compatibilityRoles.ts. That
+//     deferral waits on "a separately ratified scoped model or an explicit Owner acceptance of
+//     global Receiving authority", and a standalone per-employee Role is neither.
+//   - it does not touch the compatibility Roles, whose definitions the Owner ruled stay unchanged.
+//
+// The first-slice deferral this file was written to protect is therefore intact: what changed is
+// that receiving now has a NAME to grant, instead of being reachable only by holding a legacy role
+// that happens to include it.
+const RECEIVE_HOLDERS = ["admin", "dispatcher", "inventoryReceivingClerk", "owner"];
+check("inventory.stock.receive is granted by EXACTLY admin + dispatcher + inventoryReceivingClerk (+ owner, which inherits admin)", () => {
   const grantingRoles = Object.entries(ALL_ROLES)
     .filter(([, r]) => Array.isArray(r.permissions) && r.permissions.includes(CAP))
     .map(([n]) => n).sort();
-  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, owner");
+  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, inventoryReceivingClerk, owner");
 });
 
 check("admin + dispatcher DO hold it; technician + operational roles do NOT", () => {
@@ -48,6 +66,23 @@ check("admin + dispatcher DO hold it; technician + operational roles do NOT", ()
     const role = ALL_ROLES[name];
     if (role) assert.equal(role.permissions.includes(CAP), false, `${name} must not grant ${CAP}`);
     else assert.equal(role, undefined, `${name} is not a capability grant-holder (holds no catalog capability)`);
+  }
+});
+
+check("NO business title holds receiving -- it is a named station, not a property of a job", () => {
+  // Stated separately from the exact-set check because it must survive the set being extended
+  // again. If a future decision adds another receiving Role, that is a decision; a business title
+  // acquiring receiving is the drift this whole design exists to prevent.
+  for (const name of ["PARTS_ASSOCIATE", "PARTS_MANAGER", "WAREHOUSE_MANAGER", "warehouseAssociate",
+                      "partsAssociate", "partsManager", "warehouseManager", "generalManager",
+                      "shopManager", "shopAssociate", "technician"]) {
+    const role = ALL_ROLES[name];
+    if (!role) continue;
+    assert.equal(
+      role.permissions.includes(CAP), false,
+      `${name} must not grant ${CAP} -- receiving is granted through inventoryReceivingClerk, per `
+      + `employee, so that accepting custody of goods has a named accountable person`,
+    );
   }
 });
 
