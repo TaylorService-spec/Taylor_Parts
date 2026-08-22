@@ -20,7 +20,15 @@
 //
 // That is the whole reason ad-hoc cleanup was refused: a one-off delete of "the Cert Prospect rows"
 // is unrepeatable, unreviewable, and cannot tell you afterwards what it removed.
-export const CERTIFICATION_WORLD_VERSION = "1.0.0";
+// 1.1.0 (2026-08-21): the 47-employee WORKFORCE joins the world. It existed in data/workforce.mjs
+// and drove every capacity and authority report, while buildWorld omitted it -- so  expected
+// a world without the people the reports described, and the sandbox could never have contained them.
+//
+// THE VERSION BUMP IS THE POINT. Expected record count moves 670 -> 717, so a sandbox holding the
+// 1.0.0 world now verifies as a VERSION MISMATCH rather than silently passing while missing 47
+// records. Changing the expected world without changing its version is how a fixture system starts
+// lying about what it contains.
+export const CERTIFICATION_WORLD_VERSION = "1.1.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

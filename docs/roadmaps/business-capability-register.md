@@ -253,6 +253,39 @@ an export may request every row — and each request is still resolved against R
 initiating actor's own read scope. An administration surface that could grant itself authority would be a
 privilege escalation with a friendly interface, which is the failure this capability is defined to avoid.
 
+### 17. EOS Contextual Assistant
+
+- **Business problem:** EOS knows a great deal that its users cannot easily ask it. A dispatcher looking at a
+  blocked job, a parts associate holding a scanner, an office manager opening an unfamiliar screen — each has
+  a question the data can answer and no way to ask it in words. The capability is a governed, EOS-native
+  assistant that answers questions about what is on the screen, explains why something is unavailable, and
+  points to where the work is done.
+- **Primary domains:** Platform / Assistant, Access & Authority, every operational read surface.
+- **Known canonical authorities:** the architecture (`docs/architecture/eos-contextual-assistant.md`) · the
+  provider seam (`functions/src/assistant/aiProvider.ts`) · the authorization gate
+  (`functions/src/assistant/assistantAuthorization.ts`) · the governed tool registry
+  (`functions/src/assistant/assistantToolRegistry.ts`) · the security boundary tests
+  (`functions/test/assistantSecurityBoundary.test.mjs`) · the operator runbook
+  (`docs/runbooks/openai-secret-setup.md`).
+- **Key business questions:** Which reads may an assistant perform on a user's behalf, and does it use the
+  same effective authority the server uses? What may it say without evidence? What must it never do? What is
+  recorded about a conversation, and for how long? What does it cost per tenant, and who is billed?
+- **Non-negotiable architecture:** authorization happens BEFORE protected data is retrieved, and therefore
+  before it could enter a model prompt. There is no path from a browser to a provider, no path from a model to
+  unrestricted Firestore, and no path in which unauthorized data is fetched and the model is asked not to
+  reveal it. V1 is READ AND GUIDE ONLY — no transfer, receive, count, adjustment, transition, invoice, role
+  assignment, activation, deletion or write of any kind.
+- **Provider posture:** OpenAI is the initial provider and is REPLACEABLE INFRASTRUCTURE. EOS owns the UX,
+  authorization, governed tools, context, audit, evaluation, cost control and the provider abstraction. EOS
+  domain code never imports a provider SDK.
+- **Evaluation:** the Certification World is the evaluation world. The persona question corpus becomes
+  permanent regression coverage. Prohibited-data leakage is pass/fail and is never averaged into a score.
+- **Status:** `PLANNED` — Phase A (provider + security architecture) and the Phase B framework are BUILT and
+  repository-only. No production AI, no conversational writes, no API key required to merge.
+- **Phases:** A provider + security architecture · B governed tool registry · C Customer/Work Order/Parts
+  vertical proof · D shared Ask EOS UI · E Certification World evaluation · F broader read coverage ·
+  G explicitly confirmed governed actions (SEPARATE from V1) · H provider routing / self-hosted option.
+
 ## Already-supplied cross-domain requirements
 
 These were supplied earlier and have durable detail; summarized here and cross-referenced so the register is
@@ -403,3 +436,8 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 - **2026-08-07 (2)** — Owner corrections: reworded #12 to "Temporary Equipment Placement / Custody
   Relationship — representation TBD by Assessment" (persistence shape not yet a ratified authority); added
   #14 Multi-Equipment Fulfillment / Coordinated Field Execution (`IDENTIFIED`).
+- **2026-08-21** — Added #17 EOS Contextual Assistant (`PLANNED`). Phase A and the Phase B framework built
+  repository-only: provider abstraction, OpenAI adapter seam, authorization-before-retrieval gate, governed
+  tool registry, context model with conversation isolation, answer contract, audit/usage telemetry, starter
+  questions, evaluation schema, 25 security/contract tests (mutation-proven). No production AI, no writes,
+  no credential required to merge.

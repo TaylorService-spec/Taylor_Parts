@@ -28,11 +28,30 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { PERMISSION_CATALOG } = await import(L("functions/lib/access/permissionCatalog.js"));
 const { GOVERNED_BUSINESS_ROLES: GB } = await import(L("functions/lib/access/governedBusinessRoles.js"));
 const { COMPATIBILITY_ROLES: CR } = await import(L("functions/lib/access/compatibilityRoles.js"));
+const { ENVIRONMENT_ACTIVATION_REGISTRY, resolveCapabilityOverrides } =
+  await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
 const { buildWorkforce } = await import(L("functions/scripts/certificationWorld/data/workforce.mjs"));
 const { WORKSTREAM_REQUIREMENTS, effectiveCapabilities } =
   await import(L("functions/scripts/certificationWorld/authorityMatrix.mjs"));
 
-const ACTIVE = new Set(PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id));
+// ============================ ACTIVE IS AN ENVIRONMENT QUESTION ============================
+//
+// CORRECTION 2026-08-21. This file previously read `active` straight off PERMISSION_CATALOG, which
+// is the GLOBAL, fail-closed default -- and therefore reported the PRODUCTION posture while claiming
+// to describe the Certification World.
+//
+// The consequence was not cosmetic. It reported nine workstreams as GRANTED_BUT_INACTIVE and
+// proposed fifteen sandbox activations to fix them. All fifteen were ALREADY ACTIVE in
+// platform-sandbox: 105 of 116 capabilities resolve active there, not 72. The activation plan was
+// real work that did not need doing, produced by measuring the wrong environment.
+//
+// Per-environment activation is exactly what `environmentCapabilityOverrides` exists for, and it
+// keeps its triple production hard-block: production resolves EMPTY regardless of registry data,
+// so passing a production projectId here yields the strict catalog posture and cannot be widened.
+const TARGET_PROJECT_ID = process.env.CAPACITY_PROJECT_ID || "eos-platform-sandbox";
+const OVERRIDES = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, TARGET_PROJECT_ID);
+const GLOBALLY_ACTIVE = new Set(PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id));
+const ACTIVE = new Set([...GLOBALLY_ACTIVE, ...OVERRIDES]);
 const IN_CATALOG = new Set(PERMISSION_CATALOG.map((p) => p.id));
 
 // The classifications the Owner asked for. GRANTED_BUT_INACTIVE is the one this report exists to
@@ -285,7 +304,13 @@ for (const c of capacity) byResult[c.result] = (byResult[c.result] || 0) + 1;
 const out = {
   basis: "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. "
     + "Granted-but-inactive is ZERO operational capacity.",
-  catalog: { total: IN_CATALOG.size, active: ACTIVE.size, inactive: IN_CATALOG.size - ACTIVE.size },
+  environment: { projectId: TARGET_PROJECT_ID, activationOverrides: OVERRIDES.size },
+  catalog: {
+    total: IN_CATALOG.size,
+    globallyActive: GLOBALLY_ACTIVE.size,
+    activeInThisEnvironment: ACTIVE.size,
+    inactiveInThisEnvironment: IN_CATALOG.size - ACTIVE.size,
+  },
   employeesEvaluated: rows.length,
   assignmentClassifications: tally,
   workstreamResults: byResult,
@@ -324,6 +349,7 @@ const out = {
 };
 writeFileSync(path.join(REPO, "docs/governance/capacity-report.json"), JSON.stringify(out, null, 1));
 
+console.log("env " + TARGET_PROJECT_ID + " (+" + OVERRIDES.size + " activation overrides)");
 console.log("employees " + rows.length + " | catalog " + IN_CATALOG.size
   + " active " + ACTIVE.size + " inactive " + (IN_CATALOG.size - ACTIVE.size));
 console.log("\nassignment classifications:");

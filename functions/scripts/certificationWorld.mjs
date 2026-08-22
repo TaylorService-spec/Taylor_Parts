@@ -73,6 +73,10 @@ function expectedRecords() {
   const groups = [
     ["accounts", w.accounts], ["locations", w.locations], ["contacts", w.contacts],
     ["equipment_models", w.equipmentModels], ["mobile_locations", w.trucks],
+    // employees ADDED 2026-08-21 with world version 1.1.0. Omitting a group here is silent: the
+    // world builds 47 employee records, verify never asks for them, and a sandbox missing every
+    // employee reports COMPLETE. The version bump is what turns that into a detectable mismatch.
+    ["employees", w.employees],
   ];
   const out = [];
   for (const [datasetId, rows] of groups) {

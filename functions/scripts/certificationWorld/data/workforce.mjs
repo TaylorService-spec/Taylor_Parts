@@ -34,7 +34,20 @@ export const WORKSTREAM = Object.freeze({
   CRM_SALES: "CRM_SALES", DISPATCH: "DISPATCH", SERVICE: "SERVICE", PARTS_LOOKUP: "PARTS_LOOKUP",
   PUT_AWAY: "PUT_AWAY", PICK_STAGE: "PICK_STAGE", TRANSFERS: "TRANSFERS", CYCLE_COUNT: "CYCLE_COUNT",
   CYCLE_COUNT_RECONCILE: "CYCLE_COUNT_RECONCILE", RECEIVING: "RECEIVING", RETURNS: "RETURNS",
-  PROCUREMENT: "PROCUREMENT", ACCOUNTING: "ACCOUNTING", ADMINISTRATION: "ADMINISTRATION",
+  PROCUREMENT: "PROCUREMENT", ACCOUNTING: "ACCOUNTING",
+  // ADMINISTRATION SPLIT 2026-08-21 by Owner decision. One row was doing two jobs and the capacity
+  // report showed it: officeManager kept coming back UNDER_PRIVILEGED for ADMINISTRATION because
+  // that workstream required admin.roleAssignment.write. The role was not under-granted -- the
+  // WORKSTREAM was mislabelled. Office administration and security administration are different
+  // work, and the Owner ruled the fix is to split them rather than grant an office manager the
+  // authority to assign roles.
+  BUSINESS_ADMINISTRATION: "BUSINESS_ADMINISTRATION",
+  ACCESS_ADMINISTRATION: "ACCESS_ADMINISTRATION",
+  // BIN_ADMINISTRATION separated from PUT_AWAY for the same reason ADMINISTRATION was split: one
+  // row was describing two authorities that a control deliberately keeps apart. The bin
+  // administrator DEFINES where stock may live and must not be the person filling those locations,
+  // so assigning them to PUT_AWAY reported a designed refusal as an under-grant.
+  BIN_ADMINISTRATION: "BIN_ADMINISTRATION",
   REPORTING: "REPORTING",
   // AUDIT added 2026-08-21. Audit read is oversight of what the other workstreams did, so it is a
   // workstream in its own right rather than a property of holding a management title.
@@ -47,7 +60,7 @@ export const WORKSTREAM = Object.freeze({
 //
 // [ count, securityRole, governedRoles, assignments, workloadPattern ]
 const ROSTER = [
-  [1, "admin", ["owner"], ["ADMINISTRATION", "REPORTING", "ACCOUNTING"], "normal"],
+  [1, "admin", ["owner"], ["ACCESS_ADMINISTRATION", "REPORTING", "ACCOUNTING"], "normal"],
   // GENERAL MANAGER CARRIES THE dispatcher COMPATIBILITY ROLE, NOT admin.
   //
   // This row said "admin", and the capacity report caught what that meant. The Owner decided on
@@ -63,9 +76,9 @@ const ROSTER = [
   // dispatcher is the widest compatibility role carrying NO admin.* (38 capabilities, verified),
   // so it models a broad business operator without reversing the ruling. The compatibility roles
   // themselves are untouched -- this is a fixture correction, not a change to legacy authority.
-  [2, "dispatcher", ["generalManager", "reportViewer", "reportAuthor"], ["ADMINISTRATION", "REPORTING", "AUDIT"], "normal"],
+  [2, "dispatcher", ["generalManager", "reportViewer", "reportAuthor"], ["BUSINESS_ADMINISTRATION", "REPORTING", "AUDIT"], "normal"],
   [2, "dispatcher", ["operationsManager", "reportViewer", "reportAuthor"], ["DISPATCH", "SERVICE", "REPORTING", "AUDIT"], "heavy"],
-  [2, "dispatcher", ["officeManager"], ["CRM_SALES", "ADMINISTRATION"], "normal"],
+  [2, "dispatcher", ["officeManager"], ["CRM_SALES", "BUSINESS_ADMINISTRATION"], "normal"],
   [3, "dispatcher", [], ["DISPATCH"], "mixed"],
   [2, "dispatcher", ["fieldManager"], ["SERVICE", "DISPATCH"], "normal"],
   [11, "technician", [], ["SERVICE"], "mixed"],
@@ -105,7 +118,7 @@ const ROSTER = [
   // defining where stock may live from also filling those locations, so this employee holds no
   // put-away. Receiving is added here for the second receiver; the separation that matters survives,
   // because they cannot PLACE what they accept -- put-away remains someone else's authority.
-  [1, "dispatcher", ["warehouseManager", "inventoryBinAdministrator", "inventoryReceivingClerk"], ["PUT_AWAY", "RECEIVING"], "normal"],
+  [1, "dispatcher", ["warehouseManager", "inventoryBinAdministrator", "inventoryReceivingClerk"], ["BIN_ADMINISTRATION", "RECEIVING"], "normal"],
   // Procurement backup. No approve/reject and no purchaseOrder.void -- the Role withholds both --
   // and no receiving, per the buyer-is-not-receiver separation above.
   [1, "dispatcher", ["purchasingManager"], ["PROCUREMENT"], "normal"],

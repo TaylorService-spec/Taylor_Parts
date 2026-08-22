@@ -1,55 +1,58 @@
 {
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
+ "environment": {
+  "projectId": "eos-platform-sandbox",
+  "activationOverrides": 33
+ },
  "catalog": {
   "total": 116,
-  "active": 72,
-  "inactive": 44
+  "globallyActive": 72,
+  "activeInThisEnvironment": 105,
+  "inactiveInThisEnvironment": 11
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
-  "OPERABLE": 40,
-  "GRANTED_BUT_INACTIVE": 40,
-  "UNDER_PRIVILEGED": 6
+  "OPERABLE": 85,
+  "UNDER_PRIVILEGED": 1
  },
  "workstreamResults": {
-  "GRANTED_BUT_INACTIVE": 9,
-  "ADEQUATE": 6,
+  "ADEQUATE": 17,
   "THIN": 1
  },
  "governedOnlyResults": {
-  "GRANTED_BUT_INACTIVE": 9,
-  "ADEQUATE": 6,
+  "ADEQUATE": 17,
   "THIN": 1
  },
  "coverage": {
   "twoOrMoreOperable": [
+   "CRM_SALES",
    "DISPATCH",
    "SERVICE",
-   "RECEIVING",
-   "PROCUREMENT",
-   "REPORTING",
-   "AUDIT"
-  ],
-  "exactlyOneOperable": [
-   "ADMINISTRATION"
-  ],
-  "zeroOperable": [
-   "CRM_SALES",
    "PARTS_LOOKUP",
    "PUT_AWAY",
    "PICK_STAGE",
    "TRANSFERS",
    "CYCLE_COUNT",
    "CYCLE_COUNT_RECONCILE",
+   "RECEIVING",
    "RETURNS",
-   "ACCOUNTING"
-  ]
+   "PROCUREMENT",
+   "ACCOUNTING",
+   "BUSINESS_ADMINISTRATION",
+   "BIN_ADMINISTRATION",
+   "REPORTING",
+   "AUDIT"
+  ],
+  "exactlyOneOperable": [
+   "ACCESS_ADMINISTRATION"
+  ],
+  "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 1475,
-  "fromCompatibilityRoleOnly": 985,
-  "fromGovernedRoleOnly": 245,
-  "fromBoth": 245,
+  "operableHoldingsTotal": 1988,
+  "fromCompatibilityRoleOnly": 1224,
+  "fromGovernedRoleOnly": 399,
+  "fromBoth": 365,
   "employeesWithZeroOperableGovernedAuthority": 14,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -63,14 +66,14 @@
    "forbids": [],
    "assignedWorkers": 7,
    "grantedEligible": 36,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 36,
+   "operableGovernedOnly": 9,
    "grantedGovernedOnly": 9,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: opportunity.read",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 34,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "DISPATCH",
@@ -116,14 +119,14 @@
    "forbids": [],
    "assignedWorkers": 10,
    "grantedEligible": 27,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 27,
+   "operableGovernedOnly": 26,
    "grantedGovernedOnly": 26,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.balance.read",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 25,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "PUT_AWAY",
@@ -132,16 +135,16 @@
     "inventory.location.bin.read"
    ],
    "forbids": [],
-   "assignedWorkers": 8,
+   "assignedWorkers": 7,
    "grantedEligible": 8,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 8,
+   "operableGovernedOnly": 7,
    "grantedGovernedOnly": 7,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.placement.record, inventory.location.bin.read",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 7,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "PICK_STAGE",
@@ -151,14 +154,14 @@
    "forbids": [],
    "assignedWorkers": 3,
    "grantedEligible": 27,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 27,
+   "operableGovernedOnly": 26,
    "grantedGovernedOnly": 26,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.balance.read",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 25,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "TRANSFERS",
@@ -169,14 +172,14 @@
    "forbids": [],
    "assignedWorkers": 2,
    "grantedEligible": 3,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 3,
+   "operableGovernedOnly": 2,
    "grantedGovernedOnly": 2,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.transfer.create, inventory.transfer.dispatch",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 3,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "CYCLE_COUNT",
@@ -189,14 +192,14 @@
    ],
    "assignedWorkers": 4,
    "grantedEligible": 5,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 5,
+   "operableGovernedOnly": 4,
    "grantedGovernedOnly": 4,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.cycleCount.create, inventory.cycleCount.submit",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 4,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "CYCLE_COUNT_RECONCILE",
@@ -208,14 +211,14 @@
    ],
    "assignedWorkers": 2,
    "grantedEligible": 3,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 3,
+   "operableGovernedOnly": 2,
    "grantedGovernedOnly": 2,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.cycleCount.reconcile",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 3,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "RECEIVING",
@@ -242,14 +245,14 @@
    "forbids": [],
    "assignedWorkers": 2,
    "grantedEligible": 3,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 3,
+   "operableGovernedOnly": 2,
    "grantedGovernedOnly": 2,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: inventory.returns.intake",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 3,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "PROCUREMENT",
@@ -277,22 +280,41 @@
    "forbids": [],
    "assignedWorkers": 4,
    "grantedEligible": 20,
-   "operableEligible": 0,
-   "operableGovernedOnly": 0,
+   "operableEligible": 20,
+   "operableGovernedOnly": 19,
    "grantedGovernedOnly": 19,
-   "governedResult": "GRANTED_BUT_INACTIVE",
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 0,
-   "blockedReason": "inactive: finance.read",
-   "result": "GRANTED_BUT_INACTIVE"
+   "available": 18,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
-   "workstream": "ADMINISTRATION",
+   "workstream": "BUSINESS_ADMINISTRATION",
+   "requires": [
+    "account.record.read"
+   ],
+   "forbids": [
+    "admin.roleAssignment.write"
+   ],
+   "assignedWorkers": 4,
+   "grantedEligible": 36,
+   "operableEligible": 36,
+   "operableGovernedOnly": 27,
+   "grantedGovernedOnly": 27,
+   "governedResult": "ADEQUATE",
+   "borrowsLegacyAuthority": false,
+   "available": 34,
+   "blockedReason": "",
+   "result": "ADEQUATE"
+  },
+  {
+   "workstream": "ACCESS_ADMINISTRATION",
    "requires": [
     "admin.roleAssignment.write"
    ],
    "forbids": [],
-   "assignedWorkers": 5,
+   "assignedWorkers": 1,
    "grantedEligible": 1,
    "operableEligible": 1,
    "operableGovernedOnly": 0,
@@ -302,6 +324,25 @@
    "available": 1,
    "blockedReason": "single point of failure -- no backup",
    "result": "THIN"
+  },
+  {
+   "workstream": "BIN_ADMINISTRATION",
+   "requires": [
+    "inventory.location.bin.manage"
+   ],
+   "forbids": [
+    "inventory.placement.record"
+   ],
+   "assignedWorkers": 1,
+   "grantedEligible": 3,
+   "operableEligible": 3,
+   "operableGovernedOnly": 2,
+   "grantedGovernedOnly": 2,
+   "governedResult": "ADEQUATE",
+   "borrowsLegacyAuthority": false,
+   "available": 3,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   },
   {
    "workstream": "REPORTING",
@@ -342,140 +383,6 @@
  ],
  "inertFunctionalRoles": [
   {
-   "roleId": "workOrderPartsPlanner",
-   "capabilities": [
-    "workOrder.parts.plan"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": false,
-   "bothInactiveAndUnassigned": true,
-   "dependentWorkstreams": [],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": true
-  },
-  {
-   "roleId": "crmActivityContributor",
-   "capabilities": [
-    "crm.activity.create",
-    "crm.activity.read"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryTransferOperator",
-   "capabilities": [
-    "inventory.transfer.cancel",
-    "inventory.transfer.create",
-    "inventory.transfer.dispatch",
-    "inventory.transfer.receive"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "TRANSFERS"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryCycleCountCounter",
-   "capabilities": [
-    "inventory.cycleCount.cancel",
-    "inventory.cycleCount.create",
-    "inventory.cycleCount.submit"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "CYCLE_COUNT"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryCycleCountReconciler",
-   "capabilities": [
-    "inventory.cycleCount.reconcile"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "CYCLE_COUNT_RECONCILE"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryPutAwayOperator",
-   "capabilities": [
-    "inventory.location.bin.read",
-    "inventory.placement.record"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "PUT_AWAY"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryBinAdministrator",
-   "capabilities": [
-    "inventory.location.bin.manage",
-    "inventory.location.bin.read"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "PUT_AWAY"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryReturnsIntakeClerk",
-   "capabilities": [
-    "inventory.returns.intake"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "RETURNS"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
-   "roleId": "inventoryLookupReader",
-   "capabilities": [
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.location.display.read",
-    "inventory.serializedAsset.read"
-   ],
-   "allCapabilitiesInactive": true,
-   "assignedToAPlannedEmployee": true,
-   "bothInactiveAndUnassigned": false,
-   "dependentWorkstreams": [
-    "PARTS_LOOKUP",
-    "PICK_STAGE"
-   ],
-   "sandboxActivationRequired": true,
-   "employeeGrantRequired": false
-  },
-  {
    "roleId": "equipmentCatalogAdministrator",
    "capabilities": [
     "equipment.model.manage"
@@ -498,10 +405,10 @@
    ],
    "functionalRoles": [],
    "grantedCount": 116,
-   "operableCount": 72,
+   "operableCount": 105,
    "assignments": [
     {
-     "workstream": "ADMINISTRATION",
+     "workstream": "ACCESS_ADMINISTRATION",
      "classification": "OPERABLE",
      "detail": ""
     },
@@ -512,15 +419,25 @@
     },
     {
      "workstream": "ACCOUNTING",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: finance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PUT_AWAY",
+    "PICK_STAGE",
+    "TRANSFERS",
+    "CYCLE_COUNT",
+    "CYCLE_COUNT_RECONCILE",
     "RECEIVING",
+    "RETURNS",
     "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION",
+    "BIN_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -537,12 +454,12 @@
    ],
    "functionalRoles": [],
    "grantedCount": 77,
-   "operableCount": 61,
+   "operableCount": 77,
    "assignments": [
     {
-     "workstream": "ADMINISTRATION",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing admin.roleAssignment.write"
+     "workstream": "BUSINESS_ADMINISTRATION",
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "REPORTING",
@@ -556,10 +473,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING"
    ],
    "workload": "normal",
    "available": true
@@ -575,12 +496,12 @@
    ],
    "functionalRoles": [],
    "grantedCount": 77,
-   "operableCount": 61,
+   "operableCount": 77,
    "assignments": [
     {
-     "workstream": "ADMINISTRATION",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing admin.roleAssignment.write"
+     "workstream": "BUSINESS_ADMINISTRATION",
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "REPORTING",
@@ -594,10 +515,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING"
    ],
    "workload": "normal",
    "available": true
@@ -613,7 +538,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 70,
-   "operableCount": 61,
+   "operableCount": 70,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -637,8 +562,10 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -654,7 +581,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 70,
-   "operableCount": 61,
+   "operableCount": 70,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -678,8 +605,10 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -693,17 +622,17 @@
    ],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
-     "workstream": "ADMINISTRATION",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing admin.roleAssignment.write"
+     "workstream": "BUSINESS_ADMINISTRATION",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -724,17 +653,17 @@
    ],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
-     "workstream": "ADMINISTRATION",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing admin.roleAssignment.write"
+     "workstream": "BUSINESS_ADMINISTRATION",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -753,7 +682,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -762,9 +691,11 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "none",
    "available": true
@@ -776,7 +707,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -785,9 +716,11 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -799,7 +732,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -808,9 +741,11 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -824,7 +759,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 43,
-   "operableCount": 31,
+   "operableCount": 43,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -838,8 +773,13 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -854,7 +794,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 43,
-   "operableCount": 31,
+   "operableCount": 43,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -868,8 +808,13 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -882,7 +827,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -904,7 +849,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -926,7 +871,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -948,7 +893,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -970,7 +915,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -992,7 +937,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1014,7 +959,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1036,7 +981,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1058,7 +1003,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1080,7 +1025,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1102,7 +1047,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 14,
-   "operableCount": 13,
+   "operableCount": 14,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1129,24 +1074,28 @@
     "inventoryCatalogAdministrator"
    ],
    "grantedCount": 47,
-   "operableCount": 32,
+   "operableCount": 47,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.reconcile"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -1164,24 +1113,28 @@
     "inventoryCatalogAdministrator"
    ],
    "grantedCount": 47,
-   "operableCount": 32,
+   "operableCount": 47,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.reconcile"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -1200,29 +1153,33 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 48,
-   "operableCount": 29,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "CYCLE_COUNT",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.create, inventory.cycleCount.submit"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "none",
    "available": true
@@ -1240,29 +1197,33 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 48,
-   "operableCount": 29,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "CYCLE_COUNT",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.create, inventory.cycleCount.submit"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1280,29 +1241,33 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 48,
-   "operableCount": 29,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "CYCLE_COUNT",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.create, inventory.cycleCount.submit"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -1320,29 +1285,33 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 48,
-   "operableCount": 29,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "CYCLE_COUNT",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.cycleCount.create, inventory.cycleCount.submit"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "conflicting",
    "available": false
@@ -1360,24 +1329,29 @@
     "inventoryBinAdministrator"
    ],
    "grantedCount": 49,
-   "operableCount": 31,
+   "operableCount": 49,
    "assignments": [
     {
      "workstream": "TRANSFERS",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.transfer.create, inventory.transfer.dispatch"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "RETURNS",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.returns.intake"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION",
+    "BIN_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "heavy",
@@ -1395,29 +1369,31 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 44,
-   "operableCount": 29,
+   "operableCount": 44,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PICK_STAGE",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "none",
    "available": true
@@ -1434,29 +1410,31 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 44,
-   "operableCount": 29,
+   "operableCount": 44,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PICK_STAGE",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1473,29 +1451,31 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 44,
-   "operableCount": 29,
+   "operableCount": 44,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.placement.record, inventory.location.bin.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PICK_STAGE",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -1509,19 +1489,23 @@
    ],
    "functionalRoles": [],
    "grantedCount": 41,
-   "operableCount": 30,
+   "operableCount": 41,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -1538,19 +1522,23 @@
     "crmActivityContributor"
    ],
    "grantedCount": 42,
-   "operableCount": 29,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "none",
    "available": true
@@ -1566,19 +1554,23 @@
     "crmActivityContributor"
    ],
    "grantedCount": 42,
-   "operableCount": 29,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1594,19 +1586,23 @@
     "crmActivityContributor"
    ],
    "grantedCount": 42,
-   "operableCount": 29,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "heavy",
    "available": true
@@ -1622,19 +1618,23 @@
     "crmActivityContributor"
    ],
    "grantedCount": 42,
-   "operableCount": 29,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: opportunity.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "conflicting",
    "available": false
@@ -1648,7 +1648,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 41,
-   "operableCount": 29,
+   "operableCount": 41,
    "assignments": [
     {
      "workstream": "PROCUREMENT",
@@ -1657,9 +1657,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
-    "RECEIVING"
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
+    "RECEIVING",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1675,12 +1680,12 @@
    ],
    "functionalRoles": [],
    "grantedCount": 79,
-   "operableCount": 63,
+   "operableCount": 79,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: finance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "AUDIT",
@@ -1689,10 +1694,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION",
     "REPORTING"
    ],
    "workload": "normal",
@@ -1709,12 +1718,12 @@
    ],
    "functionalRoles": [],
    "grantedCount": 79,
-   "operableCount": 63,
+   "operableCount": 79,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: finance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "AUDIT",
@@ -1723,10 +1732,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION",
     "REPORTING"
    ],
    "workload": "normal",
@@ -1743,7 +1756,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 72,
-   "operableCount": 63,
+   "operableCount": 72,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1762,10 +1775,12 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1779,13 +1794,15 @@
    ],
    "functionalRoles": [],
    "grantedCount": 38,
-   "operableCount": 29,
+   "operableCount": 38,
    "assignments": [],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "none",
    "available": true
@@ -1802,24 +1819,27 @@
     "inventoryTransferOperator"
    ],
    "grantedCount": 46,
-   "operableCount": 29,
+   "operableCount": 46,
    "assignments": [
     {
      "workstream": "TRANSFERS",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.transfer.create, inventory.transfer.dispatch"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "PARTS_LOOKUP",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.balance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PICK_STAGE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1837,12 +1857,12 @@
     "inventoryReturnsIntakeClerk"
    ],
    "grantedCount": 43,
-   "operableCount": 29,
+   "operableCount": 43,
    "assignments": [
     {
      "workstream": "RETURNS",
-     "classification": "GRANTED_BUT_INACTIVE",
-     "detail": "held but inactive: inventory.returns.intake"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "RECEIVING",
@@ -1851,9 +1871,13 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
-    "PROCUREMENT"
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
+    "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true
@@ -1870,12 +1894,12 @@
     "inventoryBinAdministrator"
    ],
    "grantedCount": 44,
-   "operableCount": 31,
+   "operableCount": 44,
    "assignments": [
     {
-     "workstream": "PUT_AWAY",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing inventory.placement.record"
+     "workstream": "BIN_ADMINISTRATION",
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "RECEIVING",
@@ -1884,9 +1908,13 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "PROCUREMENT",
+    "BUSINESS_ADMINISTRATION",
     "AUDIT"
    ],
    "workload": "normal",
@@ -1901,7 +1929,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 41,
-   "operableCount": 29,
+   "operableCount": 41,
    "assignments": [
     {
      "workstream": "PROCUREMENT",
@@ -1910,9 +1938,14 @@
     }
    ],
    "overPrivilegedFor": [
+    "CRM_SALES",
     "DISPATCH",
     "SERVICE",
-    "RECEIVING"
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
+    "RECEIVING",
+    "ACCOUNTING",
+    "BUSINESS_ADMINISTRATION"
    ],
    "workload": "normal",
    "available": true

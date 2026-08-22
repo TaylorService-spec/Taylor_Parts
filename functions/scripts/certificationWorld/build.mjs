@@ -10,6 +10,7 @@ import { CERTIFICATION_WORLD_VERSION, PROVENANCE, SYNTHETIC_OWNERSHIP_DISCLAIMER
 import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/accounts.mjs";
 import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
+import { buildWorkforce } from "./data/workforce.mjs";
 
 export const EPOCH = Date.parse("2026-01-05T09:00:00.000Z");
 export const DAY = 86400000;
@@ -33,6 +34,7 @@ export function buildWorld() {
   const contacts = [];
   const equipmentModels = [];
   const trucks = [];
+  const employees = [];
 
   for (const m of ALL_MODELS) {
     equipmentModels.push({
@@ -127,7 +129,39 @@ export function buildWorld() {
     });
   });
 
-  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, trucks, marker };
+  // ============================ THE WORKFORCE JOINS THE WORLD ============================
+  //
+  // Added 2026-08-21. The 47 synthetic employees existed in data/workforce.mjs and were used by
+  // every capacity and authority report, but were NOT part of buildWorld -- so `verify` expected a
+  // world without them and the sandbox could never contain the people the reports described.
+  //
+  // That gap is exactly the failure this module's own header warns about: the analysis was correct
+  // about a population that did not exist anywhere but in the analysis.
+  //
+  // EMPLOYEE RECORDS CONFER NO AUTHORITY. certGovernedRoles is written as fixture DATA describing
+  // the INTENDED grant set; it is not a grant and the server does not read it as one. Conferring
+  // authority still requires a governed, audited roleAssignments write through the trusted command
+  // path, which is a separate protected action and is not performed here or by seeding.
+  for (const e of buildWorkforce()) {
+    employees.push({
+      collection: "employees",
+      id: e.employeeId,
+      data: {
+        employeeId: e.employeeId,
+        firstName: e.firstName, lastName: e.lastName, displayName: e.displayName,
+        securityRole: e.securityRole, operationalRoles: e.operationalRoles,
+        employmentStatus: e.employmentStatus, active: e.active,
+        certGovernedRoles: e.certGovernedRoles,
+        certAssignments: e.certAssignments,
+        certWorkload: e.certWorkload, certAvailable: e.certAvailable,
+        certEmployeeNumber: e.certEmployeeNumber,
+        certEmail: e.certEmail, certPhone: e.certPhone,
+        dataProvenance: e.dataProvenance,
+      },
+    });
+  }
+
+  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, trucks, employees, marker };
 }
 
 export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };
