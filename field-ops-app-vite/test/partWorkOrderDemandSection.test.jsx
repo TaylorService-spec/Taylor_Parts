@@ -13,6 +13,17 @@ vi.mock("../src/hooks/usePartWorkOrderDemand.js", async () => {
   return { ...actual, usePartWorkOrderDemand: vi.fn() };
 });
 
+// The Customer column resolves a NAME now instead of printing the id, through the shared batched
+// account read. Mocked for the same reason the demand hook is: this suite asserts rendering.
+vi.mock("../src/hooks/useAccountNames.js", () => ({
+  ACCOUNT_NAMES_STATUS: { IDLE: "IDLE", LOADING: "LOADING", READY: "READY", DENIED: "DENIED", ERROR: "ERROR" },
+  useAccountNamesWithStatus: () => ({
+    names: new Map([["cust-1", "Harbor Grill Restaurant Group"]]),
+    status: "READY",
+  }),
+  useAccountNames: () => new Map([["cust-1", "Harbor Grill Restaurant Group"]]),
+}));
+
 const withRouter = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 afterEach(cleanup);
 
@@ -66,7 +77,14 @@ describe("PartWorkOrderDemandSection", () => {
     const link = screen.getByRole("link", { name: "WO-2026-000123" });
     expect(link.getAttribute("href")).toBe("/service/work-orders/wo1");
     expect(screen.getByText("SCHEDULED")).toBeTruthy();
-    expect(screen.getByText("cust-1")).toBeTruthy();
+    // CHANGED, and the old expectation was the defect. This asserted that the raw customerId
+    // rendered as the visible Customer -- a Firestore document id shown as content, the same
+    // defect the Sales Order surfaces carried.
+    //
+    // TWO-SIDED ON PURPOSE. The name assertion alone would still pass if the column regressed to
+    // printing the id somewhere else in the row; the absence assertion is the one with teeth.
+    expect(screen.getByText("Harbor Grill Restaurant Group")).toBeTruthy();
+    expect(screen.queryByText("cust-1")).toBeNull();
     expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy(); // remaining
