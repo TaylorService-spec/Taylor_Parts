@@ -12,6 +12,7 @@ import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMaster
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
 import { equipmentForAccount } from "./data/equipmentAssets.mjs";
+import { CERT_PARTS, partRecordFor } from "./data/partsCatalog.mjs";
 import {
   ACCOUNT_STATUS_VALUES,
   ACCOUNT_RELATIONSHIP_VALUES,
@@ -66,6 +67,7 @@ export function buildWorld() {
   const contacts = [];
   const equipmentModels = [];
   const equipment = [];
+  const parts = CERT_PARTS.map(partRecordFor);
   const trucks = [];
   const employees = [];
 
@@ -215,7 +217,7 @@ export function buildWorld() {
     });
   }
 
-  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, equipment, trucks, employees, marker };
+  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, equipment, parts, trucks, employees, marker };
 }
 
 export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };
