@@ -1,0 +1,761 @@
+{
+ "generatedFrom": "live sandbox employees collection, not the repository fixture",
+ "totalIntended": 83,
+ "grantable": 82,
+ "heldPrivileged": [
+  {
+   "employeeId": "cw-emp-000",
+   "roleId": "owner",
+   "why": "privileged Role -- requires explicit Owner authorization and a distinct second approver"
+  }
+ ],
+ "grants": [
+  {
+   "employeeId": "cw-emp-000",
+   "uid": "uqqBqg25aObvDtNqV7q90pt25qY2",
+   "roleId": "owner",
+   "privileged": true,
+   "displayName": "Marisol Okonkwo",
+   "outcome": "HELD_PRIVILEGED",
+   "detail": "privileged Role -- requires explicit Owner authorization and a distinct second approver"
+  },
+  {
+   "employeeId": "cw-emp-001",
+   "uid": "gOTW7OJxoCPNmvWxsbBUf5eunbm1",
+   "roleId": "generalManager",
+   "privileged": false,
+   "displayName": "Devon Sandoval",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-001_generalManager already present"
+  },
+  {
+   "employeeId": "cw-emp-001",
+   "uid": "gOTW7OJxoCPNmvWxsbBUf5eunbm1",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Devon Sandoval",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-001",
+   "uid": "gOTW7OJxoCPNmvWxsbBUf5eunbm1",
+   "roleId": "reportAuthor",
+   "privileged": false,
+   "displayName": "Devon Sandoval",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-002",
+   "uid": "gxxE7771PgfOiQ47Lr2qqT0hS5A2",
+   "roleId": "generalManager",
+   "privileged": false,
+   "displayName": "Priya Achterberg",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-002_generalManager already present"
+  },
+  {
+   "employeeId": "cw-emp-002",
+   "uid": "gxxE7771PgfOiQ47Lr2qqT0hS5A2",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Priya Achterberg",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-002",
+   "uid": "gxxE7771PgfOiQ47Lr2qqT0hS5A2",
+   "roleId": "reportAuthor",
+   "privileged": false,
+   "displayName": "Priya Achterberg",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-003",
+   "uid": "drcXiixby4NpwgyZkwaYkkplJCY2",
+   "roleId": "operationsManager",
+   "privileged": false,
+   "displayName": "Tomas Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-003_operationsManager already present"
+  },
+  {
+   "employeeId": "cw-emp-003",
+   "uid": "drcXiixby4NpwgyZkwaYkkplJCY2",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Tomas Whitlock",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-003",
+   "uid": "drcXiixby4NpwgyZkwaYkkplJCY2",
+   "roleId": "reportAuthor",
+   "privileged": false,
+   "displayName": "Tomas Whitlock",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-004",
+   "uid": "1bujXRrTlGgicKs74oXNUkvmz5k2",
+   "roleId": "operationsManager",
+   "privileged": false,
+   "displayName": "Ingrid Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-004_operationsManager already present"
+  },
+  {
+   "employeeId": "cw-emp-004",
+   "uid": "1bujXRrTlGgicKs74oXNUkvmz5k2",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Ingrid Thorsen",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-004",
+   "uid": "1bujXRrTlGgicKs74oXNUkvmz5k2",
+   "roleId": "reportAuthor",
+   "privileged": false,
+   "displayName": "Ingrid Thorsen",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-005",
+   "uid": "n7E3CZk3kbX3bd21GyogMhu3XlG3",
+   "roleId": "officeManager",
+   "privileged": false,
+   "displayName": "Rafael Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-005_officeManager already present"
+  },
+  {
+   "employeeId": "cw-emp-006",
+   "uid": "nM3vpCrgQ2RSp354zwKT1wUy8lx2",
+   "roleId": "officeManager",
+   "privileged": false,
+   "displayName": "Naomi Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-006_officeManager already present"
+  },
+  {
+   "employeeId": "cw-emp-010",
+   "uid": "JURS248WMxbOGoIcOdJ5CMAzXyv2",
+   "roleId": "fieldManager",
+   "privileged": false,
+   "displayName": "Hollis Nakagawa",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-010_fieldManager already present"
+  },
+  {
+   "employeeId": "cw-emp-011",
+   "uid": "vb6Hz6Xu1daz5xKYErw11ZzrCXS2",
+   "roleId": "fieldManager",
+   "privileged": false,
+   "displayName": "Selma Ellery",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-011_fieldManager already present"
+  },
+  {
+   "employeeId": "cw-emp-023",
+   "uid": "84eYlo0T2GTxLXSJ51Qizj9UvA42",
+   "roleId": "partsManager",
+   "privileged": false,
+   "displayName": "Sunniva Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-023_partsManager already present"
+  },
+  {
+   "employeeId": "cw-emp-023",
+   "uid": "84eYlo0T2GTxLXSJ51Qizj9UvA42",
+   "roleId": "inventoryCycleCountReconciler",
+   "privileged": false,
+   "displayName": "Sunniva Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-023_inventoryCycleCountReconciler already present"
+  },
+  {
+   "employeeId": "cw-emp-023",
+   "uid": "84eYlo0T2GTxLXSJ51Qizj9UvA42",
+   "roleId": "inventoryCatalogAdministrator",
+   "privileged": false,
+   "displayName": "Sunniva Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-023_inventoryCatalogAdministrator already present"
+  },
+  {
+   "employeeId": "cw-emp-024",
+   "uid": "mSzLiJSuMSct9a9GDqqA1jTzp363",
+   "roleId": "partsManager",
+   "privileged": false,
+   "displayName": "Emilio Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-024_partsManager already present"
+  },
+  {
+   "employeeId": "cw-emp-024",
+   "uid": "mSzLiJSuMSct9a9GDqqA1jTzp363",
+   "roleId": "inventoryCycleCountReconciler",
+   "privileged": false,
+   "displayName": "Emilio Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-024_inventoryCycleCountReconciler already present"
+  },
+  {
+   "employeeId": "cw-emp-024",
+   "uid": "mSzLiJSuMSct9a9GDqqA1jTzp363",
+   "roleId": "inventoryCatalogAdministrator",
+   "privileged": false,
+   "displayName": "Emilio Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-024_inventoryCatalogAdministrator already present"
+  },
+  {
+   "employeeId": "cw-emp-025",
+   "uid": "ZjX8YyWBylOgtz9qctzGqADUTcy1",
+   "roleId": "partsAssociate",
+   "privileged": false,
+   "displayName": "Harriet Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-025_partsAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-025",
+   "uid": "ZjX8YyWBylOgtz9qctzGqADUTcy1",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Harriet Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-025_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-025",
+   "uid": "ZjX8YyWBylOgtz9qctzGqADUTcy1",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Harriet Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-025_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-025",
+   "uid": "ZjX8YyWBylOgtz9qctzGqADUTcy1",
+   "roleId": "inventoryCycleCountCounter",
+   "privileged": false,
+   "displayName": "Harriet Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-025_inventoryCycleCountCounter already present"
+  },
+  {
+   "employeeId": "cw-emp-026",
+   "uid": "9jhm9a0C1SSyxrxqNGFfalsUiyi1",
+   "roleId": "partsAssociate",
+   "privileged": false,
+   "displayName": "Kwame Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-026_partsAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-026",
+   "uid": "9jhm9a0C1SSyxrxqNGFfalsUiyi1",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Kwame Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-026_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-026",
+   "uid": "9jhm9a0C1SSyxrxqNGFfalsUiyi1",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Kwame Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-026_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-026",
+   "uid": "9jhm9a0C1SSyxrxqNGFfalsUiyi1",
+   "roleId": "inventoryCycleCountCounter",
+   "privileged": false,
+   "displayName": "Kwame Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-026_inventoryCycleCountCounter already present"
+  },
+  {
+   "employeeId": "cw-emp-027",
+   "uid": "ZfyClfDTinY2W2s5MhGgxPgMVYx1",
+   "roleId": "partsAssociate",
+   "privileged": false,
+   "displayName": "Delphine Halloran",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-027_partsAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-027",
+   "uid": "ZfyClfDTinY2W2s5MhGgxPgMVYx1",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Delphine Halloran",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-027_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-027",
+   "uid": "ZfyClfDTinY2W2s5MhGgxPgMVYx1",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Delphine Halloran",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-027_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-027",
+   "uid": "ZfyClfDTinY2W2s5MhGgxPgMVYx1",
+   "roleId": "inventoryCycleCountCounter",
+   "privileged": false,
+   "displayName": "Delphine Halloran",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-027_inventoryCycleCountCounter already present"
+  },
+  {
+   "employeeId": "cw-emp-028",
+   "uid": "M49rwW77bkafnvdyyvpZgDm9Y1g2",
+   "roleId": "partsAssociate",
+   "privileged": false,
+   "displayName": "Rune Ferreira",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-028_partsAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-028",
+   "uid": "M49rwW77bkafnvdyyvpZgDm9Y1g2",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Rune Ferreira",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-028_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-028",
+   "uid": "M49rwW77bkafnvdyyvpZgDm9Y1g2",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Rune Ferreira",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-028_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-028",
+   "uid": "M49rwW77bkafnvdyyvpZgDm9Y1g2",
+   "roleId": "inventoryCycleCountCounter",
+   "privileged": false,
+   "displayName": "Rune Ferreira",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-028_inventoryCycleCountCounter already present"
+  },
+  {
+   "employeeId": "cw-emp-029",
+   "uid": "1ANpYA5hm1eELmOZx2rCUGHQQBb2",
+   "roleId": "warehouseManager",
+   "privileged": false,
+   "displayName": "Ivy Moreau",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-029_warehouseManager already present"
+  },
+  {
+   "employeeId": "cw-emp-029",
+   "uid": "1ANpYA5hm1eELmOZx2rCUGHQQBb2",
+   "roleId": "inventoryTransferOperator",
+   "privileged": false,
+   "displayName": "Ivy Moreau",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-029_inventoryTransferOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-029",
+   "uid": "1ANpYA5hm1eELmOZx2rCUGHQQBb2",
+   "roleId": "inventoryReturnsIntakeClerk",
+   "privileged": false,
+   "displayName": "Ivy Moreau",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-029_inventoryReturnsIntakeClerk already present"
+  },
+  {
+   "employeeId": "cw-emp-029",
+   "uid": "1ANpYA5hm1eELmOZx2rCUGHQQBb2",
+   "roleId": "inventoryBinAdministrator",
+   "privileged": false,
+   "displayName": "Ivy Moreau",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-029_inventoryBinAdministrator already present"
+  },
+  {
+   "employeeId": "cw-emp-030",
+   "uid": "b6IpvbMyEGN8yYmXLkAlfI7g5sv2",
+   "roleId": "warehouseAssociate",
+   "privileged": false,
+   "displayName": "Barnaby Nakagawa",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-030_warehouseAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-030",
+   "uid": "b6IpvbMyEGN8yYmXLkAlfI7g5sv2",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Barnaby Nakagawa",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-030_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-030",
+   "uid": "b6IpvbMyEGN8yYmXLkAlfI7g5sv2",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Barnaby Nakagawa",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-030_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-031",
+   "uid": "vx89RcjiQsV179Z0DHDJ0NaZmgz1",
+   "roleId": "warehouseAssociate",
+   "privileged": false,
+   "displayName": "Solveig Ellery",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-031_warehouseAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-031",
+   "uid": "vx89RcjiQsV179Z0DHDJ0NaZmgz1",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Solveig Ellery",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-031_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-031",
+   "uid": "vx89RcjiQsV179Z0DHDJ0NaZmgz1",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Solveig Ellery",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-031_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-032",
+   "uid": "dZ3otgvpWWZXbSLjIh8MTGlj0oB3",
+   "roleId": "warehouseAssociate",
+   "privileged": false,
+   "displayName": "Cormac Delacroix",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-032_warehouseAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-032",
+   "uid": "dZ3otgvpWWZXbSLjIh8MTGlj0oB3",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Cormac Delacroix",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-032_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-032",
+   "uid": "dZ3otgvpWWZXbSLjIh8MTGlj0oB3",
+   "roleId": "inventoryPutAwayOperator",
+   "privileged": false,
+   "displayName": "Cormac Delacroix",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-032_inventoryPutAwayOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-033",
+   "uid": "wieBsJ2nUEbVqQwIs5F2pSVP3ml2",
+   "roleId": "salesManager",
+   "privileged": false,
+   "displayName": "Adaeze Vance",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-033_salesManager already present"
+  },
+  {
+   "employeeId": "cw-emp-034",
+   "uid": "5zIigwQI10gvFW4Mw6fuox1bjTt2",
+   "roleId": "salesperson",
+   "privileged": false,
+   "displayName": "Lucian Brightwater",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-034_salesperson already present"
+  },
+  {
+   "employeeId": "cw-emp-034",
+   "uid": "5zIigwQI10gvFW4Mw6fuox1bjTt2",
+   "roleId": "crmActivityContributor",
+   "privileged": false,
+   "displayName": "Lucian Brightwater",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-034_crmActivityContributor already present"
+  },
+  {
+   "employeeId": "cw-emp-035",
+   "uid": "zutt6k2iboOpynRBM5MjaEBloLG3",
+   "roleId": "salesperson",
+   "privileged": false,
+   "displayName": "Petra Lindqvist",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-035_salesperson already present"
+  },
+  {
+   "employeeId": "cw-emp-035",
+   "uid": "zutt6k2iboOpynRBM5MjaEBloLG3",
+   "roleId": "crmActivityContributor",
+   "privileged": false,
+   "displayName": "Petra Lindqvist",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-035_crmActivityContributor already present"
+  },
+  {
+   "employeeId": "cw-emp-036",
+   "uid": "h74J015iO1UMvvpRfaxCTBRFhvm2",
+   "roleId": "salesperson",
+   "privileged": false,
+   "displayName": "Tavish Castellanos",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-036_salesperson already present"
+  },
+  {
+   "employeeId": "cw-emp-036",
+   "uid": "h74J015iO1UMvvpRfaxCTBRFhvm2",
+   "roleId": "crmActivityContributor",
+   "privileged": false,
+   "displayName": "Tavish Castellanos",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-036_crmActivityContributor already present"
+  },
+  {
+   "employeeId": "cw-emp-037",
+   "uid": "OC4wtLZQkJZqEu15TeqKImnpRSE3",
+   "roleId": "salesperson",
+   "privileged": false,
+   "displayName": "Marguerite Ibarra",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-037_salesperson already present"
+  },
+  {
+   "employeeId": "cw-emp-037",
+   "uid": "OC4wtLZQkJZqEu15TeqKImnpRSE3",
+   "roleId": "crmActivityContributor",
+   "privileged": false,
+   "displayName": "Marguerite Ibarra",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-037_crmActivityContributor already present"
+  },
+  {
+   "employeeId": "cw-emp-038",
+   "uid": "hu9qt9uQH2OGOypzgzkk4u2z4yg1",
+   "roleId": "purchasingManager",
+   "privileged": false,
+   "displayName": "Marisol Prakash",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-038_purchasingManager already present"
+  },
+  {
+   "employeeId": "cw-emp-039",
+   "uid": "JO838IgJhHQjTaLULDxlLCbnnw82",
+   "roleId": "accountingManager",
+   "privileged": false,
+   "displayName": "Devon Amundsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-039_accountingManager already present"
+  },
+  {
+   "employeeId": "cw-emp-039",
+   "uid": "JO838IgJhHQjTaLULDxlLCbnnw82",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Devon Amundsen",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-039",
+   "uid": "JO838IgJhHQjTaLULDxlLCbnnw82",
+   "roleId": "reportFinanceViewer",
+   "privileged": false,
+   "displayName": "Devon Amundsen",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-040",
+   "uid": "QBg2rHbmmvRWg0bmoV3fNc8fAI52",
+   "roleId": "accountingManager",
+   "privileged": false,
+   "displayName": "Priya Okonkwo",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-040_accountingManager already present"
+  },
+  {
+   "employeeId": "cw-emp-040",
+   "uid": "QBg2rHbmmvRWg0bmoV3fNc8fAI52",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Priya Okonkwo",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-040",
+   "uid": "QBg2rHbmmvRWg0bmoV3fNc8fAI52",
+   "roleId": "reportFinanceViewer",
+   "privileged": false,
+   "displayName": "Priya Okonkwo",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-041",
+   "uid": "G8L8SNIzZBUd0iKKzEDTohWP9kj2",
+   "roleId": "financeManager",
+   "privileged": false,
+   "displayName": "Tomas Sandoval",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-041_financeManager already present"
+  },
+  {
+   "employeeId": "cw-emp-041",
+   "uid": "G8L8SNIzZBUd0iKKzEDTohWP9kj2",
+   "roleId": "reportViewer",
+   "privileged": false,
+   "displayName": "Tomas Sandoval",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-041",
+   "uid": "G8L8SNIzZBUd0iKKzEDTohWP9kj2",
+   "roleId": "reportFinanceViewer",
+   "privileged": false,
+   "displayName": "Tomas Sandoval",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-042",
+   "uid": "vkXHPHfRKXdElR8vNQqKWJqMdwV2",
+   "roleId": "supportStaff",
+   "privileged": false,
+   "displayName": "Ingrid Achterberg",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-042_supportStaff already present"
+  },
+  {
+   "employeeId": "cw-emp-043",
+   "uid": "wFWeJWbuxJfEFvqHkJXJjTA4dPv1",
+   "roleId": "warehouseAssociate",
+   "privileged": false,
+   "displayName": "Rafael Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-043_warehouseAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-043",
+   "uid": "wFWeJWbuxJfEFvqHkJXJjTA4dPv1",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Rafael Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-043_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-043",
+   "uid": "wFWeJWbuxJfEFvqHkJXJjTA4dPv1",
+   "roleId": "inventoryTransferOperator",
+   "privileged": false,
+   "displayName": "Rafael Whitlock",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-043_inventoryTransferOperator already present"
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "roleId": "warehouseAssociate",
+   "privileged": false,
+   "displayName": "Naomi Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-044_warehouseAssociate already present"
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "roleId": "inventoryLookupReader",
+   "privileged": false,
+   "displayName": "Naomi Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-044_inventoryLookupReader already present"
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "roleId": "inventoryReturnsIntakeClerk",
+   "privileged": false,
+   "displayName": "Naomi Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-044_inventoryReturnsIntakeClerk already present"
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "roleId": "inventoryReceivingClerk",
+   "privileged": false,
+   "displayName": "Naomi Thorsen",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
+   "roleId": "warehouseManager",
+   "privileged": false,
+   "displayName": "Curtis Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-045_warehouseManager already present"
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
+   "roleId": "inventoryBinAdministrator",
+   "privileged": false,
+   "displayName": "Curtis Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-045_inventoryBinAdministrator already present"
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
+   "roleId": "inventoryReceivingClerk",
+   "privileged": false,
+   "displayName": "Curtis Ravenscroft",
+   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
+   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+  },
+  {
+   "employeeId": "cw-emp-046",
+   "uid": "f4Vrazs69HMERkOJ7fTcaNP9QBr1",
+   "roleId": "purchasingManager",
+   "privileged": false,
+   "displayName": "Yusuf Featherstone",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_cw-emp-046_purchasingManager already present"
+  }
+ ]
+}

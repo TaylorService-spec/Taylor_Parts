@@ -1,0 +1,454 @@
+{
+ "capturedFor": "section 3 pre-grant snapshot",
+ "projectId": "eos-platform-sandbox",
+ "environmentActiveCapabilities": 105,
+ "activationOverrides": 33,
+ "certEmployees": 47,
+ "employees": [
+  {
+   "employeeId": "cw-emp-000",
+   "uid": "uqqBqg25aObvDtNqV7q90pt25qY2",
+   "intendedRoles": [
+    "owner"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-001",
+   "uid": "gOTW7OJxoCPNmvWxsbBUf5eunbm1",
+   "intendedRoles": [
+    "generalManager",
+    "reportViewer",
+    "reportAuthor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-002",
+   "uid": "gxxE7771PgfOiQ47Lr2qqT0hS5A2",
+   "intendedRoles": [
+    "generalManager",
+    "reportViewer",
+    "reportAuthor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-003",
+   "uid": "drcXiixby4NpwgyZkwaYkkplJCY2",
+   "intendedRoles": [
+    "operationsManager",
+    "reportViewer",
+    "reportAuthor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-004",
+   "uid": "1bujXRrTlGgicKs74oXNUkvmz5k2",
+   "intendedRoles": [
+    "operationsManager",
+    "reportViewer",
+    "reportAuthor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-005",
+   "uid": "n7E3CZk3kbX3bd21GyogMhu3XlG3",
+   "intendedRoles": [
+    "officeManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-006",
+   "uid": "nM3vpCrgQ2RSp354zwKT1wUy8lx2",
+   "intendedRoles": [
+    "officeManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-007",
+   "uid": "rjv4uDcQzrdfnvNsLynDsAKXJ1U2",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-008",
+   "uid": "QXLzDw2eFTbckyeqpD6Za1UDKLy1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-009",
+   "uid": "xd6J41mX52XQaW1BJmXS97yfpXQ2",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-010",
+   "uid": "JURS248WMxbOGoIcOdJ5CMAzXyv2",
+   "intendedRoles": [
+    "fieldManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-011",
+   "uid": "vb6Hz6Xu1daz5xKYErw11ZzrCXS2",
+   "intendedRoles": [
+    "fieldManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-012",
+   "uid": "GZ2GgO6JTgZfqPncBaNlIieSun03",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-013",
+   "uid": "Kkv4WwiJQOU2MYdoHIenfdWl9zv1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-014",
+   "uid": "zd3SJUWl3lZvaKjAZpADtn9aOfj1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-015",
+   "uid": "epwTnLWdNpY057TV2CASCBq6aZ12",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-016",
+   "uid": "xCVjZ9M36OMM5hr4geuizpE212M2",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-017",
+   "uid": "mbePVpRF0ig2L6X646JCX9T6gLr1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-018",
+   "uid": "EfOUcYgRy2OuZaV0bqCMVgFU6mC3",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-019",
+   "uid": "qZKl4VoobJek005lUMNms2p5r5Y2",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-020",
+   "uid": "EzFJRm8qWGY8DXLfHccVkHXUGfx1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-021",
+   "uid": "etusAQbcs9Mg7vtyynxBUeaCLy43",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-022",
+   "uid": "MqeQevaMfLcwSgEefVguWJTA0ry1",
+   "intendedRoles": [],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-023",
+   "uid": "84eYlo0T2GTxLXSJ51Qizj9UvA42",
+   "intendedRoles": [
+    "partsManager",
+    "inventoryCycleCountReconciler",
+    "inventoryCatalogAdministrator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-024",
+   "uid": "mSzLiJSuMSct9a9GDqqA1jTzp363",
+   "intendedRoles": [
+    "partsManager",
+    "inventoryCycleCountReconciler",
+    "inventoryCatalogAdministrator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-025",
+   "uid": "ZjX8YyWBylOgtz9qctzGqADUTcy1",
+   "intendedRoles": [
+    "partsAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator",
+    "inventoryCycleCountCounter"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-026",
+   "uid": "9jhm9a0C1SSyxrxqNGFfalsUiyi1",
+   "intendedRoles": [
+    "partsAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator",
+    "inventoryCycleCountCounter"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-027",
+   "uid": "ZfyClfDTinY2W2s5MhGgxPgMVYx1",
+   "intendedRoles": [
+    "partsAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator",
+    "inventoryCycleCountCounter"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-028",
+   "uid": "M49rwW77bkafnvdyyvpZgDm9Y1g2",
+   "intendedRoles": [
+    "partsAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator",
+    "inventoryCycleCountCounter"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-029",
+   "uid": "1ANpYA5hm1eELmOZx2rCUGHQQBb2",
+   "intendedRoles": [
+    "warehouseManager",
+    "inventoryTransferOperator",
+    "inventoryReturnsIntakeClerk",
+    "inventoryBinAdministrator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-030",
+   "uid": "b6IpvbMyEGN8yYmXLkAlfI7g5sv2",
+   "intendedRoles": [
+    "warehouseAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-031",
+   "uid": "vx89RcjiQsV179Z0DHDJ0NaZmgz1",
+   "intendedRoles": [
+    "warehouseAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-032",
+   "uid": "dZ3otgvpWWZXbSLjIh8MTGlj0oB3",
+   "intendedRoles": [
+    "warehouseAssociate",
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-033",
+   "uid": "wieBsJ2nUEbVqQwIs5F2pSVP3ml2",
+   "intendedRoles": [
+    "salesManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-034",
+   "uid": "5zIigwQI10gvFW4Mw6fuox1bjTt2",
+   "intendedRoles": [
+    "salesperson",
+    "crmActivityContributor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-035",
+   "uid": "zutt6k2iboOpynRBM5MjaEBloLG3",
+   "intendedRoles": [
+    "salesperson",
+    "crmActivityContributor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-036",
+   "uid": "h74J015iO1UMvvpRfaxCTBRFhvm2",
+   "intendedRoles": [
+    "salesperson",
+    "crmActivityContributor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-037",
+   "uid": "OC4wtLZQkJZqEu15TeqKImnpRSE3",
+   "intendedRoles": [
+    "salesperson",
+    "crmActivityContributor"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-038",
+   "uid": "hu9qt9uQH2OGOypzgzkk4u2z4yg1",
+   "intendedRoles": [
+    "purchasingManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-039",
+   "uid": "JO838IgJhHQjTaLULDxlLCbnnw82",
+   "intendedRoles": [
+    "accountingManager",
+    "reportViewer",
+    "reportFinanceViewer"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-040",
+   "uid": "QBg2rHbmmvRWg0bmoV3fNc8fAI52",
+   "intendedRoles": [
+    "accountingManager",
+    "reportViewer",
+    "reportFinanceViewer"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-041",
+   "uid": "G8L8SNIzZBUd0iKKzEDTohWP9kj2",
+   "intendedRoles": [
+    "financeManager",
+    "reportViewer",
+    "reportFinanceViewer"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-042",
+   "uid": "vkXHPHfRKXdElR8vNQqKWJqMdwV2",
+   "intendedRoles": [
+    "supportStaff"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-043",
+   "uid": "wFWeJWbuxJfEFvqHkJXJjTA4dPv1",
+   "intendedRoles": [
+    "warehouseAssociate",
+    "inventoryLookupReader",
+    "inventoryTransferOperator"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "intendedRoles": [
+    "warehouseAssociate",
+    "inventoryLookupReader",
+    "inventoryReturnsIntakeClerk",
+    "inventoryReceivingClerk"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
+   "intendedRoles": [
+    "warehouseManager",
+    "inventoryBinAdministrator",
+    "inventoryReceivingClerk"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  },
+  {
+   "employeeId": "cw-emp-046",
+   "uid": "f4Vrazs69HMERkOJ7fTcaNP9QBr1",
+   "intendedRoles": [
+    "purchasingManager"
+   ],
+   "currentRoleAssignmentExists": false,
+   "currentRoles": []
+  }
+ ]
+}
