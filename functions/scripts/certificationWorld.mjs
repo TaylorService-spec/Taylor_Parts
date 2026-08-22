@@ -32,6 +32,7 @@ import { execFileSync } from "node:child_process";
 
 import { MARKER_FIELD, LEGACY_CERTIFICATION_PATTERNS } from "./certificationWorld/manifest.mjs";
 import { buildWorld } from "./certificationWorld/build.mjs";
+import { writeRecords } from "./certificationWorld/seedWrite.mjs";
 import { classifyWorld, WORLD_STATE, SEED_POLICY } from "./certificationWorld/verify.mjs";
 import { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, worldFingerprint } from "./certificationWorld/state.mjs";
 
@@ -217,19 +218,6 @@ async function doReset(db, opts) {
   for (const [c, n] of Object.entries(report).sort()) console.log("  " + String(n).padStart(5) + "  " + c);
   if (total === 0) console.log("  (nothing to delete - already clean)");
   return { report, total };
-}
-
-async function writeRecords(db, records) {
-  let written = 0;
-  for (let i = 0; i < records.length; i += 400) {
-    const batch = db.batch();
-    for (const r of records.slice(i, i + 400)) {
-      batch.set(db.collection(r.collection).doc(r.id), r.data, { merge: true });
-    }
-    await batch.commit();
-    written += Math.min(400, records.length - i);
-  }
-  return written;
 }
 
 async function main() {
