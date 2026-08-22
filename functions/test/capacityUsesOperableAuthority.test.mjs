@@ -20,10 +20,42 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
+import {
+  ENVIRONMENT_ACTIVATION_REGISTRY,
+  resolveCapabilityOverrides,
+} from "../lib/access/environmentCapabilityOverrides.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const report = JSON.parse(readFileSync(path.join(REPO, "docs/governance/capacity-report.json"), "utf8"));
-const ACTIVE = new Set(PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id));
+// ACTIVE IS RESOLVED FOR THE ENVIRONMENT THE REPORT DECLARES, not from the global catalog flag.
+//
+// This guard originally read PERMISSION_CATALOG.active directly, which is the fail-closed GLOBAL
+// default. That is the same defect it exists to catch, committed by the guard itself: it would have
+// happily confirmed a report describing the production posture under a sandbox heading, and it did
+// -- nine workstreams were reported GRANTED_BUT_INACTIVE in an environment where all of them were
+// live, and this test agreed.
+//
+// Reading the environment OUT OF THE REPORT also makes the guard check the report's own basis: if a
+// report ever omits which environment it measured, `environment.projectId` is undefined, overrides
+// resolve EMPTY, and the strict catalog posture applies -- fail-closed, not fail-quiet.
+const OVERRIDES = resolveCapabilityOverrides(
+  ENVIRONMENT_ACTIVATION_REGISTRY,
+  report.environment?.projectId,
+);
+const ACTIVE = new Set([
+  ...PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id),
+  ...OVERRIDES,
+]);
+
+test("the report declares which environment it measured", () => {
+  // A capacity report without an environment is not interpretable: the same roster is ADEQUATE in
+  // sandbox and GRANTED_BUT_INACTIVE in production, and the number alone does not say which.
+  assert.ok(report.environment?.projectId, "capacity report must record the environment it measured");
+  assert.equal(
+    typeof report.catalog.activeInThisEnvironment, "number",
+    "capacity report must record the environment-resolved active count, not just the global one",
+  );
+});
 
 test("the report is not empty, so these checks are not vacuous", () => {
   assert.ok(report.employeesEvaluated >= 30, "expected a staffed workforce");

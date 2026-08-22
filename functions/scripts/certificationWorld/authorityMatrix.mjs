@@ -42,7 +42,28 @@ export const WORKSTREAM_REQUIREMENTS = Object.freeze({
   [WORKSTREAM.RETURNS]: { requires: ["inventory.returns.intake"], forbids: [] },
   [WORKSTREAM.PROCUREMENT]: { requires: ["reorder.purchaseOrder.create", "reorder.request.startPurchasing"], forbids: [] },
   [WORKSTREAM.ACCOUNTING]: { requires: ["finance.read"], forbids: [] },
-  [WORKSTREAM.ADMINISTRATION]: { requires: ["admin.roleAssignment.write"], forbids: [] },
+  // ADMINISTRATION SPLIT 2026-08-21 by Owner decision. The single row required
+  // admin.roleAssignment.write, which made it a SECURITY workstream wearing an office-work name --
+  // and produced two permanently UNDER_PRIVILEGED officeManager rows that looked like a grant gap.
+  //
+  // BUSINESS ADMINISTRATION is ordinary office/customer/employee administrative work. Its real
+  // requirement today is account read: an office manager who cannot open a customer record cannot
+  // do administrative work on one. No capability governs "office administration" as such, so this
+  // maps to what actually exists rather than to an invented id.
+  [WORKSTREAM.BUSINESS_ADMINISTRATION]: {
+    requires: ["account.record.read"],
+    // The whole point of the split: business administration must NOT carry security administration.
+    forbids: ["admin.roleAssignment.write"],
+  },
+  // ACCESS ADMINISTRATION is governed Role/Permission assignment. It stays Owner/Admin privileged
+  // authority per Option 2, and being THIN here is the decision working, not a coverage failure.
+  [WORKSTREAM.ACCESS_ADMINISTRATION]: { requires: ["admin.roleAssignment.write"], forbids: [] },
+  // BIN ADMINISTRATION. Defining where stock may live, and explicitly NOT filling those locations.
+  // The forbid is the control, stated where it is enforced rather than only in a comment.
+  [WORKSTREAM.BIN_ADMINISTRATION]: {
+    requires: ["inventory.location.bin.manage"],
+    forbids: ["inventory.placement.record"],
+  },
   [WORKSTREAM.REPORTING]: { requires: ["report.definition.read"], forbids: [] },
   // AUDIT added 2026-08-21. Audit READ is oversight and is deliberately NOT security
   // administration, so admin.roleAssignment.write is FORBIDDEN alongside it: an auditor who can
