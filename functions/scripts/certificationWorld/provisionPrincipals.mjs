@@ -38,7 +38,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
-const { buildWorkforce } = await import(L("functions/scripts/certificationWorld/data/workforce.mjs"));
+const { buildWorkforce, functionLabelFor } = await import(L("functions/scripts/certificationWorld/data/workforce.mjs"));
 const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
 
 // ============================ THE IDENTITY NAMESPACE ============================
@@ -181,6 +181,13 @@ async function main() {
 
   for (const e of employees) {
     const email = emailFor(e.employeeId);
+    // Role first, so a sorted Auth console groups by function. Derived every run, so a role change
+    // updates the display name and touches nothing else -- no new principal, same UID.
+    //
+    // The label goes in the DISPLAY NAME, never the login: role assignments change, and an email
+    // like `partsassoc-01@` would be a fact that expires. A display name is free to be corrected;
+    // a UID is not.
+    const authDisplayName = `${functionLabelFor(e)} -- ${e.displayName} (${e.employeeId})`;
     const row = {
       employeeId: e.employeeId,
       email,
@@ -213,6 +220,12 @@ async function main() {
     if (existing) {
       row.uid = existing.uid;
       row.authOutcome = OUTCOME.ALREADY_EXISTS;
+      // A stale display name is corrected IN PLACE. This is the rename case the whole design exists
+      // for: the label changes, the UID does not, and nothing downstream notices.
+      if (apply && existing.displayName !== authDisplayName) {
+        await auth.updateUser(existing.uid, { displayName: authDisplayName });
+        row.note = "display name updated (uid unchanged)";
+      }
     } else if (!apply) {
       row.authOutcome = OUTCOME.WOULD_CREATE;
     } else {
@@ -221,7 +234,7 @@ async function main() {
         // printed or stored anywhere by this script.
         const created = await auth.createUser({
           email,
-          displayName: e.displayName,
+          displayName: authDisplayName,
           emailVerified: false,
           disabled: false,
         });

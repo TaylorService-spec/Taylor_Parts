@@ -126,6 +126,47 @@ const ROSTER = [
 
 const WORKLOAD_CYCLE = ["none", "normal", "heavy", "conflicting"];
 
+// ============================ THE FUNCTION LABEL ============================
+//
+// Added 2026-08-22 after a plain look at the sandbox Auth user list: 47 rows of `cw-emp-0NN` and a
+// personal name, from which nobody can tell who is a Parts Associate and who is the Controller. An
+// operator picking a test identity had to cross-reference a fixture file to do it.
+//
+// THE LABEL GOES IN THE DISPLAY NAME, NOT THE LOGIN, and that is the whole point of the split. Role
+// assignments change -- a Parts Associate can gain the cycle-count Role, a Warehouse Associate can
+// become a receiving clerk -- so an email like `partsassoc-01@` would be a fact that expires, and
+// expiring facts embedded in identity keys are exactly what this design refuses. A display name is
+// free to be wrong later and free to be corrected; a UID is not.
+//
+// Role first, so an alphabetically sorted list groups by function, which is how the Auth console and
+// every credential file present it.
+const FUNCTIONAL_ROLE = /^(inventory|report|crm|workOrder|equipment)/;
+const ROLE_LABEL = Object.freeze({
+  owner: "Owner", generalManager: "General Manager", operationsManager: "Operations Manager",
+  officeManager: "Office Manager", fieldManager: "Service Manager", salesManager: "Sales Manager",
+  salesperson: "Salesperson", marketingManager: "Marketing Manager", partsManager: "Parts Manager",
+  partsAssociate: "Parts Associate", warehouseManager: "Warehouse Manager",
+  warehouseAssociate: "Warehouse Associate", purchasingManager: "Purchasing Manager",
+  accountingManager: "Accounting Manager", financeManager: "Finance Manager",
+  controller: "Controller", shopManager: "Shop Manager", shopAssociate: "Shop Associate",
+  supportStaff: "Support Staff", generalEmployee: "General Employee",
+});
+
+/**
+ * A human-readable function label for an employee.
+ *
+ * Falls back to the legacy compatibility role for the people who carry no governed business Role --
+ * the 11 technicians and 3 dispatchers. Calling them "Staff" would be less true than calling them
+ * what they actually do, and they are the population most often picked for a manual test.
+ */
+export function functionLabelFor(employee) {
+  const business = (employee.certGovernedRoles || []).find((r) => !FUNCTIONAL_ROLE.test(r));
+  if (business) return ROLE_LABEL[business] || business;
+  if (employee.securityRole === "technician") return "Technician";
+  if (employee.securityRole === "dispatcher") return "Dispatcher";
+  return "Staff";
+}
+
 export function buildWorkforce() {
   const employees = [];
   let i = 0;
