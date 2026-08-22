@@ -26,6 +26,7 @@ on:
       - "functions/test/certificationPurchasingContract.test.mjs"
       - "functions/test/certificationPlannerGuards.test.mjs"
       - "functions/test/certificationPartMasterContract.test.mjs"
+      - "functions/test/certificationOpeningBalanceSemantics.test.mjs"
       # The certification fixture builders themselves. Without this, a change to the parts catalog
       # or an applier runs no certification suite at all -- which is how the catalog carried an
       # invalid stockingClass and no Part Master metadata for the whole program.
@@ -77,6 +78,7 @@ on:
       - "functions/test/certificationPurchasingContract.test.mjs"
       - "functions/test/certificationPlannerGuards.test.mjs"
       - "functions/test/certificationPartMasterContract.test.mjs"
+      - "functions/test/certificationOpeningBalanceSemantics.test.mjs"
       # The certification fixture builders themselves. Without this, a change to the parts catalog
       # or an applier runs no certification suite at all -- which is how the catalog carried an
       # invalid stockingClass and no Part Master metadata for the whole program.

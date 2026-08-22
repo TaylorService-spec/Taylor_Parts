@@ -18,6 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { readPartBalance } = await import(L("functions/lib/inventory/partBalanceReadService.js"));
+const { signedQuantity } = await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 const { CERT_PARTS, reorderPointFor } = await import(L("functions/scripts/certificationWorld/data/partsCatalog.mjs"));
 const { TRUCK_PROFILES } = await import(L("functions/scripts/certificationWorld/data/inventoryPlan.mjs"));
 
@@ -44,7 +45,9 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     const v = d.value ?? d;
     const type = v.type, qty = Number(v.quantity), loc = v.location;
     if (!type || !Number.isFinite(qty) || !loc?.type) { malformed += 1; continue; }
-    const signed = IN_TYPES.has(type) ? qty : OUT_TYPES.has(type) ? -qty : 0;
+    // Shared with every other certification tool. A private copy here is what made this verifier
+    // report 34 CRITICAL parts for a world holding 571 units: ADJUSTED was in no IN set.
+    const signed = signedQuantity(v);
     add(company, v.partId, signed);
     if (loc.type === "WAREHOUSE") add(warehouse, v.partId, signed);
     else if (loc.type === "MOBILE") {
@@ -79,22 +82,35 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   for (const [k, v] of mobile) if (v < 0) negatives.push(`mobile ${k}=${v}`);
   check("no negative balance anywhere", negatives.length === 0, negatives.join(", ") || "none");
 
-  // ── Per-part reconciliation, from the ledger alone.
+  // ── Per-part reconciliation.
+  //
+  // THE GENERAL EQUATION, not a snapshot of one era's movement mix. The previous version asserted
+  //
+  //     warehouse == RECEIVED - TRANSFER_OUT     and     truck == TRANSFER_OUT
+  //
+  // which was true only while the world was built out of exactly those two movement types. The
+  // moment opening balances became ADJUSTED it reported all 34 parts as broken, in a world whose
+  // every balance was correct. A test that encodes today's data shape fails on tomorrow's.
+  //
+  // What is asserted instead holds for ANY mix of movements:
+  //   1. the tool's signed sum at the warehouse equals the PRODUCT's readPartBalance
+  //   2. company equals warehouse plus mobile
+  // The first is the one that matters -- two independent implementations of 'what is on hand',
+  // written from different sides, agreeing on every part.
   console.log("\n-- part-level reconciliation");
   const quantityParts = CERT_PARTS.filter((p) => p.ledgerTrackingMode !== "SERIAL");
   const mismatched = [];
   for (const p of quantityParts) {
-    const received = snap.docs.filter((d) => { const v = d.data().value ?? d.data(); return v.partId === p.partId && v.type === "RECEIVED"; })
-      .reduce((a, d) => { const v = d.data().value ?? d.data(); return a + Number(v.quantity); }, 0);
-    const out = snap.docs.filter((d) => { const v = d.data().value ?? d.data(); return v.partId === p.partId && v.type === "TRANSFER_OUT"; })
-      .reduce((a, d) => { const v = d.data().value ?? d.data(); return a + Number(v.quantity); }, 0);
     const wh = warehouse.get(p.partId) ?? 0;
     const tr = mobile.get(p.partId) ?? 0;
-    if (received - out !== wh || out !== tr) {
-      mismatched.push(`${p.partId}: received ${received} - out ${out} != warehouse ${wh}, or out != truck ${tr}`);
-    }
+    const co = company.get(p.partId) ?? 0;
+    const b = await readPartBalance(db, p.partId, false);
+    const product = b.available?.state === "KNOWN" ? b.available.value : 0;
+    if (product !== wh) mismatched.push(`${p.partId}: readPartBalance ${product} != ledger sum ${wh}`);
+    else if (co !== wh + tr) mismatched.push(`${p.partId}: company ${co} != warehouse ${wh} + mobile ${tr}`);
   }
-  check(`all ${quantityParts.length} quantity parts reconcile`, mismatched.length === 0, mismatched.slice(0, 3).join(" | ") || "exact");
+  check(`all ${quantityParts.length} quantity parts reconcile against readPartBalance`,
+    mismatched.length === 0, mismatched.slice(0, 3).join(" | ") || "exact");
 
   // ── SERIAL boundary.
   const serialParts = CERT_PARTS.filter((p) => p.ledgerTrackingMode === "SERIAL");

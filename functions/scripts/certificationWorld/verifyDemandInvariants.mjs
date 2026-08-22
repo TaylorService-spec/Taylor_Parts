@@ -35,20 +35,17 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 // computed below.
 const { readPartBalance } = await import(L("functions/lib/inventory/partBalanceReadService.js"));
 
-const IN_TYPES = new Set(["RECEIVED", "TRANSFER_IN", "RETURNED"]);
-const OUT_TYPES = new Set(["ISSUED", "TRANSFER_OUT", "SCRAPPED"]);
+// LEDGER ARITHMETIC IS SHARED. This file used to carry its own IN/OUT sets, which returned zero
+// for every part the moment opening balances became ADJUSTED -- a checker silently disagreeing
+// with the product it checks. What it must NOT share is anything that decides a CLASS.
+const { ledgerRowsForPart, mobileByTruck } =
+  await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 
 /** Mobile stock per part, from the ledger -- the scope the warehouse projection excludes. */
 async function mobileByPart(db) {
   const snap = await db.collection("inventory_transactions").get();
-  const out = new Map();
-  for (const doc of snap.docs) {
-    const v = doc.data().value ?? doc.data();
-    if (v.location?.type !== "MOBILE") continue;
-    const signed = IN_TYPES.has(v.type) ? Number(v.quantity) : OUT_TYPES.has(v.type) ? -Number(v.quantity) : 0;
-    out.set(v.partId, (out.get(v.partId) ?? 0) + signed);
-  }
-  return out;
+  const { mobileByPart: sum } = await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
+  return sum(snap.docs.map((d) => d.data()));
 }
 
 /** Every fact a demand line has, at the three scopes that matter. */

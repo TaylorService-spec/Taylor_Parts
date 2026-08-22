@@ -12,21 +12,19 @@
 // reports the ORPHANS, not a percentage -- a sweep that says "99% intact" is describing a broken
 // world in a reassuring voice.
 //
-// ============================ ONE KNOWN, DOCUMENTED EXCEPTION ============================
+// ============================ EVERY SOURCE TYPE, NOT JUST THE ONE THAT BROKE ============================
 //
-// 32 seeded opening-balance movements are typed RECEIVED, which the ledger contract binds to a
-// RECEIVING_ORDER source, and they name receiving orders that were never created. An opening
-// balance is not a receipt; the correct model is ADJUSTED/ADJUSTMENT.
+// The first version of this sweep checked RECEIVING_ORDER references and found 32 dangling ones.
+// It did not check TRANSFER_ORDER, and there were 55 more of exactly the same kind sitting beside
+// them -- truck stock naming transfer orders nobody created. A sweep that looks only where a
+// defect was already suspected will keep finding one defect.
 //
-// It is REPORTED, not suppressed. Adding an exemption here would make the sweep agree with the
-// defect, and the number this tool exists to show is the number of broken pointers -- not the
-// number of broken pointers nobody has an excuse for.
+// So the ledger check is now driven by the domain's own SOURCE_OBJECT_TYPES: every type it knows
+// about is resolved against the collection that owns it, and any type with no known home is
+// REPORTED as unresolvable rather than skipped. Skipping is how the transfer orders hid.
 //
-// See docs/assessments/seeded-opening-balances-claim-receipts-that-never-existed.md. Scheduled for
-// Pass 3, where the inventory baseline is rebuilt anyway.
-//
-// Expected dangling references: 0, except those 32.
-//
+// Expected dangling references: 0.
+
 // EMULATOR ONLY.
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -130,10 +128,36 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     const l = d.data().location;
     return l?.type === "MOBILE" && !mobileIds.has(l.locationId);
   }).map((d) => `${d.id} -> ${d.data().location?.locationId}`));
-  check("movement -> receipt (where one is named)", ledger.filter((d) => {
+  // Every source object a movement names, resolved against the collection that owns that type.
+  const openingBalances = await idsOf("certification_opening_balances");
+  const transferOrders = await idsOf("transfer_orders");
+  const cycleCounts = await idsOf("cycle_counts");
+  const returnsIds = await idsOf("return_orders");
+  const receiptIds = new Set(receipts.map((d) => d.id));
+  const SOURCE_HOMES = {
+    RECEIVING_ORDER: receiptIds,
+    TRANSFER_ORDER: transferOrders,
+    // An ADJUSTMENT names whatever governed record authorized the adjustment. The product's only
+    // producer is the cycle-count reconciler, which points at the cycle count; the certification
+    // world's opening balances point at their own opening-balance record. Both are real documents,
+    // so both are resolvable -- which is the entire difference from the model this replaced.
+    ADJUSTMENT: new Set([...openingBalances, ...cycleCounts]),
+    COUNT_SHEET: cycleCounts,
+    RMA: returnsIds,
+  };
+  const unresolvableTypes = new Set();
+  const sourceOrphans = [];
+  for (const d of ledger) {
     const s = d.data().sourceObject;
-    return s?.type === "RECEIVING_ORDER" && !receipts.some((r) => r.id === s.id);
-  }).map((d) => `${d.id} -> ${d.data().sourceObject?.id}`));
+    if (!s || typeof s.type !== "string") continue;
+    const home = SOURCE_HOMES[s.type];
+    if (!home) { unresolvableTypes.add(s.type); continue; }
+    if (!home.has(s.id)) sourceOrphans.push(`${d.id} (${s.type}) -> ${s.id}`);
+  }
+  check("movement -> its source object (all types)", sourceOrphans,
+    `${ledger.length} movements across ${Object.keys(SOURCE_HOMES).length} source types`);
+  check("every source-object type has a known home collection", [...unresolvableTypes],
+    unresolvableTypes.size ? "a type with no home is skipped, and skipping is how 55 dangling transfer orders hid" : "all resolvable");
 
   // ── Authority ─────────────────────────────────────────────────────────────────────────────────
   const assignments = (await db.collection("roleAssignments").get()).docs;

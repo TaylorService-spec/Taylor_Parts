@@ -115,9 +115,19 @@ export function truckAllocationFor(part, profile) {
  *
  * Derived rather than declared, so a warehouse can never be asked to ship stock it never received.
  */
-export function warehouseReceiptFor(part) {
-  const allocated = carriersOf(part).reduce((sum, profile) => sum + truckAllocationFor(part, profile), 0);
-  return intendedWarehouseAfterFor(part) + allocated;
+/**
+ * The warehouse's OPENING quantity.
+ *
+ * Now simply the intended standing balance. It used to be intended + every truck allocation,
+ * because the truck stock was modelled as a transfer OUT of the warehouse and the warehouse had to
+ * start high enough to fund it. Truck stock is opening stock too, so it is initialized where it
+ * actually sits and the warehouse no longer carries a quantity it never held.
+ *
+ * The resulting BALANCES are identical: warehouse was (intended + allocated) - allocated, and is
+ * now intended. What disappears is 55 warehouse-to-truck movements that never happened.
+ */
+export function openingWarehouseQuantityFor(part) {
+  return intendedWarehouseAfterFor(part);
 }
 
 /** Trucks whose profile carries this part's family. */
@@ -144,10 +154,37 @@ export function movementKey({ purpose, partId, locationId, seq = 0 }) {
 // The people are chosen by the role that governs the act: put-away operators receive stock,
 // transfer operators move it. Rotated deterministically so workload spreads across the team
 // instead of one heroic warehouse worker performing all 145 movements.
-const PUT_AWAY_OPERATORS = Object.freeze([
-  "cw-emp-025", "cw-emp-026", "cw-emp-027", "cw-emp-028", "cw-emp-030", "cw-emp-031", "cw-emp-032",
-]);
-const TRANSFER_OPERATORS = Object.freeze(["cw-emp-029", "cw-emp-043"]);
+/**
+ * WHO ESTABLISHED THE OPENING BALANCE.
+ *
+ * An opening balance is not an operational act by whoever happened to be on shift -- it is the
+ * moment somebody of record states what the business already holds. In a real cutover that is the
+ * warehouse manager signing off the initial count, and the ledger requires a USER actor, so the
+ * fixture names one rather than borrowing a SYSTEM identity it has no right to.
+ *
+ * cw-emp-029 is the warehouse manager. The put-away rotation that used to appear here was
+ * describing receipts -- people accepting deliveries that never arrived.
+ */
+const OPENING_BALANCE_AUTHORITY = "cw-emp-029";
+
+/**
+ * The two kinds of movement in this world, kept apart deliberately.
+ *
+ * BASELINE_INITIALIZATION  stock that EXISTS when the world begins. Declared, not caused.
+ * OPERATIONAL              stock moved afterwards, by somebody, through a governed workflow.
+ *
+ * Blurring them is what produced the defect this pass exists to fix: initialization dressed up as
+ * receiving, complete with receipts nobody took. Every operational movement in this world now has
+ * a real governed record behind it -- a purchase order, a receipt -- and everything that does not
+ * is honestly labelled as the starting position.
+ */
+export const BASELINE_INITIALIZATION = "BASELINE_INITIALIZATION";
+export const OPERATIONAL = "OPERATIONAL";
+
+/** Where opening-balance records live. cert-prefixed: fixture data, never a product entity. */
+export const OPENING_BALANCE_COLLECTION = "certification_opening_balances";
+export const OPENING_BALANCE_PROVENANCE = "CERTIFICATION_WORLD_OPENING_BALANCE";
+
 
 /**
  * The full movement plan: every event needed to bring the world's inventory into being.
@@ -162,61 +199,118 @@ export function buildInventoryPlan() {
   for (const part of CERT_PARTS) {
     // SERIAL-tracked parts get NO quantity movements at all. A serial unit is exactly one item
     // tracked individually by the serialized_assets registry, never by summing ledger quantities
-    // (fulfillmentAvailability's H7 fix); a quantity receipt for one would be a number the domain
+    // (fulfillmentAvailability's H7 fix); a quantity movement for one would be a number the domain
     // refuses to aggregate.
     if (part.ledgerTrackingMode === "SERIAL") continue;
-    const receipt = warehouseReceiptFor(part);
-    if (receipt > 0) {
-      movements.push({
-        purpose: "seed_receipt",
-        type: "RECEIVED",
-        direction: "IN",
-        partId: part.partId,
-        trackingMode: part.ledgerTrackingMode,
+
+    // ── BASELINE INITIALIZATION: the warehouse's opening stock.
+    const warehouseOpening = openingWarehouseQuantityFor(part);
+    if (warehouseOpening > 0) {
+      movements.push(openingBalance({
+        part,
         location: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
-        quantity: receipt,
-        sourceObject: { type: "RECEIVING_ORDER", id: `cw-seed-${part.partId}` },
-        idempotencyKey: movementKey({ purpose: "seed", partId: part.partId, locationId: CERT_WAREHOUSE_ID }),
-        actorEmployeeId: PUT_AWAY_OPERATORS[part.index % PUT_AWAY_OPERATORS.length],
-        occurredAt: EPOCH - 30 * DAY,
-      });
+        quantity: warehouseOpening,
+        seq: 0,
+      }));
     }
 
-    // Then the outbound legs to the trucks. TRANSFER_OUT at the warehouse and TRANSFER_IN at the
-    // truck are SEPARATE movements at separate locations -- the same way the Transfer command emits
-    // them -- because that is what makes warehouse and mobile balances independently derivable.
+    // ── BASELINE INITIALIZATION: what each truck already carries.
+    //
+    // Initialized WHERE IT SITS, not moved there. The previous plan emitted a TRANSFER_OUT at the
+    // warehouse and a TRANSFER_IN at the truck for every allocation, both naming a transfer order
+    // that was never created -- 55 movements asserting 55 journeys that never took place, and 55
+    // dangling references that the reference sweep did not yet look for.
+    //
+    // A truck's opening stock is opening stock. The day the world begins, the van already has
+    // parts in it; nobody drove them out that morning.
     for (const profile of carriersOf(part)) {
       const qty = truckAllocationFor(part, profile);
       if (qty <= 0) continue;
-      const seq = TRUCK_PROFILES.indexOf(profile);
-      movements.push({
-        purpose: "stock_truck_out",
-        type: "TRANSFER_OUT", direction: "OUT",
-        partId: part.partId, trackingMode: part.ledgerTrackingMode,
-        location: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
-        counterpartyLocation: { type: "MOBILE", locationId: profile.truckId },
-        quantity: qty,
-        sourceObject: { type: "TRANSFER_ORDER", id: `cw-xfer-${part.partId}-${profile.truckId}` },
-        idempotencyKey: movementKey({ purpose: "xout", partId: part.partId, locationId: profile.truckId, seq }),
-        actorEmployeeId: TRANSFER_OPERATORS[seq % TRANSFER_OPERATORS.length],
-        occurredAt: EPOCH - 20 * DAY,
-      });
-      movements.push({
-        purpose: "stock_truck_in",
-        type: "TRANSFER_IN", direction: "IN",
-        partId: part.partId, trackingMode: part.ledgerTrackingMode,
+      movements.push(openingBalance({
+        part,
         location: { type: "MOBILE", locationId: profile.truckId },
-        counterpartyLocation: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
         quantity: qty,
-        sourceObject: { type: "TRANSFER_ORDER", id: `cw-xfer-${part.partId}-${profile.truckId}` },
-        idempotencyKey: movementKey({ purpose: "xin", partId: part.partId, locationId: profile.truckId, seq }),
-        actorEmployeeId: TRANSFER_OPERATORS[seq % TRANSFER_OPERATORS.length],
-        occurredAt: EPOCH - 20 * DAY,
-      });
+        seq: TRUCK_PROFILES.indexOf(profile) + 1,
+      }));
     }
   }
 
   return movements;
+}
+
+/**
+ * One opening-balance movement, in the vocabulary the domain actually has for it.
+ *
+ * ADJUSTED / ADJUSTMENT, not RECEIVED / RECEIVING_ORDER.
+ *
+ * The ledger binds each movement type to exactly one source-object type: RECEIVED means a
+ * RECEIVING_ORDER caused it. The old plan wrote RECEIVED and invented `cw-seed-<partId>` receiving
+ * orders to satisfy the field. The shape validated -- the validator checks that a source was named,
+ * not that it exists -- so 32 movements claimed deliveries that never happened, and any future
+ * report counting receipts by month would have found them.
+ *
+ * ADJUSTED carries a SIGNED quantity and is sourced from an ADJUSTMENT. The only other producer of
+ * an ADJUSTMENT-sourced movement in the product is the cycle-count reconciler, which points the
+ * source at the cycle count that authorized the change -- so the pattern is 'name the governed
+ * record that caused this', and that is what `openingBalanceRecordId` names.
+ *
+ * sumLedgerEligibleOnHand already treats ADJUSTED as physical evidence and adds its signed value,
+ * so every balance is arithmetically identical to before. Only the claim about WHY the stock is
+ * there has changed -- from a delivery to an initialization.
+ */
+function openingBalance({ part, location, quantity, seq }) {
+  return {
+    purpose: "opening_balance",
+    classification: BASELINE_INITIALIZATION,
+    type: "ADJUSTED",
+    direction: "SIGNED",
+    partId: part.partId,
+    trackingMode: part.ledgerTrackingMode,
+    location,
+    quantity,
+    sourceObject: { type: "ADJUSTMENT", id: openingBalanceRecordId(part.partId, location.locationId) },
+    idempotencyKey: movementKey({ purpose: "open", partId: part.partId, locationId: location.locationId, seq }),
+    actorEmployeeId: OPENING_BALANCE_AUTHORITY,
+    occurredAt: EPOCH - 30 * DAY,
+  };
+}
+
+/**
+ * The id of the opening-balance record a movement points at.
+ *
+ * A REAL document is written at this id (see buildOpeningBalanceRecords), so the reference lands on
+ * something that states what it is. That is the whole difference between this and `cw-seed-...`:
+ * not a better-looking string, an actual record.
+ */
+export function openingBalanceRecordId(partId, locationId) {
+  return `cwob_${partId}_${locationId}`.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+/**
+ * The opening-balance records themselves.
+ *
+ * Fixture-owned, in a cert-prefixed collection, carrying the provenance in the record rather than
+ * in a README: anyone reading one learns immediately that this stock was declared at world
+ * initialization and was never purchased, received, or transferred.
+ */
+export function buildOpeningBalanceRecords(movements) {
+  return movements
+    .filter((m) => m.classification === BASELINE_INITIALIZATION)
+    .map((m) => ({
+      collection: OPENING_BALANCE_COLLECTION,
+      id: m.sourceObject.id,
+      data: {
+        openingBalanceId: m.sourceObject.id,
+        partId: m.partId,
+        location: m.location,
+        quantity: m.quantity,
+        provenance: OPENING_BALANCE_PROVENANCE,
+        establishedByEmployeeId: m.actorEmployeeId,
+        occurredAt: m.occurredAt,
+        note: "Stock present at Certification World initialization. Not purchased, not received, "
+          + "not transferred -- declared. Any report that counts this as receiving activity is wrong.",
+      },
+    }));
 }
 
 /**
@@ -233,7 +327,11 @@ export function projectBalances(movements) {
   const bump = (m, k, n) => m.set(k, (m.get(k) || 0) + n);
 
   for (const mv of movements) {
-    const signed = mv.direction === "IN" ? mv.quantity : -mv.quantity;
+    // SIGNED movements carry their own sign; IN/OUT do not. Reading direction alone would treat
+    // an ADJUSTED row as an inbound, which is right only while every adjustment happens to be
+    // positive -- and a reconciled shortage is negative. Mirrors sumLedgerEligibleOnHand exactly.
+    const signed = mv.direction === "SIGNED" ? mv.quantity
+      : mv.direction === "IN" ? mv.quantity : -mv.quantity;
     bump(company, mv.partId, signed);
     if (mv.location.type === "WAREHOUSE") bump(warehouse, mv.partId, signed);
     if (mv.location.type === "MOBILE") {

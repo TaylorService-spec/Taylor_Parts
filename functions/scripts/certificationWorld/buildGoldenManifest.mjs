@@ -48,8 +48,8 @@ const { readPurchaseOrderProgress } =
   await import(L("functions/lib/inventoryReceiving/purchaseOrderProgressRead.js"));
 
 const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
-const IN_TYPES = new Set(["RECEIVED", "TRANSFER_IN", "RETURNED"]);
-const OUT_TYPES = new Set(["ISSUED", "TRANSFER_OUT", "SCRAPPED"]);
+const { ledgerRowsForPart, mobileByTruck } =
+  await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 
 /**
  * The five scenarios, named by the WORK ORDER they are about and the question they answer.
@@ -83,14 +83,7 @@ const SCENARIOS = [
 ];
 
 async function mobileFor(db, partId) {
-  const snap = await db.collection("inventory_transactions").where("partId", "==", partId).get();
-  let total = 0;
-  for (const doc of snap.docs) {
-    const v = doc.data();
-    if (v.location?.type !== "MOBILE") continue;
-    total += IN_TYPES.has(v.type) ? Number(v.quantity) : OUT_TYPES.has(v.type) ? -Number(v.quantity) : 0;
-  }
-  return total;
+  return mobileByTruck(await ledgerRowsForPart(db, partId), partId).total;
 }
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
