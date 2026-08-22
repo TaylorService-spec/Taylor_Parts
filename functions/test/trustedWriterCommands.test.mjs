@@ -26,6 +26,8 @@ import {
   assignApprovedRole,
   setUserStatus,
   approveAccessRequest,
+  requestPrivilegedRole,
+  decidePrivilegedRoleRequest,
   rejectAccessRequest,
   InvalidInputError,
   UnknownRoleError,
@@ -1140,8 +1142,243 @@ async function main() {
     );
   });
 
+  // =====================================================================
+  // PRIVILEGED ROLE APPROVAL -- authenticated Admin approval
+  // =====================================================================
+  //
+  // The control being proven: PROPOSAL != AUTHENTICATED APPROVAL.
+  //
+  // Taylor policy (Owner, 2026-08-22) is ONE approver -- the human operating the `admin` principal.
+  // These checks therefore do NOT assert a second human. They assert that approval identity comes
+  // from authenticated context, and that a request-body field can never stand in for it.
+
+  await check("requestPrivilegedRole: creates a PENDING request and grants NOTHING", async () => {
+    const actor = uid("admin");
+    const target = uid("target");
+    await seedActiveRoleAssignment(actor, "admin");
+    const requestId = `req-privileged-${uid("k")}`;
+
+    const out = await requestPrivilegedRole({
+      actorUid: actor, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    assert.equal(out.status, "applied");
+
+    const req = await db.collection("privilegedRoleRequests").doc(requestId).get();
+    assert.equal(req.data().status, "PENDING_APPROVAL");
+    assert.equal(req.data().requiredApprovals, 1, "Taylor policy is one approver, recorded per request");
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 0,
+      "a PENDING request must grant nothing");
+  });
+
+  await check("requestPrivilegedRole: a non-privileged Role is refused from the approval queue", async () => {
+    const actor = uid("admin");
+    await seedActiveRoleAssignment(actor, "admin");
+    await assertRejectsWith(
+      requestPrivilegedRole({
+        actorUid: actor, principalUid: uid("t"), roleId: "salesperson",
+        scope: { type: "global" }, idempotencyKey: `req-nonpriv-${uid("k")}`,
+      }),
+      InvalidInputError,
+    );
+  });
+
+  await check("requestPrivilegedRole: an unauthorized proposer is DENIED", async () => {
+    const actor = uid("nobody");
+    await seedActiveRoleAssignment(actor, "dispatcher");
+    await assertRejectsWith(
+      requestPrivilegedRole({
+        actorUid: actor, principalUid: uid("t"), roleId: "owner",
+        scope: { type: "global" }, idempotencyKey: `req-unauth-${uid("k")}`,
+      }),
+      UnauthorizedActorError,
+    );
+  });
+
+  await check("decide: an authenticated Admin APPROVE grants the Role in the same transaction", async () => {
+    const proposer = uid("admin");
+    const approver = uid("admin");
+    const target = uid("target");
+    await auth.createUser({ uid: target });
+    await seedActiveRoleAssignment(proposer, "admin");
+    await seedActiveRoleAssignment(approver, "admin");
+    const requestId = `req-approve-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: proposer, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+
+    const decisionKey = `dec-approve-${uid("k")}`;
+    const out = await decidePrivilegedRoleRequest({
+      actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: decisionKey,
+    });
+    assert.equal(out.status, "applied");
+
+    const req = await db.collection("privilegedRoleRequests").doc(requestId).get();
+    assert.equal(req.data().status, "APPROVED");
+    assert.equal(req.data().decidedBy, approver, "the decision records the AUTHENTICATED approver");
+
+    const assignment = await db.collection("roleAssignments").doc(decisionKey).get();
+    assert.equal(assignment.exists, true, "APPROVE must grant in the same command");
+    assert.equal(assignment.data().roleId, "owner");
+    assert.equal(assignment.data().status, "active");
+    assert.equal(assignment.data().approvedBy, approver);
+    assert.equal(assignment.data().approvalRequestId, requestId,
+      "the assignment must be traceable to the approval that authorized it");
+  });
+
+  await check("decide: a request-body approverUid is NOT proof of approval", async () => {
+    // THE DEFECT THIS FLOW EXISTS TO FIX. A non-privileged caller naming the Admin UID must be
+    // denied: the command reads the approver from actorUid only, so the extra field is inert.
+    const proposer = uid("admin");
+    const realAdmin = uid("admin");
+    const impostor = uid("nobody");
+    const target = uid("target");
+    await seedActiveRoleAssignment(proposer, "admin");
+    await seedActiveRoleAssignment(realAdmin, "admin");
+    await seedActiveRoleAssignment(impostor, "dispatcher");
+    const requestId = `req-fake-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: proposer, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+
+    await assertRejectsWith(
+      decidePrivilegedRoleRequest({
+        actorUid: impostor,
+        approverUid: realAdmin,
+        requestId, decision: "APPROVE", idempotencyKey: `dec-fake-${uid("k")}`,
+      }),
+      UnauthorizedActorError,
+    );
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 0,
+      "supplying the Admin UID must grant nothing");
+  });
+
+  await check("decide: the TARGET may not approve their own elevation", async () => {
+    const proposer = uid("admin");
+    const target = uid("target");
+    await seedActiveRoleAssignment(proposer, "admin");
+    await seedActiveRoleAssignment(target, "admin");
+    const requestId = `req-selftarget-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: proposer, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    await assertRejectsWith(
+      decidePrivilegedRoleRequest({
+        actorUid: target, requestId, decision: "APPROVE", idempotencyKey: `dec-selftarget-${uid("k")}`,
+      }),
+      SelfApprovalError,
+    );
+  });
+
+  await check("decide: REJECT records the decision and grants nothing", async () => {
+    const approver = uid("admin");
+    const target = uid("target");
+    await seedActiveRoleAssignment(approver, "admin");
+    const requestId = `req-reject-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: approver, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    await decidePrivilegedRoleRequest({
+      actorUid: approver, requestId, decision: "REJECT", reason: "not needed",
+      idempotencyKey: `dec-reject-${uid("k")}`,
+    });
+    const req = await db.collection("privilegedRoleRequests").doc(requestId).get();
+    assert.equal(req.data().status, "REJECTED");
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 0);
+  });
+
+  await check("decide: a REJECTED request cannot then be approved", async () => {
+    const approver = uid("admin");
+    const target = uid("target");
+    await seedActiveRoleAssignment(approver, "admin");
+    const requestId = `req-rejapp-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: approver, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    await decidePrivilegedRoleRequest({
+      actorUid: approver, requestId, decision: "REJECT", idempotencyKey: `dec-r1-${uid("k")}`,
+    });
+    await assertRejectsWith(
+      decidePrivilegedRoleRequest({
+        actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: `dec-r2-${uid("k")}`,
+      }),
+      InvalidStateError,
+    );
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 0);
+  });
+
+  await check("decide: a TAMPERED request is refused rather than approved", async () => {
+    // Approving a request whose target changed after review is approving something nobody read --
+    // the obvious attack on any propose/approve flow.
+    const approver = uid("admin");
+    const target = uid("target");
+    const victim = uid("victim");
+    await seedActiveRoleAssignment(approver, "admin");
+    const requestId = `req-tamper-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: approver, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    await db.collection("privilegedRoleRequests").doc(requestId).update({ principalUid: victim });
+    await assertRejectsWith(
+      decidePrivilegedRoleRequest({
+        actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: `dec-tamper-${uid("k")}`,
+      }),
+      InvalidStateError,
+    );
+    assert.equal(await countDocs("roleAssignments", "principalUid", victim), 0);
+  });
+
+  await check("decide: authority REVOKED between proposal and approval is denied", async () => {
+    // Authority is re-resolved AT APPROVAL TIME. Carrying it forward from the request would make
+    // revocation take effect everywhere except the one place it matters most.
+    const approver = uid("admin");
+    const target = uid("target");
+    const seedId = await seedActiveRoleAssignment(approver, "admin");
+    const requestId = `req-revoked-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: approver, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    await db.collection("roleAssignments").doc(seedId).update({ status: "disabled" });
+    await assertRejectsWith(
+      decidePrivilegedRoleRequest({
+        actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: `dec-revoked-${uid("k")}`,
+      }),
+      UnauthorizedActorError,
+    );
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 0);
+  });
+
+  await check("decide: a duplicate approval creates no second assignment and no version churn", async () => {
+    const approver = uid("admin");
+    const target = uid("target");
+    await seedActiveRoleAssignment(approver, "admin");
+    await auth.createUser({ uid: target });
+    const requestId = `req-dup-${uid("k")}`;
+    await requestPrivilegedRole({
+      actorUid: approver, principalUid: target, roleId: "owner",
+      scope: { type: "global" }, idempotencyKey: requestId,
+    });
+    const decisionKey = `dec-dup-${uid("k")}`;
+    await decidePrivilegedRoleRequest({ actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: decisionKey });
+    const versionAfterFirst = (await db.collection("users").doc(target).get()).data()?.accessVersion;
+
+    const second = await decidePrivilegedRoleRequest({ actorUid: approver, requestId, decision: "APPROVE", idempotencyKey: decisionKey });
+    assert.equal(second.status, "alreadyApplied", "a replayed decision is a no-op, not a second grant");
+    assert.equal(await countDocs("roleAssignments", "principalUid", target), 1);
+    assert.equal((await db.collection("users").doc(target).get()).data()?.accessVersion, versionAfterFirst,
+      "a no-op retry must not churn accessVersion");
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
+
 }
 
 main().catch((err) => {

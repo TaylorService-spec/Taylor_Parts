@@ -72,6 +72,12 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "setUserStatus",
   "approveAccessRequest",
   "rejectAccessRequest",
+  // Privileged role approval, Owner decision 2026-08-22. This runtime list is DELIBERATELY
+  // separate from the AuditAction type -- the type is erased at build time, so a value arriving
+  // from a callable is checked here or nowhere. Adding to one and not the other is exactly the
+  // mistake that made these commands fail at runtime while compiling cleanly.
+  "requestPrivilegedRole",
+  "decidePrivilegedRoleRequest",
   "breakGlassRestore",
   "createReportDefinition",
   "renameReportDefinition",

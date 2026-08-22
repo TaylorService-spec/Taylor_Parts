@@ -2,6 +2,22 @@
 
 **Status:** governing rule + classification review (INV-1 Post-Phase-1, GOVERNANCE gate). This document records **which** capabilities require two-person approval and reclassifies exactly one Role (`inventoryCreateExecutor`). It changes no other Role.
 
+> **AMENDED 2026-08-22 (Owner decision) — Taylor policy is `requiredApprovals = 1`.**
+>
+> Where this document says a privileged capability requires "two-person approval", read
+> **`AUTHENTICATED ADMIN APPROVAL REQUIRED`**. Taylor has one human security approver, operating the
+> `admin` principal. Two human approvers were assumed by earlier work and were never Taylor policy.
+>
+> The classification below — **which** capabilities are privileged, and why — is UNCHANGED and still
+> governs. Only the approver *count* is corrected.
+>
+> What did change is the *proof*: privileged grants now route through `requestPrivilegedRole` +
+> `decidePrivilegedRoleRequest`, where the approver is `request.auth.uid`. `grantRole`'s
+> `approverUid` parameter proved the named principal *held* authority and nothing about whether they
+> used it. Multi-approver thresholds remain available as future enterprise policy —
+> `requiredApprovals` is stored per request.
+
+
 ## Governing rule
 
 **Two-person approval (`privileged: true`) is reserved for capabilities that can materially:**

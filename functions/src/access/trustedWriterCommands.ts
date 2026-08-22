@@ -768,6 +768,326 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
   });
 }
 
+// =====================================================================
+// PRIVILEGED ROLE APPROVAL -- propose, then approve as an authenticated Admin
+// =====================================================================
+//
+// ============================ THE DEFECT THIS REPLACES ============================
+//
+// grantRole accepts `approverUid` as REQUEST-BODY DATA. verifyApproverIsPrivileged then resolves
+// that UID's stored permissions -- which proves the named principal HOLDS approval authority, and
+// proves nothing whatsoever about whether they exercised it. A caller able to type the Admin UID
+// could mint a privileged Role without the Admin being present, awake, or aware.
+//
+// "someone supplied the Admin UID" is not "the authenticated Admin approved this".
+//
+// Here the approving identity comes ONLY from `actorUid`, which the callable layer derives from
+// `request.auth.uid`. There is no parameter through which an approver can be asserted, which is the
+// point: the proof is structural, not a validation rule someone could relax later.
+//
+// ============================ TAYLOR POLICY: ONE APPROVER ============================
+//
+// Owner decision 2026-08-22. Taylor has ONE human security approver, operating the `admin`
+// principal. `requiredApprovals` is therefore 1, and the proposer MAY be the same human -- the
+// control being enforced is PROPOSAL != AUTHENTICATED APPROVAL, not a headcount.
+//
+// A previous reading of this repository assumed two-person approval was required. It is not, for
+// this organization, and pretending otherwise would certify a control Taylor does not operate.
+// `requiredApprovals` is stored on the request rather than hardcoded so an enterprise tenant can
+// raise it without redesigning the request/decision architecture.
+//
+// ============================ MFA SEAM ============================
+//
+// Authority is re-resolved AT APPROVAL TIME from the approver's live session, never carried forward
+// from the request. The decision records an `approvalContext` -- today just the auth-time facts the
+// callable can see -- so a future rule of the form "approval requires re-authentication within N
+// minutes" is a check against data already being written, not a schema migration. Nothing here
+// assumes password authentication.
+const PRIVILEGED_ROLE_REQUESTS_COLLECTION = "privilegedRoleRequests";
+
+export const PRIVILEGED_REQUEST_STATUS = Object.freeze({
+  PENDING_APPROVAL: "PENDING_APPROVAL",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+});
+
+/**
+ * A stable fingerprint of WHAT WAS PROPOSED.
+ *
+ * Recomputed at approval time and compared. Approving a request whose target, Role or scope changed
+ * after it was reviewed is approving something nobody read -- and it is the obvious attack on any
+ * propose/approve flow, so it is checked rather than assumed.
+ */
+function privilegedRequestFingerprint(target: string, roleId: string, scope: Scope): string {
+  return JSON.stringify({ target, roleId, scope });
+}
+
+export interface RequestPrivilegedRoleInput {
+  actorUid: string;
+  principalUid: string;
+  roleId: string;
+  scope: Scope;
+  idempotencyKey: string;
+}
+
+/**
+ * STEP 1 -- PROPOSE. Creates a pending request and grants NOTHING.
+ *
+ * Proposing requires the same authority as granting. A lower bar would let an unprivileged caller
+ * fill the queue with requests an Admin might approve by reflex, which turns the approval screen
+ * into the attack surface.
+ */
+export async function requestPrivilegedRole(input: RequestPrivilegedRoleInput): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.actorUid, "actorUid");
+  assertNonEmptyString(input.principalUid, "principalUid");
+  assertNonEmptyString(input.roleId, "roleId");
+  assertValidScope(input.scope);
+
+  const db = getFirestore();
+  const requestRef = db.collection(PRIVILEGED_ROLE_REQUESTS_COLLECTION).doc(input.idempotencyKey);
+
+  await withDeniedAuditOnError(
+    input.idempotencyKey,
+    { actorUid: input.actorUid, action: "requestPrivilegedRole", targetType: "privilegedRoleRequest", targetId: input.principalUid },
+    async () => {
+      const role = ASSIGNABLE_ROLES[input.roleId];
+      if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
+      // A non-privileged Role does not belong in this queue: grantRole already handles it in one
+      // step, and routing it here would invent an approval ceremony the policy does not require.
+      if (!role.privileged) {
+        throw new InvalidInputError(
+          `roleId "${input.roleId}" is not privileged -- use grantRole directly rather than the approval queue`,
+        );
+      }
+      await verifyActorPermission(input.actorUid, "admin.roleAssignment.write", {
+        scope: { type: "global" },
+        condition: {},
+      });
+    },
+  );
+
+  // A PROPOSAL CHANGES NOBODY'S AUTHORITY, so it deliberately does NOT go through
+  // runAccessMutationCommand. That helper exists to mutate access: it bumps accessVersion and
+  // synchronises custom claims. Running a proposal through it bumped a version and attempted a
+  // claims sync for a principal whose authority had not moved -- invalidating live sessions for a
+  // decision nobody had taken yet, and failing outright when the proposer had no Auth record.
+  //
+  // The same shape as approveAccessRequest: one transaction, idempotent on the audit event, writing
+  // the request document and an Audit Event and nothing else.
+  const auditRef = auditEventDocRef(input.idempotencyKey);
+  const auditInput = {
+    actorUid: input.actorUid,
+    action: "requestPrivilegedRole" as const,
+    targetType: "privilegedRoleRequest",
+    targetId: input.principalUid,
+  };
+
+  return db.runTransaction(async (txn): Promise<CommandOutcome> => {
+    const auditSnap = await txn.get(auditRef);
+    if (auditSnap.exists) {
+      const existing = auditSnap.data() as Record<string, unknown>;
+      assertSameCommandFingerprint(input.idempotencyKey, existing, auditInput);
+      return { status: "alreadyApplied", auditEventId: input.idempotencyKey };
+    }
+
+    txn.create(requestRef, {
+      requestId: input.idempotencyKey,
+      principalUid: input.principalUid,
+      roleId: input.roleId,
+      scope: input.scope,
+      requestedBy: input.actorUid,
+      requestedAt: FieldValue.serverTimestamp(),
+      status: PRIVILEGED_REQUEST_STATUS.PENDING_APPROVAL,
+      requestFingerprint: privilegedRequestFingerprint(input.principalUid, input.roleId, input.scope),
+      // FUTURE POLICY SEAM. Stored per request rather than hardcoded, so raising the threshold is a
+      // policy change rather than an architecture change.
+      requiredApprovals: 1,
+      approvals: [],
+    });
+
+    stageAuditEventWithId(txn, input.idempotencyKey, {
+      ...auditInput,
+      outcome: "applied",
+      summary: `Proposed privileged role "${input.roleId}" for principal ${input.principalUid} -- PENDING_APPROVAL`,
+      scope: input.scope,
+    });
+
+    return { status: "applied", auditEventId: input.idempotencyKey };
+  });
+}
+
+export interface DecidePrivilegedRoleRequestInput {
+  /** Derived from request.auth.uid by the callable. NEVER accepted from the request body. */
+  actorUid: string;
+  requestId: string;
+  decision: "APPROVE" | "REJECT";
+  reason?: string;
+  idempotencyKey: string;
+  /** Auth-context facts for the MFA seam. Advisory today; never a substitute for actorUid. */
+  approvalContext?: Record<string, unknown>;
+}
+
+/**
+ * STEP 2 + 3 -- APPROVE (and grant) or REJECT, as the authenticated Admin.
+ *
+ * On APPROVE the grant happens inside the SAME command as the decision, so a request cannot sit
+ * "approved but ungranted" -- a state that reads as authorized in every report and confers nothing.
+ */
+export async function decidePrivilegedRoleRequest(input: DecidePrivilegedRoleRequestInput): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.actorUid, "actorUid");
+  assertNonEmptyString(input.requestId, "requestId");
+  if (input.decision !== "APPROVE" && input.decision !== "REJECT") {
+    throw new InvalidInputError('decision must be "APPROVE" or "REJECT"');
+  }
+
+  const db = getFirestore();
+  const requestRef = db.collection(PRIVILEGED_ROLE_REQUESTS_COLLECTION).doc(input.requestId);
+
+  const preSnap = await requestRef.get();
+  if (!preSnap.exists) {
+    throw new UnavailableAccessDataError(`${PRIVILEGED_ROLE_REQUESTS_COLLECTION}/${input.requestId} does not exist`);
+  }
+  const req = preSnap.data() as Record<string, unknown>;
+  const principalUid = req.principalUid as string;
+  const roleId = req.roleId as string;
+  const scope = req.scope as Scope;
+  if (typeof principalUid !== "string" || typeof roleId !== "string" || !scope) {
+    throw new MalformedAccessDataError(`${PRIVILEGED_ROLE_REQUESTS_COLLECTION}/${input.requestId} is malformed`);
+  }
+
+  // A RETRY IS NOT A SECOND DECISION, and conflating them breaks one of them.
+  //
+  // Replaying the SAME idempotencyKey is a client retrying after a network blip, and must resolve to
+  // the recorded outcome. A DIFFERENT key against an already-decided request is a genuine attempt to
+  // decide twice, and must be refused. Checking "is it still pending" first treated both as the
+  // second case, so an ordinary retry got InvalidStateError and looked like tampering.
+  const replaySnap = await auditEventDocRef(input.idempotencyKey).get();
+  if (replaySnap.exists) {
+    assertSameCommandFingerprint(input.idempotencyKey, replaySnap.data() as Record<string, unknown>, {
+      action: "decidePrivilegedRoleRequest",
+      targetType: "privilegedRoleRequest",
+      targetId: principalUid,
+    });
+    return {
+      status: "alreadyApplied",
+      auditEventId: input.idempotencyKey,
+      accessVersionAfter: (replaySnap.data() as Record<string, unknown>).accessVersionAfter as number | undefined,
+    };
+  }
+
+  await withDeniedAuditOnError(
+    input.idempotencyKey,
+    { actorUid: input.actorUid, action: "decidePrivilegedRoleRequest", targetType: "privilegedRoleRequest", targetId: principalUid },
+    async () => {
+      if (req.status !== PRIVILEGED_REQUEST_STATUS.PENDING_APPROVAL) {
+        throw new InvalidStateError(
+          `${PRIVILEGED_ROLE_REQUESTS_COLLECTION}/${input.requestId} is not pending (status="${String(req.status)}") -- a decision may only be made once`,
+        );
+      }
+      // TAMPER CHECK. The stored fingerprint is compared against one recomputed from the stored
+      // fields, so an edit to target/Role/scope after the request was raised is refused rather than
+      // silently approved.
+      const expected = privilegedRequestFingerprint(principalUid, roleId, scope);
+      if (req.requestFingerprint !== expected) {
+        throw new InvalidStateError(
+          `${PRIVILEGED_ROLE_REQUESTS_COLLECTION}/${input.requestId} has been modified since it was raised -- refusing to approve a changed request`,
+        );
+      }
+      // The target may never approve their own elevation. This survives even at requiredApprovals=1,
+      // because it is not a headcount rule -- it is the rule that nobody signs off their own power.
+      if (input.actorUid === principalUid) {
+        throw new SelfApprovalError("the target of a privileged role request may not approve their own elevation");
+      }
+      // AUTHORITY RE-RESOLVED AT APPROVAL TIME, from the approver's current state. An Admin whose
+      // authority was revoked between proposal and approval must be denied -- carrying authority
+      // forward from the request would make revocation take effect everywhere except here.
+      await verifyActorPermission(input.actorUid, "admin.roleAssignment.write", {
+        scope: { type: "global" },
+        condition: {},
+      });
+      const role = ASSIGNABLE_ROLES[roleId];
+      if (!role) throw new UnknownRoleError(`unknown roleId: "${roleId}"`);
+      if (!role.privileged) {
+        throw new InvalidStateError(`roleId "${roleId}" is no longer privileged -- refusing to approve through the privileged queue`);
+      }
+    },
+  );
+
+  const approving = input.decision === "APPROVE";
+  const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(input.idempotencyKey);
+
+  // REJECT CHANGES NOBODY'S AUTHORITY, so it takes the same non-mutating path as the proposal.
+  // Routing it through runAccessMutationCommand bumped the APPROVER's accessVersion and tried to
+  // sync their claims -- invalidating live sessions to record a decision to do nothing.
+  if (!approving) {
+    const rejectAuditRef = auditEventDocRef(input.idempotencyKey);
+    const rejectAudit = {
+      actorUid: input.actorUid,
+      action: "decidePrivilegedRoleRequest" as const,
+      targetType: "privilegedRoleRequest",
+      targetId: principalUid,
+    };
+    return db.runTransaction(async (txn): Promise<CommandOutcome> => {
+      const auditSnap = await txn.get(rejectAuditRef);
+      if (auditSnap.exists) {
+        assertSameCommandFingerprint(input.idempotencyKey, auditSnap.data() as Record<string, unknown>, rejectAudit);
+        return { status: "alreadyApplied", auditEventId: input.idempotencyKey };
+      }
+      txn.update(requestRef, {
+        status: PRIVILEGED_REQUEST_STATUS.REJECTED,
+        decidedBy: input.actorUid,
+        decidedAt: FieldValue.serverTimestamp(),
+        reason: input.reason ?? null,
+        ...(input.approvalContext ? { approvalContext: input.approvalContext } : {}),
+      });
+      stageAuditEventWithId(txn, input.idempotencyKey, {
+        ...rejectAudit,
+        outcome: "applied",
+        summary: `Authenticated Admin ${input.actorUid} REJECTED request ${input.requestId} for "${roleId}" on ${principalUid}`,
+        scope,
+      });
+      return { status: "applied", auditEventId: input.idempotencyKey };
+    });
+  }
+
+  return runAccessMutationCommand(input.idempotencyKey, {
+    // On approval the TARGET's authority changes, so their accessVersion is what must move. On
+    // rejection nothing about the target changes and the version stays put.
+    principalUid,
+    auditInput: {
+      actorUid: input.actorUid,
+      action: "decidePrivilegedRoleRequest",
+      targetType: "privilegedRoleRequest",
+      targetId: principalUid,
+      outcome: "applied",
+      summary: `Authenticated Admin ${input.actorUid} APPROVED request ${input.requestId}: granted "${roleId}" to ${principalUid}`,
+      scope,
+    },
+    apply: (txn, ctx) => {
+      txn.update(requestRef, {
+        status: PRIVILEGED_REQUEST_STATUS.APPROVED,
+        decidedBy: input.actorUid,
+        decidedAt: FieldValue.serverTimestamp(),
+        ...(input.approvalContext ? { approvalContext: input.approvalContext } : {}),
+      });
+      // TRANSACTIONALLY COHERENT: the decision and the assignment land together or not at all.
+      txn.create(assignmentRef, {
+        principalUid,
+        roleId,
+        scope,
+        grantedBy: req.requestedBy as string,
+        approvedBy: input.actorUid,
+        approvalRequestId: input.requestId,
+        grantedAt: FieldValue.serverTimestamp(),
+        status: "active",
+        accessVersionAtGrant: ctx.newAccessVersion,
+      });
+    },
+  });
+}
+
 // ---------------------------------------------------------------------
 // revokeRole
 // ---------------------------------------------------------------------

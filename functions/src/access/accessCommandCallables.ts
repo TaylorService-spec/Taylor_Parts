@@ -227,3 +227,56 @@ export const rejectAccessRequest = onCall({ region: REGION }, async (request) =>
     throw mapCommandError(err);
   }
 });
+
+// =====================================================================
+// PRIVILEGED ROLE APPROVAL
+// =====================================================================
+//
+// THE APPROVING IDENTITY IS request.auth.uid AND NOTHING ELSE.
+//
+// Note what is absent from decidePrivilegedRoleRequest: any read of an approver field from
+// `data`. That absence IS the control. grantRole's `approverUid` parameter proves the named
+// principal HOLDS approval authority and proves nothing about whether they used it -- a caller who
+// can type the Admin UID could mint a privileged Role without the Admin present.
+//
+// Here there is no parameter through which an approver could be asserted, so the proof is
+// structural rather than a validation rule a later edit could relax.
+export const requestPrivilegedRole = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await commands.requestPrivilegedRole({
+      actorUid,
+      principalUid: data.principalUid as string,
+      roleId: data.roleId as string,
+      scope: data.scope as commands.RequestPrivilegedRoleInput["scope"],
+      idempotencyKey: data.idempotencyKey as string,
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await commands.decidePrivilegedRoleRequest({
+      // actorUid is the APPROVER, derived from the authenticated session. Deliberately not
+      // overridable: `data.approverUid`, if a caller sends one, is read by nothing.
+      actorUid,
+      requestId: data.requestId as string,
+      decision: data.decision as commands.DecidePrivilegedRoleRequestInput["decision"],
+      reason: data.reason as string | undefined,
+      idempotencyKey: data.idempotencyKey as string,
+      // MFA SEAM. Auth-context facts the callable can already see, recorded on the decision so a
+      // future "re-authenticated within N minutes" rule checks data that is already being written.
+      approvalContext: {
+        authTimeSeconds: request.auth?.token?.auth_time ?? null,
+        signInProvider: request.auth?.token?.firebase?.sign_in_provider ?? null,
+      },
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});

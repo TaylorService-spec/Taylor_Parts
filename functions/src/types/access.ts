@@ -196,6 +196,13 @@ export type AuditAction =
   | "setUserStatus"
   | "approveAccessRequest"
   | "rejectAccessRequest"
+  // Owner decision 2026-08-22 -- privileged role approval. requestPrivilegedRole PROPOSES and
+  // grants nothing. decidePrivilegedRoleRequest is the AUTHENTICATED APPROVAL, and on APPROVE it
+  // performs the grant in the same transaction, so a request can never sit approved-but-ungranted.
+  // These replace approverUid-as-request-body-data as the proof of approval -- someone supplying
+  // the Admin UID is not the authenticated Admin approving.
+  | "requestPrivilegedRole"
+  | "decidePrivilegedRoleRequest"
   | "breakGlassRestore"
   | "createReportDefinition"
   | "renameReportDefinition"

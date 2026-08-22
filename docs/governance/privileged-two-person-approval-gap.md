@@ -1,6 +1,21 @@
 # Privileged two-person approval — architecture gap
 
-**Status:** `PRIVILEGED_TWO_ACTION_APPROVAL_GAP` · **Date:** 2026-08-22
+> **SUPERSEDED 2026-08-22 by Owner decision.** Taylor has **one** human security approver, operating
+> the `admin` principal. Two-person approval is **not** required and was never Taylor policy — this
+> document assumed it, and the assumption was wrong.
+>
+> **Current Taylor policy: `AUTHENTICATED ADMIN APPROVAL REQUIRED`, `requiredApprovals = 1`.**
+>
+> The *defect* this document identified was real and is now fixed: approval identity came from
+> request-body data, and `someone supplied the Admin UID` is not `the authenticated Admin approved
+> this`. That is corrected by `requestPrivilegedRole` + `decidePrivilegedRoleRequest`, where the
+> approver is `request.auth.uid` and no parameter can assert one.
+>
+> §4's multi-approver design is retained below as **future enterprise policy**, clearly separated
+> from what Taylor operates today. `requiredApprovals` is stored per request so raising it is a
+> policy change, not an architecture change.
+
+**Status:** `RESOLVED` — superseded by `AUTHENTICATED_ADMIN_APPROVAL` · **Date:** 2026-08-22
 **Blocks:** `cw-emp-000 → owner` (the last of the 83 certification grants)
 
 The instruction was to initiate a privileged request as one principal, stop, and let a second

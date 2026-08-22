@@ -98,6 +98,8 @@ export {
   grantRole,
   revokeRole,
   assignApprovedRole,
+  requestPrivilegedRole,
+  decidePrivilegedRoleRequest,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,
