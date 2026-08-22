@@ -167,3 +167,54 @@ export function describeLoad(personaId) {
   const { email, password } = loadSandboxPersona(personaId);
   return { personaId, email, passwordLength: password.length, loaded: true };
 }
+
+// ============================ CERTIFICATION WORLD IDENTITIES ============================
+//
+// The 47 Certification World employees are a DIFFERENT namespace from the named personas above, and
+// deliberately so.
+//
+// The personas are a hand-curated map: a human asks for "the warehouse manager" and gets an email.
+// Adding 47 more entries there would drown that map in fixture data and give every certification
+// employee a name-shaped key -- exactly the coupling the identity design exists to avoid.
+//
+// Certification identities are resolved by their STABLE EMPLOYEE ID instead. The login is derived,
+// never looked up, so renaming an employee cannot move their identity.
+//
+// The namespace also protects them: `cw-emp-000@eos-sandbox.invalid` does not end with
+// `@sandbox.invalid`, so activateSandboxPersonas.js --rotate cannot match a certification account
+// and cannot invalidate one as a side effect of rotating the Owner's personas.
+export const CERTIFICATION_EMAIL_DOMAIN = "@eos-sandbox.invalid";
+
+/** The synthetic login for a certification employee. Derivation, not lookup. */
+export function certificationEmailFor(employeeId) {
+  if (typeof employeeId !== "string" || !/^cw-emp-\d{3}$/.test(employeeId)) {
+    throw new CredentialAccessError("INVALID_CERTIFICATION_EMPLOYEE_ID", employeeId, []);
+  }
+  return `${employeeId}${CERTIFICATION_EMAIL_DOMAIN}`;
+}
+
+/**
+ * Credentials for a certification employee.
+ *
+ * Reuses the same file and the same failure mode as the personas -- a missing entry is
+ * CREDENTIAL_ACCESS_FAILED, never a silently manufactured password. An account whose login was never
+ * activated has no entry, and that is a legitimate state: most certification employees exist to be
+ * granted authority and measured, not to sign in.
+ */
+export function loadCertificationEmployee(employeeId) {
+  const email = certificationEmailFor(employeeId);
+  const tried = candidatePaths();
+  let table = null;
+  for (const p of tried) {
+    try {
+      table = parseCredentials(fs.readFileSync(p, "utf8"));
+      break;
+    } catch {
+      // try the next candidate path, exactly as loadSandboxPersona does
+    }
+  }
+  if (!table) throw new CredentialAccessError("NO_CREDENTIAL_FILE", employeeId, tried);
+  const password = table[email.toLowerCase()];
+  if (!password) throw new CredentialAccessError("CERTIFICATION_LOGIN_NOT_ACTIVATED", employeeId, tried);
+  return { employeeId, email, password };
+}
