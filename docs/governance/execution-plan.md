@@ -404,6 +404,41 @@ office operations. Recommend renaming the workstream or splitting it; **do not**
 
 ---
 
+### The contract is executable, not narrative
+
+The table above is encoded as `functions/test/executionContractProofs.test.mjs` — **25 assertions:
+11 negative, 11 positive, 3 structural.** A contract stated only in prose is a claim; the same
+contract as assertions is a claim that fails when it stops being true.
+
+Every proof is computed on **governed authority only**, ignoring the legacy compatibility Role. That
+is deliberate: 67% of this workforce's operable authority comes from compatibility Roles R-1 exists
+to retire, so a proof computed on the union would mostly be proving the legacy model works.
+
+The positives exist because without them the negatives are satisfiable by granting nobody anything —
+the cheapest way to pass a security test and the least useful.
+
+**Currently verified, on governed authority:**
+
+| Proof | Result |
+|---|---|
+| transfer operator cannot receive | denied |
+| buyer cannot receive; buyer cannot approve own request; cannot void | denied |
+| bin administrator cannot record a placement | denied |
+| counter cannot reconcile; reconciler cannot count | denied |
+| General Manager cannot assign roles | denied |
+| finance management cannot administer security | denied |
+| warehouse/parts associate without the clerk Role cannot receive | denied |
+| designated receiving clerks can receive | holds |
+| reportViewer reads ordinary fields, refused payment terms | holds / denied |
+| unassigned technician resolves no reporting at all | denied |
+
+Mutation-proven. The first attempt proved nothing — giving the buyer receiving authority *passed*,
+because the roster has two `purchasingManager` rows and the mutation replaced the first one, the
+original employee rather than the added backup. Re-run against the correct target it fails, as does
+giving the bin administrator put-away.
+
+---
+
 ## 12 — Remaining legacy dependencies
 
 Compatibility Role definitions are **unchanged**, per instruction. Recorded for the separate future
