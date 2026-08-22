@@ -325,6 +325,39 @@ async function main() {
   });
   console.log("\nseeded " + written + " record(s); fingerprint " + fp.hash + " over " + fp.rowCount + " rows");
 
+  // ============================ PHASE: PRINCIPAL RELINK ============================
+  //
+  // REQUIRED, not optional. Reset deleted the employee documents and buildWorld() does not carry
+  // `userId` -- correctly, because a Firebase UID is ENVIRONMENT state and a deterministic fixture
+  // must not depend on one. Without this phase a rebuild restores all 717 records with all 47
+  // employee->principal links gone: counts match, fingerprint matches, and nobody can sign in as
+  // anyone, while the governed role assignments -- keyed on UID and stored separately -- survive,
+  // pointing at principals that no employee document claims.
+  //
+  // REUSES THE AUDITED TOOL rather than reimplementing the link. provisionPrincipals.mjs already
+  // resolves each principal by its deterministic certification identity, refuses ambiguity, and is
+  // idempotent (ALREADY_LINKED on a second run). A second copy of identity-linking logic is the
+  // last thing this system needs, so it runs as a subprocess and there stays ONE implementation.
+  //
+  // It creates no identity that did not already exist: Auth principals survive reset, so this is a
+  // relink of survivors rather than a re-provision.
+  console.log("\n== phase: principal relink ==");
+  try {
+    const relink = execFileSync(
+      process.execPath,
+      [path.join(__dirname, "certificationWorld", "provisionPrincipals.mjs"), "--projectId", args.projectId, "--apply"],
+      { encoding: "utf8", cwd: path.resolve(__dirname, "..") },
+    );
+    console.log(relink.split("\n").slice(-12).join("\n"));
+  } catch (err) {
+    // A failed relink must NOT be swallowed. The verify below would report
+    // IDENTITY_LINKAGE_INCOMPLETE regardless, but saying WHY here saves an operator the hunt.
+    console.error("principal relink FAILED: " + (err?.message || err));
+    console.error(String(err?.stdout || "").split("\n").slice(-15).join("\n"));
+  }
+
+  // The final verify judges DATA and IDENTITY together, so COMPLETE is reported only when the
+  // relink above actually restored every link.
   const after = await doVerify(db, false);
   process.exitCode = after.result.state === WORLD_STATE.COMPLETE ? 0 : 1;
 }
