@@ -98,7 +98,7 @@ const MATRIX_ROLES = [
 // Each object maps to the capability ids that govern it. `null` means the catalog has
 // nothing for it. Verbs are grouped so a C/R/E claim can be checked against real ids.
 const OBJECTS = [
-  { object: "Accounts", domain: "CRM", C: ["account.record.create"], R: ["account.record.read"], E: ["account.record.update", "account.governedField.write"] },
+  { object: "Accounts", domain: "CRM", C: ["customer.record.create"], R: ["customer.record.read"], E: ["customer.record.update", "customer.governedField.write"] },
   { object: "Contacts", domain: "CRM", rulesOnly: "firestore.rules /contacts/{contactId}" },
   { object: "Customer Locations", domain: "CRM", rulesOnly: "firestore.rules /locations/{locationId}" },
   { object: "Opportunities", domain: "Sales", C: [], R: ["opportunity.read"], E: ["opportunity.write"] },
