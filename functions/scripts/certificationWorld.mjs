@@ -83,6 +83,8 @@ export function expectedRecords() {
     // array buildWorld() returns appears in this table rather than trusting the next person to
     // read the warning.
     ["equipment", w.equipment],
+    // parts ADDED with 1.4.0 -- the service catalog the installed base consumes.
+    ["parts", w.parts],
   ];
   const out = [];
   for (const [datasetId, rows] of groups) {
