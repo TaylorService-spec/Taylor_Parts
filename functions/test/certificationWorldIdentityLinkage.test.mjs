@@ -29,6 +29,7 @@ const REPO = path.resolve(import.meta.dirname, "../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { classifyWorld, WORLD_STATE, SEED_POLICY, identityLinkageFindings } =
   await import(L("functions/scripts/certificationWorld/verify.mjs"));
+const { VOLATILE_FIELDS } = await import(L("functions/scripts/certificationWorld/state.mjs"));
 
 /** A world whose DATA is exactly right, so only identity can decide the outcome. */
 const perfectData = {
@@ -158,4 +159,22 @@ test("the relink reuses the audited tool instead of a second implementation", ()
   const src = stripComments(readFileSync(path.resolve(REPO, "functions/scripts/certificationWorld.mjs"), "utf8"));
   assert.equal(/getUserByEmail|createUser\(/.test(src), false,
     "certificationWorld.mjs is resolving or creating Auth identities itself -- that belongs to provisionPrincipals.mjs alone");
+});
+
+test("userId is VOLATILE for content comparison and REQUIRED for completeness", () => {
+  // These two must never be collapsed. A Firebase UID is environment state, so the deterministic
+  // builder cannot carry one and a content comparison that counted it would report all 47 as
+  // dataset drift. But COMPLETENESS still requires the link -- a world whose people are unlinked
+  // is broken however identical its data is.
+  //
+  // Declaring userId volatile is therefore correct AND dangerous: it is one small step from there
+  // to a completeness check that stops asking. This asserts both halves at once.
+  const volatileFields = VOLATILE_FIELDS.map((v) => v.field);
+  assert.ok(volatileFields.includes("userId"),
+    "userId must be excluded from CONTENT comparison -- it is assigned by the environment, not the fixture");
+
+  // And the completeness side still fails without it.
+  const r = classifyWorld({ ...perfectData, identityLinkage: linkage({ linked: 0, reverseLinked: 0 }) });
+  assert.equal(r.state, WORLD_STATE.IDENTITY_LINKAGE_INCOMPLETE,
+    "userId became volatile AND optional -- a rebuild could now report COMPLETE with every person unlinked");
 });
