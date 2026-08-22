@@ -118,11 +118,16 @@ const readSrc = (rel) => readFileSync(path.resolve(here, "../src", rel), "utf8")
  * not appear -- reporting a defect that is not there. This file's own subject discusses `getDocs`
  * by name in a comment, and the first version of the check below failed on exactly that.
  */
+// LINE-ENDING SAFE, the hard way. A first version split on "\n" and stripped with /\/\/.*$/, which
+// works on LF and silently fails on CRLF: `.` does not match the trailing \r, so `$` never reaches
+// the end of the line and the comment survives. The guard then matched its own subject inside a
+// comment and reported a defect that was not there -- on Windows only. Checked out with
+// autocrlf, that is a test that passes or fails depending on the machine.
 const stripComments = (src) =>
   src
     .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((line) => line.replace(/\/\/.*$/, ""))
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\/\/[^\r\n]*/, ""))
     .join("\n");
 
 test("useMetadataList ACCEPTS a resolver and PASSES it to the presentation builder", () => {
