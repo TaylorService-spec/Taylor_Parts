@@ -6,257 +6,52 @@
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 50,
+  "total": 14,
   "byStatus": {
-   "UNASSIGNED_UNRESOLVED": 46,
-   "DELIBERATELY_PRIVILEGED_ONLY": 4
+   "RECORDED_GAP": 9,
+   "DELIBERATELY_PRIVILEGED_ONLY": 5
   },
   "capabilities": [
    {
     "capability": "coverage.write",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Commercial Coverage & Territory is a recorded roadmap requirement with seams preserved and no build authorized. Assigning these now would model a design that has not been decided."
+    "status": "RECORDED_GAP",
+    "gapCode": "COVERAGE_TERRITORY_AUTHORITY_GAP",
+    "why": "Owner decision 2026-08-21: Coverage/Territory is DEFERRED. coverage.* stays unassigned and unactivated, and the architecture seam (own / team / territory / branch-company scope) is preserved for a future decision. Deliberately NOT compensated for with broad business-role reads."
    },
    {
     "capability": "coverage.read",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Commercial Coverage & Territory is a recorded roadmap requirement with seams preserved and no build authorized. Assigning these now would model a design that has not been decided."
-   },
-   {
-    "capability": "report.customer.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.name.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.status.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.relationshipTypes.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.billingAddress.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.tags.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.externalIds.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+    "status": "RECORDED_GAP",
+    "gapCode": "COVERAGE_TERRITORY_AUTHORITY_GAP",
+    "why": "Owner decision 2026-08-21: Coverage/Territory is DEFERRED. coverage.* stays unassigned and unactivated, and the architecture seam (own / team / territory / branch-company scope) is preserved for a future decision. Deliberately NOT compensated for with broad business-role reads."
    },
    {
     "capability": "report.customer.field.notes.read",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.createdAt.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.paymentTerms.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.taxStatus.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.commercialProfile.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.customer.field.billingContact.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+    "status": "RECORDED_GAP",
+    "gapCode": "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    "why": "Registered active:false and plausibly sensitive, but the catalog has no way to express WHICH sensitivity. Left out of every reporting tier rather than guessed into one: broadening access to complete a model is the failure the tiering exists to prevent."
    },
    {
     "capability": "report.customer.field.accountOwner.read",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.field.name.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.field.email.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.field.phone.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.field.role.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.contact.field.customer.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.location.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.location.field.name.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.location.field.address.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+    "status": "RECORDED_GAP",
+    "gapCode": "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    "why": "Same as customer notes -- inactive, plausibly employee-sensitive, and the catalog cannot distinguish employee-sensitive reporting from ordinary reporting. No id was invented to complete the model."
    },
    {
     "capability": "report.location.field.accessNotes.read",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.location.field.customer.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.name.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.status.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.identity.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.dates.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.notes.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.customer.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.location.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.equipment.field.createdAt.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.definition.create",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.definition.read",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.definition.rename",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
-   },
-   {
-    "capability": "report.definition.duplicate",
-    "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+    "status": "RECORDED_GAP",
+    "gapCode": "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    "why": "Site access notes are plausibly security-sensitive and the id is inactive. Excluded from reportViewer rather than assumed harmless."
    },
    {
     "capability": "report.definition.delete",
     "active": true,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled."
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21: authoring a saved report definition is delegable to reportAuthor; DESTROYING one is not. A delete removes something other people depend on and there is no per-definition ownership model to scope it."
    },
    {
     "capability": "admin.userStatus.write",
@@ -285,32 +80,30 @@
    {
     "capability": "equipment.compatibility.view",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+    "status": "RECORDED_GAP",
+    "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
+    "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
    },
    {
     "capability": "equipment.compatibility.import",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+    "status": "RECORDED_GAP",
+    "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
+    "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
    },
    {
     "capability": "equipment.compatibility.verify",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+    "status": "RECORDED_GAP",
+    "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
+    "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
    },
    {
     "capability": "equipment.compatibility.correct",
     "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
-   },
-   {
-    "capability": "equipment.model.manage",
-    "active": false,
-    "status": "UNASSIGNED_UNRESOLVED",
-    "why": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer."
+    "status": "RECORDED_GAP",
+    "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
+    "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
    }
   ]
  },
@@ -560,6 +353,73 @@
     "salesOrder.write",
     "workOrder.parts.plan"
    ]
+  },
+  {
+   "roleId": "reportViewer",
+   "label": "Report Viewer",
+   "composedFunctionalRoles": [],
+   "grantedCount": 27,
+   "operableCount": 27,
+   "blockedCount": 0,
+   "granted": [
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.read",
+    "report.definition.read",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read"
+   ],
+   "operableNow": [
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.read",
+    "report.definition.read",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read"
+   ],
+   "grantedButInactive": []
   },
   {
    "roleId": "generalManager",
@@ -858,6 +718,50 @@
    ]
   },
   {
+   "roleId": "operationsManager",
+   "label": "Operations Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 15,
+   "operableCount": 14,
+   "blockedCount": 1,
+   "granted": [
+    "account.record.create",
+    "account.record.read",
+    "audit.event.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.create",
+    "account.record.read",
+    "audit.event.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "fulfillment.coordinatedVisit.read"
+   ]
+  },
+  {
    "roleId": "salesperson",
    "label": "Salesperson",
    "composedFunctionalRoles": [
@@ -902,93 +806,6 @@
    ]
   },
   {
-   "roleId": "partsAssociate",
-   "label": "Parts Associate",
-   "composedFunctionalRoles": [
-    "inventoryLookupReader",
-    "inventoryPutAwayOperator"
-   ],
-   "grantedCount": 14,
-   "operableCount": 5,
-   "blockedCount": 9,
-   "granted": [
-    "account.record.read",
-    "audit.event.read",
-    "finance.read",
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.read",
-    "inventory.location.bin.read",
-    "inventory.location.display.read",
-    "inventory.placement.record",
-    "inventory.serializedAsset.read",
-    "inventory.transaction.read",
-    "salesOrder.read",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "operableNow": [
-    "account.record.read",
-    "audit.event.read",
-    "inventory.transaction.read",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "grantedButInactive": [
-    "finance.read",
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.read",
-    "inventory.location.bin.read",
-    "inventory.location.display.read",
-    "inventory.placement.record",
-    "inventory.serializedAsset.read",
-    "salesOrder.read"
-   ]
-  },
-  {
-   "roleId": "operationsManager",
-   "label": "Operations Manager",
-   "composedFunctionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 13,
-   "blockedCount": 1,
-   "granted": [
-    "account.record.create",
-    "account.record.read",
-    "fulfillment.coordinatedVisit.read",
-    "inventory.action.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.read.queue",
-    "warehouse.record.read",
-    "warehouse.stockLocation.read",
-    "warehouse.transferOrder.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "operableNow": [
-    "account.record.create",
-    "account.record.read",
-    "inventory.action.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.read.queue",
-    "warehouse.record.read",
-    "warehouse.stockLocation.read",
-    "warehouse.transferOrder.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "grantedButInactive": [
-    "fulfillment.coordinatedVisit.read"
-   ]
-  },
-  {
    "roleId": "warehouseManager",
    "label": "Warehouse Manager",
    "composedFunctionalRoles": [
@@ -1026,6 +843,49 @@
     "inventory.catalog.alias.read",
     "inventory.catalog.read",
     "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "partsAssociate",
+   "label": "Parts Associate",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader",
+    "inventoryPutAwayOperator"
+   ],
+   "grantedCount": 13,
+   "operableCount": 4,
+   "blockedCount": 9,
+   "granted": [
+    "account.record.read",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "account.record.read",
+    "inventory.transaction.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.placement.record",
     "inventory.serializedAsset.read",
     "salesOrder.read"
    ]
@@ -1149,12 +1009,11 @@
    "roleId": "shopAssociate",
    "label": "Shop Associate",
    "composedFunctionalRoles": [],
-   "grantedCount": 10,
-   "operableCount": 5,
+   "grantedCount": 9,
+   "operableCount": 4,
    "blockedCount": 5,
    "granted": [
     "account.record.read",
-    "audit.event.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -1166,7 +1025,6 @@
    ],
    "operableNow": [
     "account.record.read",
-    "audit.event.read",
     "inventory.transaction.read",
     "workOrder.create",
     "workOrder.transition"
@@ -1206,6 +1064,53 @@
    ]
   },
   {
+   "roleId": "financeManager",
+   "label": "Finance Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 5,
+   "operableCount": 4,
+   "blockedCount": 1,
+   "granted": [
+    "account.governedField.write",
+    "account.record.read",
+    "audit.event.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read"
+   ],
+   "operableNow": [
+    "account.governedField.write",
+    "account.record.read",
+    "audit.event.read",
+    "reorder.purchaseOrder.read"
+   ],
+   "grantedButInactive": [
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "reportFinanceViewer",
+   "label": "Report Finance Viewer",
+   "composedFunctionalRoles": [],
+   "grantedCount": 5,
+   "operableCount": 5,
+   "blockedCount": 0,
+   "granted": [
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.taxStatus.read"
+   ],
+   "operableNow": [
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.taxStatus.read"
+   ],
+   "grantedButInactive": []
+  },
+  {
    "roleId": "officeManager",
    "label": "Office Manager",
    "composedFunctionalRoles": [],
@@ -1225,28 +1130,6 @@
     "workOrder.create"
    ],
    "grantedButInactive": []
-  },
-  {
-   "roleId": "financeManager",
-   "label": "Finance Manager",
-   "composedFunctionalRoles": [],
-   "grantedCount": 4,
-   "operableCount": 3,
-   "blockedCount": 1,
-   "granted": [
-    "account.governedField.write",
-    "account.record.read",
-    "reorder.purchaseOrder.read",
-    "salesOrder.read"
-   ],
-   "operableNow": [
-    "account.governedField.write",
-    "account.record.read",
-    "reorder.purchaseOrder.read"
-   ],
-   "grantedButInactive": [
-    "salesOrder.read"
-   ]
   },
   {
    "roleId": "inventoryTransferOperator",
@@ -1328,6 +1211,25 @@
     "inventory.cycleCount.create",
     "inventory.cycleCount.submit"
    ]
+  },
+  {
+   "roleId": "reportAuthor",
+   "label": "Report Author",
+   "composedFunctionalRoles": [],
+   "grantedCount": 3,
+   "operableCount": 3,
+   "blockedCount": 0,
+   "granted": [
+    "report.definition.create",
+    "report.definition.duplicate",
+    "report.definition.rename"
+   ],
+   "operableNow": [
+    "report.definition.create",
+    "report.definition.duplicate",
+    "report.definition.rename"
+   ],
+   "grantedButInactive": []
   },
   {
    "roleId": "crmActivityContributor",
@@ -1454,6 +1356,36 @@
    "grantedButInactive": [
     "inventory.returns.intake"
    ]
+  },
+  {
+   "roleId": "equipmentCatalogAdministrator",
+   "label": "Equipment Catalog Administrator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "equipment.model.manage"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "equipment.model.manage"
+   ]
+  },
+  {
+   "roleId": "inventoryReceivingClerk",
+   "label": "Inventory Receiving Clerk",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 1,
+   "blockedCount": 0,
+   "granted": [
+    "inventory.stock.receive"
+   ],
+   "operableNow": [
+    "inventory.stock.receive"
+   ],
+   "grantedButInactive": []
   },
   {
    "roleId": "generalEmployee",

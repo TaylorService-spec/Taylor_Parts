@@ -5,27 +5,33 @@
   "active": 72,
   "inactive": 44
  },
- "employeesEvaluated": 43,
+ "employeesEvaluated": 47,
  "assignmentClassifications": {
-  "OPERABLE": 25,
-  "GRANTED_BUT_INACTIVE": 37,
-  "UNDER_PRIVILEGED": 10
+  "OPERABLE": 40,
+  "GRANTED_BUT_INACTIVE": 40,
+  "UNDER_PRIVILEGED": 6
  },
  "workstreamResults": {
   "GRANTED_BUT_INACTIVE": 9,
-  "ADEQUATE": 4,
-  "THIN": 2
+  "ADEQUATE": 6,
+  "THIN": 1
+ },
+ "governedOnlyResults": {
+  "GRANTED_BUT_INACTIVE": 9,
+  "ADEQUATE": 6,
+  "THIN": 1
  },
  "coverage": {
   "twoOrMoreOperable": [
    "DISPATCH",
    "SERVICE",
    "RECEIVING",
-   "PROCUREMENT"
+   "PROCUREMENT",
+   "REPORTING",
+   "AUDIT"
   ],
   "exactlyOneOperable": [
-   "ADMINISTRATION",
-   "REPORTING"
+   "ADMINISTRATION"
   ],
   "zeroOperable": [
    "CRM_SALES",
@@ -40,10 +46,10 @@
   ]
  },
  "authoritySource": {
-  "operableHoldingsTotal": 1142,
-  "fromCompatibilityRoleOnly": 894,
-  "fromGovernedRoleOnly": 28,
-  "fromBoth": 220,
+  "operableHoldingsTotal": 1475,
+  "fromCompatibilityRoleOnly": 985,
+  "fromGovernedRoleOnly": 245,
+  "fromBoth": 245,
   "employeesWithZeroOperableGovernedAuthority": 14,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -56,9 +62,11 @@
    ],
    "forbids": [],
    "assignedWorkers": 7,
-   "grantedEligible": 32,
+   "grantedEligible": 36,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 9,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: opportunity.read",
@@ -73,11 +81,13 @@
     "admin.roleAssignment.write"
    ],
    "assignedWorkers": 7,
-   "grantedEligible": 43,
-   "operableEligible": 43,
-   "operableGovernedOnly": 13,
+   "grantedEligible": 47,
+   "operableEligible": 47,
+   "operableGovernedOnly": 12,
+   "grantedGovernedOnly": 12,
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 39,
+   "available": 43,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -88,11 +98,13 @@
    ],
    "forbids": [],
    "assignedWorkers": 15,
-   "grantedEligible": 43,
-   "operableEligible": 43,
-   "operableGovernedOnly": 13,
+   "grantedEligible": 47,
+   "operableEligible": 47,
+   "operableGovernedOnly": 12,
+   "grantedGovernedOnly": 12,
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 39,
+   "available": 43,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -102,10 +114,12 @@
     "inventory.balance.read"
    ],
    "forbids": [],
-   "assignedWorkers": 9,
-   "grantedEligible": 23,
+   "assignedWorkers": 10,
+   "grantedEligible": 27,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 26,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.balance.read",
@@ -118,10 +132,12 @@
     "inventory.location.bin.read"
    ],
    "forbids": [],
-   "assignedWorkers": 7,
+   "assignedWorkers": 8,
    "grantedEligible": 8,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 7,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.placement.record, inventory.location.bin.read",
@@ -134,9 +150,11 @@
    ],
    "forbids": [],
    "assignedWorkers": 3,
-   "grantedEligible": 23,
+   "grantedEligible": 27,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 26,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.balance.read",
@@ -149,10 +167,12 @@
     "inventory.transfer.dispatch"
    ],
    "forbids": [],
-   "assignedWorkers": 1,
-   "grantedEligible": 2,
+   "assignedWorkers": 2,
+   "grantedEligible": 3,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 2,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.transfer.create, inventory.transfer.dispatch",
@@ -171,6 +191,8 @@
    "grantedEligible": 5,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 4,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.cycleCount.create, inventory.cycleCount.submit",
@@ -188,6 +210,8 @@
    "grantedEligible": 3,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 2,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.cycleCount.reconcile",
@@ -199,12 +223,14 @@
     "inventory.stock.receive"
    ],
    "forbids": [],
-   "assignedWorkers": 0,
-   "grantedEligible": 32,
-   "operableEligible": 32,
-   "operableGovernedOnly": 1,
+   "assignedWorkers": 2,
+   "grantedEligible": 36,
+   "operableEligible": 36,
+   "operableGovernedOnly": 2,
+   "grantedGovernedOnly": 2,
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 30,
+   "available": 34,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -214,10 +240,12 @@
     "inventory.returns.intake"
    ],
    "forbids": [],
-   "assignedWorkers": 1,
-   "grantedEligible": 2,
+   "assignedWorkers": 2,
+   "grantedEligible": 3,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 2,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: inventory.returns.intake",
@@ -230,12 +258,14 @@
     "reorder.request.startPurchasing"
    ],
    "forbids": [],
-   "assignedWorkers": 1,
-   "grantedEligible": 43,
-   "operableEligible": 43,
+   "assignedWorkers": 2,
+   "grantedEligible": 47,
+   "operableEligible": 47,
    "operableGovernedOnly": 2,
+   "grantedGovernedOnly": 2,
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 39,
+   "available": 43,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -246,9 +276,11 @@
    ],
    "forbids": [],
    "assignedWorkers": 4,
-   "grantedEligible": 19,
+   "grantedEligible": 20,
    "operableEligible": 0,
    "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 19,
+   "governedResult": "GRANTED_BUT_INACTIVE",
    "borrowsLegacyAuthority": false,
    "available": 0,
    "blockedReason": "inactive: finance.read",
@@ -263,8 +295,10 @@
    "assignedWorkers": 5,
    "grantedEligible": 1,
    "operableEligible": 1,
-   "operableGovernedOnly": 1,
-   "borrowsLegacyAuthority": false,
+   "operableGovernedOnly": 0,
+   "grantedGovernedOnly": 0,
+   "governedResult": "THIN",
+   "borrowsLegacyAuthority": true,
    "available": 1,
    "blockedReason": "single point of failure -- no backup",
    "result": "THIN"
@@ -276,13 +310,34 @@
    ],
    "forbids": [],
    "assignedWorkers": 6,
-   "grantedEligible": 1,
-   "operableEligible": 1,
-   "operableGovernedOnly": 1,
+   "grantedEligible": 8,
+   "operableEligible": 8,
+   "operableGovernedOnly": 7,
+   "grantedGovernedOnly": 7,
+   "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 1,
-   "blockedReason": "single point of failure -- no backup",
-   "result": "THIN"
+   "available": 8,
+   "blockedReason": "",
+   "result": "ADEQUATE"
+  },
+  {
+   "workstream": "AUDIT",
+   "requires": [
+    "audit.event.read"
+   ],
+   "forbids": [
+    "admin.roleAssignment.write"
+   ],
+   "assignedWorkers": 7,
+   "grantedEligible": 15,
+   "operableEligible": 15,
+   "operableGovernedOnly": 14,
+   "grantedGovernedOnly": 14,
+   "governedResult": "ADEQUATE",
+   "borrowsLegacyAuthority": false,
+   "available": 15,
+   "blockedReason": "",
+   "result": "ADEQUATE"
   }
  ],
  "inertFunctionalRoles": [
@@ -419,6 +474,18 @@
    ],
    "sandboxActivationRequired": true,
    "employeeGrantRequired": false
+  },
+  {
+   "roleId": "equipmentCatalogAdministrator",
+   "capabilities": [
+    "equipment.model.manage"
+   ],
+   "allCapabilitiesInactive": true,
+   "assignedToAPlannedEmployee": false,
+   "bothInactiveAndUnassigned": true,
+   "dependentWorkstreams": [],
+   "sandboxActivationRequired": true,
+   "employeeGrantRequired": true
   }
  ],
  "employees": [
@@ -453,7 +520,8 @@
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -463,11 +531,13 @@
    "name": "Devon Sandoval",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "generalManager"
+    "generalManager",
+    "reportViewer",
+    "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 47,
-   "operableCount": 31,
+   "grantedCount": 77,
+   "operableCount": 61,
    "assignments": [
     {
      "workstream": "ADMINISTRATION",
@@ -476,8 +546,13 @@
     },
     {
      "workstream": "REPORTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing report.definition.read"
+     "classification": "OPERABLE",
+     "detail": ""
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -494,11 +569,13 @@
    "name": "Priya Achterberg",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "generalManager"
+    "generalManager",
+    "reportViewer",
+    "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 47,
-   "operableCount": 31,
+   "grantedCount": 77,
+   "operableCount": 61,
    "assignments": [
     {
      "workstream": "ADMINISTRATION",
@@ -507,8 +584,13 @@
     },
     {
      "workstream": "REPORTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing report.definition.read"
+     "classification": "OPERABLE",
+     "detail": ""
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -525,11 +607,13 @@
    "name": "Tomas Whitlock",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "operationsManager"
+    "operationsManager",
+    "reportViewer",
+    "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 39,
-   "operableCount": 30,
+   "grantedCount": 70,
+   "operableCount": 61,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -543,8 +627,13 @@
     },
     {
      "workstream": "REPORTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing report.definition.read"
+     "classification": "OPERABLE",
+     "detail": ""
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -559,11 +648,13 @@
    "name": "Ingrid Thorsen",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "operationsManager"
+    "operationsManager",
+    "reportViewer",
+    "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 39,
-   "operableCount": 30,
+   "grantedCount": 70,
+   "operableCount": 61,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -577,8 +668,13 @@
     },
     {
      "workstream": "REPORTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing report.definition.read"
+     "classification": "OPERABLE",
+     "detail": ""
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -743,7 +839,8 @@
    ],
    "overPrivilegedFor": [
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -772,7 +869,8 @@
    ],
    "overPrivilegedFor": [
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -1048,7 +1146,8 @@
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -1082,7 +1181,8 @@
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -1099,8 +1199,8 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 49,
-   "operableCount": 30,
+   "grantedCount": 48,
+   "operableCount": 29,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1139,8 +1239,8 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 49,
-   "operableCount": 30,
+   "grantedCount": 48,
+   "operableCount": 29,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1179,8 +1279,8 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 49,
-   "operableCount": 30,
+   "grantedCount": 48,
+   "operableCount": 29,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1219,8 +1319,8 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 49,
-   "operableCount": 30,
+   "grantedCount": 48,
+   "operableCount": 29,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1277,7 +1377,8 @@
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "heavy",
    "available": true
@@ -1420,7 +1521,8 @@
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "AUDIT"
    ],
    "workload": "normal",
    "available": true
@@ -1567,23 +1669,31 @@
    "name": "Devon Amundsen",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "accountingManager"
+    "accountingManager",
+    "reportViewer",
+    "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 47,
-   "operableCount": 31,
+   "grantedCount": 79,
+   "operableCount": 63,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
      "classification": "GRANTED_BUT_INACTIVE",
      "detail": "held but inactive: finance.read"
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "REPORTING"
    ],
    "workload": "normal",
    "available": true
@@ -1593,23 +1703,31 @@
    "name": "Priya Okonkwo",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "accountingManager"
+    "accountingManager",
+    "reportViewer",
+    "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 47,
-   "operableCount": 31,
+   "grantedCount": 79,
+   "operableCount": 63,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
      "classification": "GRANTED_BUT_INACTIVE",
      "detail": "held but inactive: finance.read"
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
     "DISPATCH",
     "SERVICE",
     "RECEIVING",
-    "PROCUREMENT"
+    "PROCUREMENT",
+    "REPORTING"
    ],
    "workload": "normal",
    "available": true
@@ -1619,11 +1737,13 @@
    "name": "Tomas Sandoval",
    "securityRole": "dispatcher",
    "businessRoles": [
-    "financeManager"
+    "financeManager",
+    "reportViewer",
+    "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 39,
-   "operableCount": 30,
+   "grantedCount": 72,
+   "operableCount": 63,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1632,8 +1752,13 @@
     },
     {
      "workstream": "REPORTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing report.definition.read"
+     "classification": "OPERABLE",
+     "detail": ""
+    },
+    {
+     "workstream": "AUDIT",
+     "classification": "OPERABLE",
+     "detail": ""
     }
    ],
    "overPrivilegedFor": [
@@ -1663,6 +1788,133 @@
     "PROCUREMENT"
    ],
    "workload": "none",
+   "available": true
+  },
+  {
+   "employeeId": "cw-emp-043",
+   "name": "Rafael Whitlock",
+   "securityRole": "dispatcher",
+   "businessRoles": [
+    "warehouseAssociate"
+   ],
+   "functionalRoles": [
+    "inventoryLookupReader",
+    "inventoryTransferOperator"
+   ],
+   "grantedCount": 46,
+   "operableCount": 29,
+   "assignments": [
+    {
+     "workstream": "TRANSFERS",
+     "classification": "GRANTED_BUT_INACTIVE",
+     "detail": "held but inactive: inventory.transfer.create, inventory.transfer.dispatch"
+    },
+    {
+     "workstream": "PARTS_LOOKUP",
+     "classification": "GRANTED_BUT_INACTIVE",
+     "detail": "held but inactive: inventory.balance.read"
+    }
+   ],
+   "overPrivilegedFor": [
+    "DISPATCH",
+    "SERVICE",
+    "RECEIVING",
+    "PROCUREMENT"
+   ],
+   "workload": "normal",
+   "available": true
+  },
+  {
+   "employeeId": "cw-emp-044",
+   "name": "Naomi Thorsen",
+   "securityRole": "dispatcher",
+   "businessRoles": [
+    "warehouseAssociate",
+    "inventoryReceivingClerk"
+   ],
+   "functionalRoles": [
+    "inventoryLookupReader",
+    "inventoryReturnsIntakeClerk"
+   ],
+   "grantedCount": 43,
+   "operableCount": 29,
+   "assignments": [
+    {
+     "workstream": "RETURNS",
+     "classification": "GRANTED_BUT_INACTIVE",
+     "detail": "held but inactive: inventory.returns.intake"
+    },
+    {
+     "workstream": "RECEIVING",
+     "classification": "OPERABLE",
+     "detail": ""
+    }
+   ],
+   "overPrivilegedFor": [
+    "DISPATCH",
+    "SERVICE",
+    "PROCUREMENT"
+   ],
+   "workload": "normal",
+   "available": true
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "name": "Curtis Ravenscroft",
+   "securityRole": "dispatcher",
+   "businessRoles": [
+    "warehouseManager",
+    "inventoryReceivingClerk"
+   ],
+   "functionalRoles": [
+    "inventoryBinAdministrator"
+   ],
+   "grantedCount": 44,
+   "operableCount": 31,
+   "assignments": [
+    {
+     "workstream": "PUT_AWAY",
+     "classification": "UNDER_PRIVILEGED",
+     "detail": "missing inventory.placement.record"
+    },
+    {
+     "workstream": "RECEIVING",
+     "classification": "OPERABLE",
+     "detail": ""
+    }
+   ],
+   "overPrivilegedFor": [
+    "DISPATCH",
+    "SERVICE",
+    "PROCUREMENT",
+    "AUDIT"
+   ],
+   "workload": "normal",
+   "available": true
+  },
+  {
+   "employeeId": "cw-emp-046",
+   "name": "Yusuf Featherstone",
+   "securityRole": "dispatcher",
+   "businessRoles": [
+    "purchasingManager"
+   ],
+   "functionalRoles": [],
+   "grantedCount": 41,
+   "operableCount": 29,
+   "assignments": [
+    {
+     "workstream": "PROCUREMENT",
+     "classification": "OPERABLE",
+     "detail": ""
+    }
+   ],
+   "overPrivilegedFor": [
+    "DISPATCH",
+    "SERVICE",
+    "RECEIVING"
+   ],
+   "workload": "normal",
    "available": true
   }
  ]

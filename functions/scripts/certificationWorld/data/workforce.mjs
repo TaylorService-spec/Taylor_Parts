@@ -36,6 +36,9 @@ export const WORKSTREAM = Object.freeze({
   CYCLE_COUNT_RECONCILE: "CYCLE_COUNT_RECONCILE", RECEIVING: "RECEIVING", RETURNS: "RETURNS",
   PROCUREMENT: "PROCUREMENT", ACCOUNTING: "ACCOUNTING", ADMINISTRATION: "ADMINISTRATION",
   REPORTING: "REPORTING",
+  // AUDIT added 2026-08-21. Audit read is oversight of what the other workstreams did, so it is a
+  // workstream in its own right rather than a property of holding a management title.
+  AUDIT: "AUDIT",
 });
 
 // Roster shape. securityRole is the legacy compatibility role on the user; governedRoles are the
@@ -60,8 +63,8 @@ const ROSTER = [
   // dispatcher is the widest compatibility role carrying NO admin.* (38 capabilities, verified),
   // so it models a broad business operator without reversing the ruling. The compatibility roles
   // themselves are untouched -- this is a fixture correction, not a change to legacy authority.
-  [2, "dispatcher", ["generalManager"], ["ADMINISTRATION", "REPORTING"], "normal"],
-  [2, "dispatcher", ["operationsManager"], ["DISPATCH", "SERVICE", "REPORTING"], "heavy"],
+  [2, "dispatcher", ["generalManager", "reportViewer", "reportAuthor"], ["ADMINISTRATION", "REPORTING", "AUDIT"], "normal"],
+  [2, "dispatcher", ["operationsManager", "reportViewer", "reportAuthor"], ["DISPATCH", "SERVICE", "REPORTING", "AUDIT"], "heavy"],
   [2, "dispatcher", ["officeManager"], ["CRM_SALES", "ADMINISTRATION"], "normal"],
   [3, "dispatcher", [], ["DISPATCH"], "mixed"],
   [2, "dispatcher", ["fieldManager"], ["SERVICE", "DISPATCH"], "normal"],
@@ -73,9 +76,39 @@ const ROSTER = [
   [1, "dispatcher", ["salesManager"], ["CRM_SALES"], "normal"],
   [4, "dispatcher", ["salesperson", "crmActivityContributor"], ["CRM_SALES"], "mixed"],
   [1, "dispatcher", ["purchasingManager"], ["PROCUREMENT"], "normal"],
-  [2, "dispatcher", ["accountingManager"], ["ACCOUNTING"], "normal"],
-  [1, "dispatcher", ["financeManager"], ["ACCOUNTING", "REPORTING"], "normal"],
+  [2, "dispatcher", ["accountingManager", "reportViewer", "reportFinanceViewer"], ["ACCOUNTING", "AUDIT"], "normal"],
+  [1, "dispatcher", ["financeManager", "reportViewer", "reportFinanceViewer"], ["ACCOUNTING", "REPORTING", "AUDIT"], "normal"],
   [1, "dispatcher", ["supportStaff"], [], "idle"],
+
+  // ══════════════════ ADDED 2026-08-21 -- Owner decision, four backup employees ══════════════════
+  //
+  // The capacity report found four workstreams depending on ONE person, and Receiving depending on
+  // nobody at all while 32 employees could perform it through legacy authority. These rows close
+  // both, and the shape of each is a decision rather than a headcount.
+  //
+  // RECEIVING IS A NAMED STATION. inventoryReceivingClerk is granted to exactly two people, not
+  // composed into warehouseAssociate. Business intent does not say every warehouse worker receives
+  // stock, and composing it would recreate at the governed level the very problem the coverage
+  // finding exposed -- everyone able to receive, nobody accountable. It also leaves untouched the
+  // deferral compatibilityRoles.ts records for PARTS_ASSOCIATE on inventory.stock.receive.
+  //
+  // THE PURCHASING BACKUP DELIBERATELY DOES NOT RECEIVE. A buyer who also accepts the goods they
+  // ordered closes the loop on their own purchase with nobody else in it. That is the same
+  // separation the existing model already applies by withholding approve/reject from the Role that
+  // raises orders, extended to the physical side. Recorded as an SoD constraint, not an oversight.
+  [1, "dispatcher", ["warehouseAssociate", "inventoryLookupReader", "inventoryTransferOperator"], ["TRANSFERS", "PARTS_LOOKUP"], "normal"],
+  // Returns and Receiving together: both are intake stations at the same dock, and no control
+  // separates accepting a customer return from accepting a purchase. Carries NO transfer authority,
+  // so "a transfer operator cannot receive" stays provable on the employee above.
+  [1, "dispatcher", ["warehouseAssociate", "inventoryLookupReader", "inventoryReturnsIntakeClerk", "inventoryReceivingClerk"], ["RETURNS", "RECEIVING"], "normal"],
+  // Bin administration backup as a MANAGER, not an associate: the exclusive pair forbids the person
+  // defining where stock may live from also filling those locations, so this employee holds no
+  // put-away. Receiving is added here for the second receiver; the separation that matters survives,
+  // because they cannot PLACE what they accept -- put-away remains someone else's authority.
+  [1, "dispatcher", ["warehouseManager", "inventoryBinAdministrator", "inventoryReceivingClerk"], ["PUT_AWAY", "RECEIVING"], "normal"],
+  // Procurement backup. No approve/reject and no purchaseOrder.void -- the Role withholds both --
+  // and no receiving, per the buyer-is-not-receiver separation above.
+  [1, "dispatcher", ["purchasingManager"], ["PROCUREMENT"], "normal"],
 ];
 
 const WORKLOAD_CYCLE = ["none", "normal", "heavy", "conflicting"];

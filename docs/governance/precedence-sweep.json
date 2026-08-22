@@ -7,7 +7,7 @@
  ],
  "totals": {
   "EXPLICIT_OWNER_DECISION": 56,
-  "CANONICAL_MATRIX": 118,
+  "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2
  },
@@ -64,10 +64,8 @@
     "warehouseManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -418,10 +416,8 @@
     "warehouseManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -836,10 +832,8 @@
     "warehouseManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -1054,10 +1048,8 @@
     "fieldManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -1595,10 +1587,8 @@
     "fieldManager",
     "warehouseManager",
     "accountingManager",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -1851,10 +1841,8 @@
     "fieldManager",
     "warehouseManager",
     "controller",
-    "partsAssociate",
     "partsManager",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -2112,23 +2100,6 @@
   },
   {
    "roleId": "partsAssociate",
-   "capability": "audit.event.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "salesManager",
-    "fieldManager",
-    "warehouseManager",
-    "controller",
-    "accountingManager",
-    "partsManager",
-    "shopManager",
-    "shopAssociate"
-   ]
-  },
-  {
-   "roleId": "partsAssociate",
    "capability": "finance.read",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
@@ -2303,9 +2274,7 @@
     "warehouseManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
-    "shopManager",
-    "shopAssociate"
+    "shopManager"
    ]
   },
   {
@@ -2517,9 +2486,7 @@
     "warehouseManager",
     "controller",
     "accountingManager",
-    "partsAssociate",
-    "partsManager",
-    "shopAssociate"
+    "partsManager"
    ]
   },
   {
@@ -2681,23 +2648,6 @@
     "controller",
     "accountingManager",
     "supportStaff",
-    "partsAssociate",
-    "partsManager",
-    "shopManager"
-   ]
-  },
-  {
-   "roleId": "shopAssociate",
-   "capability": "audit.event.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "salesManager",
-    "fieldManager",
-    "warehouseManager",
-    "controller",
-    "accountingManager",
     "partsAssociate",
     "partsManager",
     "shopManager"

@@ -162,13 +162,68 @@ const capacity = ALL_WS.map((ws) => {
   const operableEligible = grantedEligible.filter(() => req.requires.every((c) => ACTIVE.has(c)));
   const available = operableEligible.filter(({ e }) => e.certAvailable);
   // The same count using GOVERNED grants only -- what survives R-1 retiring the compatibility roles.
-  const operableGovernedOnly = employees.filter((e) => {
+  //
+  // OWNER IS EXCLUDED, and that exclusion is load-bearing rather than fussy. `owner` composes the
+  // ENTIRE catalog by derivation (Owner ruling 2026-08-19), so an owner employee satisfies every
+  // workstream that exists. Counting them made the governed-only figure permanently >= 1, which
+  // silently made LEGACY_DEPENDENT unreachable: a workstream carried entirely by `dispatcher` still
+  // showed one governed holder and classified THIN instead of LEGACY_DEPENDENT.
+  //
+  // Caught by asking whether the new classification could fire at all, rather than trusting a zero.
+  // One person who can do everything is not distributed capacity, and readiness is a question about
+  // whether the model gives the WORKFORCE authority -- not whether a superuser exists.
+  const nonOwner = employees.filter((e) => !(e.certGovernedRoles || []).includes("owner"));
+  const operableGovernedOnly = nonOwner.filter((e) => {
     const g = governedCapsOf(e);
     return req.requires.length && req.requires.every((c) => g.has(c) && ACTIVE.has(c));
   }).length;
   const borrowsLegacyAuthority = operableEligible.length > 0 && operableGovernedOnly === 0;
+  // Held governed-only, ignoring activation -- separates "nobody was granted it" from "granted and
+  // switched off", which are different problems with different fixes.
+  const grantedGovernedOnly = nonOwner.filter((e) => {
+    const g = governedCapsOf(e);
+    return req.requires.length && req.requires.every((c) => g.has(c));
+  }).length;
   const inactiveReq = req.requires.filter((c) => IN_CATALOG.has(c) && !ACTIVE.has(c));
   const missingReq = req.requires.filter((c) => !IN_CATALOG.has(c));
+
+  // ─────────── GOVERNED-ONLY RESULT: the PRIMARY governance-readiness measure ───────────
+  //
+  // Owner decision 2026-08-21. The union figure answers "does the app work today"; this one answers
+  // "does the GOVERNED MODEL work", and only the second is readiness. A workstream that passes only
+  // because `dispatcher` happens to carry the capability is not governed -- it is borrowing from
+  // what R-1 exists to retire, and reporting it as ADEQUATE would certify the legacy model.
+  //
+  // LEGACY_DEPENDENT is the classification that did not exist before and is the whole point: the
+  // work CAN be done, and not by anything this program built.
+  // OWNER-ONLY IS NOT LEGACY-DEPENDENT, and conflating them would report a deliberate design as a
+  // defect. ADMINISTRATION is owner-only ON PURPOSE: Owner decision 2026-08-21 (Option 2) keeps
+  // security administration with Owner/Admin and out of every business Role. That authority IS
+  // governed -- it comes from the `owner` Role -- it is simply not distributed, which is the point.
+  //
+  // LEGACY_DEPENDENT means something different and worse: the work can be done, and ONLY because a
+  // compatibility Role happens to carry the capability. That is authority R-1 will remove.
+  // The test cannot be "does owner hold it" -- owner holds the ENTIRE catalog by derivation, so that
+  // is true of every active capability and would make LEGACY_DEPENDENT unreachable. It has to be
+  // about the WORKFORCE: can anyone other than the owner do this work, and if so, where does their
+  // authority come from?
+  //
+  //   nobody but owner can do it          -> THIN, owner-only. ADMINISTRATION is here BY DESIGN.
+  //   non-owners can, but none governed   -> LEGACY_DEPENDENT. This is the R-1 exposure.
+  const operableNonOwner = nonOwner.filter((e) => {
+    const caps = capsOf(e);
+    return req.requires.length && req.requires.every((c) => caps.has(c) && ACTIVE.has(c));
+  }).length;
+
+  let governedResult;
+  if (missingReq.length) governedResult = "AUTHORITY_BLOCKED";
+  else if (inactiveReq.length && operableGovernedOnly === 0 && grantedGovernedOnly > 0) governedResult = "GRANTED_BUT_INACTIVE";
+  else if (operableGovernedOnly === 0 && operableNonOwner > 0) governedResult = "LEGACY_DEPENDENT";
+  else if (operableGovernedOnly === 0 && operableEligible.length > 0) governedResult = "THIN";
+  else if (operableGovernedOnly === 0) governedResult = "NO_COVERAGE";
+  else if (operableGovernedOnly === 1) governedResult = "THIN";
+  else governedResult = "ADEQUATE";
+  const ownerOnlyGoverned = operableGovernedOnly === 0 && operableNonOwner === 0 && operableEligible.length > 0;
 
   let result;
   let blockedReason = "";
@@ -196,6 +251,8 @@ const capacity = ALL_WS.map((ws) => {
     grantedEligible: grantedEligible.length,
     operableEligible: operableEligible.length,
     operableGovernedOnly,
+    grantedGovernedOnly,
+    governedResult,
     borrowsLegacyAuthority,
     available: available.length,
     blockedReason,
@@ -232,6 +289,7 @@ const out = {
   employeesEvaluated: rows.length,
   assignmentClassifications: tally,
   workstreamResults: byResult,
+  governedOnlyResults: (() => { const m = {}; for (const c of capacity) m[c.governedResult] = (m[c.governedResult] || 0) + 1; return m; })(),
   coverage: {
     twoOrMoreOperable: capacity.filter((c) => c.operableEligible >= 2).map((c) => c.workstream),
     exactlyOneOperable: capacity.filter((c) => c.operableEligible === 1).map((c) => c.workstream),
@@ -276,9 +334,18 @@ for (const c of capacity) {
   console.log(c.workstream.padEnd(26) + String(c.assignedWorkers).padStart(5)
     + String(c.grantedEligible).padStart(6) + String(c.operableEligible).padStart(5)
     + String(c.operableGovernedOnly).padStart(8) + String(c.available).padStart(6)
-    + "  " + c.result + (c.borrowsLegacyAuthority ? "  [LEGACY-BORROWED]" : ""));
+    + "  " + c.result.padEnd(21) + c.governedResult);
 }
-console.log("\nworkstream results:");
+const byGoverned = {};
+for (const c of capacity) byGoverned[c.governedResult] = (byGoverned[c.governedResult] || 0) + 1;
+console.log("\nGOVERNED-ONLY results -- the PRIMARY governance-readiness measure:");
+for (const [k, v] of Object.entries(byGoverned).sort((a, b) => b[1] - a[1])) console.log("  ", k.padEnd(22), v);
+console.log("  governed-only >=2:", capacity.filter((c) => c.operableGovernedOnly >= 2).length,
+  "| exactly 1:", capacity.filter((c) => c.operableGovernedOnly === 1).length,
+  "| zero:", capacity.filter((c) => c.operableGovernedOnly === 0).length,
+  "| LEGACY_DEPENDENT:", capacity.filter((c) => c.governedResult === "LEGACY_DEPENDENT").length);
+
+console.log("\ncurrent-operable results (includes legacy compatibility authority):");
 for (const [k, v] of Object.entries(byResult).sort((a, b) => b[1] - a[1])) console.log("  ", k.padEnd(22), v);
 console.log("\n>=2 operable: " + out.coverage.twoOrMoreOperable.length
   + " | exactly 1: " + out.coverage.exactlyOneOperable.length

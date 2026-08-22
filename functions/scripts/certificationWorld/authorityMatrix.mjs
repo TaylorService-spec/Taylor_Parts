@@ -44,6 +44,10 @@ export const WORKSTREAM_REQUIREMENTS = Object.freeze({
   [WORKSTREAM.ACCOUNTING]: { requires: ["finance.read"], forbids: [] },
   [WORKSTREAM.ADMINISTRATION]: { requires: ["admin.roleAssignment.write"], forbids: [] },
   [WORKSTREAM.REPORTING]: { requires: ["report.definition.read"], forbids: [] },
+  // AUDIT added 2026-08-21. Audit READ is oversight and is deliberately NOT security
+  // administration, so admin.roleAssignment.write is FORBIDDEN alongside it: an auditor who can
+  // also grant themselves access is not an independent reader of the record.
+  [WORKSTREAM.AUDIT]: { requires: ["audit.event.read"], forbids: ["admin.roleAssignment.write"] },
 });
 
 /** Union of every capability an employee effectively holds: legacy security role + governed grants. */
