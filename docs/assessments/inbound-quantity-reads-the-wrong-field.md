@@ -1,6 +1,6 @@
 # `onOrder` is UNKNOWN for every canonical Purchase Order
 
-**Status:** open — blocks Certification World Pass 2A (ON_ORDER cannot be derived)
+**Status:** FIXED 2026-08-22 — canonical `items` is now read; see "Resolution" below
 **Found:** 2026-08-22, building canonical purchasing fixtures against the real adapter
 **Severity:** the `onOrder` figure is silently UNKNOWN wherever canonical POs are used
 **Fix size:** one line, plus a test that uses a stored shape
@@ -109,3 +109,46 @@ const rawLines = Array.isArray(po.lines) ? po.lines
 Changing what `onOrder` returns alters a product read path everywhere it is consumed, not just in fixtures. That is a material behaviour change and belongs to a decision, not to a fixture pass — so it is reported with evidence rather than patched in passing.
 
 The Certification World purchasing fixtures are complete and correct: 5 canonical POs (4 `SENT`, 1 `APPROVED`), created through `procurementService` and its governed transitions, idempotent on re-run. They are waiting on this one line.
+
+---
+
+## Resolution
+
+`sumOpenOrderedQuantity` now reads three shapes, **one source each, never unioned**:
+
+| Field | Shape |
+|---|---|
+| `lines` | normalized in-memory (`normalizeCanonicalPurchaseOrder` output) |
+| `items` | **canonical stored** (`procurementService.createPurchaseOrder`) |
+| top-level `partId` | legacy single-line |
+
+A purchase order carrying two of them is counted **once** — unioning would silently double its
+outstanding quantity, and an overstated inbound figure is the one that makes a shortage look
+handled.
+
+Verified against live emulator state: ON_ORDER moved from **0 to 3**, each supported by a real
+`SENT` purchase order and no fixture hint. The `APPROVED`-only order still contributes 0 and its
+part still classifies REORDER.
+
+Mutation-proven: reverting to `lines`-only fails the stored-shape regression.
+
+---
+
+## Follow-on: canonical outstanding does not net committed receipts
+
+**Status:** open, recorded as a passing test that documents current behaviour
+
+A **legacy** order carries `receivedQuantity` on the document, so its outstanding shrinks as goods
+arrive. A **canonical** order does not — the receipt command writes only `version`, `updatedAt` and
+conditionally `status`, and received quantity is derived from committed receipts by
+`deriveReceiptState`, which `sumOpenOrderedQuantity` never sees.
+
+So after a partial receipt a canonical order still reports its **full ordered quantity** as inbound.
+
+This matters for the Golden inbound-recovery lifecycle, which requires outstanding inbound to fall
+after a partial receipt. Fixing it means either netting receipts inside `readPartBalance` (a new
+read in a balance projection) or normalizing through `deriveReceiptState` — a design decision, not a
+field name.
+
+`partBalanceReadService.test.mjs` asserts the current behaviour explicitly, so a future change that
+nets receipts fails there and is noticed rather than quietly altering every `onOrder` figure.

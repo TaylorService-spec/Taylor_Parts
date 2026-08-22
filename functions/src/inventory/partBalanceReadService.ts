@@ -195,7 +195,25 @@ export function sumOpenOrderedQuantity(
   let outstanding = 0;
 
   for (const po of purchaseOrders) {
-    const rawLines = Array.isArray(po.lines) ? po.lines : null;
+    // THREE SHAPES, ONE SOURCE EACH -- never unioned, or a purchase order carrying two of them
+    // would be counted twice and silently double its outstanding quantity.
+    //
+    //   lines  the NORMALIZED in-memory shape (normalizeCanonicalPurchaseOrder's output). First,
+    //          because a caller that already normalized has stated which lines it means.
+    //   items  the CANONICAL STORED shape, written by procurementService.createPurchaseOrder.
+    //   po     the legacy single-line shape, where the order itself carries partId/quantity.
+    //
+    // `items` was missing, and its absence was invisible. readPartBalance passes RAW stored
+    // documents here, and a stored canonical purchase order has `items`; `lines` exists only
+    // after normalization. So every canonical order returned null -- UNKNOWN -- and `onOrder`
+    // could not see one of them. A part with 18 units inbound read exactly like a part nobody
+    // had ordered, because null legitimately means "no purchase order mentions this part".
+    //
+    // The existing tests stayed green throughout: each hand-built `{ lines: [...] }`, a shape
+    // that never occurs in storage. The arithmetic was always right; the field was never found.
+    const rawLines = Array.isArray(po.lines) ? po.lines
+      : Array.isArray(po.items) ? po.items
+        : null;
     const lines: Array<Record<string, unknown>> = rawLines
       ? (rawLines as Array<Record<string, unknown>>)
       // Legacy single-line shape: the order itself carries partId/quantity.
