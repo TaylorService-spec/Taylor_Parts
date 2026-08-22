@@ -1,3 +1,4 @@
+import { normalizeReferenceResult } from "./referenceResolution.js";
 // EOS Metadata — list presentation model.
 //
 // GOVERNANCE: docs/governance/metadata-architecture-ip-boundary.md §4, §5, §6, §8.
@@ -119,7 +120,11 @@ export function resolveColumns(def, entity) {
  * type). A resolver that DOES recognize the id returns the real display string, which passes
  * through unchanged.
  */
-export const UNRESOLVED_REFERENCE_LABEL = "Unresolved reference";
+// The label, and the states around it, now live in referenceResolution.js -- a reference can fail
+// for reasons the system usually KNOWS (missing / denied / still loading / errored), and collapsing
+// them into one string tells an operator their data is broken when the truth may be that their role
+// is narrow. Re-exported so existing importers are unaffected.
+export { UNRESOLVED_REFERENCE_LABEL, REFERENCE_STATE } from "./referenceResolution.js";
 
 export function cellValue(column, row, { resolveReference } = {}) {
   const raw = row?.[column.fieldId];
@@ -143,8 +148,11 @@ export function cellValue(column, row, { resolveReference } = {}) {
   // REFERENCE — see the doc comment above. `raw` here is a real, present document id (the
   // absent/null/"" case already returned above), and it must never reach this return value.
   if (column.type === "REFERENCE") {
+    // A resolver may return a plain string (the original contract, still honoured) or a
+    // `{ state, label }` telling us WHY it could not resolve. Either way the raw id never reaches
+    // the caller: normalizeReferenceResult always yields a showable label.
     const resolved = typeof resolveReference === "function" ? resolveReference(column.fieldId, raw, row) : undefined;
-    return resolved === null || resolved === undefined || resolved === "" ? UNRESOLVED_REFERENCE_LABEL : resolved;
+    return normalizeReferenceResult(resolved).label;
   }
   return raw;
 }

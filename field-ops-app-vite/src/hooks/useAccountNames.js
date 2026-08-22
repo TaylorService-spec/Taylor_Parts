@@ -30,8 +30,38 @@ function chunk(arr, size) {
   return out;
 }
 
-export function useAccountNames(accountIds) {
-  const [names, setNames] = useState(() => new Map());
+/**
+ * How the batched read turned out.
+ *
+ * WHY THE STATUS EXISTS. This hook used to `catch {}` and return whatever it had, which made three
+ * different situations indistinguishable to every caller: the read had not finished, the read was
+ * DENIED, and the account genuinely does not exist. A missing entry meant all three.
+ *
+ * That is not a cosmetic distinction. Telling an operator a customer "no longer exists" when the
+ * truth is that their role cannot read it reports a data defect that is not there -- and it states
+ * a conclusion about a record the viewer was never entitled to observe.
+ */
+export const ACCOUNT_NAMES_STATUS = Object.freeze({
+  /** No ids were requested. No read was issued. */
+  IDLE: "IDLE",
+  /** A read is in flight. A missing entry means "not yet", not "not there". */
+  LOADING: "LOADING",
+  /** The read completed. A missing entry now genuinely means the account does not exist. */
+  READY: "READY",
+  /** Rules refused the read. Nothing can be concluded about any id. */
+  DENIED: "DENIED",
+  /** The read failed for a non-authorization reason. Possibly transient. */
+  ERROR: "ERROR",
+});
+
+/**
+ * The batched read, with its outcome.
+ *
+ * One implementation; `useAccountNames` below is the Map-only view of it, kept so existing callers
+ * are untouched.
+ */
+export function useAccountNamesWithStatus(accountIds) {
+  const [result, setResult] = useState(() => ({ names: new Map(), status: ACCOUNT_NAMES_STATUS.IDLE }));
   // Stable effect key: sorted, de-duplicated, non-blank ids.
   const key = Array.from(new Set((accountIds ?? []).filter(Boolean))).sort().join(",");
 
@@ -39,12 +69,15 @@ export function useAccountNames(accountIds) {
     let cancelled = false;
     const ids = key ? key.split(",") : [];
     if (ids.length === 0) {
-      setNames(new Map());
+      setResult({ names: new Map(), status: ACCOUNT_NAMES_STATUS.IDLE });
       return undefined;
     }
 
+    setResult((prev) => ({ names: prev.names, status: ACCOUNT_NAMES_STATUS.LOADING }));
+
     (async () => {
       const map = new Map();
+      let status = ACCOUNT_NAMES_STATUS.READY;
       try {
         for (const idChunk of chunk(ids, 10)) {
           const snap = await getDocs(
@@ -55,10 +88,16 @@ export function useAccountNames(accountIds) {
             if (typeof name === "string" && name) map.set(d.id, name);
           });
         }
-      } catch {
-        // denied/unavailable -> leave unresolved; callers fall back to the id
+      } catch (err) {
+        // DENIED IS KEPT SEPARATE from every other failure. A refusal is permanent for this viewer
+        // and says nothing about whether the record exists; anything else may succeed on a retry.
+        status = err?.code === "permission-denied" ? ACCOUNT_NAMES_STATUS.DENIED : ACCOUNT_NAMES_STATUS.ERROR;
       }
-      if (!cancelled) setNames(map);
+      // On failure the partial map is discarded: a half-filled map read as READY would report the
+      // ids that happened not to arrive as nonexistent.
+      if (!cancelled) {
+        setResult(status === ACCOUNT_NAMES_STATUS.READY ? { names: map, status } : { names: new Map(), status });
+      }
     })();
 
     return () => {
@@ -66,5 +105,10 @@ export function useAccountNames(accountIds) {
     };
   }, [key]);
 
-  return names;
+  return result;
+}
+
+/** Map-only view, for callers that predate the status and do not need it. */
+export function useAccountNames(accountIds) {
+  return useAccountNamesWithStatus(accountIds).names;
 }

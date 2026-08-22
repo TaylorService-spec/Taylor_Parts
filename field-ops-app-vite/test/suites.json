@@ -690,6 +690,10 @@
       "runner": "node"
     },
     {
+      "file": "test/referenceResolution.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/metadataPurchaseOrderDefinition.test.mjs",
       "runner": "node --test"
     },
