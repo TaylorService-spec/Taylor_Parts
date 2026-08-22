@@ -96,7 +96,7 @@ export function truckAllocationFor(part, profile) {
   if (!profile.carries.includes(part.family)) return 0;
   // SERIAL-tracked parts are excluded from quantity allocation: a SERIAL unit is exactly one item
   // tracked individually, never aggregable quantity math (fulfillmentAvailability's H7 fix).
-  if (part.trackingMode === "SERIAL") return 0;
+  if (part.ledgerTrackingMode === "SERIAL") return 0;
 
   const state = stateForIndex(part.index);
   const rp = reorderPointFor(part);
@@ -130,7 +130,24 @@ export function movementKey({ purpose, partId, locationId, seq = 0 }) {
   return `cw_${purpose}_${partId}_${locationId}_${seq}`.replace(/[^A-Za-z0-9_-]/g, "-");
 }
 
-const actor = Object.freeze({ kind: "SYSTEM", id: "certification-world" });
+// ============================ MOVEMENTS ARE ATTRIBUTED TO PEOPLE ============================
+//
+// The ledger refuses `{ kind: "SYSTEM", id: "certification-world" }` outright:
+// system_actor_not_allowed. SYSTEM actors are a short allowlist, and a fixture generator is not
+// on it -- correctly, because an inventory movement is an accountable act. Somebody put the stock
+// on the shelf and somebody loaded the truck.
+//
+// So the plan names the EMPLOYEE who did it, and the applier resolves that employee to a Firebase
+// UID at apply time. The fixture owns certification identity; the environment owns the principal.
+// Embedding a UID here would make the plan environment-specific and undo that separation.
+//
+// The people are chosen by the role that governs the act: put-away operators receive stock,
+// transfer operators move it. Rotated deterministically so workload spreads across the team
+// instead of one heroic warehouse worker performing all 145 movements.
+const PUT_AWAY_OPERATORS = Object.freeze([
+  "cw-emp-025", "cw-emp-026", "cw-emp-027", "cw-emp-028", "cw-emp-030", "cw-emp-031", "cw-emp-032",
+]);
+const TRANSFER_OPERATORS = Object.freeze(["cw-emp-029", "cw-emp-043"]);
 
 /**
  * The full movement plan: every event needed to bring the world's inventory into being.
@@ -143,6 +160,11 @@ export function buildInventoryPlan() {
   const movements = [];
 
   for (const part of CERT_PARTS) {
+    // SERIAL-tracked parts get NO quantity movements at all. A serial unit is exactly one item
+    // tracked individually by the serialized_assets registry, never by summing ledger quantities
+    // (fulfillmentAvailability's H7 fix); a quantity receipt for one would be a number the domain
+    // refuses to aggregate.
+    if (part.ledgerTrackingMode === "SERIAL") continue;
     const receipt = warehouseReceiptFor(part);
     if (receipt > 0) {
       movements.push({
@@ -150,12 +172,12 @@ export function buildInventoryPlan() {
         type: "RECEIVED",
         direction: "IN",
         partId: part.partId,
-        trackingMode: part.trackingMode,
+        trackingMode: part.ledgerTrackingMode,
         location: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
         quantity: receipt,
         sourceObject: { type: "RECEIVING_ORDER", id: `cw-seed-${part.partId}` },
         idempotencyKey: movementKey({ purpose: "seed", partId: part.partId, locationId: CERT_WAREHOUSE_ID }),
-        actor,
+        actorEmployeeId: PUT_AWAY_OPERATORS[part.index % PUT_AWAY_OPERATORS.length],
         occurredAt: EPOCH - 30 * DAY,
       });
     }
@@ -170,25 +192,25 @@ export function buildInventoryPlan() {
       movements.push({
         purpose: "stock_truck_out",
         type: "TRANSFER_OUT", direction: "OUT",
-        partId: part.partId, trackingMode: part.trackingMode,
+        partId: part.partId, trackingMode: part.ledgerTrackingMode,
         location: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
         counterpartyLocation: { type: "MOBILE", locationId: profile.truckId },
         quantity: qty,
         sourceObject: { type: "TRANSFER_ORDER", id: `cw-xfer-${part.partId}-${profile.truckId}` },
         idempotencyKey: movementKey({ purpose: "xout", partId: part.partId, locationId: profile.truckId, seq }),
-        actor,
+        actorEmployeeId: TRANSFER_OPERATORS[seq % TRANSFER_OPERATORS.length],
         occurredAt: EPOCH - 20 * DAY,
       });
       movements.push({
         purpose: "stock_truck_in",
         type: "TRANSFER_IN", direction: "IN",
-        partId: part.partId, trackingMode: part.trackingMode,
+        partId: part.partId, trackingMode: part.ledgerTrackingMode,
         location: { type: "MOBILE", locationId: profile.truckId },
         counterpartyLocation: { type: "WAREHOUSE", locationId: CERT_WAREHOUSE_ID },
         quantity: qty,
         sourceObject: { type: "TRANSFER_ORDER", id: `cw-xfer-${part.partId}-${profile.truckId}` },
         idempotencyKey: movementKey({ purpose: "xin", partId: part.partId, locationId: profile.truckId, seq }),
-        actor,
+        actorEmployeeId: TRANSFER_OPERATORS[seq % TRANSFER_OPERATORS.length],
         occurredAt: EPOCH - 20 * DAY,
       });
     }

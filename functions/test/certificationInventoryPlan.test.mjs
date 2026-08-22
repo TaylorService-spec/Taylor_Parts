@@ -39,20 +39,30 @@ const {
 
 const plan = buildInventoryPlan();
 const balances = projectBalances(plan);
+/**
+ * Parts whose position is a QUANTITY at all.
+ *
+ * SERIAL-tracked parts are excluded from every balance assertion below, and not as a
+ * convenience: a serial unit is exactly one item tracked individually by the serialized_assets
+ * registry, never by summing ledger quantities (fulfillmentAvailability's H7 fix). Asking what a
+ * serial part's warehouse QUANTITY is asks the wrong question of the domain.
+ */
+const quantityParts = CERT_PARTS.filter((p) => p.ledgerTrackingMode !== "SERIAL");
+
 const conditionOf = (part) =>
   deriveCondition(part, balances, { hasInboundPo: stateForIndex(part.index) === INVENTORY_STATE.ON_ORDER });
 
 test("ALL SIX conditions actually exist in the world", () => {
   // The assertion that caught the index collision. A spread claiming 55% HEALTHY while producing
   // none is invisible to any check that only compares intent against itself.
-  const present = new Set(CERT_PARTS.map(conditionOf));
+  const present = new Set(quantityParts.map(conditionOf));
   for (const state of Object.values(INVENTORY_STATE)) {
     assert.ok(present.has(state), `no part derives ${state} -- that condition cannot be tested (${[...present].join("/")})`);
   }
 });
 
 test("every part's DERIVED condition equals its intended one", () => {
-  const mismatches = CERT_PARTS
+  const mismatches = quantityParts
     .map((p) => ({ partId: p.partId, intended: stateForIndex(p.index), derived: conditionOf(p) }))
     .filter((r) => r.intended !== r.derived);
   assert.deepEqual(mismatches, [],
@@ -82,7 +92,7 @@ test("FALSE_COMFORT is a RELATIONSHIP between two figures, not a small number", 
   // The condition the whole exercise exists for: the company owns plenty and the warehouse still
   // cannot fulfil, because the units are mobile. If this were merely "low stock" it would be
   // indistinguishable from REORDER and would teach the wrong lesson.
-  const falseComfort = CERT_PARTS.filter((p) => conditionOf(p) === INVENTORY_STATE.FALSE_COMFORT);
+  const falseComfort = quantityParts.filter((p) => conditionOf(p) === INVENTORY_STATE.FALSE_COMFORT);
   assert.ok(falseComfort.length > 0, "no FALSE_COMFORT part exists");
   for (const p of falseComfort) {
     const rp = reorderPointFor(p);
@@ -97,7 +107,7 @@ test("FALSE_COMFORT is a RELATIONSHIP between two figures, not a small number", 
 test("a real shortage is never deepened to stock a truck", () => {
   // CRITICAL and REORDER must not ship stock they do not have. Allowing it would make a genuine
   // shortage indistinguishable from FALSE_COMFORT and destroy the difference between them.
-  for (const p of CERT_PARTS) {
+  for (const p of quantityParts) {
     const state = stateForIndex(p.index);
     if (state !== INVENTORY_STATE.CRITICAL && state !== INVENTORY_STATE.REORDER) continue;
     const onTrucks = balances.truck.get(p.partId) ?? 0;
@@ -129,7 +139,7 @@ test("SERIAL-tracked parts are never allocated as aggregable quantity", () => {
   // fulfillmentAvailability excludes SERIAL rows from quantity math entirely: a serial unit is one
   // item tracked individually, never summed. Allocating them by quantity would build a world whose
   // numbers the domain refuses to compute.
-  for (const p of CERT_PARTS.filter((x) => x.trackingMode === "SERIAL")) {
+  for (const p of CERT_PARTS.filter((x) => x.ledgerTrackingMode === "SERIAL")) {
     assert.equal(balances.truck.get(p.partId) ?? 0, 0, `${p.partId} is SERIAL-tracked and was allocated by quantity`);
   }
 });
@@ -172,7 +182,7 @@ test("a warehouse is never asked to ship stock it did not receive", () => {
   // The defect an earlier plan had: allocations were fixed independently of the receipt, so three
   // warehouses went negative. The receipt is now DERIVED from the intended end position plus
   // everything that leaves.
-  for (const p of CERT_PARTS) {
+  for (const p of quantityParts) {
     const received = plan
       .filter((m) => m.partId === p.partId && m.type === "RECEIVED")
       .reduce((sum, m) => sum + m.quantity, 0);
@@ -199,7 +209,7 @@ test("the catalog is large enough to be worth having", () => {
   assert.ok(CERT_PARTS.length >= 30, `only ${CERT_PARTS.length} parts`);
   assert.equal(new Set(CERT_PARTS.map((p) => p.partId)).size, CERT_PARTS.length, "duplicate part ids");
   assert.ok(new Set(CERT_PARTS.map((p) => p.family)).size >= 5, "too few part families to vary demand");
-  assert.ok(CERT_PARTS.some((p) => p.trackingMode === "SERIAL"), "no SERIAL-tracked part -- that path is unexercised");
+  assert.ok(CERT_PARTS.some((p) => p.ledgerTrackingMode === "SERIAL"), "no SERIAL-tracked part -- that path is unexercised");
 });
 
 test("movementKey is a pure function of its inputs", () => {

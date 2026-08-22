@@ -84,11 +84,26 @@ export const CERT_PARTS = Object.freeze(
         // A handful of SERIAL-tracked parts, because serial handling is a genuinely different path
         // (fulfillmentAvailability excludes SERIAL rows from quantity math entirely) and a catalog
         // with none of them leaves that path unexercised.
-        trackingMode: f.key === "CTRL" && ni % 3 === 0 ? "SERIAL" : "QUANTITY",
+        // TWO VOCABULARIES, DELIBERATELY BOTH CARRIED.
+        //
+        // The Part Master classifies with `controlType` (STANDARD / SERIALIZED / LOT), while the
+        // operational ledger validates `trackingMode` against a DIFFERENT set (NONE / SERIAL /
+        // LOT). They are not the same field and not the same words: a plain quantity part is
+        // STANDARD to the catalog and NONE to the ledger.
+        //
+        // The first version of this fixture wrote "QUANTITY" -- the value the live part documents
+        // carry in `partTrackingMode` -- into the ledger envelope, and the real adapter refused
+        // ALL 145 movements with tracking_mode_invalid. Every pure test had passed: the plan was
+        // self-consistent and spoke the wrong language. Nothing but the real validator was ever
+        // going to say so.
+        controlType: f.key === "CTRL" && ni % 3 === 0 ? "SERIALIZED" : "STANDARD",
+        // What the LEDGER accepts, derived from the catalog classification rather than restated.
+        ledgerTrackingMode: f.key === "CTRL" && ni % 3 === 0 ? "SERIAL" : "NONE",
+        // What the PART MASTER document carries, matching the live parts already in the sandbox.
+        partTrackingMode: f.key === "CTRL" && ni % 3 === 0 ? "SERIAL" : "QUANTITY",
         unitOfMeasure: "EA",
         stockingUnit: "EACH",
         stockingClass: f.key === "CONSUM" ? "STOCKED" : ni % 7 === 6 ? "NON_STOCKED" : "STOCKED",
-        controlType: "STANDARD",
         status: "ACTIVE",
       });
     }),
@@ -120,11 +135,12 @@ export function partRecordFor(part) {
       internalPartNumber: part.partId,
       name: part.name,
       category: part.category,
-      partTrackingMode: part.trackingMode,
+      partTrackingMode: part.partTrackingMode,
       unitOfMeasure: part.unitOfMeasure,
       stockingUnit: part.stockingUnit,
       stockingClass: part.stockingClass,
       controlType: part.controlType,
+      certLedgerTrackingMode: part.ledgerTrackingMode,
       status: part.status,
       certFamily: part.family,
       certLineOfBusiness: part.lineOfBusiness,
