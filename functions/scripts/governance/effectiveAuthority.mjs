@@ -56,17 +56,42 @@ const heldBy = {};
 for (const r of Object.values(ALL)) for (const p of r.permissions || []) (heldBy[p] ??= []).push(r.id);
 const privilegedOnly = IDS.filter((id) => heldBy[id]?.length && heldBy[id].every((x) => PRIVILEGED.has(x)));
 
+// Owner decisions 2026-08-21 resolved most of what used to sit here undecided. Three RECORDED GAPS
+// remain, and each carries the code the Owner asked for -- a gap with a name is a decision to
+// revisit it, an unnamed one is just an absence nobody is accountable for.
 const DELIBERATE = {
   "admin.": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved.",
+  "report.definition.delete": "Owner decision 2026-08-21: authoring a saved report definition is delegable to reportAuthor; DESTROYING one is not. A delete removes something other people depend on and there is no per-definition ownership model to scope it.",
 };
-const UNRESOLVED = {
-  "report.": "No Role has ever been assigned Reporting. These sit with the privileged Roles because admin holds the whole catalog BY DERIVATION (Owner ruling 2026-08-19), not because anyone decided reporting is privileged work. Undecided, not settled.",
-  "equipment.": "Equipment administration was recorded as a permission-catalog GAP (Spec 26.4) rather than assigned. Service Manager holds the Work Order lifecycle for equipment it cannot administer.",
-  "coverage.": "Commercial Coverage & Territory is a recorded roadmap requirement with seams preserved and no build authorized. Assigning these now would model a design that has not been decided.",
+
+// GAP CODES. Each is a capability nobody holds because a decision deliberately deferred it, not
+// because it was overlooked.
+const GAP = {
+  "coverage.": {
+    code: "COVERAGE_TERRITORY_AUTHORITY_GAP",
+    why: "Owner decision 2026-08-21: Coverage/Territory is DEFERRED. coverage.* stays unassigned and unactivated, and the architecture seam (own / team / territory / branch-company scope) is preserved for a future decision. Deliberately NOT compensated for with broad business-role reads.",
+  },
+  "equipment.compatibility.": {
+    code: "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
+    why: "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it.",
+  },
+  "report.customer.field.notes.": {
+    code: "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    why: "Registered active:false and plausibly sensitive, but the catalog has no way to express WHICH sensitivity. Left out of every reporting tier rather than guessed into one: broadening access to complete a model is the failure the tiering exists to prevent.",
+  },
+  "report.customer.field.accountOwner.": {
+    code: "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    why: "Same as customer notes -- inactive, plausibly employee-sensitive, and the catalog cannot distinguish employee-sensitive reporting from ordinary reporting. No id was invented to complete the model.",
+  },
+  "report.location.field.accessNotes.": {
+    code: "REPORTING_SENSITIVITY_CAPABILITY_GAP",
+    why: "Site access notes are plausibly security-sensitive and the id is inactive. Excluded from reportViewer rather than assumed harmless.",
+  },
 };
+
 const classify = (id) => {
   for (const [p, why] of Object.entries(DELIBERATE)) if (id.startsWith(p)) return { status: "DELIBERATELY_PRIVILEGED_ONLY", why };
-  for (const [p, why] of Object.entries(UNRESOLVED)) if (id.startsWith(p)) return { status: "UNASSIGNED_UNRESOLVED", why };
+  for (const [p, g] of Object.entries(GAP)) if (id.startsWith(p)) return { status: "RECORDED_GAP", gapCode: g.code, why: g.why };
   return { status: "UNCLASSIFIED", why: "no recorded decision either way -- surface before PASS" };
 };
 const breakdown = privilegedOnly.map((id) => ({ capability: id, active: ACTIVE.has(id), ...classify(id) }));

@@ -245,7 +245,6 @@ export const SHOP_ASSOCIATE_ROLE: Role = Object.freeze({
   compatibility: false,
   permissions: [
     "account.record.read",
-    "audit.event.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -372,6 +371,7 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
+    "audit.event.read",
     "account.governedField.write",
     "account.record.read",
     "reorder.purchaseOrder.read",
@@ -434,6 +434,7 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
+    "audit.event.read",
     "account.record.read",
     // Owner ruling 2026-08-18: "operationsManager should be able to create accounts also".
     // CREATE only -- account.record.update and account.governedField.write stay DENIED, so
@@ -627,7 +628,6 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
   compatibility: false,
   permissions: [
     "account.record.read",
-    "audit.event.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -1048,6 +1048,174 @@ export const INVENTORY_RETURNS_INTAKE_CLERK_ROLE: Role = Object.freeze({
 // A BUNDLE rather than four Roles because these four reads answer one question between them: what is
 // this thing, what is it called elsewhere, how many are there, and where. Splitting them would
 // produce Roles nobody would ever grant separately, which is fragmentation rather than least
+
+// ═══════════════════════════════════ REPORTING ═══════════════════════════════════
+//
+// Owner decision 2026-08-21. Reporting authority is TIERED and CAPABILITY-DRIVEN, expressed as
+// three functional Roles rather than 39 capability ids copied into ten business titles.
+//
+// WHY FUNCTIONAL ROLES AND NOT BUSINESS-TITLE COMPOSITION. Reporting is read of data the Role can
+// already see -- a Sales Manager reading a customer report learns nothing they could not read
+// record by record. But the 34 object/field reads are NOT uniform in sensitivity, and a single
+// bundle attached to manager titles would hand payment terms to whoever inherited a manager's list.
+// Keeping reporting separately grantable is what lets it be withheld from one person without
+// redesigning their job.
+//
+// THE CATALOG CANNOT EXPRESS EVERY SENSITIVITY THE OWNER ASKED FOR, and no id was invented to
+// pretend otherwise. See REPORTING_SENSITIVITY_CAPABILITY_GAP below.
+
+// Tier 1 -- ordinary operational reporting. The 26 ACTIVE non-sensitive object/field reads over
+// Customer, Contact, Location and Equipment, plus the non-destructive definition operations.
+//
+// Deliberately EXCLUDES the five finance-sensitive customer fields (tier 2) and
+// report.definition.delete (owner-only). Also excludes the three currently-inactive reads
+// (customer notes, customer accountOwner, location accessNotes): they are plausibly sensitive and
+// resolve DENY regardless, so adding them would be a grant made on a guess.
+export const REPORT_VIEWER_ROLE: Role = Object.freeze({
+  id: "reportViewer",
+  name: "Report Viewer",
+  description:
+    "Ordinary operational reporting: read the non-sensitive Customer, Contact, Location and Equipment report fields and open saved report definitions. Carries no finance-sensitive field, no authoring and no delete. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "report.definition.read",
+    "report.customer.read",
+    "report.customer.field.name.read",
+    "report.customer.field.status.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.tags.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.createdAt.read",
+    "report.contact.read",
+    "report.contact.field.name.read",
+    "report.contact.field.email.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.field.customer.read",
+    "report.location.read",
+    "report.location.field.name.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.equipment.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.status.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.createdAt.read",
+  ],
+}) as Role;
+
+// Tier 2 -- finance-oriented reporting. The five customer fields that carry commercial terms.
+//
+// ADDITIVE, NOT A SUPERSET. A holder needs reportViewer as well to read ordinary fields; this Role
+// carries ONLY the sensitive five, so it can be withheld from an operations manager who legitimately
+// holds tier 1. Making it a superset would have made "reporting access" one decision instead of two.
+export const REPORT_FINANCE_VIEWER_ROLE: Role = Object.freeze({
+  id: "reportFinanceViewer",
+  name: "Report Finance Viewer",
+  description:
+    "Finance-oriented reporting: the commercial-terms Customer report fields (payment terms, tax status, commercial profile, billing contact, billing address). Additive to reportViewer rather than a superset, so ordinary and finance-sensitive reporting stay two separate grants. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.taxStatus.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.billingAddress.read",
+  ],
+}) as Role;
+
+// Tier 3 -- saved-report authoring. Creating, renaming and duplicating definitions.
+//
+// report.definition.delete is DELIBERATELY ABSENT and stays Owner/Admin-only per the Owner's
+// decision. Authoring a shared definition and destroying one are different acts: a delete removes
+// something other people depend on, and there is no per-definition ownership model to scope it.
+export const REPORT_AUTHOR_ROLE: Role = Object.freeze({
+  id: "reportAuthor",
+  name: "Report Author",
+  description:
+    "Saved-report authoring: create, rename and duplicate report definitions. Deliberately excludes report.definition.delete, which remains Owner/Admin-only because destroying a shared definition is not authoring one. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "report.definition.create",
+    "report.definition.rename",
+    "report.definition.duplicate",
+  ],
+}) as Role;
+
+// ═══════════════════════════════ EQUIPMENT CATALOG ═══════════════════════════════
+//
+// Owner decision 2026-08-21. A STANDALONE functional Role for equipment model/compatibility
+// administration, explicitly NOT composed into Service Manager, Shop Manager, Shop Associate,
+// Technician, Parts Associate, or any Installed Base authority.
+//
+// WHY STANDALONE. Working ON equipment is not administering the equipment MODEL CATALOG. That
+// conflation is not hypothetical here -- it produced one of the three semantic mapping errors this
+// program caught, where a CRUD cell reading "edit equipment" would have handed catalog
+// administration to technicians and shop staff because they service the customer's units.
+//
+// The Installed Base -- the customer's actual assets -- is a different object and remains governed
+// separately. Nothing in this Role touches it.
+//
+// MIRRORS inventoryCatalogAdministrator exactly, which is the argument for its shape: the part
+// master is administered by a standalone Role rather than by a manager title, and the equipment
+// model catalog is the same kind of object.
+//
+// THE FOUR COMPATIBILITY IDS ARE NOT INCLUDED. equipment.compatibility.view / .import / .verify /
+// .correct stay Owner/Admin-only: the Equipment Compatibility engine (D4) is still a draft, and the
+// Owner ruled that draft authority is not activated merely because a Role now exists to hold it.
+// Defining this Role with only what has a finished engine behind it is the honest scope; the
+// compatibility ids can be added by a later decision when there is something to authorize.
+export const EQUIPMENT_CATALOG_ADMINISTRATOR_ROLE: Role = Object.freeze({
+  id: "equipmentCatalogAdministrator",
+  name: "Equipment Catalog Administrator",
+  description:
+    "Administers the governed equipment MODEL catalog (equipment.model.manage). Standalone and least-privilege, mirroring inventoryCatalogAdministrator for the part master. Confers no authority over the customer Installed Base, no Work Order authority, and none of the draft Equipment Compatibility capabilities. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["equipment.model.manage"],
+}) as Role;
+
+// ═══════════════════════════════════ RECEIVING ═══════════════════════════════════
+//
+// Owner decision 2026-08-21, from the coverage finding: Receiving had ZERO assigned workers and 32
+// operable ones, every one of them through legacy compatibility authority.
+//
+// WHY A STANDALONE ROLE RATHER THAN COMPOSITION INTO warehouseAssociate. Business intent does not
+// say every warehouse or parts worker receives stock. Receiving is a station: someone stands at the
+// dock, accepts custody of goods into the company, and is accountable for what was accepted.
+// Composing it into an associate title would recreate at the governed level exactly the problem the
+// coverage finding exposed -- everyone able to receive, nobody responsible for it.
+//
+// It also honours a deferral that is already recorded: compatibilityRoles.ts notes PARTS_ASSOCIATE
+// is DEFERRED for inventory.stock.receive "until a separately ratified scoped model or an explicit
+// Owner acceptance of global Receiving authority". Composing receiving into an associate Role would
+// quietly resolve that deferral by the back door. A standalone Role leaves it exactly where it is.
+//
+// RECEIVING IS NOT TRANSFER. inventory.transfer.receive moves custody BETWEEN internal locations;
+// inventory.stock.receive accepts goods INTO the company from outside. The transfer operator does
+// not get this id and must not.
+export const INVENTORY_RECEIVING_CLERK_ROLE: Role = Object.freeze({
+  id: "inventoryReceivingClerk",
+  name: "Inventory Receiving Clerk",
+  description:
+    "Accepts purchased stock into the company's custody (inventory.stock.receive). A station, not a job title: assigned per employee so receiving has named accountability rather than being available to everyone who works in a warehouse. Confers no transfer, put-away, count or catalog authority. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["inventory.stock.receive"],
+}) as Role;
+
 // privilege.
 export const INVENTORY_LOOKUP_READER_ROLE: Role = Object.freeze({
   id: "inventoryLookupReader",
@@ -1097,4 +1265,9 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   inventoryBinAdministrator: INVENTORY_BIN_ADMINISTRATOR_ROLE,
   inventoryReturnsIntakeClerk: INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
   inventoryLookupReader: INVENTORY_LOOKUP_READER_ROLE,
+  reportViewer: REPORT_VIEWER_ROLE,
+  reportFinanceViewer: REPORT_FINANCE_VIEWER_ROLE,
+  reportAuthor: REPORT_AUTHOR_ROLE,
+  equipmentCatalogAdministrator: EQUIPMENT_CATALOG_ADMINISTRATOR_ROLE,
+  inventoryReceivingClerk: INVENTORY_RECEIVING_CLERK_ROLE,
 });

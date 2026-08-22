@@ -35,13 +35,19 @@ const holdersOf = (cap) =>
 const DECIDED_HOLDERS = [
   {
     capability: "inventory.stock.receive",
-    holders: ["admin", "dispatcher", "owner"],
+    holders: ["admin", "dispatcher", "inventoryReceivingClerk", "owner"],
     decision:
       "EI Phase-2 Receiving capability grant gate. Granted to EXACTLY the admin and dispatcher " +
       "compatibility Roles, with owner inheriting by composition (OWNER_PERMISSIONS is a superset of " +
       "ADMIN_ROLE). No operational role, no wildcard, no PARTS_ASSOCIATE bypass. The canonical matrix " +
       "grants Receiving to General Manager, Warehouse Manager and Warehouse Associate; that conflict " +
-      "is logged as MATRIX_OWNER_DECISION_CONFLICT and resolved in favour of the recorded decision.",
+      "is logged as MATRIX_OWNER_DECISION_CONFLICT and resolved in favour of the recorded decision. " +
+      "AMENDED by Owner decision 2026-08-21: the capacity report found Receiving had ZERO assigned " +
+      "workers and 32 operable ones, every one of them through legacy compatibility authority. The " +
+      "Owner directed a NARROW STANDALONE receiving Role rather than composition into an associate " +
+      "title, so inventoryReceivingClerk joins this set -- and only it. The original gate is not " +
+      "weakened: no business title gains receiving, the PARTS_ASSOCIATE deferral recorded in " +
+      "compatibilityRoles.ts is untouched, and the matrix rows for GM/Warehouse remain refused.",
   },
   {
     capability: "crm.activity.create",

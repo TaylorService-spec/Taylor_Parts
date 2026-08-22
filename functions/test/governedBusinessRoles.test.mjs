@@ -86,6 +86,15 @@ const EXPECTED_IDS = [
   "inventoryBinAdministrator",
   "inventoryReturnsIntakeClerk",
   "inventoryLookupReader",
+  // Owner decisions 2026-08-21. Reporting became three TIERED functional Roles rather than 39
+  // capability ids copied into ten business titles; Equipment model administration became a
+  // standalone Role mirroring inventoryCatalogAdministrator; and Receiving became a named station
+  // after the capacity report found it had ZERO assigned workers and 32 operable ones.
+  "reportViewer",
+  "reportFinanceViewer",
+  "reportAuthor",
+  "equipmentCatalogAdministrator",
+  "inventoryReceivingClerk",
 ];
 
 function grant(roleId, roles) {
@@ -113,7 +122,7 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-one ids (twenty-six, four scanner Roles, and shopAssociate)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-six ids (thirty-one, three reporting tiers, equipment catalog, receiving)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
@@ -123,7 +132,7 @@ check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-one ids (twenty-six, 
   // had no such Role -- so the business had defined a position the platform could not
   // represent, let alone grant. This pin failing on that addition is the guard working.
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 31);
+  assert.equal(ALL_GOVERNED_ROLES.length, 36);
 });
 
 check("salesperson and salesManager differ ONLY by audit read, which the canonical matrix declares", () => {
@@ -228,7 +237,7 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all thirty-one governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all thirty-six governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
   // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
   // actually grant it. The two lists are asserted equal in both directions so neither can drift.
@@ -237,8 +246,8 @@ check("all thirty-one governed business Roles are governed-assignable (no Unknow
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    31,
-    "the governed allowlist must contain exactly the 31 declared governed business Roles",
+    36,
+    "the governed allowlist must contain exactly the 36 declared governed business Roles",
   );
 });
 
@@ -1087,21 +1096,64 @@ check("Owner holds every ACTIVE report.* id (wave-1 + W-SAVE), resolving ALLOW",
   }
 });
 
-check("Owner holds exactly the five W-SAVE definition-CRUD ids, and only Owner among all eleven Roles holds any of them", () => {
+check("definition-CRUD splits: Owner holds all five, reportAuthor holds the three non-destructive, delete stays Owner-only", () => {
+  // REWRITTEN 2026-08-21 for the Owner's Reporting decision. This previously asserted that Owner
+  // was the ONLY Role holding any definition id. The approved model creates `reportAuthor`, so that
+  // exact sentence is no longer the invariant -- but the reason it existed is, and it splits in two:
+  //
+  //   AUTHORING is delegable      -- create, rename and duplicate go to reportAuthor.
+  //   DELETING is not             -- destroying a shared definition removes something other people
+  //                                  depend on, and there is no per-definition ownership model to
+  //                                  scope it. The Owner kept it Owner/Admin-only, explicitly.
+  //
+  // So the check gets STRONGER rather than looser: it now pins which three ids may be delegated and
+  // asserts the fourth is held by nobody else, where before it only asserted "not owner, not held".
+  const AUTHORABLE = ["report.definition.create", "report.definition.rename", "report.definition.duplicate"];
+  const OWNER_ONLY = ["report.definition.delete"];
+
   for (const id of DEFINITION_CRUD_IDS) {
-    assert.ok(OWNER_ROLE.permissions.includes(id), id);
+    assert.ok(OWNER_ROLE.permissions.includes(id), `owner must still hold ${id}`);
   }
   for (const role of Object.values(COMPATIBILITY_ROLES)) {
-    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling ("Admin and
-    // Owner have full access to all possible features and permissions") gives admin
-    // the ENTIRE catalog, so admin legitimately holds this id. The invariant these
-    // loops protect -- that no OTHER Role picks it up independently -- is unchanged.
+    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling ("Admin and Owner have full
+    // access to all possible features and permissions") gives admin the ENTIRE catalog.
     if (role.id === "admin") continue;
-    assert.equal(role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false, `compatibility Role "${role.id}" must not hold a definition-CRUD id`);
+    assert.equal(
+      role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false,
+      `compatibility Role "${role.id}" must not hold a definition-CRUD id`,
+    );
   }
+  // reportAuthor holds EXACTLY the authorable three -- not a subset, not a superset.
+  assert.deepEqual(
+    [...GOVERNED_BUSINESS_ROLES.reportAuthor.permissions].sort(), [...AUTHORABLE].sort(),
+    "reportAuthor must carry exactly create/rename/duplicate",
+  );
+  // reportViewer holds the definition READ and nothing else from that family.
+  assert.deepEqual(
+    GOVERNED_BUSINESS_ROLES.reportViewer.permissions.filter((id) => DEFINITION_CRUD_IDS.includes(id)),
+    ["report.definition.read"],
+    "reportViewer may open a saved definition and must not author or delete one",
+  );
+  // Nobody but owner holds delete. This is the half of the old assertion that must never weaken.
   for (const role of ALL_GOVERNED_ROLES) {
     if (role.id === "owner") continue;
-    assert.equal(role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false, `governed business Role "${role.id}" must not hold a definition-CRUD id -- only the approved W-SAVE role (Owner) does`);
+    for (const id of OWNER_ONLY) {
+      assert.equal(
+        role.permissions.includes(id), false,
+        `governed business Role "${role.id}" must not hold ${id} -- destroying a shared report `
+        + `definition stays Owner/Admin-only by Owner decision 2026-08-21`,
+      );
+    }
+    // The split is THREE-way, not two. report.definition.read is a READ: opening a saved
+    // definition is not authoring one, so it belongs to reportViewer. Lumping it in with
+    // create/rename/duplicate would force every report reader to hold authoring rights,
+    // which is the over-grant the tiering exists to prevent.
+    if (role.id === "reportAuthor" || role.id === "reportViewer") continue;
+    assert.equal(
+      role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false,
+      `governed business Role "${role.id}" must not hold a definition-CRUD id -- only owner, `
+      + `reportViewer (read) and reportAuthor (create/rename/duplicate) do`,
+    );
   }
 });
 
@@ -1118,38 +1170,95 @@ check("Owner does NOT hold any inactive report.* id, and resolving any of them s
   }
 });
 
-check("Owner is the ONLY Role (of all eleven) that holds any report.* id -- compatibility Roles and the other seven governed business Roles are untouched", () => {
+// The three approved Reporting tiers. Owner decision 2026-08-21.
+const REPORTING_ROLE_IDS = ["reportViewer", "reportFinanceViewer", "reportAuthor"];
+
+check("report.* is confined to owner and the three approved Reporting tiers -- NO business title holds one", () => {
+  // REWRITTEN 2026-08-21. This previously asserted Owner was the only Role holding any report.* id.
+  // The Owner approved a tiered functional-role model, so that literal sentence is gone -- but the
+  // invariant underneath it is not only intact, it is now SHARPER.
+  //
+  // The old check protected "reporting is not yet distributed". The real risk was never that a
+  // reporting Role would exist; it was that 39 ids would end up copied into ten business titles,
+  // so that inheriting a manager's list silently granted payment terms. The Owner's decision was
+  // explicit that report grants stay CAPABILITY-DRIVEN, NOT JOB-TITLE HARDCODED.
+  //
+  // So this now asserts exactly that: a report.* id may live on owner or on one of the three
+  // reporting tiers, and on NOTHING ELSE -- not on generalManager, not on controller, not on any
+  // position. That is a claim the old assertion could not make, because it had no vocabulary for a
+  // legitimate reporting Role.
   for (const role of Object.values(COMPATIBILITY_ROLES)) {
-    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling ("Admin and
-    // Owner have full access to all possible features and permissions") gives admin
-    // the ENTIRE catalog, so admin legitimately holds this id. The invariant these
-    // loops protect -- that no OTHER Role picks it up independently -- is unchanged.
+    // admin is exempted, not overlooked: the 2026-08-19 Owner ruling gives admin the ENTIRE catalog.
     if (role.id === "admin") continue;
-    assert.equal(role.permissions.some((id) => id.startsWith("report.")), false, `compatibility Role "${role.id}" must not hold a report.* id`);
+    assert.equal(
+      role.permissions.some((id) => id.startsWith("report.")), false,
+      `compatibility Role "${role.id}" must not hold a report.* id`,
+    );
   }
   for (const role of ALL_GOVERNED_ROLES) {
     const holdsReport = role.permissions.some((id) => id.startsWith("report."));
     if (role.id === "owner") {
-      assert.equal(holdsReport, true);
+      assert.equal(holdsReport, true, "owner must still hold reporting");
+    } else if (REPORTING_ROLE_IDS.includes(role.id)) {
+      assert.equal(holdsReport, true, `${role.id} is a Reporting tier and must carry report.* ids`);
     } else {
-      assert.equal(holdsReport, false, `governed business Role "${role.id}" must not hold a report.* id yet`);
+      assert.equal(
+        holdsReport, false,
+        `governed business Role "${role.id}" must not hold a report.* id. Reporting is granted `
+        + `through reportViewer / reportFinanceViewer / reportAuthor, per the Owner decision that `
+        + `report grants stay capability-driven rather than hardcoded onto job titles.`,
+      );
     }
+  }
+  // The finance-sensitive fields must not leak into the ordinary tier. This is the whole reason
+  // there are two read tiers instead of one.
+  const FINANCE_SENSITIVE = [
+    "report.customer.field.paymentTerms.read", "report.customer.field.taxStatus.read",
+    "report.customer.field.commercialProfile.read", "report.customer.field.billingContact.read",
+    "report.customer.field.billingAddress.read",
+  ];
+  for (const id of FINANCE_SENSITIVE) {
+    assert.equal(
+      GOVERNED_BUSINESS_ROLES.reportViewer.permissions.includes(id), false,
+      `reportViewer must not carry the finance-sensitive field ${id} -- that is reportFinanceViewer`,
+    );
+    assert.ok(
+      GOVERNED_BUSINESS_ROLES.reportFinanceViewer.permissions.includes(id),
+      `reportFinanceViewer must carry ${id}`,
+    );
   }
 });
 
-check("no compatibility Role or non-Owner governed business Role can read any report.* capability, resolver-verified", () => {
+check("no compatibility Role and no BUSINESS-TITLE governed Role can resolve a report.* capability", () => {
   const sampleIds = ["report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"];
   for (const id of sampleIds) {
-    // admin is NOT asserted here any more -- it holds the full catalog by the
-    // 2026-08-19 ruling and correctly ALLOWs. dispatcher and technician are the Roles
-    // this check exists to protect, and they are still asserted below.
+    // admin is NOT asserted here -- it holds the full catalog by the 2026-08-19 ruling and correctly
+    // ALLOWs. dispatcher and technician are the Roles this check exists to protect.
     assert.equal(resolve(id, "dispatcher", COMPATIBILITY_ROLES).decision, "DENY", `dispatcher + ${id}`);
     assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES).decision, "DENY", `technician + ${id}`);
     for (const role of ALL_GOVERNED_ROLES) {
-      if (role.id === "owner") continue;
-      assert.equal(resolve(id, role.id, GOVERNED_BUSINESS_ROLES).decision, "DENY", `${role.id} + ${id}`);
+      if (role.id === "owner" || REPORTING_ROLE_IDS.includes(role.id)) continue;
+      assert.equal(
+        resolve(id, role.id, GOVERNED_BUSINESS_ROLES).decision, "DENY",
+        `${role.id} + ${id} -- a business title must not resolve reporting`,
+      );
     }
   }
+  // And the positive half, resolver-verified: the tier that SHOULD read it does. Asserting only
+  // denials would let the tiers be defined as empty and still pass.
+  assert.equal(
+    resolve("report.customer.field.name.read", "reportViewer", GOVERNED_BUSINESS_ROLES).decision,
+    "ALLOW", "reportViewer must actually resolve an ordinary report field",
+  );
+  assert.equal(
+    resolve("report.customer.field.paymentTerms.read", "reportFinanceViewer", GOVERNED_BUSINESS_ROLES).decision,
+    "ALLOW", "reportFinanceViewer must actually resolve a finance-sensitive field",
+  );
+  // The separation, resolver-verified rather than asserted from the permission list.
+  assert.equal(
+    resolve("report.customer.field.paymentTerms.read", "reportViewer", GOVERNED_BUSINESS_ROLES).decision,
+    "DENY", "reportViewer must be DENIED the finance-sensitive fields",
+  );
 });
 
 check("Owner's reorder.purchaseOrder.void Condition matches admin's exactly (same audited boundary)", () => {
