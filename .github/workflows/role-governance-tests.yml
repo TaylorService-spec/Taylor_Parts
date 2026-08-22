@@ -24,6 +24,14 @@ on:
       - "functions/test/workbookReconciliation.test.mjs"
       - "functions/test/certificationWorldNotInRefresh.test.js"
       - "functions/test/certificationPurchasingContract.test.mjs"
+      - "functions/test/certificationPlannerGuards.test.mjs"
+      - "functions/test/certificationPartMasterContract.test.mjs"
+      # The certification fixture builders themselves. Without this, a change to the parts catalog
+      # or an applier runs no certification suite at all -- which is how the catalog carried an
+      # invalid stockingClass and no Part Master metadata for the whole program.
+      - "functions/scripts/certificationWorld/**"
+      - "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
+      - "functions/src/createWorkOrder.ts"
       - "functions/test/outstandingInboundQuantity.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
       - "functions/src/inventory/partBalanceReadService.ts"
@@ -67,6 +75,14 @@ on:
       - "functions/test/workbookReconciliation.test.mjs"
       - "functions/test/certificationWorldNotInRefresh.test.js"
       - "functions/test/certificationPurchasingContract.test.mjs"
+      - "functions/test/certificationPlannerGuards.test.mjs"
+      - "functions/test/certificationPartMasterContract.test.mjs"
+      # The certification fixture builders themselves. Without this, a change to the parts catalog
+      # or an applier runs no certification suite at all -- which is how the catalog carried an
+      # invalid stockingClass and no Part Master metadata for the whole program.
+      - "functions/scripts/certificationWorld/**"
+      - "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
+      - "functions/src/createWorkOrder.ts"
       - "functions/test/outstandingInboundQuantity.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
       - "functions/src/inventory/partBalanceReadService.ts"
