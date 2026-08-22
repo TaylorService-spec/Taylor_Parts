@@ -64,23 +64,35 @@ function assertSafeTarget(projectId) {
   return { projectId, role: env?.role ?? "emulator", isEmulator };
 }
 
-/** The store shape stageOperationalMovement expects, backed by a real transaction. */
-function transactionStore(db, txn) {
+/**
+ * The store stageOperationalMovement expects, backed by a real transaction.
+ *
+ * WRITES ARE BUFFERED, not issued as they are staged. Firestore requires every read in a
+ * transaction to precede every write, and the service reads-then-creates per movement -- so
+ * committing movement 1 before reading movement 2 fails the transaction outright:
+ * "transactions require all reads to be executed before all writes".
+ *
+ * This is the same shape transferOrderCommand.ts uses for the same reason. Buffering keeps the
+ * read/create protocol the service expects while satisfying the constraint the database imposes,
+ * and the buffered writes are flushed once every read in the batch has happened.
+ */
+function bufferedTransactionStore(db, txn) {
   const coll = db.collection(LEDGER_COLLECTION);
-  const staged = [];
+  const writes = [];
   return {
     async read(docId) {
       const snap = await txn.get(coll.doc(docId));
-      return snap.exists ? snap.data() : null;
+      return snap.exists ? (snap.data() ?? null) : null;
     },
     create(docId, data) {
-      txn.create(coll.doc(docId), data);
-      staged.push(docId);
+      writes.push({ ref: coll.doc(docId), data });
     },
-    staged,
+    flush() {
+      for (const w of writes) txn.create(w.ref, w.data);
+      return writes.length;
+    },
   };
 }
-
 /** A store that reads real state but discards writes -- for validating the plan before committing. */
 function dryStore(db) {
   const coll = db.collection(LEDGER_COLLECTION);
@@ -204,7 +216,7 @@ FAILED: no principal for ${unresolved.length} actor(s): ${unresolved.join(", ")}
   for (let i = 0; i < plan.length; i += BATCH) {
     const slice = plan.slice(i, i + BATCH);
     await db.runTransaction(async (txn) => {
-      const store = transactionStore(db, txn);
+      const store = bufferedTransactionStore(db, txn);
       for (const m of slice) {
         const part = partIndex.get(m.partId);
         const res = await ledger.stageOperationalMovement(
@@ -212,6 +224,8 @@ FAILED: no principal for ${unresolved.length} actor(s): ${unresolved.join(", ")}
         );
         if (res.outcome === "replayed") replayed += 1; else applied += 1;
       }
+      // Every read in this batch is done; only now may anything be written.
+      store.flush();
     });
     console.log(`  committed ${Math.min(i + BATCH, plan.length)}/${plan.length}`);
   }
