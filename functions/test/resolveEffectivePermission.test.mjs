@@ -178,14 +178,14 @@ check("A3-inv: a synthetic future inventory.stock.* capability is reported UNACC
 
 // --- A1: pure function, identical inputs -> identical decision ---
 check("A1: resolver is a pure function (same inputs -> same decision, repeatedly)", () => {
-  const first = resolve("admin", "account.record.read", baseTarget());
-  const second = resolve("admin", "account.record.read", baseTarget());
+  const first = resolve("admin", "customer.record.read", baseTarget());
+  const second = resolve("admin", "customer.record.read", baseTarget());
   assert.deepEqual(first, second);
 });
 
 // --- admin ---
-check("admin: account.governedField.write ALLOW", () => {
-  assert.equal(resolve("admin", "account.governedField.write", baseTarget()).decision, "ALLOW");
+check("admin: customer.governedField.write ALLOW", () => {
+  assert.equal(resolve("admin", "customer.governedField.write", baseTarget()).decision, "ALLOW");
 });
 check("admin: reorder.request.approve ALLOW", () => {
   assert.equal(resolve("admin", "reorder.request.approve", baseTarget()).decision, "ALLOW");
@@ -204,11 +204,11 @@ check("admin: reorder.purchaseOrder.void DENY when not the request's own assigne
 });
 
 // --- dispatcher: Issue #175 governed-field DENY ---
-check("dispatcher: account.governedField.write DENY (Issue #175)", () => {
-  assert.equal(resolve("dispatcher", "account.governedField.write", baseTarget()).decision, "DENY");
+check("dispatcher: customer.governedField.write DENY (Issue #175)", () => {
+  assert.equal(resolve("dispatcher", "customer.governedField.write", baseTarget()).decision, "DENY");
 });
-check("dispatcher: account.record.read ALLOW", () => {
-  assert.equal(resolve("dispatcher", "account.record.read", baseTarget()).decision, "ALLOW");
+check("dispatcher: customer.record.read ALLOW", () => {
+  assert.equal(resolve("dispatcher", "customer.record.read", baseTarget()).decision, "ALLOW");
 });
 check("dispatcher: reorder.request.cancel ALLOW", () => {
   assert.equal(resolve("dispatcher", "reorder.request.cancel", baseTarget()).decision, "ALLOW");
@@ -233,8 +233,8 @@ check("admin: all three Row 7 admin.* authorities ALLOW", () => {
 });
 
 // --- technician: no Customer access, no approve/reject/cancel/system-create ---
-check("technician: account.record.read DENY", () => {
-  assert.equal(resolve("technician", "account.record.read", baseTarget()).decision, "DENY");
+check("technician: customer.record.read DENY", () => {
+  assert.equal(resolve("technician", "customer.record.read", baseTarget()).decision, "DENY");
 });
 check("technician: reorder.request.approve DENY (not in permission set at all)", () => {
   assert.equal(resolve("technician", "reorder.request.approve", baseTarget()).decision, "DENY");
@@ -284,7 +284,7 @@ check("S1: unknown PermissionId -> DENY", () => {
 });
 check("S1: non-array assignments -> DENY", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: undefined,
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -295,7 +295,7 @@ check("S1: non-array assignments -> DENY", () => {
 });
 check("S1: disabled assignment contributes nothing -> DENY", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { status: "disabled" })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -305,7 +305,7 @@ check("S1: disabled assignment contributes nothing -> DENY", () => {
 });
 check("S1: stale assignment (accessVersionAtGrant > current) contributes nothing -> DENY", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { accessVersionAtGrant: 5 })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -315,7 +315,7 @@ check("S1: stale assignment (accessVersionAtGrant > current) contributes nothing
 });
 check("S1: a version bump does not revoke an older active assignment (accessVersionAtGrant <= current) -> ALLOW", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { accessVersionAtGrant: 1 })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 5,
@@ -325,7 +325,7 @@ check("S1: a version bump does not revoke an older active assignment (accessVers
 });
 check("S1: assignment referencing an unknown roleId contributes nothing -> DENY", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("not-a-real-role")],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -338,7 +338,7 @@ check("S1: malformed assignment (missing scope) is excluded, not thrown", () => 
   delete malformed.scope;
   const wellFormed = activeAssignment("dispatcher");
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [malformed, wellFormed],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -372,7 +372,7 @@ check("S1: unknown ConditionKind never passes (fails closed)", () => {
 // --- Scope: tenant is inert/never-widening (requires exact match like domain/location), ownAssignment requires the flag ---
 check("Scope: tenant-scoped assignment DENY against a global target (genuinely inert -- never widens to global authority)", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { scope: { type: "tenant", value: "unresolved" } })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -382,7 +382,7 @@ check("Scope: tenant-scoped assignment DENY against a global target (genuinely i
 });
 check("Scope: tenant-scoped assignment DENY even against a matching-shaped tenant target (no live tenant model exists -- #140 is the only future authority for this)", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { scope: { type: "tenant", value: "tenant-a" } })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -402,7 +402,7 @@ check("Scope: a tenant-scoped admin assignment cannot authorize a global trusted
 });
 check("Scope: domain-scoped assignment DENY against a non-matching target domain", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { scope: { type: "domain", value: "customer" } })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
@@ -412,7 +412,7 @@ check("Scope: domain-scoped assignment DENY against a non-matching target domain
 });
 check("Scope: domain-scoped assignment ALLOW against a matching target domain", () => {
   const result = resolveEffectivePermission({
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     assignments: [activeAssignment("admin", { scope: { type: "domain", value: "customer" } })],
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,

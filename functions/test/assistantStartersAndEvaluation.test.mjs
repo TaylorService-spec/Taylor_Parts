@@ -46,7 +46,7 @@ test("starters are filtered by EFFECTIVE authority, so two people see different 
 test("a starter whose tool has not shipped is hidden, not offered", () => {
   // Authority alone is not enough: the tool must exist. Offering a question that always fails
   // teaches users to distrust the assistant faster than its absence does.
-  const withoutTools = startersFor("CUSTOMER", authority(["account.record.read"]), new Set());
+  const withoutTools = startersFor("CUSTOMER", authority(["customer.record.read"]), new Set());
   assert.deepEqual(withoutTools, []);
 });
 

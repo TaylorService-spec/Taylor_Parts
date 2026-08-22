@@ -116,10 +116,6 @@
    "operableCount": 72,
    "blockedCount": 44,
    "granted": [
-    "account.governedField.write",
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
     "admin.roleAssignment.write",
@@ -129,6 +125,10 @@
     "coverage.write",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.governedField.write",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "equipment.compatibility.correct",
     "equipment.compatibility.import",
     "equipment.compatibility.verify",
@@ -234,14 +234,14 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.governedField.write",
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "admin.accessRequest.decide",
     "admin.roleAssignment.write",
     "admin.userStatus.write",
     "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "inventory.action.create",
     "inventory.action.read",
     "inventory.analytics.read",
@@ -429,10 +429,10 @@
    "operableCount": 13,
    "blockedCount": 13,
    "granted": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -457,10 +457,10 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "inventory.action.read",
     "inventory.catalog.manage",
     "inventory.transaction.read",
@@ -495,9 +495,9 @@
    "operableCount": 7,
    "blockedCount": 10,
    "granted": [
-    "account.governedField.write",
-    "account.record.read",
     "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -514,9 +514,9 @@
     "warehouse.transferOrder.read"
    ],
    "operableNow": [
-    "account.governedField.write",
-    "account.record.read",
     "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
@@ -543,8 +543,8 @@
    "operableCount": 6,
    "blockedCount": 10,
    "granted": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -561,8 +561,8 @@
     "warehouse.transferOrder.read"
    ],
    "operableNow": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
@@ -591,12 +591,12 @@
    "operableCount": 5,
    "blockedCount": 10,
    "granted": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -608,10 +608,10 @@
     "salesOrder.write"
    ],
    "operableNow": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "inventory.transaction.read"
    ],
    "grantedButInactive": [
@@ -635,7 +635,7 @@
    "operableCount": 10,
    "blockedCount": 5,
    "granted": [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.action.read",
     "inventory.balance.read",
@@ -652,7 +652,7 @@
     "warehouse.transferOrder.read"
    ],
    "operableNow": [
-    "account.record.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.transaction.read",
     "reorder.purchaseOrder.create",
@@ -681,8 +681,8 @@
    "operableCount": 6,
    "blockedCount": 9,
    "granted": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
@@ -698,8 +698,8 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.catalog.manage",
     "inventory.transaction.read",
     "workOrder.create",
@@ -725,9 +725,9 @@
    "operableCount": 14,
    "blockedCount": 1,
    "granted": [
-    "account.record.create",
-    "account.record.read",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.action.read",
     "inventory.catalog.manage",
@@ -742,9 +742,9 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.create",
-    "account.record.read",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.catalog.manage",
     "inventory.transaction.read",
@@ -771,11 +771,11 @@
    "operableCount": 4,
    "blockedCount": 10,
    "granted": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -787,9 +787,9 @@
     "salesOrder.write"
    ],
    "operableNow": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "inventory.transaction.read"
    ],
    "grantedButInactive": [
@@ -815,8 +815,8 @@
    "operableCount": 7,
    "blockedCount": 6,
    "granted": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -830,8 +830,8 @@
     "warehouse.transferOrder.read"
    ],
    "operableNow": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.catalog.manage",
     "inventory.transaction.read",
@@ -858,7 +858,7 @@
    "operableCount": 4,
    "blockedCount": 9,
    "granted": [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -873,7 +873,7 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.read",
+    "customer.record.read",
     "inventory.transaction.read",
     "workOrder.create",
     "workOrder.transition"
@@ -898,8 +898,8 @@
    "operableCount": 7,
    "blockedCount": 6,
    "granted": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.balance.read",
@@ -913,8 +913,8 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.catalog.manage",
     "inventory.transaction.read",
     "workOrder.cancel",
@@ -979,8 +979,8 @@
    "operableCount": 5,
    "blockedCount": 5,
    "granted": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -991,8 +991,8 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.transaction.read",
     "workOrder.create",
     "workOrder.transition"
@@ -1013,7 +1013,7 @@
    "operableCount": 4,
    "blockedCount": 5,
    "granted": [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -1024,7 +1024,7 @@
     "workOrder.transition"
    ],
    "operableNow": [
-    "account.record.read",
+    "customer.record.read",
     "inventory.transaction.read",
     "workOrder.create",
     "workOrder.transition"
@@ -1047,14 +1047,14 @@
    "operableCount": 1,
    "blockedCount": 4,
    "granted": [
-    "account.record.read",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.read",
     "opportunity.read",
     "salesOrder.read"
    ],
    "operableNow": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "grantedButInactive": [
     "crm.activity.create",
@@ -1071,16 +1071,16 @@
    "operableCount": 4,
    "blockedCount": 1,
    "granted": [
-    "account.governedField.write",
-    "account.record.read",
     "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "reorder.purchaseOrder.read",
     "salesOrder.read"
    ],
    "operableNow": [
-    "account.governedField.write",
-    "account.record.read",
     "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "reorder.purchaseOrder.read"
    ],
    "grantedButInactive": [
@@ -1118,15 +1118,15 @@
    "operableCount": 4,
    "blockedCount": 0,
    "granted": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "workOrder.create"
    ],
    "operableNow": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "workOrder.create"
    ],
    "grantedButInactive": []
@@ -1290,10 +1290,10 @@
    "operableCount": 1,
    "blockedCount": 0,
    "granted": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "operableNow": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "grantedButInactive": []
   },

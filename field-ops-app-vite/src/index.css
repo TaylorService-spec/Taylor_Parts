@@ -557,6 +557,9 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      and it measured 34x30 -- below WCAG 2.5.5 and every platform HIG. */
   width: 44px; height: 44px; padding: 0;
   background: transparent; border: 1px solid var(--color-border-strong);
+  /* Declared even though the bars below carry their own colour: an icon button that later
+     gains a label should not have to rediscover this. */
+  color: var(--color-text-secondary);
   border-radius: var(--radius-sm); cursor: pointer;
 }
 .fo-navtoggle:hover { background: var(--color-surface-sunken); }
@@ -1324,6 +1327,12 @@ button:hover {
   padding: 8px 10px;
   border: none;
   background: transparent;
+  /* RE-GROUNDING A BUTTON MEANS OWNING ITS FOREGROUND. The global `button` rule pairs a green
+     fill with `color: white`. Overriding the fill to transparent -- over the elevated white
+     panel above -- kept the white text, so every customer NAME in this dropdown rendered white
+     on white. The status beside it stayed readable only because `.fo-muted` sets its own colour,
+     which is what made the result look like a nameless row rather than an invisible one. */
+  color: var(--color-text-primary);
   cursor: pointer;
   font-size: 14px;
 }
@@ -3985,8 +3994,70 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   gap: 12px;
   margin: 8px 0 12px;
 }
-.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #23383D; }
-.fo-portfolio-card-label { font-size: 13px; color: #667; }
+/* PORTFOLIO STATUS CARDS.
+   These render as bare <button>, so the global `button` rule already paints them
+   --color-brand-secondary (#1C4638) with white text. The two child spans then overrode that
+   colour with #23383D and #667 -- values written for a light card that was never built. The
+   result was dark-on-dark: the count measured 1.16:1 and the label 1.88:1 against the green,
+   where AA wants 4.5:1. The numbers were effectively invisible.
+   The card is DELIBERATELY dark green. What was wrong was the text, so the text is fixed. */
+.fo-portfolio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding: 10px 16px;
+  /* A filter control is a tap target before it is a statistic. */
+  min-height: 44px;
+  min-width: 88px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--color-brand-secondary);
+  text-align: left;
+}
+.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #FFFFFF; }        /* 10.59:1 */
+/* Secondary, not dull: light enough to stay AA (8.85:1) while still reading as the caption
+   rather than competing with the number it labels. */
+.fo-portfolio-card-label { font-size: 13px; color: #E3EDE8; }
+
+/* THE SELECTED STATE HAD NO STYLE AT ALL. `fo-portfolio-card-active` was applied by the
+   component and matched nothing in this stylesheet, so clicking a status filter changed the
+   result set with no visible confirmation of which filter was on -- and aria-pressed was the
+   only signal a sighted user never receives. */
+.fo-portfolio-card-active {
+  background: var(--color-brand-primary);
+  border-color: #E3EDE8;
+}
+.fo-portfolio-card:hover { border-color: #E3EDE8; }
+.fo-portfolio-card:focus-visible {
+  outline: 2px solid var(--color-brand-secondary);
+  outline-offset: 2px;
+}
+/* RELATIONSHIP / FACET CHIPS.
+   Same defect as the portfolio cards and worth stating separately: `.fo-filter-chip` and
+   `.fo-filter-chip-active` matched NOTHING in this stylesheet, so every chip rendered as the
+   identical global green button and the selected one was indistinguishable from the rest.
+   aria-pressed was the only signal, which is the one a sighted user never receives -- so the
+   screen showed a filtered result set with no visible reason for it. */
+.fo-filter-chip {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-brand-secondary);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+.fo-filter-chip:hover { background: var(--color-surface-sunken); }
+.fo-filter-chip-active {
+  background: var(--color-brand-secondary);
+  color: #FFFFFF;
+}
+.fo-filter-chip:focus-visible {
+  outline: 2px solid var(--color-brand-secondary);
+  outline-offset: 2px;
+}
+
 .fo-portfolio-filters {
   display: flex;
   flex-wrap: wrap;
@@ -4053,6 +4124,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-filter-reset {
   background: none;
+  /* See .fo-global-search-result: white button text on the stone page background. */
+  color: var(--color-text-primary);
   border: 1px solid #D6DCDA;
   border-radius: 6px;
   padding: 4px 10px;
@@ -4385,4 +4458,115 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   textarea {
     min-height: 44px;
   }
+}
+
+/* ============================ APPROVAL REQUESTS ============================
+   Administration > Roles & Permissions > Approval Requests.
+
+   MOBILE IS THE REAL CASE. A privileged approval is time-sensitive and the person who can grant it
+   is frequently not at a desk, so the phone layout is the one that has to work rather than the
+   one that merely renders. Actions stack full-width below 640px and every actionable control keeps
+   a >=44px hit target -- the confirmation for an irreversible elevation is the last place to make
+   someone aim. */
+.fo-approval-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fo-approval-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.fo-approval-item__detail { flex: 1 1 20rem; min-width: 0; }
+
+.fo-approval-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fo-approval-item__actions > * { min-height: 44px; min-width: 44px; }
+
+/* Definition list rather than a table: a table of two columns collapses badly on a phone, and
+   these are facts about one record, not rows to compare across records. */
+.fo-approval-facts { margin: 0.5rem 0 0; display: grid; gap: 0.25rem; }
+.fo-approval-facts > div { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.fo-approval-facts dt { margin: 0; font-weight: 600; min-width: 9rem; }
+.fo-approval-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.fo-approval-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--fo-surface-raised, rgba(127, 127, 127, 0.12));
+}
+
+.fo-approval-confirm {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  /* Respect the iPhone safe area so the panel is never under the home indicator. */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 50;
+}
+
+.fo-approval-confirm__panel { max-width: 32rem; width: 100%; }
+
+.fo-approval-confirm__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.fo-approval-confirm__actions > * { min-height: 44px; flex: 1 1 auto; }
+
+@media (max-width: 640px) {
+  .fo-approval-item__actions { width: 100%; }
+  /* Full-width and comfortably above the 44px floor: on a phone these are the two controls that
+     matter on the screen, and a cramped Approve next to a cramped Reject is a misfire waiting. */
+  .fo-approval-item__actions > * { flex: 1 1 100%; min-height: 48px; }
+  .fo-approval-facts dt { min-width: 100%; }
+}
+
+/* ============================ CLICKABLE LIST ROWS ============================
+   The metadata grid gives an interactive row onClick, tabIndex and Enter/Space handling, so a
+   record has always been reachable by mouse and keyboard. What it never had was any VISUAL
+   affordance: rows rendered as flat text, so nothing told a reader the names were links. The
+   behaviour was complete and undiscoverable, which is the same failure as not building it.
+
+   The whole ROW is the target, not just the name -- so the row carries the hover and the first
+   cell carries the link treatment, rather than pretending the name is a separate control. */
+.fo-list-grid-row-clickable { cursor: pointer; }
+
+.fo-list-grid-row-clickable:hover { background: var(--color-surface-sunken); }
+
+/* Keyboard users get the same signal as mouse users. Inset so the ring is not clipped by the
+   adjacent cell borders. */
+.fo-list-grid-row-clickable:focus-visible {
+  outline: 2px solid var(--color-brand-secondary);
+  outline-offset: -2px;
+}
+
+/* The record label reads as the link. Underlined on hover rather than always, so a dense table
+   does not become a wall of rules -- but coloured at rest, which is what makes it discoverable
+   without hovering. */
+.fo-list-grid-label {
+  color: var(--color-brand-secondary);
+  font-weight: 600;
+}
+
+.fo-list-grid-row-clickable:hover .fo-list-grid-label,
+.fo-list-grid-row-clickable:focus-visible .fo-list-grid-label {
+  text-decoration: underline;
 }

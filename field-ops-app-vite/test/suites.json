@@ -686,6 +686,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/accountWriteContract.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/metadataPurchaseOrderDefinition.test.mjs",
       "runner": "node --test"
     },
@@ -843,6 +847,10 @@
     },
     {
       "file": "test/cssClassCoverage.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/buttonForegroundContrast.test.mjs",
       "runner": "node"
     },
     {

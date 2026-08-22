@@ -164,8 +164,8 @@ ok("technician Account/Location Rules remain admin/dispatcher-only", () => {
 ok("no broad customer-read capability is granted to implement this seam", () => {
   const roles = readFileSync(resolve(HERE, "../src/access/compatibilityRoles.ts"), "utf8");
   const tech = roles.slice(roles.indexOf("TECHNICIAN_ROLE"), roles.indexOf("TECHNICIAN_ROLE") + 2000);
-  assert.ok(!tech.includes("account.record.read"),
-    "technician must not gain account.record.read for this projection");
+  assert.ok(!tech.includes("customer.record.read"),
+    "technician must not gain customer.record.read for this projection");
 });
 
 ok("the callable is exported for deployment", () => {

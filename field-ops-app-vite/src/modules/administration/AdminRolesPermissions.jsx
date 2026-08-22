@@ -12,6 +12,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import ApprovalRequests from "./ApprovalRequests.jsx";
 
 // ADMINISTRATION > ROLES & PERMISSIONS -- read-only Role inspector.
 //
@@ -94,6 +95,9 @@ function CapabilityList({ capabilities, tone }) {
 }
 
 export default function AdminRolesPermissions() {
+  // Surfaced next to the section heading so a waiting approval is visible on arrival rather
+  // than only after scrolling into the queue.
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [roleKey, setRoleKey] = useState("admin");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
@@ -324,6 +328,26 @@ export default function AdminRolesPermissions() {
         <Button type="button" variant="protected" reason="No trusted read of principals exists yet, and no principal holds the required access-record grant.">
           Assign Role
         </Button>
+      </section>
+
+      {/* APPROVAL REQUESTS. The one MUTATING affordance on this screen, and the reason it is here
+          rather than in a script: a privileged Role grant now requires an approval from an
+          authenticated Admin session, and an approval nobody can perform inside EOS is a control
+          the business routes around. The section renders its own denial state -- an operator
+          without approval authority sees "not available", never an empty queue that reads as
+          "nothing to do". */}
+      <section className="fo-panel" aria-label="Approval Requests">
+        <h2>
+          Approval Requests
+          {pendingApprovals > 0 && (
+            <StatusPill tone="attention" label={`${pendingApprovals} pending`} asText />
+          )}
+        </h2>
+        <p className="fo-muted">
+          Privileged Role grants wait here for an authenticated Admin decision. Approving is
+          recorded against your signed-in account -- the approver is never supplied by the client.
+        </p>
+        <ApprovalRequests onPendingCountChange={setPendingApprovals} />
       </section>
     </WorkspaceShell>
   );

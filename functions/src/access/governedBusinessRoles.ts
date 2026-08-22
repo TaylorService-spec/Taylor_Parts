@@ -94,9 +94,9 @@ export const OFFICE_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
-    "account.record.create",
-    "account.record.update",
+    "customer.record.read",
+    "customer.record.create",
+    "customer.record.update",
     "workOrder.create",
   ],
 }) as Role;
@@ -126,7 +126,7 @@ export const MARKETING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "opportunity.read",
     "salesOrder.read",
   ],
@@ -157,7 +157,7 @@ export const PURCHASING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.action.read",
     "inventory.balance.read",
@@ -211,7 +211,7 @@ export const SHOP_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "audit.event.read",
     "finance.read",
     "inventory.balance.read",
@@ -238,7 +238,7 @@ export const SHOP_ASSOCIATE_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -258,9 +258,9 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "audit.event.read",
     "finance.read",
     "inventory.balance.read",
@@ -298,9 +298,9 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -331,8 +331,8 @@ export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.governedField.write",
-    "account.record.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "audit.event.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
@@ -352,7 +352,7 @@ export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
 }) as Role;
 
 // Spec §26.2 -- financial oversight/policy authority via the one
-// existing id that concretely matches ("account.governedField.write",
+// existing id that concretely matches ("customer.governedField.write",
 // Issue #175's admin-only commercial-terms/tax-status field), distinct
 // from Accounting Manager's operational read-only grant. Margin/cost
 // visibility and finance-specific reporting are a recorded catalog gap
@@ -366,8 +366,8 @@ export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   compatibility: false,
   permissions: [
     "audit.event.read",
-    "account.governedField.write",
-    "account.record.read",
+    "customer.governedField.write",
+    "customer.record.read",
     "reorder.purchaseOrder.read",
     "salesOrder.read",
   ],
@@ -395,7 +395,7 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "audit.event.read",
     "finance.read",
     "fulfillment.coordinatedVisit.read",
@@ -414,9 +414,9 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
 // Spec §26.2/§27.4 -- cross-domain operational oversight (Customer,
 // Service, Inventory, Warehouse, Purchasing) via read-heavy grants plus
 // Work Order lifecycle authority. Deliberately excludes
-// account.record.create/update (oversight is not direct customer-
+// customer.record.create/update (oversight is not direct customer-
 // editing authority in this conservative reading),
-// account.governedField.write, and every admin.*/reorder.request.assign/
+// customer.governedField.write, and every admin.*/reorder.request.assign/
 // approve/reject/cancel id ("no automatic role administration"). The
 // three warehouse.*.read ids (Spec §27.2) close the Warehouse-specific
 // catalog gap §26.4 originally recorded here.
@@ -429,12 +429,12 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
   compatibility: false,
   permissions: [
     "audit.event.read",
-    "account.record.read",
+    "customer.record.read",
     // Owner ruling 2026-08-18: "operationsManager should be able to create accounts also".
-    // CREATE only -- account.record.update and account.governedField.write stay DENIED, so
+    // CREATE only -- customer.record.update and customer.governedField.write stay DENIED, so
     // this Role can open a new Customer but cannot amend an existing one. That asymmetry is
     // intentional and pinned by test; it is not an oversight to be "completed" later.
-    "account.record.create",
+    "customer.record.create",
     "workOrder.create",
     "workOrder.transition",
     "workOrder.cancel",
@@ -519,9 +519,9 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "audit.event.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
@@ -556,7 +556,7 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "audit.event.read",
     "inventory.action.read",
     "inventory.balance.read",
@@ -597,7 +597,7 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "audit.event.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
@@ -621,7 +621,7 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -650,7 +650,7 @@ export const CONTROLLER_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
     "audit.event.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
@@ -686,7 +686,7 @@ export const SUPPORT_STAFF_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "account.record.read",
+    "customer.record.read",
   ],
 }) as Role;
 

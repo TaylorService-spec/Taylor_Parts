@@ -6,7 +6,7 @@
 // so they legitimately receive `customerId` and `locationId`. They may NOT read
 // the referenced `accounts` / `locations` records — both are
 // `allow read: if isAdminOrDispatcher()` — and the technician Role does not hold
-// `account.record.read`. Field Mode therefore had no governed way to answer
+// `customer.record.read`. Field Mode therefore had no governed way to answer
 // "who is the customer / which site am I going to?".
 //
 // The Owner-approved resolution (Option 1) is this: a trusted server projection,

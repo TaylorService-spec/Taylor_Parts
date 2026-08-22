@@ -26,7 +26,7 @@ export const VERDICT = Object.freeze({
 // `requires` must all be held. `forbids` are capabilities whose presence alongside this assignment
 // is a segregation-of-duties conflict rather than a bonus.
 export const WORKSTREAM_REQUIREMENTS = Object.freeze({
-  [WORKSTREAM.CRM_SALES]: { requires: ["account.record.read", "opportunity.read"], forbids: [] },
+  [WORKSTREAM.CRM_SALES]: { requires: ["customer.record.read", "opportunity.read"], forbids: [] },
   [WORKSTREAM.DISPATCH]: { requires: ["workOrder.transition"], forbids: ["admin.roleAssignment.write"] },
   [WORKSTREAM.SERVICE]: { requires: ["workOrder.transition"], forbids: [] },
   [WORKSTREAM.PARTS_LOOKUP]: { requires: ["inventory.balance.read"], forbids: [] },
@@ -51,7 +51,7 @@ export const WORKSTREAM_REQUIREMENTS = Object.freeze({
   // do administrative work on one. No capability governs "office administration" as such, so this
   // maps to what actually exists rather than to an invented id.
   [WORKSTREAM.BUSINESS_ADMINISTRATION]: {
-    requires: ["account.record.read"],
+    requires: ["customer.record.read"],
     // The whole point of the split: business administration must NOT carry security administration.
     forbids: ["admin.roleAssignment.write"],
   },

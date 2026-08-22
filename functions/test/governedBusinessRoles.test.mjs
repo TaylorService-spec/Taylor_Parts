@@ -344,25 +344,25 @@ check("every Permission id referenced by any governed business Role exists in th
 
 check("General Employee grants nothing", () => {
   assert.deepEqual(GENERAL_EMPLOYEE_ROLE.permissions, []);
-  for (const permissionId of ["account.record.read", "workOrder.create", "admin.userStatus.write"]) {
+  for (const permissionId of ["customer.record.read", "workOrder.create", "admin.userStatus.write"]) {
     assert.equal(resolve(permissionId, "generalEmployee", GOVERNED_BUSINESS_ROLES).decision, "DENY");
   }
 });
 
 check("Office Manager: Customer read/create/update + Work Order create; no governed-field write, no lifecycle execution, no admin authority", () => {
-  for (const id of ["account.record.read", "account.record.create", "account.record.update", "workOrder.create"]) {
+  for (const id of ["customer.record.read", "customer.record.create", "customer.record.update", "workOrder.create"]) {
     assert.equal(resolve(id, "officeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
-  for (const id of ["account.governedField.write", "workOrder.transition", "workOrder.cancel", "admin.roleAssignment.write"]) {
+  for (const id of ["customer.governedField.write", "workOrder.transition", "workOrder.cancel", "admin.roleAssignment.write"]) {
     assert.equal(resolve(id, "officeManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
 
 check("Sales Manager: Customer read/create/update + inventory visibility; still no governed-field write", () => {
-  for (const id of ["account.record.read", "account.record.create", "account.record.update", "inventory.transaction.read"]) {
+  for (const id of ["customer.record.read", "customer.record.create", "customer.record.update", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
-  assert.equal(resolve("account.governedField.write", "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  assert.equal(resolve("customer.governedField.write", "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY");
 });
 
 // Owner ruling 2026-08-18: salesOrder.read granted to Sales Manager. It is registered
@@ -384,19 +384,19 @@ check("Sales Manager: no write authority over orders or purchasing came with the
 });
 
 check("Accounting Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
-  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
+  for (const id of ["customer.record.read", "customer.governedField.write", "reorder.purchaseOrder.read"]) {
     assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
-  for (const id of ["account.record.create", "account.record.update"]) {
+  for (const id of ["customer.record.create", "customer.record.update"]) {
     assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
 
 check("Finance Manager: Customer read + governed-field write + PO read; no ordinary Customer create/update", () => {
-  for (const id of ["account.record.read", "account.governedField.write", "reorder.purchaseOrder.read"]) {
+  for (const id of ["customer.record.read", "customer.governedField.write", "reorder.purchaseOrder.read"]) {
     assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
-  for (const id of ["account.record.create", "account.record.update"]) {
+  for (const id of ["customer.record.create", "customer.record.update"]) {
     assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
@@ -508,7 +508,7 @@ check("Accounting Manager retains everything Finance Manager holds (the 2026-08-
     assert.ok(accountingSet.has(id), `accountingManager lost "${id}", which the 2026-08-18 parity ruling granted it`);
   }
   assert.ok(
-    accountingSet.has("account.governedField.write"),
+    accountingSet.has("customer.governedField.write"),
     "parity was reached by RAISING Accounting to Finance, not by lowering Finance",
   );
   // The 2026-08-19 purchasing grant briefly made Accounting exceed Finance. The 2026-08-20
@@ -526,7 +526,7 @@ check("Marketing Manager exists, is a peer of Sales Manager, and holds only read
   const marketing = GOVERNED_BUSINESS_ROLES.marketingManager;
   assert.ok(marketing, "marketingManager must exist");
   assert.equal(marketing.compatibility, false);
-  for (const id of ["account.record.read", "opportunity.read", "salesOrder.read"]) {
+  for (const id of ["customer.record.read", "opportunity.read", "salesOrder.read"]) {
     assert.ok(marketing.permissions.includes(id), `marketingManager must hold ${id}`);
   }
   // No write anywhere. The matrix gives Marketing CRED over Marketing Initiatives, and no
@@ -549,7 +549,7 @@ check("Service Manager is the fieldManager id -- the label changed, the id did n
 });
 
 check("Field Manager: full Work Order lifecycle + field-inventory read + Customer read; no reorder/purchasing execution", () => {
-  for (const id of ["account.record.read", "workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
+  for (const id of ["customer.record.read", "workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
     assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
   for (const id of ["reorder.request.assign", "reorder.purchaseOrder.create", "inventory.action.create"]) {
@@ -605,7 +605,7 @@ check("fulfillment.coordinatedVisit.read: no OTHER Role (compatibility or govern
 
 check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; no role administration, no reorder decisions", () => {
   for (const id of [
-    "account.record.read",
+    "customer.record.read",
     "workOrder.create",
     "workOrder.transition",
     "workOrder.cancel",
@@ -622,10 +622,10 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
   // Owner ruling 2026-08-18: create is now granted. Update and governed-field write are
   // NOT -- this Role can open a Customer but cannot amend one, which is the deliberate
   // asymmetry, not a half-finished grant.
-  assert.equal(resolve("account.record.create", "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+  assert.equal(resolve("customer.record.create", "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
   for (const id of [
-    "account.record.update",
-    "account.governedField.write",
+    "customer.record.update",
+    "customer.governedField.write",
     "admin.userStatus.write",
     "admin.roleAssignment.write",
     "reorder.request.assign",
@@ -647,7 +647,7 @@ check("Inventory CREATE Executor: grants ONLY inventory.catalog.manage", () => {
 check("Inventory CREATE Executor: inherits NO other capability (activate, admin, customer, work order, reorder, warehouse)", () => {
   for (const id of [
     "inventory.catalog.activate", // deliberately withheld -- lifecycle is a separate step
-    "account.record.read", "account.record.create", "account.governedField.write",
+    "customer.record.read", "customer.record.create", "customer.governedField.write",
     "workOrder.create", "workOrder.transition", "workOrder.cancel",
     "admin.roleAssignment.write", "admin.userStatus.write",
     "reorder.request.assign", "warehouse.record.read", "inventory.transaction.read",
@@ -706,7 +706,7 @@ check("GRANT IS NOT ACTIVATION: both CRM ids still resolve DENY while registered
 check("CRM Activity Contributor: recording history confers NO commercial write authority", () => {
   // The activity record REFERENCES Account/Opportunity/Sales Order; it never restates or mutates them.
   for (const id of [
-    "account.record.create", "account.record.update", "account.governedField.write",
+    "customer.record.create", "customer.record.update", "customer.governedField.write",
     "opportunity.write", "salesOrder.write", "finance.invoice.issue",
     "admin.roleAssignment.write",
   ]) {
@@ -905,7 +905,7 @@ check("Inventory Catalog Administrator: grants EXACTLY catalog read + manage + a
 
 check("Inventory Catalog Administrator: inherits NO capability outside the catalog resource", () => {
   for (const id of [
-    "account.record.read", "account.record.create", "account.governedField.write",
+    "customer.record.read", "customer.record.create", "customer.governedField.write",
     "workOrder.create", "workOrder.transition", "workOrder.cancel",
     "admin.roleAssignment.write", "admin.userStatus.write",
     "reorder.request.assign", "warehouse.record.read", "inventory.transaction.read",
@@ -1279,13 +1279,13 @@ check("the three compatibility Roles are unchanged: same ids, same permission se
   assert.equal(DISPATCHER_ROLE.privileged, undefined);
   assert.equal(TECHNICIAN_ROLE.compatibility, true);
   // A spot-check of admin's own long-standing grant, unaffected by this file's import.
-  assert.ok(ADMIN_ROLE.permissions.includes("account.governedField.write"));
+  assert.ok(ADMIN_ROLE.permissions.includes("customer.governedField.write"));
   assert.ok(ADMIN_ROLE.permissions.includes("admin.roleAssignment.write"));
 });
 
 check("resolving against COMPATIBILITY_ROLES alone (no governed business Roles mixed in) is unaffected by this file existing", () => {
-  assert.equal(resolve("account.record.read", "admin", COMPATIBILITY_ROLES).decision, "ALLOW");
-  assert.equal(resolve("account.record.read", "technician", COMPATIBILITY_ROLES).decision, "DENY");
+  assert.equal(resolve("customer.record.read", "admin", COMPATIBILITY_ROLES).decision, "ALLOW");
+  assert.equal(resolve("customer.record.read", "technician", COMPATIBILITY_ROLES).decision, "DENY");
 });
 
 // === Inert-on-merge: the two catalogs are disjoint id spaces, never silently merged ===

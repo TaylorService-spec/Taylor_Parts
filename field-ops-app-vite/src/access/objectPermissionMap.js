@@ -32,7 +32,7 @@ export const VERB_LABEL = Object.freeze({
 // Objects in the CRUD matrix's own order, so the screen and the workbook read the same way.
 export const OBJECT_PERMISSIONS = Object.freeze([
   { object: "Accounts", domain: "CRM",
-    C: ["account.record.create"], R: ["account.record.read"], E: ["account.record.update", "account.governedField.write"], D: [] },
+    C: ["customer.record.create"], R: ["customer.record.read"], E: ["customer.record.update", "customer.governedField.write"], D: [] },
   { object: "Contacts", domain: "CRM", rulesOnly: "contacts", C: [], R: [], E: [], D: [] },
   { object: "Customer Locations", domain: "CRM", rulesOnly: "locations", C: [], R: [], E: [], D: [] },
   { object: "Opportunities", domain: "Sales",

@@ -57,8 +57,8 @@ export const CLASS = Object.freeze({
 const DECIDED = {
   "fulfillment.coordinatedVisit.read": "#113",
   "salesOrder.read": "#114", "inventory.transaction.read": "#114",
-  "reorder.purchaseOrder.read": "#114", "account.governedField.write": "#114",
-  "account.record.create": "#114", "account.record.read": "#114",
+  "reorder.purchaseOrder.read": "#114", "customer.governedField.write": "#114",
+  "customer.record.create": "#114", "customer.record.read": "#114",
   "inventory.catalog.manage": "OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
   "crm.activity.read": "OWNER-2026-08-19", "crm.activity.create": "OWNER-2026-08-19",
   "inventory.stock.receive": "EI Phase-2 grant gate",
@@ -118,9 +118,9 @@ const decidedHolderClaims = [
   { cap: "salesOrder.read", holders: ["salesManager", "financeManager", "accountingManager"], ref: "#114" },
   { cap: "inventory.transaction.read", holders: ["salesManager"], ref: "#114" },
   { cap: "reorder.purchaseOrder.read", holders: ["financeManager", "accountingManager"], ref: "#114" },
-  { cap: "account.governedField.write", holders: ["accountingManager"], ref: "#114" },
-  { cap: "account.record.create", holders: ["operationsManager"], ref: "#114" },
-  { cap: "account.record.read", holders: BUSINESS.filter((r) => r.endsWith("Manager")), ref: "#114 every manager Role" },
+  { cap: "customer.governedField.write", holders: ["accountingManager"], ref: "#114" },
+  { cap: "customer.record.create", holders: ["operationsManager"], ref: "#114" },
+  { cap: "customer.record.read", holders: BUSINESS.filter((r) => r.endsWith("Manager")), ref: "#114 every manager Role" },
 ];
 for (const claim of decidedHolderClaims) {
   for (const r of claim.holders) {

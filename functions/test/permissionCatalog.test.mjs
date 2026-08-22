@@ -77,9 +77,9 @@ check("no entry is deprecated without a successor id", () => {
 });
 
 check("findPermission resolves a known id", () => {
-  const found = findPermission("account.record.read");
+  const found = findPermission("customer.record.read");
   assert.ok(found);
-  assert.equal(found.id, "account.record.read");
+  assert.equal(found.id, "customer.record.read");
 });
 
 check("findPermission returns undefined for an unknown id", () => {
@@ -129,7 +129,7 @@ check("isValidReportObjectReadCapabilityId accepts the exact adopted shape only"
   assert.ok(!isValidReportObjectReadCapabilityId("report.customer.field.name.read"), "a field id is not an object id");
   assert.ok(!isValidReportObjectReadCapabilityId("Report.customer.read"), "wrong case must not match");
   assert.ok(!isValidReportObjectReadCapabilityId("report.customer.write"), "wrong action must not match");
-  assert.ok(!isValidReportObjectReadCapabilityId("account.record.read"), "a non-report id must not match");
+  assert.ok(!isValidReportObjectReadCapabilityId("customer.record.read"), "a non-report id must not match");
 });
 
 check("isValidReportFieldReadCapabilityId accepts the exact adopted shape only", () => {
@@ -155,7 +155,7 @@ check("every wave-1 report.* id is registered and passes isValidPermissionId (th
 
 check("isActivePermission: true for a registered, active id", () => {
   assert.equal(isActivePermission("report.customer.field.name.read"), true);
-  assert.equal(isActivePermission("account.record.read"), true, "an ordinary pre-existing id with no active flag is active");
+  assert.equal(isActivePermission("customer.record.read"), true, "an ordinary pre-existing id with no active flag is active");
 });
 
 check("isActivePermission: false for a registered but explicitly inactive id (ADR-007 sec2.6 sensitive-by-default)", () => {

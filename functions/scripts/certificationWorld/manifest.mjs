@@ -28,7 +28,23 @@
 // 1.0.0 world now verifies as a VERSION MISMATCH rather than silently passing while missing 47
 // records. Changing the expected world without changing its version is how a fixture system starts
 // lying about what it contains.
-export const CERTIFICATION_WORLD_VERSION = "1.1.0";
+// 1.2.0 (2026-08-21) -- DATA CORRECTION, not new content. Three defects made records either wrong
+// or invisible, and all three change what the expected world contains:
+//
+//   * `status: "DORMANT"` on 5 customers was fixture drift. DORMANT is not a customer status; the
+//     canonical set is ACTIVE/INACTIVE/PROSPECT/ARCHIVED. Corrected to INACTIVE.
+//   * `nameLower` added. Firestore cannot compare case-insensitively, so customer search queries a
+//     normalized copy of the name; without it, searching "mesquite" could not find "Mesquite".
+//   * `relationshipTypes` populated representatively. Every account previously had none, so the
+//     Relationship filter had nothing to filter and no VENDOR existed anywhere in the world.
+//
+// Seeded records also now carry createdAt/updatedAt, which the seeder stamps at write time rather
+// than the builder -- volatile by declaration, and therefore not part of the fingerprint.
+//
+// THE BUMP IS THE POINT. A sandbox still holding 1.1.0 must report VERSION_MISMATCH rather than
+// COMPLETE: it contains customers with an invalid status and no searchable name, and a fixture
+// system that changes its expected world without changing its version is lying about what it holds.
+export const CERTIFICATION_WORLD_VERSION = "1.2.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

@@ -25,7 +25,7 @@ import { buildWorkOrderPartsReadiness } from "./workOrderPartsReadiness.js";
  *
  * A technician cannot currently resolve those references: `firestore.rules` gates
  * `accounts`, `locations` and `equipment` reads to `isAdminOrDispatcher()`, and the
- * technician compatibility Role does not hold `account.record.read`. So this projection
+ * technician compatibility Role does not hold `customer.record.read`. So this projection
  * reports customer identity as an explicit, honest state and NEVER fabricates a label,
  * never shows a raw id as if it were a name, and never silently omits the field so the
  * screen reads as though a customer were absent.

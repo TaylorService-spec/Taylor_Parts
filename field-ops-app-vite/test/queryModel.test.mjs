@@ -23,7 +23,7 @@ const entity = makeEntityDefinition({
     makeFieldDefinition({ id: "createdAt", entityId: "workOrder", label: "Created", type: "TIMESTAMP", sortable: true }),
   ],
   relationships: [
-    makeRelationshipDefinition({ id: "workOrder.account", label: "Account", fromEntityId: "workOrder", toEntityId: "account", viaField: "accountId", cardinality: "MANY_TO_ONE", traversalCapability: "account.record.read" }),
+    makeRelationshipDefinition({ id: "workOrder.account", label: "Account", fromEntityId: "workOrder", toEntityId: "account", viaField: "accountId", cardinality: "MANY_TO_ONE", traversalCapability: "customer.record.read" }),
   ],
 });
 
@@ -107,7 +107,7 @@ test("traversal authority is the RELATED entity's, not this one's", () => {
   const query = q({ where: traversal("workOrder.account", comparison("status", "EQUALS", "OPEN")) });
   const denied = validateAuthority(query, entity, {});
   assert.ok(denied.some((p) => p.code === "DENIED_TRAVERSAL"));
-  assert.deepEqual(validateAuthority(query, entity, { "account.record.read": true }), []);
+  assert.deepEqual(validateAuthority(query, entity, { "customer.record.read": true }), []);
 });
 
 // --- queryability ------------------------------------------------------------

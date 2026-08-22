@@ -1,5 +1,6 @@
 import { ACCOUNTS_COLLECTION } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
+import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
 // Revives the previously dead domain/customers.js (zero importers,
@@ -40,10 +41,31 @@ import { makeCollectionStore } from "../firebase/collectionStore";
 // Profile mutations move there and direct client mutation is Rules-denied.
 export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION);
 
+// ============================ THE DERIVED SEARCH NAME ============================
+//
+// `nameLower` is a normalized copy of `name`, and the customer search box queries it rather than
+// `name` because Firestore cannot compare case-insensitively -- searching "mesquite" could not find
+// "Mesquite Soda Works" while the query ran against the display name.
+//
+// A derived field is only as good as its weakest writer. If ONE path sets `name` without setting
+// `nameLower`, that customer becomes permanently unfindable by search, and the symptom -- "search
+// sometimes doesn't find things" -- gives no hint of the cause. So the derivation happens HERE, in
+// the writers themselves, rather than at the call sites: a caller cannot forget what it never had
+// to remember. `accountWriteContract.test.mjs` asserts that this stays true.
+
+/** Fold the derived field in whenever a name is present on the payload. */
+function withDerivedSearchName(data) {
+  if (!data || typeof data !== "object") return data;
+  // Absent `name` means this write is not touching the name, so the stored derivation still
+  // matches and must not be clobbered with the empty string.
+  if (!("name" in data)) return data;
+  return { ...data, [SEARCH_NAME_FIELD]: normalizeNameForSearch(data.name) };
+}
+
 export function createAccount(data) {
-  return accountsStore.add(data);
+  return accountsStore.add(withDerivedSearchName(data));
 }
 
 export function updateAccount(id, data) {
-  return accountsStore.update(id, { ...data, updatedAt: Date.now() });
+  return accountsStore.update(id, { ...withDerivedSearchName(data), updatedAt: Date.now() });
 }

@@ -157,13 +157,13 @@ async function main() {
   });
 
   await check("rejects a permissionIds array exceeding MAX_PERMISSION_IDS", async () => {
-    const tooMany = Array.from({ length: MAX_PERMISSION_IDS + 1 }, (_, i) => `account.record.read${i}`);
+    const tooMany = Array.from({ length: MAX_PERMISSION_IDS + 1 }, (_, i) => `customer.record.read${i}`);
     await assert.rejects(() => resolveEffectiveAccess({ principalUid: "u1", permissionIds: tooMany }), InvalidInputError);
   });
 
   await check("accepts exactly MAX_PERMISSION_IDS entries (boundary)", async () => {
     const principalUid = await seedUser(1);
-    const exactly = Array.from({ length: MAX_PERMISSION_IDS }, () => "account.record.read");
+    const exactly = Array.from({ length: MAX_PERMISSION_IDS }, () => "customer.record.read");
     // All identical -- also proves de-duplication doesn't affect acceptance.
     await assert.doesNotReject(() => resolveEffectiveAccess({ principalUid, permissionIds: exactly }));
   });
@@ -175,8 +175,8 @@ async function main() {
   });
 
   await check("rejects a missing/empty principalUid", async () => {
-    await assert.rejects(() => resolveEffectiveAccess({ permissionIds: ["account.record.read"] }), InvalidInputError);
-    await assert.rejects(() => resolveEffectiveAccess({ principalUid: "", permissionIds: ["account.record.read"] }), InvalidInputError);
+    await assert.rejects(() => resolveEffectiveAccess({ permissionIds: ["customer.record.read"] }), InvalidInputError);
+    await assert.rejects(() => resolveEffectiveAccess({ principalUid: "", permissionIds: ["customer.record.read"] }), InvalidInputError);
   });
 
   // === Unassigned user -- fail closed to DENY on everything, accessVersion bootstraps to 0 ===
@@ -185,11 +185,11 @@ async function main() {
     const principalUid = await seedUser(); // no users/{uid} doc
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["account.record.read", "workOrder.transition", "report.customer.read"],
+      permissionIds: ["customer.record.read", "workOrder.transition", "report.customer.read"],
     });
     assert.equal(result.accessVersion, 0);
     assert.deepEqual(result.decisions, {
-      "account.record.read": false,
+      "customer.record.read": false,
       "workOrder.transition": false,
       "report.customer.read": false,
     });
@@ -206,9 +206,9 @@ async function main() {
     await grantRole(principalUid, "admin");
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["account.record.read", "workOrder.create", "report.customer.read"],
+      permissionIds: ["customer.record.read", "workOrder.create", "report.customer.read"],
     });
-    assert.equal(result.decisions["account.record.read"], true);
+    assert.equal(result.decisions["customer.record.read"], true);
     assert.equal(result.decisions["workOrder.create"], true);
     assert.equal(
       result.decisions["report.customer.read"],
@@ -222,10 +222,10 @@ async function main() {
     await grantRole(principalUid, "technician");
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["workOrder.transition", "account.record.read", "admin.userStatus.write"],
+      permissionIds: ["workOrder.transition", "customer.record.read", "admin.userStatus.write"],
     });
     assert.equal(result.decisions["workOrder.transition"], true);
-    assert.equal(result.decisions["account.record.read"], false);
+    assert.equal(result.decisions["customer.record.read"], false);
     assert.equal(result.decisions["admin.userStatus.write"], false);
   });
 
@@ -236,9 +236,9 @@ async function main() {
     await grantRole(principalUid, "owner");
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["account.record.read", "report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"],
+      permissionIds: ["customer.record.read", "report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"],
     });
-    assert.equal(result.decisions["account.record.read"], true);
+    assert.equal(result.decisions["customer.record.read"], true);
     assert.equal(result.decisions["report.customer.read"], true);
     assert.equal(result.decisions["report.customer.field.name.read"], true);
     assert.equal(result.decisions["report.equipment.field.location.read"], true);
@@ -263,15 +263,15 @@ async function main() {
   await check("an assignment whose accessVersionAtGrant EXCEEDS the current accessVersion is excluded (stale/inconsistent), denying despite an otherwise-valid grant", async () => {
     const principalUid = await seedUser(1); // current accessVersion = 1
     await grantRole(principalUid, "admin", { accessVersionAtGrant: 5 }); // > current -- impossible under a correct writer, treated as stale
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
-    assert.equal(result.decisions["account.record.read"], false);
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
+    assert.equal(result.decisions["customer.record.read"], false);
   });
 
   await check("an assignment whose accessVersionAtGrant is CONSISTENT with (<=) the current accessVersion still grants normally", async () => {
     const principalUid = await seedUser(5);
     await grantRole(principalUid, "admin", { accessVersionAtGrant: 1 }); // <= current -- legitimately older, still valid
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
-    assert.equal(result.decisions["account.record.read"], true);
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
+    assert.equal(result.decisions["customer.record.read"], true);
   });
 
   // === Inactive assignment -- fail closed ===
@@ -279,8 +279,8 @@ async function main() {
   await check("an assignment with status 'disabled' is excluded, denying despite an otherwise-valid grant", async () => {
     const principalUid = await seedUser(1);
     await grantRole(principalUid, "admin", { status: "disabled" });
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
-    assert.equal(result.decisions["account.record.read"], false);
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
+    assert.equal(result.decisions["customer.record.read"], false);
   });
 
   // === Broken/malformed assignment shape -- excluded, never thrown ===
@@ -293,15 +293,15 @@ async function main() {
       principalUid,
       // roleId, scope, grantedBy, grantedAt, status, accessVersionAtGrant all missing
     });
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
-    assert.equal(result.decisions["account.record.read"], false);
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
+    assert.equal(result.decisions["customer.record.read"], false);
   });
 
   await check("a malformed accessVersion on users/{uid} throws MalformedAccessDataError (never silently treated as 0 or as ALLOW)", async () => {
     const principalUid = await seedUser();
     await db.collection("users").doc(principalUid).set({ accessVersion: "not-a-number" });
     await assert.rejects(
-      () => resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] }),
+      () => resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] }),
       MalformedAccessDataError,
     );
   });
@@ -313,9 +313,9 @@ async function main() {
     await grantRole(principalUid, "admin");
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["account.record.read", "not.a.realPermission"],
+      permissionIds: ["customer.record.read", "not.a.realPermission"],
     });
-    assert.equal(result.decisions["account.record.read"], true);
+    assert.equal(result.decisions["customer.record.read"], true);
     assert.equal(result.decisions["not.a.realPermission"], false);
   });
 
@@ -326,9 +326,9 @@ async function main() {
     await grantRole(principalUid, "admin");
     const result = await resolveEffectiveAccess({
       principalUid,
-      permissionIds: ["account.record.read", "account.record.read", "account.record.read"],
+      permissionIds: ["customer.record.read", "customer.record.read", "customer.record.read"],
     });
-    assert.deepEqual(Object.keys(result.decisions), ["account.record.read"]);
+    assert.deepEqual(Object.keys(result.decisions), ["customer.record.read"]);
   });
 
   // === Cross-principal isolation ===
@@ -338,11 +338,11 @@ async function main() {
     await grantRole(grantedPrincipal, "admin");
     const ungrantedPrincipal = await seedUser(1); // separate principal, no assignment of their own
 
-    const grantedResult = await resolveEffectiveAccess({ principalUid: grantedPrincipal, permissionIds: ["account.record.read"] });
-    const ungrantedResult = await resolveEffectiveAccess({ principalUid: ungrantedPrincipal, permissionIds: ["account.record.read"] });
+    const grantedResult = await resolveEffectiveAccess({ principalUid: grantedPrincipal, permissionIds: ["customer.record.read"] });
+    const ungrantedResult = await resolveEffectiveAccess({ principalUid: ungrantedPrincipal, permissionIds: ["customer.record.read"] });
 
-    assert.equal(grantedResult.decisions["account.record.read"], true);
-    assert.equal(ungrantedResult.decisions["account.record.read"], false);
+    assert.equal(grantedResult.decisions["customer.record.read"], true);
+    assert.equal(ungrantedResult.decisions["customer.record.read"], false);
   });
 
   await check("re-resolving the granted principal AFTER the ungranted one is unaffected by call order (no shared/cached state)", async () => {
@@ -350,9 +350,9 @@ async function main() {
     await grantRole(principalUid, "admin");
     const other = await seedUser(1);
 
-    await resolveEffectiveAccess({ principalUid: other, permissionIds: ["account.record.read"] });
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
-    assert.equal(result.decisions["account.record.read"], true);
+    await resolveEffectiveAccess({ principalUid: other, permissionIds: ["customer.record.read"] });
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
+    assert.equal(result.decisions["customer.record.read"], true);
   });
 
   // === Response shape -- never leaks internal detail ===
@@ -360,9 +360,9 @@ async function main() {
   await check("the response contains ONLY accessVersion and decisions -- no assignment/role/condition/reason detail", async () => {
     const principalUid = await seedUser(1);
     await grantRole(principalUid, "admin");
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["account.record.read"] });
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["customer.record.read"] });
     assert.deepEqual(Object.keys(result).sort(), ["accessVersion", "decisions"]);
-    assert.equal(typeof result.decisions["account.record.read"], "boolean");
+    assert.equal(typeof result.decisions["customer.record.read"], "boolean");
   });
 
   // === Unavailable backend -- fails closed (rejects), never a bogus/partial ALLOW ===
@@ -393,7 +393,7 @@ async function main() {
     };
     await assert.rejects(() =>
       resolveEffectiveAccess(
-        { principalUid: "whoever", permissionIds: ["account.record.read"] },
+        { principalUid: "whoever", permissionIds: ["customer.record.read"] },
         { db: brokenDb },
       ),
     );

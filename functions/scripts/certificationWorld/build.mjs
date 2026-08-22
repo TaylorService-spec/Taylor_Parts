@@ -11,6 +11,11 @@ import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/a
 import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
+import {
+  ACCOUNT_STATUS_VALUES,
+  ACCOUNT_RELATIONSHIP_VALUES,
+  normalizeNameForSearch,
+} from "./domainContracts.mjs";
 
 export const EPOCH = Date.parse("2026-01-05T09:00:00.000Z");
 export const DAY = 86400000;
@@ -27,6 +32,32 @@ const STRESS_NOTE = "Extended operational note retained for visual-stress certif
 const FIRST = ["Dana", "Alex", "Sam", "Jordan", "Riley", "Casey"];
 const LAST = ["Reyes", "Chen", "Patel", "Okafor", "Nguyen", "Alvarez"];
 const TITLES = ["General Manager", "Operations Lead", "Facilities Manager", "Owner"];
+
+// ============================ RELATIONSHIP SPREAD ============================
+//
+// `relationshipTypes` is an OPTIONAL, additive, informational array: an Account may be a customer,
+// a vendor, both, or unstated. The domain is explicit that unset renders no badge and must never
+// silently default to "Customer", so UNSET IS A REAL STATE and the world has to contain some -- a
+// fixture set where every record is populated cannot prove that the unset case is handled.
+//
+// Every cert account previously had NO value, which made the Relationship filter unexercisable:
+// filtering by Customer returned almost nothing, and no vendor existed anywhere in the world.
+//
+// Deterministic by index, and deliberately NOT uniform:
+//
+//   ~8%  VENDOR only            -- a supplier that is not a customer
+//   ~8%  CUSTOMER + VENDOR      -- both at once, which the array shape exists to express
+//   ~8%  unset                  -- the valid "not stated" case, preserved on purpose
+//   rest CUSTOMER               -- the ordinary majority
+//
+// The moduli are coprime with the status/line spreads above so the categories cross-cut rather than
+// stacking onto the same records, which is what makes a filter combination meaningful to test.
+function relationshipTypesFor(i) {
+  if (i % 13 === 5) return [ACCOUNT_RELATIONSHIP_VALUES.VENDOR];
+  if (i % 13 === 9) return [ACCOUNT_RELATIONSHIP_VALUES.CUSTOMER, ACCOUNT_RELATIONSHIP_VALUES.VENDOR];
+  if (i % 13 === 11) return null; // unset: a state the domain permits and the UI must not misread
+  return [ACCOUNT_RELATIONSHIP_VALUES.CUSTOMER];
+}
 
 export function buildWorld() {
   const accounts = [];
@@ -66,15 +97,25 @@ export function buildWorld() {
 
     const acct = {
       name,
+      // Derived, never displayed. Firestore cannot compare case-insensitively, so the search box
+      // queries this copy; see domain/nameNormalization.js for why it is one shared function.
+      nameLower: normalizeNameForSearch(name),
       lineOfBusiness: lineMode === "MIXED" ? "TAYLOR" : lineMode,
       certLineMode: lineMode,
-      status: i % 23 === 0 ? "DORMANT" : "ACTIVE",
+      // DORMANT WAS FIXTURE DRIFT. The canonical statuses are ACTIVE/INACTIVE/PROSPECT/ARCHIVED;
+      // "DORMANT" existed only here, so the portfolio summary refused to bucket those 5 records
+      // (correctly -- it never guesses a status a record does not have) and the screen reported
+      // that the categories did not add up. The UI was right and the data was wrong.
+      status: i % 23 === 0 ? ACCOUNT_STATUS_VALUES.INACTIVE : ACCOUNT_STATUS_VALUES.ACTIVE,
       category: b.category,
       city: b.city, state: "AZ",
       fixtureCompleteness: isSparse ? "SPARSE" : "FULL_FIXTURE",
       dataProvenance: b.real ? PROVENANCE.PUBLIC : PROVENANCE.SYNTHETIC,
       fieldProvenance: b.real ? FIELD_PROVENANCE.real : FIELD_PROVENANCE.synthetic,
     };
+    const rel = relationshipTypesFor(i);
+    if (rel) acct.relationshipTypes = rel;
+
     if (!isSparse) {
       acct.addressLine1 = (1000 + i * 7) + " W Certification Way";
       acct.phone = "602-555-" + pad(1000 + i, 4);

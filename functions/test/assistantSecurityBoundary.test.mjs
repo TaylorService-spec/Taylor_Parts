@@ -55,7 +55,7 @@ function buildRegistry() {
     id: "customer.summary",
     surfaces: ["CUSTOMER"],
     description: "Account summary",
-    requires: ["account.record.read"],
+    requires: ["customer.record.read"],
     deniedMessage: "You do not have access to customer records.",
     async execute() {
       executed.push("customer.summary");
@@ -79,15 +79,15 @@ function buildRegistry() {
 const ROLES = {
   permissionsForRole(roleId) {
     const table = {
-      partsAssociate: ["account.record.read", "inventory.balance.read"],
-      salesperson: ["account.record.read"],
+      partsAssociate: ["customer.record.read", "inventory.balance.read"],
+      salesperson: ["customer.record.read"],
       technician: [],
-      dispatcher: ["account.record.read"],
+      dispatcher: ["customer.record.read"],
     };
     return table[roleId] ?? [];
   },
 };
-const ACTIVE = new Set(["account.record.read", "inventory.balance.read"]);
+const ACTIVE = new Set(["customer.record.read", "inventory.balance.read"]);
 
 const ctx = (overrides = {}) => ({
   companyId: "co-1", actorUid: "u-1", route: "/customers/a1", surface: "CUSTOMER",
@@ -151,7 +151,7 @@ test("UNAUTHORIZED: a granted-but-INACTIVE capability is refused exactly like an
   const authority = resolveEffectiveAuthority(
     { uid: "u-1", companyId: "co-1", businessRoleIds: ["partsAssociate"], functionalRoleIds: [], compatibilityRoleId: null },
     ROLES,
-    new Set(["account.record.read"]), // balance read HELD but inactive in this environment
+    new Set(["customer.record.read"]), // balance read HELD but inactive in this environment
   );
   assert.ok(authority.grantedButInactive.has("inventory.balance.read"));
   assert.equal(authorizeTool(registry.get("customer.balances"), authority).decision, "DENY");

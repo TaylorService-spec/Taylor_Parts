@@ -31,11 +31,11 @@ export interface StarterQuestion {
 export const STARTER_QUESTIONS: readonly StarterQuestion[] = Object.freeze([
   // ── Customer
   { id: "cust.overview", surface: "CUSTOMER", text: "What should I know about this customer?",
-    requiresToolIds: ["customer.summary"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["customer.summary"], requiresCapabilities: ["customer.record.read"] },
   { id: "cust.equipment", surface: "CUSTOMER", text: "What equipment do they have?",
-    requiresToolIds: ["customer.equipment"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["customer.equipment"], requiresCapabilities: ["customer.record.read"] },
   { id: "cust.openService", surface: "CUSTOMER", text: "Are there open service issues?",
-    requiresToolIds: ["customer.openWorkOrders"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["customer.openWorkOrders"], requiresCapabilities: ["customer.record.read"] },
   { id: "cust.opportunities", surface: "CUSTOMER", text: "What opportunities are active?",
     requiresToolIds: ["customer.opportunities"], requiresCapabilities: ["opportunity.read"] },
   { id: "cust.lastContact", surface: "CUSTOMER", text: "When did we last contact them?",
@@ -43,15 +43,15 @@ export const STARTER_QUESTIONS: readonly StarterQuestion[] = Object.freeze([
 
   // ── Work Order
   { id: "wo.next", surface: "WORK_ORDER", text: "What needs to happen next?",
-    requiresToolIds: ["workOrder.context"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["workOrder.context"], requiresCapabilities: ["customer.record.read"] },
   { id: "wo.blockers", surface: "WORK_ORDER", text: "What is blocking this job?",
-    requiresToolIds: ["workOrder.context", "workOrder.partsPlan"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["workOrder.context", "workOrder.partsPlan"], requiresCapabilities: ["customer.record.read"] },
   { id: "wo.parts", surface: "WORK_ORDER", text: "Do we have the parts?",
     requiresToolIds: ["workOrder.partsPlan", "inventory.availability"], requiresCapabilities: ["inventory.balance.read"] },
   { id: "wo.assigned", surface: "WORK_ORDER", text: "Who is assigned?",
-    requiresToolIds: ["workOrder.context"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["workOrder.context"], requiresCapabilities: ["customer.record.read"] },
   { id: "wo.history", surface: "WORK_ORDER", text: "What happened previously?",
-    requiresToolIds: ["workOrder.history"], requiresCapabilities: ["account.record.read"] },
+    requiresToolIds: ["workOrder.history"], requiresCapabilities: ["customer.record.read"] },
 
   // ── Part
   { id: "part.reorder", surface: "PART", text: "Should this be reordered?",

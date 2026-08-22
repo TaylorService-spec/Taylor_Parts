@@ -65,7 +65,7 @@ test("generalManager DOES hold broad business authority -- this is not a role th
   // pass while quietly undoing the grant the Owner actually made.
   const perms = GENERAL_MANAGER_ROLE.permissions || [];
   assert.ok(perms.length >= 20, `expected broad business authority, got ${perms.length}`);
-  for (const expected of ["account.record.create", "salesOrder.write", "opportunity.createSalesOrder",
+  for (const expected of ["customer.record.create", "salesOrder.write", "opportunity.createSalesOrder",
                           "finance.invoice.issue", "workOrder.create", "audit.event.read"]) {
     assert.ok(perms.includes(expected), `generalManager should hold ${expected}`);
   }

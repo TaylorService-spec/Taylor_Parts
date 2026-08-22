@@ -69,10 +69,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // --- admin / dispatcher: Customer + Issue #175 governed field ---
   {
     fixtureLabel: "admin: governed field write",
-    permissionId: "account.governedField.write",
+    permissionId: "customer.governedField.write",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.governedField.write",
+      permissionId: "customer.governedField.write",
       assignments: [assignment("admin")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -81,10 +81,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "dispatcher: governed field write (Issue #175 withheld)",
-    permissionId: "account.governedField.write",
+    permissionId: "customer.governedField.write",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.governedField.write",
+      permissionId: "customer.governedField.write",
       assignments: [assignment("dispatcher")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -93,10 +93,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "dispatcher: Customer record read",
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.read",
+      permissionId: "customer.record.read",
       assignments: [assignment("dispatcher")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -110,8 +110,8 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // match block: read/create/update all gate on isAdminOrDispatcher();
   // the separate governed-field nuance -- dispatcher may create/update only
   // at the governed baseline, admin may set any valid value -- is modeled
-  // by the distinct account.governedField.write permission/Condition,
-  // already covered above; account.record.create/update themselves are
+  // by the distinct customer.governedField.write permission/Condition,
+  // already covered above; customer.record.create/update themselves are
   // unconditional admin/dispatcher grants in compatibilityRoles.ts's shared
   // base, matching the Rules' base isAdminOrDispatcher() gate exactly).
   // `delete` has no corresponding permission id -- firestore.rules denies it
@@ -119,10 +119,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // nothing for the resolver to parity-check.
   {
     fixtureLabel: "admin: Customer record read",
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.read",
+      permissionId: "customer.record.read",
       assignments: [assignment("admin")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -131,10 +131,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "admin: Customer record create",
-    permissionId: "account.record.create",
+    permissionId: "customer.record.create",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.create",
+      permissionId: "customer.record.create",
       assignments: [assignment("admin")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -143,10 +143,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "admin: Customer record update",
-    permissionId: "account.record.update",
+    permissionId: "customer.record.update",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.update",
+      permissionId: "customer.record.update",
       assignments: [assignment("admin")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -155,10 +155,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "dispatcher: Customer record create",
-    permissionId: "account.record.create",
+    permissionId: "customer.record.create",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.create",
+      permissionId: "customer.record.create",
       assignments: [assignment("dispatcher")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -167,10 +167,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "dispatcher: Customer record update",
-    permissionId: "account.record.update",
+    permissionId: "customer.record.update",
     legacyDecision: "ALLOW",
     resolverInput: {
-      permissionId: "account.record.update",
+      permissionId: "customer.record.update",
       assignments: [assignment("dispatcher")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -179,10 +179,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "technician (no operational role): Customer record create",
-    permissionId: "account.record.create",
+    permissionId: "customer.record.create",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.record.create",
+      permissionId: "customer.record.create",
       assignments: [assignment("technician")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -191,10 +191,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "technician (no operational role): Customer record update",
-    permissionId: "account.record.update",
+    permissionId: "customer.record.update",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.record.update",
+      permissionId: "customer.record.update",
       assignments: [assignment("technician")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -203,10 +203,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
   {
     fixtureLabel: "technician (no operational role): Customer governed field write",
-    permissionId: "account.governedField.write",
+    permissionId: "customer.governedField.write",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.governedField.write",
+      permissionId: "customer.governedField.write",
       assignments: [assignment("technician")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -723,10 +723,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // --- pure technician (no operational role): no Customer, no approve ---
   {
     fixtureLabel: "technician (no operational role): Customer record read",
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.record.read",
+      permissionId: "customer.record.read",
       assignments: [assignment("technician")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
@@ -830,10 +830,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // --- fail-closed: no assignment at all (e.g. unauthenticated / unprovisioned principal) ---
   {
     fixtureLabel: "no assignments at all: any permission",
-    permissionId: "account.record.read",
+    permissionId: "customer.record.read",
     legacyDecision: "DENY",
     resolverInput: {
-      permissionId: "account.record.read",
+      permissionId: "customer.record.read",
       assignments: [],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,

@@ -73,10 +73,10 @@ const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
       sites: { isAdminOrDispatcher: 3, isAdmin: 2 },
       row: "row23",
       permissions: [
-        "account.record.read",
-        "account.record.create",
-        "account.record.update",
-        "account.governedField.write",
+        "customer.record.read",
+        "customer.record.create",
+        "customer.record.update",
+        "customer.governedField.write",
       ],
     },
     {

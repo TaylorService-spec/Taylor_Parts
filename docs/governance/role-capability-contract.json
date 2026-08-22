@@ -88,10 +88,10 @@
   "generalManager": {
    "label": "General Manager",
    "directCapabilities": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -118,10 +118,10 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -163,10 +163,10 @@
   "salesManager": {
    "label": "Sales Manager",
    "directCapabilities": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -181,12 +181,12 @@
     "crmActivityContributor"
    ],
    "effectiveBaseline": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "audit.event.read",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -211,9 +211,9 @@
   "salesperson": {
    "label": "Salesperson",
    "directCapabilities": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -228,11 +228,11 @@
     "crmActivityContributor"
    ],
    "effectiveBaseline": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -257,7 +257,7 @@
   "marketingManager": {
    "label": "Marketing Manager",
    "directCapabilities": [
-    "account.record.read",
+    "customer.record.read",
     "opportunity.read",
     "salesOrder.read"
    ],
@@ -265,9 +265,9 @@
     "crmActivityContributor"
    ],
    "effectiveBaseline": [
-    "account.record.read",
     "crm.activity.create",
     "crm.activity.read",
+    "customer.record.read",
     "opportunity.read",
     "salesOrder.read"
    ],
@@ -283,8 +283,8 @@
   "fieldManager": {
    "label": "Service Manager",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -296,8 +296,8 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -319,7 +319,7 @@
   "dispatcher": {
    "label": "Dispatcher",
    "directCapabilities": [
-    "account.record.read",
+    "customer.record.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -332,7 +332,7 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
+    "customer.record.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -380,8 +380,8 @@
   "warehouseManager": {
    "label": "Warehouse Manager",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -397,8 +397,8 @@
     "inventoryLookupReader"
    ],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -496,8 +496,8 @@
   "controller": {
    "label": "Controller",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -515,8 +515,8 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -545,8 +545,8 @@
   "accountingManager": {
    "label": "Accounting Manager",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -564,8 +564,8 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -594,11 +594,11 @@
   "supportStaff": {
    "label": "Support Staff",
    "directCapabilities": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "ruleGovernedObjects": [
     "Contacts",
@@ -609,8 +609,8 @@
   "partsAssociate": {
    "label": "Parts Associate",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -625,8 +625,8 @@
     "inventoryPutAwayOperator"
    ],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -652,8 +652,8 @@
   "partsManager": {
    "label": "Parts Manager",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
@@ -670,8 +670,8 @@
     "inventoryLookupReader"
    ],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
@@ -698,8 +698,8 @@
   "shopManager": {
    "label": "Shop Manager",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -711,8 +711,8 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -734,8 +734,8 @@
   "shopAssociate": {
    "label": "Shop Associate",
    "directCapabilities": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -747,8 +747,8 @@
    ],
    "composedFunctionalRoles": [],
    "effectiveBaseline": [
-    "account.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -777,9 +777,9 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update"
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",
@@ -1133,9 +1133,9 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update"
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",
@@ -1489,9 +1489,9 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update"
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Team / Enterprise reporting",
@@ -1821,9 +1821,9 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update"
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Own records / assigned territory",
@@ -2151,7 +2151,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise marketing",
@@ -2469,7 +2469,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
@@ -2801,7 +2801,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Assigned service region",
@@ -3454,7 +3454,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Warehouse / enterprise inventory",
@@ -4448,7 +4448,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise finance",
@@ -4789,7 +4789,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise finance",
@@ -5130,7 +5130,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
@@ -5462,7 +5462,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
@@ -5794,9 +5794,9 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.create",
-    "account.record.read",
-    "account.record.update"
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",
@@ -6150,7 +6150,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
@@ -6482,7 +6482,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",
@@ -6796,7 +6796,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Service organization",

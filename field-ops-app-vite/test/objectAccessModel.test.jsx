@@ -185,7 +185,7 @@ describe("Objects screen (by-object view)", () => {
     // The thing the role-first grid structurally cannot show: WHICH capability backs a tick.
     openByObject();
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
-    expect(screen.getByText("account.record.read")).toBeTruthy();
+    expect(screen.getByText("customer.record.read")).toBeTruthy();
     expect(screen.getAllByText(/held by/i).length).toBeGreaterThan(0);
   });
 
