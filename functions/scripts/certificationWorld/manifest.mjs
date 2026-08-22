@@ -44,7 +44,23 @@
 // THE BUMP IS THE POINT. A sandbox still holding 1.1.0 must report VERSION_MISMATCH rather than
 // COMPLETE: it contains customers with an invalid status and no searchable name, and a fixture
 // system that changes its expected world without changing its version is lying about what it holds.
-export const CERTIFICATION_WORLD_VERSION = "1.2.0";
+// 1.3.0 (2026-08-22) -- THE INSTALLED BASE. 278 serialized Equipment assets join the world, so the
+// expected record count moves 717 -> 995 and a sandbox holding 1.2.0 is a genuinely different world
+// rather than a stale label.
+//
+// The distribution is deliberately uneven: customers owning nothing (the empty state is a real
+// state), one unit, the ordinary 2-5, a few 6-10, and two high-density sites for visual stress --
+// plus Taylor-only, Icetro-only and mixed fleets, because the Taylor/Ventana reporting separation is
+// measured on lineOfBusiness and needs all three shapes to be measurable. Age and warranty are
+// DERIVED from the install date rather than invented separately, so a unit cannot claim to be new
+// and out of warranty at once.
+// 1.4.0 (2026-08-22) -- THE SERVICE CATALOG. 37 certification parts join the world, sized and
+// spread so all six inventory conditions can exist at once. The sandbox held SEVEN parts, and the
+// conditions in data/inventory.mjs were designed against a catalog that was never built.
+//
+// The parts carry no balances. Balances are created by MOVEMENTS through the authoritative ledger,
+// because on this schema the ledger IS the balance -- see data/inventoryPlan.mjs.
+export const CERTIFICATION_WORLD_VERSION = "1.4.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**
