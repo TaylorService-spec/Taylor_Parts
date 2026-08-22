@@ -199,3 +199,47 @@ test("results are frozen — a caller cannot turn UNKNOWN into a number", () => 
   const r = balance();
   assert.throws(() => { r.onHand = { state: "KNOWN", value: 99 }; }, TypeError);
 });
+
+// ─────────────────────────────── the STORED canonical shape, not the normalized one
+//
+// Every case above hand-builds `{ lines: [...] }` -- the shape normalizeCanonicalPurchaseOrder
+// PRODUCES, never the shape Firestore HOLDS. readPartBalance passes raw stored documents straight
+// through, and a stored canonical purchase order has `items`.
+//
+// So this function returned null for every canonical order and `onOrder` could not see one of
+// them, while this suite stayed green: the arithmetic was always right and the field was never
+// found. A test built from a shape that does not occur in storage can be thorough, correct, and
+// describe a world the database does not contain.
+
+test("a REAL stored canonical purchase order is read from its `items`", () => {
+  // Copied from an actual emulator document, keys and all.
+  const stored = {
+    id: "po-abc123",
+    supplierId: "cw-sup-001",
+    status: "SENT",
+    items: [{ lineId: "L1", partId: "CW-P-0003", quantity: 18, unitPrice: 17.5 }],
+    version: 3,
+    totalCost: 315,
+  };
+  assert.equal(sumOpenOrderedQuantity([stored], "CW-P-0003"), 18);
+  assert.equal(sumOpenOrderedQuantity([stored], "CW-P-9999"), null, "a part not on the order is still UNKNOWN");
+});
+
+test("a purchase order carrying BOTH shapes is counted once, not twice", () => {
+  // Never unioned. If both were read, an order in mid-migration would silently double its
+  // outstanding quantity -- and an overstated inbound figure is the one that makes a shortage
+  // look handled.
+  const both = {
+    status: "SENT",
+    lines: [{ partId: "CW-P-0003", quantity: 5 }],
+    items: [{ partId: "CW-P-0003", quantity: 5 }],
+  };
+  assert.equal(sumOpenOrderedQuantity([both], "CW-P-0003"), 5);
+});
+
+test("an order with neither shape stays UNKNOWN rather than inventing zero", () => {
+  // Absence of a readable line list is not evidence that nothing is on order.
+  assert.equal(sumOpenOrderedQuantity([{ id: "po-1", status: "SENT" }], "CW-P-0003"), null);
+  assert.equal(sumOpenOrderedQuantity([{ id: "po-1", status: "SENT", items: [] }], "CW-P-0003"), null);
+});
+
