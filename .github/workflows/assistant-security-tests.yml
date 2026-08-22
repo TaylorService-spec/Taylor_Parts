@@ -1,0 +1,72 @@
+name: EOS Assistant Security Boundary
+
+# The tests that decide whether the contextual assistant may ship.
+#
+# A failure here is a RELEASE BLOCKER, not a bug to triage: the suite proves that unauthorized data
+# is never RETRIEVED, and therefore cannot reach a model provider. It uses a spy provider that
+# captures the exact prompt, so a leak is an observable fact rather than a judgement about wording.
+#
+# No credential is required and none may be added. The provider is injected; a real key would make
+# this suite slower, non-deterministic, and dependent on a third party for a security result.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/assistant/**"
+      - "functions/test/assistantSecurityBoundary.test.mjs"
+      - "functions/test/assistantStartersAndEvaluation.test.mjs"
+      - "functions/src/access/**"
+      - "docs/architecture/eos-contextual-assistant.md"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/assistant-security-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/assistant/**"
+      - "functions/test/assistantSecurityBoundary.test.mjs"
+      - "functions/test/assistantStartersAndEvaluation.test.mjs"
+      - "functions/src/access/**"
+      - "docs/architecture/eos-contextual-assistant.md"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/assistant-security-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assistant-security:
+    name: Authorization-before-model boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Assistant security boundary + contract tests
+        run: npm run test:assistant
+        working-directory: functions
+
+      # A provider SDK imported into domain code is the vendor boundary already broken, and it would
+      # not fail any test -- it would just quietly work. Checked textually because that is the only
+      # way to catch it.
+      - name: EOS domain code must not import a provider SDK
+        run: |
+          if grep -rn --include=*.ts -E "from ['\"]openai|require\(['\"]openai" functions/src \
+              | grep -v "functions/src/assistant/openAiProvider.ts"; then
+            echo "::error::A provider SDK is imported outside the adapter boundary."
+            exit 1
+          fi
+          echo "provider SDK confined to the adapter"
