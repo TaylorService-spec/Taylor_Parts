@@ -557,6 +557,9 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      and it measured 34x30 -- below WCAG 2.5.5 and every platform HIG. */
   width: 44px; height: 44px; padding: 0;
   background: transparent; border: 1px solid var(--color-border-strong);
+  /* Declared even though the bars below carry their own colour: an icon button that later
+     gains a label should not have to rediscover this. */
+  color: var(--color-text-secondary);
   border-radius: var(--radius-sm); cursor: pointer;
 }
 .fo-navtoggle:hover { background: var(--color-surface-sunken); }
@@ -1324,6 +1327,12 @@ button:hover {
   padding: 8px 10px;
   border: none;
   background: transparent;
+  /* RE-GROUNDING A BUTTON MEANS OWNING ITS FOREGROUND. The global `button` rule pairs a green
+     fill with `color: white`. Overriding the fill to transparent -- over the elevated white
+     panel above -- kept the white text, so every customer NAME in this dropdown rendered white
+     on white. The status beside it stayed readable only because `.fo-muted` sets its own colour,
+     which is what made the result look like a nameless row rather than an invisible one. */
+  color: var(--color-text-primary);
   cursor: pointer;
   font-size: 14px;
 }
@@ -4115,6 +4124,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-filter-reset {
   background: none;
+  /* See .fo-global-search-result: white button text on the stone page background. */
+  color: var(--color-text-primary);
   border: 1px solid #D6DCDA;
   border-radius: 6px;
   padding: 4px 10px;

@@ -846,6 +846,10 @@
       "runner": "node"
     },
     {
+      "file": "test/buttonForegroundContrast.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/createdRecordIsReachable.test.mjs",
       "runner": "node"
     },
