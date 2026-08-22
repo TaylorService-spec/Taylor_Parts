@@ -4386,3 +4386,82 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     min-height: 44px;
   }
 }
+
+/* ============================ APPROVAL REQUESTS ============================
+   Administration > Roles & Permissions > Approval Requests.
+
+   MOBILE IS THE REAL CASE. A privileged approval is time-sensitive and the person who can grant it
+   is frequently not at a desk, so the phone layout is the one that has to work rather than the
+   one that merely renders. Actions stack full-width below 640px and every actionable control keeps
+   a >=44px hit target -- the confirmation for an irreversible elevation is the last place to make
+   someone aim. */
+.fo-approval-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fo-approval-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.fo-approval-item__detail { flex: 1 1 20rem; min-width: 0; }
+
+.fo-approval-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fo-approval-item__actions > * { min-height: 44px; min-width: 44px; }
+
+/* Definition list rather than a table: a table of two columns collapses badly on a phone, and
+   these are facts about one record, not rows to compare across records. */
+.fo-approval-facts { margin: 0.5rem 0 0; display: grid; gap: 0.25rem; }
+.fo-approval-facts > div { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.fo-approval-facts dt { margin: 0; font-weight: 600; min-width: 9rem; }
+.fo-approval-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.fo-approval-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--fo-surface-raised, rgba(127, 127, 127, 0.12));
+}
+
+.fo-approval-confirm {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  /* Respect the iPhone safe area so the panel is never under the home indicator. */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 50;
+}
+
+.fo-approval-confirm__panel { max-width: 32rem; width: 100%; }
+
+.fo-approval-confirm__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.fo-approval-confirm__actions > * { min-height: 44px; flex: 1 1 auto; }
+
+@media (max-width: 640px) {
+  .fo-approval-item__actions { width: 100%; }
+  /* Full-width and comfortably above the 44px floor: on a phone these are the two controls that
+     matter on the screen, and a cramped Approve next to a cramped Reject is a misfire waiting. */
+  .fo-approval-item__actions > * { flex: 1 1 100%; min-height: 48px; }
+  .fo-approval-facts dt { min-width: 100%; }
+}

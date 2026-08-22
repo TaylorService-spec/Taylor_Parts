@@ -280,3 +280,22 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
     throw mapCommandError(err);
   }
 });
+
+// The APPROVAL QUEUE read. Approvers only.
+//
+// Clients cannot read `privilegedRoleRequests` directly: no rule matches that collection in
+// firestore.rules, so Firestore's default denies it. That is the correct posture and this callable
+// is the only read path -- which means the queue's contents are gated by the same capability that
+// gates deciding on them, rather than by a UI that merely declines to render a button.
+export const listPrivilegedRoleRequests = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await commands.listPrivilegedRoleRequests({
+      actorUid,
+      status: data.status as string | undefined,
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});

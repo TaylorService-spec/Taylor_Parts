@@ -135,6 +135,7 @@ export class IdempotencyKeyConflictError extends Error {}
 export class IdempotencyKeyAlreadyDeniedError extends Error {}
 
 const USERS_COLLECTION = "users";
+const EMPLOYEES_COLLECTION = "employees";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 const ACCESS_REQUESTS_COLLECTION = "accessRequests";
 
@@ -915,6 +916,72 @@ export async function requestPrivilegedRole(input: RequestPrivilegedRoleInput): 
 
     return { status: "applied", auditEventId: input.idempotencyKey };
   });
+}
+
+export interface ListPrivilegedRoleRequestsInput {
+  actorUid: string;
+  status?: string;
+}
+
+/**
+ * Read the approval queue. Requires the SAME authority as deciding on it.
+ *
+ * Gating the read behind `admin.roleAssignment.write` rather than a weaker read capability is
+ * deliberate: the queue names principals and the elevations proposed for them, which is exactly the
+ * map an attacker would want. A UI that simply hides the button would leave that map readable.
+ *
+ * Returns the target's employee display name where one exists, because an approver deciding on
+ * "grant owner to gOTW7OJx…" is not reviewing anything -- they need to see the person.
+ */
+export async function listPrivilegedRoleRequests(input: ListPrivilegedRoleRequestsInput): Promise<{
+  requests: Array<Record<string, unknown>>;
+}> {
+  assertNonEmptyString(input.actorUid, "actorUid");
+  await verifyActorPermission(input.actorUid, "admin.roleAssignment.write", {
+    scope: { type: "global" },
+    condition: {},
+  });
+
+  const db = getFirestore();
+  let query = db.collection(PRIVILEGED_ROLE_REQUESTS_COLLECTION).limit(200);
+  if (input.status) query = query.where("status", "==", input.status) as typeof query;
+  const snap = await query.get();
+
+  const rows = snap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      requestId: doc.id,
+      principalUid: d.principalUid as string,
+      roleId: d.roleId as string,
+      scope: d.scope,
+      status: d.status as string,
+      requestedBy: d.requestedBy as string,
+      requestedAtMs: (d.requestedAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? null,
+      decidedBy: (d.decidedBy as string | undefined) ?? null,
+      decidedAtMs: (d.decidedAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? null,
+      requiredApprovals: (d.requiredApprovals as number | undefined) ?? 1,
+    };
+  });
+
+  // Resolve display names for the targets. Done here rather than in the client so the client never
+  // needs a read path into `employees` it would not otherwise have.
+  const uids = [...new Set(rows.map((r) => r.principalUid).filter(Boolean))];
+  const nameByUid = new Map<string, string>();
+  for (const uid of uids) {
+    const userSnap = await db.collection(USERS_COLLECTION).doc(uid).get();
+    const employeeId = userSnap.exists ? (userSnap.data()?.employeeId as string | undefined) : undefined;
+    if (!employeeId) continue;
+    const empSnap = await db.collection(EMPLOYEES_COLLECTION).doc(employeeId).get();
+    if (empSnap.exists) {
+      nameByUid.set(uid, (empSnap.data()?.displayName as string) || employeeId);
+    }
+  }
+
+  return {
+    requests: rows
+      .map((r) => ({ ...r, displayName: nameByUid.get(r.principalUid) ?? null }))
+      .sort((a, b) => (b.requestedAtMs ?? 0) - (a.requestedAtMs ?? 0)),
+  };
 }
 
 export interface DecidePrivilegedRoleRequestInput {

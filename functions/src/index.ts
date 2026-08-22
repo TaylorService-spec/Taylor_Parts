@@ -100,6 +100,7 @@ export {
   assignApprovedRole,
   requestPrivilegedRole,
   decidePrivilegedRoleRequest,
+  listPrivilegedRoleRequests,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,
