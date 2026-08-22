@@ -103,7 +103,10 @@ export const CERT_PARTS = Object.freeze(
         partTrackingMode: f.key === "CTRL" && ni % 3 === 0 ? "SERIAL" : "QUANTITY",
         unitOfMeasure: "EA",
         stockingUnit: "EACH",
-        stockingClass: f.key === "CONSUM" ? "STOCKED" : ni % 7 === 6 ? "NON_STOCKED" : "STOCKED",
+        stockingClass: f.key === "CONSUM" ? "STOCKED" : ni % 7 === 6 ? "NON_STOCK" : "STOCKED",
+        // NON_STOCK, not NON_STOCKED. STOCKING_CLASSES is ["STOCKED","NON_STOCK","SERVICE","KIT"];
+        // the longer word reads more naturally and is not the enum. Found the same way as the
+        // metadata above -- by the real Part Master validator refusing the record.
         status: "ACTIVE",
       });
     }),
@@ -125,6 +128,15 @@ export function reorderPointFor(part) {
 }
 
 /** The world record for a catalog part. */
+/**
+ * Who authored these catalog records.
+ *
+ * The certification builder, named as itself. Not a person, and deliberately not an employee id:
+ * nobody sat down and typed this catalog, and attributing it to someone who did not would be a
+ * lie told in an audit field.
+ */
+const PART_RECORD_AUTHOR = "certification-world-builder";
+
 export function partRecordFor(part) {
   return {
     collection: "parts",
@@ -146,6 +158,24 @@ export function partRecordFor(part) {
       certLineOfBusiness: part.lineOfBusiness,
       certReorderPoint: reorderPointFor(part),
       dataProvenance: "SYNTHETIC_CERTIFICATION_FACT",
+
+      // ── THE PART MASTER STORED-RECORD CONTRACT ──────────────────────────────────────────
+      //
+      // version, createdBy and updatedBy are not decoration. partMasterRepository.readMeta
+      // REQUIRES all three (plus real Timestamps, which the seeder stamps), and throws
+      // MalformedStoredRecordError without them. Every Part in this catalog was written without
+      // them and nothing complained for the whole program, because no consumer had ever read a
+      // Part THROUGH the repository -- the demand applier reads the collection directly and only
+      // wants internalPartNumber.
+      //
+      // Receiving is the first consumer that goes through the real Part authority, and it refused
+      // the very first receipt: "stored record CW-P-0000 has malformed version/audit metadata".
+      // Same shape as the tracking_mode_invalid failure documented above -- a hand-built document
+      // that is internally consistent, speaks a contract nobody had made it satisfy, and can only
+      // be corrected by a real adapter refusing it.
+      version: 1,                                // INITIAL_VERSION
+      createdBy: PART_RECORD_AUTHOR,
+      updatedBy: PART_RECORD_AUTHOR,
     },
   };
 }

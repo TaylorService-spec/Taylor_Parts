@@ -17,6 +17,7 @@ import { getFirestore } from "firebase-admin/firestore";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+const { readPartBalance } = await import(L("functions/lib/inventory/partBalanceReadService.js"));
 const { CERT_PARTS, reorderPointFor } = await import(L("functions/scripts/certificationWorld/data/partsCatalog.mjs"));
 const { TRUCK_PROFILES } = await import(L("functions/scripts/certificationWorld/data/inventoryPlan.mjs"));
 
@@ -103,24 +104,42 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 
   // ── Conditions, re-derived from ACTUAL state.
   //
-  // hasInboundPo is NOT supplied: no purchasing data exists yet, so nothing in the world can make a
-  // shortage ON_ORDER. Passing the fixture's intent here would be circular -- the classifier would
-  // be told the answer it is meant to compute.
-  console.log("\n-- conditions re-derived from ACTUAL ledger state");
+  // INBOUND IS READ, NOT ASSUMED. An earlier version of this block passed no inbound signal at
+  // all, correctly: no purchasing data existed, so nothing in the world could make a shortage
+  // ON_ORDER, and supplying the fixture's intent would have handed the classifier the answer it
+  // was meant to compute.
+  //
+  // Purchasing exists now, so the dimension is supplied -- from readPartBalance.onOrder, the
+  // authoritative projection, which counts only orders in a receivable state and nets committed
+  // receipts out of them. An APPROVED order is not inbound; a fully received one is no longer
+  // inbound. The fixture's own quantities are never consulted.
+  //
+  // ON_ORDER is a SEPARATE class from REORDER on purpose: both are shortages, but one has supply
+  // already coming and the other needs somebody to place an order. Collapsing them tells a buyer
+  // to order goods that are already on a truck to the dock.
+  console.log("\n-- conditions re-derived from ACTUAL ledger and purchasing state");
+  const inbound = new Map();
+  for (const p of quantityParts) {
+    const b = await readPartBalance(db, p.partId, false);
+    inbound.set(p.partId, b.onOrder?.state === "KNOWN" ? b.onOrder.value : 0);
+  }
   const condition = (p) => {
     const rp = reorderPointFor(p);
     const wh = warehouse.get(p.partId) ?? 0;
     const total = company.get(p.partId) ?? 0;
-    if (total > rp && wh < rp) return "FALSE_COMFORT";
+    const onOrder = inbound.get(p.partId) ?? 0;
+    if (total > rp && wh < rp) return "FALSE_COMFORT";  // owned, just not where it can be picked
+    if (wh < rp && onOrder > 0) return "ON_ORDER";      // short, but supply is already committed
     if (wh === 0) return "CRITICAL";
-    if (wh < rp) return "REORDER";        // ON_ORDER is indistinguishable without inbound supply
+    if (wh < rp) return "REORDER";
     if (wh <= rp + 2) return "WATCH";
     return "HEALTHY";
   };
   const tally = {};
   for (const p of quantityParts) { const c = condition(p); tally[c] = (tally[c] || 0) + 1; }
   console.log(`   ${JSON.stringify(tally)}`);
-  for (const c of ["HEALTHY", "WATCH", "REORDER", "CRITICAL", "FALSE_COMFORT"]) {
+
+  for (const c of ["HEALTHY", "WATCH", "REORDER", "ON_ORDER", "CRITICAL", "FALSE_COMFORT"]) {
     check(`${c} exists in actual state`, (tally[c] ?? 0) > 0, `${tally[c] ?? 0}`);
   }
 

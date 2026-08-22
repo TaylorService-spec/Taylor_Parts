@@ -39,17 +39,32 @@ import { INVENTORY_STATE, stateForIndex } from "./inventory.mjs";
 export const CERT_SUPPLIER_ID = "cw-sup-001";
 
 /**
- * Buyers, by the role that governs the act.
+ * Buyers, chosen by RESOLVED CAPABILITY -- never by job title.
  *
- * SEPARATE FROM THE RECEIVERS ON PURPOSE. Buyer and receiver must not be the same person: an
- * employee who can both order goods and confirm their arrival can conjure inventory from nothing,
- * which is precisely what the separation exists to prevent. The applier asserts they are disjoint
- * rather than trusting this list to stay that way.
+ * An earlier version of this list named cw-emp-035/036 and called them buyers. They are
+ * salespeople who hold no purchasing capability whatsoever. The fixture asserted that the buyers
+ * and receivers were disjoint, and they were -- the check compared two arrays of strings and
+ * never once asked what authority those people actually had. Both lists were wrong while the
+ * assertion stayed green.
+ *
+ * These two resolve reorder.purchaseOrder.create through active roleAssignments. The applier
+ * re-proves that against live authority before it writes anything, rather than trusting this
+ * comment to stay true.
  */
-export const CERT_BUYERS = Object.freeze(["cw-emp-035", "cw-emp-036"]);
+export const CERT_BUYERS = Object.freeze(["cw-emp-001", "cw-emp-002"]);
 
-/** Receivers -- deliberately drawn from the put-away operators, never from CERT_BUYERS. */
-export const CERT_RECEIVERS = Object.freeze(["cw-emp-025", "cw-emp-026"]);
+/**
+ * Receivers, likewise resolved rather than assumed.
+ *
+ * The previous choice -- put-away operators -- was the exact conflation the capability exists to
+ * prevent. inventory.stock.receive is "a station, not a job title... rather than being available
+ * to everyone who works in a warehouse". Moving stock within a warehouse is not accepting it into
+ * the company's custody.
+ *
+ * cw-emp-000 is excluded on purpose: the owner role composes BOTH capabilities, so an owner actor
+ * could never demonstrate separation no matter which side of it he stood on.
+ */
+export const CERT_RECEIVERS = Object.freeze(["cw-emp-044", "cw-emp-045"]);
 
 /** A plausible synthetic unit price. Deterministic; never zero, which the writer rejects. */
 export function unitPriceFor(part) {

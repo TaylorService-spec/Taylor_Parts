@@ -18,6 +18,8 @@ const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
 
+const WAREHOUSE_RECORD_AUTHOR = "certification-world-builder";
+
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   console.error("FAILED: FIRESTORE_EMULATOR_HOST is not set. This tool only ever targets an emulator.");
   process.exitCode = 1;
@@ -49,12 +51,31 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     written += Math.min(400, records.length - i);
   }
 
-  // The warehouse the plan stocks must exist and be ACTIVE: availability counts only eligible
-  // warehouses, so an inactive one would make every balance read zero for reasons unrelated to the
-  // movements.
+  // The warehouse the plan stocks must exist, be ACTIVE, and be a GOVERNED warehouse.
+  //
+  // Availability counts only eligible warehouses, so an inactive one would make every balance read
+  // zero for reasons unrelated to the movements. That much the fixture always knew.
+  //
+  // What it did not know is that ACTIVE is not sufficient. Receiving resolves its destination
+  // through validateGovernedWarehouse, which requires the COMPLETE governed envelope -- location,
+  // version, updatedAt, updatedBy, provenance, coherent created/governance pairs, no stray fields,
+  // and no lingering `active` flag -- and only then checks the status. The fixture wrote four
+  // fields, every balance read worked perfectly for 142 movements, and the first real receipt was
+  // refused with DESTINATION_INVALID.
+  //
+  // The ledger never consults this contract; it takes a location reference at its word. Receiving
+  // is the first domain that asks whether the destination is a governed place to put goods.
   await db.collection("warehouses").doc("wh-main").set({
-    id: "wh-main", name: "Main Distribution Center", status: "ACTIVE",
-    createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    id: "wh-main",
+    name: "Main Distribution Center",
+    location: "Phoenix, AZ",
+    status: "ACTIVE",
+    version: 1,
+    provenance: "NATIVE",
+    createdAt: FieldValue.serverTimestamp(),
+    createdBy: WAREHOUSE_RECORD_AUTHOR,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: WAREHOUSE_RECORD_AUTHOR,
   }, { merge: true });
 
   const employees = await db.collection("employees").count().get();

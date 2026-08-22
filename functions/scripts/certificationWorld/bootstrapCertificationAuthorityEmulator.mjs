@@ -100,9 +100,18 @@ async function main() {
   const problems = [];
   const uidSeen = new Map();
 
+  // EVERY certification principal gets a users record, not only the ones holding a role.
+  //
+  // An earlier version indexed only role holders, so 14 employees carried a userId pointing at a
+  // users document that did not exist. Nothing failed -- they hold no roles, so nothing resolved
+  // them -- but the reference sweep found 14 dangling principals, and a principal that exists in
+  // one collection and not the other is exactly the sort of half-record that resolves to a blank
+  // later on.
+  const allPrincipals = new Set();
   for (const doc of employees.docs) {
     const d = doc.data();
     if (!d.certificationWorld) continue;
+    if (d.userId) allPrincipals.add(d.userId);
     const roles = d.certGovernedRoles ?? [];
     if (roles.length === 0) continue;
     const uid = d.userId;
@@ -186,7 +195,7 @@ async function main() {
 
   // ── users/{uid}.accessVersion. The resolver refuses an assignment whose accessVersionAtGrant
   //    exceeds the principal's current version, so every holder must carry at least it.
-  const uids = [...uidSeen.keys()];
+  const uids = [...allPrincipals];
   let versionWrites = 0;
   for (let i = 0; i < uids.length; i += 400) {
     const batch = db.batch();

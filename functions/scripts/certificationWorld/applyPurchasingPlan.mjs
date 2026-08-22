@@ -31,6 +31,8 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { buildPurchasingPlan, orderSignature, CERT_BUYERS, CERT_RECEIVERS } =
   await import(L("functions/scripts/certificationWorld/data/purchasingPlan.mjs"));
 const procurement = await import(L("functions/lib/procurementService.js"));
+const { loadPrincipalIndex, proveSeparation } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const PURCHASE_ORDERS = "purchase_orders";
 const APPLY = process.argv.includes("--apply");
@@ -48,23 +50,33 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const plan = buildPurchasingPlan();
   console.log(`planned orders: ${plan.length}`);
 
-  // ── SoD PREFLIGHT. Asserted, not assumed: an employee who can both order goods and confirm their
-  //    arrival can conjure inventory from nothing.
-  const overlap = CERT_BUYERS.filter((b) => CERT_RECEIVERS.includes(b));
-  if (overlap.length) {
-    console.error(`FAILED: buyer and receiver overlap on ${overlap.join(", ")} -- separation of duties broken.`);
+  // ── AUTHORITY PREFLIGHT. Resolved, never assumed.
+  //
+  //    The previous version of this block compared two arrays of employee ids and declared
+  //    separation of duties proven when they did not intersect. They did not intersect. They were
+  //    also both wrong: the buyers were salespeople and the receivers were put-away operators, and
+  //    not one of the four held the capability the list named them for. A check that consults only
+  //    names cannot notice that.
+  const principalIndex = await loadPrincipalIndex(db);
+  const sod = await proveSeparation(db, principalIndex, CERT_BUYERS, CERT_RECEIVERS);
+  for (const f of sod.findings) {
+    console.log(`  ${f.side.padEnd(8)} ${f.employeeId}  ${f.holdsId} = ${f.holds.decision}`
+      + `, ${f.deniedId} = ${f.denied.decision}  via ${f.holds.roles.join('/') || '-'}`);
+  }
+  if (!sod.ok) {
+    console.error("\nFAILED preflight -- refusing to write purchase orders:");
+    for (const v of sod.violations) console.error(`  ${v}`);
     process.exitCode = 1;
   } else {
-    console.log(`SoD: buyers ${CERT_BUYERS.join("/")} are disjoint from receivers ${CERT_RECEIVERS.join("/")}`);
+    console.log(`\nSoD: ${CERT_BUYERS.length} buyer(s) hold purchasing and are refused receiving; `
+      + `${CERT_RECEIVERS.length} receiver(s) hold receiving and are refused purchasing.`);
 
-    // ── Buyers must be real, linked employees. A purchase is an accountable act.
-    const employees = await db.collection("employees").get();
-    const uidBy = new Map(employees.docs.map((d) => [d.id, d.data().userId]).filter(([, u]) => u));
-    const unresolved = [...new Set(plan.map((o) => o.buyerEmployeeId))].filter((e) => !uidBy.has(e));
-    if (unresolved.length) {
-      console.error(`FAILED: no principal for buyer(s): ${unresolved.join(", ")}`);
-      process.exitCode = 1;
-    } else {
+      const unresolved = [...new Set(plan.map((o) => o.buyerEmployeeId))].filter((e) => !principalIndex.has(e));
+      if (unresolved.length) {
+        console.error(`FAILED: no principal for buyer(s): ${unresolved.join(", ")}`);
+        process.exitCode = 1;
+      } else {
+
       // ── Existing orders, by content signature.
       const existing = await db.collection(PURCHASE_ORDERS).get();
       const seen = new Map();
@@ -94,6 +106,13 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
         const created = await procurement.createPurchaseOrder({ supplierId: order.supplierId, items: order.items });
         await procurement.updatePurchaseOrderStatus(created.id, "APPROVED");
         if (target === "SENT") await procurement.updatePurchaseOrderStatus(created.id, "SENT");
+        // Fixture attribution, written next to the governed record because the record has no room
+        // for it. cert-prefixed so no reader mistakes it for a product field.
+        await db.collection(PURCHASE_ORDERS).doc(created.id).set({
+          certBuyerEmployeeId: order.buyerEmployeeId,
+          certBuyerPrincipalUid: principalIndex.get(order.buyerEmployeeId),
+          certIntent: order.intent,
+        }, { merge: true });
         outcomes.push({ order, id: created.id, status: target, outcome: "CREATED" });
       }
 
