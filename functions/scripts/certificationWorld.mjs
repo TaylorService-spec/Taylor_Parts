@@ -141,9 +141,18 @@ async function doVerify(db, quiet) {
     invariantViolations.push(orphans.length + " locations reference a missing account");
   }
 
+  // ============================ IDENTITY IS PART OF COMPLETENESS ============================
+  //
+  // Measured here rather than assumed, because a rebuild is exactly the operation that breaks it:
+  // reset deletes the employee documents, and buildWorld() does not carry `userId` (a UID is
+  // environment state, and a deterministic fixture must not depend on it). Every record can return
+  // while all 47 employee->principal links are gone -- counts match, fingerprint matches, and
+  // nobody can sign in as anyone.
+  const identityLinkage = await measureIdentityLinkage(db, found);
+
   const result = classifyWorld({
     expected: { version: world.version, counts: countByCollection(records) },
-    actual, versionsFound: versions, duplicateIds, invariantViolations,
+    actual, versionsFound: versions, duplicateIds, invariantViolations, identityLinkage,
   });
 
   const stateSnap = await db.collection(STATE_COLLECTION).doc(STATE_DOC_ID).get().catch(() => null);
@@ -218,6 +227,46 @@ async function doReset(db, opts) {
   for (const [c, n] of Object.entries(report).sort()) console.log("  " + String(n).padStart(5) + "  " + c);
   if (total === 0) console.log("  (nothing to delete - already clean)");
   return { report, total };
+}
+
+/**
+ * Measure the employee <-> principal linkage of the INSTALLED world.
+ *
+ * Both directions are read. A one-way link is the failure that looks like success: `employee.userId`
+ * present with no matching `users/{uid}.employeeId` passes every check that only asks whether the
+ * employee has a principal, and breaks every lookup that starts from the signed-in user.
+ */
+async function measureIdentityLinkage(db, found) {
+  const employees = found.filter((r) => r.collection === "employees");
+  // Only employees the certification world expects to have a principal. An employee fixture that
+  // was never provisioned is not a linkage defect, and counting it as one would make the check
+  // permanently red for a reason nobody can fix.
+  const expected = employees.filter((r) => r.data?.userId !== undefined || r.data?.certEmail);
+  const expectedLinked = expected.length;
+
+  let linked = 0, reverseLinked = 0;
+  const mismatched = [];
+  const byUid = new Map();
+
+  for (const e of expected) {
+    const userId = e.data?.userId;
+    if (!userId) continue;
+    linked += 1;
+    if (!byUid.has(userId)) byUid.set(userId, []);
+    byUid.get(userId).push(e.id);
+
+    const userSnap = await db.collection("users").doc(userId).get().catch(() => null);
+    const reverseEmployeeId = userSnap && userSnap.exists ? userSnap.data()?.employeeId : undefined;
+    if (reverseEmployeeId === undefined) continue;
+    reverseLinked += 1;
+    if (reverseEmployeeId !== e.id) mismatched.push({ employeeId: e.id, userId, reverse: reverseEmployeeId });
+  }
+
+  const duplicateUids = [...byUid.entries()]
+    .filter(([, ids]) => ids.length > 1)
+    .map(([userId, employeeIds]) => ({ userId, employeeIds }));
+
+  return { expectedLinked, linked, reverseLinked, mismatched, duplicateUids };
 }
 
 async function main() {

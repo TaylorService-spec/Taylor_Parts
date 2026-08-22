@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSalesOrder } from "../../hooks/useSalesOrder.js";
 import { salesOrderView, SALES_ORDER_VIEW_STATE } from "../../domain/salesOrderView.js";
@@ -7,6 +8,8 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
 import SalesOrderActions from "./SalesOrderActions.jsx";
 import SalesOrderFulfillmentSection from "./SalesOrderFulfillmentSection.jsx";
+import { useAccountNamesWithStatus, ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
+import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/referenceResolution.js";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
 // getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
@@ -29,6 +32,26 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   const { salesOrderId } = useParams();
   const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
   const view = salesOrderView({ loading, errorStatus, result });
+
+  // THE CUSTOMER IS NAMED, NOT KEYED. This line used to render `view.accountId` as the link text,
+  // which is the exact thing DECISIONS #106 forbids and which the Originating Opportunity beside it
+  // already refuses to do -- two references in one band, one of them printing a database key.
+  //
+  // Resolved through the same batched read the Sales Orders list uses, so the two surfaces agree on
+  // what a customer is called and on what to say when they cannot find out.
+  const accountIds = useMemo(
+    () => (view.kind === SALES_ORDER_VIEW_STATE.READY && view.accountId ? [view.accountId] : []),
+    [view.kind, view.accountId],
+  );
+  const { names: accountNames, status: accountNamesStatus } = useAccountNamesWithStatus(accountIds);
+
+  // Never the id, in any branch. A name when we have one; otherwise the honest reason.
+  const accountName = view.accountId ? accountNames.get(view.accountId) : null;
+  const accountFallbackState =
+    accountNamesStatus === ACCOUNT_NAMES_STATUS.DENIED ? REFERENCE_STATE.DENIED
+      : accountNamesStatus === ACCOUNT_NAMES_STATUS.ERROR ? REFERENCE_STATE.ERROR
+        : accountNamesStatus === ACCOUNT_NAMES_STATUS.READY ? REFERENCE_STATE.NOT_FOUND
+          : REFERENCE_STATE.LOADING;
 
   const actions =
     view.kind === SALES_ORDER_VIEW_STATE.READY
@@ -63,7 +86,15 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
         <>
           <ContextBand
             items={[
-              { key: "account", label: "Account", value: <Link to={`/customers/${view.accountId}`}>{view.accountId}</Link> },
+              {
+                key: "account",
+                label: "Customer",
+                // Linked only once we can name it. Offering a link into a record the viewer has
+                // just been told they may not read is an invitation to a dead end.
+                value: accountName
+                  ? <Link to={`/customers/${view.accountId}`}>{accountName}</Link>
+                  : REFERENCE_STATE_LABEL[accountFallbackState],
+              },
               {
                 key: "opportunity",
                 label: "Originating Opportunity",

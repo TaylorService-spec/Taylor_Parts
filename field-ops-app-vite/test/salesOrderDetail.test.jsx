@@ -6,6 +6,15 @@ import { useSalesOrder } from "../src/hooks/useSalesOrder.js";
 
 vi.mock("../src/hooks/useSalesOrder.js", () => ({ useSalesOrder: vi.fn() }));
 
+// The Customer is RESOLVED now, not printed as an id, so the detail view reads account names
+// through the same batched hook the Sales Orders list uses. Mocked here for the same reason
+// useSalesOrder is: this suite asserts rendering, not Firestore.
+vi.mock("../src/hooks/useAccountNames.js", () => ({
+  ACCOUNT_NAMES_STATUS: { IDLE: "IDLE", LOADING: "LOADING", READY: "READY", DENIED: "DENIED", ERROR: "ERROR" },
+  useAccountNamesWithStatus: () => ({ names: new Map([["ACCT-1", "Harbor Grill Restaurant Group"]]), status: "READY" }),
+  useAccountNames: () => new Map([["ACCT-1", "Harbor Grill Restaurant Group"]]),
+}));
+
 // Defaults `hasCapability` to grant-all -- most tests in this file exercise the STATE mirror
 // (domain/salesOrderActions.js), not the write-capability gate, so they keep the pre-existing
 // "an authorized actor" premise unless a test explicitly overrides `hasCapability` to exercise the
@@ -113,7 +122,12 @@ describe("SalesOrderDetail", () => {
     });
     renderAt("SO-42");
     expect(screen.getByText("Sales Order SO-2026-000042")).toBeTruthy();
-    expect(screen.getByText("ACCT-1")).toBeTruthy();
+    // CHANGED, and the old expectation was the defect -- the SAME defect #1099 fixed two lines
+    // below for the Opportunity link, on the line the Account reference was missed. This
+    // asserted that the raw accountId was rendered as the visible Customer label: a Firestore
+    // document id presented as content, which DECISIONS #106 forbids.
+    expect(screen.getByText("Harbor Grill Restaurant Group")).toBeTruthy();
+    expect(screen.queryByText("ACCT-1")).toBeNull();
     // CHANGED, and the old expectation was the defect (#1099). This asserted the raw
     // sourceOpportunityId was rendered — i.e. it pinned a Firestore document id as the
     // visible label of the Originating Opportunity link, which is exactly the behaviour

@@ -52,7 +52,19 @@ function selectListSource(entity, def) {
   return null;
 }
 
-export function useMetadataList(def, entity, { filters = [], sort = [], enabled = true } = {}) {
+// `resolveReference` is threaded, not invented here.
+//
+// Every REFERENCE column on every metadata-driven list rendered "Unresolved reference" -- Sales
+// Orders showed it on all 14 rows while all 14 accountIds resolved to a real customer -- because
+// this hook accepted no resolver and buildListPresentation therefore received none. cellValue was
+// behaving correctly: with no way to resolve, the only honest output is to say so rather than print
+// a document id.
+//
+// THE HOOK STILL READS NOTHING. It is generic across 27 definitions and cannot know which governed
+// read backs a given reference, so it takes the resolver from the caller -- the party that already
+// fetched or joined the referenced entity -- exactly as listPresentation's own contract describes.
+// Resolving here would mean a Firestore read from generic code and, worse, one read per row.
+export function useMetadataList(def, entity, { filters = [], sort = [], enabled = true, resolveReference = null } = {}) {
   const [rows, setRows] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(enabled);
@@ -152,12 +164,18 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         loading,
         errorStatus,
         filtersActive: filters.length > 0,
+        resolveReference,
       }),
-    [def, entity, rows, hasMore, loading, errorStatus, filters.length]
+    [def, entity, rows, hasMore, loading, errorStatus, filters.length, resolveReference]
   );
 
   return {
     presentation,
+    // The RAW rows, so a caller can collect the ids its REFERENCE columns point at and resolve them
+    // in ONE batched read. Without this, a caller wanting to resolve references would have to
+    // re-read the list itself -- or resolve per rendered cell, which is the N+1 pattern the
+    // presentation contract explicitly rules out.
+    rows,
     descriptorErrors: errors,
     loadMore: () => load({ append: true }),
     retry: () => load({ append: false }),
