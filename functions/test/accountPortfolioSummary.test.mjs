@@ -39,7 +39,7 @@ test("canonical statuses are uppercase machine values", () => {
 test("it authorizes with the canonical Account read authority, not a new one", () => {
   // A separate capability would create a second audience for the same data, and the two
   // would drift the first time somebody granted one without the other.
-  assert.equal(ACCOUNT_PORTFOLIO_READ_CAPABILITY, "account.record.read");
+  assert.equal(ACCOUNT_PORTFOLIO_READ_CAPABILITY, "customer.record.read");
 });
 
 test("total is not the sum of the statuses — that is the whole point", () => {

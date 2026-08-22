@@ -154,9 +154,9 @@ test("paymentTerms and taxStatus are governed enums with vocabulary from the dom
   assert.equal(taxStatus.enumLabels[TAX_STATUS.EXEMPT], TAX_STATUS_LABEL[TAX_STATUS.EXEMPT]);
 });
 
-test("paymentTerms and taxStatus declare no readCapability -- account.governedField.write gates WRITE, not READ", () => {
+test("paymentTerms and taxStatus declare no readCapability -- customer.governedField.write gates WRITE, not READ", () => {
   // The account document's read gate is uniformly isAdminOrDispatcher() for the whole
-  // record; account.governedField.write only restricts who may EDIT these two fields.
+  // record; customer.governedField.write only restricts who may EDIT these two fields.
   // readCapability models read authority only, and FieldDefinition v1 has no
   // writeCapability concept to carry the write-side authority instead -- an intentional,
   // recorded gap, not an oversight.

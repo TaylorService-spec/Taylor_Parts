@@ -68,7 +68,7 @@ if (live) {
 try {
   const res = await fetch(`https://us-central1-${PROJECT_ID}.cloudfunctions.net/resolveEffectiveAccessCallable`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ data: { permissionIds: ["account.record.read"] } }),
+    body: JSON.stringify({ data: { permissionIds: ["customer.record.read"] } }),
   });
   // 401/403 is the CORRECT answer to an unauthenticated call. A 404 means the function is missing;
   // a 500 means it is broken. Both are deploy failures wearing different numbers.

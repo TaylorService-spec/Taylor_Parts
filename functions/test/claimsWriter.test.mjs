@@ -123,7 +123,7 @@ async function main() {
     const uid = `claims-reject-${Date.now()}`;
     await auth.createUser({ uid });
     await assert.rejects(
-      () => setCompactClaims(uid, { accessVersion: 1, permissions: ["account.record.read"] }),
+      () => setCompactClaims(uid, { accessVersion: 1, permissions: ["customer.record.read"] }),
       CompactClaimsValidationError,
     );
   });

@@ -112,7 +112,7 @@ check("no unrelated capability changed: the added grant is inventory.stock.recei
     assert.deepEqual(receiveish, ["inventory.stock.receive"], `${name} gained only inventory.stock.receive`);
   }
   // dispatcher gained nothing admin-only; the admin-only extras are unchanged and NOT on dispatcher.
-  for (const adminOnly of ["account.governedField.write", "admin.roleAssignment.write"]) {
+  for (const adminOnly of ["customer.governedField.write", "admin.roleAssignment.write"]) {
     assert.equal(ALL_ROLES.admin.permissions.includes(adminOnly), true);
     assert.equal(ALL_ROLES.dispatcher.permissions.includes(adminOnly), false);
   }

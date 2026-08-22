@@ -37,7 +37,7 @@ export const RULE_GOVERNED_OBJECTS = Object.freeze([
 export const UNMODELLED_OBJECTS = Object.freeze(["Marketing Initiatives", "Commissions"]);
 
 export const OBJECT_CAPABILITY_MAP = Object.freeze({
-  "Accounts": { R: ["account.record.read"], C: ["account.record.create"], E: ["account.record.update"], D: [] },
+  "Accounts": { R: ["customer.record.read"], C: ["customer.record.create"], E: ["customer.record.update"], D: [] },
   // CORRECTED: Contacts maps to NOTHING. crm.activity.* is ACTIVITY LOGGING -- calls, notes, touches
   // recorded against a customer. The contact RECORD is a different object, and it is Rules-governed.
   //

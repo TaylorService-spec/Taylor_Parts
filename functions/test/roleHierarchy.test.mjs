@@ -190,7 +190,7 @@ check("org-chart position still does not CONFER authority, even now that these R
     assert.deepEqual(admin, [], `${id} must not hold security administration by virtue of its position`);
   }
   // The two that remain deliberately narrow, so a future widening is a decision made here.
-  assert.deepEqual(GOVERNED_BUSINESS_ROLES.supportStaff.permissions, ["account.record.read"],
+  assert.deepEqual(GOVERNED_BUSINESS_ROLES.supportStaff.permissions, ["customer.record.read"],
     "Support Staff is Read on Accounts only -- the stale Summary sheet's finance authority was copy-paste");
   assert.deepEqual(GOVERNED_BUSINESS_ROLES.generalEmployee.permissions, [],
     "the least-privilege baseline still grants nothing");

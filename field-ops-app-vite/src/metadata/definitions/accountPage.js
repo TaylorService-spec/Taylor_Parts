@@ -70,8 +70,8 @@ import { salesOrderRelatedList } from "./salesOrder.js";
 //     ROLE — isAdminOrDispatcher() — with no capability check at all). Same precedent as
 //     `contacts` immediately below.
 //   - commercialProfile (FIELD_GROUP) -> NO capability declared. account.js's own field
-//     comments for paymentTerms/taxStatus: `account.governedField.write` (capability id
-//     account.governedField.write, resource account.governedField, firestore.rules'
+//     comments for paymentTerms/taxStatus: `customer.governedField.write` (capability id
+//     customer.governedField.write, resource account.governedField, firestore.rules'
 //     accountGovernedFieldsValid/accountGovernedFieldsUnchanged/
 //     accountGovernedCreateBaseline) gates WRITE of those two fields to admin only — it
 //     does not gate READ. The Account document's READ gate is uniform (isAdminOrDispatcher()

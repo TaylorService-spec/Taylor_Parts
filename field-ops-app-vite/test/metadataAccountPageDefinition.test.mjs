@@ -132,7 +132,7 @@ test("commercialProfile groups exactly the fields CommercialProfileSection rende
   for (const fieldId of section.fieldIds) {
     assert.ok(findField(accountEntity, fieldId), `commercialProfile claims "${fieldId}", which is not on accountEntity`);
   }
-  // No capability — account.governedField.write gates WRITE of paymentTerms/taxStatus,
+  // No capability — customer.governedField.write gates WRITE of paymentTerms/taxStatus,
   // not READ; the Account document's read gate is uniform, and account.js itself
   // declares no readCapability on those two fields for that reason.
   assert.equal(section.capabilityRequirement, null);

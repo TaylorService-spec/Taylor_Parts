@@ -54,9 +54,9 @@ const MANAGER_OR_WAREHOUSE = { roles: ["PARTS_MANAGER", "WAREHOUSE_MANAGER"] };
 // into DISPATCHER_ROLE by accident (the failure mode a filter-based
 // derivation would risk).
 const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
-  "account.record.read",
-  "account.record.create",
-  "account.record.update",
+  "customer.record.read",
+  "customer.record.create",
+  "customer.record.update",
   "workOrder.create",
   "workOrder.transition",
   "workOrder.cancel",
@@ -147,7 +147,7 @@ const SHARED_ADMIN_DISPATCHER_CONDITIONS = {
 // what admin actually resolves with.
 const ADMIN_CURATED_PERMISSIONS = [
     ...SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS,
-    "account.governedField.write",
+    "customer.governedField.write",
     "admin.userStatus.write",
     "admin.roleAssignment.write",
     "admin.accessRequest.decide",

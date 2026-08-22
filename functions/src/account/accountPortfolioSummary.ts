@@ -40,7 +40,7 @@ export const ACCOUNTS_COLLECTION = "accounts";
  * second audience for the same data, and the two would drift the first time somebody
  * granted one without the other.
  */
-export const ACCOUNT_PORTFOLIO_READ_CAPABILITY = "account.record.read";
+export const ACCOUNT_PORTFOLIO_READ_CAPABILITY = "customer.record.read";
 
 /** Canonical machine status values. Uppercase; never a display label. */
 export const ACCOUNT_STATUS_VALUES = ["ACTIVE", "PROSPECT", "INACTIVE", "ARCHIVED"] as const;

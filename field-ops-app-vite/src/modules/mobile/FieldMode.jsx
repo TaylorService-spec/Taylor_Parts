@@ -25,7 +25,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // CUSTOMER / SITE IDENTITY resolves through the TRUSTED minimal projection
 // getWorkOrderFieldContext (Owner Option 1). firestore.rules still gates
 // accounts / locations / equipment to isAdminOrDispatcher() and the technician
-// Role still holds no account.record.read -- neither was widened. The server
+// Role still holds no customer.record.read -- neither was widened. The server
 // verifies the Work Order is assigned to THIS technician, takes customerId /
 // locationId FROM the governed Work Order (never from the client), and returns
 // only display fields.

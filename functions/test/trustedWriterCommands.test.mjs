@@ -1047,8 +1047,8 @@ async function main() {
     await seedActiveRoleAssignment(ownerOnly, "owner");
 
     const sampleCapabilities = [
-      "account.record.read",
-      "account.governedField.write",
+      "customer.record.read",
+      "customer.governedField.write",
       "workOrder.create",
       "workOrder.transition",
       "workOrder.cancel",

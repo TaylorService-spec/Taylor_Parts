@@ -64,27 +64,27 @@ const REPORT_DEFINITION_CAPABILITY_PATTERN = /^report\.definition\.(create|read|
 export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // --- Customer / Account domain (Assessment §1; accounts Rules) ---
   Object.freeze({
-    id: "account.record.read",
-    description: "Read a Customer/Account record.",
+    id: "customer.record.read",
+    description: "Read a Customer record.",
     resource: "account.record",
     action: "read",
   }),
   Object.freeze({
-    id: "account.record.create",
-    description: "Create a Customer/Account record.",
+    id: "customer.record.create",
+    description: "Create a Customer record.",
     resource: "account.record",
     action: "create",
   }),
   Object.freeze({
-    id: "account.record.update",
-    description: "Edit a Customer/Account record's non-governed fields.",
+    id: "customer.record.update",
+    description: "Edit a Customer record's non-governed fields.",
     resource: "account.record",
     action: "update",
   }),
   Object.freeze({
-    id: "account.governedField.write",
+    id: "customer.governedField.write",
     description:
-      "Edit an Account's governed commercial fields (paymentTerms/taxStatus) -- Issue #175, admin-only today.",
+      "Edit a Customer's governed commercial fields (paymentTerms/taxStatus) -- Issue #175, admin-only today.",
     resource: "account.governedField",
     action: "write",
   }),

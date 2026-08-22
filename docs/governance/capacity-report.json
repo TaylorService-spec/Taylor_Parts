@@ -60,7 +60,7 @@
   {
    "workstream": "CRM_SALES",
    "requires": [
-    "account.record.read",
+    "customer.record.read",
     "opportunity.read"
    ],
    "forbids": [],
@@ -292,7 +292,7 @@
   {
    "workstream": "BUSINESS_ADMINISTRATION",
    "requires": [
-    "account.record.read"
+    "customer.record.read"
    ],
    "forbids": [
     "admin.roleAssignment.write"

@@ -156,7 +156,7 @@ export const accountEntity = makeEntityDefinition({
       enumLabels: INVOICE_DELIVERY_METHOD_LABEL,
       description: "Process metadata only — how an invoice is delivered, not a monetary value. Validated by domain/commercialProfile.js's isValidInvoiceDeliveryMethod().",
     }),
-    // GOVERNED (Issue #175, capability catalog id account.governedField.write, resource
+    // GOVERNED (Issue #175, capability catalog id customer.governedField.write, resource
     // account.governedField): firestore.rules' accountGovernedFieldsValid /
     // accountGovernedFieldsUnchanged / accountGovernedCreateBaseline restrict who may EDIT
     // this field to admin — a dispatcher may create at the unset baseline and may write the
@@ -165,7 +165,7 @@ export const accountEntity = makeEntityDefinition({
     // isAdminOrDispatcher() for the whole record, same as every other field on this entity,
     // and readCapability models READ authority only (entityDefinition.js's own comment: "what
     // reading this field requires"). FieldDefinition v1 has no writeCapability concept to
-    // carry account.governedField.write, so nothing is declared for it here — inventing a
+    // carry customer.governedField.write, so nothing is declared for it here — inventing a
     // readCapability this field does not actually need would misstate what the id gates.
     // This gap is intentional and recorded, not an oversight.
     makeFieldDefinition({
@@ -175,7 +175,7 @@ export const accountEntity = makeEntityDefinition({
       type: "ENUM",
       enumValues: Object.values(PAYMENT_TERMS),
       enumLabels: PAYMENT_TERMS_LABEL,
-      description: "GOVERNED — admin-only edit, enforced in firestore.rules (account.governedField.write), not by UI hiding. Optional; absent means no default term is set. See the field comment above for why no capability is declared here.",
+      description: "GOVERNED — admin-only edit, enforced in firestore.rules (customer.governedField.write), not by UI hiding. Optional; absent means no default term is set. See the field comment above for why no capability is declared here.",
     }),
     // Same governance shape as paymentTerms — see that field's comment.
     makeFieldDefinition({
@@ -185,7 +185,7 @@ export const accountEntity = makeEntityDefinition({
       type: "ENUM",
       enumValues: Object.values(TAX_STATUS),
       enumLabels: TAX_STATUS_LABEL,
-      description: "GOVERNED — admin-only edit (account.governedField.write). An absent stored value means UNKNOWN, never TAXABLE (domain/commercialProfile.js's resolveTaxStatus() safe default) — a list or detail surface rendering this field must apply that same resolution, not render a blank.",
+      description: "GOVERNED — admin-only edit (customer.governedField.write). An absent stored value means UNKNOWN, never TAXABLE (domain/commercialProfile.js's resolveTaxStatus() safe default) — a list or detail surface rendering this field must apply that same resolution, not render a blank.",
     }),
     // Stored at billingContact.contactId (a one-key map: `{ contactId }`), not a bare
     // scalar — declared with a flat id per the FIELD IDS ARE PLAIN, NOT DOTTED PATHS

@@ -14,7 +14,7 @@
  "rows": [
   {
    "roleId": "generalManager",
-   "capability": "account.record.create",
+   "capability": "customer.record.create",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -24,7 +24,7 @@
   },
   {
    "roleId": "generalManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -45,7 +45,7 @@
   },
   {
    "roleId": "generalManager",
-   "capability": "account.record.update",
+   "capability": "customer.record.update",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
@@ -366,7 +366,7 @@
   },
   {
    "roleId": "salesManager",
-   "capability": "account.record.create",
+   "capability": "customer.record.create",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -376,7 +376,7 @@
   },
   {
    "roleId": "salesManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -397,7 +397,7 @@
   },
   {
    "roleId": "salesManager",
-   "capability": "account.record.update",
+   "capability": "customer.record.update",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
@@ -564,7 +564,7 @@
   },
   {
    "roleId": "salesperson",
-   "capability": "account.record.create",
+   "capability": "customer.record.create",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -574,7 +574,7 @@
   },
   {
    "roleId": "salesperson",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -595,7 +595,7 @@
   },
   {
    "roleId": "salesperson",
-   "capability": "account.record.update",
+   "capability": "customer.record.update",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
@@ -747,7 +747,7 @@
   },
   {
    "roleId": "marketingManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -802,7 +802,7 @@
   },
   {
    "roleId": "fieldManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -1018,7 +1018,7 @@
   },
   {
    "roleId": "warehouseManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -1341,7 +1341,7 @@
   },
   {
    "roleId": "purchasingManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -1557,7 +1557,7 @@
   },
   {
    "roleId": "controller",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -1804,14 +1804,14 @@
   },
   {
    "roleId": "accountingManager",
-   "capability": "account.governedField.write",
+   "capability": "customer.governedField.write",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": []
   },
   {
    "roleId": "accountingManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -2058,7 +2058,7 @@
   },
   {
    "roleId": "supportStaff",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -2079,7 +2079,7 @@
   },
   {
    "roleId": "partsAssociate",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -2243,7 +2243,7 @@
   },
   {
    "roleId": "partsManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -2455,7 +2455,7 @@
   },
   {
    "roleId": "shopManager",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [
@@ -2634,7 +2634,7 @@
   },
   {
    "roleId": "shopAssociate",
-   "capability": "account.record.read",
+   "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
    "alsoHeldBy": [

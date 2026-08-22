@@ -43,7 +43,7 @@ const resolve = (permissionId, assignments, overrides = []) =>
 // inventoryTransferOperator is a purpose-built bundle -- a permission set in all but
 // name. salesperson is an ordinary job Role that holds none of its capabilities.
 const TRANSFER = "inventory.transfer.create";
-const BASELINE = "account.record.read";
+const BASELINE = "customer.record.read";
 
 test("a permission set GRANTS what the baseline Role lacks", () => {
   assert.equal(resolve(TRANSFER, [assignment("salesperson")], [TRANSFER]).decision, "DENY");
