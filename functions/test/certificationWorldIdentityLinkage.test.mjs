@@ -39,6 +39,21 @@ const perfectData = {
   invariantViolations: [],
 };
 
+/**
+ * Source with COMMENTS REMOVED.
+ *
+ * A structural guard that greps for a symbol must not match the prose explaining it. The split is
+ * CRLF-tolerant on purpose: anchoring a strip to end-of-line with $ leaves the trailing carriage
+ * return in place on a Windows checkout, so the comment survives and the guard matches its own
+ * explanation -- a test that then passes or fails depending on the machine.
+ */
+const stripComments = (src) =>
+  src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\/\/[^\r\n]*/, ""))
+    .join("\n");
+
 const linkage = (over = {}) => ({ expectedLinked: 47, linked: 47, reverseLinked: 47, mismatched: [], duplicateUids: [], ...over });
 
 test("data complete AND fully linked is COMPLETE", () => {
@@ -118,4 +133,29 @@ test("findings are specific enough to act on", () => {
 
 test("a fully linked measurement produces NO findings", () => {
   assert.deepEqual(identityLinkageFindings(linkage()), []);
+});
+
+test("REBUILD RUNS THE RELINK PHASE -- it is not left to the operator to remember", () => {
+  // The gap this closes is not that relinking was impossible; provisionPrincipals.mjs could always
+  // do it. The gap was that `rebuild` did not, so the only thing standing between a rebuild and 47
+  // detached identities was somebody remembering a second command.
+  //
+  // Asserted structurally because the failure is an ABSENT step, and an absent step is invisible to
+  // any test that only checks what the present steps do.
+  const src = stripComments(readFileSync(path.resolve(REPO, "functions/scripts/certificationWorld.mjs"), "utf8"));
+  assert.match(src, /provisionPrincipals\.mjs/,
+    "the rebuild flow no longer invokes the relink phase -- a rebuild would silently detach every employee from its principal");
+  // Ordering matters: relinking BEFORE the final verify is what lets COMPLETE mean anything.
+  const relinkAt = src.indexOf("provisionPrincipals.mjs");
+  const finalVerifyAt = src.lastIndexOf("doVerify(db, false)");
+  assert.ok(relinkAt > 0 && relinkAt < finalVerifyAt,
+    "the relink must run BEFORE the final verify, or COMPLETE is decided on links that have not been restored yet");
+});
+
+test("the relink reuses the audited tool instead of a second implementation", () => {
+  // Two places that link an employee to a principal is two places for them to disagree about which
+  // principal, and the disagreement would show up as crossed identities holding real Role grants.
+  const src = stripComments(readFileSync(path.resolve(REPO, "functions/scripts/certificationWorld.mjs"), "utf8"));
+  assert.equal(/getUserByEmail|createUser\(/.test(src), false,
+    "certificationWorld.mjs is resolving or creating Auth identities itself -- that belongs to provisionPrincipals.mjs alone");
 });
