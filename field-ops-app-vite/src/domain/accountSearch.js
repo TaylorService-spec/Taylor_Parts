@@ -1,3 +1,5 @@
+import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization.js";
+
 // Bounded Account NAME search — pure query-shape + read-interpretation.
 //
 // GOVERNANCE: docs/governance/metadata-architecture-ip-boundary.md §9. Same
@@ -21,25 +23,28 @@
 // WHAT KIND OF SEARCH THIS IS — DECIDED DELIBERATELY, NOT BY ACCIDENT
 //
 // Firestore has no substring or full-text index. The only honest primitive available on
-// an indexed string field is a PREFIX range: `name >= term AND name <= term + ''`.
+// an indexed string field is a PREFIX range, here over the NORMALIZED name:
+// `nameLower >= term AND nameLower <= term + ''`.
 // That is what this module builds, and nothing more:
 //
 //   - It matches names that START WITH the typed text, not names that CONTAIN it. "corp"
 //     will not find "Anchor Corp". Every user-facing string this module produces says
 //     "starts with", never "search" or "contains" unqualified, so the UI cannot present a
 //     prefix match as something broader than it is.
-//   - It is CASE-SENSITIVE. Firestore's range comparison is a literal UTF-16 code-unit
-//     comparison, not a locale-aware or case-folded one. "acme" will not match "Acme Corp"
-//     stored with a capital A. Faking case-insensitivity would need a normalized/lower-
-//     cased search field on the Account document — a schema and backfill change to the
-//     WRITE path, not this read, and out of this lane's scope — or a real full-text index,
-//     which is backend infrastructure this repo does not have. Neither is built here;
-//     both are named so the gap is recorded rather than silently worked around with a
-//     client trick (e.g. issuing one query per capitalization guess) that would look like
-//     search but only work by coincidence.
+//   - It is CASE-INSENSITIVE, and that is a WRITE-path property rather than a read trick.
+//     Firestore's range comparison is a literal UTF-16 code-unit comparison, so "mesquite"
+//     could never match "Mesquite Soda Works" while the query ran against `name` - every
+//     uppercase letter sorts before every lowercase one, and the box reported "no customer
+//     names start with mesquite" with the record visible on the same screen.
+//     The fix is the normalized copy this query now reads: every writer of a customer name
+//     also writes `nameLower` (domain/nameNormalization.js), and the term is folded through
+//     the SAME function, so the two sides cannot disagree about what folding means.
+//     Still NOT full-text: this remains a prefix range. "corp" will not find "Anchor Corp".
+//     Substring and fuzzy matching need a real text index, which this repo does not have,
+//     and are named here so the remaining gap stays recorded rather than assumed closed.
 //
 // This needs NO composite index. It is a single range filter on the same field the
-// results are ordered by (`name`), which Firestore serves from the automatic single-field
+// results are ordered by (`nameLower`), which Firestore serves from the automatic single-field
 // index every indexed field already has — nothing to declare in firestore.indexes.json.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,16 +95,18 @@ export const ACCOUNT_SEARCH_STATE = Object.freeze([
  * deliberately does not duplicate, so no query is built for one.
  */
 export function accountSearchQueryShape({ term, collection = "accounts", cap = ACCOUNT_SEARCH_CAP } = {}) {
-  const normalized = (term ?? "").trim();
+  // Folded through the SAME function that produced the stored value. Normalizing the term
+  // differently from the field is the one way this design fails silently.
+  const normalized = normalizeNameForSearch(term);
   if (!normalized) return null;
   return Object.freeze({
     collection,
-    fieldPath: "name",
+    fieldPath: SEARCH_NAME_FIELD,
     // The high-codepoint sentinel is the standard Firestore prefix-range upper bound: any
     // string starting with `normalized` sorts at or below `normalized + ''`.
     start: normalized,
     end: `${normalized}`,
-    orderBy: Object.freeze([{ fieldPath: "name", direction: "ASC" }]),
+    orderBy: Object.freeze([{ fieldPath: SEARCH_NAME_FIELD, direction: "ASC" }]),
     // cap + 1: the extra row is the truncation probe, mirroring pickerQueryShape and the
     // metadata list runtime's own +1 convention.
     limit: cap + 1,

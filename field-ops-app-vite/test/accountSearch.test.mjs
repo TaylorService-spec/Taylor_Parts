@@ -16,6 +16,7 @@ import {
   ACCOUNT_SEARCH_CAP,
   ACCOUNT_SEARCH_STATE,
 } from "../src/domain/accountSearch.js";
+import { normalizeNameForSearch, withSearchableName } from "../src/domain/nameNormalization.js";
 
 const docs = (n, from = 0) => Array.from({ length: n }, (_, i) => ({ id: `acct-${from + i}`, name: `Acme ${from + i}` }));
 
@@ -63,7 +64,9 @@ test("a search shape has no cursor, offset, or page — it narrows, it does not 
 
 test("the range is a PREFIX bound on the typed term — start is the term itself", () => {
   const shape = accountSearchQueryShape({ term: "acme" });
-  assert.equal(shape.fieldPath, "name");
+  // The range runs over the NORMALIZED copy, not the display name. Firestore compares UTF-16 code
+  // units, so a query against `name` could never match a differently-cased record.
+  assert.equal(shape.fieldPath, "nameLower");
   assert.equal(shape.start, "acme");
 });
 
@@ -82,7 +85,7 @@ test("the term is trimmed before it becomes the range bound", () => {
 
 test("the shape is ordered by the same field the range filters — no composite index is required", () => {
   const shape = accountSearchQueryShape({ term: "acme" });
-  assert.deepEqual(shape.orderBy, [{ fieldPath: "name", direction: "ASC" }]);
+  assert.deepEqual(shape.orderBy, [{ fieldPath: "nameLower", direction: "ASC" }]);
 });
 
 // --- bounded results, disclosed truncation -----------------------------------
@@ -197,4 +200,44 @@ test("the four failure/absence facts are pairwise distinct states", () => {
   const idle = interpretAccountSearchRead({ term: "" }).state;
   const states = new Set([denied, unavailable, empty, idle]);
   assert.equal(states.size, 4, `expected 4 distinct states, got ${[...states].join(", ")}`);
+});
+
+// --- case-insensitivity ------------------------------------------------------
+//
+// The defect: typing "mesquite" reported "No customer names start with mesquite" while Mesquite
+// Soda Works was visible on the same screen. Firestore has no case-insensitive comparison, so this
+// is a property of what gets STORED and what the term is folded to -- both through one function.
+
+test("every casing of a term produces the SAME range bound", () => {
+  const bounds = ["mesquite", "MESQUITE", "Mesquite", "MeSqUiTe"].map((t) => accountSearchQueryShape({ term: t }));
+  for (const b of bounds) {
+    assert.equal(b.start, "mesquite", "the term must be folded to match the stored normalized name");
+    assert.equal(b.fieldPath, "nameLower");
+  }
+});
+
+test("the folded term is what the WRITER would have stored", () => {
+  // Ties the read contract to the write contract. Two sides folding consistently but differently
+  // from the writer is the silent-failure mode this guards against, and it would not show up in
+  // any test that only compares the read path to itself.
+  const stored = withSearchableName("Mesquite Soda Works");
+  const shape = accountSearchQueryShape({ term: "MESQUITE" });
+  assert.ok(
+    stored.nameLower.startsWith(shape.start),
+    `stored ${JSON.stringify(stored.nameLower)} must fall inside the range starting at ${JSON.stringify(shape.start)}`,
+  );
+  assert.equal(stored.name, "Mesquite Soda Works", "the DISPLAY name must be untouched by normalization");
+  assert.equal(normalizeNameForSearch("  Mesquite  "), "mesquite", "surrounding whitespace is not meaningful");
+});
+
+test("prefix semantics are unchanged -- this is a casing fix, not a widening", () => {
+  // "starts with" must not quietly start meaning "contains" as a side effect.
+  const shape = accountSearchQueryShape({ term: "soda" });
+  assert.equal(shape.start, "soda");
+  assert.equal(shape.end.codePointAt(shape.end.length - 1), 0xf8ff);
+  assert.equal(shape.end.length, "soda".length + 1);
+});
+
+test("a whitespace-only term still issues no query", () => {
+  assert.equal(accountSearchQueryShape({ term: "   " }), null);
 });
