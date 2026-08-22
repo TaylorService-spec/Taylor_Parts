@@ -22,6 +22,17 @@ export const VOLATILE_FIELDS = Object.freeze([
   Object.freeze({ field: "updatedAt", why: "server timestamp; changes on every write even when the value does not" }),
   Object.freeze({ field: "auditId", why: "audit event identity is derived per write, not per dataset" }),
   Object.freeze({ field: "idempotencyKey", why: "movement keys embed the run so a rebuild is not mistaken for a replay of the previous one" }),
+  // ENVIRONMENT IDENTITY, not world data. A Firebase UID is assigned by the environment's Auth
+  // service, so buildWorld() deliberately does not carry one -- a deterministic fixture that
+  // embedded a UID would be a different fixture in every project. The link is restored by the
+  // rebuild's principal-relink phase, from the deterministic certification identity.
+  //
+  // EXCLUDED FROM CONTENT COMPARISON, NOT FROM COMPLETENESS. classifyWorld still requires every
+  // certification employee to carry a userId before it will report COMPLETE; this entry only stops
+  // a legitimately environment-specific value from reading as dataset drift. The two checks ask
+  // different questions and must not be collapsed: "is the DATA the same" and "are the PEOPLE
+  // linked" have different right answers after a rebuild.
+  Object.freeze({ field: "userId", why: "Firebase Auth UID is environment state; the world is defined by certification identity, not by the principal a given project minted for it" }),
 ]);
 
 const VOLATILE = new Set(VOLATILE_FIELDS.map((v) => v.field));
