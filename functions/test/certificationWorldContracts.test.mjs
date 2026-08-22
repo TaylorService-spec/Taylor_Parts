@@ -36,6 +36,7 @@ const {
   ACCOUNT_STATUS_VALUES, ACCOUNT_RELATIONSHIP_VALUES,
 } = await import(L("functions/scripts/certificationWorld/domainContracts.mjs"));
 const { stampedForWrite } = await import(L("functions/scripts/certificationWorld/seedWrite.mjs"));
+const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
 
 const world = buildWorld();
 const allRecords = [
@@ -151,4 +152,68 @@ test("the contracts are not vacuous -- both tables have real entries", () => {
     QUERY_REQUIRED_FIELDS.accounts.some((f) => f.field === "updatedAt"),
     "updatedAt must stay query-required: it is the field whose absence hid 101 of 103 customers",
   );
+});
+
+// --- group coverage ----------------------------------------------------------
+
+test("EVERY collection buildWorld() produces is registered for seeding and verification", () => {
+  // THE SILENT OMISSION. expectedRecords() flattens the world through a hand-written table of
+  // groups. A collection the builder produces but the table omits is built, never seeded, never
+  // verified -- and the sandbox reports COMPLETE while missing every record of it. That already
+  // happened once with employees, which is why the table carries a warning comment.
+  //
+  // A comment is not a guard. This compares the two mechanically, so the next collection cannot
+  // be added to the builder and quietly left out of the world.
+  const arrays = Object.entries(world)
+    .filter(([, v]) => Array.isArray(v) && v.length && v[0] && typeof v[0] === "object" && "collection" in v[0])
+    .map(([k]) => k);
+  assert.ok(arrays.length >= 6, `buildWorld exposes only ${arrays.length} record groups -- this check is not reading the world`);
+
+  const seededCollections = new Set(expectedRecords().records.map((r) => r.collection));
+  const missing = [];
+  for (const key of arrays) {
+    const collection = world[key][0].collection;
+    if (!seededCollections.has(collection)) missing.push(`${key} -> ${collection}`);
+  }
+  assert.deepEqual(missing, [],
+    "These collections are BUILT but never seeded or verified. A sandbox missing every one of "
+      + "them would still report COMPLETE. Register each in expectedRecords():\n  "
+      + missing.join("\n  "));
+});
+
+test("the installed base is present, varied, and internally consistent", () => {
+  // A fixture set of 278 identical units would satisfy a count check and test nothing.
+  const eq = world.equipment;
+  assert.ok(eq.length >= 200 && eq.length <= 300, `expected 200-300 equipment assets, got ${eq.length}`);
+
+  const serials = new Set(eq.map((e) => e.data.serialNumber));
+  assert.equal(serials.size, eq.length, "duplicate serial numbers");
+  const ids = new Set(eq.map((e) => e.id));
+  assert.equal(ids.size, eq.length, "duplicate equipment ids");
+
+  // Every unit sits at a location its OWN account owns. Inventing a locationId would create the
+  // dangling reference the world's invariant check exists to catch.
+  const locationOwner = new Map(world.locations.map((l) => [l.id, l.data.accountId]));
+  const dangling = eq.filter((e) => locationOwner.get(e.data.locationId) !== e.data.accountId);
+  assert.deepEqual(dangling.map((e) => e.id), [], "equipment placed at a location its account does not own");
+
+  // Both lines represented, or the Taylor/Ventana reporting separation cannot be measured.
+  const lines = new Set(eq.map((e) => e.data.lineOfBusiness));
+  assert.ok(lines.has("TAYLOR") && lines.has("VENTANA"), `only ${[...lines].join("/")} represented`);
+
+  // Customers owning NOTHING must exist: the empty state is a real state, and a world where
+  // everyone owns something cannot prove it renders honestly.
+  const owners = new Set(eq.map((e) => e.data.accountId));
+  assert.ok(owners.size < world.accounts.length, "every customer owns equipment -- the empty state is untested");
+
+  // Warranty is DERIVED from install date, so a unit can never be newer than its own warranty.
+  for (const e of eq) {
+    assert.ok(e.data.warrantyExpiresDate > e.data.installedDate,
+      `${e.id} expires its warranty before it was installed`);
+  }
+
+  // A retired unit is an old one. A brand-new retired asset is a record contradicting itself.
+  for (const e of eq.filter((x) => x.data.status === "RETIRED")) {
+    assert.ok(e.data.certAgeMonths > 24, `${e.id} is RETIRED at ${e.data.certAgeMonths} months old`);
+  }
 });

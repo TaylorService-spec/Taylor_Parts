@@ -11,6 +11,7 @@ import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/a
 import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
+import { equipmentForAccount } from "./data/equipmentAssets.mjs";
 import {
   ACCOUNT_STATUS_VALUES,
   ACCOUNT_RELATIONSHIP_VALUES,
@@ -64,6 +65,7 @@ export function buildWorld() {
   const locations = [];
   const contacts = [];
   const equipmentModels = [];
+  const equipment = [];
   const trucks = [];
   const employees = [];
 
@@ -161,6 +163,17 @@ export function buildWorld() {
         });
       }
     }
+
+    // INSTALLED EQUIPMENT, emitted once this account's locations exist -- a unit is placed AT a
+    // location, and a fixture that invented a locationId would create the dangling reference the
+    // world's own invariant check exists to catch.
+    equipment.push(...equipmentForAccount({
+      accountIndex: i,
+      accountId,
+      accountName: name,
+      locationIds: locations.filter((l) => l.data.accountId === accountId).map((l) => l.id),
+      stressName: isStress,
+    }));
   });
 
   CERT_TRUCKS.forEach((t) => {
@@ -202,7 +215,7 @@ export function buildWorld() {
     });
   }
 
-  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, trucks, employees, marker };
+  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, equipment, trucks, employees, marker };
 }
 
 export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };

@@ -69,7 +69,7 @@ function repoCommit() {
 }
 
 /** Every record the world expects, flattened with its marker attached. */
-function expectedRecords() {
+export function expectedRecords() {
   const w = buildWorld();
   const groups = [
     ["accounts", w.accounts], ["locations", w.locations], ["contacts", w.contacts],
@@ -78,6 +78,11 @@ function expectedRecords() {
     // world builds 47 employee records, verify never asks for them, and a sandbox missing every
     // employee reports COMPLETE. The version bump is what turns that into a detectable mismatch.
     ["employees", w.employees],
+    // equipment ADDED with world version 1.3.0 -- the installed base. Same silent-omission risk
+    // the comment above describes, which is why buildGroupsCoverage.test asserts that every
+    // array buildWorld() returns appears in this table rather than trusting the next person to
+    // read the warning.
+    ["equipment", w.equipment],
   ];
   const out = [];
   for (const [datasetId, rows] of groups) {
@@ -362,7 +367,18 @@ async function main() {
   process.exitCode = after.result.state === WORLD_STATE.COMPLETE ? 0 : 1;
 }
 
-main().catch((err) => {
-  console.error("certificationWorld failed: " + err.message);
-  process.exit(2);
-});
+// RUN ONLY WHEN INVOKED DIRECTLY.
+//
+// expectedRecords() above is imported by its test -- the guard that every collection buildWorld()
+// produces is actually registered for seeding. An unguarded main() runs the entire tool on import:
+// it demands --projectId, fails, and calls process.exit(2), killing the test process outright.
+//
+// A script whose logic cannot be imported without executing it is a script whose logic does not get
+// tested. reconcileGrants.mjs had the same shape and shipped with two bugs because of it.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error("certificationWorld failed: " + err.message);
+    process.exit(2);
+  });
+}
