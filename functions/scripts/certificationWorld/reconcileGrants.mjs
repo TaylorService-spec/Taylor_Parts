@@ -62,6 +62,63 @@ function assertKnownSandbox(projectId) {
   return { projectId, role: env.role };
 }
 
+/**
+ * Classify intended authority against actual authority. PURE: no database, no clock.
+ *
+ * Extracted so it can be tested. Both bugs found in this tool were in exactly this logic -- the
+ * revoked-assignment filter and the orphan comparison -- and both were found by running it against
+ * real data and noticing a number that looked wrong. That is luck, not method.
+ *
+ * @param intendedByEmployee Map<employeeId, { userId, roles[] }>
+ * @param actualByUid        Map<uid, Set<roleId>>   ACTIVE assignments only
+ * @param allClaimedUids     Set<uid>                every uid any employee document claims
+ * @param sodPairs           segregation-of-duties exclusive pairs
+ */
+export function classifyGrants({ intendedByEmployee, actualByUid, allClaimedUids, sodPairs = [] }) {
+  const findings = { ALREADY_CORRECT: [], MISSING_GRANT: [], UNEXPECTED_GRANT: [], UID_MISMATCH: [], SOD_CONFLICT: [] };
+
+  for (const [employeeId, e] of intendedByEmployee) {
+    if (!e.userId) {
+      // No principal at all: every intended grant is unreachable. Reported as UID_MISMATCH rather
+      // than MISSING_GRANT, because granting would need a principal that does not exist -- the
+      // repair is the relink phase, not a grant.
+      for (const roleId of e.roles) findings.UID_MISMATCH.push({ employeeId, roleId, reason: "employee has no userId link" });
+      continue;
+    }
+    const held = actualByUid.get(e.userId) || new Set();
+    for (const roleId of e.roles) {
+      if (held.has(roleId)) findings.ALREADY_CORRECT.push({ employeeId, roleId });
+      else findings.MISSING_GRANT.push({ employeeId, roleId, userId: e.userId });
+    }
+    for (const roleId of held) {
+      if (!e.roles.includes(roleId)) findings.UNEXPECTED_GRANT.push({ employeeId, roleId, userId: e.userId });
+    }
+    // SoD is evaluated on what the principal ACTUALLY holds, not on what the fixture intends: a
+    // conflict created by a grant outside this fixture is still a conflict.
+    for (const pair of sodPairs) {
+      const [a, b] = Array.isArray(pair) ? pair : [pair.a ?? pair.left, pair.b ?? pair.right];
+      if (a && b && held.has(a) && held.has(b)) findings.SOD_CONFLICT.push({ employeeId, roles: [a, b] });
+    }
+  }
+
+  // ORPHANED GRANTS: assignments whose principal NO employee document claims.
+  //
+  // Scoped to EVERY employee, not only certification ones. The sandbox also carries pre-existing
+  // test personas, linked to their own non-certification employee records and holding legitimate
+  // authority. Comparing against certification employees alone reported all eight as orphans -- a
+  // reconciler that cries wolf about the accounts a human signs in with is one nobody reads twice.
+  for (const [uid, roles] of actualByUid) {
+    if (!allClaimedUids.has(uid)) {
+      findings.UID_MISMATCH.push({
+        employeeId: "(none)", userId: uid, roleId: [...roles].join(","),
+        reason: "active assignment whose principal no employee document claims",
+      });
+    }
+  }
+
+  return findings;
+}
+
 async function main() {
   const target = assertKnownSandbox(PROJECT_ID);
   console.log(`target: ${target.projectId} (role=${target.role})\n`);
@@ -102,55 +159,19 @@ async function main() {
     actualByUid.get(uid).add(a.roleId);
   }
 
-  const findings = { ALREADY_CORRECT: [], MISSING_GRANT: [], UNEXPECTED_GRANT: [], UID_MISMATCH: [], SOD_CONFLICT: [] };
-
-  for (const [employeeId, e] of byEmployee) {
-    if (!e.userId) {
-      // No principal at all: every intended grant is unreachable. Reported as UID_MISMATCH rather
-      // than MISSING_GRANT, because granting would need a principal that does not exist -- the
-      // repair is the relink phase, not a grant.
-      for (const roleId of e.roles) findings.UID_MISMATCH.push({ employeeId, roleId, reason: "employee has no userId link" });
-      continue;
-    }
-    const held = actualByUid.get(e.userId) || new Set();
-    for (const roleId of e.roles) {
-      if (held.has(roleId)) findings.ALREADY_CORRECT.push({ employeeId, roleId });
-      else findings.MISSING_GRANT.push({ employeeId, roleId, userId: e.userId });
-    }
-    for (const roleId of held) {
-      if (!e.roles.includes(roleId)) findings.UNEXPECTED_GRANT.push({ employeeId, roleId, userId: e.userId });
-    }
-    // SoD is evaluated on what the principal ACTUALLY holds, not on what the fixture intends: a
-    // conflict created by a grant outside this fixture is still a conflict.
-    for (const pair of SOD_EXCLUSIVE_PAIRS) {
-      const [a, b] = Array.isArray(pair) ? pair : [pair.a ?? pair.left, pair.b ?? pair.right];
-      if (a && b && held.has(a) && held.has(b)) findings.SOD_CONFLICT.push({ employeeId, roles: [a, b] });
-    }
-  }
-
-  // ORPHANED GRANTS: assignments whose principal NO employee document claims.
-  //
-  // After a rebuild without the relink phase this is where all 82 grants would land -- real
-  // assignments, attached to ghosts.
-  //
-  // Scoped to EVERY employee, not only certification ones. The sandbox also carries the eight
-  // pre-existing test personas, linked to their own non-certification employee records and holding
-  // legitimate authority. An earlier version compared against certification employees alone and
-  // duly reported all eight as orphans -- a reconciler that cries wolf about the accounts a human
-  // signs in with is one nobody reads twice.
+  // Every uid ANY employee document claims -- certification or not. See classifyGrants.
   const allClaimedUids = new Set();
   for (const doc of employees.docs) {
     const uid = doc.data().userId;
     if (uid) allClaimedUids.add(uid);
   }
-  for (const [uid, roles] of actualByUid) {
-    if (!allClaimedUids.has(uid)) {
-      findings.UID_MISMATCH.push({
-        employeeId: "(none)", userId: uid, roleId: [...roles].join(","),
-        reason: "active assignment whose principal no employee document claims",
-      });
-    }
-  }
+
+  const findings = classifyGrants({
+    intendedByEmployee: byEmployee,
+    actualByUid,
+    allClaimedUids,
+    sodPairs: SOD_EXCLUSIVE_PAIRS,
+  });
 
   console.log(`certification employees        : ${byEmployee.size}`);
   console.log(`employees with intended roles  : ${new Set(intended.map((i) => i.employeeId)).size}`);
@@ -174,7 +195,16 @@ async function main() {
   if (!clean) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error(`\nFAILED: ${err?.message || err}`);
-  process.exitCode = 1;
-});
+// RUN ONLY WHEN INVOKED DIRECTLY.
+//
+// classifyGrants above is imported by its test, and an unguarded main() runs the whole tool on
+// import: it demands --projectId, fails, and sets a non-zero exit code -- so the test FILE failed
+// while every assertion inside it passed. A script whose logic cannot be imported without executing
+// it is a script whose logic does not get tested, which is how this tool shipped with two bugs.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`\nFAILED: ${err?.message || err}`);
+    process.exitCode = 1;
+  });
+}
