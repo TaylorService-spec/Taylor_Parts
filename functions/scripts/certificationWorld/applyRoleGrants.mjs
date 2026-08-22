@@ -88,9 +88,10 @@ async function main() {
   const argv = process.argv.slice(2);
   const arg = (n) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
   const apply = argv.includes("--apply");
+  const keyGeneration = Number(arg("keyGeneration") ?? 1);
   const target = assertSandboxTarget(arg("projectId"));
 
-  console.log(`certification role grants :: ${apply ? "APPLY" : "DRY RUN"} :: ${target.projectId} (role=${target.role})`);
+  console.log(`certification role grants :: ${apply ? "APPLY" : "DRY RUN"} :: ${target.projectId} (role=${target.role}, keyGeneration=${keyGeneration})`);
 
   const cfg = JSON.parse(readFileSync(path.join(REPO, "config/environments.json"), "utf8"));
   const apiKey = cfg.environments.find((e) => e.firebase?.projectId === target.projectId).firebase.apiKey;
@@ -163,7 +164,19 @@ async function main() {
     // stopped on that first failure with ZERO applied rather than granting 81 and reporting one
     // error, which is the behaviour that makes a rejected key a five-minute fix instead of a
     // half-granted world whose capacity numbers are real and whose meaning is not.
-    const idempotencyKey = `certworld_${g.employeeId}_${g.roleId}`;
+    // KEY GENERATION. An idempotency key records the OUTCOME of a request, not just its intent, so
+    // the command refuses to reuse a key that previously resolved to a DENIAL:
+    //
+    //   "This idempotency key has already been used for a different or denied request."
+    //
+    // That is the right behaviour and it caught a real case. The 16 grants blocked before the deploy
+    // were denied under generation 1 ("roleId is not recognized"). Retrying them post-deploy is a
+    // genuinely NEW request -- same intent, different world -- and it needs a new key. Reusing the
+    // old one would ask the platform to change a recorded answer.
+    //
+    // Generation is explicit rather than a timestamp: a clock-based key would make every run a new
+    // request and silently destroy the idempotency this whole batch depends on.
+    const idempotencyKey = `certworld_g${keyGeneration}_${g.employeeId}_${g.roleId}`;
 
     // ALREADY_APPLIED IS DETECTED BEFORE CALLING, not inferred from the response.
     //

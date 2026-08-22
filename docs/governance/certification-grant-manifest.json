@@ -34,8 +34,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Devon Sandoval",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-001_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-001",
@@ -43,8 +43,8 @@
    "roleId": "reportAuthor",
    "privileged": false,
    "displayName": "Devon Sandoval",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-001_reportAuthor already present"
   },
   {
    "employeeId": "cw-emp-002",
@@ -61,8 +61,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Priya Achterberg",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-002_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-002",
@@ -70,8 +70,8 @@
    "roleId": "reportAuthor",
    "privileged": false,
    "displayName": "Priya Achterberg",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-002_reportAuthor already present"
   },
   {
    "employeeId": "cw-emp-003",
@@ -88,8 +88,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Tomas Whitlock",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-003_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-003",
@@ -97,8 +97,8 @@
    "roleId": "reportAuthor",
    "privileged": false,
    "displayName": "Tomas Whitlock",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-003_reportAuthor already present"
   },
   {
    "employeeId": "cw-emp-004",
@@ -115,8 +115,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Ingrid Thorsen",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-004_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-004",
@@ -124,8 +124,8 @@
    "roleId": "reportAuthor",
    "privileged": false,
    "displayName": "Ingrid Thorsen",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-004_reportAuthor already present"
   },
   {
    "employeeId": "cw-emp-005",
@@ -583,8 +583,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Devon Amundsen",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-039_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-039",
@@ -592,8 +592,8 @@
    "roleId": "reportFinanceViewer",
    "privileged": false,
    "displayName": "Devon Amundsen",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-039_reportFinanceViewer already present"
   },
   {
    "employeeId": "cw-emp-040",
@@ -610,8 +610,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Priya Okonkwo",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-040_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-040",
@@ -619,8 +619,8 @@
    "roleId": "reportFinanceViewer",
    "privileged": false,
    "displayName": "Priya Okonkwo",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-040_reportFinanceViewer already present"
   },
   {
    "employeeId": "cw-emp-041",
@@ -637,8 +637,8 @@
    "roleId": "reportViewer",
    "privileged": false,
    "displayName": "Tomas Sandoval",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-041_reportViewer already present"
   },
   {
    "employeeId": "cw-emp-041",
@@ -646,8 +646,8 @@
    "roleId": "reportFinanceViewer",
    "privileged": false,
    "displayName": "Tomas Sandoval",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-041_reportFinanceViewer already present"
   },
   {
    "employeeId": "cw-emp-042",
@@ -718,8 +718,8 @@
    "roleId": "inventoryReceivingClerk",
    "privileged": false,
    "displayName": "Naomi Thorsen",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-044_inventoryReceivingClerk already present"
   },
   {
    "employeeId": "cw-emp-045",
@@ -745,8 +745,8 @@
    "roleId": "inventoryReceivingClerk",
    "privileged": false,
    "displayName": "Curtis Ravenscroft",
-   "outcome": "BLOCKED_ROLE_NOT_DEPLOYED",
-   "detail": "the deployed grantRole build does not know this Role; requires a Functions deploy"
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g2_cw-emp-045_inventoryReceivingClerk already present"
   },
   {
    "employeeId": "cw-emp-046",
