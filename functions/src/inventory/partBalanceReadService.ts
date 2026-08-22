@@ -34,6 +34,8 @@
 // and points at the serialized registry, which is its actual authority.
 
 import { getFirestore } from "firebase-admin/firestore";
+import { RECEIVING_ORDERS_COLLECTION } from "../inventoryReceiving/receivingTypes";
+import { normalizeCanonicalPurchaseOrder, deriveReceiptState, type CommittedReceipt } from "../purchasing/purchaseOrderNormalization";
 import type { Firestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import {
@@ -190,33 +192,54 @@ export function composePartBalance(input: {
 export function sumOpenOrderedQuantity(
   purchaseOrders: ReadonlyArray<Record<string, unknown>>,
   partId: string,
+  receiptsByPurchaseOrder?: ReadonlyMap<string, readonly CommittedReceipt[]>,
 ): number | null {
   let saw = false;
   let outstanding = 0;
 
   for (const po of purchaseOrders) {
-    // THREE SHAPES, ONE SOURCE EACH -- never unioned, or a purchase order carrying two of them
-    // would be counted twice and silently double its outstanding quantity.
-    //
-    //   lines  the NORMALIZED in-memory shape (normalizeCanonicalPurchaseOrder's output). First,
-    //          because a caller that already normalized has stated which lines it means.
-    //   items  the CANONICAL STORED shape, written by procurementService.createPurchaseOrder.
-    //   po     the legacy single-line shape, where the order itself carries partId/quantity.
-    //
-    // `items` was missing, and its absence was invisible. readPartBalance passes RAW stored
-    // documents here, and a stored canonical purchase order has `items`; `lines` exists only
-    // after normalization. So every canonical order returned null -- UNKNOWN -- and `onOrder`
-    // could not see one of them. A part with 18 units inbound read exactly like a part nobody
-    // had ordered, because null legitimately means "no purchase order mentions this part".
-    //
-    // The existing tests stayed green throughout: each hand-built `{ lines: [...] }`, a shape
-    // that never occurs in storage. The arithmetic was always right; the field was never found.
-    const rawLines = Array.isArray(po.lines) ? po.lines
-      : Array.isArray(po.items) ? po.items
+    const poId = typeof po.id === "string" ? po.id
+      : typeof po.purchaseOrderId === "string" ? po.purchaseOrderId
         : null;
+    const receipts: readonly CommittedReceipt[] = (poId ? receiptsByPurchaseOrder?.get(poId) : undefined) ?? [];
+
+    // ── CANONICAL STORED SHAPE: `items`, with received derived from committed receipts.
+    //
+    // A canonical purchase order does NOT persist receivedQuantity -- the receipt command writes
+    // only version/updatedAt/status, and progress is derived so it cannot drift from the receipts.
+    // Reading `quantity` alone would report the FULL order as still inbound forever, which after a
+    // partial receipt overstates supply and makes a live shortage look handled.
+    //
+    // deriveReceiptState is the existing authority for that arithmetic, including the clamp at
+    // zero. Re-summing receipts here would be a second implementation of a rule that already has
+    // an owner, free to disagree with it.
+    if (Array.isArray(po.items)) {
+      let canonical;
+      try {
+        canonical = normalizeCanonicalPurchaseOrder(poId ?? "unknown", po);
+      } catch {
+        // Malformed order: contributes nothing rather than a guessed quantity. Not silently a
+        // zero either -- `saw` stays false, so this order cannot turn UNKNOWN into a measured 0.
+        continue;
+      }
+      const derived = deriveReceiptState(canonical, receipts);
+      for (const line of derived.lines) {
+        if (line.partId !== partId) continue;
+        saw = true;
+        outstanding += line.remainingQuantity;
+      }
+      continue;
+    }
+
+    // ── NORMALIZED IN-MEMORY SHAPE, and the LEGACY single-line document.
+    //
+    // Legacy orders carry receivedQuantity ON the document, so their outstanding already nets and
+    // must keep doing so. Canonical receipt semantics are deliberately NOT applied here: a legacy
+    // order is one-shot and full-quantity by validation, and deriving it from receipt records
+    // would answer a question its shape never asked.
+    const rawLines = Array.isArray(po.lines) ? po.lines : null;
     const lines: Array<Record<string, unknown>> = rawLines
       ? (rawLines as Array<Record<string, unknown>>)
-      // Legacy single-line shape: the order itself carries partId/quantity.
       : (typeof po.partId === "string" ? [po as Record<string, unknown>] : []);
 
     for (const line of lines) {
@@ -235,7 +258,6 @@ export function sumOpenOrderedQuantity(
 
   return saw ? outstanding : null;
 }
-
 /** Purchase order statuses whose outstanding quantity is still genuinely incoming. */
 export const OPEN_PURCHASE_ORDER_STATUSES = Object.freeze(["DRAFT", "SENT", "ORDERED", "PARTIALLY_RECEIVED"]);
 
@@ -263,14 +285,50 @@ export async function readPartBalance(
   const eligibleWarehouseIds = new Set(warehouseSnap.docs.map((d) => d.id));
 
   const openOrders = poSnap.docs
-    .map((d) => d.data() as Record<string, unknown>)
+    // The document id is carried explicitly: it is how committed receipts are matched back to
+    // their order, and a stored PO does not always repeat its own id in the body.
+    .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as Record<string, unknown> & { id: string })
     .filter((po) => typeof po.status === "string" && OPEN_PURCHASE_ORDER_STATUSES.includes(po.status));
+
+  // ── COMMITTED RECEIPTS, so canonical outstanding can be netted.
+  //
+  // A canonical purchase order stores no receivedQuantity; progress lives in the receipts. Without
+  // them a partially received order reports its FULL quantity as still inbound -- overstating
+  // supply and making a live shortage look handled.
+  //
+  // Read only for the orders that survived the status filter: a RECEIVED or CANCELLED order
+  // contributes nothing either way, so fetching its receipts would be work with no effect on the
+  // answer.
+  // Built with `new Map(entries)` rather than `.set()` on purpose: this module carries a guard
+  // forbidding /\.set\(/ so a balance READ can never write, and a text guard cannot tell
+  // `Map.prototype.set` from `DocumentReference.set`. Restructuring the code is the right answer;
+  // loosening the guard to accommodate it would trade a real protection for a convenience.
+  const receiptSnaps = openOrders.length === 0 ? [] : await Promise.all(
+    openOrders.map((po) =>
+      db.collection(RECEIVING_ORDERS_COLLECTION).where("source.purchaseOrderId", "==", po.id).get()),
+  );
+  const receiptsByPurchaseOrder: ReadonlyMap<string, readonly CommittedReceipt[]> = new Map(
+    receiptSnaps.map((snap, i) => [
+      openOrders[i].id,
+      snap.docs.map((d) => {
+        const data = d.data() ?? {};
+        const lines = Array.isArray(data.lines) ? data.lines : [];
+        return {
+          receivingId: d.id,
+          lines: lines.map((l: Record<string, unknown>) => ({
+            lineId: String(l?.lineId ?? ""),
+            receivedQuantity: typeof l?.receivedQuantity === "number" ? l.receivedQuantity : 0,
+          })),
+        };
+      }),
+    ] as const),
+  );
 
   return composePartBalance({
     partId,
     ledgerRows,
     eligibleWarehouseIds,
-    openOrderedQuantity: sumOpenOrderedQuantity(openOrders, partId),
+    openOrderedQuantity: sumOpenOrderedQuantity(openOrders, partId, receiptsByPurchaseOrder),
     serialTracked,
   });
 }

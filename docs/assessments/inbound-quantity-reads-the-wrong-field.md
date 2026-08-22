@@ -136,7 +136,7 @@ Mutation-proven: reverting to `lines`-only fails the stored-shape regression.
 
 ## Follow-on: canonical outstanding does not net committed receipts
 
-**Status:** open, recorded as a passing test that documents current behaviour
+**Status:** FIXED 2026-08-22 — Owner decision; `onOrder` now means outstanding, not ordered
 
 A **legacy** order carries `receivedQuantity` on the document, so its outstanding shrinks as goods
 arrive. A **canonical** order does not — the receipt command writes only `version`, `updatedAt` and
@@ -152,3 +152,38 @@ field name.
 
 `partBalanceReadService.test.mjs` asserts the current behaviour explicitly, so a future change that
 nets receipts fails there and is noticed rather than quietly altering every `onOrder` figure.
+
+### Follow-on resolution
+
+`onOrder` is now **what is still expected to arrive**:
+
+```
+ordered 18, received 0   ->  18
+ordered 18, received 5   ->  13
+ordered 18, received 18  ->   0   (contributes no inbound)
+```
+
+`readPartBalance` reads committed receipts for the orders that survive the status filter and hands
+them to `sumOpenOrderedQuantity`, which nets them through **`deriveReceiptState`** — the existing
+authority for that arithmetic, including its clamp at zero. No second summation was written: a
+copy of a rule that already has an owner is free to disagree with it.
+
+Legacy orders are untouched. They carry `receivedQuantity` on the document and are one-shot by
+validation, so canonical receipt semantics are deliberately not applied to them.
+
+Verified through the real service against live emulator state:
+
+| Part | onHand | onOrder | Why |
+|---|---:|---:|---|
+| CW-P-0000 | UNKNOWN | **20** | Golden recovery order, `SENT` |
+| CW-P-0003 | 8 | **18** | intended ON_ORDER |
+| CW-P-0304 | 8 | **18** | intended ON_ORDER |
+| CW-P-0001 | 6 | **UNKNOWN** | its only order is `APPROVED` — correctly not inbound |
+| CW-P-0301 | UNKNOWN | **UNKNOWN** | no order mentions it |
+
+UNKNOWN is preserved throughout and never collapsed into a measured zero — "we could not read the
+order" and "nothing is on order" remain opposite facts.
+
+Contract covered by `outstandingInboundQuantity.test.mjs`: partial reduces, completion removes,
+multiple receipts sum, lines stay isolated, multiple orders aggregate, replay nets once, refused
+attempts net nothing, `0 <= outstanding <= ordered`, legacy unchanged, UNKNOWN survives.

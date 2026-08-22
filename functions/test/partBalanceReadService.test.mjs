@@ -243,23 +243,3 @@ test("an order with neither shape stays UNKNOWN rather than inventing zero", () 
   assert.equal(sumOpenOrderedQuantity([{ id: "po-1", status: "SENT", items: [] }], "CW-P-0003"), null);
 });
 
-test("KNOWN GAP: canonical outstanding does not yet net committed receipts", () => {
-  // Recorded deliberately, as current behaviour rather than as an aspiration.
-  //
-  // A LEGACY order carries receivedQuantity on the document, so its outstanding shrinks as goods
-  // arrive. A CANONICAL order does not: the receipt command writes only version/updatedAt/status,
-  // and received quantity is DERIVED from committed receipts by deriveReceiptState -- which this
-  // function never sees.
-  //
-  // So after a partial receipt a canonical order still reports its FULL ordered quantity as
-  // inbound. This assertion documents that, so a future change that fixes it fails here and is
-  // noticed, instead of quietly altering every onOrder figure.
-  const canonicalAfterPartialReceipt = {
-    status: "SENT",
-    items: [{ lineId: "L1", partId: "CW-P-0003", quantity: 18 }],   // 9 already received elsewhere
-  };
-  assert.equal(sumOpenOrderedQuantity([canonicalAfterPartialReceipt], "CW-P-0003"), 18,
-    "if this now returns 9, receipts are being netted -- update this test and the assessment doc");
-  // The legacy shape, by contrast, does net -- because the quantity is ON the document.
-  assert.equal(sumOpenOrderedQuantity([{ partId: "CW-P-0003", quantity: 18, receivedQuantity: 9 }], "CW-P-0003"), 9);
-});
