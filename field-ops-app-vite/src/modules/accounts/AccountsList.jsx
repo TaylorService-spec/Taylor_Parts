@@ -211,6 +211,30 @@ export default function AccountsList() {
         </p>
       )}
 
+      {/* SILENT TRUNCATION IS THE WORST FAILURE A LIST CAN HAVE, and this one had it.
+          The default sort is `updatedAt DESC`. Firestore's orderBy silently EXCLUDES every
+          document missing the ordered field -- so 101 of 103 customers vanished from the list
+          while the header above still read "103 Total", because the portfolio summary is a
+          different read that does not sort. A shorter list looks like a shorter list; nothing
+          about it says "94% of your customers are not shown".
+          Counted rather than assumed: the row count is compared against the total the summary
+          already fetched, and any shortfall is stated in the reader's own terms. This does not
+          fix the missing field -- it makes its absence impossible to mistake for an empty
+          business. */}
+      {summaryState === "READY"
+        && summary?.total > 0
+        && !statusFilter
+        && !relationshipFilter
+        && presentation?.page?.rows
+        && !presentation.page.hasMore
+        && presentation.page.rows.length < summary.total && (
+        <p className="fo-warning" role="status">
+          Showing {presentation.page.rows.length} of {summary.total} customers. The rest are missing
+          the “last update” value this list is sorted by, so they cannot appear here. Sort or filter
+          by another field to reach them.
+        </p>
+      )}
+
       <div className="fo-portfolio-filters">
         <div className="fo-filter-group" role="group" aria-label="Filter by relationship type">
           <span className="fo-filter-label">Relationship:</span>

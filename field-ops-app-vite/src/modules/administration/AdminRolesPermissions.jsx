@@ -336,7 +336,7 @@ export default function AdminRolesPermissions() {
           the business routes around. The section renders its own denial state -- an operator
           without approval authority sees "not available", never an empty queue that reads as
           "nothing to do". */}
-      <section className="fo-section">
+      <section className="fo-panel" aria-label="Approval Requests">
         <h2>
           Approval Requests
           {pendingApprovals > 0 && (

@@ -218,6 +218,11 @@ export default function MetadataListGrid({
                   // The document id routes the row and never labels it. It is deliberately
                   // absent from the cells the model produced, so there is no path by which
                   // it reaches a reader as content.
+                  // A row that is clickable must LOOK clickable. This row already had onClick,
+                  // tabIndex and Enter/Space handling -- it was fully interactive and fully
+                  // accessible, and rendered as flat text with no cursor, hover or link
+                  // affordance. A reader had no way to know the names were reachable at all.
+                  className={onRowClick ? "fo-list-grid-row-clickable" : undefined}
                   onClick={onRowClick ? () => onRowClick(row.key) : undefined}
                   tabIndex={rowTabIndex}
                   onKeyDown={
@@ -244,7 +249,7 @@ export default function MetadataListGrid({
                       <td
                         key={cell.fieldId}
                         data-label={column?.label || undefined}
-                        className={isNumeric ? "fo-tabular-nums" : undefined}
+                        className={[cellIndex === 0 && onRowClick ? "fo-list-grid-label" : null, isNumeric ? "fo-tabular-nums" : null].filter(Boolean).join(" ") || undefined}
                       >
                         {cell.value}
                       </td>

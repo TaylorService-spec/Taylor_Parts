@@ -109,7 +109,7 @@ export default function ApprovalRequests({ onPendingCountChange }) {
   }
 
   return (
-    <div className="fo-approval-requests">
+    <div>
       {notice && <p className="fo-approval-notice" role="status">{notice}</p>}
 
       <h3>

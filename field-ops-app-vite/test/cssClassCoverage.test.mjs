@@ -62,8 +62,33 @@ function referencedClasses(files) {
   const refs = new Map(); // class -> Set(file)
   for (const file of files) {
     const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(/className\s*=\s*"([^"{}]+)"/g)) {
-      for (const cls of m[1].split(/\s+/).filter(Boolean)) {
+    // STATIC ATTRIBUTES: className="a b c"
+    const chunks = [...src.matchAll(/className\s*=\s*"([^"{}]+)"/g)].map((m) => m[1]);
+
+    // CONDITIONAL EXPRESSIONS: className={`fo-card${on ? " fo-card-active" : ""}`}
+    //
+    // These were skipped, and that hole is exactly where the reported defect lived. The portfolio
+    // status cards and the relationship chips are written this way, so `fo-portfolio-card` and
+    // `fo-filter-chip` were never checked -- both had NO rule at all, both rendered as the bare
+    // global green button, and CI stayed green while the counts sat at 1.16:1 contrast and the
+    // selected filter had no visible state.
+    //
+    // The original caution was right about EXPRESSIONS -- `cls-${size}` cannot be resolved without
+    // running the component. But the LITERAL SEGMENTS of a template can be, and the classes that
+    // express interactive state (-active, -selected, -pressed) live almost exclusively in these
+    // conditionals. That is the most important place to check, not the one to skip.
+    for (const m of src.matchAll(/className\s*=\s*\{([^}]*)\}/g)) {
+      // Literal runs inside the expression: backtick chunks and quoted strings alike.
+      for (const lit of m[1].matchAll(/[`"']([^`"'$]*)[`"']/g)) chunks.push(lit[1]);
+    }
+
+    for (const chunk of chunks) {
+      for (const cls of chunk.split(/\s+/).filter(Boolean)) {
+        // A conditional expression also contains literals that are NOT classes -- tone values
+        // like `denied: "critical"` and comparisons like `metric.tone === "warn"`. Every class in
+        // this codebase is hyphenated (fo-card, wo-action-row, disp-pane--queue), so requiring a
+        // hyphen separates the two without an allowlist that would need curating forever.
+        if (!cls.includes("-")) continue;
         if (!refs.has(cls)) refs.set(cls, new Set());
         refs.get(cls).add(path.relative(SRC, file));
       }
@@ -99,6 +124,17 @@ const NOT_STYLED_HERE = new Set([
  * error and dialog surfaces rendering with no styling at all.
  */
 const KNOWN_UNSTYLED = new Set([
+  // SURFACED 2026-08-22 when this guard learned to read conditional classNames. Every one is the
+  // same defect the portfolio cards had: the component applies the class, nothing styles it, and
+  // the state it represents is invisible. Recorded rather than silently allowed -- each is a real
+  // finding awaiting its own fix, and at least two are user-facing:
+  //   fo-customer-picker-option-active -- the highlighted option during keyboard navigation
+  //   fo-shell--drawer-open            -- the mobile navigation drawer's open state
+  "fo-customer-picker-dropdown-up",
+  "fo-customer-picker-option-active",
+  "fo-equipment-compat-nonoperational",
+  "fo-shell--drawer-open",
+  "fo-tone-text",
   // Non-fo-prefixed debt, pre-existing and unrelated to 887a0a50.
   "disp-pane--preview",
   "disp-pane--queue",
