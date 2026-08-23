@@ -1,0 +1,130 @@
+# Equipment install — the callable boundary and the surface that drives it.
+#
+# A dedicated lane because this is a new subsystem, and in this repo a subsystem without its own
+# path-filtered workflow is a subsystem CI does not run. The install command itself already has
+# equipment-install-command-tests.yml; this covers everything BETWEEN that command and a person: the
+# onCall adapter, the display model, the form's decisions, and the rendered surface.
+#
+# WHY BOTH RUNNERS. The pure domain modules are node:test; the rendered surface is vitest +
+# @testing-library. Splitting them would let one half pass while the other was never run -- which is
+# how a field-name mismatch between the governed projection and the display model survived fifteen
+# green unit tests until the render test was written.
+#
+# The callable suite needs the Firestore emulator: it resolves capability against REAL roleAssignment
+# documents rather than a stub, because a stubbed authorizer proves nothing about the control that
+# keeps acquisition and installation apart.
+name: Equipment Install UI + Callable Tests
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/equipmentInstall/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/index.ts"
+      - "functions/test/installCallable.test.mjs"
+      - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
+      - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentGovernedProjection.js"
+      - "field-ops-app-vite/src/domain/availableEquipmentCatalogView.js"
+      - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
+      - "field-ops-app-vite/src/modules/equipment/InstallAtCustomer.jsx"
+      - "field-ops-app-vite/src/hooks/useWholeUnitParts.js"
+      - "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js"
+      - "field-ops-app-vite/src/access/useEquipmentInstallCapability.js"
+      - "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
+      - "field-ops-app-vite/test/wholeUnitAssetDisplay.test.mjs"
+      - "field-ops-app-vite/test/equipmentInstallForm.test.mjs"
+      - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-install-ui-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/equipmentInstall/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/index.ts"
+      - "functions/test/installCallable.test.mjs"
+      - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
+      - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
+      - "field-ops-app-vite/src/modules/equipment/InstallAtCustomer.jsx"
+      - "field-ops-app-vite/src/hooks/useWholeUnitParts.js"
+      - "field-ops-app-vite/src/access/useEquipmentInstallCapability.js"
+      - "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
+      - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
+      - ".github/workflows/equipment-install-ui-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-ui:
+    name: Equipment install — display model, form decisions, rendered surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies (reproducible)
+        run: npm ci
+        working-directory: field-ops-app-vite
+
+      - name: Display model — ids become words, and nothing is invented
+        run: node --test test/wholeUnitAssetDisplay.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Form decisions — wrong customer, and twice
+        run: node --test test/equipmentInstallForm.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Rendered surface — labels, line split, who sees the action
+        run: npx vitest run test/availableEquipmentInstall.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The client must still BUILD. A surface that only passes its tests and fails the bundle is a
+      # surface nobody can load.
+      - name: Client build
+        run: npm run build
+        working-directory: field-ops-app-vite
+
+  install-callable:
+    name: Equipment install callable (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      # Real roleAssignment documents, read through the transaction, exactly as the deployed callable
+      # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
+      - name: Callable boundary — auth, actor identity, and every refusal code
+        run: firebase emulators:exec --only firestore --project demo-install-callable "node test/installCallable.test.mjs"
+        working-directory: functions

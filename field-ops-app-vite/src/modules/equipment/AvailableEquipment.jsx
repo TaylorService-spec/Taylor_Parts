@@ -26,7 +26,20 @@
 // itself fails closed to DENIED) -- this wiring is repo-only until a later, separately authorized
 // grant + activation, exactly like the Available Equipment read itself at its own introduction.
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 import { readSerializedAssetSource } from "../../access/serializedAssetSource";
+import { useEquipmentInstallCapability } from "../../access/useEquipmentInstallCapability";
+import { useAccountPicker } from "../../hooks/useAccountPicker";
+import { useWholeUnitParts } from "../../hooks/useWholeUnitParts";
+import {
+  composeWholeUnitAssetRows,
+  countAvailableByLine,
+  groupRowsByLine,
+  LINE_LABEL,
+  LINE_OF_BUSINESS,
+} from "../../domain/wholeUnitAssetDisplay";
+import InstallAtCustomer from "./InstallAtCustomer";
 import { useAvailableEquipmentSource } from "../../hooks/useAvailableEquipmentSource";
 import { useLocationDisplaySource } from "../../hooks/useLocationDisplaySource";
 import {
@@ -47,12 +60,30 @@ import { Button } from "../../shared/ui/primitives";
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
 export default function AvailableEquipment() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const liveSource = useAvailableEquipmentSource();
   const { status: sourceStatus, assets: rawAssets } = readSerializedAssetSource(liveSource);
 
   const requestedLocationIds = useMemo(() => distinctLocationIds(rawAssets), [rawAssets]);
   const { displayMap } = useLocationDisplaySource(requestedLocationIds);
   const assets = useMemo(() => applyLocationDisplay(rawAssets, displayMap), [rawAssets, displayMap]);
+
+  // PRODUCT WORDS. The governed read returns ids; the Part is where the canonical equipmentModelId
+  // lives, and manufacturer / model / business line are derived from that one identity rather than
+  // from a second field that could disagree with it.
+  const { parts: wholeUnitParts } = useWholeUnitParts();
+  const unitRows = useMemo(() => composeWholeUnitAssetRows(assets, wholeUnitParts), [assets, wholeUnitParts]);
+  const availableByLine = useMemo(() => countAvailableByLine(unitRows), [unitRows]);
+
+  // Install is gated on the capability, resolved through the trusted feed and fail-closed while it
+  // loads. The server checks again inside its transaction; this only decides what to render.
+  const { canInstall } = useEquipmentInstallCapability(user);
+  // The app's EXISTING bounded customer picker, not a fresh read of the accounts collection.
+  // `options` is already truncated and ordered by that hook, and its truncation notice is the one
+  // users see everywhere else a customer is chosen.
+  const { options: accountOptions, message: accountsMessage } = useAccountPicker();
+  const [installing, setInstalling] = useState(null);   // the unit whose dialog is open
 
   const [filters, setFilters] = useState(EMPTY_FILTERS);
 
@@ -84,6 +115,11 @@ export default function AvailableEquipment() {
       />
     );
   }
+
+  // The filtered set, re-expressed as display rows and grouped. Filtering stays on the existing
+  // catalog view so the search/filter behaviour is unchanged; only the RENDERING is new.
+  const visibleSerials = new Set(rows.map((r) => r.serialNo));
+  const visibleGroups = groupRowsByLine(unitRows.filter((r) => visibleSerials.has(r.serialNo)));
 
   const setField = (key) => (e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }));
   const clearFilters = () => setFilters(EMPTY_FILTERS);
@@ -128,7 +164,27 @@ export default function AvailableEquipment() {
 
       <p className="fo-muted" role="status" aria-live="polite">
         {rows.length} of {totalAvailable} available
+        {" — "}
+        {/* The two lines are counted SEPARATELY and always both named, including at zero. A single
+            combined total would hide that one business has nothing to sell. */}
+        {LINE_LABEL[LINE_OF_BUSINESS.TAYLOR]}: {availableByLine[LINE_OF_BUSINESS.TAYLOR]}
+        {" · "}
+        {LINE_LABEL[LINE_OF_BUSINESS.VENTANA]}: {availableByLine[LINE_OF_BUSINESS.VENTANA]}
+        {availableByLine[LINE_OF_BUSINESS.UNKNOWN] > 0
+          ? ` · ${LINE_LABEL[LINE_OF_BUSINESS.UNKNOWN]}: ${availableByLine[LINE_OF_BUSINESS.UNKNOWN]}`
+          : ""}
       </p>
+
+      {installing ? (
+        <InstallAtCustomer
+          unit={installing}
+          accounts={accountOptions}
+          canInstall={canInstall}
+          onClose={() => setInstalling(null)}
+          onInstalled={(equipmentId) => navigate(`/equipment/${equipmentId}`)}
+        />
+      ) : null}
+      {installing && accountsMessage ? <p className="fo-muted">{accountsMessage}</p> : null}
 
       {state === AVAILABLE_STATE.EMPTY ? (
         <EmptyState
@@ -136,20 +192,36 @@ export default function AvailableEquipment() {
           message={filtersActive ? "No available inventory matches these filters." : "No serialized assets are currently available for assignment."}
         />
       ) : (
-        <ul className="fo-list" aria-label="Available serialized assets">
-          {rows.map((r) => (
-            <li key={r.serialNo}>
-              <span>{r.internalIdentifier || r.serialNo}</span>
-              <span className="fo-muted">
-                {" — S/N "}{r.serialNo}
-                {r.manufacturer ? ` · ${r.manufacturer}` : ""}
-                {r.model ? ` ${r.model}` : ""}
-                {r.status ? ` · ${r.status}` : ""}
-                {r.location ? ` · ${r.location}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
+        // GROUPED BY BUSINESS LINE, because "which of these is a Taylor machine" is the first
+        // question anyone asks of this list and a flat list of serials does not answer it.
+        visibleGroups.map((group) => (
+          <section key={group.lineOfBusiness} aria-label={`${group.label} available equipment`}>
+            <h4>{group.label} <span className="fo-muted">({group.rows.length})</span></h4>
+            <ul className="fo-list">
+              {group.rows.map((r) => (
+                <li key={r.serialNo}>
+                  {/* THE PRODUCT IS THE LABEL. The serial identifies the individual machine and
+                      belongs beside it, not in place of it. */}
+                  <span>{r.title}</span>
+                  <span className="fo-muted">
+                    {" — S/N "}{r.serialNo}
+                    {r.category ? ` · ${r.category}` : ""}
+                    {r.lifecycleState ? ` · ${r.lifecycleState}` : ""}
+                    {r.location ? ` · ${r.location}` : ""}
+                    {/* An unresolved location renders its raw id, and says so, rather than
+                        presenting an id as if it were a place name. */}
+                    {r.location && !r.locationResolved ? " (unresolved id)" : ""}
+                  </span>
+                  {canInstall ? (
+                    <Button variant="secondary" onClick={() => setInstalling(r)} disabled={!r.available}>
+                      Install / Assign to Customer
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </div>
   );

@@ -868,6 +868,14 @@
     {
       "file": "test/detectorsCanFail.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/wholeUnitAssetDisplay.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentInstallForm.test.mjs",
+      "runner": "node"
     }
   ]
 }
