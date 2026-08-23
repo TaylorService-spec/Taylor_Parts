@@ -70,6 +70,8 @@ import {
   REPORT_AUTHOR_ROLE,
   EQUIPMENT_CATALOG_ADMINISTRATOR_ROLE,
   INVENTORY_RECEIVING_CLERK_ROLE,
+  INVENTORY_SERIALIZED_ASSET_ACQUIRER_ROLE,
+  EQUIPMENT_INSTALLER_ROLE,
   SALESPERSON_ROLE,
   GENERAL_MANAGER_ROLE,
   WAREHOUSE_MANAGER_ROLE,
@@ -226,6 +228,12 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   reportAuthor: REPORT_AUTHOR_ROLE,
   equipmentCatalogAdministrator: EQUIPMENT_CATALOG_ADMINISTRATOR_ROLE,
   inventoryReceivingClerk: INVENTORY_RECEIVING_CLERK_ROLE,
+  // Owner decision 2026-08-23: serialized acquisition and equipment install as SEPARATE stations.
+  // Both belong here for the reason stated above -- a Role the writer cannot name is a Role nobody
+  // can hold, and an unassignable Role is indistinguishable from an absent one at the moment
+  // somebody tries to staff it.
+  inventorySerializedAssetAcquirer: INVENTORY_SERIALIZED_ASSET_ACQUIRER_ROLE,
+  equipmentInstaller: EQUIPMENT_INSTALLER_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,

@@ -97,6 +97,24 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "inventory.location.bin.read",
   "inventory.placement.record",
   "inventory.returns.intake",
+  // SERIALIZED EQUIPMENT FORWARD LIFECYCLE. Owner-authorized 2026-08-23. Without eligibility these
+  // two are permanently denied everywhere -- they are registered active:false, and the resolver
+  // refuses an inactive permission AHEAD of any Role grant -- so the acquisition and install
+  // authorities could be built, tested and merged and still never execute anywhere.
+  //
+  // THE THREE BLOCKS ARE UNCHANGED AND THIS IS ONLY THE FIRST OF THEM. Eligibility bounds what an
+  // environment MAY activate; config/environments.json decides what it DOES (sandbox and the
+  // certification emulator, nothing else); and a principal still needs a qualifying Role grant --
+  // which for these two means inventorySerializedAssetAcquirer or equipmentInstaller, held
+  // separately and by different people. Production stays triple-blocked: role-keyed resolution
+  // returns EMPTY for production regardless of data, no production entry carries an override key,
+  // and a test asserts both.
+  //
+  // The two ids are listed separately, and must stay separate, for the same reason the Roles are
+  // separate: an environment that could activate one implicitly by activating the other would
+  // dissolve the segregation at the environment layer after the Role layer had preserved it.
+  "inventory.serializedAsset.acquire",
+  "equipment.install",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -209,6 +227,16 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "inventory.location.bin.read",
         "inventory.placement.record",
         "inventory.returns.intake",
+        // SERIALIZED EQUIPMENT FORWARD LIFECYCLE. Owner-authorized 2026-08-23, sandbox and the
+        // certification emulator only. Mirrors config/environments.json, which is canonical.
+        //
+        // ACTIVATION IS NOT A GRANT. Both ids stay active:false in the catalog and neither is held
+        // by any Role except through the two new stations (inventorySerializedAssetAcquirer,
+        // equipmentInstaller). Listing them here removes the inactivePermission denial and nothing
+        // else -- an employee with no matching Role still resolves DENY noQualifyingGrant, which is
+        // asserted rather than assumed.
+        "inventory.serializedAsset.acquire",
+        "equipment.install",
       ]),
     }),
     // CERTIFICATION WORLD EMULATOR. Owner-approved 2026-08-22.
@@ -227,8 +255,8 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
     // EXACT KEY, NEVER A PREFIX. `demo-foo` inherits nothing from this entry; the lookup is a
     // string equality against projectId and there is no pattern matching anywhere in the resolver.
     //
-    // NARROWER THAN SANDBOX ON PURPOSE. eos-platform-sandbox activates 33 ids across Sales, Finance,
-    // CRM and the scanner; this activates the 9 the Pass 3 workflows actually exercise. Activation
+    // NARROWER THAN SANDBOX ON PURPOSE. eos-platform-sandbox activates a far wider set across Sales,
+    // Finance, CRM and the scanner; this activates only the ids the certification workflows exercise. Activation
     // is not a wish list, and a certification environment that quietly held broader authority than
     // it needed would be a worse model of the sandbox, not a better one.
     Object.freeze({
@@ -248,6 +276,10 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "inventory.cycleCount.reconcile",
         "inventory.cycleCount.cancel",
         "inventory.returns.intake",
+        // Serialized equipment forward lifecycle, Owner-authorized 2026-08-23. The emulator gets the
+        // same two ids as the sandbox because E01/E02 exercise the same commands here first.
+        "inventory.serializedAsset.acquire",
+        "equipment.install",
       ]),
     }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),

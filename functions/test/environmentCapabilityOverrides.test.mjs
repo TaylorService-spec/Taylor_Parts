@@ -29,7 +29,7 @@ const CANONICAL_REGISTRY = JSON.parse(
   readFileSync(resolve(HERE, "../../config/environments.json"), "utf8"),
 );
 
-// 16 eligible ids as of Wave 7. Grew from the original 11: inventory.catalog.read (Wave 6 Owner
+// 35 eligible ids as of the serialized equipment lifecycle (2026-08-23). Grew from the original 11: inventory.catalog.read (Wave 6 Owner
 // Decision -- a governed trusted read the Parts experience needs), then workOrder.parts.plan,
 // crm.activity.create and crm.activity.read (Wave 7 Owner-authorized sandbox activation, so the
 // parts-planning and CRM Activity surfaces are exercisable at all rather than permanently denied).
@@ -72,13 +72,19 @@ const SPINE_11 = [
   "inventory.location.bin.read",
   "inventory.placement.record",
   "inventory.returns.intake",
+  // Serialized equipment forward lifecycle, Owner-authorized 2026-08-23 for the sandbox and the
+  // certification emulator. Listed separately from each other on purpose: an eligibility entry that
+  // covered both as one unit would let an environment activate install by activating acquisition,
+  // dissolving the segregation the two Roles exist to keep.
+  "inventory.serializedAsset.acquire",
+  "equipment.install",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 33 eligible capability ids", () => {
+test("eligible allow-list is exactly the 35 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 33);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 35);
 });
 
 test("sandbox project resolves the full spine override set", () => {

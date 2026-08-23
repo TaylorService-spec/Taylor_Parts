@@ -167,6 +167,51 @@ export function functionLabelFor(employee) {
   return "Staff";
 }
 
+// ══════════════════ SERIALIZED EQUIPMENT STATIONS — Owner decision 2026-08-23 ══════════════════
+//
+// Staffing named PER EMPLOYEE rather than by editing a ROSTER row, and that is not a style choice.
+// The technicians are one compressed row -- [11, "technician", ...] -- whose "mixed" pattern walks
+// the workload cycle by position within the row. Splitting it to single out two people would restart
+// that cycle and silently rewrite the workload and availability of every technician after the split,
+// changing capacity answers that other proofs depend on. Employee ids are positional too.
+//
+// So this is an ADDITIVE overlay keyed by employee id, applied after expansion. It also reads as
+// what it is: a list of who holds which station, next to why.
+//
+// ACQUISITION -> the two named receiving/custody-intake workers. They already stand at the intake
+// dock and are already accountable for what enters the company's custody, so non-PO acquisition is
+// the same station widened, not a new person given a new kind of power. It is NOT implied by
+// inventory.stock.receive and never resolves from it: they hold both ids only because they are
+// explicitly staffed for both, which is exactly what this table records.
+//
+// INSTALLATION -> two SERVICE technicians. Chosen against the stated criteria and no others:
+//   on fieldops_technicians, the dispatchable roster, with real jobs assigned -- field
+//     responsibility the world already shows rather than a label
+//   ACTIVE and available (excludes cw-emp-015 and cw-emp-022, both unavailable)
+//   workload "normal" -- not "none" (a technician with no work is a poor model of a working
+//     installer) and not "heavy" or "conflicting" (those are the fixture's stress cases)
+//   securityRole technician: no admin, no owner, no dispatcher breadth
+//   certGovernedRoles [] before this -- they hold NO governed capability at all, so
+//     equipmentInstaller cannot collide with anything they already have
+//   not acquirers, and the acquirers are not installers
+//
+// THE TWO SETS ARE DISJOINT BY CONSTRUCTION, and asserted to be. One person able to declare a
+// machine into existence and then place it at a customer would be the whole chain, from nothing to
+// customer premises, resting on one person's word.
+export const SERIALIZED_EQUIPMENT_STATIONS = Object.freeze({
+  inventorySerializedAssetAcquirer: Object.freeze(["cw-emp-044", "cw-emp-045"]),
+  equipmentInstaller: Object.freeze(["cw-emp-013", "cw-emp-017"]),
+});
+
+/** Station Roles this employee is staffed for, in declaration order. Empty for almost everyone. */
+function stationRolesFor(employeeId) {
+  const out = [];
+  for (const [roleId, ids] of Object.entries(SERIALIZED_EQUIPMENT_STATIONS)) {
+    if (ids.includes(employeeId)) out.push(roleId);
+  }
+  return out;
+}
+
 export function buildWorkforce() {
   const employees = [];
   let i = 0;
@@ -190,7 +235,7 @@ export function buildWorkforce() {
         securityRole, operationalRoles,
         employmentStatus: workload === "none" && pattern === "idle" ? "ACTIVE" : "ACTIVE",
         active: true,
-        certGovernedRoles: governedRoles,
+        certGovernedRoles: [...governedRoles, ...stationRolesFor(employeeId)],
         certAssignments: assignments,
         certWorkload: workload,
         // Availability is a fixture fact, so "who has capacity today" has a knowable answer.
