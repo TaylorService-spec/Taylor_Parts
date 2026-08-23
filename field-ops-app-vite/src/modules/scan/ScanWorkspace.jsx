@@ -131,7 +131,14 @@ function ScanBackControl({ pendingWork, onLeave }) {
 }
 
 export default function ScanWorkspace({ deps }) {
-  const [active, setActiveState] = useState(() => (deps?.rememberWorkflow === false ? null : rememberedWorkflow()));
+  // `initialWorkflow` lets a shell open somebody DIRECTLY on the task they chose, rather than
+  // landing them on a menu of tasks they have just picked from. It beats the remembered workflow
+  // because it is a fresh, deliberate choice; the remembered one is only a convenience for somebody
+  // returning with no particular intent.
+  const [active, setActiveState] = useState(() => (
+    deps?.initialWorkflow
+      ?? (deps?.rememberWorkflow === false ? null : rememberedWorkflow())
+  ));
 
   const setActive = useCallback((workflow) => {
     setActiveState(workflow);

@@ -66,9 +66,46 @@ export const CATALOG_SURFACE_CAPABILITIES = Object.freeze([
 // NO NEW CAPABILITY. inventory.stock.receive is the capability that already governs receiving.
 export const RECEIVING_SURFACE_CAPABILITIES = Object.freeze(["inventory.stock.receive"]);
 
+/**
+ * PUT-AWAY AND RETURNS — the two stations the sets above did not already name.
+ *
+ * `inventory.location.bin.read` is here and `inventory.location.bin.manage` deliberately is NOT:
+ * stowing stock all day must not confer the authority to create and retire racking. The ids are the
+ * ones access/scanWorkflows.js already derives put-away and return intake from; nothing new is
+ * minted, and both are registered active:false today.
+ */
+export const PLACEMENT_SURFACE_CAPABILITIES = Object.freeze([
+  "inventory.placement.record",
+  "inventory.location.bin.read",
+]);
+
+export const RETURNS_SURFACE_CAPABILITIES = Object.freeze(["inventory.returns.intake"]);
+
+/**
+ * THE WAREHOUSE HANDHELD GATE — the union, and nothing beyond it.
+ *
+ * The shell offers whichever workflows a person actually holds, so the NAV ITEM should appear for
+ * anybody holding any one of them. A union rather than a new "warehouse user" capability, because a
+ * single coarse id is exactly the thing this platform's station model exists to avoid: receiving is
+ * named accountability, and a person does not get it by working in a warehouse.
+ *
+ * Visibility is convenience. Every action behind it is still decided per action, on the server.
+ */
+export const WAREHOUSE_HANDHELD_CAPABILITIES = Object.freeze([
+  ...RECEIVING_SURFACE_CAPABILITIES,
+  ...TRANSFER_SURFACE_CAPABILITIES,
+  ...CYCLE_COUNT_SURFACE_CAPABILITIES,
+  ...PLACEMENT_SURFACE_CAPABILITIES,
+  ...RETURNS_SURFACE_CAPABILITIES,
+]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
   ...CATALOG_SURFACE_CAPABILITIES,
   ...RECEIVING_SURFACE_CAPABILITIES,
+  // Requested in the SAME single call as the rest, so the handheld resolves against one
+  // accessVersion rather than racing a second request against a different one.
+  ...PLACEMENT_SURFACE_CAPABILITIES,
+  ...RETURNS_SURFACE_CAPABILITIES,
 ]);

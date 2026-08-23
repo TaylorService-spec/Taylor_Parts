@@ -23,6 +23,9 @@ import FieldMode from "./modules/mobile/FieldMode";
 // somebody opens first moves the wait rather than removing it. FieldMode is already eager for the
 // same reason, and the shell composes it.
 import TechnicianShell from "./modules/technician/TechnicianShell";
+// The warehouse handheld. Eager for the same reason the technician shell is: it is the first screen
+// a warehouse worker opens, and the scanning workspace it composes stays lazy behind it.
+import WarehouseShell from "./modules/warehouse/WarehouseShell";
 import { useIsPhone } from "./navigation/useIsPhone.js";
 // LAZY, like every other route-level surface. It was the one eager import among them, which put the
 // whole scanning workspace in the entry chunk for every user who never scans -- and made the
@@ -337,6 +340,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "service" && item.key === "technicianWorkspace") {
     return <TechnicianWorkspaceSurface />;
   }
+  // THE WAREHOUSE / PARTS HANDHELD, composed for the device it is opened on -- the same rule the
+  // technician workspace follows, for the same reason. Both branches reach the SAME governed
+  // workflows and resolve capability identically on the server.
+  if (domain.key === "inventory" && item.key === "warehouseWorkspace") {
+    return <WarehouseWorkspaceSurface operationalContext={operationalContext} role={role} />;
+  }
   // THE SHARED SCAN WORKSPACE (Phase E). Composes the two scanning journeys that exist -- the Phase D
   // supplier receiving journey and the existing technician PartsScanner -- and derives which of them
   // to offer from the TRUSTED effective-access feed already threaded through operationalContext,
@@ -560,6 +569,18 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
  */
 function TechnicianWorkspaceSurface() {
   return useIsPhone() ? <TechnicianShell /> : <FieldMode />;
+}
+
+/**
+ * Phone -> the warehouse handheld. Anything wider -> the shared Scan workspace it composes.
+ *
+ * The desktop branch is deliberately ScanWorkspace rather than a warehouse dashboard: that IS the
+ * existing desktop entry point for these workflows, and inventing a second one here would be a
+ * surface nobody asked for competing with the one people already use.
+ */
+function WarehouseWorkspaceSurface({ operationalContext, role }) {
+  const deps = { hasCapability: operationalContext?.hasCapability, role };
+  return useIsPhone() ? <WarehouseShell deps={deps} /> : <ScanWorkspace deps={deps} />;
 }
 
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
