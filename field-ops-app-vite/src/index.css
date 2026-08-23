@@ -4616,3 +4616,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-handheld__job-ref { margin: 0; font-size: 13px; color: var(--color-text-muted); }
 .fo-handheld__job-customer { margin: 2px 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Labor entry: hours, minutes and type on one row at 320px, each target still 44px tall. */
+.fo-labor__entry { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; align-items: end; }
+.fo-labor__entry input, .fo-labor__entry select { min-height: 44px; width: 100%; }

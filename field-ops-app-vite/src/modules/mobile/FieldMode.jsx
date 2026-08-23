@@ -3,6 +3,7 @@ import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import EquipmentInstallCloseout from "./EquipmentInstallCloseout";
+import JobLabor from "./JobLabor";
 import { activeFieldWorkOrders, FIELD_ACTIONS } from "../../domain/fieldWorkOrder";
 import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
@@ -226,6 +227,9 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
         >
           Add a note
         </Button>
+        <Button variant="secondary" onClick={() => toggle("labor")} aria-pressed={tool === "labor"}>
+          Time
+        </Button>
       </div>
 
       {/* THE WORK ORDER IS PASSED DOWN, never re-picked. The technician opened this from a specific
@@ -234,6 +238,10 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
         <PartsScanner technicianId={technicianId} workOrderId={job.workOrderId} />
       )}
       {tool === "note" && <JobNote workOrderId={job.workOrderId} deps={deps?.note} />}
+      {/* TIME, on every job -- not only installations. The work order is passed down and never
+          re-picked, and the technician is the authenticated session, so the form asks for the two
+          things the platform genuinely does not know: how long, and what kind. */}
+      {tool === "labor" && <JobLabor workOrderId={job.workOrderId} deps={deps?.labor} />}
 
       {/* INSTALLATION CLOSEOUT, and only on a job that is actually an installation.
           The gate is the canonical WorkOrderType and NOTHING ELSE. Live data contains work orders
