@@ -25,9 +25,18 @@
 //
 // Expected dangling references: 0.
 
-// EMULATOR ONLY.
-import { initializeApp, getApps } from "firebase-admin/app";
+// EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+
+const REPO = path.resolve(new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"), "../../..");
+const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+const { resolveReadOnlyTarget, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+const { setExecutionTarget } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const results = [];
 const check = (name, orphans, detail) => {
@@ -37,11 +46,24 @@ const check = (name, orphans, detail) => {
   if (!ok) for (const o of orphans.slice(0, 5)) console.log(`        ${o}`);
 };
 
-if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("FAILED: emulator only.");
+// THE ONE GATE. Emulator and eos-platform-sandbox only; production refused two ways.
+let __target;
+try {
+  __target = resolveReadOnlyTarget();
+  setExecutionTarget(__target);
+} catch (err) {
+  console.error(`REFUSED: ${err.message}`);
   process.exitCode = 1;
+}
+if (!__target) {
+  // refused above
 } else {
-  if (!getApps().length) initializeApp({ projectId: "demo-certworld" });
+  console.log(describeTarget(__target));
+  if (!getApps().length) {
+    initializeApp(__target.isEmulator
+      ? { projectId: __target.projectId }
+      : { credential: applicationDefault(), projectId: __target.projectId });
+  }
   const db = getFirestore();
 
   const idsOf = async (c) => new Set((await db.collection(c).get()).docs.map((d) => d.id));

@@ -48,7 +48,7 @@ const { isMaterialCycleCountVariance, resolveCycleCountMaterialityConfig } =
 const { resolveEffectivePermission } = await import(L("functions/lib/access/resolveEffectivePermission.js"));
 const { COMPATIBILITY_ROLES } = await import(L("functions/lib/access/compatibilityRoles.js"));
 const { GOVERNED_BUSINESS_ROLES } = await import(L("functions/lib/access/governedBusinessRoles.js"));
-const { loadPrincipalIndex, ENVIRONMENT_ACTIVATIONS } =
+const { loadPrincipalIndex, currentActivations } =
   await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const ROLE_CATALOG = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
@@ -72,7 +72,7 @@ function makeCertResolver(db, capability) {
     const out = resolveEffectivePermission({
       permissionId: capability, assignments, roles: ROLE_CATALOG,
       currentAccessVersion: accessVersion, target: GLOBAL_TARGET,
-      activationOverrides: ENVIRONMENT_ACTIVATIONS,
+      activationOverrides: currentActivations(),
     });
     return out.decision === "ALLOW";
   };
