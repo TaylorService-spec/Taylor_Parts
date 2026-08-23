@@ -30,7 +30,7 @@
 //
 // DETERMINISTIC. Everything is a function of an index. No clock, no randomness -- buildWorld() twice
 // returns byte-identical records, which is what makes "seed twice, expect zero creates" meaningful.
-import { TAYLOR_MODELS, ICETRO_MODELS } from "./equipmentMasters.mjs";
+import { TAYLOR_MODELS, ICETRO_MODELS, modelIdOf } from "./equipmentMasters.mjs";
 
 /** Pinned so install dates never drift; mirrors build.mjs's EPOCH. */
 const EPOCH = Date.parse("2026-01-05T09:00:00.000Z");
@@ -146,7 +146,10 @@ export function equipmentForAccount({ accountIndex, accountId, accountName, loca
           : `${model.manufacturer} ${model.modelNumber}`,
         manufacturer: model.manufacturer,
         model: model.modelNumber,
-        equipmentModelId: `cw-model-${model.manufacturer.toLowerCase()}-${String(model.modelNumber).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        // The REGISTRY id, through the one derivation (equipmentMasters.canonicalEquipmentModelId).
+        // This used to mint its own `cw-model-...` string inline -- a second answer to "what is this
+        // model called", agreeing with build.mjs only because both were wrong in the same way.
+        equipmentModelId: modelIdOf(model),
         serialNumber,
         assetTag: `AT-${pad(accountIndex, 3)}${pad(u, 2)}`,
         status: retired ? "RETIRED" : inactive ? "INACTIVE" : "ACTIVE",

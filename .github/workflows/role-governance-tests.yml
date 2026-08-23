@@ -30,6 +30,8 @@ on:
       - "functions/test/certificationEnvironmentActivation.test.mjs"
       - "functions/test/certificationScannerCustodyBoundary.test.mjs"
       - "functions/test/certificationExecutionTarget.test.mjs"
+      - "functions/test/certificationEquipmentModelContract.test.mjs"
+      - "functions/test/certificationWholeUnitParts.test.mjs"
       - "functions/src/inventoryTransfer/**"
       - "config/environments.json"
       # The certification fixture builders themselves. Without this, a change to the parts catalog
@@ -90,6 +92,8 @@ on:
       - "functions/test/certificationEnvironmentActivation.test.mjs"
       - "functions/test/certificationScannerCustodyBoundary.test.mjs"
       - "functions/test/certificationExecutionTarget.test.mjs"
+      - "functions/test/certificationEquipmentModelContract.test.mjs"
+      - "functions/test/certificationWholeUnitParts.test.mjs"
       - "functions/src/inventoryTransfer/**"
       - "config/environments.json"
       # The certification fixture builders themselves. Without this, a change to the parts catalog

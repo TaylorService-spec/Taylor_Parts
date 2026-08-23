@@ -8,12 +8,13 @@
 // run, which would make idempotence unprovable and every count drift-prone.
 import { CERTIFICATION_WORLD_VERSION, PROVENANCE, SYNTHETIC_OWNERSHIP_DISCLAIMER, marker } from "./manifest.mjs";
 import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/accounts.mjs";
-import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
+import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS, modelIdOf } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
 import { buildTechnicianRecords, buildJobRecords } from "./data/workforceLoad.mjs";
 import { equipmentForAccount } from "./data/equipmentAssets.mjs";
 import { CERT_PARTS, partRecordFor } from "./data/partsCatalog.mjs";
+import { WHOLE_UNIT_PARTS, wholeUnitPartRecordFor } from "./data/wholeUnitParts.mjs";
 import {
   ACCOUNT_STATUS_VALUES,
   ACCOUNT_RELATIONSHIP_VALUES,
@@ -70,21 +71,52 @@ export function buildWorld() {
   const contacts = [];
   const equipmentModels = [];
   const equipment = [];
-  const parts = CERT_PARTS.map(partRecordFor);
+  // ONE `parts` collection, two kinds of Part. The service catalog is what machines consume; the
+  // whole-unit catalog is the machines. They are appended rather than merged into one generator
+  // because they answer to different rules -- a whole-unit Part must be SERIALIZED and carries an
+  // equipment-model FK, neither of which is true of a drive belt -- and because the inventory
+  // condition spread is keyed on the SERVICE catalog's index. Prepending these would shift every
+  // service part's condition by eight and silently rewrite the six inventory scenarios.
+  const parts = [...CERT_PARTS.map(partRecordFor), ...WHOLE_UNIT_PARTS.map(wholeUnitPartRecordFor)];
   const trucks = [];
   const employees = [];
 
+  // EQUIPMENT MODELS ARE REGISTRY RECORDS, NOT FIXTURE ROWS.
+  //
+  // `equipment_models` belongs to the Equipment Compatibility registry, and the registry's reader
+  // (`modelFromFirestore`) enforces three things this world used to satisfy none of: the document id
+  // must be canonical, the stored `equipmentModelId` must EQUAL that id, and the record must pass D1
+  // validation -- which requires `manufacturerId`, `manufacturerName`, `displayName`,
+  // `sourceAuthority` and an integer `version`. See data/equipmentMasters.mjs for how that went
+  // unnoticed and why it stopped being ignorable.
+  //
+  // The public catalog citation moves into `sourceAuthority`, which is the field that exists to
+  // carry exactly that, and the configuration descriptor into `subtype`. `lineOfBusiness` is kept
+  // even though the registry does not define it: the reader selects fields by name rather than
+  // rejecting extras, and it is the field the Taylor/Ventana reporting separation is measured on.
   for (const m of ALL_MODELS) {
+    const id = modelIdOf(m);
     equipmentModels.push({
       collection: "equipment_models",
-      id: "cw-model-" + slug(m.manufacturer) + "-" + slug(m.modelNumber),
+      id,
       data: {
-        modelNumber: m.modelNumber, manufacturer: m.manufacturer, family: m.family,
-        configuration: m.config, lineOfBusiness: m.lineOfBusiness, status: "ACTIVE",
-        fieldProvenance: { modelNumber: PROVENANCE.PUBLIC, manufacturer: PROVENANCE.PUBLIC, family: PROVENANCE.PUBLIC, configuration: PROVENANCE.PUBLIC },
-        publicSource: m.manufacturer === "Taylor"
+        equipmentModelId: id,
+        manufacturerId: id.split("--")[0],
+        manufacturerName: m.manufacturer,
+        modelNumber: m.modelNumber,
+        displayName: `${m.manufacturer} ${m.modelNumber}`,
+        family: m.family,
+        subtype: m.config,
+        revision: null,
+        status: "ACTIVE",
+        sourceAuthority: m.manufacturer === "Taylor"
           ? "taylor-company.com/equipment/soft-serve-fro-yo/ (retrieved 2026-08-21)"
           : "icetroamerica.com product listings (retrieved 2026-08-21)",
+        version: 1,
+        lineOfBusiness: m.lineOfBusiness,
+        fieldProvenance: { modelNumber: PROVENANCE.PUBLIC, manufacturerName: PROVENANCE.PUBLIC, family: PROVENANCE.PUBLIC, subtype: PROVENANCE.PUBLIC },
+        createdBy: FLEET_RECORD_AUTHOR,
+        updatedBy: FLEET_RECORD_AUTHOR,
       },
     });
   }
