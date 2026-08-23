@@ -1,8 +1,8 @@
 {
  "catalog": {
-  "total": 118,
+  "total": 120,
   "active": 72,
-  "inactive": 46
+  "inactive": 48
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
@@ -112,9 +112,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 118,
+   "grantedCount": 120,
    "operableCount": 72,
-   "blockedCount": 46,
+   "blockedCount": 48,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -232,6 +232,8 @@
     "warehouse.transferOrder.read",
     "workOrder.cancel",
     "workOrder.create",
+    "workOrder.labor.correct",
+    "workOrder.labor.record",
     "workOrder.parts.plan",
     "workOrder.transition"
    ],
@@ -355,6 +357,8 @@
     "salesOrder.read",
     "salesOrder.service",
     "salesOrder.write",
+    "workOrder.labor.correct",
+    "workOrder.labor.record",
     "workOrder.parts.plan"
    ]
   },
@@ -1419,6 +1423,36 @@
    "operableNow": [],
    "grantedButInactive": [
     "equipment.install"
+   ]
+  },
+  {
+   "roleId": "technicianLaborRecorder",
+   "label": "Technician Labor Recorder",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "workOrder.labor.record"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "workOrder.labor.record"
+   ]
+  },
+  {
+   "roleId": "workOrderLaborCorrector",
+   "label": "Work Order Labor Corrector",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "workOrder.labor.correct"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "workOrder.labor.correct"
    ]
   },
   {

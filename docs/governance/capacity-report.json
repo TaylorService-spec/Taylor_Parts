@@ -5,10 +5,10 @@
   "activationOverrides": 35
  },
  "catalog": {
-  "total": 118,
+  "total": 120,
   "globallyActive": 72,
   "activeInThisEnvironment": 107,
-  "inactiveInThisEnvironment": 11
+  "inactiveInThisEnvironment": 13
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -393,6 +393,30 @@
    "dependentWorkstreams": [],
    "sandboxActivationRequired": true,
    "employeeGrantRequired": true
+  },
+  {
+   "roleId": "technicianLaborRecorder",
+   "capabilities": [
+    "workOrder.labor.record"
+   ],
+   "allCapabilitiesInactive": true,
+   "assignedToAPlannedEmployee": false,
+   "bothInactiveAndUnassigned": true,
+   "dependentWorkstreams": [],
+   "sandboxActivationRequired": true,
+   "employeeGrantRequired": true
+  },
+  {
+   "roleId": "workOrderLaborCorrector",
+   "capabilities": [
+    "workOrder.labor.correct"
+   ],
+   "allCapabilitiesInactive": true,
+   "assignedToAPlannedEmployee": false,
+   "bothInactiveAndUnassigned": true,
+   "dependentWorkstreams": [],
+   "sandboxActivationRequired": true,
+   "employeeGrantRequired": true
   }
  ],
  "employees": [
@@ -404,7 +428,7 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 118,
+   "grantedCount": 120,
    "operableCount": 107,
    "assignments": [
     {
