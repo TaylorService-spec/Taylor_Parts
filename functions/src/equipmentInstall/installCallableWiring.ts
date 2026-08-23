@@ -52,9 +52,15 @@ export function makeResolveInstallPermissionThroughTxn(capability: string) {
 // One audit event per installation, carrying what the act actually did -- including where the unit
 // came from, which is the only record of its prior custody once the asset is INSTALLED.
 export function stageInstallAuditEvent(txn: Transaction, a: InstallAuditInput): void {
+  // The origin is named in the summary as well as carried structurally. An audit line somebody reads
+  // during an investigation should say which Work Order discharged the installation without their
+  // having to join two collections to find out.
+  const origin = a.sourceContext?.kind === "WORK_ORDER"
+    ? ` discharging work order ${a.sourceContext.workOrderId}`
+    : "";
   const summary = `installSerializedAsset ${a.serializedAssetId} (serial ${a.serialNo}) `
     + `from ${a.priorState}@${a.priorLocationId} -> equipment ${a.equipmentId} `
-    + `for account ${a.accountId} at ${a.locationId}`;
+    + `for account ${a.accountId} at ${a.locationId}${origin}`;
   stageAuditEvent(txn, {
     actorUid: a.actorId,
     action: "installSerializedAsset",

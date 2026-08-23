@@ -328,6 +328,25 @@ export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryRet
 // can take a machine from non-existence to a customer. EXPORT != DEPLOY.
 export { installSerializedAssetCallable as installSerializedAsset } from "./equipmentInstall/installCallables";
 
+// --- Equipment install AT WORK ORDER CLOSEOUT (WO-01A) ---
+// The technician's path to the SAME equipment.install authority. Not a second install command: it
+// decides whether this technician, on this work order, may ask -- then asks installSerializedAsset.
+//
+// WHY ITS OWN READ. getAvailableEquipment is gated on inventory.serializedAsset.read, a general
+// inventory-browsing capability installer technicians do not hold and should not be given to populate
+// a picker. getInstallableEquipmentForWorkOrder is gated on equipment.install and scoped to one work
+// order, so a technician sees what they may install on THIS job and nothing else.
+//
+// Customer and location are DERIVED from the work order, read server-side; the request may not carry
+// them and is refused if it tries. `serialized_assets` stays deny-all to every client -- the trusted
+// function reads on the technician's behalf after checking the job is theirs.
+//
+// SCAN IS NOT INSTALL: the read writes nothing, including when resolving a scanned serial.
+export {
+  getInstallableEquipmentForWorkOrder,
+  recordWorkOrderEquipmentInstallCallable as recordWorkOrderEquipmentInstall,
+} from "./workOrderInstall/workOrderInstallCallables";
+
 // --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
 // quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read

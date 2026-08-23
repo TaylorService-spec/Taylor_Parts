@@ -876,6 +876,10 @@
     {
       "file": "test/equipmentInstallForm.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/workOrderInstallCloseout.test.mjs",
+      "runner": "node"
     }
   ]
 }

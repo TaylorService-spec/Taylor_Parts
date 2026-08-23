@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
+import EquipmentInstallCloseout from "./EquipmentInstallCloseout";
 import { activeFieldWorkOrders, FIELD_ACTIONS } from "../../domain/fieldWorkOrder";
 import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
@@ -150,6 +151,7 @@ export default function FieldMode({ deps } = {}) {
         <p className="fo-muted">No assigned work orders.</p>
       ) : (
         <CurrentJob
+          workOrder={current ?? null}
           job={job}
           pending={pending.id === job.workOrderId ? pending.action : null}
           failure={failure?.id === job.workOrderId ? failure : null}
@@ -189,7 +191,7 @@ export default function FieldMode({ deps } = {}) {
 }
 
 /** Context -> State -> Attention -> Readiness -> Next Best Action, in that order. */
-function CurrentJob({ job, pending, failure, onAdvance, technicianId, deps }) {
+function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId, deps }) {
   // Scanning and note-taking are opened FROM the job, so both inherit its context. Collapsed by
   // default: the job's own answer -- where am I, what is wrong, what next -- must not be pushed off
   // the top of a phone by tools nobody has asked for yet.
@@ -232,6 +234,26 @@ function CurrentJob({ job, pending, failure, onAdvance, technicianId, deps }) {
         <PartsScanner technicianId={technicianId} workOrderId={job.workOrderId} />
       )}
       {tool === "note" && <JobNote workOrderId={job.workOrderId} deps={deps?.note} />}
+
+      {/* INSTALLATION CLOSEOUT, and only on a job that is actually an installation.
+          The gate is the canonical WorkOrderType and NOTHING ELSE. Live data contains work orders
+          typed "SERVICE" (not a member of the type union) and work orders with no type at all, and
+          reading either as an installation would put a machine at a customer on a job nobody
+          classified -- so this compares against INSTALL exactly.
+
+          NO STATUS CHECK HERE, DELIBERATELY. An earlier version also required WORK_IN_PROGRESS, and
+          this file's own guard rejected it: FieldMode does not decide what a technician may do, the
+          governed matrix does. That guard is right, and the check was redundant besides -- the scoped
+          read refuses a work order that is not in progress and the section reports that refusal
+          honestly. Type is a CLASSIFICATION of the job; status is a lifecycle decision, and only one
+          of those belongs on this screen. */}
+      {workOrder?.type === "INSTALL" && (
+        <EquipmentInstallCloseout
+          workOrderId={job.workOrderId}
+          onCompleteWorkOrder={(id) => onAdvance(id, "Complete")}
+          deps={deps?.install}
+        />
+      )}
     </article>
   );
 }

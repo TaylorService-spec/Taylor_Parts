@@ -91,8 +91,25 @@ export class InstallCommandError extends Error {
 
 export interface InstallActor { readonly kind: "USER" | "SYSTEM"; readonly id: string; }
 
+/**
+ * Where an installation came from, when it came from somewhere.
+ *
+ * OPTIONAL, and deliberately not a second audit event. A technician installing at Work Order
+ * closeout and a manager installing from the Equipment surface are the SAME act through the same
+ * authority; writing two independent events would make "how many machines were installed" a question
+ * with two answers.
+ *
+ * The actor already distinguishes the two paths -- a technician's uid or a manager's. This adds the
+ * one thing the actor cannot carry: WHICH Work Order the installation discharged.
+ */
+export interface InstallSourceContext {
+  readonly kind: "WORK_ORDER";
+  readonly workOrderId: string;
+}
+
 export interface InstallAuditInput {
   readonly actorId: string;
+  readonly sourceContext?: InstallSourceContext;
   readonly serializedAssetId: string;
   readonly equipmentId: string;
   readonly accountId: string;
@@ -104,6 +121,8 @@ export interface InstallAuditInput {
 
 export interface InstallCommandDeps {
   readonly db: Firestore;
+  /** Set only by a trusted server-side caller that established the origin itself. */
+  readonly sourceContext?: InstallSourceContext;
   readonly actor: InstallActor;
   readonly authorize: (txn: Transaction, actorId: string, capability: string) => Promise<boolean>;
   readonly stageAudit: (txn: Transaction, audit: InstallAuditInput) => void;
@@ -130,6 +149,10 @@ const ALLOWED_KEYS = new Set([
   "serializedAssetId", "accountId", "locationId", "name",
   "installedDate", "assetTag", "notes", "idempotencyKey",
 ]);
+
+// Source context is NOT a request field. It is supplied by the trusted caller that already knows the
+// origin -- the Work Order closeout command, which read the Work Order server-side. Accepting it from
+// a client payload would let any caller stamp an installation with a Work Order it never touched.
 
 export interface ValidatedInstallRequest {
   readonly serializedAssetId: string;
@@ -328,6 +351,7 @@ export async function installSerializedAsset(request: unknown, deps: InstallComm
       serialNo: asset.serialNo,
       priorLocationId: asset.currentLocationId,
       priorState: asset.inventoryState,
+      ...(deps.sourceContext ? { sourceContext: deps.sourceContext } : {}),
     });
 
     for (const w of writes) {
