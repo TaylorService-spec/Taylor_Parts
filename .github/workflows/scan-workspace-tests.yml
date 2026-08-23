@@ -157,7 +157,12 @@ on:
       - "field-ops-app-vite/src/shared/ui/StructuredFields.jsx"
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
-      - "field-ops-app-vite/test/warehouseShell.test.jsx"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx test/warehouseOfflineBindings.test.jsx"
+      # WO-05 -- the warehouse offline runtime sits under these same workflows.
+      - "field-ops-app-vite/src/offline/**"
+      - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
+      - "field-ops-app-vite/test/warehouseOfflineRuntime.test.mjs"
+      - "field-ops-app-vite/test/warehouseOfflineBindings.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -273,6 +278,11 @@ on:
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
       - "field-ops-app-vite/test/warehouseShell.test.jsx"
+      # WO-05 -- the warehouse offline runtime sits under these same workflows.
+      - "field-ops-app-vite/src/offline/**"
+      - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
+      - "field-ops-app-vite/test/warehouseOfflineRuntime.test.mjs"
+      - "field-ops-app-vite/test/warehouseOfflineBindings.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -354,6 +364,12 @@ jobs:
       # the offline classification WO-05 inherits, and a guard that the shell is actually reachable.
       - name: Warehouse handheld — composition, structured fields, reachability
         run: node --test test/warehouseHandheld.test.mjs
+        working-directory: field-ops-app-vite
+
+      # WO-05. Contended stock is the hard part: two people can be right at capture and only one at
+      # sync. Idempotency matrix, dependencies, stale state, revocation, and the flagships.
+      - name: Warehouse offline runtime — exactly-once, dependencies, contended stock
+        run: node --test test/warehouseOfflineRuntime.test.mjs
         working-directory: field-ops-app-vite
         working-directory: field-ops-app-vite
 
