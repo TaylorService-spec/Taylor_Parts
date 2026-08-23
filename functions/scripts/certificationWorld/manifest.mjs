@@ -60,7 +60,18 @@
 //
 // The parts carry no balances. Balances are created by MOVEMENTS through the authoritative ledger,
 // because on this schema the ledger IS the balance -- see data/inventoryPlan.mjs.
-export const CERTIFICATION_WORLD_VERSION = "1.4.0";
+// 1.5.0 -- Pass 3. ONE bump for the whole pass, not one per sub-pass: the dataset is a single
+// artifact and a version that moved four times would describe four things nobody installed.
+//
+// What changed:
+//   opening balances are ADJUSTED/ADJUSTMENT, not fabricated receipts (142 movements -> 87)
+//   truck stock is initialized where it sits, not transferred there from a phantom order
+//   transfers, cycle counts and returns are exercised through their real commands
+//   Golden set G01-G11; Tier-1 questions 30 -> 80; reporting truth substrate v1
+//
+// The live sandbox will report VERSION_MISMATCH against this until it is deliberately installed,
+// which is the intended state -- nothing here has been deployed.
+export const CERTIFICATION_WORLD_VERSION = "1.5.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

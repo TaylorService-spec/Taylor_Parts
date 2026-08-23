@@ -80,6 +80,36 @@ const SCENARIOS = [
     expectedAnswer: "Wait. A SENT order is outstanding and its quantity exceeds the shortage; the goods have not arrived yet.",
     trap: "The shape G03 was in BEFORE it recovered, and the distinction is TENSE, not arithmetic. G03 shows inbound UNKNOWN now -- its order is fully received and no longer qualifies -- while G05 still carries live inbound. A reader who checks only whether a purchase order EXISTS cannot tell an order that has landed from one that has not.",
     knownGap: "This world contains no case where inbound is real but INSUFFICIENT (shortage 7 against inbound 18). That case -- where the correct answer is order MORE despite an open order -- is not represented and is not claimed to be. Recorded rather than manufactured by editing a quantity until the story fit." },
+  { id: "G06", woNumber: "WO-2026-000008", title: "Transfer recovery",
+    question: "The company owns enough and the Parts Room cannot fill the job. What fixes it?",
+    expectedAnswer: "An authorized transfer moves owned stock to the location that can pick it. Company total unchanged.",
+    trap: "G04 is the same STATE; this is the ACTION that resolves it. Ordering more here buys stock twice.",
+    evidenceFile: "g06-transfer-recovery.json" },
+  { id: "G07", woNumber: null, title: "Cycle variance",
+    question: "The books say one thing and the shelf says another. Who decides?",
+    expectedAnswer: "A counter reports and nothing moves; a different authority settles it and only then does stock change.",
+    trap: "A system where counting adjusts stock lets one person find a shortfall and bury it in the same motion.",
+    evidenceFile: "g07-cycle-variance.json" },
+  { id: "G08", woNumber: null, title: "Return lifecycle",
+    question: "This part came back. Can we use it?",
+    expectedAnswer: "It is RETURNED and it is NOT in usable inventory. Nothing restores it until a disposition exists, and that decision is not built.",
+    trap: "'Returned' and 'back in stock' are different facts. Conflating them credits inventory for goods nobody has inspected.",
+    evidenceFile: "return-scenarios.json" },
+  { id: "G09", woNumber: "WO-2026-000009", title: "Inbound insufficient",
+    question: "There is already an order out. Is it enough?",
+    expectedAnswer: "No. Warehouse plus every inbound unit still falls short, so more must be ordered despite an open order.",
+    trap: "The opposite answer to G05, from the same shape. 'Something is on order' is not 'enough is on order', and only comparing inbound against the shortage tells them apart." },
+  { id: "G10", woNumber: "WO-2026-000012", title: "Repeat equipment failure",
+    question: "Is this machine a recurring problem?",
+    expectedAnswer: "Yes -- THREE of its four work orders share the same symptom (not holding temperature). The fourth is an unrelated intermittent shutdown.",
+    trap: "Counting work orders gives FOUR and overstates the pattern. No record carries a repeat-failure flag, so the answer has to come from reading what the visits were FOR -- the difference between a busy machine and a recurring fault. WO-2026-000002 landing on this unit was not planned; it makes the scenario harder and therefore better, and it is recorded rather than tidied away.",
+    relatedWorkOrders: ["WO-2026-000010", "WO-2026-000011", "WO-2026-000012"],
+    sameUnitDifferentSymptom: ["WO-2026-000002"], totalVisits: 4, repeatSymptomVisits: 3 },
+  { id: "G11", woNumber: "WO-2026-000013", title: "Dense customer",
+    question: "What is going on at this account?",
+    expectedAnswer: "Several machines in service at once, across multiple sites -- busy, not broken.",
+    trap: "Renders identically to G10 unless the unit is distinguished. Same customer with three units is not one unit with three visits.",
+    relatedWorkOrders: ["WO-2026-000013", "WO-2026-000014", "WO-2026-000015"] },
 ];
 
 async function mobileFor(db, partId) {
@@ -109,6 +139,14 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 
   const manifest = { builtFor: "demo-certworld", scenarios: [] };
   for (const s of SCENARIOS) {
+    // G07 and G08 are not about a work order at all -- one is a stock correction, the other a
+    // return awaiting a decision. Their truth lives in the evidence file the run produced.
+    if (!s.woNumber) {
+      const p = path.join(OUT_DIR, s.evidenceFile);
+      manifest.scenarios.push({ ...s, evidence: fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null });
+      if (!fs.existsSync(p)) { console.error(`MISSING ${s.id} evidence: ${s.evidenceFile}`); process.exitCode = 1; }
+      continue;
+    }
     const woSnap = await db.collection("fieldops_wos").where("woNumber", "==", s.woNumber).limit(1).get();
     if (woSnap.empty) { console.error(`MISSING ${s.id}: ${s.woNumber}`); process.exitCode = 1; continue; }
     const wo = woSnap.docs[0];
@@ -151,10 +189,12 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   fs.writeFileSync(path.join(OUT_DIR, "golden-manifest.json"), JSON.stringify(manifest, null, 2));
 
   for (const s of manifest.scenarios) {
-    console.log(`\n${s.id}  ${s.title}  (${s.woNumber})   fulfillable=${s.fulfillable}`);
+    const scope = s.woNumber ? `(${s.woNumber})   fulfillable=${s.fulfillable}`
+      : `(no work order -- truth in ${s.evidenceFile})`;
+    console.log(`\n${s.id}  ${s.title}  ${scope}`);
     console.log(`   Q: ${s.question}`);
     console.log(`   A: ${s.expectedAnswer}`);
-    for (const l of s.lines) {
+    for (const l of s.lines ?? []) {
       console.log(`   ${l.partId}  planned ${String(l.planned).padStart(3)}  warehouse ${String(l.warehouse).padStart(3)}`
         + `  mobile ${String(l.mobile).padStart(3)}  company ${String(l.company).padStart(3)}`
         + `  inbound ${l.inboundState === "KNOWN" ? String(l.inbound).padStart(3) : "UNK"}`

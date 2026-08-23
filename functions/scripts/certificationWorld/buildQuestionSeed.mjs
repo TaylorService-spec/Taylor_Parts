@@ -223,6 +223,13 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const g07 = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "g07-cycle-variance.json"), "utf8"));
   for (const entry of cycleCountQuestions(cc, g07)) add(entry);
 
+  // Returns, G09, G10, G11 and manager attention.
+  const { pass3Questions } = await import(L("functions/scripts/certificationWorld/data/pass3Questions.mjs"));
+  const ret = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "return-scenarios.json"), "utf8"));
+  const truth = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "reporting-truth.json"), "utf8"));
+  const golden = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "golden-manifest.json"), "utf8"));
+  for (const entry of pass3Questions(ret, truth, golden)) add(entry);
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, "tier1-questions.json"), JSON.stringify({ count: q.length, questions: q }, null, 2));
 
@@ -231,7 +238,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   for (const e of q) console.log(`  ${e.id}  ${e.topic.padEnd(26)} ${e.answerType.padEnd(11)} ${e.question}`);
   console.log(`\n${q.length} questions`);
   console.log(JSON.stringify(byTopic, null, 0));
-  if (q.length < 55 || q.length > 80) { console.error(`FAILED: expected 55-80 questions, got ${q.length}`); process.exitCode = 1; }
+  if (q.length < 75 || q.length > 125) { console.error(`FAILED: expected 75-125 questions, got ${q.length}`); process.exitCode = 1; }
   const unknowns = q.filter((e) => e.answerType === "UNKNOWN").length;
   const denied = q.filter((e) => e.answerType === "DENIED").length;
   console.log(`UNKNOWN answers: ${unknowns} (must be > 0)   persona-denied: ${denied} (must be > 0)`);

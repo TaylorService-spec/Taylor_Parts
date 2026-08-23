@@ -33,6 +33,11 @@ const ACCT = (i) => `cw-acct-${String(i).padStart(4, "0")}`;
  * installed equipment from the seeded world. The plan names business intent, never a document id
  * the fixture could not have known -- the same separation the movement plan keeps for principals.
  */
+// Pass 3 adds three scenarios that exist for different reasons from the six demand classes above:
+// inbound that is real and insufficient, one machine that keeps coming back, and a customer with
+// genuine depth. They live in their own module so the distinction stays visible.
+import { PASS3_SCENARIOS } from "./pass3Scenarios.mjs";
+
 export const DEMAND_SCENARIOS = Object.freeze([
   {
     key: "FULLY_SATISFIABLE",
@@ -121,6 +126,7 @@ export const DEMAND_SCENARIOS = Object.freeze([
     complaint: "Bin level sensor intermittent; unit over-filling.",
     plan: [{ partId: "CW-P-0305", qtyPlanned: 14 }],
   },
+  ...PASS3_SCENARIOS,
 ]);
 
 /** Golden lifecycle each scenario backs, where it backs one. */
