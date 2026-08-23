@@ -69,9 +69,31 @@
 //   transfers, cycle counts and returns are exercised through their real commands
 //   Golden set G01-G11; Tier-1 questions 30 -> 80; reporting truth substrate v1
 //
+// 1.6.0 -- EQUIPMENT MODELS BECOME REGISTRY RECORDS, AND MACHINES BECOME PARTS.
+//
+// `equipment_models` is the Equipment Compatibility registry, not a fixture collection of this
+// world's own. Every model here was written under a `cw-model-taylor-c713` id in a shape the
+// registry's validator refuses outright, and 278 equipment records pointed at those ids. Nothing
+// complained because no consumer had ever read a model THROUGH the registry -- the same silence that
+// hid the missing Part metadata until receiving became the first real consumer.
+//
+// It stopped being ignorable here: Part Master refuses a non-canonical `equipmentModelId`, so the
+// whole-unit Parts could not have been written at all.
+//
+// What changed:
+//   48 equipment models now carry canonical ids (TAYLOR--C713) and the registry's own record shape
+//   278 equipment records follow, through the one derivation rather than a second inline copy
+//   8 WHOLE-UNIT Parts -- one per model the unassigned cohort draws from, not one per machine
+//   expected records 1084 -> 1092
+//
+// THE 1.5.0 SANDBOX DOES NOT MATCH THIS. Every one of those 48 model documents and 278 equipment
+// back-references is now at a different id or a different shape, so this is not an additive install
+// -- it is a correction of records that already exist live. That is a deliberate stop, not an
+// oversight: see docs for the live divergence note.
+//
 // The live sandbox will report VERSION_MISMATCH against this until it is deliberately installed,
 // which is the intended state -- nothing here has been deployed.
-export const CERTIFICATION_WORLD_VERSION = "1.5.0";
+export const CERTIFICATION_WORLD_VERSION = "1.6.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

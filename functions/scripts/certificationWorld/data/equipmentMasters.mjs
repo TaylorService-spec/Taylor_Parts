@@ -73,3 +73,33 @@ export const ICETRO_MODELS = Object.freeze([
 ].map((m) => Object.freeze({ ...m, manufacturer: "Icetro", lineOfBusiness: "VENTANA" })));
 
 export const ALL_MODELS = Object.freeze([...TAYLOR_MODELS, ...ICETRO_MODELS]);
+
+// ============================ CANONICAL REGISTRY IDENTITY ============================
+//
+// `equipment_models` is not a certification-private collection. It is the Equipment Compatibility
+// registry (equipmentCompatibility/repository.ts), whose document id IS the domain identity:
+// `MANUFACTURER--MODELNUMBER`, upper-cased, non-alphanumerics collapsed to a hyphen.
+//
+// This world used to mint `cw-model-taylor-c713` instead, and pushed a record shape the registry's
+// own validator refuses outright (`unknown_field`) into that collection. Nothing complained for the
+// whole program because no consumer had ever read an equipment model THROUGH the registry -- the
+// same way the Part records carried no `version`/`createdBy` until receiving became the first
+// consumer that went through the real Part authority.
+//
+// It became load-bearing the moment whole-unit Parts existed: Part Master REFUSES an
+// `equipmentModelId` that is not canonical (`isCanonicalEquipmentModelId`), so a whole-unit Part
+// could not have pointed at a `cw-model-` id at all, and the resolver that finds a model's eligible
+// whole-unit Parts matches on this exact string.
+//
+// Derived here rather than imported because this module is pure -- build.mjs runs with no compile
+// step. certificationEquipmentModelContract.test.mjs asserts, for every model, that this derivation
+// equals the product's own `buildEquipmentModelId`, so the two cannot drift without CI saying so.
+const canonicalSegment = (v) => String(v).toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** The registry document id for a model. The certification world mints no other identity for one. */
+export function canonicalEquipmentModelId(manufacturer, modelNumber) {
+  return `${canonicalSegment(manufacturer)}--${canonicalSegment(modelNumber)}`;
+}
+
+/** The canonical id of a model record from this catalog. */
+export const modelIdOf = (m) => canonicalEquipmentModelId(m.manufacturer, m.modelNumber);
