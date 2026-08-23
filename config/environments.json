@@ -103,7 +103,9 @@
         "inventory.location.bin.manage",
         "inventory.location.bin.read",
         "inventory.placement.record",
-        "inventory.returns.intake"
+        "inventory.returns.intake",
+        "inventory.serializedAsset.acquire",
+        "equipment.install"
       ],
       "$capabilityActivationOverrides_comment": "Per-environment activation of the sales/fulfillment/finance spine (all catalog active:false) -- lifts the blanket active:false DENY in THIS sandbox only so the Opportunity->SO->Fulfillment->Billing flow is testable. Activation != authorization: a persona still needs a qualifying Role grant. NO role:production environment may carry this key (environmentCapabilityOverrides.ts is additionally role-keyed, and environmentArchitecture.test.mjs asserts absence). See docs/design/per-environment-capability-activation-spec.md.",
       "surfaces": [

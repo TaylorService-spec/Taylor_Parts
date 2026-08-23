@@ -92,6 +92,12 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'inventory.location.bin.read',
   'inventory.placement.record',
   'inventory.returns.intake',
+  // SERIALIZED EQUIPMENT FORWARD LIFECYCLE -- mirrors environmentCapabilityOverrides.ts, whose
+  // comment carries the full reasoning. Present here because the frontend bakes THIS list into the
+  // bundle: eligible on the backend but not here would mean the UI hides an action the command
+  // would have allowed, which is a disagreement rather than a safeguard.
+  'inventory.serializedAsset.acquire',
+  'equipment.install',
 ]);
 
 /**

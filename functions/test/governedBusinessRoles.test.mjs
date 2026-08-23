@@ -95,6 +95,14 @@ const EXPECTED_IDS = [
   "reportAuthor",
   "equipmentCatalogAdministrator",
   "inventoryReceivingClerk",
+  // Owner decision 2026-08-23. Serialized acquisition and equipment install are SEPARATE stations,
+  // and both appear here for the same reason Receiving did: authority that exists with nobody
+  // accountable for it. Two ids rather than one because a single "equipment lifecycle" Role would
+  // let one person take a machine from non-existence to a customer's premises with no second party
+  // in the chain -- non-PO acquisition has no supplier document to check it against, and install is
+  // irreversible.
+  "inventorySerializedAssetAcquirer",
+  "equipmentInstaller",
 ];
 
 function grant(roleId, roles) {
@@ -122,7 +130,7 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-six ids (thirty-one, three reporting tiers, equipment catalog, receiving)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-eight ids (thirty-one, three reporting tiers, equipment catalog, receiving, two serialized-equipment stations)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
@@ -132,7 +140,7 @@ check("GOVERNED_BUSINESS_ROLES contains exactly the thirty-six ids (thirty-one, 
   // had no such Role -- so the business had defined a position the platform could not
   // represent, let alone grant. This pin failing on that addition is the guard working.
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 36);
+  assert.equal(ALL_GOVERNED_ROLES.length, 38);
 });
 
 check("salesperson and salesManager differ ONLY by audit read, which the canonical matrix declares", () => {
@@ -237,7 +245,7 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all thirty-six governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all thirty-eight governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
   // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
   // actually grant it. The two lists are asserted equal in both directions so neither can drift.
@@ -246,8 +254,8 @@ check("all thirty-six governed business Roles are governed-assignable (no Unknow
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    36,
-    "the governed allowlist must contain exactly the 36 declared governed business Roles",
+    38,
+    "the governed allowlist must contain exactly the 38 declared governed business Roles",
   );
 });
 

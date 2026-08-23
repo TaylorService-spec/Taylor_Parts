@@ -33,6 +33,11 @@ on:
       - "functions/test/certificationEquipmentModelContract.test.mjs"
       - "functions/test/certificationModelMigration.test.mjs"
       - "functions/test/certificationWholeUnitParts.test.mjs"
+      - "functions/test/serializedEquipmentStations.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/trustedWriterCommands.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - "functions/src/inventoryTransfer/**"
       - "config/environments.json"
       # The certification fixture builders themselves. Without this, a change to the parts catalog
@@ -96,6 +101,11 @@ on:
       - "functions/test/certificationEquipmentModelContract.test.mjs"
       - "functions/test/certificationModelMigration.test.mjs"
       - "functions/test/certificationWholeUnitParts.test.mjs"
+      - "functions/test/serializedEquipmentStations.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/trustedWriterCommands.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - "functions/src/inventoryTransfer/**"
       - "config/environments.json"
       # The certification fixture builders themselves. Without this, a change to the parts catalog

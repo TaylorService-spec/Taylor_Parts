@@ -2,13 +2,13 @@
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
  "environment": {
   "projectId": "eos-platform-sandbox",
-  "activationOverrides": 33
+  "activationOverrides": 35
  },
  "catalog": {
   "total": 118,
   "globallyActive": 72,
-  "activeInThisEnvironment": 105,
-  "inactiveInThisEnvironment": 13
+  "activeInThisEnvironment": 107,
+  "inactiveInThisEnvironment": 11
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -49,11 +49,11 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 1988,
+  "operableHoldingsTotal": 1994,
   "fromCompatibilityRoleOnly": 1224,
-  "fromGovernedRoleOnly": 399,
-  "fromBoth": 365,
-  "employeesWithZeroOperableGovernedAuthority": 14,
+  "fromGovernedRoleOnly": 403,
+  "fromBoth": 367,
+  "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
  "capacity": [
@@ -405,7 +405,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 118,
-   "operableCount": 105,
+   "operableCount": 107,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
@@ -846,10 +846,12 @@
    "employeeId": "cw-emp-013",
    "name": "Freya Vance",
    "securityRole": "technician",
-   "businessRoles": [],
+   "businessRoles": [
+    "equipmentInstaller"
+   ],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 15,
+   "operableCount": 15,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -934,10 +936,12 @@
    "employeeId": "cw-emp-017",
    "name": "Rosalind Ibarra",
    "securityRole": "technician",
-   "businessRoles": [],
+   "businessRoles": [
+    "equipmentInstaller"
+   ],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 15,
+   "operableCount": 15,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1850,14 +1854,15 @@
    "securityRole": "dispatcher",
    "businessRoles": [
     "warehouseAssociate",
-    "inventoryReceivingClerk"
+    "inventoryReceivingClerk",
+    "inventorySerializedAssetAcquirer"
    ],
    "functionalRoles": [
     "inventoryLookupReader",
     "inventoryReturnsIntakeClerk"
    ],
-   "grantedCount": 43,
-   "operableCount": 43,
+   "grantedCount": 44,
+   "operableCount": 44,
    "assignments": [
     {
      "workstream": "RETURNS",
@@ -1888,13 +1893,14 @@
    "securityRole": "dispatcher",
    "businessRoles": [
     "warehouseManager",
-    "inventoryReceivingClerk"
+    "inventoryReceivingClerk",
+    "inventorySerializedAssetAcquirer"
    ],
    "functionalRoles": [
     "inventoryBinAdministrator"
    ],
-   "grantedCount": 44,
-   "operableCount": 44,
+   "grantedCount": 45,
+   "operableCount": 45,
    "assignments": [
     {
      "workstream": "BIN_ADMINISTRATION",
