@@ -71,13 +71,24 @@ export function useOfflineRuntime(deps = {}) {
   useEffect(() => () => { alive.current = false; }, []);
 
   const store = useMemo(
-    () => deps.store ?? createIntentStore({ adapter: selectAdapter(typeof window === "undefined" ? {} : window) }),
-    [deps.store],
+    () => deps.store ?? createIntentStore({
+      adapter: selectAdapter(typeof window === "undefined" ? {} : window),
+      namespace: deps.namespace ?? undefined,
+    }),
+    [deps.store, deps.namespace],
   );
+  // The bindings decide WHICH runtime this is. Technician by default because that is where the
+  // runtime started; the warehouse passes its own. The queue, the store, the executor and the
+  // failure classification are identical — the COMMAND SEMANTICS are not, and keeping them in
+  // separate binding modules is what stops inventory rules being inherited from a work order.
   const bindings = useMemo(
     () => deps.bindings ?? createTechnicianBindings({ technicianId: deps.technicianId }),
     [deps.bindings, deps.technicianId],
   );
+
+  // Separate storage namespace per runtime, so a technician's queue and a warehouse queue on the
+  // same device under the same person never share a key and never overwrite each other.
+  const namespace = deps.namespace ?? null;
   const now = deps.now ?? (() => Date.now());
   const navigatorRef = deps.navigator ?? (typeof navigator === "undefined" ? null : navigator);
 

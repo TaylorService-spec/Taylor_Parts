@@ -6,6 +6,11 @@ import {
 } from "../../domain/warehouseHandheld";
 import { RECEIVING_TRANSPORT_READY } from "../../config/receivingReadiness.js";
 import { unavailableText } from "../../access/scanWorkflows.js";
+import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
+import { OfflineRuntimeProvider } from "../../offline/OfflineRuntimeContext.jsx";
+import { createWarehouseBindings } from "../../offline/warehouseCommandBindings.js";
+import { WAREHOUSE_STORE_NAMESPACE } from "../../offline/warehouseIntent.js";
+import SyncIndicator from "../../shared/ui/SyncIndicator.jsx";
 
 // THE WAREHOUSE / PARTS HANDHELD — four tabs, one answer per screen.
 //
@@ -38,6 +43,10 @@ import { unavailableText } from "../../access/scanWorkflows.js";
 // never needs. Home is the first thing opened, and deferring that moves the wait rather than
 // removing it.
 const ScanWorkspace = lazy(() => import("../scan/ScanWorkspace"));
+// The queue detail is opened when something needs looking at, so its chunk waits until then. The
+// INDICATOR that says something needs looking at is eager -- the one state that must never exist is
+// unsynced warehouse work with nothing on screen saying so.
+const WarehouseSyncQueue = lazy(() => import("./WarehouseSyncQueue.jsx"));
 
 export default function WarehouseShell({ deps = {} }) {
   const { role } = useAuth() ?? {};
@@ -47,6 +56,14 @@ export default function WarehouseShell({ deps = {} }) {
   const [requested, setRequested] = useState(null);
 
   const hasCapability = deps.hasCapability ?? null;
+
+  // ONE warehouse queue, provided to everything below. Its own storage namespace and its own
+  // bindings: a person may hold both a technician and a warehouse queue on one device, and sharing
+  // either would let one overwrite the other.
+  const bindings = useMemo(() => deps.bindings ?? createWarehouseBindings(deps.commandDeps ?? {}), [deps.bindings, deps.commandDeps]);
+  const offline = useOfflineRuntime({
+    namespace: WAREHOUSE_STORE_NAMESPACE, bindings, ...(deps.offline ?? {}),
+  });
   const home = useMemo(() => composeWarehouseHome({
     hasCapability,
     receivingReady: deps.receivingReady ?? RECEIVING_TRANSPORT_READY,
@@ -57,16 +74,17 @@ export default function WarehouseShell({ deps = {} }) {
   const openWorkflow = (key) => { setRequested(key); setTab("scan"); };
 
   return (
+    <OfflineRuntimeProvider value={offline}>
     <div className="fo-handheld">
       <main className="fo-handheld__body" aria-live="polite">
-        {tab === "home" && <WarehouseHome home={home} onOpen={openWorkflow} />}
-        {tab === "work" && <WarehouseWork home={home} onOpen={openWorkflow} />}
+        {tab === "home" && <WarehouseHome home={home} onOpen={openWorkflow} offline={offline} onOpenSync={() => setTab("more")} />}
+        {tab === "work" && <WarehouseWork home={home} onOpen={openWorkflow} offline={offline} />}
         {tab === "scan" && (
           <Suspense fallback={<p className="fo-muted" role="status">Starting the scanner…</p>}>
             <ScanWorkspace deps={{ hasCapability, role: deps.role ?? role, initialWorkflow: requested }} />
           </Suspense>
         )}
-        {tab === "more" && <WarehouseMore />}
+        {tab === "more" && <WarehouseMore offline={offline} />}
       </main>
 
       {/* BOTTOM nav, because a thumb reaches the bottom of a phone and not the top. */}
@@ -84,14 +102,24 @@ export default function WarehouseShell({ deps = {} }) {
         ))}
       </nav>
     </div>
+    </OfflineRuntimeProvider>
   );
 }
 
 /** "What needs attention?" — ranked by domain state, never by an invented severity score. */
-function WarehouseHome({ home, onOpen }) {
+function WarehouseHome({ home, onOpen, offline, onOpenSync }) {
+  const indicator = offline ? (
+    // UNSYNCED WAREHOUSE WORK IS NEVER SILENT. Above the queues, before anything else.
+    <SyncIndicator
+      indicator={offline.indicator} syncing={offline.syncing}
+      onOpen={onOpenSync} onSync={() => offline.sync(true)}
+    />
+  ) : null;
+
   if (home.empty) {
     return (
       <section aria-label="Today">
+        {indicator}
         <h2>Nothing assigned to you here</h2>
         {/* An empty screen that merely looks empty is indistinguishable from a broken one, so it
             says WHY -- and names the one thing that would change it. */}
@@ -106,6 +134,7 @@ function WarehouseHome({ home, onOpen }) {
 
   return (
     <section aria-label="Today">
+      {indicator}
       <h2>What needs attention</h2>
       <ul className="fo-wh-queues">
         {home.queues.map((q) => (
@@ -130,10 +159,23 @@ function WarehouseHome({ home, onOpen }) {
 }
 
 /** The same authorized set, as a plain list of places to go. */
-function WarehouseWork({ home, onOpen }) {
+function WarehouseWork({ home, onOpen, offline }) {
+  const pendingByType = offline?.queue?.reduce((acc, i) => {
+    acc[i.type] = (acc[i.type] ?? 0) + (i.state === "SYNCED" ? 0 : 1);
+    return acc;
+  }, {}) ?? {};
+  const anyPending = Object.values(pendingByType).some((n) => n > 0);
+
   return (
     <section aria-label="Work">
       <h2>Work</h2>
+      {/* PER-TASK pending state, so somebody looking at Work sees that a queue has unsent work
+          without having to go and find the sync screen. */}
+      {anyPending ? (
+        <p className="fo-muted" role="status">
+          You have work on this phone that has not been sent yet. Open Sync under More to see it.
+        </p>
+      ) : null}
       {home.empty ? (
         <p className="fo-muted">Nothing is available to your account.</p>
       ) : (
@@ -166,20 +208,34 @@ function WarehouseWork({ home, onOpen }) {
 }
 
 /** Small on purpose — a closed list, so the desktop side-nav never lands in here. */
-function WarehouseMore() {
+function WarehouseMore({ offline }) {
+  const [openItem, setOpenItem] = useState(null);
   return (
     <section aria-label="More">
       <ul className="fo-list">
         {WAREHOUSE_MORE_ITEMS.map((i) => (
           <li key={i.key}>
-            {i.key === "sync"
-              // WO-04 builds no warehouse offline runtime, and this says so rather than showing a
-              // queue that would always be empty and imply work was being held.
-              ? <span>{i.label} — <span className="fo-muted">warehouse work is sent as you do it</span></span>
-              : i.label}
+            {/* Sync status is now REAL -- WO-04 said warehouse work was sent as you do it, and as of
+                WO-05 it is held when there is no signal. NO HIDDEN QUEUE. */}
+            {i.key === "sync" ? (
+              <button
+                type="button" className="fo-link-btn"
+                onClick={() => setOpenItem(openItem === "sync" ? null : "sync")}
+                aria-expanded={openItem === "sync"}
+              >
+                {i.label}
+                {offline?.summary?.unsynced > 0 ? ` — ${offline.summary.unsynced} not sent` : ""}
+              </button>
+            ) : i.label}
           </li>
         ))}
       </ul>
+
+      {openItem === "sync" && offline ? (
+        <Suspense fallback={<p className="fo-muted" role="status">Opening sync…</p>}>
+          <WarehouseSyncQueue runtime={offline} onClose={() => setOpenItem(null)} />
+        </Suspense>
+      ) : null}
       <p className="fo-muted">
         Desktop EOS remains available separately for anything not on this list.
       </p>

@@ -70,10 +70,12 @@ describe("the warehouse handheld shell", () => {
     expect((await screen.findByTestId("scan")).textContent).toContain("SUPPLIER_RECEIVING");
   });
 
-  it("More is small, and says plainly that warehouse work is not held offline", async () => {
+  it("More is small, and Sync status is a REAL control", async () => {
+    // WO-04 said "warehouse work is sent as you do it", which WO-05 made untrue: work is now held
+    // when there is no signal, so More offers the queue itself rather than a statement about it.
     mount();
     await tab("More");
-    expect(screen.getByText(/sent as you do it/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /sync status/i })).toBeTruthy();
     // Nothing from the desktop belongs here.
     const text = screen.getByRole("region", { name: /more/i }).textContent;
     for (const forbidden of ["CRM", "Sales", "Reporting", "Admin", "Finance"]) {

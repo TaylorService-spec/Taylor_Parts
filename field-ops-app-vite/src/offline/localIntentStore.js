@@ -179,8 +179,13 @@ export function selectAdapter(globals = {}) {
  * @param migrations { [fromVersion]: (record) => record }, applied in sequence up to `targetVersion`.
  * @param targetVersion the version this build understands. Defaults to SCHEMA_VERSION.
  */
-export function createIntentStore({ adapter, migrations = {}, targetVersion = SCHEMA_VERSION } = {}) {
-  const keyFor = (principalUid) => `${STORE_NAMESPACE}/${principalUid}`;
+/**
+ * @param namespace  a per-runtime storage namespace. The technician queue and the warehouse queue
+ *                   are different work, and one person may hold both on one device -- sharing a key
+ *                   would let each overwrite the other's queue on every save.
+ */
+export function createIntentStore({ adapter, migrations = {}, targetVersion = SCHEMA_VERSION, namespace = STORE_NAMESPACE } = {}) {
+  const keyFor = (principalUid) => `${namespace}/${principalUid}`;
 
   /**
    * Bring a stored record up to the version this build speaks.

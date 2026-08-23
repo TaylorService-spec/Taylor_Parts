@@ -904,6 +904,10 @@
     {
       "file": "test/warehouseHandheld.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/warehouseOfflineRuntime.test.mjs",
+      "runner": "node"
     }
   ]
 }
