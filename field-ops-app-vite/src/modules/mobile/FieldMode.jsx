@@ -236,14 +236,18 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
       {tool === "note" && <JobNote workOrderId={job.workOrderId} deps={deps?.note} />}
 
       {/* INSTALLATION CLOSEOUT, and only on a job that is actually an installation.
-          The gate is the canonical WorkOrderType and nothing else: live data contains work orders
-          typed "SERVICE" (not a member of the type union) and work orders with no type, and reading
-          either as an installation would put a machine at a customer on a job nobody classified.
-          The server refuses those too -- this only avoids offering a section that would be denied.
+          The gate is the canonical WorkOrderType and NOTHING ELSE. Live data contains work orders
+          typed "SERVICE" (not a member of the type union) and work orders with no type at all, and
+          reading either as an installation would put a machine at a customer on a job nobody
+          classified -- so this compares against INSTALL exactly.
 
-          Rendered on WORK_IN_PROGRESS alone, because that is the single state an installation may be
-          recorded from and the only state Complete may follow. */}
-      {workOrder?.type === "INSTALL" && workOrder?.status === "WORK_IN_PROGRESS" && (
+          NO STATUS CHECK HERE, DELIBERATELY. An earlier version also required WORK_IN_PROGRESS, and
+          this file's own guard rejected it: FieldMode does not decide what a technician may do, the
+          governed matrix does. That guard is right, and the check was redundant besides -- the scoped
+          read refuses a work order that is not in progress and the section reports that refusal
+          honestly. Type is a CLASSIFICATION of the job; status is a lifecycle decision, and only one
+          of those belongs on this screen. */}
+      {workOrder?.type === "INSTALL" && (
         <EquipmentInstallCloseout
           workOrderId={job.workOrderId}
           onCompleteWorkOrder={(id) => onAdvance(id, "Complete")}
