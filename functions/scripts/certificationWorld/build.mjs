@@ -11,6 +11,7 @@ import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/a
 import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
+import { buildTechnicianRecords, buildJobRecords } from "./data/workforceLoad.mjs";
 import { equipmentForAccount } from "./data/equipmentAssets.mjs";
 import { CERT_PARTS, partRecordFor } from "./data/partsCatalog.mjs";
 import {
@@ -242,7 +243,35 @@ export function buildWorld() {
     });
   }
 
-  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels, equipment, parts, trucks, employees, marker };
+  // ── THE WORK PEOPLE ARE ACTUALLY DOING ──────────────────────────────────────────────────────
+  //
+  // Eleven technicians declared a workload category and not one job existed anywhere in the world.
+  // A label describing a workload nothing produced is the same shape as every defect this program
+  // has found, so the assignments are seeded and the certification checks DERIVE each profile from
+  // the count rather than reading the label back.
+  //
+  // STATIC, because no command creates them: completeAssignedJob reads a job and refuses to touch
+  // one that is not yours and not in_progress, and nothing anywhere writes one. A technician's
+  // schedule is part of the world's starting position, not the output of a service.
+  const locationsByAccount = new Map();
+  for (const l of locations) {
+    const acct = l.data.accountId;
+    locationsByAccount.set(acct, [...(locationsByAccount.get(acct) ?? []), l.id]);
+  }
+  const equipmentByAccount = new Map();
+  for (const e of equipment) {
+    const acct = e.data.accountId;
+    equipmentByAccount.set(acct, [...(equipmentByAccount.get(acct) ?? []), e.id]);
+  }
+  const accountIds = accounts.map((a) => a.id);
+  const employeeRecords = employees.map((e) => e.data ?? e);
+  const technicians = buildTechnicianRecords(employeeRecords);
+  const jobs = buildJobRecords(employeeRecords, {
+    accounts: accountIds, locationsByAccount, equipmentByAccount,
+  });
+
+  return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels,
+    equipment, parts, trucks, employees, technicians, jobs, marker };
 }
 
 export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };

@@ -179,6 +179,17 @@ test("EVERY collection buildWorld() produces is registered for seeding and verif
     "These collections are BUILT but never seeded or verified. A sandbox missing every one of "
       + "them would still report COMPLETE. Register each in expectedRecords():\n  "
       + missing.join("\n  "));
+
+  // AND THE OTHER DIRECTION, which this guard did not check.
+  //
+  // A group registered in expectedRecords() that the builder does not produce is the mirror
+  // defect: verification demands a collection nobody builds, so the world can never be COMPLETE --
+  // or the group silently contributes nothing and the registration reads as coverage that does not
+  // exist. Proven by injecting a phantom group and watching this fail.
+  const builtCollections = new Set(arrays.map((k) => world[k][0].collection));
+  const phantom = [...seededCollections].filter((c) => !builtCollections.has(c));
+  assert.deepEqual(phantom, [],
+    "These collections are REGISTERED for seeding but produced by nothing: " + phantom.join(", "));
 });
 
 test("the installed base is present, varied, and internally consistent", () => {
