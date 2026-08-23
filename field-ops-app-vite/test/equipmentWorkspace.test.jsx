@@ -23,6 +23,24 @@ vi.mock("../src/hooks/useInstalledEquipmentPage", () => ({
 // never touches Firebase; individual AvailableEquipment tests below set the return
 // value directly (same pattern as test/availableEquipmentGovernedRead.test.jsx).
 let mockAvailableEquipmentSource = { connected: false, status: "loading", assets: [] };
+// AvailableEquipment gained an Install action (PR: equipment install UI). These are its NEW
+// dependencies, declared here because this suite renders that component -- an undeclared dependency
+// is not a neutral omission, it throws on first render and takes every case in the file with it.
+// canInstall is FALSE so this suite keeps testing exactly what it was written to test: the governed
+// read's own states, with no install control in the way.
+vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "test-uid" } }) }));
+vi.mock("../src/access/useEquipmentInstallCapability", () => ({
+  useEquipmentInstallCapability: () => ({ canInstall: false }),
+}));
+vi.mock("../src/hooks/useWholeUnitParts", () => ({
+  useWholeUnitParts: () => ({ parts: [], loading: false, denied: false, unavailable: false }),
+}));
+// Only useNavigate is replaced. Mocking the whole module strips MemoryRouter and every other export
+// the suite relies on.
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => vi.fn(),
+}));
 vi.mock("../src/hooks/useAvailableEquipmentSource", () => ({
   useAvailableEquipmentSource: () => mockAvailableEquipmentSource,
 }));

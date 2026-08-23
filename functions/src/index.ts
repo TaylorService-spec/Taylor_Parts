@@ -312,6 +312,22 @@ export {
 // match block, so it is deny-all to every client. EXPORT != DEPLOY.
 export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryReturns/returnCallables";
 
+// --- Equipment INSTALL (serialized asset -> customer Equipment) ---
+// The only path that can put a unit into a customer's hands. `serialized_assets` is deny-all to
+// every client and the LINK between an asset and its Equipment cannot be written from a browser at
+// all, so without this callable the authority is real and unreachable -- which is exactly what it
+// was before this export.
+//
+// IRREVERSIBLE BY DESIGN: Equipment accountId and locationId are immutable after create and nothing
+// clears the asset's currentEquipmentId, so a unit installed against the wrong customer stays there.
+// Recovery is a separate, unimplemented authority (EQUIPMENT RECOVERY AUTHORITY GAP) and this
+// callable must never be read as covering it.
+//
+// Gated on equipment.install, registered active:false and carried by exactly one Role
+// (equipmentInstaller) -- deliberately NOT the same Role that may acquire units, so no single person
+// can take a machine from non-existence to a customer. EXPORT != DEPLOY.
+export { installSerializedAssetCallable as installSerializedAsset } from "./equipmentInstall/installCallables";
+
 // --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
 // quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read
