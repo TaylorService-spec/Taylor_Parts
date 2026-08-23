@@ -1126,6 +1126,13 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "correct",
     active: false,
   }),
+  Object.freeze({
+    id: "equipment.model.manage",
+    description: "Create and edit canonical Equipment Model records and their aliases (trusted Equipment command service).",
+    resource: "equipment.model",
+    action: "manage",
+    active: false,
+  }),
   // EQUIPMENT INSTALLATION (serialized asset -> customer-installed Equipment). The authority the
   // Serialized Asset contract calls "§H's job", and records as not built.
   //
@@ -1143,13 +1150,6 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Install a company-held serialized asset as customer Equipment: creates the Equipment record and links the asset to it (trusted installSerializedAsset command). Irreversible under the current model -- Equipment accountId/locationId are immutable after create.",
     resource: "equipment",
     action: "install",
-    active: false,
-  }),
-  Object.freeze({
-    id: "equipment.model.manage",
-    description: "Create and edit canonical Equipment Model records and their aliases (trusted Equipment command service).",
-    resource: "equipment.model",
-    action: "manage",
     active: false,
   }),
   // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4) -- the SMALLEST domain-correct CRM
