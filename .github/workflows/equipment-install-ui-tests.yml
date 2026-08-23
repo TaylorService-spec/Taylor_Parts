@@ -55,6 +55,18 @@ on:
       - "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
       - "field-ops-app-vite/test/jobLabor.test.jsx"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
+      # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
+      # handheld surfaces above are exactly what it sits underneath.
+      - "field-ops-app-vite/src/offline/**"
+      - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
+      - "field-ops-app-vite/src/modules/mobile/SyncQueue.jsx"
+      - "field-ops-app-vite/src/shared/ui/SyncIndicator.jsx"
+      - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
+      - "field-ops-app-vite/src/modules/mobile/JobNote.jsx"
+      - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
+      - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
+      - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - "functions/package.json"
@@ -95,6 +107,18 @@ on:
       - "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
       - "field-ops-app-vite/test/jobLabor.test.jsx"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
+      # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
+      # handheld surfaces above are exactly what it sits underneath.
+      - "field-ops-app-vite/src/offline/**"
+      - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
+      - "field-ops-app-vite/src/modules/mobile/SyncQueue.jsx"
+      - "field-ops-app-vite/src/shared/ui/SyncIndicator.jsx"
+      - "field-ops-app-vite/src/shared/ui/DictatableNote.jsx"
+      - "field-ops-app-vite/src/modules/mobile/JobNote.jsx"
+      - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
+      - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
+      - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
 
@@ -141,8 +165,19 @@ jobs:
         run: node --test test/technicianLaborEntry.test.mjs
         working-directory: field-ops-app-vite
 
+      # WO-03. The durable queue, the dependency graph, and every conflict a reconnection can meet.
+      - name: Offline runtime — durability, dependencies, revocation, reassignment, no duplicates
+        run: node --test test/technicianOfflineRuntime.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
         run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
+        working-directory: field-ops-app-vite
+
+      # A queued note that renders as "saved" is the one failure this whole runtime exists to prevent,
+      # and only a render can catch it.
+      - name: Offline UI — queued is never saved, refusals read as situations, dictation offline
+        run: npx vitest run test/offlineSyncUi.test.jsx test/dictatableNote.test.jsx
         working-directory: field-ops-app-vite
 
       # The client must still BUILD. A surface that only passes its tests and fails the bundle is a

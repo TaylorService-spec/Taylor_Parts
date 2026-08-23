@@ -4620,3 +4620,57 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Labor entry: hours, minutes and type on one row at 320px, each target still 44px tall. */
 .fo-labor__entry { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; align-items: end; }
 .fo-labor__entry input, .fo-labor__entry select { min-height: 44px; width: 100%; }
+
+/* ---------------------------------------------------------------------------
+   WO-03 -- OFFLINE SYNC. Cards, never a table: a queue is naturally tabular and
+   a table is unusable at 320px. Every control clears 44px, because these are
+   pressed with gloves on. Severity NEVER carries meaning alone -- each state
+   also renders its word (Pending / Syncing / Conflict / Not accepted).
+   --------------------------------------------------------------------------- */
+.fo-sync-indicator { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  justify-content: space-between; padding: 10px 12px; border-radius: 8px;
+  border-left: 4px solid var(--fo-border, #d5d0c4); background: var(--fo-surface, #faf8f4); }
+.fo-sync-indicator--ok { border-left-color: #2f7d4f; }
+.fo-sync-indicator--pending { border-left-color: #b07d15; }
+.fo-sync-indicator--attention { border-left-color: #b3261e; }
+.fo-sync-indicator__text { flex: 1 1 60%; min-width: 0; }
+.fo-sync-indicator__headline { margin: 0; font-weight: 600; }
+.fo-sync-indicator__detail { margin: 2px 0 0; font-size: 0.875rem; opacity: 0.8; }
+.fo-sync-indicator__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fo-sync-indicator__button { min-height: 44px; }
+
+.fo-sync-queue { display: flex; flex-direction: column; gap: 10px; }
+.fo-sync-queue__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* EVERY button on this surface, not only the ones in item action rows. A live-browser measurement
+   found Close and the queue-level Sync now sitting at 31px while the per-item controls were correct:
+   the rule had been attached to the rows rather than to the surface. */
+.fo-sync-queue button { min-height: 44px; }
+.fo-sync-queue__warning { margin: 0; padding: 8px 10px; border-radius: 6px;
+  border-left: 4px solid #b3261e; background: rgba(179, 38, 30, 0.08); }
+.fo-sync-queue__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fo-sync-queue__list { list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 10px; }
+
+.fo-sync-item { padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--fo-border, #d5d0c4); background: var(--fo-surface, #fff); }
+.fo-sync-item--attention { border-left: 4px solid #b3261e; }
+.fo-sync-item__what { margin: 0; font-weight: 600; display: flex; flex-wrap: wrap;
+  gap: 8px; align-items: baseline; justify-content: space-between; }
+/* The status WORD. Never a bare dot -- see the note at the top of this block. */
+.fo-sync-item__status { font-weight: 500; font-size: 0.8125rem; opacity: 0.85; }
+.fo-sync-item__job { margin: 2px 0 0; font-size: 0.875rem; opacity: 0.75; }
+.fo-sync-item__happened { margin: 6px 0 0; }
+.fo-sync-item__preserved { margin: 4px 0 0; font-size: 0.875rem; opacity: 0.8; }
+.fo-sync-item__next { margin: 4px 0 0; font-weight: 500; }
+.fo-sync-item__hold { margin: 4px 0 0; font-size: 0.875rem; opacity: 0.8; }
+.fo-sync-item__confirm { align-self: center; font-size: 0.875rem; }
+.fo-sync-item__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.fo-sync-item__actions button { min-height: 44px; }
+/* Diagnostics: monospace so an id can be read aloud accurately over a phone. */
+.fo-sync-item__technical { margin: 8px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem; opacity: 0.75; overflow-wrap: anywhere; }
+
+@media (max-width: 360px) {
+  /* At 320px the two-up action row wraps into an unreadable stagger; stack it. */
+  .fo-sync-item__actions button, .fo-sync-indicator__button { width: 100%; }
+}

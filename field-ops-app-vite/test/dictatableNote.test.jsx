@@ -161,7 +161,11 @@ describe("Dictatable note (typing is never removed)", () => {
     const broken = fakeRecognizer();
     render(<DictatableNote value="" onChange={vi.fn()} deps={{ recognizerFactory: () => broken }} />);
     fireEvent.click(screen.getByRole("button", { name: /dictate/i }));
-    act(() => broken.onerror({ error: "network" }));
+    // "audio-capture", not "network". WO-03 §37 gave `network` a meaning of its own -- the recogniser
+    // could not reach its speech service -- so it is no longer an example of a GENERIC failure. This
+    // assertion is about denied-vs-failed being different places, and that is unchanged; only the
+    // stand-in for "something else broke" moved. The network case is proven in offlineSyncUi.test.jsx.
+    act(() => broken.onerror({ error: "audio-capture" }));
     const failedText = screen.getByRole("status").textContent;
     expect(failedText).toMatch(/stopped unexpectedly/i);
     expect(failedText).not.toBe(deniedText);

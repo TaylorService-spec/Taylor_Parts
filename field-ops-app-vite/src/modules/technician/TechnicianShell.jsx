@@ -26,9 +26,14 @@ import {
 } from "../../domain/technicianHandheld";
 import { Button } from "../../shared/ui/primitives";
 import FieldMode from "../mobile/FieldMode";
+import SyncIndicator from "../../shared/ui/SyncIndicator.jsx";
+import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
 
 // The scanner and its dependencies arrive only when Scan is opened.
 const ScanWorkspace = lazy(() => import("../scan/ScanWorkspace"));
+// The sync queue is opened when something needs looking at, so its chunk waits until then. The
+// INDICATOR that says something needs looking at is eager -- see SyncIndicator.jsx.
+const SyncQueue = lazy(() => import("../mobile/SyncQueue"));
 
 export default function TechnicianShell({ deps = {} }) {
   const [tab, setTab] = useState("home");
@@ -37,9 +42,17 @@ export default function TechnicianShell({ deps = {} }) {
 
   // ONE technician-scoped subscription feeds every tab. Home and Jobs are two views of the same
   // read, not two reads -- a phone on a weak connection should not pay twice for one answer.
+  // WO-02 left `pending` as a prop with nothing behind it. It is now the REAL queue: what this
+  // technician has captured on this device and the platform has not yet accepted.
+  const offline = useOfflineRuntime({ technicianId: () => technicianId, ...(deps.offline ?? {}) });
   const home = useMemo(
-    () => composeTechnicianHome({ workOrders: workOrders ?? [], pending: deps.pending ?? [] }),
-    [workOrders, deps.pending],
+    () => composeTechnicianHome({
+      workOrders: workOrders ?? [],
+      pending: deps.pending ?? offline.queue.map((i) => ({
+        intentId: i.intentId, state: i.state, label: i.describe,
+      })),
+    }),
+    [workOrders, deps.pending, offline.queue],
   );
   const cards = useMemo(() => composeJobCards(workOrders ?? []), [workOrders]);
   const loading = techLoading || workOrdersLoading;
@@ -47,14 +60,19 @@ export default function TechnicianShell({ deps = {} }) {
   return (
     <div className="fo-handheld">
       <main className="fo-handheld__body" aria-live="polite">
-        {tab === "home" && <HandheldHome home={home} loading={loading} onOpenJobs={() => setTab("jobs")} />}
+        {tab === "home" && (
+          <HandheldHome
+            home={home} loading={loading} onOpenJobs={() => setTab("jobs")}
+            offline={offline} onOpenSync={() => setTab("more")}
+          />
+        )}
         {tab === "jobs" && <HandheldJobs cards={cards} loading={loading} />}
         {tab === "scan" && (
           <Suspense fallback={<p className="fo-muted" role="status">Starting the scanner…</p>}>
             <ScanWorkspace />
           </Suspense>
         )}
-        {tab === "more" && <HandheldMore />}
+        {tab === "more" && <HandheldMore offline={offline} />}
       </main>
 
       {/* BOTTOM nav, because a thumb reaches the bottom of a phone and not the top. */}
@@ -76,12 +94,20 @@ export default function TechnicianShell({ deps = {} }) {
 }
 
 /** "What do I need to do next?" — and nothing that does not answer it. */
-function HandheldHome({ home, loading, onOpenJobs }) {
+function HandheldHome({ home, loading, onOpenJobs, offline, onOpenSync }) {
   if (loading) return <p className="fo-muted" role="status">Loading your day…</p>;
   const actionLabel = homePrimaryActionLabel(home);
 
   return (
     <section aria-label="Today">
+      {/* ABOVE THE DAY. Unsynced work is the thing most easily forgotten and least recoverable, so it
+          is never below the fold and never behind a tap. */}
+      {offline ? (
+        <SyncIndicator
+          indicator={offline.indicator} syncing={offline.syncing}
+          onOpen={onOpenSync} onSync={() => offline.sync(true)}
+        />
+      ) : null}
       {/* UNSYNCED WORK COMES FIRST. It is the thing most easily forgotten and least recoverable. */}
       {home.pending.length > 0 && (
         <div className="fo-handheld__pending" role="status">
@@ -159,14 +185,30 @@ function HandheldJobs({ cards, loading }) {
 }
 
 /** Small on purpose — see MORE_ITEMS on why this is a closed list. */
-function HandheldMore() {
+function HandheldMore({ offline }) {
+  const [openItem, setOpenItem] = useState(null);
   return (
     <section aria-label="More">
       <ul className="fo-list">
         {MORE_ITEMS.map((i) => (
-          <li key={i.key}>{i.label}</li>
+          // "Sync status" was a label with nothing behind it. It is now the queue itself: every
+          // item, its state, why it stopped, and what to do -- NO HIDDEN QUEUE.
+          i.key === "sync" ? (
+            <li key={i.key}>
+              <button type="button" className="fo-link-btn" onClick={() => setOpenItem(openItem === "sync" ? null : "sync")} aria-expanded={openItem === "sync"}>
+                {i.label}
+                {offline?.summary?.unsynced > 0 ? ` — ${offline.summary.unsynced} not sent` : ""}
+              </button>
+            </li>
+          ) : <li key={i.key}>{i.label}</li>
         ))}
       </ul>
+
+      {openItem === "sync" && offline ? (
+        <Suspense fallback={<p className="fo-muted" role="status">Opening sync…</p>}>
+          <SyncQueue runtime={offline} onClose={() => setOpenItem(null)} />
+        </Suspense>
+      ) : null}
       <p className="fo-muted">
         Desktop EOS remains available separately for anything not on this list.
       </p>

@@ -892,6 +892,10 @@
     {
       "file": "test/technicianLaborEntry.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/technicianOfflineRuntime.test.mjs",
+      "runner": "node"
     }
   ]
 }
