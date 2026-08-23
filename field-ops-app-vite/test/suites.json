@@ -900,6 +900,10 @@
     {
       "file": "test/technicianShellReachability.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/warehouseHandheld.test.mjs",
+      "runner": "node"
     }
   ]
 }

@@ -37,6 +37,9 @@ import {
 } from "../../services/workOrderInstallCallableClient";
 import { Button } from "../../shared/ui/primitives";
 import { captureInstall, captureComplete } from "../../offline/technicianIntentCapture.js";
+import StructuredFields from "../../shared/ui/StructuredFields.jsx";
+import { serializedUnitFields } from "../../domain/structuredFields.js";
+import { useLocationDisplaySource } from "../../hooks/useLocationDisplaySource.js";
 import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
 import { connectivityHint } from "../../offline/syncExecutor.js";
 import { classifyFailure, FAILURE_CLASS } from "../../offline/syncFailureClassification.js";
@@ -79,6 +82,16 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
   }, [workOrderId, fetchUnits]);
 
   const units = load.data?.units ?? [];
+
+  // LOCATIONS RESOLVE THROUGH THE GOVERNED PROJECTION, never by showing the id. `wh-main` is
+  // unreadable, unsearchable by the name anybody actually uses, and teaches people to memorise
+  // internal keys. An id that will not resolve renders as "Unavailable" -- an honest absence rather
+  // than a raw key dressed up as information.
+  const { displayMap } = useLocationDisplaySource(units.map((u) => u.currentLocationId));
+  const locationNameFor = (u) => {
+    const entry = displayMap?.get?.(u.currentLocationId);
+    return entry && entry.type !== "UNRESOLVED" ? entry.label : null;
+  };
   const wo = load.data?.workOrder ?? null;
   const scanned = scan.trim()
     ? units.filter((u) => u.serialNo?.toLowerCase().includes(scan.trim().toLowerCase()))
@@ -291,12 +304,15 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
                     checked={selected?.serializedAssetId === u.serializedAssetId}
                     onChange={() => setSelected(u)}
                   />
-                  <span>{u.productName ?? u.partId}</span>
-                  <span className="fo-muted">
-                    {" — S/N "}{u.serialNo}
-                    {u.inventoryState ? ` · ${u.inventoryState}` : ""}
-                    {u.currentLocationId ? ` · ${u.currentLocationId}` : ""}
-                  </span>
+                  {/* SIX ATTRIBUTES, SIX FIELDS. This was one prose line --
+                      "Taylor C161 — S/N CW-C161-0001 · AVAILABLE · wh-main" -- which exposed none
+                      of them: nothing could filter by status, sort by location or read it aloud in
+                      a sensible order, and the raw location id was showing to a human as a label. */}
+                  <StructuredFields
+                    fields={serializedUnitFields(u, { locationName: locationNameFor(u) })}
+                    label={`Unit ${u.serialNo ?? u.serializedAssetId}`}
+                    maxPriority={2}
+                  />
                 </label>
               </li>
             ))}

@@ -4691,3 +4691,56 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   /* At 320px the two-up action row wraps into an unreadable stagger; stack it. */
   .fo-sync-item__actions button, .fo-sync-indicator__button { width: 100%; }
 }
+
+/* ---------------------------------------------------------------------------
+   WO-04 -- STRUCTURED FIELDS. A business object is a set of fields, never a
+   sentence. Label and value stay separately addressable at every width: a
+   narrow screen stacks them and DROPS low-priority fields; it never merges two
+   attributes into one line of prose, because that is the one transformation no
+   downstream consumer can undo.
+   --------------------------------------------------------------------------- */
+.fo-fields { margin: 0; display: grid; gap: 6px; }
+.fo-fields__row {
+  display: grid; grid-template-columns: minmax(96px, 34%) 1fr; gap: 10px;
+  align-items: baseline; padding: 4px 0;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(0,0,0,0.06));
+}
+.fo-fields__row:last-child { border-bottom: 0; }
+.fo-fields__label {
+  font-size: 0.8125rem; color: var(--color-text-secondary); font-weight: 500;
+  overflow-wrap: anywhere;
+}
+/* Serials, SKUs and location names are the long unbreakable strings here. */
+.fo-fields__value { margin: 0; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+/* An absent value is visibly different from a present one, and still says WHICH absence it is. */
+.fo-fields__value--absent { font-weight: 400; font-style: italic; color: var(--color-text-muted); }
+/* Status is a field with its own presentation. Colour may supplement it; the WORD always carries it. */
+.fo-fields__status {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: var(--color-surface-subtle, #f3f0e8); border: 1px solid var(--color-border);
+  font-size: 0.8125rem; font-weight: 600;
+}
+@media (max-width: 359.98px) {
+  /* At 320 a two-column pair leaves the value ~120px wide. Stack instead of truncating -- a
+     half-shown serial number is worse than a wrapped one. */
+  .fo-fields__row { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* WAREHOUSE HANDHELD QUEUES. Task cards, never a table: a queue is naturally
+   tabular and a table is unusable at 320px in gloves. */
+.fo-wh-queues { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fo-wh-queue { margin: 0; }
+.fo-wh-queue__button {
+  display: grid; gap: 4px; width: 100%; text-align: left;
+  min-height: 64px; padding: 12px 14px; cursor: pointer;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px;
+  /* RESTATE THE COLOUR. The bare `button` rule sets `color: white` for the primary background; a
+     rule that re-grounds the background and inherits that ships white text on a light card, which
+     is invisible rather than merely ugly. Caught by buttonForegroundContrast. */
+  color: var(--color-text-primary);
+}
+.fo-wh-queue__title { font-weight: 600; font-size: 1rem; }
+.fo-wh-queue__count { font-size: 0.875rem; font-weight: 600; }
+/* "No count available" is a statement, not a number, and must not read as one. */
+.fo-wh-queue__count--none { font-weight: 400; color: var(--color-text-muted); }
+.fo-wh-queue__reason { font-size: 0.8125rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }

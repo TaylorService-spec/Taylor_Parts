@@ -149,6 +149,15 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      # WO-04 -- the warehouse handheld composes these same workflows, so a change to any of them
+      # must re-run its lane too.
+      - "field-ops-app-vite/src/modules/warehouse/**"
+      - "field-ops-app-vite/src/domain/warehouseHandheld.js"
+      - "field-ops-app-vite/src/domain/structuredFields.js"
+      - "field-ops-app-vite/src/shared/ui/StructuredFields.jsx"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -196,7 +205,7 @@ on:
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
-      - "field-ops-app-vite/test/receivingTransport.test.jsx"
+      - "field-ops-app-vite/test/receivingTransport.test.jsx test/warehouseShell.test.jsx"
       - "field-ops-app-vite/test/receivingScanQueue.test.mjs"
       - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
       - ".github/workflows/scan-workspace-tests.yml"
@@ -255,6 +264,15 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/scanWorkflows.test.mjs"
+      # WO-04 -- the warehouse handheld composes these same workflows, so a change to any of them
+      # must re-run its lane too.
+      - "field-ops-app-vite/src/modules/warehouse/**"
+      - "field-ops-app-vite/src/domain/warehouseHandheld.js"
+      - "field-ops-app-vite/src/domain/structuredFields.js"
+      - "field-ops-app-vite/src/shared/ui/StructuredFields.jsx"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -331,6 +349,12 @@ jobs:
       # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
       - name: Scan workflow availability (pure)
         run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs test/personaOperability.test.mjs
+
+      # WO-04. Who is offered which queue, what may carry a count, the structured-field standard,
+      # the offline classification WO-05 inherits, and a guard that the shell is actually reachable.
+      - name: Warehouse handheld — composition, structured fields, reachability
+        run: node --test test/warehouseHandheld.test.mjs
+        working-directory: field-ops-app-vite
         working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)

@@ -5,6 +5,7 @@ import {
   CYCLE_COUNT_SURFACE_CAPABILITIES,
   CATALOG_SURFACE_CAPABILITIES,
   RECEIVING_SURFACE_CAPABILITIES,
+  WAREHOUSE_HANDHELD_CAPABILITIES,
 } from "../access/governedSurfaceCapabilities.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
@@ -269,6 +270,11 @@ export const NAV_DOMAINS = [
       // commands/Rules/tests unchanged; restore once the Manufacturer read-authority decision (see the
       // parts-ux-redesign-blueprint.md §14d architecture writeup) is made and built.
       { key: "manufacturers", label: "Manufacturers", path: "manufacturers", navHidden: true },
+      // THE WAREHOUSE / PARTS HANDHELD. Its own nav item, gated by the union of the station
+      // capabilities the workflows behind it actually use -- never a coarse "warehouse user" id.
+      // Renders the handheld shell on a phone and the existing desktop surface on anything wider;
+      // width chooses composition, never authority.
+      { key: "warehouseWorkspace", label: "Warehouse Workspace", path: "warehouse-workspace", capabilityAccess: WAREHOUSE_HANDHELD_CAPABILITIES },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
       // Reachable by governed transfer authority OR by the existing compatibility path. `legacyKey`
