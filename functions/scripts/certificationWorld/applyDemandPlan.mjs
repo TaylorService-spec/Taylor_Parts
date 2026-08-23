@@ -17,15 +17,20 @@
 // purchasing applier makes: weaker than a real idempotency key, and right for a fixture where a
 // duplicate is always a mistake.
 //
-// EMULATOR ONLY.
+// EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+
+const { resolveExecutionTarget, describeTarget, ExecutionTargetRefused } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+const { setExecutionTarget } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const { DEMAND_SCENARIOS, accountIdFor, scenarioTag } =
   await import(L("functions/scripts/certificationWorld/data/demandPlan.mjs"));
@@ -37,11 +42,28 @@ const APPLY = process.argv.includes("--apply");
 /** Pinned so a rebuild allocates the same WO-year sequence. */
 const NOW_YEAR = 2026;
 
-if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("FAILED: emulator only. Set FIRESTORE_EMULATOR_HOST.");
+// THE ONE GATE. Emulator and eos-platform-sandbox only; production refused two ways; a live
+// write additionally requires --apply-live-sandbox. See executionTarget.mjs.
+let __target;
+try {
+  __target = resolveExecutionTarget();
+  setExecutionTarget(__target);
+} catch (err) {
+  console.error(`REFUSED: ${err.message}`);
   process.exitCode = 1;
+}
+if (!__target) {
+  // refused above
 } else {
-  if (!getApps().length) initializeApp({ projectId: "demo-certworld" });
+  console.log(describeTarget(__target));
+  // Credentials follow the TARGET, not a hardcoded project. An emulator needs none; a live
+  // project needs application-default credentials, and naming the project explicitly means the
+  // app cannot silently initialize against whatever ADC happens to prefer.
+  if (!getApps().length) {
+    initializeApp(__target.isEmulator
+      ? { projectId: __target.projectId }
+      : { credential: applicationDefault(), projectId: __target.projectId });
+  }
   const db = getFirestore();
 
   console.log(`emulator : ${process.env.FIRESTORE_EMULATOR_HOST}`);

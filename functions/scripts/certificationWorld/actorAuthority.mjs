@@ -30,17 +30,33 @@ const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } =
   await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
 
 /**
- * The activation set for THIS environment, resolved by the product's own function.
+ * The activation set for the environment being acted on, resolved by the product's own function.
  *
- * Not a list written here. resolveCapabilityOverrides is the same code the deployed runtime calls;
- * it is handed the canonical registry and the project id the emulator actually is, and it applies
- * all three hard-blocks itself -- unknown project yields empty, production yields empty regardless
- * of its data, and whatever survives is intersected with the eligible allow-list.
+ * PROJECT-AWARE, and it has to be. This used to be pinned to demo-certworld, which was correct
+ * while the only target was the emulator and would have been a serious mistake the moment the same
+ * tooling could reach the live sandbox: the emulator's activation exception exists so a fixture can
+ * exercise real authorization, and carrying it into a real project would mean a live run was
+ * authorized by a fixture decision rather than by that environment's own governed posture.
  *
- * Hand-feeding a set here would have been the stub the Owner explicitly refused: it would prove
- * that a resolver given the right answer returns the right answer.
+ * The sandbox activates 33 capabilities; the certification emulator activates 9. They are different
+ * environments and they answer differently, which is the entire point.
+ *
+ * resolveCapabilityOverrides is the product's function, applying all three hard-blocks itself.
  */
-export const ENVIRONMENT_ACTIVATIONS = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "demo-certworld");
+let activeTarget = null;
+
+/** Called once by an entry script, with the target its own gate resolved. */
+export function setExecutionTarget(target) {
+  activeTarget = target;
+}
+
+export function currentActivations() {
+  if (activeTarget) return activeTarget.activationOverrides;
+  // No target declared: resolve nothing. A caller that forgot to set one gets the FAIL-CLOSED
+  // answer -- every active:false capability denies -- rather than silently inheriting someone
+  // else's environment.
+  return new Set();
+}
 
 export const TRANSFER_CREATE = "inventory.transfer.create";
 export const TRANSFER_DISPATCH = "inventory.transfer.dispatch";
@@ -84,7 +100,7 @@ export async function resolveCapability(db, principalIndex, employeeId, permissi
     // active:false, which the resolver denies AHEAD of any Role grant -- without this the transfer,
     // cycle-count and returns families answer inactivePermission for everyone, forever, and no
     // authority test in this world would mean anything.
-    activationOverrides: ENVIRONMENT_ACTIVATIONS,
+    activationOverrides: currentActivations(),
   });
   return { allowed: out.decision === "ALLOW", decision: out.decision, roles: assignments.map((a) => a.roleId), uid };
 }
