@@ -100,6 +100,27 @@ export const DEMAND_SCENARIOS = Object.freeze([
     // nothing about partial recovery.
     plan: [{ partId: "CW-P-0000", qtyPlanned: 12 }],
   },
+  // ── G06 TRANSFER RECOVERY ───────────────────────────────────────────────────────────────────
+  //
+  // ITS OWN SCENARIO, NOT G04's. Only one work order in this world had a warehouse shortage backed
+  // by truck stock, and it is G04 -- the FALSE_COMFORT case. Recovering that one through a transfer
+  // would have demonstrated G06 by DESTROYING G04: the demand-class invariant requires
+  // FALSE_COMFORT_TRUCK_ONLY to be non-empty, and it would have been the only member.
+  //
+  // So G06 uses the OTHER false-comfort part. Same shape, different job, and the two Golden
+  // scenarios now say genuinely different things:
+  //
+  //   G04  the trap  -- the company owns plenty and the Parts Room still cannot fill the job
+  //   G06  the fix   -- an authorized transfer moves it to where it can be picked
+  //
+  // CW-P-0305 holds warehouse 8 against 24 on trucks, so the shortage is real and the recovery is
+  // available. The planned quantity is deliberately above warehouse and below company.
+  {
+    key: "TRANSFER_RECOVERY",
+    accountIndex: 17,
+    complaint: "Bin level sensor intermittent; unit over-filling.",
+    plan: [{ partId: "CW-P-0305", qtyPlanned: 14 }],
+  },
 ]);
 
 /** Golden lifecycle each scenario backs, where it backs one. */

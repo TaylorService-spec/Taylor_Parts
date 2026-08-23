@@ -33,11 +33,23 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const db = getFirestore();
 
   // ── Read the ledger and recompute balances from stored records.
+  //
+  // TWO VIEWS, KEPT APART. This verifier answers two different questions that used to be one:
+  //
+  //   BASELINE  did the opening-balance plan land exactly as designed?
+  //   ACTUAL    what does the world hold right now, after everything that has happened to it?
+  //
+  // They were identical until transfers existed. Once stock legitimately moved, asserting the
+  // designed fleet loads against current state reported five failures in a world where every
+  // number was correct -- the fixture's design being compared to the world's history.
+  //
+  // Fleet design and plan fidelity are BASELINE questions. Inventory conditions are an ACTUAL
+  // question. Reconciliation is the bridge: baseline + operations must equal actual, exactly.
   const snap = await db.collection(LEDGER_COLLECTION).get();
   const warehouse = new Map(), mobile = new Map(), perTruck = new Map(), company = new Map(), perTruckPart = new Map();
+  const bWarehouse = new Map(), bMobile = new Map(), bPerTruck = new Map(), bPerTruckPart = new Map();
+  const opWarehouse = new Map(), opMobile = new Map();
   const add = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
-  const IN_TYPES = new Set(["RECEIVED", "TRANSFER_IN", "RETURNED"]);
-  const OUT_TYPES = new Set(["ISSUED", "TRANSFER_OUT", "SCRAPPED"]);
 
   let malformed = 0;
   for (const doc of snap.docs) {
@@ -48,12 +60,24 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     // Shared with every other certification tool. A private copy here is what made this verifier
     // report 34 CRITICAL parts for a world holding 571 units: ADJUSTED was in no IN set.
     const signed = signedQuantity(v);
+    // A baseline row is an opening balance: ADJUSTED, sourced from the opening-balance record that
+    // authorized it. Everything else happened TO the world afterwards.
+    const isBaseline = v.type === "ADJUSTED" && v.sourceObject?.type === "ADJUSTMENT"
+      && String(v.sourceObject?.id ?? "").startsWith("cwob_");
+
     add(company, v.partId, signed);
-    if (loc.type === "WAREHOUSE") add(warehouse, v.partId, signed);
-    else if (loc.type === "MOBILE") {
+    if (loc.type === "WAREHOUSE") {
+      add(warehouse, v.partId, signed);
+      add(isBaseline ? bWarehouse : opWarehouse, v.partId, signed);
+    } else if (loc.type === "MOBILE") {
       add(mobile, v.partId, signed);
       add(perTruck, loc.locationId, signed);
       add(perTruckPart, `${loc.locationId}::${v.partId}`, signed);
+      add(isBaseline ? bMobile : opMobile, v.partId, signed);
+      if (isBaseline) {
+        add(bPerTruck, loc.locationId, signed);
+        add(bPerTruckPart, `${loc.locationId}::${v.partId}`, signed);
+      }
     }
   }
 
@@ -62,19 +86,50 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const check = (name, ok, detail) => { results.push({ name, ok }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  -- " + detail : ""}`); };
 
   console.log(`ledger documents read: ${snap.size} (malformed ${malformed})\n`);
-  console.log("-- totals, recomputed from stored ledger records");
-  const whTotal = sum(warehouse), trTotal = sum(mobile), coTotal = sum(company);
-  check("warehouse total", whTotal === 571, `${whTotal} (expected 571)`);
-  check("truck total", trTotal === 164, `${trTotal} (expected 164)`);
-  check("company total", coTotal === 735, `${coTotal} (expected 735)`);
-  check("company reconciles to warehouse + mobile", whTotal + trTotal === coTotal, `${whTotal} + ${trTotal} = ${whTotal + trTotal}`);
+  console.log("-- BASELINE totals: did the opening-balance plan land as designed?");
+  const bWhTotal = sum(bWarehouse), bTrTotal = sum(bMobile);
+  check("baseline warehouse total", bWhTotal === 571, `${bWhTotal} (expected 571)`);
+  check("baseline truck total", bTrTotal === 164, `${bTrTotal} (expected 164)`);
+  check("baseline company total", bWhTotal + bTrTotal === 735, `${bWhTotal + bTrTotal} (expected 735)`);
 
-  console.log("\n-- per truck");
+  console.log("\n-- BASELINE per truck: the fleet as it was designed");
   const EXPECTED_TRUCKS = { "cert-trk-01": 41, "cert-trk-02": 47, "cert-trk-03": 50, "cert-trk-04": 4, "cert-trk-05": 22 };
   for (const [truckId, expected] of Object.entries(EXPECTED_TRUCKS)) {
-    const actual = perTruck.get(truckId) ?? 0;
-    check(`${truckId}`, actual === expected, `${actual} (expected ${expected})`);
+    const actual = bPerTruck.get(truckId) ?? 0;
+    check(`baseline ${truckId}`, actual === expected, `${actual} (expected ${expected})`);
   }
+
+  console.log("\n-- RECONCILIATION: baseline + operations = actual");
+  // The bridge between the two views, and the only assertion that stays true no matter what the
+  // world does next. Operations are whatever is not an opening balance -- transfers today, receipts
+  // and reconciled counts tomorrow -- and they are deliberately not enumerated by type, so a new
+  // movement type must appear in this equation rather than be silently excluded from it.
+  const whTotal = sum(warehouse), trTotal = sum(mobile), coTotal = sum(company);
+  const opWh = sum(opWarehouse), opTr = sum(opMobile);
+  check("warehouse: baseline + operations = actual", bWhTotal + opWh === whTotal,
+    `${bWhTotal} + ${opWh} = ${bWhTotal + opWh}, actual ${whTotal}`);
+  check("trucks: baseline + operations = actual", bTrTotal + opTr === trTotal,
+    `${bTrTotal} + ${opTr} = ${bTrTotal + opTr}, actual ${trTotal}`);
+  check("company reconciles to warehouse + mobile", whTotal + trTotal === coTotal,
+    `${whTotal} + ${trTotal} = ${whTotal + trTotal}`);
+  // OPERATIONS DECOMPOSED BY CAUSE. An earlier version asserted that all operations were
+  // company-neutral, which was true only while transfers were the only thing that had ever
+  // happened. Receipts add stock; that is what receipts are for. So the neutrality claim belongs to
+  // TRANSFERS specifically, and everything else must be accounted for rather than assumed absent.
+  const opRows = snap.docs.map((d) => d.data().value ?? d.data())
+    .filter((v) => !(v.type === "ADJUSTED" && String(v.sourceObject?.id ?? "").startsWith("cwob_")));
+  const transferNet = opRows.filter((v) => v.sourceObject?.type === "TRANSFER_ORDER")
+    .reduce((s, v) => s + signedQuantity(v), 0);
+  const receiptNet = opRows.filter((v) => v.sourceObject?.type === "RECEIVING_ORDER")
+    .reduce((s, v) => s + signedQuantity(v), 0);
+  const otherNet = opRows.filter((v) => v.sourceObject?.type !== "TRANSFER_ORDER"
+    && v.sourceObject?.type !== "RECEIVING_ORDER").reduce((s, v) => s + signedQuantity(v), 0);
+  check("TRANSFERS are company-neutral", transferNet === 0,
+    `net ${transferNet} across every transfer movement -- they relocate, never create`);
+  check("receipts are the only thing that ADDED company stock", receiptNet === opWh + opTr,
+    `receipts ${receiptNet}, total operations ${opWh + opTr}`);
+  check("no operation is unaccounted for", otherNet === 0,
+    `${otherNet} units moved by something that is neither a transfer nor a receipt`);
 
   console.log("\n-- negative balances");
   const negatives = [];
@@ -183,11 +238,12 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   // ── Truck diversity, derived from raw allocations rather than the profile labels.
   console.log("\n-- truck diversity, derived from allocations");
   const skuBy = new Map();
-  for (const key of perTruckPart.keys()) {
+  for (const key of bPerTruckPart.keys()) {
     const [truckId] = key.split("::");
     skuBy.set(truckId, (skuBy.get(truckId) || 0) + 1);
   }
-  const loads = [...perTruck.entries()].map(([truckId, units]) => ({ truckId, units, skus: skuBy.get(truckId) || 0 }));
+  // Fleet DESIGN is a baseline question -- transfers legitimately broaden the leanest truck.
+  const loads = [...bPerTruck.entries()].map(([truckId, units]) => ({ truckId, units, skus: skuBy.get(truckId) || 0 }));
   for (const l of loads.sort((a, b) => b.units - a.units)) console.log(`   ${l.truckId}: ${l.units} units / ${l.skus} SKUs`);
   const leanest = loads.reduce((a, b) => (b.units < a.units ? b : a));
   const broadest = loads.reduce((a, b) => (b.skus > a.skus ? b : a));
@@ -198,7 +254,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const familyOf = new Map(CERT_PARTS.map((p) => [p.partId, p.family]));
   const skewOf = (truckId) => {
     const fams = {};
-    for (const [key, qty] of perTruckPart) {
+    for (const [key, qty] of bPerTruckPart) {
       const [t, partId] = key.split("::");
       if (t !== truckId || qty <= 0) continue;
       const f = familyOf.get(partId);

@@ -60,7 +60,13 @@ function assertSafeTarget(projectId) {
   const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
   if (!env && !isEmulator) throw new Error(`Unknown project "${projectId}" -- not in config/environments.json. Refusing.`);
   if (env?.role === "production") throw new Error(`"${projectId}" is PRODUCTION. This tool never writes production inventory.`);
-  if (env && env.role !== "sandbox") throw new Error(`"${projectId}" has role "${env.role}". Sandbox or emulator only.`);
+  // "certification" joined the registry when demo-certworld was registered as its own environment.
+  // The allow-list is EXPLICIT rather than "anything that is not production": a role nobody has
+  // thought about yet should stop this tool, not be waved through by an inverted check.
+  const WRITABLE_ROLES = new Set(["sandbox", "certification"]);
+  if (env && !WRITABLE_ROLES.has(env.role)) {
+    throw new Error(`"${projectId}" has role "${env.role}". Sandbox, certification or emulator only.`);
+  }
   return { projectId, role: env?.role ?? "emulator", isEmulator };
 }
 

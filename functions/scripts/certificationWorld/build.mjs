@@ -19,6 +19,8 @@ import {
   normalizeNameForSearch,
 } from "./domainContracts.mjs";
 
+const FLEET_RECORD_AUTHOR = "certification-world-builder";
+
 export const EPOCH = Date.parse("2026-01-05T09:00:00.000Z");
 export const DAY = 86400000;
 export const SYNTHETIC_ACCOUNT_COUNT = 75;
@@ -178,10 +180,33 @@ export function buildWorld() {
     }));
   });
 
+  // ── The fleet, as MOBILE Inventory Locations the Truck Registry can actually read.
+  //
+  // THE CONTRACT IS mobileLocationFromFirestore, NOT THIS OBJECT LITERAL. The previous shape wrote
+  // `locationType: "MOBILE"` -- a field the repository does not read -- and omitted `locationId`,
+  // `type`, and the whole version/audit block. Every truck therefore failed closed as a malformed
+  // stored record, which meant every MOBILE transfer endpoint would have resolved DESTINATION_INVALID.
+  //
+  // Nothing noticed for three passes because nothing had ever resolved a truck THROUGH the registry:
+  // the ledger takes a location reference at its word, and truck balances were only ever summed, not
+  // validated. Transfers are the first domain that asks whether the truck exists.
+  //
+  // Fourth record type in this program to be internally consistent and unreadable by its own
+  // authority -- after Parts, the governed warehouse, and the opening balances.
   CERT_TRUCKS.forEach((t) => {
     trucks.push({
       collection: "mobile_locations", id: t.id,
-      data: { displayLabel: t.displayLabel, homeWarehouseId: t.homeWarehouseId, active: t.active, locationType: "MOBILE", dataProvenance: PROVENANCE.SYNTHETIC },
+      data: {
+        locationId: t.id,              // must EQUAL the document id
+        type: "MOBILE",                // the field the repository reads
+        displayLabel: t.displayLabel,
+        homeWarehouseId: t.homeWarehouseId,
+        active: t.active,              // must be a real boolean
+        version: 1,
+        createdBy: FLEET_RECORD_AUTHOR,
+        updatedBy: FLEET_RECORD_AUTHOR,
+        dataProvenance: PROVENANCE.SYNTHETIC,
+      },
     });
   });
 
