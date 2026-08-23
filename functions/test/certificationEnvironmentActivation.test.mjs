@@ -47,13 +47,39 @@ const PASS3_IDS = [
   "inventory.returns.intake",
 ];
 
+// Serialized equipment forward lifecycle, Owner-authorized 2026-08-23. Kept as its own list rather
+// than appended to PASS3_IDS: these are not Pass 3 capabilities, and folding them in would erase
+// which decision authorized what. The exact-set assertion below is the UNION, so adding an id to
+// either environment without adding it here still fails -- which is the property that matters.
+const SERIALIZED_EQUIPMENT_IDS = [
+  "inventory.serializedAsset.acquire",
+  "equipment.install",
+];
+
+const CERT_ACTIVATED_IDS = [...PASS3_IDS, ...SERIALIZED_EQUIPMENT_IDS];
+
 const sorted = (s) => [...s].sort();
 const certOverrides = () => resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_PROJECT);
 
 // ── The entry itself ──────────────────────────────────────────────────────────────────────────
 
-test("demo-certworld activates exactly the Pass 3 families, and nothing else", () => {
-  assert.deepEqual(sorted(certOverrides()), [...PASS3_IDS].sort());
+test("demo-certworld activates exactly the authorized ids, and nothing else", () => {
+  // An EXACT-SET assertion on purpose. A subset check would let a future edit quietly widen the
+  // certification emulator's authority, and an emulator holding more than the sandbox models is a
+  // worse model of the sandbox rather than a more capable one.
+  assert.deepEqual(sorted(certOverrides()), [...CERT_ACTIVATED_IDS].sort());
+});
+
+test("the serialized equipment ids are activated in the SANDBOX too, and in production never", () => {
+  // demo-certworld and eos-platform-sandbox are the two environments the Owner authorized, and no
+  // others. Asserted here rather than only in the station suite because this file is where the
+  // certification environment's activation set is pinned.
+  const sandbox = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
+  for (const id of SERIALIZED_EQUIPMENT_IDS) {
+    assert.ok(certOverrides().has(id), `${id} not activated in ${CERT_PROJECT}`);
+    assert.ok(sandbox.has(id), `${id} not activated in eos-platform-sandbox`);
+  }
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts").size, 0);
 });
 
 test("the DEPLOYMENT registry deliberately does not know it", () => {

@@ -6,11 +6,10 @@
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 16,
+  "total": 14,
   "byStatus": {
    "RECORDED_GAP": 9,
-   "DELIBERATELY_PRIVILEGED_ONLY": 5,
-   "UNCLASSIFIED": 2
+   "DELIBERATELY_PRIVILEGED_ONLY": 5
   },
   "capabilities": [
    {
@@ -79,12 +78,6 @@
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
    },
    {
-    "capability": "inventory.serializedAsset.acquire",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
-   },
-   {
     "capability": "equipment.compatibility.view",
     "active": false,
     "status": "RECORDED_GAP",
@@ -111,12 +104,6 @@
     "status": "RECORDED_GAP",
     "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
     "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
-   },
-   {
-    "capability": "equipment.install",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
    }
   ]
  },
@@ -1403,6 +1390,36 @@
     "inventory.stock.receive"
    ],
    "grantedButInactive": []
+  },
+  {
+   "roleId": "inventorySerializedAssetAcquirer",
+   "label": "Inventory Serialized Asset Acquirer",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "inventory.serializedAsset.acquire"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.serializedAsset.acquire"
+   ]
+  },
+  {
+   "roleId": "equipmentInstaller",
+   "label": "Equipment Installer",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "equipment.install"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "equipment.install"
+   ]
   },
   {
    "roleId": "generalEmployee",

@@ -1216,6 +1216,49 @@ export const INVENTORY_RECEIVING_CLERK_ROLE: Role = Object.freeze({
   permissions: ["inventory.stock.receive"],
 }) as Role;
 
+// ═══════════════════════ SERIALIZED EQUIPMENT — TWO STATIONS, NOT ONE ═══════════════════════
+//
+// Owner decision 2026-08-23. Both capabilities existed, held by admin and owner only through the
+// legacy compatibility superset -- authority that exists with nobody accountable for it, which is
+// exactly the coverage finding that produced INVENTORY_RECEIVING_CLERK_ROLE.
+//
+// WHY TWO ROLES AND NOT ONE "equipment lifecycle" ROLE. Bringing a machine into the company's books
+// and placing that machine at a customer are different accountable acts. Combined in one Role, a
+// single person could declare a unit into existence out of nothing -- non-PO acquisition asserts
+// ownership with no supplier, no order and no receipt to check it against -- and then install it at
+// a customer, with no second party anywhere in the chain. The unit's entire history from
+// non-existence to customer premises would rest on one person's word.
+//
+// That is the same control the platform already keeps between inventory.stock.receive (goods enter
+// the company) and inventory.transfer.receive (goods move inside it), and between the cycle-count
+// counter and the reconciler. Splitting it costs nothing; combining it cannot be undone by
+// assignment.
+//
+// NEITHER ROLE CONFERS THE OTHER, and neither carries receiving, transfer, put-away, count or
+// catalog authority. An employee who needs two stations is staffed for two stations, visibly.
+
+export const INVENTORY_SERIALIZED_ASSET_ACQUIRER_ROLE: Role = Object.freeze({
+  id: "inventorySerializedAssetAcquirer",
+  name: "Inventory Serialized Asset Acquirer",
+  description:
+    "Brings an already-owned serialized machine onto the books without a purchase (inventory.serializedAsset.acquire) -- opening balances, legacy migration, units the company already holds. A station with named accountability, because a non-PO acquisition asserts ownership with no supplier document to check it against. Confers NO equipment.install: acquiring a unit into company custody is not authority to place it at a customer. Confers no receiving, transfer, put-away, count or catalog authority. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["inventory.serializedAsset.acquire"],
+}) as Role;
+
+export const EQUIPMENT_INSTALLER_ROLE: Role = Object.freeze({
+  id: "equipmentInstaller",
+  name: "Equipment Installer",
+  description:
+    "Installs a serialized machine at a customer location, creating the Equipment record (equipment.install). Irreversible by design: Equipment accountId and locationId are immutable after create and nothing clears the asset's currentEquipmentId, so this authority places a unit permanently. Confers NO inventory.serializedAsset.acquire: an installer works from units the company already holds, and cannot bring the unit it installs into existence. Confers no receiving, transfer or catalog authority, no customer reassignment, and no equipment recovery -- recovery is an unimplemented authority (EQUIPMENT RECOVERY AUTHORITY GAP) and this Role must not be read as covering it. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["equipment.install"],
+}) as Role;
+
 // privilege.
 export const INVENTORY_LOOKUP_READER_ROLE: Role = Object.freeze({
   id: "inventoryLookupReader",
@@ -1270,4 +1313,6 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   reportAuthor: REPORT_AUTHOR_ROLE,
   equipmentCatalogAdministrator: EQUIPMENT_CATALOG_ADMINISTRATOR_ROLE,
   inventoryReceivingClerk: INVENTORY_RECEIVING_CLERK_ROLE,
+  inventorySerializedAssetAcquirer: INVENTORY_SERIALIZED_ASSET_ACQUIRER_ROLE,
+  equipmentInstaller: EQUIPMENT_INSTALLER_ROLE,
 });
