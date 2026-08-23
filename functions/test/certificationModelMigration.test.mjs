@@ -31,7 +31,7 @@ const { modelFromFirestore } =
 const { isCanonicalEquipmentModelId } =
   await import(L("functions/lib/equipmentCompatibility/domain/equipmentModel.js"));
 
-const SENTINEL_TS = { __serverTimestamp: true };
+const MARKER_FIELD = "certificationWorld";
 
 /** Minimal Firestore-shaped store. Deep-clones on read so a caller cannot mutate stored state. */
 function makeDb(seed) {
@@ -121,11 +121,27 @@ function seedLegacyWorld({ equipmentCount = world.equipment.length } = {}) {
     equipment[e.id] = {
       ...e.data,
       equipmentModelId: legacyIdFor(e.data.equipmentModelId),
+      // THE MARKER, because the live records carry it and the migration is scoped by it. Seeding
+      // without it would test a world that does not exist and would quietly exercise the
+      // out-of-scope path for all 278 records.
+      [MARKER_FIELD]: { version: "1.6.0", datasetId: "equipment" },
       createdAt: STAMP, updatedAt: STAMP,
     };
   }
   return { equipment_models: models, equipment };
 }
+
+/**
+ * Equipment that predates the certification world AND the equipment-model link.
+ *
+ * The live sandbox holds eight of these -- five hand-made C713 rows, a walk-in cooler, two ice
+ * machines -- with no marker and no model reference at all. They are not this migration's business,
+ * and for months the migration would have refused to run at all because of them.
+ */
+const PRE_EXISTING = {
+  "eq-cool-001": { name: "Walk-in Cooler", accountId: "acct-legacy", locationId: "loc-legacy" },
+  "eq-ice-001": { name: "Ice Machine - Bar", accountId: "acct-legacy", locationId: "loc-legacy" },
+};
 
 const silent = () => {};
 
@@ -281,7 +297,7 @@ test("APPLY 0: one unmappable equipment record blocks the ENTIRE run", async () 
   }
 });
 
-test("APPLY 0: an equipment record with NO model reference blocks the run", async () => {
+test("APPLY 0: a CERTIFICATION record with NO model reference blocks the run", async () => {
   // Such a record is invisible to any where() query on the field, which is exactly how a record
   // escapes a migration and stays broken. The migration reads by document for this reason.
   const seed = seedLegacyWorld();
@@ -292,7 +308,48 @@ test("APPLY 0: an equipment record with NO model reference blocks the run", asyn
   const report = await runMigration({ db, apply: true, log: silent });
   assert.equal(report.outcome, "BLOCKED");
   assert.equal(report.unresolved[0].id, victim);
-  assert.match(report.unresolved[0].why, /no equipmentModelId/);
+  assert.match(report.unresolved[0].why, /certification record with no equipmentModelId/);
+});
+
+// ── SCOPE ─────────────────────────────────────────────────────────────────────────────────────
+
+test("pre-existing equipment with no marker and no model reference is OUT OF SCOPE, not a blocker", async () => {
+  // The live case, and the distinction the migration turns on. These records have no back-reference
+  // to fix, so they cannot be left half-migrated -- and giving them one would mint a model link
+  // nobody established. Blocking on them would mean this migration could never run at all.
+  const seed = seedLegacyWorld();
+  Object.assign(seed.equipment, PRE_EXISTING);
+  const db = makeDb(seed);
+
+  const report = await runMigration({ db, apply: true, log: silent });
+  assert.equal(report.outcome, "APPLIED");
+  assert.deepEqual(report.outOfScope.map((o) => o.id).sort(), Object.keys(PRE_EXISTING).sort());
+  assert.equal(report.repointed, world.equipment.length, "the certification fleet still migrated in full");
+
+  // Untouched, field for field.
+  for (const [id, was] of Object.entries(PRE_EXISTING)) {
+    const now = db.__store.get("equipment").get(id);
+    assert.deepEqual(now, was, `${id} was modified by a migration that does not own it`);
+  }
+});
+
+test("an UNMARKED record pointing at a certification model still BLOCKS", async () => {
+  // Out-of-scope is decided by having no model reference at all, not by lacking the marker. A record
+  // claiming this world's model identity without this world's marker is a genuine ambiguity, and
+  // adopting it silently would be the migration deciding something nobody asked it to decide.
+  const seed = seedLegacyWorld();
+  seed.equipment["eq-impostor"] = {
+    name: "Unmarked but pointing at a cert model",
+    equipmentModelId: legacyIdFor([...canonical.keys()][0]),
+  };
+  const db = makeDb(seed);
+
+  const report = await runMigration({ db, apply: true, log: silent });
+  assert.equal(report.outcome, "BLOCKED");
+  assert.equal(report.unresolved.length, 1);
+  assert.equal(report.unresolved[0].id, "eq-impostor");
+  assert.match(report.unresolved[0].why, /not the certification marker/);
+  assert.equal(report.repointed, 0);
 });
 
 test("APPLY 0: an unmapped legacy model document blocks the run", async () => {
