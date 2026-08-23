@@ -60,7 +60,11 @@ check("F2: the scanner does NOT re-create a second receive launch point", () => 
 
 check("App.jsx routes Inventory > Receiving to the workspace", () => {
   const app = read("App.jsx");
-  assert.match(app, /import Receiving from "\.\/modules\/inventory\/Receiving"/);
+  // STATIC OR LAZY -- the property this guards is that Receiving is WIRED, not how it is loaded.
+  // Desktop route modules became lazy so a technician's entry bundle stops carrying the whole
+  // application (1,965 kB -> 627 kB), and pinning the import mechanism would have made that a test
+  // failure rather than the improvement it is.
+  assert.match(app, /(import Receiving from|const Receiving = lazy\(\(\) => import\()"\.\/modules\/inventory\/Receiving"/);
   assert.match(app, /domain\.key === "inventory" && item\.key === "receiving"/);
   assert.match(app, /return <Receiving \/>/);
 });

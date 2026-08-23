@@ -1,62 +1,76 @@
+// LAZY ROUTES — the technician does not download the desktop.
+//
+// Measured before this change: ONE chunk, 1,965 kB (545 kB gzip), because 78 static imports put
+// every surface -- CRM, sales, purchasing, administration, reporting, the whole inventory suite --
+// into the entry bundle. A technician opening their next job on weak cellular downloaded all of it.
+//
+// Desktop-only surfaces are now lazy. FieldMode, TechnicianDashboard and Jobs deliberately stay
+// EAGER: they are the technician's own screens, and making them wait on a second round trip would
+// move the cost rather than remove it.
+//
+// This changes WHEN code loads, never WHO may load it. Route visibility is still isDomainVisible()
+// and the authority is still Rules and the governed resolvers -- a lazily-loaded module a principal
+// may not use is a module that still denies.
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { routerBasenameFrom } from "./routerBasename";
-import ControlTower from "./modules/controlTower/ControlTower";
+const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import ScanWorkspace from "./modules/scan/ScanWorkspace";
-import Inventory from "./modules/inventory/Inventory";
-import Operations from "./modules/operations/Operations";
-import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
+const Inventory = lazy(() => import("./modules/inventory/Inventory"));
+const Operations = lazy(() => import("./modules/operations/Operations"));
+const DispatcherBoard = lazy(() => import("./modules/dispatcherBoard/DispatcherBoard"));
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
-import AccountsList from "./modules/accounts/AccountsList";
-import SalesWorkspace from "./modules/sales/SalesWorkspace";
-import SalesOrderDetail from "./modules/sales/SalesOrderDetail.jsx";
-import SalesOrdersList from "./modules/sales/SalesOrdersList.jsx";
+const AccountsList = lazy(() => import("./modules/accounts/AccountsList"));
+const SalesWorkspace = lazy(() => import("./modules/sales/SalesWorkspace"));
+const SalesOrderDetail = lazy(() => import("./modules/sales/SalesOrderDetail.jsx"));
+const SalesOrdersList = lazy(() => import("./modules/sales/SalesOrdersList.jsx"));
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
 import { useSalesOrderCapabilities } from "./access/useSalesOrderCapabilities.js";
-import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
-import EquipmentDetail from "./modules/equipment/EquipmentDetail";
-import AccountDetail from "./modules/accounts/AccountDetail";
-import PartsShadowParityDiagnostics from "./modules/inventory/PartsShadowParityDiagnostics";
-import AdministrationOverview from "./modules/administration/AdministrationOverview";
-import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
-import AdminUsers from "./modules/administration/AdminUsers";
-import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
-import AdminDuplicateRules from "./modules/administration/AdminDuplicateRules";
-import AdminObjects from "./modules/administration/AdminObjects.jsx";
-import EmployeesList from "./modules/administration/EmployeesList.jsx";
-import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
-import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
-import Receipts from "./modules/purchasing/Receipts";
-import Suppliers from "./modules/purchasing/Suppliers";
-import Receiving from "./modules/inventory/Receiving";
-import Transfers from "./modules/inventory/Transfers";
-import CycleCounts from "./modules/inventory/CycleCounts";
-import Warehouses from "./modules/inventory/Warehouses";
-import SchedulingWorkspace from "./modules/scheduling/SchedulingWorkspace";
+const EquipmentWorkspace = lazy(() => import("./modules/equipment/EquipmentWorkspace"));
+const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail"));
+const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
+const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
+const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
+const AdministrationUnavailable = lazy(() => import("./modules/administration/AdministrationUnavailable"));
+const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
+const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
+const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
+const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
+const EmployeesList = lazy(() => import("./modules/administration/EmployeesList.jsx"));
+const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
+const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrders"));
+const Receipts = lazy(() => import("./modules/purchasing/Receipts"));
+const Suppliers = lazy(() => import("./modules/purchasing/Suppliers"));
+const Receiving = lazy(() => import("./modules/inventory/Receiving"));
+const Transfers = lazy(() => import("./modules/inventory/Transfers"));
+const CycleCounts = lazy(() => import("./modules/inventory/CycleCounts"));
+const Warehouses = lazy(() => import("./modules/inventory/Warehouses"));
+const SchedulingWorkspace = lazy(() => import("./modules/scheduling/SchedulingWorkspace"));
 import DispatchSchedulingWorkspace from "./modules/dispatch/DispatchSchedulingWorkspace";
-import CoordinatedVisitsWorkspace from "./modules/service/CoordinatedVisitsWorkspace";
+const CoordinatedVisitsWorkspace = lazy(() => import("./modules/service/CoordinatedVisitsWorkspace"));
 import CoordinatedMissionView from "./modules/mobile/CoordinatedMissionView";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
-import PartsList from "./modules/inventory/PartsList";
-import PartMasterList from "./modules/inventory/PartMasterList";
-import Manufacturers from "./modules/inventory/Manufacturers";
-import TruckInventory from "./modules/inventory/TruckInventory";
+const PartsList = lazy(() => import("./modules/inventory/PartsList"));
+const PartMasterList = lazy(() => import("./modules/inventory/PartMasterList"));
+const Manufacturers = lazy(() => import("./modules/inventory/Manufacturers"));
+const TruckInventory = lazy(() => import("./modules/inventory/TruckInventory"));
 import { useTruckRegistrySource } from "./hooks/useTruckRegistrySource";
 import { useTruckManagement } from "./hooks/useTruckManagement";
 import { useDriverOptions } from "./hooks/useDriverOptions";
 import { useWarehouseOptions } from "./hooks/useWarehouseOptions";
-import PartDetail from "./modules/inventory/PartDetail";
-import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
-import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
-import PartsAssociateHome from "./modules/inventoryRole/PartsAssociateHome";
+const PartDetail = lazy(() => import("./modules/inventory/PartDetail"));
+const WarehouseManagerHome = lazy(() => import("./modules/inventoryRole/WarehouseManagerHome"));
+const PartsManagerHome = lazy(() => import("./modules/inventoryRole/PartsManagerHome"));
+const PartsAssociateHome = lazy(() => import("./modules/inventoryRole/PartsAssociateHome"));
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import { InventoryProvider } from "./demo/InventoryContext";
@@ -67,8 +81,8 @@ import { resolveEffectivePermission } from "./access/resolveEffectivePermission"
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "./config/capabilityActivationOverrides";
 import { useReportCapabilities } from "./access/useReportCapabilities";
-import ReportBuilder from "./modules/reporting/ReportBuilder";
-import SavedReports from "./modules/reporting/SavedReports";
+const ReportBuilder = lazy(() => import("./modules/reporting/ReportBuilder"));
+const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -518,6 +532,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
 
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   return (
+    // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
+    // instead of a blank frame -- and a blank frame is indistinguishable from a broken app on the slow
+    // connection this whole change exists to serve.
+    <Suspense fallback={<p className="fo-muted" role="status">Loading…</p>}>
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -736,6 +754,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

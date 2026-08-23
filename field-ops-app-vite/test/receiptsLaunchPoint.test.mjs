@@ -50,7 +50,10 @@ check("Receipts is honest about the governed receipt ledger being elsewhere (bac
 });
 
 check("App.jsx routes Purchasing > Receipts to the launch point", () => {
-  assert.match(app, /import Receipts from "\.\/modules\/purchasing\/Receipts"/);
+  // STATIC OR LAZY -- this guards that the route is WIRED, not how it loads. Desktop route
+  // modules became lazy so a technician's entry bundle stops carrying the whole application
+  // (1,965 kB -> 627 kB); pinning the mechanism would make that improvement a test failure.
+  assert.match(app, /(import Receipts from|const Receipts = lazy\(\(\) => import\()"\.\/modules\/purchasing\/Receipts"/);
   assert.match(app, /domain\.key === "purchasing" && item\.key === "receipts"/);
   assert.match(app, /return <Receipts \/>/);
 });
