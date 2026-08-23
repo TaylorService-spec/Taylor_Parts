@@ -1,0 +1,68 @@
+# Serialized asset acquisition — an already-owned unit entering EOS without a purchase order.
+#
+# The command this guards is IRREVERSIBLE: Equipment accountId/locationId are immutable after create
+# and nothing clears a serialized asset's currentEquipmentId, so a unit installed against the wrong
+# customer stays installed against the wrong customer. Its refusals are the whole safety story, which
+# is why they run on their own lane rather than only inside a broader suite.
+#
+# The suite is PURE -- it drives the command against a hand-built Firestore double -- so this job
+# needs no emulator and stays fast enough that nobody is tempted to skip it.
+name: Serialized Asset Acquisition Tests
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/serializedAsset/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "functions/test/serializedAssetAcquisition.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/serialized-asset-acquisition-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/serializedAsset/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "functions/test/serializedAssetAcquisition.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/serialized-asset-acquisition-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  serialized-asset-acquisition-tests:
+    name: Serialized asset acquisition (non-PO intake of already-owned units)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Acquisition — no-PO intake, closed reason set, receipt-provenance protection
+        run: node --test test/serializedAssetAcquisition.test.mjs
+        working-directory: functions

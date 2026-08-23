@@ -303,6 +303,10 @@ export type AuditAction =
   // current model -- Equipment accountId/locationId are immutable after create -- so the audit
   // event is the only record of the unit's prior custody once the asset reads INSTALLED.
   | "installSerializedAsset"
+  // Serialized acquisition -- an already-owned unit entering custody with no purchase order. Kept
+  // distinct from receiveInventoryStock on purpose: a report asking what we RECEIVED must never
+  // count one of these.
+  | "acquireSerializedAsset"
   // Work Order Engine (idempotency remediation) -- the trusted updateWorkOrderExecutionData callable adopts
   // this SAME immutable Audit Event path as its idempotency substrate, a deterministic Audit Event id makes a
   // retried call a no-op replay so an additive qtyUsed delta or execution-log append is never double-applied,
