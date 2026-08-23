@@ -1,7 +1,7 @@
 {
  "generatedFrom": "live sandbox employees collection, not the repository fixture",
- "totalIntended": 83,
- "grantable": 82,
+ "totalIntended": 87,
+ "grantable": 86,
  "heldPrivileged": [
   {
    "employeeId": "cw-emp-000",
@@ -162,6 +162,24 @@
    "displayName": "Selma Ellery",
    "outcome": "ALREADY_APPLIED",
    "detail": "active assignment certworld_cw-emp-011_fieldManager already present"
+  },
+  {
+   "employeeId": "cw-emp-013",
+   "uid": "Kkv4WwiJQOU2MYdoHIenfdWl9zv1",
+   "roleId": "equipmentInstaller",
+   "privileged": false,
+   "displayName": "Freya Vance",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g4_cw-emp-013_equipmentInstaller already present"
+  },
+  {
+   "employeeId": "cw-emp-017",
+   "uid": "mbePVpRF0ig2L6X646JCX9T6gLr1",
+   "roleId": "equipmentInstaller",
+   "privileged": false,
+   "displayName": "Rosalind Ibarra",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g4_cw-emp-017_equipmentInstaller already present"
   },
   {
    "employeeId": "cw-emp-023",
@@ -722,6 +740,15 @@
    "detail": "active assignment certworld_g2_cw-emp-044_inventoryReceivingClerk already present"
   },
   {
+   "employeeId": "cw-emp-044",
+   "uid": "QvHSl5xM8tRbBOHaMMC7py4vqU53",
+   "roleId": "inventorySerializedAssetAcquirer",
+   "privileged": false,
+   "displayName": "Naomi Thorsen",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g4_cw-emp-044_inventorySerializedAssetAcquirer already present"
+  },
+  {
    "employeeId": "cw-emp-045",
    "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
    "roleId": "warehouseManager",
@@ -747,6 +774,15 @@
    "displayName": "Curtis Ravenscroft",
    "outcome": "ALREADY_APPLIED",
    "detail": "active assignment certworld_g2_cw-emp-045_inventoryReceivingClerk already present"
+  },
+  {
+   "employeeId": "cw-emp-045",
+   "uid": "6dz9W4KUwyURRP3F2exlBCOFeZp2",
+   "roleId": "inventorySerializedAssetAcquirer",
+   "privileged": false,
+   "displayName": "Curtis Ravenscroft",
+   "outcome": "ALREADY_APPLIED",
+   "detail": "active assignment certworld_g4_cw-emp-045_inventorySerializedAssetAcquirer already present"
   },
   {
    "employeeId": "cw-emp-046",
