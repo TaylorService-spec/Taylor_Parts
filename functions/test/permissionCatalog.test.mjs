@@ -265,7 +265,18 @@ check("every crm.activity.* entry is registered-but-not-grantable (active: false
 });
 check("every equipment.* entry is registered-but-not-grantable (active: false, never true)", () => {
   const equipment = PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment."));
-  assert.equal(equipment.length, 5, "D4 registers exactly five equipment capabilities");
+  // D4 registered five (compatibility x4 + model.manage). equipment.install is the sixth, added with
+  // the serialized-asset install authority -- the act the Serialized Asset contract calls "§H's job"
+  // and records as not built. Listed BY NAME rather than counted, so the next addition has to be
+  // named here too instead of merely bumping a number nobody reads.
+  assert.deepEqual(equipment.map((p) => p.id).sort(), [
+    "equipment.compatibility.correct",
+    "equipment.compatibility.import",
+    "equipment.compatibility.verify",
+    "equipment.compatibility.view",
+    "equipment.install",
+    "equipment.model.manage",
+  ]);
   for (const permission of equipment) {
     assert.equal(permission.active, false, `"${permission.id}" must be inactive`);
   }
