@@ -4570,3 +4570,49 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-list-grid-row-clickable:focus-visible .fo-list-grid-label {
   text-decoration: underline;
 }
+
+/* ── THE TECHNICIAN'S HANDHELD SHELL ────────────────────────────────────────────────────────────
+   Four tabs at the BOTTOM, because a thumb reaches the bottom of a phone and not the top.
+
+   Every interactive target here is at least 44px in both directions. That is not a style preference:
+   a technician is using this outdoors, in gloves, one-handed, on a machine they are standing next to.
+
+   Sized from 320px UP. The narrowest real phone is the design target, not an afterthought handled by
+   a media query -- and nothing here may produce horizontal overflow at that width, which is asserted
+   rather than eyeballed (test/technicianHandheldMobile.test.jsx). */
+.fo-handheld { display: flex; flex-direction: column; min-height: 100dvh; }
+.fo-handheld__body {
+  flex: 1 1 auto;
+  padding: 12px;
+  /* Room for the fixed nav plus the home-indicator area on a modern phone, so the last row of
+     content is never hidden behind the tabs. */
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+}
+.fo-handheld__nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--color-surface); border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 20;
+}
+.fo-handheld__tab {
+  min-height: 44px; min-width: 44px;
+  border: 0; background: none; cursor: pointer;
+  color: var(--color-text-muted); font-size: 13px; padding: 10px 4px;
+}
+.fo-handheld__tab--active { color: var(--color-text-primary); font-weight: 600; }
+/* Colour is never the only signal -- the active tab is also bold and carries aria-current. */
+.fo-handheld__tab--active::after {
+  content: ""; display: block; height: 2px; margin: 6px auto 0; width: 24px;
+  background: var(--color-text-primary);
+}
+.fo-handheld__empty, .fo-handheld__pending, .fo-handheld__blocked { margin: 0 0 16px; }
+.fo-handheld__jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fo-handheld__job {
+  border: 1px solid var(--color-border); border-radius: 8px; padding: 12px;
+  /* A card, not a table row: a desktop grid on a phone is a horizontal scrollbar with extra steps. */
+  min-height: 44px; overflow-wrap: anywhere;
+}
+.fo-handheld__job-ref { margin: 0; font-size: 13px; color: var(--color-text-muted); }
+.fo-handheld__job-customer { margin: 2px 0; font-weight: 600; overflow-wrap: anywhere; }

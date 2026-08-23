@@ -884,6 +884,10 @@
     {
       "file": "test/technicianEntryBundle.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/technicianHandheld.test.mjs",
+      "runner": "node"
     }
   ]
 }
