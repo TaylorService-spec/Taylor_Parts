@@ -1,0 +1,68 @@
+# Equipment install authority — serialized asset -> customer-installed Equipment.
+#
+# The command this guards is IRREVERSIBLE: Equipment accountId/locationId are immutable after create
+# and nothing clears a serialized asset's currentEquipmentId, so a unit installed against the wrong
+# customer stays installed against the wrong customer. Its refusals are the whole safety story, which
+# is why they run on their own lane rather than only inside a broader suite.
+#
+# The suite is PURE -- it drives the command against a hand-built Firestore double -- so this job
+# needs no emulator and stays fast enough that nobody is tempted to skip it.
+name: Equipment Install Command Tests
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/equipmentInstall/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "functions/test/equipmentInstallCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-install-command-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/equipmentInstall/**"
+      - "functions/src/serializedAsset/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "functions/test/equipmentInstallCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-install-command-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-install-command-tests:
+    name: Equipment install command (serialized asset -> customer Equipment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Install authority — positives, refusals, idempotency, mutation proofs
+        run: node --test test/equipmentInstallCommand.test.mjs
+        working-directory: functions

@@ -1,15 +1,16 @@
 {
  "catalog": {
-  "total": 116,
+  "total": 117,
   "active": 72,
-  "inactive": 44
+  "inactive": 45
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 14,
+  "total": 15,
   "byStatus": {
    "RECORDED_GAP": 9,
-   "DELIBERATELY_PRIVILEGED_ONLY": 5
+   "DELIBERATELY_PRIVILEGED_ONLY": 5,
+   "UNCLASSIFIED": 1
   },
   "capabilities": [
    {
@@ -104,6 +105,12 @@
     "status": "RECORDED_GAP",
     "gapCode": "EQUIPMENT_COMPATIBILITY_ENGINE_DRAFT",
     "why": "Owner decision 2026-08-21: the Equipment Compatibility engine (D4) is still a draft. equipmentCatalogAdministrator exists and holds equipment.model.manage only -- draft authority is NOT activated merely because a Role now exists that could hold it."
+   },
+   {
+    "capability": "equipment.install",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
    }
   ]
  },
@@ -112,9 +119,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 116,
+   "grantedCount": 117,
    "operableCount": 72,
-   "blockedCount": 44,
+   "blockedCount": 45,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -133,6 +140,7 @@
     "equipment.compatibility.import",
     "equipment.compatibility.verify",
     "equipment.compatibility.view",
+    "equipment.install",
     "equipment.model.manage",
     "finance.adjustment.record",
     "finance.invoice.issue",
@@ -317,6 +325,7 @@
     "equipment.compatibility.import",
     "equipment.compatibility.verify",
     "equipment.compatibility.view",
+    "equipment.install",
     "equipment.model.manage",
     "finance.adjustment.record",
     "finance.invoice.issue",

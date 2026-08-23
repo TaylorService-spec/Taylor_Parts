@@ -1139,6 +1139,25 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "manage",
     active: false,
   }),
+  // EQUIPMENT INSTALLATION (serialized asset -> customer-installed Equipment). The authority the
+  // Serialized Asset contract calls "§H's job", and records as not built.
+  //
+  // WHY IT IS ITS OWN CAPABILITY. Installation is the moment a company-owned unit becomes a
+  // customer's equipment: it creates a customer-scoped record whose accountId and locationId are
+  // immutable ever after. Nothing existing means that. Receiving accepts stock into custody,
+  // transfer moves it between company locations, put-away places it on a shelf -- none of them
+  // hands anything to a customer, and reusing one of them would put an irreversible customer
+  // assignment behind an authority whose meaning is internal movement.
+  //
+  // Registered active:false, fail-closed, and granted to NO Role here. Declaring a capability
+  // grants nothing; who may install is a separate Owner decision.
+  Object.freeze({
+    id: "equipment.install",
+    description: "Install a company-held serialized asset as customer Equipment: creates the Equipment record and links the asset to it (trusted installSerializedAsset command). Irreversible under the current model -- Equipment accountId/locationId are immutable after create.",
+    resource: "equipment",
+    action: "install",
+    active: false,
+  }),
   // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4) -- the SMALLEST domain-correct CRM
   // interaction authority. Create a governed, immutable-identity account-scoped activity/note record
   // (Sales Note / Call / Meeting / Relationship / General) via the trusted createCrmActivity command

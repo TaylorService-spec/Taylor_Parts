@@ -298,6 +298,11 @@ export type AuditAction =
   | "createCoverageAssignment"
   // Finance (Billing/AR) -- the trusted recordRefund command's Audit Event action (money returned after payment)
   | "recordRefund"
+  // Serialized Asset -> customer Equipment installation. The Serialized Asset contract calls this
+  // "§H's job" and records it as not built; this is that authority. Irreversible under the
+  // current model -- Equipment accountId/locationId are immutable after create -- so the audit
+  // event is the only record of the unit's prior custody once the asset reads INSTALLED.
+  | "installSerializedAsset"
   // Work Order Engine (idempotency remediation) -- the trusted updateWorkOrderExecutionData callable adopts
   // this SAME immutable Audit Event path as its idempotency substrate, a deterministic Audit Event id makes a
   // retried call a no-op replay so an additive qtyUsed delta or execution-log append is never double-applied,
