@@ -8,15 +8,20 @@
 // Reusing the plan's own arithmetic as evidence would prove only that the plan agrees with itself --
 // the exact failure mode that let a world with no HEALTHY parts report zero mismatches.
 //
-// EMULATOR ONLY.
+// EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+
+const { resolveReadOnlyTarget, describeTarget, ExecutionTargetRefused } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+const { setExecutionTarget } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 const { readPartBalance } = await import(L("functions/lib/inventory/partBalanceReadService.js"));
 const { signedQuantity } = await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 const { CERT_PARTS, reorderPointFor } = await import(L("functions/scripts/certificationWorld/data/partsCatalog.mjs"));
@@ -25,11 +30,28 @@ const { TRUCK_PROFILES } = await import(L("functions/scripts/certificationWorld/
 const LEDGER_COLLECTION = "inventory_transactions";
 const OUT = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : null;
 
-if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("FAILED: emulator only. Set FIRESTORE_EMULATOR_HOST.");
+// THE ONE GATE. Emulator and eos-platform-sandbox only; production refused two ways; a live
+// write additionally requires --apply-live-sandbox. See executionTarget.mjs.
+let __target;
+try {
+  __target = resolveReadOnlyTarget();
+  setExecutionTarget(__target);
+} catch (err) {
+  console.error(`REFUSED: ${err.message}`);
   process.exitCode = 1;
+}
+if (!__target) {
+  // refused above
 } else {
-  if (!getApps().length) initializeApp({ projectId: "demo-certworld" });
+  console.log(describeTarget(__target));
+  // Credentials follow the TARGET, not a hardcoded project. An emulator needs none; a live
+  // project needs application-default credentials, and naming the project explicitly means the
+  // app cannot silently initialize against whatever ADC happens to prefer.
+  if (!getApps().length) {
+    initializeApp(__target.isEmulator
+      ? { projectId: __target.projectId }
+      : { credential: applicationDefault(), projectId: __target.projectId });
+  }
   const db = getFirestore();
 
   // ── Read the ledger and recompute balances from stored records.

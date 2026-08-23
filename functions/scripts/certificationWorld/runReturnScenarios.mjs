@@ -25,16 +25,21 @@
 // would make every returns clerk a receiver and put intake behind an authority whose whole meaning
 // is the forbidden thing.
 //
-// EMULATOR ONLY.
+// EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+
+const { resolveExecutionTarget, describeTarget, ExecutionTargetRefused } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+const { setExecutionTarget } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const { recordReturnIntake, RETURNS_COLLECTION, RETURN_STATES, RETURN_CONDITIONS, RETURN_SOURCES,
   RETURN_INTAKE_CAPABILITY, deriveReturnId } =
@@ -42,7 +47,7 @@ const { recordReturnIntake, RETURNS_COLLECTION, RETURN_STATES, RETURN_CONDITIONS
 const { resolveEffectivePermission } = await import(L("functions/lib/access/resolveEffectivePermission.js"));
 const { COMPATIBILITY_ROLES } = await import(L("functions/lib/access/compatibilityRoles.js"));
 const { GOVERNED_BUSINESS_ROLES } = await import(L("functions/lib/access/governedBusinessRoles.js"));
-const { loadPrincipalIndex, resolveCapability, ENVIRONMENT_ACTIVATIONS } =
+const { loadPrincipalIndex, resolveCapability, currentActivations } =
   await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 const { allLedgerRows, signedQuantity, warehouseByPart, mobileByPart } =
   await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
@@ -75,7 +80,7 @@ function makeCertResolver(db, capability) {
     const out = resolveEffectivePermission({
       permissionId: capability, assignments, roles: ROLE_CATALOG,
       currentAccessVersion: accessVersion, target: GLOBAL_TARGET,
-      activationOverrides: ENVIRONMENT_ACTIVATIONS,
+      activationOverrides: currentActivations(),
     });
     return out.decision === "ALLOW";
   };
@@ -99,11 +104,28 @@ async function intakeAs(db, employeeId, request) {
   }
 }
 
-if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("FAILED: emulator only.");
+// THE ONE GATE. Emulator and eos-platform-sandbox only; production refused two ways; a live
+// write additionally requires --apply-live-sandbox. See executionTarget.mjs.
+let __target;
+try {
+  __target = resolveExecutionTarget();
+  setExecutionTarget(__target);
+} catch (err) {
+  console.error(`REFUSED: ${err.message}`);
   process.exitCode = 1;
+}
+if (!__target) {
+  // refused above
 } else {
-  if (!getApps().length) initializeApp({ projectId: "demo-certworld" });
+  console.log(describeTarget(__target));
+  // Credentials follow the TARGET, not a hardcoded project. An emulator needs none; a live
+  // project needs application-default credentials, and naming the project explicitly means the
+  // app cannot silently initialize against whatever ADC happens to prefer.
+  if (!getApps().length) {
+    initializeApp(__target.isEmulator
+      ? { projectId: __target.projectId }
+      : { credential: applicationDefault(), projectId: __target.projectId });
+  }
   const db = getFirestore();
   const principalIndex = await loadPrincipalIndex(db);
 

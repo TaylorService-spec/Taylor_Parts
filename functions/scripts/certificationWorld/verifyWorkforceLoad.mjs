@@ -16,16 +16,21 @@
 // through the real effective-permission path and must genuinely hold the capability their work
 // requires. Workload assigned to somebody who cannot do it is a finding, not a rounding error.
 //
-// EMULATOR ONLY.
+// EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+
+const { resolveReadOnlyTarget, describeTarget, ExecutionTargetRefused } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+const { setExecutionTarget } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const { loadBandFor, intendedBandFor, ACTIVE_JOB_STATUSES, LOAD_BANDS } =
   await import(L("functions/scripts/certificationWorld/data/workforceLoad.mjs"));
@@ -38,11 +43,28 @@ const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  -- " + detail : ""}`); };
 
-if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("FAILED: emulator only.");
+// THE ONE GATE. Emulator and eos-platform-sandbox only; production refused two ways; a live
+// write additionally requires --apply-live-sandbox. See executionTarget.mjs.
+let __target;
+try {
+  __target = resolveReadOnlyTarget();
+  setExecutionTarget(__target);
+} catch (err) {
+  console.error(`REFUSED: ${err.message}`);
   process.exitCode = 1;
+}
+if (!__target) {
+  // refused above
 } else {
-  if (!getApps().length) initializeApp({ projectId: "demo-certworld" });
+  console.log(describeTarget(__target));
+  // Credentials follow the TARGET, not a hardcoded project. An emulator needs none; a live
+  // project needs application-default credentials, and naming the project explicitly means the
+  // app cannot silently initialize against whatever ADC happens to prefer.
+  if (!getApps().length) {
+    initializeApp(__target.isEmulator
+      ? { projectId: __target.projectId }
+      : { credential: applicationDefault(), projectId: __target.projectId });
+  }
   const db = getFirestore();
   const principalIndex = await loadPrincipalIndex(db);
   const workforce = buildWorkforce();
