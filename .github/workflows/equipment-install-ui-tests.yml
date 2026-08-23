@@ -43,6 +43,11 @@ on:
       - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
       - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
+      - "field-ops-app-vite/src/domain/technicianHandheld.js"
+      - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/technicianHandheld.test.mjs"
+      - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - "functions/package.json"
@@ -71,6 +76,11 @@ on:
       - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
       - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
+      - "field-ops-app-vite/src/domain/technicianHandheld.js"
+      - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/technicianHandheld.test.mjs"
+      - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
 
@@ -108,8 +118,13 @@ jobs:
         run: node --test test/workOrderInstallCloseout.test.mjs
         working-directory: field-ops-app-vite
 
-      - name: Rendered surfaces — manager list and technician closeout
-        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx
+      # The handheld composition: what a phone shows, in what order, and what it may claim.
+      - name: Handheld decisions — Home order, More stays small, the offline matrix
+        run: node --test test/technicianHandheld.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Rendered surfaces — manager list, technician closeout, handheld shell
+        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx
         working-directory: field-ops-app-vite
 
       # The client must still BUILD. A surface that only passes its tests and fails the bundle is a
