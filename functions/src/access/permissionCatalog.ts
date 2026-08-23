@@ -1006,6 +1006,23 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // SERIALIZED ASSET ACQUISITION -- an already-owned unit entering EOS without a purchase order.
+  //
+  // Quantity stock could already do this: an ADJUSTED movement sourced from an ADJUSTMENT says "we
+  // already hold 571 of these". Serialized stock could not -- its only creator was receipt against a
+  // purchase order -- so the platform could not say "we already own THIS machine" without inventing
+  // a purchase that never happened.
+  //
+  // HIGH TRUST, and narrow by construction: it creates owned inventory with no procurement record,
+  // and every acquisition must name a reason from a closed set in which "we bought it" does not
+  // appear. Registered active:false and granted to no Role.
+  Object.freeze({
+    id: "inventory.serializedAsset.acquire",
+    description: "Bring an already-owned serialized unit into managed custody without a purchase order (opening balance, legacy migration, existing company asset) via the trusted acquireSerializedAsset command. Creates no Equipment, no customer relationship and no purchasing history.",
+    resource: "inventory.serializedAsset",
+    action: "acquire",
+    active: false,
+  }),
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
   // GRANTED to the governed admin, dispatcher and owner Roles since 2026-08-06 (compatibilityRoles.ts
   // grants it directly to admin + dispatcher; owner inherits by composition -- Decisions #65/#68).

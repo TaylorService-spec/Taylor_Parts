@@ -1,16 +1,16 @@
 {
  "catalog": {
-  "total": 117,
+  "total": 118,
   "active": 72,
-  "inactive": 45
+  "inactive": 46
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 15,
+  "total": 16,
   "byStatus": {
    "RECORDED_GAP": 9,
    "DELIBERATELY_PRIVILEGED_ONLY": 5,
-   "UNCLASSIFIED": 1
+   "UNCLASSIFIED": 2
   },
   "capabilities": [
    {
@@ -79,6 +79,12 @@
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
    },
    {
+    "capability": "inventory.serializedAsset.acquire",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
     "capability": "equipment.compatibility.view",
     "active": false,
     "status": "RECORDED_GAP",
@@ -119,9 +125,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 117,
+   "grantedCount": 118,
    "operableCount": 72,
-   "blockedCount": 45,
+   "blockedCount": 46,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -165,6 +171,7 @@
     "inventory.location.display.read",
     "inventory.placement.record",
     "inventory.returns.intake",
+    "inventory.serializedAsset.acquire",
     "inventory.serializedAsset.read",
     "inventory.stock.receive",
     "inventory.transaction.read",
@@ -345,6 +352,7 @@
     "inventory.location.display.read",
     "inventory.placement.record",
     "inventory.returns.intake",
+    "inventory.serializedAsset.acquire",
     "inventory.serializedAsset.read",
     "inventory.transfer.cancel",
     "inventory.transfer.create",
