@@ -197,7 +197,10 @@ export default function AvailableEquipment() {
         visibleGroups.map((group) => (
           <section key={group.lineOfBusiness} aria-label={`${group.label} available equipment`}>
             <h4>{group.label} <span className="fo-muted">({group.rows.length})</span></h4>
-            <ul className="fo-list">
+            {/* The label KEEPS the phrase the previous flat list used, prefixed by the line. Existing
+                queries for "available serialized assets" still match, and each group is now named
+                rather than there being one anonymous list. */}
+            <ul className="fo-list" aria-label={`${group.label} available serialized assets`}>
               {group.rows.map((r) => (
                 <li key={r.serialNo}>
                   {/* THE PRODUCT IS THE LABEL. The serial identifies the individual machine and

@@ -129,8 +129,13 @@ export function composeWholeUnitAssetRow(asset, partsById) {
     // The PRIMARY LABEL is the product, never an id. Falls back through the Part's own name to the
     // derived "Taylor C161" and only then to the raw part id -- which is a visible admission that
     // the join failed, not a label anyone chose.
+    // Falls back through the Part's own name, the derived "Taylor C161", the asset's internal part
+    // number -- which is what this list showed before whole-unit Parts existed, and still the best
+    // available label for an asset with no whole-unit Part behind it -- and only then the raw part
+    // id, which is a visible admission that the join failed rather than a label anyone chose.
     title: str(part?.name)
       ?? (model ? `${model.manufacturer} ${model.modelNumber}` : null)
+      ?? str(asset?.internalPartNumber)
       ?? partId
       ?? "Unidentified unit",
     manufacturer: model?.manufacturer ?? null,

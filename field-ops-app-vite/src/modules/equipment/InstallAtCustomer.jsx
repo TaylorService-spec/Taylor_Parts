@@ -92,7 +92,7 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
     <div className="fo-panel" role="dialog" aria-modal="true" aria-labelledby="install-title">
       <h3 id="install-title">Install at customer</h3>
 
-      <dl className="fo-summary">
+      <dl className="fo-detail-list">
         <dt>Unit</dt>
         <dd>{unit?.title ?? "—"}</dd>
         <dt>Serial</dt>
@@ -142,7 +142,7 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
       {problemFor("location") ? <p className="fo-error" role="alert">{problemFor("location")}</p> : null}
 
       {chosenAccount && chosenLocation ? (
-        <p className="fo-confirm">
+        <p className="fo-confirm-consequence fo-confirm-consequence--destructive">
           Install <strong>{unit?.title}</strong> (S/N {unit?.serialNo}) at{" "}
           <strong>{chosenAccount.name ?? chosenAccount.id}</strong> — {chosenLocation.name ?? chosenLocation.id}.
           {" "}This cannot be undone.
@@ -151,14 +151,14 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
 
       {submit.message ? (
         <p
-          className={submit.status === INSTALL_SUBMIT.INSTALLED ? "fo-success" : "fo-error"}
+          className={submit.status === INSTALL_SUBMIT.INSTALLED ? "fo-muted" : "fo-error"}
           role={submit.status === INSTALL_SUBMIT.INSTALLED ? "status" : "alert"}
         >
           {submit.message}
         </p>
       ) : null}
 
-      <div className="fo-actions">
+      <div className="fo-form-actions">
         <Button onClick={install} disabled={!action.enabled} title={action.reason ?? undefined}>
           {submit.status === INSTALL_SUBMIT.SUBMITTING ? "Installing…" : "Install at customer"}
         </Button>

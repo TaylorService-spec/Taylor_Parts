@@ -120,11 +120,32 @@ jobs:
         run: npm run build
         working-directory: functions
 
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+      # The REPO'S PINNED firebase-tools, not a global install. A global `npm install -g firebase-tools`
+      # pulls a version that refuses to run on the JDK this runner has ("no longer supports Java
+      # version before 21"), which is exactly how this job failed the first time. Every other emulator
+      # lane in this repo starts the CLI out of node_modules for the same reason.
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project demo-install-callable --config ../firebase.json > /tmp/install-callable-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/install-callable-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/install-callable-emulator.log
+          exit 1
+        working-directory: functions
 
       # Real roleAssignment documents, read through the transaction, exactly as the deployed callable
       # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
       - name: Callable boundary — auth, actor identity, and every refusal code
-        run: firebase emulators:exec --only firestore --project demo-install-callable "node test/installCallable.test.mjs"
+        run: node test/installCallable.test.mjs
         working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-callable-emulator-logs
+          path: /tmp/install-callable-emulator.log
+          if-no-files-found: ignore

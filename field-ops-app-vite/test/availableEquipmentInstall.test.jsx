@@ -25,7 +25,12 @@ vi.mock("../src/hooks/useLocationDisplaySource.js", () => ({ useLocationDisplayS
 vi.mock("../src/hooks/useLocationsForAccount.js", () => ({ useLocationsForAccount: vi.fn() }));
 vi.mock("../src/auth/AuthContext.jsx", () => ({ useAuth: vi.fn() }));
 vi.mock("../src/services/equipmentInstallCallableClient.js", () => ({ callInstallSerializedAsset: vi.fn() }));
-vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
+// Only useNavigate is replaced. Mocking the whole module strips MemoryRouter and every other export
+// the suite relies on.
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => vi.fn(),
+}));
 
 const TAYLOR_PART = {
   partId: "CW-WU-TAYLOR--C161", wholeUnit: true, name: "Taylor C161",

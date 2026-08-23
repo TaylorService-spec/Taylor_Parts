@@ -67,6 +67,10 @@ Every guide is tagged so you're never misled about what actually works:
 - [Log an inventory action (receive, adjust, or correct)](inventory/log-an-inventory-action.md) — **live** — Record a Receive/Adjust/Correct audit note against a part; explicitly log-only and does not change stock.
 - [Parts scanner (Technician Workspace)](inventory/parts-scanner.md) — **live** — Inventory-side pointer to the Scanner. It resolves scans against real governed records and records planned-part usage; it does NOT receive stock — see [Receive a purchase order](inventory/receive-a-purchase-order.md) for the only governed receipt.
 
+## Equipment
+
+- [Install equipment at a customer](installing-equipment-at-a-customer.md) — **live** — Take an available serialized unit and install it at a customer's location via Equipment > Available Equipment, creating the Equipment record. Equipment Installer role only; irreversible — no uninstall or recovery exists.
+
 ## Purchasing
 
 - [View purchase orders](purchasing/view-purchase-orders.md) — **live** — Read-only Purchasing > Purchase Orders list of orders placed against reorder requests, filterable by Open/Received/Voided/All (admin/dispatcher).
