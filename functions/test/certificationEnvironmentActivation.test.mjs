@@ -56,11 +56,23 @@ test("demo-certworld activates exactly the Pass 3 families, and nothing else", (
   assert.deepEqual(sorted(certOverrides()), [...PASS3_IDS].sort());
 });
 
-test("the canonical registry and the shipped snapshot agree about it", () => {
-  // config/environments.json does not ship in the Functions bundle, so the embedded snapshot is what
-  // the deployed runtime actually reads. If they ever disagree, the file nobody deploys is the one
-  // that looks right.
-  assert.deepEqual(sorted(resolveCapabilityOverrides(CANONICAL, CERT_PROJECT)), [...PASS3_IDS].sort());
+test("the DEPLOYMENT registry deliberately does not know it", () => {
+  // config/environments.json lists provisioned Firebase environments, and its project allow-list
+  // is asserted to be exactly those -- on the stated grounds that each addition is a real project
+  // that was really created. demo-certworld was not created and cannot be: the demo- prefix is
+  // reserved by the emulator suite. Listing it there would make that invariant assert a falsehood,
+  // so the entry lives in the runtime snapshot alone, exactly as local-emulator carries
+  // firebase: null for the same reason.
+  assert.equal(resolveCapabilityOverrides(CANONICAL, CERT_PROJECT).size, 0,
+    "the deployment registry must not carry an unprovisioned project");
+  assert.equal(CANONICAL.environments.some((e) => e.firebase?.projectId === CERT_PROJECT), false);
+});
+
+test("...which is precisely why the runtime snapshot is the one that carries it", () => {
+  // The other half. If neither registry knew it, the certification suite would be back to a world
+  // where every transfer, count and return denies for everyone.
+  assert.ok(certOverrides().size > 0, "the snapshot must resolve it");
+  assert.ok(ENVIRONMENT_ACTIVATION_REGISTRY.environments.some((e) => e.firebase?.projectId === CERT_PROJECT));
 });
 
 test("every activated id is genuinely eligible -- activation cannot invent authority", () => {

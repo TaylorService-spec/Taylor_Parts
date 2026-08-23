@@ -145,6 +145,22 @@ test("shipped runtime snapshot matches the canonical registry projection", () =>
   // Drift guard: the embedded ENVIRONMENT_ACTIVATION_REGISTRY (which ships in the
   // Functions deploy bundle because config/environments.json does not) must agree
   // with the canonical registry on exactly the fields the resolver reads.
+  //
+  // ONE DOCUMENTED ASYMMETRY, AND ONLY ONE SHAPE OF IT.
+  //
+  // The certification emulator (demo-certworld) is registered HERE and deliberately NOT in
+  // config/environments.json. That file is the DEPLOYMENT registry: its project allow-list is
+  // asserted elsewhere to be exactly the provisioned Firebase projects, on the stated grounds that
+  // "each addition is a real project that was really created". demo-certworld was not created and
+  // cannot be -- the demo- prefix is reserved by the emulator suite -- so listing it there would
+  // make that invariant assert something false. local-emulator carries firebase: null for the same
+  // reason, with the same note.
+  //
+  // The allowance is therefore narrow and checked: a snapshot-only entry must declare NO project
+  // id in the deployment sense... except that this registry is keyed BY project id, so instead the
+  // rule is that a snapshot-only entry must be a project the deployment registry does not know.
+  // Everything the canonical registry DOES describe must still match exactly, which is what this
+  // guard has always been for.
   const project = (env) => ({
     role: env.role,
     projectId: env.firebase?.projectId ?? null,
@@ -153,8 +169,31 @@ test("shipped runtime snapshot matches the canonical registry projection", () =>
       : null,
   });
   const canonical = CANONICAL_REGISTRY.environments.map(project);
+  const canonicalProjects = new Set(canonical.map((e) => e.projectId));
   const snapshot = ENVIRONMENT_ACTIVATION_REGISTRY.environments.map(project);
-  assert.deepEqual(snapshot, canonical);
+
+  const shared = snapshot.filter((e) => canonicalProjects.has(e.projectId));
+  assert.deepEqual(shared, canonical,
+    "the snapshot disagrees with the deployment registry about an environment they both describe");
+
+  const snapshotOnly = snapshot.filter((e) => !canonicalProjects.has(e.projectId));
+  assert.deepEqual(snapshotOnly.map((e) => e.projectId), ["demo-certworld"],
+    "only the certification emulator may exist in the runtime snapshot alone");
+  assert.equal(snapshotOnly[0].role, "sandbox", "and it is a sandbox-role environment");
+});
+
+test("a snapshot-only entry can never be a deployable project", () => {
+  // The safety argument for the asymmetry above, asserted rather than trusted. An entry that
+  // exists only in the runtime snapshot is invisible to every deployment guard, so the one that is
+  // permitted must be structurally undeployable.
+  const canonicalProjects = new Set(CANONICAL_REGISTRY.environments.map((e) => e.firebase?.projectId ?? null));
+  for (const env of ENVIRONMENT_ACTIVATION_REGISTRY.environments) {
+    const id = env.firebase?.projectId ?? null;
+    if (id === null || canonicalProjects.has(id)) continue;
+    assert.match(id, /^demo-/,
+      `${id} exists only in the runtime snapshot but is not an emulator project id`);
+    assert.notEqual(env.role, "production");
+  }
 });
 
 test("runtime resolution is driven by GCLOUD_PROJECT (sandbox -> full spine)", () => {
