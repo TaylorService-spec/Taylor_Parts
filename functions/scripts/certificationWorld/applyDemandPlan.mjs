@@ -78,12 +78,25 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     // locationId would create the dangling reference the world's own invariant check exists to
     // catch.
     const accountId = accountIdFor(scenario);
-    const equipSnap = await db.collection("equipment").where("accountId", "==", accountId).limit(1).get();
+    // WHICH unit, not just which customer.
+    //
+    // Every scenario used to take the account's first equipment, which was right while each one had
+    // its own customer. Two scenarios that need to differ -- a customer with several machines in
+    // service, versus ONE machine that keeps coming back -- are indistinguishable if both always
+    // land on the same unit. `equipmentOffset` is how a scenario says which it means.
+    const equipSnap = await db.collection("equipment").where("accountId", "==", accountId).get();
     if (equipSnap.empty) {
       results.push({ scenario, outcome: "NO_EQUIPMENT", detail: `${accountId} owns no equipment` });
       continue;
     }
-    const equip = equipSnap.docs[0];
+    const ordered = equipSnap.docs.slice().sort((a, b) => a.id.localeCompare(b.id));
+    const offset = scenario.equipmentOffset ?? 0;
+    if (offset >= ordered.length) {
+      results.push({ scenario, outcome: "NO_EQUIPMENT",
+        detail: `${accountId} owns ${ordered.length} unit(s); scenario wants #${offset + 1}` });
+      continue;
+    }
+    const equip = ordered[offset];
     const locationId = equip.data().locationId;
 
     // ── Build the snapshot through the canonical planner. Fails closed on unresolved identity.

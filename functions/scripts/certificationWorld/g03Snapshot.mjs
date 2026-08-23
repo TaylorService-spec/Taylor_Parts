@@ -36,24 +36,13 @@ const { readPurchaseOrderProgress } =
 export const G03_WO_NUMBER = "WO-2026-000007";
 export const G03_PART_ID = "CW-P-0000";
 
-const IN_TYPES = new Set(["RECEIVED", "TRANSFER_IN", "RETURNED"]);
-const OUT_TYPES = new Set(["ISSUED", "TRANSFER_OUT", "SCRAPPED"]);
+// Ledger arithmetic comes from the shared module -- see ledgerMath.mjs on why five private
+// copies of "add up the ledger" all broke at once.
+const { ledgerRowsForPart, mobileByTruck } =
+  await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 
-// Mobile stock for one part, from the ledger.
-//
-// THE FIELD PATH IS FLAT. An earlier version queried `value.partId`, which matches nothing: the
-// ledger stores its fields at the top level. That query returned zero rows for every part and was
-// invisible here only because the G03 part has no truck stock -- a wrong answer that happened to
-// equal the right one.
 async function mobileFor(db, partId) {
-  const snap = await db.collection("inventory_transactions").where("partId", "==", partId).get();
-  let total = 0;
-  for (const doc of snap.docs) {
-    const v = doc.data();
-    if (v.location?.type !== "MOBILE") continue;
-    total += IN_TYPES.has(v.type) ? Number(v.quantity) : OUT_TYPES.has(v.type) ? -Number(v.quantity) : 0;
-  }
-  return total;
+  return mobileByTruck(await ledgerRowsForPart(db, partId), partId).total;
 }
 
 export async function captureG03(db, label) {

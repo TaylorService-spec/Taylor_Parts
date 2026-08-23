@@ -43,21 +43,14 @@ const { loadPrincipalIndex, resolveCapability, RECEIVE, PURCHASE } =
   await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
 
 const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
-const IN_TYPES = new Set(["RECEIVED", "TRANSFER_IN", "RETURNED"]);
-const OUT_TYPES = new Set(["ISSUED", "TRANSFER_OUT", "SCRAPPED"]);
+// Ledger arithmetic is SHARED. The private copy that lived here excluded ADJUSTED, so every truck
+// answer in the corpus would have read zero the moment opening balances became adjustments -- a
+// question bank confidently stating that no truck carries anything.
+const { ledgerRowsForPart, mobileByTruck } =
+  await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 
 async function mobileByLocation(db, partId) {
-  const snap = await db.collection("inventory_transactions").where("partId", "==", partId).get();
-  const byTruck = new Map();
-  let total = 0;
-  for (const doc of snap.docs) {
-    const v = doc.data();
-    if (v.location?.type !== "MOBILE") continue;
-    const signed = IN_TYPES.has(v.type) ? Number(v.quantity) : OUT_TYPES.has(v.type) ? -Number(v.quantity) : 0;
-    byTruck.set(v.location.locationId, (byTruck.get(v.location.locationId) ?? 0) + signed);
-    total += signed;
-  }
-  return { total, byTruck: [...byTruck].filter(([, q]) => q !== 0).sort((a, b) => b[1] - a[1]) };
+  return mobileByTruck(await ledgerRowsForPart(db, partId), partId);
 }
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
@@ -218,6 +211,25 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     answerType: "LIST", wrongAnswers: ["none", "all of them"],
     why: "every work order with a warehouse shortage, and no longer WO-2026-000007 -- which recovered." });
 
+  // Transfers and G06, sourced from the evidence those runs produced.
+  const { transferQuestions } = await import(L("functions/scripts/certificationWorld/data/transferQuestions.mjs"));
+  const xfer = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "transfer-scenarios.json"), "utf8"));
+  const g06 = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "g06-transfer-recovery.json"), "utf8"));
+  for (const entry of transferQuestions(xfer, g06)) add(entry);
+
+  // Cycle counts and G07.
+  const { cycleCountQuestions } = await import(L("functions/scripts/certificationWorld/data/cycleCountQuestions.mjs"));
+  const cc = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "cycle-count-scenarios.json"), "utf8"));
+  const g07 = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "g07-cycle-variance.json"), "utf8"));
+  for (const entry of cycleCountQuestions(cc, g07)) add(entry);
+
+  // Returns, G09, G10, G11 and manager attention.
+  const { pass3Questions } = await import(L("functions/scripts/certificationWorld/data/pass3Questions.mjs"));
+  const ret = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "return-scenarios.json"), "utf8"));
+  const truth = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "reporting-truth.json"), "utf8"));
+  const golden = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "golden-manifest.json"), "utf8"));
+  for (const entry of pass3Questions(ret, truth, golden)) add(entry);
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, "tier1-questions.json"), JSON.stringify({ count: q.length, questions: q }, null, 2));
 
@@ -226,7 +238,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   for (const e of q) console.log(`  ${e.id}  ${e.topic.padEnd(26)} ${e.answerType.padEnd(11)} ${e.question}`);
   console.log(`\n${q.length} questions`);
   console.log(JSON.stringify(byTopic, null, 0));
-  if (q.length < 20 || q.length > 30) { console.error(`FAILED: expected 20-30 questions, got ${q.length}`); process.exitCode = 1; }
+  if (q.length < 75 || q.length > 125) { console.error(`FAILED: expected 75-125 questions, got ${q.length}`); process.exitCode = 1; }
   const unknowns = q.filter((e) => e.answerType === "UNKNOWN").length;
   const denied = q.filter((e) => e.answerType === "DENIED").length;
   console.log(`UNKNOWN answers: ${unknowns} (must be > 0)   persona-denied: ${denied} (must be > 0)`);

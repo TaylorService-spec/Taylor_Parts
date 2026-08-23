@@ -45,7 +45,13 @@ function independentBalances(movements) {
   const warehouse = new Map(), mobile = new Map(), perTruck = new Map(), company = new Map();
   const add = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
   for (const mv of movements) {
-    const signed = mv.direction === "IN" ? mv.quantity : mv.direction === "OUT" ? -mv.quantity : 0;
+    // THREE DIRECTIONS, NOT TWO. SIGNED movements (ADJUSTED) carry their own sign; an opening
+    // balance is positive, a reconciled shortage is negative. Reading only IN/OUT scored every
+    // SIGNED row as zero, which reported a 735-unit world as 34 CRITICAL parts -- this file
+    // rebuilds the arithmetic on purpose, and rebuilding it means getting the domain right.
+    const signed = mv.direction === "SIGNED" ? mv.quantity
+      : mv.direction === "IN" ? mv.quantity
+        : mv.direction === "OUT" ? -mv.quantity : 0;
     add(company, mv.partId, signed);
     if (mv.location.type === "WAREHOUSE") add(warehouse, mv.partId, signed);
     else if (mv.location.type === "MOBILE") {
@@ -152,7 +158,11 @@ test("every planned movement has a unique, clock-free identity", () => {
 
 test("MUTATION: a collapsed condition distribution is caught", () => {
   // Every part identically stocked -- the shape the index collision produced.
-  const flattened = plan.filter((m) => m.type === "RECEIVED").map((m) => ({ ...m, quantity: 1 }));
+  // Flatten every WAREHOUSE opening to a single unit. Keyed on location rather than on a movement
+  // type: the previous version filtered on RECEIVED, and once opening balances stopped being
+  // receipts it selected nothing at all -- a mutation test that mutated nothing and passed by
+  // asserting an empty world had a collapsed distribution.
+  const flattened = plan.map((m) => (m.location.type === "WAREHOUSE" ? { ...m, quantity: 1 } : m));
   const bal = independentBalances(flattened);
   const conditions = new Set(quantityParts.map((p) => independentCondition(p, bal)));
   assert.ok(conditions.size < 5, "flattening every receipt should collapse the distribution");

@@ -159,48 +159,53 @@ test("the plan is deterministic: built twice, identical", () => {
   assert.deepEqual(buildInventoryPlan(), plan);
 });
 
-test("warehouse movements land at an ELIGIBLE warehouse, and truck legs are paired", () => {
-  // Availability counts only eligible WAREHOUSE locations. A movement staged anywhere else is real
-  // inventory the warehouse cannot sell -- fine for a truck, wrong for a receipt.
-  for (const m of plan.filter((x) => x.type === "RECEIVED")) {
-    assert.equal(m.location.type, "WAREHOUSE");
-    assert.equal(m.location.locationId, CERT_WAREHOUSE_ID);
+test("warehouse stock is initialized at an ELIGIBLE warehouse, truck stock on a real truck", () => {
+  // Availability counts only eligible WAREHOUSE locations. Stock initialized anywhere else is real
+  // inventory the Parts Room cannot issue -- correct for a truck, wrong for the warehouse.
+  const warehouseRows = plan.filter((m) => m.location.type === "WAREHOUSE");
+  assert.ok(warehouseRows.length > 0, "the warehouse must hold opening stock");
+  for (const m of warehouseRows) assert.equal(m.location.locationId, CERT_WAREHOUSE_ID);
+
+  const truckIds = new Set(TRUCK_PROFILES.map((t) => t.truckId));
+  const mobileRows = plan.filter((m) => m.location.type === "MOBILE");
+  assert.ok(mobileRows.length > 0, "the fleet must carry opening stock");
+  for (const m of mobileRows) {
+    assert.ok(truckIds.has(m.location.locationId), `${m.location.locationId} is not a truck in the fleet`);
   }
-  // Every TRANSFER_OUT has a matching TRANSFER_IN of the same quantity: a transfer is two movements
-  // at two locations, and an unmatched leg would create or destroy inventory.
-  const outs = plan.filter((m) => m.type === "TRANSFER_OUT");
-  const ins = plan.filter((m) => m.type === "TRANSFER_IN");
-  assert.equal(outs.length, ins.length, "unbalanced transfer legs");
-  for (const out of outs) {
-    const match = ins.find((i) => i.sourceObject.id === out.sourceObject.id && i.quantity === out.quantity);
-    assert.ok(match, `TRANSFER_OUT ${out.sourceObject.id} has no matching TRANSFER_IN`);
-    assert.equal(match.location.type, "MOBILE");
-  }
+
+  // There are no transfer legs to pair, because nothing is transferred. This used to assert that
+  // every TRANSFER_OUT had a matching TRANSFER_IN -- a real invariant for real transfers, and a
+  // check that quietly certified 55 journeys that never happened. Opening stock is initialized
+  // where it sits.
+  const legs = plan.filter((m) => m.type === "TRANSFER_OUT" || m.type === "TRANSFER_IN");
+  assert.deepEqual(legs, [], "the baseline moves nothing; it declares a starting position");
 });
 
-test("a warehouse is never asked to ship stock it did not receive", () => {
-  // The defect an earlier plan had: allocations were fixed independently of the receipt, so three
-  // warehouses went negative. The receipt is now DERIVED from the intended end position plus
-  // everything that leaves.
+test("the warehouse opens at exactly the balance its condition requires", () => {
+  // What the old 'never ship stock it did not receive' check was really protecting: the warehouse
+  // must end at the position the part's intended inventory condition needs. It got there by
+  // subtracting shipments from an inflated receipt; it gets there now by being initialized at it.
+  // Same property, one fewer fiction.
   for (const p of quantityParts) {
-    const received = plan
-      .filter((m) => m.partId === p.partId && m.type === "RECEIVED")
+    const warehouseOpening = plan
+      .filter((m) => m.partId === p.partId && m.location.type === "WAREHOUSE")
       .reduce((sum, m) => sum + m.quantity, 0);
-    const shipped = plan
-      .filter((m) => m.partId === p.partId && m.type === "TRANSFER_OUT")
-      .reduce((sum, m) => sum + m.quantity, 0);
-    assert.ok(received >= shipped, `${p.partId}: shipped ${shipped} but only received ${received}`);
-    assert.equal(received - shipped, intendedWarehouseAfterFor(p),
-      `${p.partId}: warehouse ends at ${received - shipped}, but its condition requires ${intendedWarehouseAfterFor(p)}`);
+    assert.equal(warehouseOpening, intendedWarehouseAfterFor(p),
+      `${p.partId}: warehouse opens at ${warehouseOpening}, but its condition requires ${intendedWarehouseAfterFor(p)}`);
   }
 });
 
-test("MUTATION: a plan that drains a warehouse below its condition is caught", () => {
-  // Proves the reconciliation above can fail. This is the earlier bug, reconstructed.
-  const broken = plan.map((m) => (m.type === "RECEIVED" ? { ...m, quantity: 1 } : m));
-  const brokenBalances = projectBalances(broken);
-  const negatives = [...brokenBalances.warehouse.values()].filter((v) => v < 0);
-  assert.ok(negatives.length > 0, "shrinking every receipt to 1 should drive warehouses negative");
+test("MUTATION: a plan whose warehouse opening does not match its condition is caught", () => {
+  // Proves the check above can fail. Flatten every warehouse opening to 1 and the intended
+  // condition is no longer reachable for any part that needed more than one unit.
+  const broken = plan.map((m) => (m.location.type === "WAREHOUSE" ? { ...m, quantity: 1 } : m));
+  const wrong = quantityParts.filter((p) => {
+    const opening = broken
+      .filter((m) => m.partId === p.partId && m.location.type === "WAREHOUSE")
+      .reduce((sum, m) => sum + m.quantity, 0);
+    return opening !== intendedWarehouseAfterFor(p);
+  });
+  assert.ok(wrong.length > 0, "flattening every warehouse opening to 1 should break the condition");
 });
 
 test("the catalog is large enough to be worth having", () => {

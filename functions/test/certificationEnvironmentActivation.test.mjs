@@ -1,0 +1,231 @@
+// THE demo-certworld ACTIVATION ENTRY, AND EVERYTHING IT MUST NOT REACH.
+//
+// ============================ WHAT WAS APPROVED, AND WHAT WAS NOT ============================
+//
+// Owner-approved 2026-08-22: the Certification World emulator may activate the capability families
+// Pass 3 exercises, so the suite runs the REAL authorization path instead of a stub.
+//
+// What was NOT approved, and what these guards exist to keep true forever:
+//   - production inheriting anything from this entry
+//   - an unknown project inheriting anything
+//   - `demo-anything-else` inheriting it by prefix
+//   - the entry silently widening to capabilities Pass 3 does not exercise
+//
+// ============================ THE TWO SENTENCES THAT MATTER ============================
+//
+//   ENVIRONMENT ACTIVATION IS NOT A ROLE GRANT
+//   AUTHORIZATION STILL REQUIRES ACTIVE CAPABILITY + EMPLOYEE EFFECTIVE AUTHORITY
+//
+// Activation only lifts the blanket `active:false` deny. A principal with no qualifying
+// roleAssignment is still denied, and a test below proves it rather than asserting it.
+import test from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const REPO = path.resolve(import.meta.dirname, "../..");
+const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+
+const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY, SPINE_OVERRIDE_ELIGIBLE_IDS } =
+  await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveEffectivePermission } = await import(L("functions/lib/access/resolveEffectivePermission.js"));
+const { COMPATIBILITY_ROLES } = await import(L("functions/lib/access/compatibilityRoles.js"));
+const { GOVERNED_BUSINESS_ROLES } = await import(L("functions/lib/access/governedBusinessRoles.js"));
+const { PERMISSION_CATALOG } = await import(L("functions/lib/access/permissionCatalog.js"));
+
+const CANONICAL = JSON.parse(readFileSync(path.resolve(REPO, "config/environments.json"), "utf8"));
+const CERT_PROJECT = "demo-certworld";
+const ROLE_CATALOG = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+const GLOBAL_TARGET = { scope: { type: "global" }, condition: {} };
+
+const PASS3_IDS = [
+  "inventory.transfer.create", "inventory.transfer.dispatch",
+  "inventory.transfer.receive", "inventory.transfer.cancel",
+  "inventory.cycleCount.create", "inventory.cycleCount.submit",
+  "inventory.cycleCount.reconcile", "inventory.cycleCount.cancel",
+  "inventory.returns.intake",
+];
+
+const sorted = (s) => [...s].sort();
+const certOverrides = () => resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_PROJECT);
+
+// ── The entry itself ──────────────────────────────────────────────────────────────────────────
+
+test("demo-certworld activates exactly the Pass 3 families, and nothing else", () => {
+  assert.deepEqual(sorted(certOverrides()), [...PASS3_IDS].sort());
+});
+
+test("the DEPLOYMENT registry deliberately does not know it", () => {
+  // config/environments.json lists provisioned Firebase environments, and its project allow-list
+  // is asserted to be exactly those -- on the stated grounds that each addition is a real project
+  // that was really created. demo-certworld was not created and cannot be: the demo- prefix is
+  // reserved by the emulator suite. Listing it there would make that invariant assert a falsehood,
+  // so the entry lives in the runtime snapshot alone, exactly as local-emulator carries
+  // firebase: null for the same reason.
+  assert.equal(resolveCapabilityOverrides(CANONICAL, CERT_PROJECT).size, 0,
+    "the deployment registry must not carry an unprovisioned project");
+  assert.equal(CANONICAL.environments.some((e) => e.firebase?.projectId === CERT_PROJECT), false);
+});
+
+test("...which is precisely why the runtime snapshot is the one that carries it", () => {
+  // The other half. If neither registry knew it, the certification suite would be back to a world
+  // where every transfer, count and return denies for everyone.
+  assert.ok(certOverrides().size > 0, "the snapshot must resolve it");
+  assert.ok(ENVIRONMENT_ACTIVATION_REGISTRY.environments.some((e) => e.firebase?.projectId === CERT_PROJECT));
+});
+
+test("every activated id is genuinely eligible -- activation cannot invent authority", () => {
+  // The third hard-block: declared ∩ eligible. An id that is not on the eligible allow-list is
+  // dropped even when an environment declares it.
+  for (const id of PASS3_IDS) {
+    assert.ok(SPINE_OVERRIDE_ELIGIBLE_IDS.has(id), `${id} is not eligible for environment activation`);
+  }
+});
+
+test("it is NARROWER than the sandbox, deliberately", () => {
+  // The sandbox activates 33 ids across Sales, Finance, CRM and the scanner. A certification
+  // environment holding broader authority than it exercises would be a worse model, not a safer one.
+  const sandbox = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
+  const cert = certOverrides();
+  assert.ok(cert.size < sandbox.size, `cert ${cert.size} should be smaller than sandbox ${sandbox.size}`);
+  for (const id of cert) {
+    assert.ok(sandbox.has(id), `${id} is activated in certification but NOT in the sandbox it models`);
+  }
+});
+
+// ── Everything it must not reach ──────────────────────────────────────────────────────────────
+
+test("PRODUCTION inherits nothing", () => {
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts").size, 0);
+  assert.equal(resolveCapabilityOverrides(CANONICAL, "taylor-parts").size, 0);
+});
+
+test("an UNKNOWN project inherits nothing", () => {
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "not-a-real-project").size, 0);
+});
+
+test("PREFIX MATCHING DOES NOT EXIST -- demo-foo inherits nothing", () => {
+  // The failure mode a careless implementation would have: treating `demo-` as a trusted namespace.
+  for (const near of ["demo-foo", "demo-certworld-2", "certworld", "demo", "demo-certworl", "Demo-Certworld"]) {
+    assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, near).size, 0,
+      `${near} must not inherit demo-certworld's activation`);
+  }
+});
+
+test("a MISSING environment fails closed", () => {
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, null).size, 0);
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, undefined).size, 0);
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "").size, 0);
+  assert.equal(resolveCapabilityOverrides(null, CERT_PROJECT).size, 0);
+  assert.equal(resolveCapabilityOverrides({}, CERT_PROJECT).size, 0);
+});
+
+test("MUTATION: a production entry declaring these ids is STILL empty", () => {
+  // The guard does not trust the data. Even if somebody pasted the certification override list onto
+  // the production environment, the role-keyed block returns EMPTY without reading it.
+  const poisoned = {
+    environments: [
+      { role: "production", firebase: { projectId: "taylor-parts" }, capabilityActivationOverrides: PASS3_IDS },
+    ],
+  };
+  assert.equal(resolveCapabilityOverrides(poisoned, "taylor-parts").size, 0,
+    "production activation must be impossible by CODE, not merely absent from the DATA");
+});
+
+test("MUTATION: removing the entry denies the certification environment again", () => {
+  // Proves the entry is what is doing the work -- and shows exactly what Pass 3 looked like before it.
+  const without = {
+    environments: ENVIRONMENT_ACTIVATION_REGISTRY.environments.filter(
+      (e) => e?.firebase?.projectId !== CERT_PROJECT),
+  };
+  assert.equal(resolveCapabilityOverrides(without, CERT_PROJECT).size, 0);
+});
+
+// ── Activation is not a grant ─────────────────────────────────────────────────────────────────
+
+const permission = (id) => PERMISSION_CATALOG.find((p) => p.id === id);
+const decide = (permissionId, roleIds, overrides) => resolveEffectivePermission({
+  permissionId,
+  assignments: roleIds.map((roleId, i) => ({
+    id: `a${i}`, principalUid: "u1", roleId, status: "active",
+    scope: { type: "global" }, accessVersionAtGrant: 1,
+  })),
+  roles: ROLE_CATALOG,
+  currentAccessVersion: 1,
+  target: GLOBAL_TARGET,
+  activationOverrides: overrides,
+});
+
+test("the Pass 3 capabilities really are active:false -- activation is doing real work", () => {
+  for (const id of PASS3_IDS) {
+    assert.equal(permission(id)?.active, false, `${id} is not active:false; this entry would be pointless`);
+  }
+});
+
+test("ENVIRONMENT ACTIVATION IS NOT A ROLE GRANT", () => {
+  // Activated, and held by nobody. A principal with no qualifying role is denied for a DIFFERENT
+  // reason than before -- noQualifyingGrant rather than inactivePermission -- and denied all the same.
+  const out = decide("inventory.transfer.create", [], certOverrides());
+  assert.equal(out.decision, "DENY");
+  assert.notEqual(out.reason, "inactivePermission", "activation did lift the blanket deny...");
+  assert.equal(out.reason, "noQualifyingGrant", "...and the grant requirement stands on its own");
+});
+
+test("a role that does not carry the capability is still denied", () => {
+  // Holding SOME role is not holding THE role.
+  const out = decide("inventory.transfer.create", ["salesperson"], certOverrides());
+  assert.equal(out.decision, "DENY");
+});
+
+test("AUTHORIZATION STILL REQUIRES ACTIVE CAPABILITY + EMPLOYEE EFFECTIVE AUTHORITY", () => {
+  // Both halves, each proven necessary by removing it.
+  const withBoth = decide("inventory.transfer.create", ["inventoryTransferOperator"], certOverrides());
+  assert.equal(withBoth.decision, "ALLOW");
+
+  const noActivation = decide("inventory.transfer.create", ["inventoryTransferOperator"], undefined);
+  assert.equal(noActivation.decision, "DENY");
+  assert.equal(noActivation.reason, "inactivePermission", "the right role with no activation is still denied");
+
+  const noGrant = decide("inventory.transfer.create", [], certOverrides());
+  assert.equal(noGrant.decision, "DENY", "activation with no role is still denied");
+});
+
+test("MUTATION: dropping the transfer overrides denies a valid transfer operator", () => {
+  const partial = new Set([...certOverrides()].filter((id) => !id.startsWith("inventory.transfer.")));
+  const out = decide("inventory.transfer.create", ["inventoryTransferOperator"], partial);
+  assert.equal(out.decision, "DENY");
+  assert.equal(out.reason, "inactivePermission");
+});
+
+test("MUTATION: dropping the cycle-count overrides denies a valid counter and reconciler", () => {
+  const partial = new Set([...certOverrides()].filter((id) => !id.startsWith("inventory.cycleCount.")));
+  assert.equal(decide("inventory.cycleCount.submit", ["inventoryCycleCountCounter"], partial).decision, "DENY");
+  assert.equal(decide("inventory.cycleCount.reconcile", ["inventoryCycleCountReconciler"], partial).decision, "DENY");
+});
+
+test("MUTATION: dropping the returns override denies a valid intake clerk", () => {
+  const partial = new Set([...certOverrides()].filter((id) => id !== "inventory.returns.intake"));
+  assert.equal(decide("inventory.returns.intake", ["inventoryReturnsIntakeClerk"], partial).decision, "DENY");
+});
+
+// ── Separation of duties, at the ROLE level ───────────────────────────────────────────────────
+
+test("the counter role cannot reconcile, and the reconciler role cannot count", () => {
+  // Structural, and therefore true of whoever holds them. Reconciling is what turns a claimed
+  // variance into a real ledger adjustment; letting one principal do both means the person who
+  // reports the discrepancy also approves the correction.
+  const o = certOverrides();
+  assert.equal(decide("inventory.cycleCount.submit", ["inventoryCycleCountCounter"], o).decision, "ALLOW");
+  assert.equal(decide("inventory.cycleCount.reconcile", ["inventoryCycleCountCounter"], o).decision, "DENY");
+
+  assert.equal(decide("inventory.cycleCount.reconcile", ["inventoryCycleCountReconciler"], o).decision, "ALLOW");
+  assert.equal(decide("inventory.cycleCount.submit", ["inventoryCycleCountReconciler"], o).decision, "DENY");
+});
+
+test("the transfer role carries transfers and nothing adjacent", () => {
+  const o = certOverrides();
+  assert.equal(decide("inventory.transfer.create", ["inventoryTransferOperator"], o).decision, "ALLOW");
+  assert.equal(decide("inventory.stock.receive", ["inventoryTransferOperator"], o).decision, "DENY");
+  assert.equal(decide("inventory.cycleCount.reconcile", ["inventoryTransferOperator"], o).decision, "DENY");
+});

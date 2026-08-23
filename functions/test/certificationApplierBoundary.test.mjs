@@ -114,19 +114,32 @@ test("SERIAL parts produce no quantity movements at all", () => {
 
 // --- 3. no direct-write backdoor ---------------------------------------------
 
-test("the applier never writes the ledger collection itself", () => {
+test("the applier never writes the LEDGER itself", () => {
   // The seam that matters: a direct set/create/update against the ledger collection would skip the
   // service entirely. The store's `create` is permitted -- that is the callback the SERVICE invokes,
   // and it is the service that decided a write should happen.
+  //
+  // NARROWED, DELIBERATELY, AND ONLY TO THE LEDGER. This guard used to forbid every direct write in
+  // the file, which was a fine approximation while the applier wrote nothing but movements. The
+  // opening-balance records are not movements -- they are the documents the movements REFERENCE,
+  // and they must exist before the movements that name them, so they are written here where that
+  // order is guaranteed rather than in a second script somebody can run in the wrong sequence.
+  //
+  // The backdoor stays shut: the ledger may not be written directly under any name.
   const src = codeOnly(APPLIER);
 
-  // Any Firestore write verb applied to a collection reference in this file.
-  const directWrites = [...src.matchAll(/\.collection\([^)]*\)\s*\.doc\([^)]*\)\s*\.(set|update|create|delete)\s*\(/g)];
-  assert.deepEqual(directWrites.map((m) => m[0]), [],
-    "the applier writes documents directly instead of going through stageOperationalMovement");
+  const LEDGER_WRITE = new RegExp(
+    String.raw`(LEDGER_COLLECTION|["']inventory_transactions["'])\s*\)[\s\S]{0,60}?\.(set|update|create|delete)\s*\(`);
+  assert.equal(LEDGER_WRITE.test(src), false,
+    "the applier writes the ledger directly instead of going through stageOperationalMovement");
 
-  // And a batch is a write path too.
-  assert.equal(/\.batch\s*\(\s*\)/.test(src), false, "the applier uses a write batch -- that bypasses the service");
+  // The only collection it may write directly, named so a third one cannot appear quietly.
+  const collectionWrites = [...src.matchAll(
+    new RegExp(String.raw`db\.collection\(([^)]*)\)`, "g"))].map((m) => m[1].trim());
+  const ALLOWED = new Set(["r.collection", "OPENING_BALANCE_COLLECTION", "LEDGER_COLLECTION", "PARTS_COLLECTION", '"employees"', '"parts"']);
+  const unexpected = [...new Set(collectionWrites)].filter((t) => !ALLOWED.has(t));
+  assert.deepEqual(unexpected, [],
+    "the applier touches a collection this boundary has not been told about");
 
   // The service must actually be the thing invoked.
   assert.match(src, /stageOperationalMovement\(/, "the applier no longer calls the canonical service");

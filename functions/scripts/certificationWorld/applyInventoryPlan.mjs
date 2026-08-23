@@ -39,7 +39,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 
-const { buildInventoryPlan, projectBalances } = await import(L("functions/scripts/certificationWorld/data/inventoryPlan.mjs"));
+const { buildInventoryPlan, buildOpeningBalanceRecords, OPENING_BALANCE_COLLECTION, BASELINE_INITIALIZATION, projectBalances } = await import(L("functions/scripts/certificationWorld/data/inventoryPlan.mjs"));
 const { CERT_PARTS } = await import(L("functions/scripts/certificationWorld/data/partsCatalog.mjs"));
 const ledger = await import(L("functions/lib/inventoryLedger/operationalMovementRepository.js"));
 const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
@@ -60,7 +60,12 @@ function assertSafeTarget(projectId) {
   const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
   if (!env && !isEmulator) throw new Error(`Unknown project "${projectId}" -- not in config/environments.json. Refusing.`);
   if (env?.role === "production") throw new Error(`"${projectId}" is PRODUCTION. This tool never writes production inventory.`);
-  if (env && env.role !== "sandbox") throw new Error(`"${projectId}" has role "${env.role}". Sandbox or emulator only.`);
+  // The allow-list is EXPLICIT rather than "anything that is not production": a role nobody has
+  // thought about yet should stop this tool, not be waved through by an inverted check.
+  const WRITABLE_ROLES = new Set(["sandbox"]);
+  if (env && !WRITABLE_ROLES.has(env.role)) {
+    throw new Error(`"${projectId}" has role "${env.role}". Sandbox, certification or emulator only.`);
+  }
   return { projectId, role: env?.role ?? "emulator", isEmulator };
 }
 
@@ -204,6 +209,20 @@ FAILED: no principal for ${unresolved.length} actor(s): ${unresolved.join(", ")}
     console.log(`\nDRY RUN -- nothing written. Re-run with --apply to stage ${outcomes.applied} movement(s).`);
     return;
   }
+
+  // ── PHASE 1.5: the opening-balance records the movements point at.
+  //
+  // WRITTEN FIRST, and this order is the whole point. Every baseline movement carries
+  // sourceObject { type: ADJUSTMENT, id }, and the ledger validates that a source was NAMED, not
+  // that it EXISTS. Writing the movements first would leave the same dangling reference the
+  // previous plan had, in nicer words.
+  const obRecords = buildOpeningBalanceRecords(plan);
+  for (let i = 0; i < obRecords.length; i += 400) {
+    const batch = db.batch();
+    for (const r of obRecords.slice(i, i + 400)) batch.set(db.collection(r.collection).doc(r.id), r.data, { merge: true });
+    await batch.commit();
+  }
+  console.log(`opening-balance records written: ${obRecords.length}`);
 
   // ── PHASE 2: commit, in transaction-sized batches.
   //

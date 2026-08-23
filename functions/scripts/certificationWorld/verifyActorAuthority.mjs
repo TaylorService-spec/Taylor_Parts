@@ -42,6 +42,9 @@ const { GOVERNED_BUSINESS_ROLES } = await import(L("functions/lib/access/governe
 const ROLE_CATALOG = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
 const GLOBAL_TARGET = { scope: { type: "global" }, condition: {} };
 
+const { TRANSFER_CREATE, COUNT_SUBMIT, COUNT_RECONCILE, RETURNS_INTAKE, loadPrincipalIndex, resolveCapability } =
+  await import(L("functions/scripts/certificationWorld/actorAuthority.mjs"));
+
 const RECEIVE = "inventory.stock.receive";
 const PURCHASE = "reorder.purchaseOrder.create";
 
@@ -68,21 +71,13 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const employees = await db.collection("employees").get();
   const uidBy = new Map(employees.docs.map((d) => [d.id, d.data().userId]).filter(([, u]) => u));
 
-  /** The real resolution path, read exactly as resolveReceivePermissionThroughTxn reads it. */
-  async function resolves(employeeId, permissionId) {
-    const uid = uidBy.get(employeeId);
-    if (!uid) return { allowed: false, reason: "no principal" };
-    const userSnap = await db.collection("users").doc(uid).get();
-    const accessVersion = userSnap.exists ? (userSnap.data()?.accessVersion ?? 0) : 0;
-    const snap = await db.collection("roleAssignments")
-      .where("principalUid", "==", uid).where("status", "==", "active").get();
-    const assignments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const out = resolveEffectivePermission({
-      permissionId, assignments, roles: ROLE_CATALOG,
-      currentAccessVersion: accessVersion, target: GLOBAL_TARGET,
-    });
-    return { allowed: out.decision === "ALLOW", decision: out.decision, roles: assignments.map((a) => a.roleId) };
-  }
+  // ONE RESOLVER, SHARED. This file used to carry its own copy of the resolution path, written
+  // before actorAuthority.mjs existed. When environment activation was added, the shared copy got
+  // it and this one did not -- so the same employee resolved ALLOW in one tool and DENY in the
+  // other, in the same process, against the same database. A verifier that disagrees with the
+  // thing it verifies is worse than no verifier.
+  const principalIndex = await loadPrincipalIndex(db);
+  const resolves = (employeeId, permissionId) => resolveCapability(db, principalIndex, employeeId, permissionId);
 
   console.log("-- buyers must resolve purchasing, and must NOT resolve receiving");
   for (const b of BUYERS) {
@@ -138,6 +133,62 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     !BUYERS.includes(OWNER) && !RECEIVERS.includes(OWNER),
     "an actor whose role composes both sides cannot demonstrate separation");
 
+
+  // ══ PASS 3 FAMILIES ═══════════════════════════════════════════════════════════════════════
+  //
+  // These three families are registered active:false and reach ALLOW only because the
+  // certification environment activates them. Two independent things must both hold, and each is
+  // asserted by removing the other:
+  //
+  //   ENVIRONMENT ACTIVATION IS NOT A ROLE GRANT
+  //   AUTHORIZATION STILL REQUIRES ACTIVE CAPABILITY + EMPLOYEE EFFECTIVE AUTHORITY
+  console.log("\n-- Pass 3 capability families, resolved through the same path the services use");
+
+  const FAMILIES = [
+    { name: "transfer operator", holders: ["cw-emp-029", "cw-emp-043"], holds: TRANSFER_CREATE,
+      denied: COUNT_RECONCILE, control: "cw-emp-035" },
+    { name: "cycle count counter", holders: ["cw-emp-025", "cw-emp-026", "cw-emp-027", "cw-emp-028"],
+      holds: COUNT_SUBMIT, denied: COUNT_RECONCILE, control: "cw-emp-043" },
+    { name: "cycle count reconciler", holders: ["cw-emp-023", "cw-emp-024"],
+      holds: COUNT_RECONCILE, denied: COUNT_SUBMIT, control: "cw-emp-025" },
+    { name: "returns intake", holders: ["cw-emp-029", "cw-emp-044"], holds: RETURNS_INTAKE,
+      denied: COUNT_RECONCILE, control: "cw-emp-035" },
+  ];
+
+  for (const fam of FAMILIES) {
+    for (const e of fam.holders) {
+      const h = await resolves(e, fam.holds);
+      const d = await resolves(e, fam.denied);
+      check(`${fam.name} ${e} holds ${fam.holds}`, h.allowed, `${h.decision} via ${h.roles?.join("/") ?? "-"}`);
+      check(`${fam.name} ${e} does NOT hold ${fam.denied}`, !d.allowed, d.decision);
+    }
+    // The negative control is a REAL employee doing a NEARBY job -- the person who would plausibly
+    // be handed this task by someone reasoning from job titles.
+    const ctl = await resolves(fam.control, fam.holds);
+    check(`${fam.control} is DENIED ${fam.holds} (nearby job, wrong authority)`, !ctl.allowed,
+      `${ctl.decision} -- holds ${ctl.roles?.join("/")}`);
+  }
+
+  console.log("\n-- counter and reconciler are disjoint PEOPLE, not just disjoint permissions");
+  const counters = FAMILIES.find((f) => f.name === "cycle count counter").holders;
+  const reconcilers = FAMILIES.find((f) => f.name === "cycle count reconciler").holders;
+  const bothSides = counters.filter((c) => reconcilers.includes(c));
+  check("counter set intersect reconciler set is empty", bothSides.length === 0,
+    bothSides.join(", ") || `${counters.length} counters, ${reconcilers.length} reconcilers`);
+  // Necessary and insufficient on its own -- which is why every holder above was resolved
+  // individually first. Two disjoint lists of people who all hold both capabilities would pass
+  // this line and mean nothing.
+
+  console.log("\n-- activation alone authorizes nobody");
+  for (const cap of [TRANSFER_CREATE, COUNT_RECONCILE, RETURNS_INTAKE]) {
+    const holders = [];
+    for (const [employeeId] of uidBy) {
+      const r = await resolves(employeeId, cap);
+      if (r.allowed) holders.push(employeeId);
+    }
+    check(`${cap} is held by SOME employees, not all`, holders.length > 0 && holders.length < uidBy.size,
+      `${holders.length} of ${uidBy.size} employees`);
+  }
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} authority checks passed`);
