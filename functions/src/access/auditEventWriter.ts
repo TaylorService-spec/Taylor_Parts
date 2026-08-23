@@ -157,6 +157,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Serialized asset -> customer Equipment. Irreversible under the current model, so this event is
   // the only surviving record of the unit's prior custody once the asset reads INSTALLED.
   "installSerializedAsset",
+  "recordWorkOrderLabor",
+  "correctWorkOrderLabor",
   "acquireSerializedAsset",
   // Work Order Engine (idempotency remediation): runtime mirror of the updateWorkOrderExecutionData
   // AuditAction union member -- deterministic Audit Event id is the callable's replay/idempotency guard.

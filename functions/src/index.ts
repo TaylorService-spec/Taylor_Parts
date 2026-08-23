@@ -347,6 +347,24 @@ export {
   recordWorkOrderEquipmentInstallCallable as recordWorkOrderEquipmentInstall,
 } from "./workOrderInstall/workOrderInstallCallables";
 
+// --- TECHNICIAN LABOR (Labor Domain V1) ---
+// The canonical record of work performed. NOT workOrder.laborHours -- that field is a single mutable
+// number that answers "how many hours" and destroys every other question: when, by whom, travel or
+// onsite, what a correction changed, whether two entries overlap.
+//
+// Three facts the schema refuses to collapse: WORK PERFORMED, BILLABLE LABOR, LABOR COST. Only the
+// first is recorded here. No rate, no cost, no billable flag -- V1 calculates neither payroll nor
+// invoices, and must not pretend to know values nobody has decided.
+//
+// `work_order_labor_entries` has no Rules match block, so it is deny-all to every client: a
+// technician's hours cannot be written from a browser at all. Both capabilities are registered
+// active:false and carried by no Role yet. EXPORT != DEPLOY.
+export {
+  recordWorkOrderLaborCallable as recordWorkOrderLabor,
+  correctWorkOrderLaborCallable as correctWorkOrderLabor,
+  getWorkOrderLabor,
+} from "./workOrderLabor/laborCallables";
+
 // --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
 // quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read

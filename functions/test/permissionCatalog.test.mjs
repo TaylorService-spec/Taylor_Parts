@@ -248,13 +248,25 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
     assert.equal("active" in permission, false, `"${permission.id}" must not declare active -- would be a behavior change`);
   }
 });
+check("both workOrder.labor.* entries are registered-but-inactive (active: false, never true)", () => {
+  // Labor Domain V1. Paired with the prefix above, exactly as this file's own comment requires: a
+  // prefix that permits `active` to be DECLARED must come with an assertion that it is declared
+  // FALSE, or the allowance quietly becomes permission to activate.
+  const labor = PERMISSION_CATALOG.filter((p) => p.id.startsWith("workOrder.labor."));
+  assert.equal(labor.length, 2, "expected record + correct");
+  assert.deepEqual(labor.map((p) => p.id).sort(), ["workOrder.labor.correct", "workOrder.labor.record"]);
+  for (const p of labor) {
+    assert.equal(p.active, false, `${p.id} must be inactive until a separate Owner activation`);
+  }
+});
+
 check("every crm.activity.* entry is registered-but-not-grantable (active: false, never true)", () => {
   const crm = PERMISSION_CATALOG.filter((p) => p.id.startsWith("crm.activity."));
   assert.equal(crm.length, 2, "Part 1.4 registers exactly two CRM activity capabilities");

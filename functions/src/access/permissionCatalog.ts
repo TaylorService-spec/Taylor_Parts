@@ -114,6 +114,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // governed setWorkOrderPartsPlan producer. Registered active:false: fail-closed for every principal until
   // a SEPARATE Owner grant through the Persona/Permissions architecture. This is a capability, NOT a role
   // check -- it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
+  // TECHNICIAN LABOR (Labor Domain V1). Two capabilities, not one, because recording your own time
+  // and correcting somebody's recorded time are different acts with different accountability -- a
+  // technician fixing their own typo and a manager adjusting a crew's hours are not the same
+  // authority even when the keystrokes match.
+  //
+  // Registered active:false. `work_order_labor_entries` has no firestore.rules match block, so it is
+  // deny-all to every client: labor is written only by the trusted commands.
+  Object.freeze({
+    id: "workOrder.labor.record",
+    description:
+      "Record labor the AUTHENTICATED technician performed, on a Work Order assigned to them. Never for another technician -- the request carries no technicianId and is refused if it tries. Confers no correction authority and no visibility of cost or billing.",
+    resource: "workOrder.labor",
+    action: "record",
+    active: false,
+  }),
+  Object.freeze({
+    id: "workOrder.labor.correct",
+    description:
+      "Correct an existing labor entry by reversing it and recording a replacement. The original is never deleted -- it keeps its author and values and gains a pointer to what replaced it. Separate from workOrder.labor.record because correcting another person's recorded time is a different act.",
+    resource: "workOrder.labor",
+    action: "correct",
+    active: false,
+  }),
   Object.freeze({
     id: "workOrder.parts.plan",
     description:

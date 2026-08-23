@@ -20,10 +20,12 @@ on:
     paths:
       - "functions/src/equipmentInstall/**"
       - "functions/src/workOrderInstall/**"
+      - "functions/src/workOrderLabor/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
+      - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
@@ -47,6 +49,8 @@ on:
       - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/technicianHandheld.test.mjs"
+      - "field-ops-app-vite/src/domain/technicianLaborEntry.js"
+      - "field-ops-app-vite/test/technicianLaborEntry.test.mjs"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
@@ -58,10 +62,12 @@ on:
     paths:
       - "functions/src/equipmentInstall/**"
       - "functions/src/workOrderInstall/**"
+      - "functions/src/workOrderLabor/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
+      - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
@@ -80,6 +86,8 @@ on:
       - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/technicianHandheld.test.mjs"
+      - "field-ops-app-vite/src/domain/technicianLaborEntry.js"
+      - "field-ops-app-vite/test/technicianLaborEntry.test.mjs"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
@@ -121,6 +129,10 @@ jobs:
       # The handheld composition: what a phone shows, in what order, and what it may claim.
       - name: Handheld decisions — Home order, More stays small, the offline matrix
         run: node --test test/technicianHandheld.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Labor entry decisions — what may be sent, and what it is worth unsent
+        run: node --test test/technicianLaborEntry.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
@@ -181,6 +193,13 @@ jobs:
       # INSTALL-type gate, legacy type values, and recovery read from the database rather than the tab.
       - name: Work order closeout installation — scoping, refusals, recovery
         run: node test/workOrderInstall.test.mjs
+        working-directory: functions
+
+      # Hours become cost and eventually an invoice. Every failure that matters -- a retry paying
+      # twice, time on somebody else's job, a correction that cannot be explained, a runaway timer,
+      # one technician in two places -- is exercised against real roleAssignment documents.
+      - name: Technician labor — authority, validation, overlap, idempotency, correction
+        run: node test/workOrderLabor.test.mjs
         working-directory: functions
 
       - name: Upload emulator debug logs

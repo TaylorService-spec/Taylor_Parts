@@ -888,6 +888,10 @@
     {
       "file": "test/technicianHandheld.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/technicianLaborEntry.test.mjs",
+      "runner": "node"
     }
   ]
 }
