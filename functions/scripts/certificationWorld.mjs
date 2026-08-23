@@ -85,6 +85,12 @@ export function expectedRecords() {
     ["equipment", w.equipment],
     // parts ADDED with 1.4.0 -- the service catalog the installed base consumes.
     ["parts", w.parts],
+    // technicians and jobs ADDED with 1.5.0 -- the workload the workforce had always DECLARED and
+    // never had. Eleven technicians carried a certWorkload category with not one job anywhere in
+    // the world; the coverage guard below is what caught them the moment buildWorld started
+    // returning them, which is exactly the failure mode its comment describes.
+    ["fieldops_technicians", w.technicians],
+    ["fieldops_jobs", w.jobs],
   ];
   const out = [];
   for (const [datasetId, rows] of groups) {
