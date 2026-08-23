@@ -119,9 +119,11 @@
       "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
     },
     {
-      "role": "certification",
-      "name": "Certification World emulator",
-      "description": "Firestore emulator project for the Certification World dataset. NOT a Firebase project: the demo- prefix is reserved by the emulator suite and cannot be deployed to, so this entry can only ever take effect against a local emulator. Activated so the certification suite can exercise the REAL authorization path for Transfers, Cycle Count and Returns instead of stubbing it. ENVIRONMENT ACTIVATION IS NOT A ROLE GRANT -- a principal still needs a qualifying roleAssignment.",
+      "id": "certification-emulator",
+      "role": "sandbox",
+      "deployment": "platform",
+      "status": "not-provisioned",
+      "purpose": "Firestore emulator project for the Certification World dataset. NOT a Firebase project: the demo- prefix is reserved by the emulator suite and cannot be deployed to, so this entry can only ever take effect against a local emulator. Activated so the certification suite exercises the REAL authorization path for Transfers, Cycle Count and Returns instead of stubbing it.",
       "firebase": {
         "projectId": "demo-certworld"
       },
@@ -135,7 +137,8 @@
         "inventory.cycleCount.reconcile",
         "inventory.cycleCount.cancel",
         "inventory.returns.intake"
-      ]
+      ],
+      "$capabilityActivationOverrides_comment": "Owner-approved 2026-08-22. Narrower than platform-sandbox on purpose: the 9 ids Pass 3 exercises, not the 33 the sandbox activates. ENVIRONMENT ACTIVATION IS NOT A ROLE GRANT -- a principal still needs a qualifying roleAssignment, and production remains blocked by role-keyed code that never reads this field."
     },
     {
       "id": "platform-integration",

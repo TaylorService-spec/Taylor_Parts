@@ -217,6 +217,12 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   const g06 = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "g06-transfer-recovery.json"), "utf8"));
   for (const entry of transferQuestions(xfer, g06)) add(entry);
 
+  // Cycle counts and G07.
+  const { cycleCountQuestions } = await import(L("functions/scripts/certificationWorld/data/cycleCountQuestions.mjs"));
+  const cc = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "cycle-count-scenarios.json"), "utf8"));
+  const g07 = JSON.parse(fs.readFileSync(path.join(OUT_DIR, "g07-cycle-variance.json"), "utf8"));
+  for (const entry of cycleCountQuestions(cc, g07)) add(entry);
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, "tier1-questions.json"), JSON.stringify({ count: q.length, questions: q }, null, 2));
 
@@ -225,7 +231,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   for (const e of q) console.log(`  ${e.id}  ${e.topic.padEnd(26)} ${e.answerType.padEnd(11)} ${e.question}`);
   console.log(`\n${q.length} questions`);
   console.log(JSON.stringify(byTopic, null, 0));
-  if (q.length < 40 || q.length > 60) { console.error(`FAILED: expected 40-60 questions, got ${q.length}`); process.exitCode = 1; }
+  if (q.length < 55 || q.length > 80) { console.error(`FAILED: expected 55-80 questions, got ${q.length}`); process.exitCode = 1; }
   const unknowns = q.filter((e) => e.answerType === "UNKNOWN").length;
   const denied = q.filter((e) => e.answerType === "DENIED").length;
   console.log(`UNKNOWN answers: ${unknowns} (must be > 0)   persona-denied: ${denied} (must be > 0)`);

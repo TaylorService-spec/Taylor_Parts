@@ -122,14 +122,30 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     .reduce((s, v) => s + signedQuantity(v), 0);
   const receiptNet = opRows.filter((v) => v.sourceObject?.type === "RECEIVING_ORDER")
     .reduce((s, v) => s + signedQuantity(v), 0);
-  const otherNet = opRows.filter((v) => v.sourceObject?.type !== "TRANSFER_ORDER"
-    && v.sourceObject?.type !== "RECEIVING_ORDER").reduce((s, v) => s + signedQuantity(v), 0);
+  // Cycle-count reconciliations are a THIRD cause, and a different KIND of cause:
+  //
+  //   TRANSFER            net 0   -- stock relocated; the company owns exactly as much
+  //   RECEIPT             net +   -- goods arrived from a supplier
+  //   CYCLE RECONCILE     net +/- -- the books were corrected toward what is physically there
+  //
+  // The third one is why a company total legitimately changes without anything arriving or
+  // leaving. An earlier version of this block asserted receipts were the only thing that could add
+  // stock, which was true right up until the first variance was settled.
+  const cycleNet = opRows.filter((v) => v.sourceObject?.type === "ADJUSTMENT"
+    && String(v.sourceObject?.id ?? "").startsWith("cyc_")).reduce((s, v) => s + signedQuantity(v), 0);
+  const KNOWN_CAUSES = new Set(["TRANSFER_ORDER", "RECEIVING_ORDER"]);
+  const otherNet = opRows.filter((v) => !KNOWN_CAUSES.has(v.sourceObject?.type)
+    && !String(v.sourceObject?.id ?? "").startsWith("cyc_")).reduce((s, v) => s + signedQuantity(v), 0);
+
   check("TRANSFERS are company-neutral", transferNet === 0,
     `net ${transferNet} across every transfer movement -- they relocate, never create`);
-  check("receipts are the only thing that ADDED company stock", receiptNet === opWh + opTr,
-    `receipts ${receiptNet}, total operations ${opWh + opTr}`);
+  check("every unit of change is attributable to a named cause",
+    receiptNet + transferNet + cycleNet === opWh + opTr,
+    `receipts ${receiptNet} + transfers ${transferNet} + cycle corrections ${cycleNet} = ${receiptNet + transferNet + cycleNet}, operations ${opWh + opTr}`);
+  check("CYCLE RECONCILIATION changed the company total -- a correction, not a relocation",
+    cycleNet !== 0, `${cycleNet} units. A transfer may never do this; a reconciliation must be able to.`);
   check("no operation is unaccounted for", otherNet === 0,
-    `${otherNet} units moved by something that is neither a transfer nor a receipt`);
+    `${otherNet} units moved by something that is not a transfer, a receipt, or a settled count`);
 
   console.log("\n-- negative balances");
   const negatives = [];

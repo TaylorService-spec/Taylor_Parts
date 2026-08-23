@@ -232,7 +232,11 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
     // is not a wish list, and a certification environment that quietly held broader authority than
     // it needed would be a worse model of the sandbox, not a better one.
     Object.freeze({
-      role: "certification",
+      // ROLE IS A GOVERNED THREE-VALUE ENUM -- sandbox | integration | production. An earlier
+      // version of this entry invented "certification", which the deployment-drift registry guard
+      // rejected: the word describes what this environment is FOR, and that belongs in its id and
+      // purpose, not in a vocabulary another contract validates against.
+      role: "sandbox",
       firebase: Object.freeze({ projectId: "demo-certworld" }),
       capabilityActivationOverrides: Object.freeze([
         "inventory.transfer.create",
