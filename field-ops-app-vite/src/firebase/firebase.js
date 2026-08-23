@@ -51,7 +51,8 @@ export const functions = getFunctions(app, firebaseConfig.functionsRegion);
 // See .claude/skills/run-field-ops-app-vite/ for the driver that uses
 // this to sign in against the Firestore/Auth emulator without ever
 // authenticating against production.
-if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("emulator") === "1") {
+if (import.meta.env.DEV && typeof window !== "undefined"
+  && new URLSearchParams(window.location.search).get("emulator") === "1") {
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   // Functions emulator (firebase.json: functions port 5001) so the Work Order
