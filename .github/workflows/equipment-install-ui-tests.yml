@@ -51,6 +51,9 @@ on:
       - "field-ops-app-vite/test/technicianHandheld.test.mjs"
       - "field-ops-app-vite/src/domain/technicianLaborEntry.js"
       - "field-ops-app-vite/test/technicianLaborEntry.test.mjs"
+      - "field-ops-app-vite/src/modules/mobile/JobLabor.jsx"
+      - "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
+      - "field-ops-app-vite/test/jobLabor.test.jsx"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
@@ -88,6 +91,9 @@ on:
       - "field-ops-app-vite/test/technicianHandheld.test.mjs"
       - "field-ops-app-vite/src/domain/technicianLaborEntry.js"
       - "field-ops-app-vite/test/technicianLaborEntry.test.mjs"
+      - "field-ops-app-vite/src/modules/mobile/JobLabor.jsx"
+      - "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
+      - "field-ops-app-vite/test/jobLabor.test.jsx"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
@@ -136,7 +142,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
-        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx
+        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
         working-directory: field-ops-app-vite
 
       # The client must still BUILD. A surface that only passes its tests and fails the bundle is a
