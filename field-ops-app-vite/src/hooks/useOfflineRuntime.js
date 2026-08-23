@@ -39,9 +39,29 @@ export function useOfflineRuntime(deps = {}) {
   // NO AUTH CONTEXT MEANS NO PRINCIPAL, WHICH MEANS NO QUEUE — and emphatically not a crash. A
   // surface rendered outside the provider (a test harness, a future embed) must degrade to "there is
   // nobody signed in", because every other answer this hook could give would be about somebody.
-  const uid = (useAuth() ?? {}).user?.uid ?? null;
+  //
+  // `disabled` is the other half of that: a surface whose runtime is PROVIDED from above still calls
+  // this hook (hooks must be called unconditionally) but must not open a second queue over the same
+  // storage key. See OfflineRuntimeContext.jsx for what that would have cost.
+  const signedInUid = (useAuth() ?? {}).user?.uid ?? null;
+  const uid = deps.disabled ? null : signedInUid;
 
-  const [queue, setQueue] = useState(EMPTY);
+  const [queue, setQueueState] = useState(EMPTY);
+
+  // THE QUEUE'S LIVE VALUE, not the render-old one.
+  //
+  // Every mutator used to read `queue` from its closure. Two enqueues in the same tick — which is
+  // exactly what capturing an installation and its dependent completion does — both read the SAME
+  // pre-render snapshot, and the second persisted a queue built without the first. The installation
+  // vanished, silently, with a "pending sync" on screen saying it had not.
+  //
+  // Found by integration, not by the runtime tests: every one of those enqueued through separate
+  // awaited user actions, so no two ever landed in one tick.
+  const queueRef = useRef(EMPTY);
+  const setQueue = useCallback((next) => {
+    queueRef.current = next;
+    setQueueState(next);
+  }, []);
   const [loadOutcome, setLoadOutcome] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [durable, setDurable] = useState(true);
@@ -70,10 +90,21 @@ export function useOfflineRuntime(deps = {}) {
     store.load(uid).then((result) => {
       if (cancelled || !alive.current) return;
       setLoadOutcome(result.outcome);
-      setQueue(Object.freeze(result.record.intents ?? []));
+      const loaded = result.record.intents ?? [];
+
+      // MERGE, NEVER REPLACE. Reading from storage is asynchronous, and a technician can capture
+      // something before it resolves -- open the app, tap straight into a note. Assigning the loaded
+      // array over the top would delete work that was captured while we were reading, which is the
+      // worst failure this runtime has: the entry was on screen, said pending, and is gone.
+      //
+      // Whatever is already in hand wins on a collision: it is strictly newer than what was on disk.
+      const held = queueRef.current ?? [];
+      if (held.length === 0) { setQueue(Object.freeze(loaded)); return; }
+      const heldIds = new Set(held.map((i) => i.intentId));
+      setQueue(Object.freeze([...loaded.filter((i) => !heldIds.has(i.intentId)), ...held]));
     });
     return () => { cancelled = true; };
-  }, [uid, store]);
+  }, [uid, store, setQueue]);
 
   /** Persist, and report honestly when the device would not keep it. */
   const persist = useCallback(async (next) => {
@@ -94,13 +125,26 @@ export function useOfflineRuntime(deps = {}) {
   const running = useRef(false);
   const sync = useCallback(async (force = false) => {
     if (running.current || !uid) return null;
-    const attempt = shouldAttemptSync(queue, { hint: connectivityHint(navigatorRef), now: now() });
+    const attempt = shouldAttemptSync(queueRef.current, { hint: connectivityHint(navigatorRef), now: now() });
     if (!force && !attempt.attempt) return attempt;
 
     running.current = true;
     if (alive.current) setSyncing(true);
     try {
-      const result = await drainQueue(queue, {
+      // A PERSON PRESSING "SYNC NOW" CLEARS THE BACKOFF.
+      //
+      // Backoff exists to stop a phone hammering a dead link automatically. A technician deliberately
+      // pressing the button is new information — they have walked outside, or watched the signal come
+      // back — and making them wait out a five-minute doubling they cannot see is the app knowing
+      // better than the person holding it. Automatic passes still respect it.
+      if (force) {
+        setQueue(Object.freeze(queueRef.current.map((i) => (
+          i.state === "PENDING_SYNC" && (i.nextEligibleAt ?? 0) > 0
+            ? Object.freeze({ ...i, nextEligibleAt: 0 })
+            : i
+        ))));
+      }
+      const result = await drainQueue(queueRef.current, {
         principalUid: uid,
         deps: {
           session,
@@ -119,7 +163,7 @@ export function useOfflineRuntime(deps = {}) {
       running.current = false;
       if (alive.current) setSyncing(false);
     }
-  }, [uid, queue, bindings, session, persist, now, navigatorRef]);
+  }, [uid, bindings, session, persist, now, navigatorRef, setQueue]);
 
   /**
    * Queue one intent.
@@ -130,31 +174,31 @@ export function useOfflineRuntime(deps = {}) {
   const enqueue = useCallback(async (intent) => {
     if (!intent?.valid && !intent?.intentId) return { queued: false, reason: intent?.reason ?? "invalid_intent" };
     const value = intent.value ?? intent;
-    const next = enqueueIntent(queue, value);
+    const next = enqueueIntent(queueRef.current, value);
     setQueue(next);
     const saved = await persist(next);
     return { queued: true, durable: saved.durable, reason: saved.reason, intentId: value.intentId };
-  }, [queue, persist]);
+  }, [persist, setQueue]);
 
   const retry = useCallback(async (intentId) => {
-    const next = retryIntent(queue, intentId, now());
+    const next = retryIntent(queueRef.current, intentId, now());
     setQueue(next);
     await persist(next);
     return sync(true);
-  }, [queue, persist, now, sync]);
+  }, [persist, now, sync, setQueue]);
 
   const discard = useCallback(async (intentId) => {
-    const next = discardIntent(queue, intentId);
+    const next = discardIntent(queueRef.current, intentId);
     setQueue(next);
     await persist(next);
-  }, [queue, persist]);
+  }, [persist, setQueue]);
 
   /** Forget what has landed. Refusals are kept — see pruneSynced. */
   const clearSettled = useCallback(async () => {
-    const next = pruneSynced(queue);
+    const next = pruneSynced(queueRef.current);
     setQueue(next);
     await persist(next);
-  }, [queue, persist]);
+  }, [persist, setQueue]);
 
   // The network coming back is the one moment worth reacting to. Nothing here polls.
   useEffect(() => {

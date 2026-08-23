@@ -28,6 +28,7 @@ import { Button } from "../../shared/ui/primitives";
 import FieldMode from "../mobile/FieldMode";
 import SyncIndicator from "../../shared/ui/SyncIndicator.jsx";
 import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
+import { OfflineRuntimeProvider } from "../../offline/OfflineRuntimeContext.jsx";
 
 // The scanner and its dependencies arrive only when Scan is opened.
 const ScanWorkspace = lazy(() => import("../scan/ScanWorkspace"));
@@ -58,6 +59,9 @@ export default function TechnicianShell({ deps = {} }) {
   const loading = techLoading || workOrdersLoading;
 
   return (
+    // ONE runtime for the whole shell. Everything below -- FieldMode, its note, time, parts, install
+    // and completion controls -- captures into this queue and no other.
+    <OfflineRuntimeProvider value={offline}>
     <div className="fo-handheld">
       <main className="fo-handheld__body" aria-live="polite">
         {tab === "home" && (
@@ -90,6 +94,7 @@ export default function TechnicianShell({ deps = {} }) {
         ))}
       </nav>
     </div>
+    </OfflineRuntimeProvider>
   );
 }
 

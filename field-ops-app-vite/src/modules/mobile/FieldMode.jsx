@@ -13,6 +13,9 @@ import JobNote from "./JobNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import SyncIndicator from "../../shared/ui/SyncIndicator.jsx";
 import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
+import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
+import { captureComplete } from "../../offline/technicianIntentCapture.js";
+import { connectivityHint } from "../../offline/syncExecutor.js";
 
 // THE SYNC QUEUE IS LAZY; THE INDICATOR IS NOT.
 //
@@ -65,7 +68,15 @@ export default function FieldMode({ deps } = {}) {
 
   // The offline runtime. Loaded for the signed-in principal and for nobody else -- the queue follows
   // the person, not the device.
-  const offline = useOfflineRuntime({ technicianId: () => technicianId, ...(deps?.offline ?? {}) });
+  //
+  // PROVIDED FROM ABOVE WHEN THERE IS AN ABOVE. Inside TechnicianShell the shell owns the queue, and
+  // opening a second one here would give two writers the same storage key. Standing alone -- which is
+  // how FieldMode renders at desktop widths -- it owns its own.
+  const provided = useProvidedOfflineRuntime();
+  const own = useOfflineRuntime({
+    disabled: !!provided, technicianId: () => technicianId, ...(deps?.offline ?? {}),
+  });
+  const offline = provided ?? own;
 
   const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
   const [current, ...upNext] = active;
@@ -100,6 +111,31 @@ export default function FieldMode({ deps } = {}) {
     if (pending.id) return; // duplicate-tap guard
     setPending({ id: workOrderId, action });
     setFailure(null);
+
+    // ONLY "Complete" IS QUEUEABLE, and deliberately so. The earlier lifecycle actions -- Accept, En
+    // route, Arrived -- are a technician telling dispatch where they are RIGHT NOW, and a position
+    // report that arrives four hours late is worse than one that never arrived: dispatch would route
+    // around a technician who has long since left. Completion is a durable business fact about work
+    // that was actually done, and it keeps its meaning whenever it lands.
+    if (action === "Complete" && offline?.enqueue
+        && connectivityHint(typeof navigator === "undefined" ? null : navigator).likelyOnline === false) {
+      const intent = captureComplete({
+        workOrderId, principalUid: offline.principalUid ?? "self",
+        // Derived from the live queue: anything already captured for this job -- notes, time, parts --
+        // must be sequenced ahead of completion, because their commands refuse a work order that has
+        // left execution.
+        queue: offline.queue, captureKey: `complete:${workOrderId}`, at: Date.now(), offline: true,
+      });
+      if (intent.valid) {
+        const stored = await offline.enqueue(intent);
+        setFailure(stored.durable
+          ? null
+          : { id: workOrderId, message: "This phone could not save the completion offline. Stay on this screen until you have signal." });
+      }
+      setPending({ id: null, action: null });
+      return;
+    }
+
     try {
       await transitionWorkOrder(workOrderId, action);
       // The authoritative listener moves the Work Order. Nothing is fabricated here.
@@ -115,7 +151,7 @@ export default function FieldMode({ deps } = {}) {
     } finally {
       setPending({ id: null, action: null });
     }
-  }, [pending.id]);
+  }, [pending.id, offline]);
 
   if (loading) return <div className="fo-field"><p className="fo-muted">Loading your day…</p></div>;
 
@@ -151,13 +187,17 @@ export default function FieldMode({ deps } = {}) {
 
   return (
     <div className="fo-field">
-      {/* UNSYNCED WORK IS NEVER SILENT. Above the day, before anything else, every time. */}
+      {/* UNSYNCED WORK IS NEVER SILENT. Above the day, before anything else, every time.
+          Suppressed when a shell above is already showing it -- one banner, not two stacked saying
+          the same thing on a 320px screen. */}
+      {!provided ? (
       <SyncIndicator
         indicator={offline.indicator}
         syncing={offline.syncing}
         onOpen={() => setSyncOpen(true)}
         onSync={() => offline.sync(true)}
       />
+      ) : null}
 
       {syncOpen ? (
         <Suspense fallback={<p className="fo-muted" role="status">Opening sync…</p>}>
@@ -256,7 +296,12 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
         >
           Add a note
         </Button>
-        <Button variant="secondary" onClick={() => toggle("labor")} aria-pressed={tool === "labor"}>
+        {/* SAME CLASS AS ITS TWO SIBLINGS. Without it this rendered at 31px beside two 52px controls
+            in the same row -- measured on a real phone once the shell was actually mounted. */}
+        <Button
+          variant="secondary" className="fo-job__tool"
+          onClick={() => toggle("labor")} aria-pressed={tool === "labor"}
+        >
           Time
         </Button>
       </div>

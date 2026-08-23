@@ -2245,6 +2245,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--color-warning-surface); color: var(--color-warning);
   border-left: 3px solid var(--color-warning);
 }
+/* PENDING is neither success nor failure, and must not borrow either one's colour. Held on the
+   phone, not recorded on the platform -- an "ok" green here would say the stock moved. */
+.fo-scan__notice--pending {
+  background: var(--color-surface-subtle, #f3f0e8); color: var(--color-text-primary);
+  border-left: 3px solid var(--color-text-secondary);
+}
 .fo-scan__plan { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
 
 /* ---------------------------------------------------------------------------
@@ -4620,6 +4626,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Labor entry: hours, minutes and type on one row at 320px, each target still 44px tall. */
 .fo-labor__entry { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; align-items: end; }
 .fo-labor__entry input, .fo-labor__entry select { min-height: 44px; width: 100%; }
+/* A grid item's default min-width is auto, so a select whose longest option is wider than its column
+   pushes the column out. Measured overflowing by 8px at 320. */
+.fo-labor__entry label, .fo-labor__entry select { min-width: 0; }
+/* width:100% plus padding overflows its grid column unless the padding is inside the width. Measured
+   overflowing by 8px at 320, 375 and 414 alike -- it was never a narrow-screen problem, only a
+   narrow-screen-visible one. */
+.fo-labor__entry input, .fo-labor__entry select { box-sizing: border-box; }
+
+/* The most consequential button a technician presses, and it was rendering at 31px on a phone. */
+.fo-closeout__actions { flex-wrap: wrap; }
+.fo-closeout__actions button { min-height: 52px; flex: 1 1 auto; font-size: 16px; }
 
 /* ---------------------------------------------------------------------------
    WO-03 -- OFFLINE SYNC. Cards, never a table: a queue is naturally tabular and

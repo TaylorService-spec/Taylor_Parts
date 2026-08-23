@@ -4,8 +4,30 @@
     {
       "name": "field-ops-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "field-ops-app-vite", "--", "--port", "5199"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "field-ops-app-vite",
+        "--",
+        "--port",
+        "5199"
+      ],
       "port": 5199
+    },
+    {
+      "name": "field-ops-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "preview",
+        "--prefix",
+        "field-ops-app-vite",
+        "--",
+        "--port",
+        "5200"
+      ],
+      "port": 5200
     }
   ]
 }

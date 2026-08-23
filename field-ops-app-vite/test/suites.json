@@ -896,6 +896,10 @@
     {
       "file": "test/technicianOfflineRuntime.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/technicianShellReachability.test.mjs",
+      "runner": "node"
     }
   ]
 }
