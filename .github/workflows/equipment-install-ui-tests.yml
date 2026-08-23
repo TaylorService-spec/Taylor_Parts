@@ -19,11 +19,17 @@ on:
   pull_request:
     paths:
       - "functions/src/equipmentInstall/**"
+      - "functions/src/workOrderInstall/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/workOrderInstall.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
+      - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
+      - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
+      - "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
       - "field-ops-app-vite/src/domain/availableEquipmentGovernedProjection.js"
       - "field-ops-app-vite/src/domain/availableEquipmentCatalogView.js"
       - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
@@ -35,6 +41,8 @@ on:
       - "field-ops-app-vite/test/wholeUnitAssetDisplay.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallForm.test.mjs"
       - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
+      - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
+      - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - "functions/package.json"
@@ -44,17 +52,25 @@ on:
     branches: [main]
     paths:
       - "functions/src/equipmentInstall/**"
+      - "functions/src/workOrderInstall/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/workOrderInstall.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
+      - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
+      - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
+      - "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
       - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
       - "field-ops-app-vite/src/modules/equipment/InstallAtCustomer.jsx"
       - "field-ops-app-vite/src/hooks/useWholeUnitParts.js"
       - "field-ops-app-vite/src/access/useEquipmentInstallCapability.js"
       - "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
       - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
+      - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
+      - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
 
@@ -88,8 +104,12 @@ jobs:
         run: node --test test/equipmentInstallForm.test.mjs
         working-directory: field-ops-app-vite
 
-      - name: Rendered surface — labels, line split, who sees the action
-        run: npx vitest run test/availableEquipmentInstall.test.jsx
+      - name: Closeout decisions — ordering, the middle state, the offline seam
+        run: node --test test/workOrderInstallCloseout.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Rendered surfaces — manager list and technician closeout
+        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx
         working-directory: field-ops-app-vite
 
       # The client must still BUILD. A surface that only passes its tests and fails the bundle is a
@@ -140,6 +160,12 @@ jobs:
       # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
       - name: Callable boundary — auth, actor identity, and every refusal code
         run: node test/installCallable.test.mjs
+        working-directory: functions
+
+      # The technician path against real work orders and real roleAssignments: own-WO scoping, the
+      # INSTALL-type gate, legacy type values, and recovery read from the database rather than the tab.
+      - name: Work order closeout installation — scoping, refusals, recovery
+        run: node test/workOrderInstall.test.mjs
         working-directory: functions
 
       - name: Upload emulator debug logs
