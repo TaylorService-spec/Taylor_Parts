@@ -26,6 +26,29 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { resolveEffectivePermission } = await import(L("functions/lib/access/resolveEffectivePermission.js"));
 const { COMPATIBILITY_ROLES } = await import(L("functions/lib/access/compatibilityRoles.js"));
 const { GOVERNED_BUSINESS_ROLES } = await import(L("functions/lib/access/governedBusinessRoles.js"));
+const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } =
+  await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+
+/**
+ * The activation set for THIS environment, resolved by the product's own function.
+ *
+ * Not a list written here. resolveCapabilityOverrides is the same code the deployed runtime calls;
+ * it is handed the canonical registry and the project id the emulator actually is, and it applies
+ * all three hard-blocks itself -- unknown project yields empty, production yields empty regardless
+ * of its data, and whatever survives is intersected with the eligible allow-list.
+ *
+ * Hand-feeding a set here would have been the stub the Owner explicitly refused: it would prove
+ * that a resolver given the right answer returns the right answer.
+ */
+export const ENVIRONMENT_ACTIVATIONS = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "demo-certworld");
+
+export const TRANSFER_CREATE = "inventory.transfer.create";
+export const TRANSFER_DISPATCH = "inventory.transfer.dispatch";
+export const TRANSFER_RECEIVE = "inventory.transfer.receive";
+export const COUNT_CREATE = "inventory.cycleCount.create";
+export const COUNT_SUBMIT = "inventory.cycleCount.submit";
+export const COUNT_RECONCILE = "inventory.cycleCount.reconcile";
+export const RETURNS_INTAKE = "inventory.returns.intake";
 
 /** The same merge the callable wiring uses: a principal may hold ANY governed role. */
 export const ROLE_CATALOG = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
@@ -57,6 +80,11 @@ export async function resolveCapability(db, principalIndex, employeeId, permissi
   const out = resolveEffectivePermission({
     permissionId, assignments, roles: ROLE_CATALOG,
     currentAccessVersion: accessVersion, target: GLOBAL_TARGET,
+    // Environment activation, resolved by the product. Every Pass 3 capability is registered
+    // active:false, which the resolver denies AHEAD of any Role grant -- without this the transfer,
+    // cycle-count and returns families answer inactivePermission for everyone, forever, and no
+    // authority test in this world would mean anything.
+    activationOverrides: ENVIRONMENT_ACTIVATIONS,
   });
   return { allowed: out.decision === "ALLOW", decision: out.decision, roles: assignments.map((a) => a.roleId), uid };
 }

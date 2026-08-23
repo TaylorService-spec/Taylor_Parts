@@ -211,6 +211,41 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "inventory.returns.intake",
       ]),
     }),
+    // CERTIFICATION WORLD EMULATOR. Owner-approved 2026-08-22.
+    //
+    // demo-certworld is not a Firebase project and cannot become one: the demo- prefix is reserved
+    // by the emulator suite, so an Admin SDK pointed at it is talking to localhost or to nothing.
+    // This entry therefore cannot widen access to any deployed environment, whatever it declares.
+    //
+    // WHY IT HAD TO EXIST. inventory.transfer.*, inventory.cycleCount.* and inventory.returns.intake
+    // are all registered active:false, which the resolver denies AHEAD of any Role grant. With no
+    // registry entry the certification emulator resolved EMPTY overrides, so every one of those
+    // capabilities denied for every employee, always -- and the only ways to run a real transfer
+    // test were to hand-feed an override set from fixture code or to stub the authorize callback.
+    // Both are the same lie told at different depths.
+    //
+    // EXACT KEY, NEVER A PREFIX. `demo-foo` inherits nothing from this entry; the lookup is a
+    // string equality against projectId and there is no pattern matching anywhere in the resolver.
+    //
+    // NARROWER THAN SANDBOX ON PURPOSE. eos-platform-sandbox activates 33 ids across Sales, Finance,
+    // CRM and the scanner; this activates the 9 the Pass 3 workflows actually exercise. Activation
+    // is not a wish list, and a certification environment that quietly held broader authority than
+    // it needed would be a worse model of the sandbox, not a better one.
+    Object.freeze({
+      role: "certification",
+      firebase: Object.freeze({ projectId: "demo-certworld" }),
+      capabilityActivationOverrides: Object.freeze([
+        "inventory.transfer.create",
+        "inventory.transfer.dispatch",
+        "inventory.transfer.receive",
+        "inventory.transfer.cancel",
+        "inventory.cycleCount.create",
+        "inventory.cycleCount.submit",
+        "inventory.cycleCount.reconcile",
+        "inventory.cycleCount.cancel",
+        "inventory.returns.intake",
+      ]),
+    }),
     Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),
     // taylor-parts-production: role "production", NO capabilityActivationOverrides
     // key -- both the data (absence) and the code (role-keyed) block it.
