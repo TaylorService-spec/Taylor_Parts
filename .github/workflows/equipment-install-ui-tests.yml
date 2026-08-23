@@ -66,6 +66,14 @@ on:
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
       - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      # WO-03A -- the mounted shell and the end-to-end offline workflow through it.
+      - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
+      - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
+      - "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx"
+      - "field-ops-app-vite/src/navigation/useIsPhone.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/technicianOfflineEndToEnd.test.jsx"
+      - "field-ops-app-vite/test/technicianShellReachability.test.mjs"
       - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
@@ -118,6 +126,14 @@ on:
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
       - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      # WO-03A -- the mounted shell and the end-to-end offline workflow through it.
+      - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
+      - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
+      - "field-ops-app-vite/src/modules/mobile/PartsScanner.jsx"
+      - "field-ops-app-vite/src/navigation/useIsPhone.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/technicianOfflineEndToEnd.test.jsx"
+      - "field-ops-app-vite/test/technicianShellReachability.test.mjs"
       - "field-ops-app-vite/test/dictatableNote.test.jsx"
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
@@ -178,6 +194,18 @@ jobs:
       # and only a render can catch it.
       - name: Offline UI — queued is never saved, refusals read as situations, dictation offline
         run: npx vitest run test/offlineSyncUi.test.jsx test/dictatableNote.test.jsx
+        working-directory: field-ops-app-vite
+
+      # WO-03A. The shell was imported by NOTHING for two slices while every component test passed,
+      # because rendering a component is importing it. This guard reads the route table instead.
+      - name: Technician shell reachability — the guard that catches an orphaned app
+        run: node --test test/technicianShellReachability.test.mjs
+        working-directory: field-ops-app-vite
+
+      # The flagship: a whole offline day driven through the rendered app, asserting on what the
+      # service layer was asked to do rather than on any queue API.
+      - name: Offline end-to-end — capture, restart, reconnect, exact server effects
+        run: npx vitest run test/technicianOfflineEndToEnd.test.jsx
         working-directory: field-ops-app-vite
 
       # The client must still BUILD. A surface that only passes its tests and fails the bundle is a

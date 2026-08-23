@@ -28,7 +28,7 @@ There is no background process quietly sending things while your phone sits in y
 
 ## 2. Recording notes, time, parts, and an installation with no signal
 
-You can capture all of these with no signal. Here's what each screen tells you afterward.
+All of these can be captured with no signal. Here's what each screen tells you afterward — and none of them ever says "saved" or "installed" until the platform has actually accepted the work.
 
 ### A note
 1. On the job, tap **Add a note**.
@@ -44,10 +44,24 @@ You can capture all of these with no signal. Here's what each screen tells you a
 
 If the button is greyed out and you see *"You are not authorized to record labor on this work order,"* that's not a signal problem — recording time isn't turned on for your account yet. Talk to your manager.
 
-### Parts and an installation
-**Not yet.** Right now, notes and time are the two things you can capture with no signal. Recording parts used and recording an installation still need a connection — if you try either with no signal, you will get an error rather than a "waiting to sync" entry.
+### Parts used
+1. Open **Scan a part** on the job, find the part, and set the quantity.
+2. With no signal, you will see: **"2 × Seal kit held on this phone — pending sync."**
+3. With signal: **"Recorded 2 × Seal kit on WO-2026-0001."**
 
-If you are on an installation job in a basement, the practical advice is: write down the serial, put it in a **note** (which does work offline), and record the installation itself once you are back in range.
+Held is not recorded. Until it syncs, nothing has come off stock and nothing is on the work order.
+
+### An installation
+1. On an installation job, pick the unit you installed from the list (or type its serial to narrow it).
+2. Press **Install & Complete Work**.
+3. With no signal you will see: **"Installation pending sync. The work order will be completed once it reaches the platform."**
+
+You will never see "Installed" or "Completed" from pressing that button offline. Both of those are things only the platform can say, and it has not seen this yet.
+
+### Finishing a job that is not an installation
+Press **Complete job** as normal. With no signal it is held and sent when you are back in range.
+
+The earlier lifecycle buttons — Accepted, Travelling, On site, Working — are **not** held offline, and that is deliberate. Those tell dispatch where you are *right now*, and one arriving four hours late is worse than one that never arrived: dispatch would route work to a technician who left long ago.
 
 **The rule that matters everywhere:** nothing on any of these screens ever says "saved," "installed," or "complete" because you tapped a button with no signal. Those words only appear once the platform has actually accepted the work.
 
@@ -61,8 +75,11 @@ The app is deliberately built so you are never in a situation where something is
   - **"1 item needs your attention"** / **"n items need your attention"** — something was refused. See section 4.
 
 - **Tap "View" on that banner** to open the full Sync screen — every outstanding item, what state it is in, and why.
+- **Or go to More → Sync status**, which shows the same list and carries its own count (e.g. *"Sync status — 2 not sent"*).
 
-From the banner you can also tap **Sync now** to try sending straight away rather than waiting.
+From the banner you can also tap **Sync now** to try sending straight away rather than waiting. Pressing it yourself also skips any waiting period the app had set for itself after a failure — if you know you have signal back, you do not have to wait for the app to work it out.
+
+When everything has gone through, the banner reads **"Everything is saved"** and offers no buttons, because there is nothing left to send.
 
 ## 4. When something "needs your attention"
 
@@ -134,4 +151,5 @@ Practically: if you're handing off a phone to another technician, or using a sha
 
 ## Related
 
-- Sync status is the banner at the top of your current job — tap **View** on it for the full list.
+- Sync status is the banner at the top of Home, and also **More → Sync status**.
+- The four tabs along the bottom are **Home · Jobs · Scan · More**.

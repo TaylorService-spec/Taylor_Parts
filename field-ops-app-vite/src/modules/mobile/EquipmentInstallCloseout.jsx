@@ -36,15 +36,21 @@ import {
   recordWorkOrderEquipmentInstall,
 } from "../../services/workOrderInstallCallableClient";
 import { Button } from "../../shared/ui/primitives";
+import { captureInstall, captureComplete } from "../../offline/technicianIntentCapture.js";
+import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
+import { connectivityHint } from "../../offline/syncExecutor.js";
+import { classifyFailure, FAILURE_CLASS } from "../../offline/syncFailureClassification.js";
 
 /** One attempt token per mount, so a retry of the same intent replays instead of installing twice. */
 function useAttemptToken(workOrderId) {
   return useMemo(() => `${workOrderId}-${Date.now().toString(36)}`, [workOrderId]);
 }
 
-export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOrder, deps = {} }) {
+export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOrder, offline: offlineProp = null, deps = {} }) {
   const fetchUnits = deps.fetchUnits ?? fetchInstallableEquipmentForWorkOrder;
   const recordInstall = deps.recordInstall ?? recordWorkOrderEquipmentInstall;
+  const provided = useProvidedOfflineRuntime();
+  const offline = offlineProp ?? provided;
 
   const [load, setLoad] = useState({ status: "loading", data: null, message: null });
   const [selected, setSelected] = useState(null);
@@ -53,6 +59,8 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
   const [busy, setBusy] = useState(false);
   const [installStep, setInstallStep] = useState(null);
   const [completion, setCompletion] = useState({ attempted: false, error: null });
+  /** Set when the closeout was captured for later rather than executed. Claims nothing. */
+  const [queued, setQueued] = useState(null);
   const attemptToken = useAttemptToken(workOrderId);
 
   useEffect(() => {
@@ -83,10 +91,67 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
   });
   const resume = deriveResumePlan(state);
 
+  /**
+   * Capture the whole closeout for later: the installation, and the completion that depends on it.
+   *
+   * TWO intents, with a REQUIRED edge between them, because they are two governed commands that
+   * cannot share a transaction. The edge is what makes "job completed, installation never happened"
+   * unreachable rather than merely unlikely — the executor will not send Complete unless the install
+   * has actually been accepted by the server.
+   *
+   * The complete intent's dependencies are derived from the install intent EXPLICITLY rather than
+   * from `offline.queue`, which is a render-old snapshot at this point. Reading a stale queue here
+   * would drop the edge and let completion go first — the exact failure this exists to prevent.
+   */
+  async function captureForLater() {
+    const install = captureInstall({
+      workOrderId, principalUid: offline.principalUid ?? "self",
+      serializedAssetId: selected.serializedAssetId,
+      notes: notes.trim() || null,
+      captureKey: `install:${selected.serializedAssetId}`,
+      at: Date.now(), offline: true,
+    });
+    if (!install.valid) {
+      setQueued({ ok: false, message: "That installation could not be saved on this phone." });
+      return false;
+    }
+    const stored = await offline.enqueue(install);
+    if (!stored.durable) {
+      // The device would not promise to keep it, so nothing is claimed and the selection stays on
+      // screen. Telling somebody an installation is queued on a phone that cannot store it is the
+      // one lie this whole runtime exists to prevent.
+      setQueued({ ok: false, message: "This phone could not save the installation offline. Keep this screen open until you have signal." });
+      return false;
+    }
+
+    const complete = captureComplete({
+      workOrderId, principalUid: offline.principalUid ?? "self",
+      queue: [install.value], captureKey: `complete:${workOrderId}`,
+      at: Date.now(), offline: true,
+    });
+    if (complete.valid) await offline.enqueue(complete);
+
+    setQueued({
+      ok: true,
+      // "Pending sync", never "Installed" and never "Completed". Neither has happened.
+      message: "Installation pending sync. The work order will be completed once it reaches the platform.",
+    });
+    return true;
+  }
+
   async function installAndComplete() {
     if (busy || !selected) return;
     setBusy(true);
     setCompletion({ attempted: false, error: null });
+    setQueued(null);
+
+    // A device that KNOWS it has no network does not attempt. Everything else tries, because
+    // navigator.onLine is a hint and the request is the proof.
+    if (offline?.enqueue && connectivityHint(typeof navigator === "undefined" ? null : navigator).likelyOnline === false) {
+      await captureForLater();
+      setBusy(false);
+      return;
+    }
 
     // STEP ONE. Nothing about the work order is touched until this succeeds.
     const idempotencyKey = deriveCloseoutIntentId(workOrderId, selected.serializedAssetId, attemptToken);
@@ -95,7 +160,22 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
       idempotencyKey, ...(notes.trim() ? { notes: notes.trim() } : {}),
     }));
     setInstallStep(step);
-    if (!step.ok) { setBusy(false); return; }
+    if (!step.ok) {
+      // A REFUSAL IS NEVER QUEUED. The server said no and means it; putting that in a retry queue
+      // would turn a clear answer into an indefinite maybe. Only a failure that retrying could
+      // plausibly fix becomes queued work.
+      // interpretInstallStep collapses the business detail and the transport code into one `code`
+      // (details first, falling back to the transport code), so it is offered as both -- the
+      // classifier checks the business detail first and the transport code second, and this way
+      // neither is lost to the collapse.
+      const failure = classifyFailure({ code: step.code ?? null, details: step.code ?? null });
+      if (offline?.enqueue && failure === FAILURE_CLASS.RETRYABLE) {
+        setInstallStep(null);
+        await captureForLater();
+      }
+      setBusy(false);
+      return;
+    }
 
     // STEP TWO, and only if the server says the job still needs it. transitionWorkOrder is not
     // idempotent, so completing an already-completed job would fail for a reason that is not a
@@ -116,6 +196,25 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
   async function completeOnly() {
     if (busy) return;
     setBusy(true);
+
+    // The installation is already recorded on the server. Only the completion is outstanding, so
+    // this captures a completion intent with NO install dependency -- there is nothing left to
+    // depend on, and inventing an edge here would block a job on work already done.
+    if (offline?.enqueue && connectivityHint(typeof navigator === "undefined" ? null : navigator).likelyOnline === false) {
+      const complete = captureComplete({
+        workOrderId, principalUid: offline.principalUid ?? "self",
+        queue: [], captureKey: `complete:${workOrderId}`, at: Date.now(), offline: true,
+      });
+      if (complete.valid) {
+        const stored = await offline.enqueue(complete);
+        setQueued(stored.durable
+          ? { ok: true, message: "Completion pending sync. The installation is already recorded." }
+          : { ok: false, message: "This phone could not save the completion offline. Keep this screen open until you have signal." });
+      }
+      setBusy(false);
+      return;
+    }
+
     try {
       await onCompleteWorkOrder(workOrderId);
       setCompletion({ attempted: true, error: null });
@@ -155,6 +254,14 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
         </>
       ) : null}
 
+      {/* CAPTURED, NOT DONE. The wording never says installed or completed, because neither has
+          happened -- only the platform may say those. */}
+      {queued ? (
+        <p className={queued.ok ? "fo-muted" : "fo-error"} role={queued.ok ? "status" : "alert"}>
+          {queued.message}
+        </p>
+      ) : null}
+
       {state.state === CLOSEOUT_STATE.DONE ? (
         <p className="fo-muted" role="status">{state.message}</p>
       ) : null}
@@ -163,7 +270,7 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
         <p className="fo-error" role="alert">{state.message}</p>
       ) : null}
 
-      {state.state === CLOSEOUT_STATE.DONE || state.state === CLOSEOUT_STATE.INSTALLED_COMPLETION_PENDING ? null : (
+      {state.state === CLOSEOUT_STATE.DONE || state.state === CLOSEOUT_STATE.INSTALLED_COMPLETION_PENDING || queued?.ok ? null : (
         <>
           <label>
             Scan or type a serial
@@ -210,7 +317,7 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
             </p>
           ) : null}
 
-          <div className="fo-form-actions">
+          <div className="fo-form-actions fo-closeout__actions">
             <Button onClick={installAndComplete} disabled={busy || !selected}>
               {busy ? "Recording…" : "Install & Complete Work"}
             </Button>

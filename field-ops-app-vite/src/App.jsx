@@ -19,7 +19,15 @@ import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
-import ScanWorkspace from "./modules/scan/ScanWorkspace";
+// THE HANDHELD SHELL. Eager, not lazy: it is the technician's first screen, and deferring the thing
+// somebody opens first moves the wait rather than removing it. FieldMode is already eager for the
+// same reason, and the shell composes it.
+import TechnicianShell from "./modules/technician/TechnicianShell";
+import { useIsPhone } from "./navigation/useIsPhone.js";
+// LAZY, like every other route-level surface. It was the one eager import among them, which put the
+// whole scanning workspace in the entry chunk for every user who never scans -- and made the
+// technician shell's own lazy boundary around it do nothing at all.
+const ScanWorkspace = lazy(() => import("./modules/scan/ScanWorkspace"));
 const Inventory = lazy(() => import("./modules/inventory/Inventory"));
 const Operations = lazy(() => import("./modules/operations/Operations"));
 const DispatcherBoard = lazy(() => import("./modules/dispatcherBoard/DispatcherBoard"));
@@ -316,6 +324,19 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "service" && item.key === "coordinatedMission") {
     return <CoordinatedMissionView />;
   }
+  // THE TECHNICIAN WORKSPACE, composed for the device it is opened on.
+  //
+  // This slot used to fall through to legacyKey "fieldMode" and render FieldMode at every width. On a
+  // phone that meant a desktop-shaped surface with no thumb navigation, and TechnicianShell -- built
+  // in WO-02 for exactly this -- was reachable from nowhere at all.
+  //
+  // WIDTH CHOOSES COMPOSITION, NEVER AUTHORITY. Both branches render the same governed surfaces
+  // underneath, resolve capability identically, and read the same technician-scoped Work Orders. A
+  // desktop user is not demoted to a phone shell, and a phone user does not gain or lose a single
+  // permission by rotating the device.
+  if (domain.key === "service" && item.key === "technicianWorkspace") {
+    return <TechnicianWorkspaceSurface />;
+  }
   // THE SHARED SCAN WORKSPACE (Phase E). Composes the two scanning journeys that exist -- the Phase D
   // supplier receiving journey and the existing technician PartsScanner -- and derives which of them
   // to offer from the TRUSTED effective-access feed already threaded through operationalContext,
@@ -528,6 +549,17 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     return <Component />;
   }
   return <PlaceholderPage title={item.label} explanation={item.placeholderExplanation} />;
+}
+
+/**
+ * Phone -> the handheld shell. Anything wider -> the existing desktop composition.
+ *
+ * A component rather than an inline ternary so the media subscription lives in one place and the
+ * shell genuinely UNMOUNTS at desktop widths: a hidden-but-mounted shell would still hold an offline
+ * runtime, still sit in the tab order, and still run its effects.
+ */
+function TechnicianWorkspaceSurface() {
+  return useIsPhone() ? <TechnicianShell /> : <FieldMode />;
 }
 
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {

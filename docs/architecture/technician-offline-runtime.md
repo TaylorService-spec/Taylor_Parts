@@ -1,7 +1,14 @@
-# Technician Offline Runtime (WO-03)
+# Technician Offline Runtime (WO-03 / WO-03A)
 
-**Owner-directed slice, 2026-08-23.** Durable local work → queued intents → governed sync → conflict
-recovery. Sits underneath the WO-02 handheld; changes no technician workflow.
+**Owner-directed slices, 2026-08-23.** Durable local work → queued intents → governed sync → conflict
+recovery, and the reachable handheld app it sits under.
+
+**UI-integrated today — all five:** Notes · Labor · Parts Used · Equipment Install · Work Order
+Complete. Each captures into the durable queue from the rendered technician app and is proven
+end-to-end in `test/technicianOfflineEndToEnd.test.jsx`, which drives the shell and asserts on what
+the service layer was asked to do rather than on any queue API.
+
+The earlier caveat that only Notes and Time were wired no longer applies.
 
 ---
 
@@ -234,6 +241,45 @@ away under Details, for a support conversation.
 the work is gone, and it never is. Saying so every time is the difference between a technician who
 reports a problem and one who quietly re-does the work by hand.
 
+## 17a. Reachability and composition (WO-03A)
+
+The shell this runtime sits under was, for two slices, **imported by nothing**. Every component test
+passed because rendering a component is importing it, and no technician could open it.
+
+- Route: the `technicianWorkspace` nav item (`/technician-workspace`), previously falling through to
+  a legacy key that rendered FieldMode at every width.
+- **Phone → `TechnicianShell`. Anything wider → the existing desktop composition.** The breakpoint is
+  the established `PHONE_QUERY` (`max-width: 639.98px`), reused rather than reinvented.
+- **Width chooses composition, never authority.** Both branches render the same governed surfaces,
+  resolve capability identically on the server, and read the same technician-scoped Work Orders.
+  Rotating a device changes nothing about what a person may do — asserted.
+- `test/technicianShellReachability.test.mjs` reads the **route table**, not any test file, and fails
+  if the shell is orphaned, imported-but-unrendered, or reachable only from something that does not
+  ship. It was verified to fail by actually orphaning it.
+
+**One runtime, provided from the top.** The shell renders FieldMode, and both wanted the offline
+runtime. Two runtimes over one storage key means two writers, and the loser's captured work
+disappears with no error at all. `OfflineRuntimeContext` provides it once; `useOfflineRuntime({
+disabled })` keeps the hook call unconditional without opening a second queue.
+
+## 17b. Two races integration exposed
+
+Both shipped in WO-03 and neither runtime test could see them, because every runtime proof enqueued
+through separate awaited actions.
+
+1. **Two captures in one tick lost the first.** Every mutator read the queue from its closure, so the
+   second persisted a queue built without the first. Capturing an installation and its dependent
+   completion does exactly this — the installation vanished behind a "pending sync" that was untrue.
+   Fixed with a live ref; regression-tested.
+2. **A capture made before storage finished loading was wiped.** The initial read is asynchronous and
+   assigned its result over the top. Open the app, tap straight into a note, and it disappeared. The
+   load now **merges**, and anything already in hand wins.
+
+Also changed: a person pressing **Sync now** clears the backoff. Backoff exists to stop a phone
+hammering a dead link automatically; a technician deliberately pressing the button is new
+information, and making them wait out an invisible five-minute doubling is the app knowing better
+than the person holding it. Automatic passes still respect it.
+
 ## 18. What was NOT built
 
 - Warehouse offline (§38) — the primitives are generic; the semantics here are Technician commands.
@@ -265,9 +311,20 @@ decision with a real cost, not a side effect of resolving a classification.
 
 | | baseline | after | delta |
 |---|---|---|---|
-| entry chunk | 633.69 kB | 663.57 kB | **+29.88 kB** |
-| entry gzip | 183.04 kB | 192.41 kB | **+9.37 kB** |
-| `SyncQueue` chunk | — | 3.70 kB (1.29 kB gzip) | lazy |
+| entry chunk (WO-03) | 633.69 kB | 663.57 kB | +29.88 kB |
+| entry chunk (after WO-03A) | 663.57 kB | **561.24 kB** | **−102.33 kB** |
+| entry gzip (after WO-03A) | 192.41 kB | **166.88 kB** | **−25.53 kB** |
+| `SyncQueue` chunk | — | 3.70 kB (1.28 kB gzip) | lazy |
+| `ScanWorkspace` chunk | in entry | 74.77 kB (19.67 kB gzip) | now lazy |
+
+WO-03A mounting the shell **reduced** the entry chunk below both prior baselines. `ScanWorkspace` was
+the one eager route-level import among its lazy neighbours in `App.jsx`, which put the whole scanning
+workspace in the entry for every user who never scans — and made the shell's own lazy boundary around
+it do nothing.
+
+Measured on the production build actually served: **367.4 kB gzipped total at startup**, with **zero
+desktop chunks and zero scan chunks fetched**. Barcode decoding uses the browser's native
+`BarcodeDetector`, so no decoder is bundled at all.
 
 The queue **panel** is lazy; the **indicator** is eager and deliberately so — the one state that must
 never exist is unsynced work with nothing on screen saying so, and a chunk that has not downloaded

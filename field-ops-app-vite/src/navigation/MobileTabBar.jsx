@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { PHONE_QUERY, activeDestination } from "./mobilePrimaryNav.js";
+import { activeDestination } from "./mobilePrimaryNav.js";
+// Shared, so the thumb bar and the technician shell cannot disagree about what a phone is.
+import { useIsPhone } from "./useIsPhone.js";
 
 // THE PHONE'S PRIMARY NAVIGATION -- a thumb bar, at phone widths only.
 //
@@ -33,22 +35,6 @@ function isTextEntry(el) {
   if (!el || !TEXT_ENTRY.has(el.tagName)) return el?.isContentEditable === true;
   if (el.tagName === "TEXTAREA") return true;
   return !NON_TEXT_INPUT.has((el.getAttribute("type") ?? "text").toLowerCase());
-}
-
-/** Phone-only. Kept as a hook so the bar unmounts entirely rather than being hidden by CSS -- a
- *  hidden-but-mounted bar still lands in the tab order and in the accessibility tree. */
-function useIsPhone() {
-  const [isPhone, setIsPhone] = useState(
-    () => typeof window !== "undefined" && window.matchMedia?.(PHONE_QUERY).matches === true,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia?.(PHONE_QUERY);
-    if (!mq) return undefined;
-    const onChange = (e) => setIsPhone(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return isPhone;
 }
 
 function useTypingHidden() {

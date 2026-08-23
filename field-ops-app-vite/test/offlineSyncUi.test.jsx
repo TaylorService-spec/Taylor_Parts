@@ -14,13 +14,20 @@ import { makeIntent, INTENT_TYPE } from "../src/offline/technicianIntent.js";
 import { applyFailure } from "../src/offline/syncFailureClassification.js";
 import { summarizeQueue } from "../src/offline/intentQueue.js";
 import { syncIndicator } from "../src/offline/syncPresentation.js";
+import { useOfflineRuntime } from "../src/hooks/useOfflineRuntime";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 // cwd-relative, matching technicianHandheldMobile.test.jsx -- import.meta.url is not a file URL
 // under this vitest config.
 const source = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
+const intentFor = (n) => makeIntent({
+  type: INTENT_TYPE.NOTE_ADD, workOrderId: "W", principalUid: "uid-hook", captureKey: n, payload: { n },
+});
 const css = source("src/index.css");
+
+// A signed-in principal, so the hook has a queue to own.
+vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "uid-hook" } }) }));
 
 afterEach(cleanup);
 
@@ -354,5 +361,38 @@ describe("accessibility", () => {
     expect(button.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+// ═══════════════════════════════════════════ the two races integration found
+
+describe("the queue hook, under real timing", () => {
+  // Both of these shipped in WO-03 and neither runtime test could see them: every runtime proof
+  // enqueued through separate awaited actions, so no two mutations ever landed in one tick and no
+  // capture ever raced the initial read from storage.
+  it("TWO CAPTURES IN ONE TICK BOTH SURVIVE", async () => {
+    // Capturing an installation and its dependent completion does exactly this. Reading the queue
+    // from a render-old closure meant the second persisted a queue built without the first, and the
+    // installation vanished behind a "pending sync" that was not true.
+    let rt;
+    function Probe() { rt = useOfflineRuntime(); return null; }
+    render(<Probe />);
+    await act(async () => {
+      await rt.enqueue(intentFor("a"));
+      await rt.enqueue(intentFor("b"));
+    });
+    expect(rt.queue).toHaveLength(2);
+    expect(rt.queue.map((i) => i.payload.n)).toEqual(["a", "b"]);
+  });
+
+  it("A CAPTURE MADE BEFORE STORAGE FINISHES LOADING IS NOT WIPED", async () => {
+    // Open the app, tap straight into a note. The read from storage resolves afterwards, and
+    // assigning it over the top would delete the entry the technician just made.
+    let rt;
+    function Probe() { rt = useOfflineRuntime(); return null; }
+    render(<Probe />);
+    await act(async () => { await rt.enqueue(intentFor("early")); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(rt.queue.map((i) => i.payload.n)).toContain("early");
   });
 });

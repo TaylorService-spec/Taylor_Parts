@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
+import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
+import { capturePartsUsage } from "../../offline/technicianIntentCapture.js";
+import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
 import { activeFieldWorkOrders } from "../../domain/fieldWorkOrder";
 import { resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIdentity";
 import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates";
@@ -43,8 +46,12 @@ import { Button } from "../../shared/ui/primitives/index.js";
 
 const STATE = { IDLE: "IDLE", SCANNING: "SCANNING", RESOLVING: "RESOLVING", DONE: "DONE" };
 
-export default function PartsScanner({ technicianId, workOrderId = null }) {
+export default function PartsScanner({ technicianId, workOrderId = null, offline: offlineProp = null }) {
   const { role } = useAuth();
+  // Provided by the technician shell when the scanner is opened inside it. Null when the scanner is
+  // reached from the shared Scan workspace at desktop widths, where the online path is the right one.
+  const provided = useProvidedOfflineRuntime();
+  const offline = offlineProp ?? provided;
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } =
     useAssignedWorkOrders(technicianId);
 
@@ -205,22 +212,66 @@ export default function PartsScanner({ technicianId, workOrderId = null }) {
     }
     setPendingAction(action.id);
     setNotice(null);
-    try {
-      await updateWorkOrderExecutionData(action.payload.workOrderId, {
-        qtyUsedUpdates: [{ sku: action.payload.sku, delta: qty }],
-      });
-      setNotice({ tone: "ok", text: `Recorded ${qty} × ${action.payload.label} on ${action.payload.woNumber}.` });
-      setIdentity(null);
-      setQuery("");
-      setQty(1);
-    } catch (err) {
-      // The server is the authority and may still refuse. Say so plainly --
-      // never silently, and never as "not found" -- and never with a raw
-      // Firebase/Functions message (safe, categorized copy only).
-      setNotice({ tone: "warn", text: workflowActionErrorMessage(err) });
-    } finally {
-      setPendingAction(null);
+
+    const { workOrderId, sku, label, woNumber } = action.payload;
+    const clear = () => { setIdentity(null); setQuery(""); setQty(1); };
+
+    // NO RUNTIME -> exactly the path this screen has always had. The offline runtime is additive, and
+    // the scanner is also mounted outside the technician shell.
+    if (!offline?.enqueue) {
+      try {
+        await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }] });
+        setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}.` });
+        clear();
+      } catch (err) {
+        // The server is the authority and may still refuse. Say so plainly --
+        // never silently, and never as "not found" -- and never with a raw
+        // Firebase/Functions message (safe, categorized copy only).
+        setNotice({ tone: "warn", text: workflowActionErrorMessage(err) });
+      } finally {
+        setPendingAction(null);
+      }
+      return;
     }
+
+    const outcome = await submitOrQueue({
+      send: async () => {
+        try {
+          await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }] });
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null } };
+        }
+      },
+      // The capture key is the job, the part and the quantity. Scanning the same part twice for the
+      // same amount IS one act -- and qtyUsedUpdates takes a DELTA, so a duplicate would genuinely
+      // double the usage. Recording a DIFFERENT quantity is a different act, which is what a
+      // technician correcting a mis-keyed count actually means.
+      buildIntent: (wasOffline) => capturePartsUsage({
+        workOrderId, principalUid: offline.principalUid ?? "self",
+        sku, delta: qty,
+        provenance: identity?.source === "camera" ? "SCAN" : "MANUAL",
+        captureKey: `parts:${sku}:${qty}`, at: Date.now(), offline: wasOffline,
+      }),
+      enqueue: offline.enqueue,
+      nav: typeof navigator === "undefined" ? null : navigator,
+    });
+
+    if (outcome.result === SUBMIT_RESULT.SENT) {
+      setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}.` });
+      clear();
+    } else if (outcome.result === SUBMIT_RESULT.QUEUED) {
+      // "Pending sync", NEVER "Recorded". Inventory has not moved and the work order has not been
+      // touched -- claiming either would be a statement about stock nobody has made.
+      setNotice({ tone: "pending", text: `${qty} × ${label} held on this phone — pending sync.` });
+      clear();
+    } else if (outcome.result === SUBMIT_RESULT.QUEUED_NOT_DURABLE) {
+      // The entry STAYS on screen: the device would not promise to keep it, so this is the only copy.
+      setNotice({ tone: "warn", text: "This phone could not save that offline. Keep this screen open until you have signal." });
+    } else {
+      setNotice({ tone: "warn", text: workflowActionErrorMessage(outcome.error) });
+    }
+    setPendingAction(null);
   }
 
   return (
