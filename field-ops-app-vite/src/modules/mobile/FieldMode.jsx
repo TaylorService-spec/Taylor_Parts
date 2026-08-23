@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
@@ -11,6 +11,15 @@ import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import PartsScanner from "./PartsScanner";
 import JobNote from "./JobNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import SyncIndicator from "../../shared/ui/SyncIndicator.jsx";
+import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
+
+// THE SYNC QUEUE IS LAZY; THE INDICATOR IS NOT.
+//
+// A technician only opens the queue when something needs looking at, so its chunk is deferred. The
+// INDICATOR is eager and deliberately so: the one state that must never exist is unsynced work with
+// nothing on screen saying so, and a chunk that has not downloaded cannot say anything.
+const SyncQueue = lazy(() => import("./SyncQueue.jsx"));
 
 // F1 -- Field shell + Technician Home + Current Job.
 //
@@ -52,6 +61,11 @@ export default function FieldMode({ deps } = {}) {
   const [pending, setPending] = useState({ id: null, action: null });
   const [failure, setFailure] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+
+  // The offline runtime. Loaded for the signed-in principal and for nobody else -- the queue follows
+  // the person, not the device.
+  const offline = useOfflineRuntime({ technicianId: () => technicianId, ...(deps?.offline ?? {}) });
 
   const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
   const [current, ...upNext] = active;
@@ -137,6 +151,20 @@ export default function FieldMode({ deps } = {}) {
 
   return (
     <div className="fo-field">
+      {/* UNSYNCED WORK IS NEVER SILENT. Above the day, before anything else, every time. */}
+      <SyncIndicator
+        indicator={offline.indicator}
+        syncing={offline.syncing}
+        onOpen={() => setSyncOpen(true)}
+        onSync={() => offline.sync(true)}
+      />
+
+      {syncOpen ? (
+        <Suspense fallback={<p className="fo-muted" role="status">Opening sync…</p>}>
+          <SyncQueue runtime={offline} onClose={() => setSyncOpen(false)} />
+        </Suspense>
+      ) : null}
+
       <header className="fo-field__head">
         <h2 className="fo-field__title">My Day</h2>
         <p className="fo-field__count">
@@ -158,6 +186,7 @@ export default function FieldMode({ deps } = {}) {
           failure={failure?.id === job.workOrderId ? failure : null}
           onAdvance={advance}
           technicianId={technicianId}
+          offline={offline}
           deps={deps}
         />
       )}
@@ -192,7 +221,7 @@ export default function FieldMode({ deps } = {}) {
 }
 
 /** Context -> State -> Attention -> Readiness -> Next Best Action, in that order. */
-function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId, deps }) {
+function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId, offline, deps }) {
   // Scanning and note-taking are opened FROM the job, so both inherit its context. Collapsed by
   // default: the job's own answer -- where am I, what is wrong, what next -- must not be pushed off
   // the top of a phone by tools nobody has asked for yet.
@@ -237,11 +266,13 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
       {tool === "scan" && (
         <PartsScanner technicianId={technicianId} workOrderId={job.workOrderId} />
       )}
-      {tool === "note" && <JobNote workOrderId={job.workOrderId} deps={deps?.note} />}
+      {/* THE OFFLINE RUNTIME IS PASSED DOWN, never re-created. One queue per technician, per device --
+          a second runtime inside a tool would be a second queue nobody is watching. */}
+      {tool === "note" && <JobNote workOrderId={job.workOrderId} offline={offline} deps={deps?.note} />}
       {/* TIME, on every job -- not only installations. The work order is passed down and never
           re-picked, and the technician is the authenticated session, so the form asks for the two
           things the platform genuinely does not know: how long, and what kind. */}
-      {tool === "labor" && <JobLabor workOrderId={job.workOrderId} deps={deps?.labor} />}
+      {tool === "labor" && <JobLabor workOrderId={job.workOrderId} offline={offline} deps={deps?.labor} />}
 
       {/* INSTALLATION CLOSEOUT, and only on a job that is actually an installation.
           The gate is the canonical WorkOrderType and NOTHING ELSE. Live data contains work orders

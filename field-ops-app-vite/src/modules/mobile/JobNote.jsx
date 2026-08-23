@@ -3,6 +3,8 @@ import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
+import { captureNote } from "../../offline/technicianIntentCapture.js";
 
 // ADD A NOTE TO THE JOB IN HAND -- type it or say it, then read it before it is saved.
 //
@@ -37,9 +39,11 @@ export const NOTE_STATE = Object.freeze({
   EDITING: "EDITING",
   SAVING: "SAVING",
   SAVED: "SAVED",
+  /** Held on the device. NOT saved, and the copy never says it is. */
+  QUEUED: "QUEUED",
 });
 
-export default function JobNote({ workOrderId, deps }) {
+export default function JobNote({ workOrderId, offline = null, deps }) {
   const save = deps?.save ?? updateWorkOrderExecutionData;
 
   const [state, setState] = useState(NOTE_STATE.CLOSED);
@@ -70,23 +74,76 @@ export default function JobNote({ workOrderId, deps }) {
     if (text === "" || state === NOTE_STATE.SAVING) return;
     setState(NOTE_STATE.SAVING);
     setError(null);
-    try {
-      await save(workOrderId, { executionNote: text });
-      if (!alive.current) return;
+
+    // NO OFFLINE RUNTIME -> exactly the behaviour this screen has always had. The runtime is
+    // additive; a caller that does not supply one gets the original online-only path unchanged.
+    if (!offline?.enqueue) {
+      try {
+        await save(workOrderId, { executionNote: text });
+        if (!alive.current) return;
+        setDraft("");
+        setState(NOTE_STATE.SAVED);
+      } catch (err) {
+        if (!alive.current) return;
+        // The draft is KEPT on failure. Losing what somebody just dictated because the network
+        // dropped is the one outcome guaranteed to stop them using the feature again.
+        setError(workflowActionErrorMessage(err) ?? "That note could not be saved. It is still here — try again.");
+        setState(NOTE_STATE.EDITING);
+      }
+      return;
+    }
+
+    const outcome = await submitOrQueue({
+      send: async () => {
+        try {
+          const result = await save(workOrderId, { executionNote: text });
+          return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? workOrderId } };
+        } catch (err) {
+          return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null } };
+        }
+      },
+      // The capture key is the note's own text plus the job. Pressing Save twice on the same words is
+      // one act and stays one act; changing a word makes it a different note, which it is.
+      buildIntent: (wasOffline) => captureNote({
+        workOrderId, principalUid: offline.principalUid ?? "self", text,
+        captureKey: `note:${text}`, at: Date.now(), offline: wasOffline,
+      }),
+      enqueue: offline.enqueue,
+      nav: typeof navigator === "undefined" ? null : navigator,
+    });
+    if (!alive.current) return;
+
+    if (outcome.result === SUBMIT_RESULT.SENT) {
       setDraft("");
       setState(NOTE_STATE.SAVED);
-    } catch (err) {
-      if (!alive.current) return;
-      // The draft is KEPT on failure. Losing what somebody just dictated because the network dropped
-      // is the one outcome guaranteed to stop them using the feature again.
-      setError(workflowActionErrorMessage(err) ?? "That note could not be saved. It is still here — try again.");
-      setState(NOTE_STATE.EDITING);
+      return;
     }
-  }, [draft, state, save, workOrderId]);
+    if (outcome.result === SUBMIT_RESULT.QUEUED) {
+      // Kept, not saved. The draft is cleared because the words are safely in the queue -- and the
+      // state that replaces it never uses the word "saved".
+      setDraft("");
+      setState(NOTE_STATE.QUEUED);
+      return;
+    }
+    if (outcome.result === SUBMIT_RESULT.QUEUED_NOT_DURABLE) {
+      // The device would not promise to keep it, so the draft STAYS in the box. Telling somebody
+      // their note is queued on a phone that cannot store it is the one lie this runtime must not tell.
+      setError("This phone could not save your note offline. Keep this screen open until you have signal.");
+      setState(NOTE_STATE.EDITING);
+      return;
+    }
+    setError(outcome.error
+      ? (workflowActionErrorMessage(outcome.error) ?? "That note was not accepted. It is still here.")
+      : "That note was not accepted. It is still here.");
+    setState(NOTE_STATE.EDITING);
+  }, [draft, state, save, workOrderId, offline]);
 
   if (!workOrderId) return null;
 
-  if (state === NOTE_STATE.CLOSED) {
+  // SAVED and QUEUED both return to the closed view, which is where their confirmation lives. The
+  // confirmation was previously unreachable -- it was rendered only under CLOSED, a state a completed
+  // save never entered -- so a technician pressing Save saw an empty box and no acknowledgement at all.
+  if (state === NOTE_STATE.CLOSED || state === NOTE_STATE.SAVED || state === NOTE_STATE.QUEUED) {
     return (
       <div className="fo-jobnote">
         <Button type="button" variant="secondary" className="fo-jobnote__open" onClick={() => setState(NOTE_STATE.EDITING)}>
@@ -95,6 +152,8 @@ export default function JobNote({ workOrderId, deps }) {
         {/* Confirmation of the last save stays until the next action, rather than a toast that is
             gone before a gloved hand has put the phone down. */}
         {state === NOTE_STATE.SAVED && <p className="fo-scan__notice fo-scan__notice--ok" role="status">Note saved.</p>}
+        {/* "Waiting to sync", NEVER "saved". The platform has not seen this note. */}
+        {state === NOTE_STATE.QUEUED && <p className="fo-scan__notice" role="status">Note held on this phone — waiting to sync.</p>}
       </div>
     );
   }

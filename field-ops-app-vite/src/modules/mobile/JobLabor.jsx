@@ -26,6 +26,8 @@ import {
   fetchWorkOrderLabor, recordWorkOrderLabor,
 } from "../../services/workOrderLaborCallableClient";
 import { Button } from "../../shared/ui/primitives";
+import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
+import { captureLabor } from "../../offline/technicianIntentCapture.js";
 
 /** One token per mount, so a retry of the same entry replays instead of recording twice. */
 function useAttemptToken(workOrderId) {
@@ -38,7 +40,7 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function JobLabor({ workOrderId, deps = {} }) {
+export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
   const fetchLabor = deps.fetchLabor ?? fetchWorkOrderLabor;
   const recordLabor = deps.recordLabor ?? recordWorkOrderLabor;
 
@@ -76,9 +78,50 @@ export default function JobLabor({ workOrderId, deps = {} }) {
       workOrderId, workDate: today(), laborType, hours, minutes, attemptToken,
     });
     if (!request) { setBusy(false); return; }
-    const r = interpretLaborResult(await recordLabor(request));
-    setResult(r);
-    if (r.status === LABOR_SUBMIT.SAVED) { setHours(""); setMinutes(""); }
+    // NO RUNTIME -> the original online-only path, byte-for-byte. The offline runtime is additive.
+    if (!offline?.enqueue) {
+      const r = interpretLaborResult(await recordLabor(request));
+      setResult(r);
+      if (r.status === LABOR_SUBMIT.SAVED) { setHours(""); setMinutes(""); }
+      setBusy(false);
+      return;
+    }
+
+    const outcome = await submitOrQueue({
+      send: async () => {
+        const raw = await recordLabor(request);
+        const interpreted = interpretLaborResult(raw);
+        return interpreted.status === LABOR_SUBMIT.SAVED
+          ? { ok: true }
+          : { ok: false, error: raw?.error ?? null, interpreted };
+      },
+      // The capture key is the entry itself: the same hours, of the same type, on the same day, on
+      // the same job IS one act however many times the button is pressed. A different amount is a
+      // different entry, which is what a technician correcting a typo before saving actually means.
+      buildIntent: (wasOffline) => captureLabor({
+        workOrderId, principalUid: offline.principalUid ?? "self",
+        laborType, durationMinutes: request.durationMinutes, workDate: request.workDate,
+        captureKey: `labor:${request.workDate}:${laborType}:${request.durationMinutes}`,
+        at: Date.now(), offline: wasOffline,
+      }),
+      enqueue: offline.enqueue,
+      nav: typeof navigator === "undefined" ? null : navigator,
+    });
+
+    if (outcome.result === SUBMIT_RESULT.SENT) {
+      setResult({ status: LABOR_SUBMIT.SAVED, message: "Time added." });
+      setHours(""); setMinutes("");
+    } else if (outcome.result === SUBMIT_RESULT.QUEUED) {
+      // NOT "recorded". The platform has not seen these hours and the copy does not pretend it has.
+      setResult({ status: LABOR_SUBMIT.PENDING_SYNC, message: "Time held on this phone — waiting to sync." });
+      setHours(""); setMinutes("");
+    } else if (outcome.result === SUBMIT_RESULT.QUEUED_NOT_DURABLE) {
+      // The entry STAYS in the boxes: the device would not promise to keep it, so the only copy that
+      // exists is the one on screen.
+      setResult({ status: LABOR_SUBMIT.FAILED, message: "This phone could not save your time offline. Stay on this screen until you have signal." });
+    } else {
+      setResult(outcome.interpreted ?? interpretLaborResult({ outcome: null, error: outcome.error }));
+    }
     setBusy(false);
   }
 
@@ -123,9 +166,11 @@ export default function JobLabor({ workOrderId, deps = {} }) {
             </label>
           </div>
 
+          {/* Queued is not an error and is not a save: it reads as neutral status, and its words say
+              where the time actually is. */}
           {result?.message ? (
-            <p className={result.status === LABOR_SUBMIT.SAVED ? "fo-muted" : "fo-error"}
-               role={result.status === LABOR_SUBMIT.SAVED ? "status" : "alert"}>
+            <p className={result.status === LABOR_SUBMIT.SAVED || result.status === LABOR_SUBMIT.PENDING_SYNC ? "fo-muted" : "fo-error"}
+               role={result.status === LABOR_SUBMIT.SAVED || result.status === LABOR_SUBMIT.PENDING_SYNC ? "status" : "alert"}>
               {result.message}
             </p>
           ) : null}

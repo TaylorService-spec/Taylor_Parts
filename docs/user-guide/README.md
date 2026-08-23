@@ -1,105 +1,13 @@
-# User Guide
+# Field Ops user guide
 
-Plain-language, role-based guides to what you can do in Field Ops today. Each page covers one capability end-to-end: what it's for, who can use it, and the steps to do it. No code, no internal terminology you don't need.
+Task-oriented how-to guides for people using the Field Ops app — not architecture docs. Organized by
+what you're trying to do, in plain language, matching the app's actual on-screen wording.
 
-New here? Start with **Getting started**, then jump to the section for the part of the job you do — you don't need to read the others.
+## Technician (phone)
 
-## About the status tags
+- [Working with no signal](./working-with-no-signal.md) — recording notes, time, parts and
+  installations offline; how to tell what's outstanding; resolving conflicts; finishing an
+  installation job offline; dictation vs. typing; signing out with work waiting.
 
-Every guide is tagged so you're never misled about what actually works:
-
-- **live** — the feature works today; follow the steps and it does what it says.
-- **demo-only** — a preview you can click through, but it runs in memory and saves nothing (it resets on reload).
-- **not-yet-available** — the screen is built and you can walk through it, but it can't complete because the backend piece isn't deployed yet. The guide explains what's missing.
-
----
-
-## Getting started
-
-- [Sign in to Field Ops](getting-started/sign-in.md) — **live** — Sign in with your work email and password on the two-panel sign-in screen; covers the login form, the self-service password reset flow, error messages, No access state, and demo banner.
-- [Understand your landing screen](getting-started/your-landing-screen.md) — **live** — What you see after sign-in: the navigation rail plus header strip, and the role-specific My Dashboard (live technician dashboard; a real, access-aware "What needs you right now" destination list for admin/dispatcher).
-- [Move around the app](getting-started/navigating-field-ops.md) — **live** — Using the left navigation rail's expandable areas, what each role sees, and an honest note that a few sections are not-yet-built placeholders.
-- [Sign out of Field Ops](getting-started/sign-out.md) — **live** — Use the Logout button in the top-right to end your session, especially on shared devices.
-- [When a screen is empty](getting-started/when-a-screen-is-empty.md) — **live** — Tell "nothing exists yet" apart from "your filters are hiding everything," and read the guidance line that explains what a brand-new screen is for.
-
-## Work orders
-
-- [Browse and find work orders](work-orders/browse-work-orders.md) — **live** — Filter the work order list by lifecycle group and search for a specific one (admin/dispatcher).
-- [View a work order's details](work-orders/view-work-order-details.md) — **live** — Open one work order to see customer, location, timestamps, parts, and history (admin/dispatcher).
-- [Create a work order](work-orders/create-work-order.md) — **not-yet-available** — Four-step wizard that fills in fine but can't save yet — the createWorkOrder Cloud Function is undeployed.
-- [Move a work order through its lifecycle (dispatcher)](work-orders/move-work-order-through-lifecycle-dispatcher.md) — **not-yet-available** — Mark Ready/Schedule/Dispatch/Close/Cancel buttons exist but transitionWorkOrder is undeployed, so status changes can't record.
-- [Progress your assigned work order (technician)](work-orders/progress-assigned-work-order-technician.md) — **not-yet-available** — Accept/Travel/Arrive/Start Work/Complete on My Dashboard; same undeployed transitionWorkOrder callable, so steps can't record.
-
-## Dispatch
-
-- [Schedule work orders (weekly workspace)](dispatch/schedule-work-orders.md) — **live** — See the week ahead across every technician and put a date, time, and technician on Work Orders that are ready to schedule, at Service > Scheduling (admin/dispatcher).
-- [Assign a job to a technician (Dispatch screen)](dispatch/assign-a-job-on-the-dispatch-screen.md) — **live** — One-click assign an unassigned job to an available technician from the Service > Dispatch cards.
-- [Dispatch a Work Order (Dispatcher Board)](dispatch/dispatch-a-work-order-on-the-dispatcher-board.md) — **live** — Review the Work Order queue with technician recommendations and dispatch a SCHEDULED Work Order by picker or drag-and-drop.
-- [Monitor operations (Control Tower)](dispatch/monitor-operations-in-control-tower.md) — **live** — Read-only operational overview: live counters, technician load, at-risk items, and a recommended dispatch queue.
-
-## Technician (field)
-
-- [See my assigned work orders](technician-field/see-my-work-orders.md) — **live** — Technician home dashboard: assigned work orders grouped by stage (Ready to Start / In Progress / Waiting / Completed Today) plus a performance snapshot.
-- [Update a work order's status](technician-field/update-work-order-status.md) — **live** — Move an assigned work order through its lifecycle (Accept, Start Travel, Arrived, Start Work, Complete) from the work order detail view.
-- [Record parts used and work notes](technician-field/record-parts-and-notes.md) — **live** — Adjust used quantities on planned parts and add append-only work notes via Execution Capture on an assigned work order.
-- [Parts Scanner (Technician Workspace)](technician-field/parts-scanner.md) — **live** — Scan a part at Service > Technician Workspace, resolve it against real governed records, and record planned-part usage on your own assigned job. Does NOT receive stock — the old five-action demo menu was removed when the Scanner was rebuilt.
-
-## Sales
-
-- [Edit an opportunity’s details](sales/edit-an-opportunity.md) — **live** — Correct an open opportunity one section at a time (commercial details, customer need, solution lines, next action), including reassigning the owner from the employee directory (admin/dispatcher/owner).
-- [Mark an opportunity Won (and get its Sales Order)](sales/mark-an-opportunity-won.md) — **live** — Close a deal at the Decision stage; the Sales Order is created in the same transaction and linked from the confirmation, so a won deal is never left without one (admin/dispatcher/owner).
-
-## Inventory
-
-- [Add and manage a part’s barcodes and identifiers](inventory/manage-part-identifiers.md) — **built, not switched on** — Register the barcodes and part numbers a part is also known by, test a scan before trusting it, and deactivate/reactivate without deleting. Governed by inventory.catalog.manage; the surface says it is unavailable rather than showing an empty list.
-- [Find a part and check its stock](inventory/find-a-part.md) — **live** — Look up a part in the Parts catalog and read its stock position and reorder status (read-only).
-- [Request a reorder for a part](inventory/request-a-reorder.md) — **live** — Flag a low part into the reorder queue via the Request Reorder control (one-click for forecastable parts; eligibility-gated manual qty for Needs Planning).
-- [Review a reorder request (approve or reject)](inventory/review-a-reorder-request.md) — **live** — Approve a pending request to hand it to the Parts Manager, or reject it with a required reason.
-- [Assign a reorder request to a Parts Associate](inventory/assign-a-reorder-request.md) — **live** — Assign an approved request to a Parts-Associate-role employee via the employee picker.
-- [Place the order and track purchasing](inventory/place-the-order.md) — **live** — Assignee-only: start purchasing, post progress updates, and record the purchase order (moves request to Ordered).
-- [Mark a reorder request received](inventory/mark-reorder-received.md) — **live** — Assignee-only closeout of an Ordered request; explicitly marked as NOT updating stock counts.
-- [View inventory transfers](inventory/view-transfers.md) — **live** — Read-only Inventory > Transfers workspace: part, From → To locations, and status, filterable by Active/In transit/Completed/Cancelled/All (admin/dispatcher).
-- [View warehouses](inventory/view-warehouses.md) — **live** — Read-only Inventory > Warehouses workspace: name, Active/Inactive status, and receiving eligibility, filterable by All/Active/Inactive, with a summary count (admin/dispatcher).
-- [The Scan workspace](inventory/scan-workspace.md) — **partly live** — One shared **Service > Scanning > Scan** entry for everyone who scans: look something up, receive a supplier PO, send or receive a transfer (including to a truck), count a shelf, put stock away, and pick/stage for a job. Phone-first, scan-first, with type-or-dictate notes. Part lookup needs nothing switched on; the rest await activation and deployment.
-- [Receive a supplier purchase order (multi-scan)](inventory/receive-a-multi-line-purchase-order.md) — **built, not switched on** — Scan a whole delivery against one supplier purchase order: ordered lines with outstanding quantities, continuous scanning, expected-versus-observed reconciliation, corrections, and one atomic receipt. Partial receipts leave short lines open.
-- [Receive a purchase order](inventory/receive-a-purchase-order.md) — **real, fail-closed until activated** — The governed receipt: receive an Ordered purchase order into a warehouse. The **Inventory > Receiving** workspace (Admin/Dispatcher) is the only launch point — the Parts Scanner's receiving action was removed when the Scanner was rebuilt; currently fail-closed ("Receiving not available") until receiving is activated.
-- [Cancel or void a reorder request](inventory/cancel-or-void-a-reorder.md) — **live** — Reason-then-confirm flow: cancel before ordering (admin/dispatcher) or void after ordering (assignee only); nothing deleted.
-- [Log an inventory action (receive, adjust, or correct)](inventory/log-an-inventory-action.md) — **live** — Record a Receive/Adjust/Correct audit note against a part; explicitly log-only and does not change stock.
-- [Parts scanner (Technician Workspace)](inventory/parts-scanner.md) — **live** — Inventory-side pointer to the Scanner. It resolves scans against real governed records and records planned-part usage; it does NOT receive stock — see [Receive a purchase order](inventory/receive-a-purchase-order.md) for the only governed receipt.
-
-## Equipment
-
-- [Install equipment at a customer](installing-equipment-at-a-customer.md) — **live** — Take an available serialized unit and install it at a customer's location via Equipment > Available Equipment, creating the Equipment record. Equipment Installer role only; irreversible — no uninstall or recovery exists.
-
-## Purchasing
-
-- [View purchase orders](purchasing/view-purchase-orders.md) — **live** — Read-only Purchasing > Purchase Orders list of orders placed against reorder requests, filterable by Open/Received/Voided/All (admin/dispatcher).
-- [View receipts](purchasing/view-receipts.md) — **live** — Read-only Purchasing > Receipts list of received purchase orders — the received-only view of Purchase Orders, with a link into Inventory > Receiving (admin/dispatcher).
-- [View suppliers](purchasing/view-suppliers.md) — **live** — Read-only Purchasing > Suppliers registry showing name, vendor number, contact, and status, filterable by All/Active/Inactive/Ungoverned (admin/dispatcher).
-
-## Accounts & customers
-
-- [Browse and search customers](accounts-customers/browse-and-search-customers.md) — **live** — View the customer list, search by name, and open a record.
-- [Add a new customer](accounts-customers/add-a-new-customer.md) — **live** — Create a customer via the + New Customer form.
-- [View a customer's record](accounts-customers/view-a-customer-record.md) — **live** — Tour the six sections of a customer detail page.
-- [Edit a customer](accounts-customers/edit-a-customer.md) — **live** — Change name, status, address, notes, tags, or external IDs.
-- [Add a contact to a customer](accounts-customers/add-a-contact-to-a-customer.md) — **live** — Record a contact person with phone, email, and primary flag.
-- [Add a location to a customer](accounts-customers/add-a-location-to-a-customer.md) — **live** — Record a customer site with address and access notes.
-- [See a customer's work orders and activity](accounts-customers/see-customer-work-orders-and-activity.md) — **live** — Read Completed/Open counts and the Account Activity timeline.
-- [Financial summary](accounts-customers/financial-summary.md) — **not-yet-available** — Section exists but shows "Sales data source not connected." — no provider wired.
-
-## Administration
-
-- [See who can do what to an object](administration/see-who-can-do-what.md) — **live** — Administration > Objects, By object view: pick an object and see how many roles can create/read/edit/delete it, which permission lets them, and diagnostics for objects the permission model does not govern (admin/dispatcher).
-- [See what a role can actually do](administration/see-what-a-role-can-do.md) — **live** — Pick a role and read its real capabilities from the live access rules: what it can actually do, what it holds but is switched off system-wide, its Create/Read/Edit/Delete reach per object, and system-wide diagnostics (admin/dispatcher).
-- [Add and view employees](administration/manage-employees.md) — **live** — List field technicians and add a new one (name + phone) on the Administration > Employees screen.
-- [Read the integrations connection guide](administration/integrations-guide.md) — **live** — Browse and search the Administration > Integrations FAQ and gather a readiness checklist before requesting a connection.
-
----
-
-## Related references
-
-- [Reorder Requests (consolidated overview)](reorder-requests.md) — the end-to-end reorder story in one page, for Dispatchers, Parts Managers, Parts Associates, and Warehouse Managers. The per-step guides under **Inventory** above cover the same flow in detail.
-- [Read the integrations connection guide](administration/integrations-guide.md) — how to prepare for, review, request, and support an infrastructure/integration connection (Administration → Integrations).
-
-More pages are added as each capability ships. If a page you need doesn't exist yet, ask — it means it hasn't been written yet, not that the feature doesn't exist.
+More guides will be added here as they're written. If a guide references a screen or control that
+isn't live yet, it says so rather than describing something you can't actually do.
