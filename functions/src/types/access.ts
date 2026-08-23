@@ -303,6 +303,8 @@ export type AuditAction =
   // current model -- Equipment accountId/locationId are immutable after create -- so the audit
   // event is the only record of the unit's prior custody once the asset reads INSTALLED.
   | "installSerializedAsset"
+  | "recordWorkOrderLabor"
+  | "correctWorkOrderLabor"
   // Serialized acquisition -- an already-owned unit entering custody with no purchase order. Kept
   // distinct from receiveInventoryStock on purpose: a report asking what we RECEIVED must never
   // count one of these.

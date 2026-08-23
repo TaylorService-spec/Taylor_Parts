@@ -1270,6 +1270,42 @@ export const INVENTORY_LOOKUP_READER_ROLE: Role = Object.freeze({
   ],
 }) as Role;
 
+// ═══════════════════════════════ TECHNICIAN LABOR — TWO STATIONS ═══════════════════════════════
+//
+// Labor Domain V1. Recording your own time and correcting somebody's recorded time are different
+// acts with different accountability -- a technician fixing their own typo and a manager adjusting a
+// crew's hours are not the same authority even when the keystrokes match. So two Roles, following
+// the same reasoning that split acquisition from installation.
+//
+// NEITHER IS THE `technician` COMPATIBILITY ROLE. Job title is not authorization: a technician who
+// has not been staffed to record labor does not record labor, and a manager who never touches a van
+// may still correct it.
+//
+// Both capabilities are registered active:false and are activated in NO environment, so these Roles
+// currently confer nothing anywhere -- activation is a separate, Owner-authorized decision.
+
+export const TECHNICIAN_LABOR_RECORDER_ROLE: Role = Object.freeze({
+  id: "technicianLaborRecorder",
+  name: "Technician Labor Recorder",
+  description:
+    "Records labor the holder personally performed, on Work Orders assigned to them (workOrder.labor.record). Never for another technician -- the command carries no technicianId and refuses one. Confers NO correction authority: a mistake goes to whoever holds workOrder.labor.correct. Confers no visibility of labor cost, rates or billing. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["workOrder.labor.record"],
+}) as Role;
+
+export const WORK_ORDER_LABOR_CORRECTOR_ROLE: Role = Object.freeze({
+  id: "workOrderLaborCorrector",
+  name: "Work Order Labor Corrector",
+  description:
+    "Corrects a recorded labor entry by reversing it and recording a replacement (workOrder.labor.correct). The original is never deleted -- it keeps its author and values and points at what replaced it, so a changed total can always be explained. Confers NO authority to record new labor, and no rate, cost or billing visibility. Declaring it grants nothing.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["workOrder.labor.correct"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -1309,4 +1345,6 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   inventoryReceivingClerk: INVENTORY_RECEIVING_CLERK_ROLE,
   inventorySerializedAssetAcquirer: INVENTORY_SERIALIZED_ASSET_ACQUIRER_ROLE,
   equipmentInstaller: EQUIPMENT_INSTALLER_ROLE,
+  technicianLaborRecorder: TECHNICIAN_LABOR_RECORDER_ROLE,
+  workOrderLaborCorrector: WORK_ORDER_LABOR_CORRECTOR_ROLE,
 });
