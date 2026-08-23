@@ -60,6 +60,8 @@ const { isCanonicalEquipmentModelId } =
 const MODELS = "equipment_models";
 const EQUIPMENT = "equipment";
 const MIGRATION_AUTHOR = "certification-model-identity-migration";
+// The certification marker. Its PRESENCE is what makes a record this migration's business.
+const MARKER_FIELD = "certificationWorld";
 const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
 
 // ── The execution boundary. Nothing below runs until this passes. ──────────────────────────────
@@ -146,17 +148,43 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
   const liveEquipment = await db.collection(EQUIPMENT).get();
   const plan = [];
   const unresolved = [];
+  const outOfScope = [];
   let alreadyCanonical = 0;
   for (const doc of liveEquipment.docs) {
-    const current = doc.data().equipmentModelId;
-    if (typeof current !== "string" || current === "") {
-      unresolved.push({ id: doc.id, current: current ?? null, why: "no equipmentModelId to map" });
+    const data = doc.data();
+    const current = data.equipmentModelId;
+    const isCertification = Boolean(data[MARKER_FIELD]);
+    const hasModelRef = typeof current === "string" && current !== "";
+
+    // OUT OF SCOPE IS NOT THE SAME AS UNMAPPABLE, and conflating them would either block this
+    // migration forever or let a broken record slip through it.
+    //
+    // The sandbox holds equipment that predates the certification world AND predates the
+    // equipment-model link entirely -- eq-cool-001, eq-ice-001, five hand-made C713 rows. They carry
+    // no model reference at all, so they have no back-reference to fix and cannot be left
+    // half-migrated. Inventing one would mint a model link nobody established.
+    //
+    // A CERTIFICATION record missing the field is a different thing entirely: it is a record this
+    // migration owns, that lost its reference, and that any where() query would skip. That still
+    // blocks.
+    if (!isCertification && !hasModelRef) {
+      outOfScope.push({ id: doc.id, why: "not a certification record and carries no model reference" });
+      continue;
+    }
+    if (!hasModelRef) {
+      unresolved.push({ id: doc.id, current: current ?? null, why: "certification record with no equipmentModelId to map" });
       continue;
     }
     if (canonical.has(current)) { alreadyCanonical += 1; continue; }
     const mapped = byLegacyId.get(current);
     if (!mapped) {
       unresolved.push({ id: doc.id, current, why: "not a known certification model id" });
+      continue;
+    }
+    // An UNMARKED record pointing at a certification model is claiming this world's identity without
+    // this world's marker. Migrating it would quietly adopt a record nobody said belongs here.
+    if (!isCertification) {
+      unresolved.push({ id: doc.id, current, why: "carries a certification model id but not the certification marker" });
       continue;
     }
     plan.push({ id: doc.id, from: current, to: mapped });
@@ -185,10 +213,14 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
   log(`equipment to repoint        : ${plan.length}`);
   log(`equipment already canonical : ${alreadyCanonical}`);
   log(`unresolved equipment        : ${unresolved.length}`);
+  log(`out of scope (not this world): ${outOfScope.length}`);
   log(`mapping collisions          : ${collisions.length}`);
   log(`legacy models to delete     : ${toDelete.length}`);
   log(`unmapped legacy live models : ${unmappedLegacy.length}`);
   for (const u of unresolved.slice(0, 20)) log(`  UNRESOLVED ${u.id}: ${String(u.current)} -- ${u.why}`);
+  // Named individually, never summarised away. A migration that silently skipped records would look
+  // identical to one that covered everything.
+  for (const o of outOfScope) log(`  OUT OF SCOPE ${o.id}: ${o.why}`);
   for (const c of collisions) log(`  COLLISION  ${c.canonicalId} <- ${c.from.join(", ")}`);
   for (const id of unmappedLegacy.slice(0, 20)) log(`  UNMAPPED   ${id}`);
 
@@ -199,13 +231,13 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
     log("BLOCKED: not every record maps deterministically. APPLY 0.");
     log("A partially migrated identity field splits the fleet across two schemes with no");
     log("record of which is which, which is worse than the defect it would half-fix.");
-    return { outcome: "BLOCKED", unresolved, collisions, unmappedLegacy, created: 0, repointed: 0, deleted: 0 };
+    return { outcome: "BLOCKED", unresolved, outOfScope, collisions, unmappedLegacy, created: 0, repointed: 0, deleted: 0 };
   }
 
   if (!apply) {
     log("");
     log("DRY RUN ONLY -- nothing written. Re-run with --apply --apply-live-sandbox to execute.");
-    return { outcome: "DRY_RUN", toCreate, plan, toDelete, alreadyCanonical, created: 0, repointed: 0, deleted: 0 };
+    return { outcome: "DRY_RUN", toCreate, plan, toDelete, alreadyCanonical, outOfScope, created: 0, repointed: 0, deleted: 0 };
   }
 
   // ── STEP 1. Canonical models exist BEFORE anything is repointed. ─────────────────────────────
@@ -266,7 +298,9 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
   const dangling = [];
   let resolved = 0;
   const modelCache = new Map();
+  const outOfScopeIds = new Set(outOfScope.map((o) => o.id));
   for (const doc of after.docs) {
+    if (outOfScopeIds.has(doc.id)) continue;   // never had a model reference; still does not
     const id = doc.data().equipmentModelId;
     if (typeof id !== "string" || !canonical.has(id)) { dangling.push({ id: doc.id, ref: id ?? null }); continue; }
     if (!modelCache.has(id)) {
@@ -278,7 +312,7 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
     try { modelFromFirestore(id, data); resolved += 1; }
     catch (err) { dangling.push({ id: doc.id, ref: id, why: err.message }); }
   }
-  log(`resolved   : ${resolved}/${after.size} equipment records resolve through the registry`);
+  log(`resolved   : ${resolved}/${after.size - outOfScope.length} in-scope equipment records resolve through the registry`);
   if (dangling.length > 0) {
     log("");
     log(`STOPPED before deletion: ${dangling.length} equipment records still do not resolve.`);
@@ -302,7 +336,7 @@ export async function runMigration({ db, apply = false, log = () => {} }) {
 
   log("");
   log("MIGRATION COMPLETE");
-  return { outcome: "APPLIED", created, repointed, resolved, deleted, heldBack, total: after.size };
+  return { outcome: "APPLIED", created, repointed, resolved, deleted, heldBack, outOfScope, total: after.size, inScope: after.size - outOfScope.length };
 }
 
 function writeEvidence(payload) {
