@@ -19,7 +19,7 @@ import {
 import { partEntity, partIndexList } from "../../metadata/definitions/part.js";
 import { buildQueryDescriptor } from "../../metadata/listRuntime.js";
 import {
-  addFilter, removeFilter, clearFilters, setSort, describeDropped,
+  addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
 import {
@@ -158,11 +158,10 @@ export default function PartMasterList(props) {
   const droppedMessage = useMemo(() => {
     const fromUrl = describeDropped(criteria.dropped);
     if (fromUrl) return fromUrl;
-    if (errors.length > 0) {
-      return `Some of what was requested could not be applied: ${errors.map((e) => e.message).join("; ")}. `
-        + "This list is broader than requested.";
-    }
-    return null;
+    // A REFUSED request and a DROPPED criterion are different outcomes and get different words:
+    // dropped leaves a list that renders and is broader than asked for; refused runs no query at
+    // all, so the screen is empty and "broader" would describe the opposite of what is on it.
+    return describeRefusal(errors, "parts");
   }, [criteria, errors]);
 
   // Paging is TIED TO THE DESCRIPTOR it was produced under. A cursor taken under different

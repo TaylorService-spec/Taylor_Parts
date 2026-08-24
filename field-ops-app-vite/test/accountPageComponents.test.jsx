@@ -25,7 +25,7 @@ import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
 import { contactRelatedList } from "../src/metadata/definitions/contact.js";
 import { locationRelatedList } from "../src/metadata/definitions/location.js";
-import { formatTimestamp } from "../src/domain/displayTimestamp.js";
+import { formatDateOnly } from "../src/domain/displayTimestamp.js";
 import {
   registerAccountPageComponents,
   accountPageComponentIds,
@@ -411,7 +411,7 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     // The exact same shared formatter (domain/displayTimestamp.js) the rest of the codebase
     // already uses for a stored time, not a value re-derived here — so this assertion cannot
     // silently drift from what cellValue() actually calls.
-    expect(screen.getByText(formatTimestamp(1755993600000, { unknown: null }))).toBeTruthy();
+    expect(screen.getByText(formatDateOnly(1755993600000, { unknown: null }))).toBeTruthy();
     // The raw epoch number never reaches the DOM — this is the exact regression BLOCKER 1
     // used to lock in (PR #1202); now it locks in the opposite fact.
     expect(screen.queryByText("1755993600000")).toBeNull();

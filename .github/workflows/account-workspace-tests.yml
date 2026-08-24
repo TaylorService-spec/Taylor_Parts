@@ -23,6 +23,10 @@ on:
       - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
       - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      # Customers structured-list migration (ADR-013 consumer).
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -50,6 +54,10 @@ on:
       - "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
       - "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
       - "field-ops-app-vite/test/accountHealthStrip.test.mjs"
+      # Customers structured-list migration (ADR-013 consumer).
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -113,6 +121,13 @@ jobs:
       # every FAILURE state, no raw uid ever rendered, and deep links point at real routes.
       - name: Account-scoped Opportunities + Sales Orders sections
         run: npx vitest run test/accountOpportunitiesAndSalesOrdersSections.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The /customers list on the canonical structured object-list experience: metadata-driven
+      # filters and sort, URL-backed criteria, the two-array-filter refusal, human owner names, and
+      # the whole-book portfolio cards staying whole-book under paging.
+      - name: Customers structured list + related-field projection
+        run: npx vitest run test/accountsStructuredList.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint

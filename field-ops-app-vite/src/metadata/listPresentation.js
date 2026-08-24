@@ -32,7 +32,7 @@ import { normalizeReferenceResult } from "./referenceResolution.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { findField } from "./entityDefinition.js";
-import { formatTimestamp } from "../domain/displayTimestamp.js";
+import { formatDateOnly } from "../domain/displayTimestamp.js";
 import { formatMinor } from "../domain/accountArView.js";
 
 export const LIST_STATE = Object.freeze(["LOADING", "READY", "EMPTY", "FILTERED", "DENIED", "UNAVAILABLE"]);
@@ -137,7 +137,9 @@ export function cellValue(column, row, { resolveReference } = {}) {
     if (raw.length === 0) return null;
     return raw.map((v) => column.enumLabels?.[v] ?? v).join(", ");
   }
-  if (column.type === "TIMESTAMP" || column.type === "DATE") return formatTimestamp(raw, { unknown: null });
+  // A DATE, not a full timestamp. A list answers "when, roughly"; the record answers "exactly
+  // when". "8/12/2025, 5:00:00 AM" spends a whole line of a phone card on seconds nobody reads.
+  if (column.type === "TIMESTAMP" || column.type === "DATE") return formatDateOnly(raw, { unknown: null });
   // BOOLEAN renders as text, using the app's established "Yes"/"No" vocabulary. Without
   // this, React renders neither `true` nor `false` as a child, so a declared boolean
   // column came out BLANK on every row -- indistinguishable from a missing value, and

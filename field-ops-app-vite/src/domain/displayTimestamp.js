@@ -32,6 +32,23 @@ export function formatTimestamp(value, { unknown = "Unknown" } = {}) {
  * Timestamp, and `new Date(<Timestamp>)` produced the literal "Invalid Date" on
  * every row until this coercion was applied.
  */
+/**
+ * A DATE for a list column (e.g. "Aug 12, 2025"), with no time of day.
+ *
+ * `formatTimestamp` gives a full locale string — "8/12/2025, 5:00:00 AM" — which is right on a
+ * detail page and wrong in a list. The seconds carry no information anybody reads, and on a phone
+ * card they take a whole line to say nothing. A list answers "when, roughly"; a record answers
+ * "exactly when".
+ *
+ * Same "never render Invalid Date" rule as its siblings.
+ */
+export function formatDateOnly(value, { unknown = "Unknown" } = {}) {
+  const ms = toMillis(value);
+  if (ms === null) return unknown;
+  const text = new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return text === "Invalid Date" ? unknown : text;
+}
+
 export function formatClockTime(value, { unknown = "Unknown" } = {}) {
   const ms = toMillis(value);
   if (ms === null) return unknown;

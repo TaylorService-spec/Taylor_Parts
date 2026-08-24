@@ -300,3 +300,47 @@ export function describeDropped(dropped) {
   return `Some of what this link asked for is not applied: ${parts.join("; ")}. `
     + "This list is broader than requested.";
 }
+
+/**
+ * What a request the query layer REFUSED OUTRIGHT reads as.
+ *
+ * Deliberately different wording from `describeDropped`, and the difference is the point. Dropped
+ * criteria leave a list that still renders and is BROADER than asked for. A refused request runs no
+ * query at all, so the list shows NOTHING — and telling somebody looking at an empty screen that it
+ * is "broader than requested" describes the opposite of what is in front of them.
+ *
+ * The message therefore says what happened, why, and what to do — because unlike a dropped stale
+ * criterion, this one is entirely within the reader's power to fix.
+ *
+ * @param label what the list calls its records, so the sentence reads in the reader's own terms.
+ */
+export function describeRefusal(errors, label = "records") {
+  if (!errors?.length) return null;
+  const reasons = errors.map((e) => REFUSAL_TEXT[e.kind] ?? fallbackReason(e)).join(" ");
+  return `These criteria cannot be applied together, so no ${label} are shown. ${reasons} `
+    + "Remove one of them to see results.";
+}
+
+/**
+ * The refusal, in business language.
+ *
+ * `buildQueryDescriptor`'s own messages are written for whoever is debugging a definition —
+ * "Firestore allows one array filter per query; this asks for 2 (lineOfBusiness,
+ * relationshipTypes)". Every word of that is true and none of it belongs in front of a person
+ * choosing customers: it names the database, the field ids and an index concept, which is the same
+ * storage vocabulary this platform refuses to show anywhere else.
+ *
+ * Unknown kinds fall through to the technical message rather than to silence — an unexplained
+ * refusal is worse than an awkwardly worded one, and the fallback is what makes a new REQUEST_ERROR
+ * visible instead of invisible.
+ */
+const REFUSAL_TEXT = Object.freeze({
+  MULTIPLE_ARRAY_FILTERS:
+    "Only one of these can be used at a time, because each matches a list of values rather than a "
+    + "single one.",
+});
+
+function fallbackReason(error) {
+  // Normalized to end in exactly one full stop; the raw messages vary and produced "…combination..".
+  return String(error?.message ?? "").trim().replace(/\.*$/, ".");
+}

@@ -67,4 +67,5 @@ export const OBJECT_LIST_KEY = Object.freeze({
   WORK_ORDERS: "workOrders",
   SALES_ORDERS: "salesOrders",
   EQUIPMENT: "equipment",
+  CUSTOMERS: "customers",
 });

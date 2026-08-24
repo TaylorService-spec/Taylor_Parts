@@ -201,15 +201,20 @@ test("none of the new Commercial Profile / Notes & Identifiers fields are filter
   }
 });
 
-test("requiredIndexes() for the Customers list is unchanged by the new fields -- no new index demand", () => {
-  // None of the new fields appear in accountIndexList's columns/filters/sort, so the
-  // index-demand set the list already declares must be exactly what it was before.
+test("requiredIndexes() adds ONE array family per array filter, never a combined one", () => {
+  // Firestore permits ONE array filter per query, so a second array filter produces its own
+  // family rather than combining with the first. There is deliberately NO
+  // relationshipTypes+lineOfBusiness entry: no index can serve that query at any cost, and
+  // listRuntime refuses it as MULTIPLE_ARRAY_FILTERS rather than letting it fail at read time.
   const shapes = requiredIndexes(accountIndexList, accountEntity)
     .map((i) => i.fields.map((f) => f.fieldPath).join(","))
     .sort();
   assert.deepEqual(shapes, [
+    "lineOfBusiness,updatedAt,__name__",
     "relationshipTypes,updatedAt,__name__",
+    "status,lineOfBusiness,updatedAt,__name__",
     "status,relationshipTypes,updatedAt,__name__",
     "status,updatedAt,__name__",
   ]);
+  assert.equal(shapes.some((s2) => s2.includes("relationshipTypes") && s2.includes("lineOfBusiness")), false);
 });

@@ -23,6 +23,7 @@ import {
 import { ActiveCriteria } from "../src/metadata/MetadataListControls.jsx";
 import { workOrderEntity } from "../src/metadata/definitions/workOrder.js";
 import { partEntity } from "../src/metadata/definitions/part.js";
+import { accountEntity } from "../src/metadata/definitions/account.js";
 import { makeCriterion, EMPTY_CRITERIA, addFilter } from "../src/metadata/listUrlState.js";
 
 afterEach(cleanup);
@@ -149,6 +150,60 @@ describe("business surfaces show human identities", () => {
     );
     expect(container.textContent).toContain("Harbor Grill Restaurant Group");
     assertNoRawIds(container, "filter chip");
+  });
+});
+
+// ═══════════════════════════════════════════ ACCOUNTS
+
+describe("Account identities", () => {
+  it("an Account filter chip carries the customer's NAME, never the account id", () => {
+    const criteria = addFilter(EMPTY_CRITERIA, makeCriterion({
+      fieldId: "status", operator: "EQUALS", value: "PROSPECT", valueLabel: "Prospect",
+    }));
+    const { container } = render(
+      <ActiveCriteria criteria={criteria} entity={accountEntity} onRemove={() => {}} onClear={() => {}} />,
+    );
+    assertNoRawIds(container, "account status chip");
+    expect(container.textContent).toContain("Prospect");
+  });
+
+  it("an OWNER that no longer resolves reads as unavailable, not as an employee id", () => {
+    // `accountOwner.assignedToEmployeeId` is a routing key. The one moment it is most likely to be
+    // rendered is the one where the employee has gone — which is exactly when showing it is worst.
+    const { container } = render(
+      <StructuredFields
+        fields={[
+          field({ label: "Customer", value: "Harbor Grill Restaurant Group" }),
+          field({ label: "Owner", value: null, absence: "Owner unavailable" }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Owner unavailable")).toBeTruthy();
+    assertNoRawIds(container, "unresolved owner");
+  });
+
+  it("an Account with no name says so instead of falling back to its document id", () => {
+    const { container } = render(
+      <StructuredFields
+        fields={[field({ label: "Customer", value: null, absence: "Account name unavailable" })]}
+      />,
+    );
+    expect(screen.getByText("Account name unavailable")).toBeTruthy();
+    assertNoRawIds(container, "unnamed account");
+  });
+
+  it("the Account entity declares NO field whose label promotes a reserved identifier", () => {
+    // customerNumber / erpId / accountingId / legacyId are passthrough integration data — not
+    // validated, not unique. ACCOUNT NUMBER NOT AUTHORITATIVE: none of them may become a default
+    // column, because a column reads as an identity people can rely on.
+    for (const id of ["customerNumber", "erpId", "accountingId", "legacyId"]) {
+      const f = accountEntity.fields.find((x) => x.id === id);
+      expect(f, id).toBeTruthy();
+      expect(f.defaultVisible ?? false, `${id} must not be a default column`).toBe(false);
+    }
+    // And the business identity is the name.
+    expect(accountEntity.identity.nameField).toBe("name");
+    expect(accountEntity.identity.referenceField).toBeNull();
   });
 });
 

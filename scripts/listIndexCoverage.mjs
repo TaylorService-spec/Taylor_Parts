@@ -123,6 +123,32 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "account.index",
   }),
+  // lineOfBusiness, added by the Customers structured-list migration. An ARRAY filter does not
+  // combine with another array filter — Firestore permits one per query — so this adds its own
+  // family (alone, and with the status equality) rather than doubling the whole set. The
+  // relationshipTypes + lineOfBusiness combination has no entry here because no index can serve
+  // it; listRuntime refuses it as MULTIPLE_ARRAY_FILTERS.
+  Object.freeze({
+    collectionGroup: "accounts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "lineOfBusiness", arrayConfig: "CONTAINS"},
+      {fieldPath: "updatedAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "account.index",
+  }),
+  Object.freeze({
+    collectionGroup: "accounts",
+    queryScope: "COLLECTION",
+    fields: Object.freeze([
+      {fieldPath: "status", order: "ASCENDING"},
+      {fieldPath: "lineOfBusiness", arrayConfig: "CONTAINS"},
+      {fieldPath: "updatedAt", order: "DESCENDING"},
+      {fieldPath: "__name__", order: "ASCENDING"},
+    ]),
+    requiredBy: "account.index",
+  }),
   // workOrder.index (field-ops-app-vite/src/metadata/definitions/workOrder.js).
   Object.freeze({
     collectionGroup: "fieldops_wos",
