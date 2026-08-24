@@ -9,6 +9,36 @@
 # any agent session -- deploy is a human-triggered action.
 set -euo pipefail
 
+# ---------------------------------------------------------------------------------------------
+# TOOLCHAIN PREFLIGHT -- fail here, with a name, rather than four steps in.
+#
+# On Windows a bare `bash` frequently resolves to the WSL shim in
+# %LOCALAPPDATA%MicrosoftWindowsApps, NOT to Git Bash. WSL is a different machine with a
+# different PATH: the Windows Node/npm/firebase install is simply not in it, so this script gets
+# several steps into a deploy and then dies on "node: command not found" -- long after it has
+# already started doing work, and with a message that blames the wrong thing.
+#
+# Run this under GIT BASH, which inherits the Windows PATH:
+#
+#     & "D:/Git/usr/bin/bash.exe" scripts/_sandboxRefresh.run.sh
+#
+# (adjust the path if Git is installed elsewhere; `where.exe bash` lists every candidate).
+for tool in node npm firebase; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "ABORT: '$tool' is not on PATH in this shell." >&2
+    echo "" >&2
+    echo "  shell : $(uname -s 2>/dev/null || echo unknown)  ($BASH)" >&2
+    echo "" >&2
+    echo "  On Windows, a bare 'bash' usually starts WSL, which does not share the Windows PATH." >&2
+    echo "  Use Git Bash instead -- from PowerShell:" >&2
+    echo "" >&2
+    echo "      & \"D:/Git/usr/bin/bash.exe\" $0" >&2
+    echo "" >&2
+    echo "  Nothing has been built, deployed or changed." >&2
+    exit 2
+  fi
+done
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
