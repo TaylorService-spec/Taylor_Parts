@@ -173,8 +173,48 @@ export function makePageDefinition(input = {}) {
     headerActions: Object.freeze([...(input.headerActions ?? [])]),
     sections: Object.freeze([...(input.sections ?? [])]),
     capabilityRequirement: input.capabilityRequirement ?? null,
+    // ══════════════════ EDITABILITY IS AN ALLOWLIST, NOT AN ABSENCE OF A BAN ══════════════════
+    //
+    // `editableFieldIds` names exactly the fields a governed command already writes. A field not
+    // on this list renders READ-ONLY — visibly so, not hidden — because the reason it cannot be
+    // edited is usually worth seeing.
+    //
+    // WHY AN EXPLICIT LIST RATHER THAN A PER-FIELD `editable` FLAG. The Account write authority is
+    // OBJECT-level: domain/accounts.js's updateAccount takes an arbitrary patch, and firestore.rules
+    // decides. There is no per-field write contract to read a flag off, so the honest source is the
+    // payload the existing governed form actually sends. Deriving the list from the command keeps
+    // it falsifiable — a test compares this list against that payload — where a hand-maintained
+    // flag per field would drift the first time the form changed.
+    //
+    // `writeCommand` names the authority in the same breath, so a page can never claim a field is
+    // editable without naming what would write it.
+    editableFieldIds: Object.freeze([...(input.editableFieldIds ?? [])]),
+    writeCommand: input.writeCommand ?? null,
   });
 }
+
+/**
+ * Is this field editable on this page, and if not, why not.
+ *
+ * Returns { editable, reason }. The reason is for a READER, not a log: a field that cannot be
+ * edited because nothing writes it is a different fact from one an admin could change and this
+ * viewer cannot, and collapsing them tells somebody to go ask the wrong person.
+ */
+export function fieldEditability(def, fieldId, { isAdmin = false, adminOnlyFieldIds = [] } = {}) {
+  if (!def?.editableFieldIds?.includes(fieldId)) {
+    return { editable: false, reason: "NOT_WRITABLE" };
+  }
+  if (adminOnlyFieldIds.includes(fieldId) && !isAdmin) {
+    return { editable: false, reason: "ADMIN_ONLY" };
+  }
+  return { editable: true, reason: null };
+}
+
+/** What a reader is told about a field they cannot edit. */
+export const EDITABILITY_REASON_TEXT = Object.freeze({
+  NOT_WRITABLE: "This value is not editable here.",
+  ADMIN_ONLY: "Only an administrator can change this.",
+});
 
 export function validatePageDefinition(def, entity) {
   const problems = [];

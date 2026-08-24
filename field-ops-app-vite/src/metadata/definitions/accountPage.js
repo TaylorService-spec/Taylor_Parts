@@ -113,6 +113,34 @@ export const accountRecordPage = makePageDefinition({
   entityId: "account",
   label: "Customer Detail",
   compositionMode: "RECORD", // see DECISION above — an Account has no lifecycle to declare
+  // ═══════════════════ WHAT AN EDIT ON THIS PAGE ACTUALLY WRITES ═══════════════════
+  //
+  // domain/accounts.js's `updateAccount` — a client-direct patch that firestore.rules gates on
+  // isAdminOrDispatcher(), with `nameLower` derived and `updatedAt` stamped inside the writer so
+  // no caller can forget them.
+  //
+  // The list below is EXACTLY the payload AccountForm already sends, and accountRecordPage.test
+  // compares the two so it cannot drift. It is not a wish list: a field here that the form does not
+  // send would be a promise no command keeps.
+  //
+  // DELIBERATELY ABSENT, and each renders read-only rather than hidden:
+  //   nameLower  — derived from name inside the writer; editing it directly would let the search
+  //                key disagree with the name it is a copy of. Also displayable:false.
+  //   createdAt  — when the record came into existence. Not a preference.
+  //   updatedAt  — stamped by updateAccount on every write; typing a value would be overwritten
+  //                by the same call that saved it.
+  //
+  // paymentTerms and taxStatus ARE on the list and are ADMIN-ONLY at the Rules layer
+  // (accountGovernedFieldsUnchanged). They are offered to an admin and shown read-only, with the
+  // reason, to everyone else — the form does not hide them either, and Rules, not the UI, is what
+  // enforces it.
+  writeCommand: "domain/accounts.js#updateAccount",
+  editableFieldIds: [
+    "name", "status", "relationshipTypes", "lineOfBusiness", "tags", "billingAddress",
+    "accountOwnerEmployeeId", "defaultCurrency", "paymentTerms", "purchaseOrderRequired",
+    "invoiceDeliveryMethod", "taxStatus", "billingContactId",
+    "notes", "customerNumber", "erpId", "accountingId", "legacyId",
+  ],
   sections: [
     // HEADER — status/relationship/tags pill row + ContextBand, backed by the fields
     // accountEntity actually declares today. (lineOfBusiness is rendered in AccountDetail
@@ -122,7 +150,11 @@ export const accountRecordPage = makePageDefinition({
       kind: "FIELD_GROUP",
       region: "HEADER",
       order: 0,
-      fieldIds: ["name", "status", "relationshipTypes", "tags"],
+      label: "Overview",
+      // lineOfBusiness JOINS THIS GROUP. It is a declared field, it is the Taylor/Ventana split,
+      // and no section claimed it — so the one attribute that says which operating company a
+      // customer belongs to rendered nowhere on the customer's own record.
+      fieldIds: ["name", "status", "relationshipTypes", "lineOfBusiness", "tags"],
     }),
 
     // HIGHLIGHTS — AccountHealthStrip: open Work Order count + AR view, in the metric-strip
@@ -219,6 +251,7 @@ export const accountRecordPage = makePageDefinition({
       kind: "FIELD_GROUP",
       region: "SIDE",
       order: 0,
+      label: "Billing & Terms",
       // Exactly the fields CommercialProfileSection (AccountDetail.jsx) renders, in the
       // order it renders them: Owner, Default currency, Payment terms, PO required,
       // Invoice delivery, Tax status, Billing contact.
@@ -244,10 +277,37 @@ export const accountRecordPage = makePageDefinition({
     // "6. Notes / Identifiers" in AccountDetail.jsx's own in-file numbering — a
     // <details>, collapsed by default, matching this section's collapsedByDefault.
     makeSection({
+      id: "billingAddress",
+      kind: "FIELD_GROUP",
+      region: "SIDE",
+      order: 5,
+      label: "Address",
+      // A REAL SECTION FOR A REAL STORED FIELD, not a decorative one. billingAddress has been
+      // written by AccountForm since the Commercial Profile work; it was rendered by reaching
+      // around the metadata layer because no FieldDefinition existed for it. Both now do.
+      fieldIds: ["billingAddress"],
+    }),
+
+    makeSection({
+      id: "recordProvenance",
+      kind: "FIELD_GROUP",
+      region: "SIDE",
+      order: 30,
+      label: "Record",
+      // WHEN THIS RECORD CAME INTO EXISTENCE AND WHEN IT LAST MOVED. Both are declared fields that
+      // no section claimed, so a customer record could not answer "is this current?" from itself.
+      // Read-only by construction: createdAt is a fact, and updatedAt is stamped by updateAccount
+      // on every write -- typing a value would be overwritten by the same call that saved it.
+      fieldIds: ["createdAt", "updatedAt"],
+      collapsedByDefault: true,
+    }),
+
+    makeSection({
       id: "notesAndIdentifiers",
       kind: "FIELD_GROUP",
       region: "SIDE",
       order: 20,
+      label: "Notes & Identifiers",
       fieldIds: ["notes", "customerNumber", "erpId", "accountingId", "legacyId"],
       collapsedByDefault: true,
       // No capabilityRequirement — see the CAPABILITY DECLARATIONS block above.

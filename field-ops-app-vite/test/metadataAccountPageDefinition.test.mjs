@@ -150,13 +150,21 @@ test("notesAndIdentifiers groups exactly the reserved-identifier fields, collaps
   assert.equal(section.capabilityRequirement, null);
 });
 
-test("SIDE region renders Commercial Profile, then Account Attention, then Notes & Identifiers", () => {
-  // Matches AccountDetail.jsx's actual top-to-bottom order in the secondary column.
+test("the SIDE column reads Billing & Terms, Address, Attention, Notes, then Record", () => {
+  // TWO SECTIONS JOINED, and the order is the reading order a person expects rather than the
+  // order the sections happened to be written in:
+  //   billingAddress   -- billingAddress was STORED and WRITTEN by AccountForm all along and had
+  //                       no FieldDefinition, so the record page could only render an address by
+  //                       reaching around the metadata layer.
+  //   recordProvenance -- createdAt/updatedAt are declared fields no section claimed, so a
+  //                       customer record could not answer "is this current?" from itself.
   const side = accountRecordPage.sections
     .filter((s) => s.region === "SIDE")
     .sort((a, b) => a.order - b.order)
     .map((s) => s.id);
-  assert.deepEqual(side, ["commercialProfile", "accountAttention", "notesAndIdentifiers"]);
+  assert.deepEqual(side, [
+    "commercialProfile", "billingAddress", "accountAttention", "notesAndIdentifiers", "recordProvenance",
+  ]);
 });
 
 test("componentId sections use REGISTERED-id shape (never a function) and are named for a later wiring lane", () => {

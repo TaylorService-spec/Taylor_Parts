@@ -48,6 +48,18 @@ import {
 // deliberately smaller than what the current client-side page offers: what the page does
 // in memory over the whole collection is not evidence that the query layer can do it.
 
+// THE TWO FIELDS RULES TREATS DIFFERENTLY FROM EVERY OTHER FIELD ON THIS RECORD.
+//
+// firestore.rules accountGovernedFieldsUnchanged(): a dispatcher may update an Account only if
+// paymentTerms and taxStatus are UNCHANGED; an admin may change them. Exported so a surface can
+// mirror that in PRESENTATION -- which pencils appear -- without restating the rule inline and
+// drifting from it. accountRecordPage.test compares this list against firestore.rules itself.
+//
+// It decides presentation only. Rules remain the enforcement, and a write that reaches the server
+// anyway is denied there, which is exactly what AccountForm already relies on: it does not hide
+// these fields from a dispatcher either.
+export const ACCOUNT_GOVERNED_FIELD_IDS = Object.freeze(["paymentTerms", "taxStatus"]);
+
 export const accountEntity = makeEntityDefinition({
   id: "account",
   label: "Customer",
@@ -366,6 +378,25 @@ export const accountEntity = makeEntityDefinition({
       label: "Notes",
       type: "TEXT",
       description: "Free-form text. Rendered verbatim; no formatting or length constraint found in any write path.",
+    }),
+    // STORED AND WRITTEN SINCE THE COMMERCIAL PROFILE WORK, AND UNDECLARED UNTIL NOW.
+    //
+    // AccountForm sends `billingAddress` as { street, city, state, zip } or null, and AccountDetail
+    // renders it through domain/address.js's formatAddress. It simply had no FieldDefinition, so
+    // the metadata layer could not see a field the write path has been maintaining all along —
+    // which is why the record page had to reach around metadata to show a customer's address.
+    //
+    // Declared as ADDRESS rather than four strings: the parts are written and cleared together, and
+    // splitting them would let a definition claim "City" is independently present.
+    makeFieldDefinition({
+      id: "billingAddress",
+      entityId: "account",
+      label: "Billing Address",
+      type: "ADDRESS",
+      description:
+        "Structured { street, city, state, zip }, every part optional; the whole object is written " +
+        "or cleared together. Not filterable or sortable — Firestore cannot order by a map, and no " +
+        "projected scalar exists to filter on.",
     }),
   ],
   // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Every one traced against the

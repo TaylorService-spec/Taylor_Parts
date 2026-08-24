@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ACCOUNT_STATUS, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
+import { ACCOUNT_FIELD_INPUT_ID } from "./accountFieldInputs.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import AddressFields from "../../shared/address/AddressFields";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
@@ -43,7 +44,7 @@ import { Button } from "../../shared/ui/primitives";
 // fail-closed behaviour, permission, and write path is unchanged -- this is a
 // presentation-only migration. The `.fo-account-form` class + its two-column
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
-export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange }) {
+export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
   const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
@@ -249,6 +250,24 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       onSavingChange?.(false);
     }
   }
+
+  // ENTERING EDIT FROM A FIELD LANDS ON THAT FIELD.
+  //
+  // A pencil beside "Payment terms" that opens a long form scrolled to the top has answered a
+  // different question than the one asked. This moves focus to the named control, which also
+  // scrolls it into view and announces it -- so the keyboard path and the pointer path arrive in
+  // the same place.
+  //
+  // A field with no mapped control focuses nothing rather than guessing: the form is the authority
+  // on which inputs it has, and a wrong guess would steal focus to an unrelated field.
+  useEffect(() => {
+    if (!focusFieldId) return;
+    const inputId = ACCOUNT_FIELD_INPUT_ID[focusFieldId];
+    if (!inputId) return;
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.focus({ preventScroll: false });
+  }, [focusFieldId]);
 
   return (
     // `fo-account-form` is ADDITIVE layout only (keeps `fo-form` for shared
