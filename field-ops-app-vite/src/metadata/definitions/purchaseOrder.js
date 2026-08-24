@@ -271,6 +271,33 @@ export const purchaseOrderEntity = makeEntityDefinition({
         "questions belong to the collection that stores an amount.",
     }),
     makeGap({
+      id: "PURCHASE_ORDER_CANONICAL_COLLECTION_IS_EMPTY",
+      title: "The canonical Purchase Order collection holds no records",
+      entityId: "purchaseOrder",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding:
+        "MEASURED, not inferred, against eos-platform-sandbox on 2026-08-24 with a read-only count: " +
+        "`purchase_orders` = 0 documents and 0 live composite indexes. `reorder_purchase_orders` = 3 " +
+        "documents (2 ORDERED, 1 VOIDED), each carrying externalPoNumber, supplierId, partId and " +
+        "orderedQuantity — and no money. Every Purchase Order this business has is in the collection " +
+        "that stores no amount; the collection that stores totalCost has never been written to.",
+      consequence:
+        "Pointing the Purchase Orders screen at the canonical collection today would replace a working " +
+        "three-row list with an empty one, and the Dollars column it was switched for would have no " +
+        "rows to appear on. The word 'dormant' in this file was a judgement; this is the count.",
+      refused:
+        "Making the switch anyway and reporting the empty screen as a migration. Also refused: merging " +
+        "the two collections into one list without a normalization contract — they do not share a " +
+        "shape, an identity, or a status vocabulary, and `status` means different things in each " +
+        "(immutable ORDERED here, a five-value lifecycle there).",
+      resolution:
+        "Either procurement starts writing canonical Purchase Orders, or the existing records are " +
+        "migrated under a stated normalization contract — which is a decision about what a Purchase " +
+        "Order IS, not a list change. Whichever comes first, the switch follows it rather than " +
+        "leading it.",
+    }),
+    makeGap({
       id: "PURCHASE_ORDER_TOTAL_UNIT_CONVENTION",
       title: "totalCost declares no currency and no unit",
       entityId: "purchaseOrder",
