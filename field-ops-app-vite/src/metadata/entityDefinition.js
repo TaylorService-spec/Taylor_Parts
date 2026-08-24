@@ -36,6 +36,10 @@
 // This is not stylistic: conflating the two put "0 Active" on the customers list
 // beside a table of ACTIVE rows (#1093). The validator enforces the separation.
 
+import { isUnsupportedReason } from "./unsupportedReason.js";
+import { ABSENCE } from "./absence.js";
+import { validateGap } from "./gapRegister.js";
+
 /** Field data types v1. Deliberately small — add one only when a real EOS field needs it. */
 export const FIELD_TYPE = Object.freeze([
   "STRING",
@@ -195,6 +199,26 @@ export function makeFieldDefinition(input = {}) {
     referenceTo: input.referenceTo ?? null,
     renderer: input.renderer ?? null, // a REGISTERED renderer id, never a function
     description: input.description ?? null,
+    // WHY THIS FIELD CANNOT BE QUERIED. See metadata/unsupportedReason.js.
+    //
+    // These EXPLAIN a `filterable: false` / `sortable: false`. They never create one, never override
+    // one, and buildQueryDescriptor does not read them — a reason is governance and presentation
+    // data, not a gate. Absent means "nobody recorded why", which the coverage test tracks as debt
+    // rather than treating as acceptable.
+    unsupportedFilterReason: input.unsupportedFilterReason ?? null,
+    unsupportedSortReason: input.unsupportedSortReason ?? null,
+    // Which ABSENCE this field's empty value means (metadata/absence.js). Declared per field because
+    // only the field knows whether a missing figure was never entered, withheld, or unknowable —
+    // and defaulting it is how everything silently becomes "Not recorded".
+    absence: input.absence ?? null,
+    // A field may be DECLARED (so its meaning, gaps and reasons are recorded) without being offered
+    // as a column. Blocked and derived fields are the usual case.
+    displayable: input.displayable ?? true,
+    defaultVisible: input.defaultVisible ?? false,
+    // Reporting and export are opt-OUT, but a field the platform cannot prove must be excluded from
+    // both: an export is the back door a blocked column otherwise ships through.
+    reportable: input.reportable ?? true,
+    exportable: input.exportable ?? true,
   });
 }
 
@@ -229,6 +253,10 @@ export function makeEntityDefinition(input = {}) {
     fields: Object.freeze([...(input.fields ?? [])]),
     relationships: Object.freeze([...(input.relationships ?? [])]),
     description: input.description ?? null,
+    // KNOWN LIMITATIONS, AS DATA. See metadata/gapRegister.js — "this exists conceptually and cannot
+    // truthfully be provided yet", recorded where architecture review, reporting and migrations can
+    // all read it, rather than in a comment beside the field it disables.
+    gaps: Object.freeze([...(input.gaps ?? [])]),
   });
 }
 
@@ -313,6 +341,25 @@ export function validateEntityDefinition(entity) {
     }
   }
 
+  // Gaps are governance records and are validated with everything else, so a malformed one fails
+  // at load rather than being discovered in a review months later.
+  const gapIds = new Set();
+  for (const gap of entity?.gaps ?? []) {
+    problems.push(...validateGap(gap));
+    if (gap?.id) {
+      if (gapIds.has(gap.id)) problems.push(`${at}: duplicate gap id "${gap.id}"`);
+      gapIds.add(gap.id);
+    }
+    if (gap?.entityId && entity?.id && gap.entityId !== entity.id) {
+      problems.push(`${at}: gap ${gap.id} names entityId "${gap.entityId}", which is not this entity`);
+    }
+    // A gap pointing at a field that does not exist is a stale record, and a stale governance record
+    // is worse than none: it reads as current.
+    if (gap?.fieldId && !fieldIds.has(gap.fieldId)) {
+      problems.push(`${at}: gap ${gap.id} names fieldId "${gap.fieldId}", which is not a field on this entity`);
+    }
+  }
+
   const relIds = new Set();
   for (const rel of entity?.relationships ?? []) {
     problems.push(...validateRelationshipDefinition(rel, entity));
@@ -382,6 +429,36 @@ export function validateFieldDefinition(field, entity = null) {
 
   if (typeof field?.renderer === "function") {
     problems.push(`${at}: renderer must be a registered renderer id, never a function (boundary §8)`);
+  }
+
+  // A reason explains a refusal. Declaring one beside a field that CAN do the thing is a
+  // contradiction, and the contradiction is the dangerous direction: a reader trusts the reason.
+  if (field?.filterable && field?.unsupportedFilterReason) {
+    problems.push(`${at}: filterable but declares an unsupportedFilterReason — it is not unsupported`);
+  }
+  if (field?.sortable && field?.unsupportedSortReason) {
+    problems.push(`${at}: sortable but declares an unsupportedSortReason — it is not unsupported`);
+  }
+  for (const [key, value] of [
+    ["unsupportedFilterReason", field?.unsupportedFilterReason],
+    ["unsupportedSortReason", field?.unsupportedSortReason],
+  ]) {
+    if (value && !isUnsupportedReason(value)) {
+      problems.push(`${at}: ${key} "${value}" is not a known UNSUPPORTED_REASON`);
+    }
+  }
+  if (field?.absence && !Object.prototype.hasOwnProperty.call(ABSENCE, field.absence)) {
+    problems.push(`${at}: absence "${field.absence}" is not a known ABSENCE`);
+  }
+  // A field nothing may display must not leak through reporting or export instead. Blocking a
+  // column and leaving the CSV open is the same field reaching the same person by a longer route.
+  if (field?.displayable === false && (field?.reportable || field?.exportable)) {
+    problems.push(
+      `${at}: not displayable, but still reportable/exportable — an export is the back door a blocked field ships through`
+    );
+  }
+  if (field?.defaultVisible && field?.displayable === false) {
+    problems.push(`${at}: defaultVisible on a field that is not displayable`);
   }
 
   return problems;

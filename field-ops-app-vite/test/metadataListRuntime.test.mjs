@@ -9,7 +9,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition, makeIdentity } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn, makeFilter, makeSort, MAX_PAGE_SIZE } from "../src/metadata/listViewDefinition.js";
-import { buildQueryDescriptor, interpretPage, toUrlParams, fromUrlParams, REQUEST_ERROR } from "../src/metadata/listRuntime.js";
+import { buildQueryDescriptor, interpretPage, REQUEST_ERROR } from "../src/metadata/listRuntime.js";
+import { toSearchParams, fromSearchParams, makeCriterion, DROP_REASON } from "../src/metadata/listUrlState.js";
 
 const account = () => makeEntityDefinition({
   id: "account", label: "Customer", collection: "accounts", readVia: "CLIENT_DIRECT",
@@ -203,20 +204,68 @@ test("a short page reports no more and no cursor", () => {
 
 // --- URL state --------------------------------------------------------------
 
+// The descriptor-shaped toUrlParams/fromUrlParams pair these two tests used to exercise was retired
+// by the object-list metadata convergence (ADR-013) -- tested since it was written, never mounted on a
+// screen. Both requirements it protected survive here, against metadata/listUrlState.js, which is now
+// the ONE URL layer and does the thing the retired pair could not: it says what it dropped.
+
 test("a filtered view round-trips through the URL", () => {
-  const { descriptor } = build({ filters: [{ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }] });
-  const parsed = fromUrlParams(toUrlParams(descriptor));
-  const rebuilt = build(parsed);
+  const criteria = {
+    filters: [makeCriterion({ fieldId: "status", operator: "EQUALS", value: "ACTIVE" })],
+    sort: [{ fieldId: "name", direction: "ASC" }],
+  };
+  const parsed = fromSearchParams(toSearchParams(criteria).toString(), indexList(), account());
+
+  assert.deepEqual(parsed.dropped, []);
+  assert.deepEqual(parsed.filters.map((f) => [f.fieldId, f.operator, f.value]), [["status", "EQUALS", "ACTIVE"]]);
+  assert.deepEqual(parsed.sort, [{ fieldId: "name", direction: "ASC" }]);
+
+  // And it survives the query layer, which is the half that actually matters -- a round trip that
+  // parses but cannot then be built is not a round trip.
+  const rebuilt = build({ filters: parsed.filters, sort: parsed.sort });
   assert.deepEqual(rebuilt.errors, []);
-  assert.deepEqual(rebuilt.descriptor.filters, descriptor.filters);
+  assert.deepEqual(rebuilt.descriptor.filters, [{ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }]);
 });
 
 test("a hand-edited URL cannot smuggle in an undeclared filter", () => {
-  // fromUrlParams returns a REQUEST, not a query. It goes through the same validation as
-  // any other, so the address bar is not an input to the query layer.
-  const { descriptor, errors } = build(fromUrlParams("f=secret:EQUALS:x"));
+  // `secret` is a real field and is not filterable, so it never becomes a criterion at all -- the
+  // address bar is not an input to the query layer.
+  const parsed = fromSearchParams("f=secret:EQUALS:x", indexList(), account());
+  assert.deepEqual(parsed.filters, []);
+
+  // And it is REPORTED. The retired pair dropped it into a request that buildQueryDescriptor then
+  // rejected, leaving the list unfiltered and silent -- a person following that link would read the
+  // whole collection as the filtered subset.
+  assert.equal(parsed.dropped.length, 1);
+  assert.equal(parsed.dropped[0].reason, DROP_REASON.UNSUPPORTED);
+
+  // The second gate still holds regardless: even if a criterion got past the parser, the runtime
+  // refuses anything the list did not declare.
+  const { descriptor, errors } = build({ filters: [{ fieldId: "secret", operator: "EQUALS", value: "x" }] });
   assert.equal(descriptor, null);
   assert.ok(errors.some((e) => e.kind === "UNDECLARED_FILTER"));
+});
+
+test("a URL naming a field this build no longer has is reported, not ignored", () => {
+  const parsed = fromSearchParams("f=ghost:EQUALS:x&sort=ghost:ASC", indexList(), account());
+  assert.deepEqual(parsed.filters, []);
+  assert.deepEqual(parsed.sort, []);
+  assert.deepEqual(parsed.dropped.map((d) => d.reason), [DROP_REASON.UNKNOWN_FIELD, DROP_REASON.UNKNOWN_FIELD]);
+});
+
+test("a value containing a colon survives the round trip intact", () => {
+  // Part numbers and customer names both contain colons. Encoding the value LAST and percent-encoding
+  // it is what stops one splitting the record it lives in.
+  const criteria = { filters: [makeCriterion({ fieldId: "status", operator: "EQUALS", value: "A:B:C" })] };
+  const parsed = fromSearchParams(toSearchParams(criteria).toString(), indexList(), account());
+  assert.equal(parsed.filters[0].value, "A:B:C");
+});
+
+test("the cursor is never written to the URL", () => {
+  // A bookmarked page-3 cursor is meaningless once the data moves, and restoring it would show a
+  // stranger somebody else's arbitrary window into the list.
+  const params = toSearchParams({ filters: [], sort: [], cursor: "doc-42" }).toString();
+  assert.equal(params.includes("doc-42"), false);
 });
 
 test("every error kind is a known REQUEST_ERROR", () => {

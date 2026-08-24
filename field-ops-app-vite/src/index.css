@@ -4791,6 +4791,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-listctl__clear { min-height: 44px; }
 .fo-listctl__empty { display: grid; gap: 10px; justify-items: start; padding: 16px 0; }
+/* Why a field a person can SEE is not in the filter menu. Quiet by design: it is an explanation
+   sitting under the builder, not a warning about anything being wrong. */
+.fo-listctl__why { flex-basis: 100%; margin: 4px 0 0; font-size: 0.8125rem; line-height: 1.4; }
 
 @media (max-width: 639.98px) {
   /* The builder stacks on a phone: three controls side by side leave each too narrow to read. */

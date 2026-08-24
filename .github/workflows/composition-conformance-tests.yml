@@ -16,18 +16,19 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
-      # Structured Object UX pilot -- field metadata, list state, raw-id guard.
-      - "field-ops-app-vite/src/domain/fieldMetadata.js"
-      - "field-ops-app-vite/src/domain/objectFields.js"
-      - "field-ops-app-vite/src/domain/listQueryState.js"
+      # Field presentation + navigation, and the raw-id guard that spans both architectures.
       - "field-ops-app-vite/src/domain/structuredFields.js"
       - "field-ops-app-vite/src/navigation/objectRoutes.js"
       - "field-ops-app-vite/src/navigation/listStateMemory.js"
-      - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
       - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
-      # Purchase Order migration -- the first list with real money on it.
-      - "field-ops-app-vite/src/domain/purchaseOrderFields.js"
-      - "field-ops-app-vite/test/purchaseOrderStructuredList.test.mjs"
+      # ADR-013 -- the canonical object-list metadata layer and its boundary.
+      - "field-ops-app-vite/src/metadata/listUrlState.js"
+      - "field-ops-app-vite/src/metadata/unsupportedReason.js"
+      - "field-ops-app-vite/src/metadata/gapRegister.js"
+      - "field-ops-app-vite/src/metadata/absence.js"
+      - "field-ops-app-vite/src/metadata/entityDefinition.js"
+      - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
+      - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
     branches: [main]
@@ -38,18 +39,19 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
-      # Structured Object UX pilot -- field metadata, list state, raw-id guard.
-      - "field-ops-app-vite/src/domain/fieldMetadata.js"
-      - "field-ops-app-vite/src/domain/objectFields.js"
-      - "field-ops-app-vite/src/domain/listQueryState.js"
+      # Field presentation + navigation, and the raw-id guard that spans both architectures.
       - "field-ops-app-vite/src/domain/structuredFields.js"
       - "field-ops-app-vite/src/navigation/objectRoutes.js"
       - "field-ops-app-vite/src/navigation/listStateMemory.js"
-      - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
       - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
-      # Purchase Order migration -- the first list with real money on it.
-      - "field-ops-app-vite/src/domain/purchaseOrderFields.js"
-      - "field-ops-app-vite/test/purchaseOrderStructuredList.test.mjs"
+      # ADR-013 -- the canonical object-list metadata layer and its boundary.
+      - "field-ops-app-vite/src/metadata/listUrlState.js"
+      - "field-ops-app-vite/src/metadata/unsupportedReason.js"
+      - "field-ops-app-vite/src/metadata/gapRegister.js"
+      - "field-ops-app-vite/src/metadata/absence.js"
+      - "field-ops-app-vite/src/metadata/entityDefinition.js"
+      - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
+      - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
 
@@ -78,13 +80,16 @@ jobs:
         # tests were never actually executing in this lane. Adding it makes them run.
         working-directory: field-ops-app-vite
 
-      # The pilot contract: what a field IS, what the query layer can honestly do with it, and
-      # that Back to Work Orders goes to Work Orders.
-      - name: Structured object field metadata + list state + back navigation
-        run: node --test test/structuredObjectFields.test.mjs
+      # The five features converged into src/metadata/ (ADR-013), each with its mutation proof:
+      # URL-backed criteria, named unsupported reasons, the gap register, dropped-criteria
+      # reporting, and structured absence. Replaces the two retired pilot suites this step used
+      # to run -- their requirements moved with the code rather than being dropped.
+      - name: Converged metadata features (URL state, reasons, gaps, absence)
+        run: node --test test/metadataConvergedFeatures.test.mjs
         working-directory: field-ops-app-vite
 
-      # Purchase Orders: Dollars authority, unit convention, status vs receipt state.
-      - name: Purchase Order structured list + Dollars
-        run: node --test test/purchaseOrderStructuredList.test.mjs
+      # The boundary itself: one architecture, one filter UI, one sort UI, one URL layer, and no
+      # screen building its own bounded query.
+      - name: Object list metadata authority boundary
+        run: node --test test/objectListMetadataAuthority.test.mjs
         working-directory: field-ops-app-vite

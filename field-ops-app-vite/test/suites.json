@@ -910,11 +910,11 @@
       "runner": "node"
     },
     {
-      "file": "test/structuredObjectFields.test.mjs",
+      "file": "test/metadataConvergedFeatures.test.mjs",
       "runner": "node"
     },
     {
-      "file": "test/purchaseOrderStructuredList.test.mjs",
+      "file": "test/objectListMetadataAuthority.test.mjs",
       "runner": "node"
     }
   ]

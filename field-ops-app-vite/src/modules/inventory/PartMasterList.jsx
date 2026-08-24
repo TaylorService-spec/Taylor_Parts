@@ -12,16 +12,19 @@
 // governed outcomes. Authorization is enforced server-side regardless; the UI never claims a success it
 // did not receive.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchPartMasterPage, PARTS_PAGE_SIZE } from "../../services/partMasterQueries";
-import { useSearchParams } from "react-router-dom";
-import { AddFilter, ActiveFilters, SortControl, ListEmptyState } from "../../shared/ui/ListControls.jsx";
+import { fetchPartMasterPage } from "../../services/partMasterPageQuery";
 import {
-  PART_FIELDS, PART_STATUS_LABEL, CONTROL_TYPE_LABEL, STOCKING_CLASS_LABEL,
-} from "../../domain/partFields.js";
+  AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
+} from "../../metadata/MetadataListControls.jsx";
+import { partEntity, partIndexList } from "../../metadata/definitions/part.js";
+import { buildQueryDescriptor } from "../../metadata/listRuntime.js";
 import {
-  fromSearchParams, toSearchParams, addFilter, removeFilter, clearFilters, setSort, toQueryPlan,
-} from "../../domain/listQueryState.js";
-import { rememberListState } from "../../navigation/listStateMemory.js";
+  addFilter, removeFilter, clearFilters, setSort, describeDropped,
+} from "../../metadata/listUrlState.js";
+import { useListCriteria } from "../../hooks/useListCriteria.js";
+import {
+  PART_STATUS_LABEL, CONTROL_TYPE_LABEL, STOCKING_CLASS_LABEL,
+} from "../../domain/partVocabulary.js";
 import { usePartMasterWrite } from "../../hooks/usePartMasterWrite";
 import {
   CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES,
@@ -103,14 +106,26 @@ function PartForm({ mode, form, setForm, disabled }) {
 }
 
 /**
- * The filter value pickers, built from the canonical enums.
+ * The filter value pickers.
  *
- * Human labels for the person, canonical values for the query -- the same split the table cells
- * make. A picker offering raw enum tokens would be teaching people the storage vocabulary.
+ * Human labels for the person, canonical values for the query. The maps come from
+ * `domain/partVocabulary.js`, which is the ONE Part label authority — the retired pilot kept a
+ * second copy with different wording (STANDARD read "Quantity" here and "Standard" everywhere
+ * else), which is precisely the two-maps-for-one-enum split that put "0 Active" beside a table of
+ * ACTIVE rows in #1093.
  */
+/**
+ * The columns, and their headings, from the metadata.
+ *
+ * Column ORDER is the screen's (identity first, then classification, then state), but every LABEL is
+ * the field's own. A heading typed here drifts from the one Sort and Add Filter show for the same
+ * field, and then a person cannot tell which column they just sorted.
+ */
+const COLUMN_IDS = ["internalPartNumber", "name", "category", "controlType", "stockingClass", "stockingUnit", "status"];
+const COLUMN_FIELDS = COLUMN_IDS.map((id) => partEntity.fields.find((f) => f.id === id));
+
 const PART_FILTER_VALUES = Object.freeze({
   status: Object.entries(PART_STATUS_LABEL).map(([value, label]) => ({ value, label })),
-  controlType: Object.entries(CONTROL_TYPE_LABEL).map(([value, label]) => ({ value, label })),
   stockingClass: Object.entries(STOCKING_CLASS_LABEL).map(([value, label]) => ({ value, label })),
 });
 
@@ -122,49 +137,49 @@ export default function PartMasterList(props) {
   const [outcome, setOutcome] = useState(null);
   const { writeReady, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(props?.writeDeps);
 
-  // LIST STATE LIVES IN THE URL, so filters and sort survive opening a part and coming back --
+  // LIST CRITERIA LIVE IN THE URL, so filters and sort survive opening a part and coming back --
   // and so a narrowed list can be shared or bookmarked rather than described over the phone.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const listState = useMemo(
-    () => fromSearchParams(searchParams.toString(), PART_FIELDS),
-    [searchParams],
+  const { criteria, apply } = useListCriteria(partIndexList, partEntity, "partMaster");
+
+  // THE DESCRIPTOR IS WHAT THE READ EXECUTES, and it is the canonical runtime's, not this
+  // screen's. It refuses any filter `partIndexList` did not declare -- which is the set whose
+  // composite indexes scripts/listIndexCoverage.mjs has proved exist. A screen cannot promise a
+  // query the backend has no index for, because it no longer gets to decide what the query is.
+  const { descriptor, errors } = useMemo(
+    () => buildQueryDescriptor(partIndexList, partEntity, {
+      filters: criteria.filters,
+      sort: criteria.sort,
+    }),
+    [criteria],
   );
 
-  // THE PLAN IS WHAT THE READ EXECUTES. Anything the metadata declares unqueryable arrives here in
-  // `unsupported` and is said out loud -- never quietly turned into a pass over the whole catalogue.
-  const plan = useMemo(
-    () => toQueryPlan(listState, PART_FIELDS, { pageSize: PARTS_PAGE_SIZE }),
-    [listState],
-  );
+  // What was ASKED FOR and is not in effect, from both places it can fail: parsing the URL against
+  // this build, and planning the query. Both end with an unnarrowed list, so both have to say so.
+  const droppedMessage = useMemo(() => {
+    const fromUrl = describeDropped(criteria.dropped);
+    if (fromUrl) return fromUrl;
+    if (errors.length > 0) {
+      return `Some of what was requested could not be applied: ${errors.map((e) => e.message).join("; ")}. `
+        + "This list is broader than requested.";
+    }
+    return null;
+  }, [criteria, errors]);
 
-  // Paging is TIED TO THE PLAN it was produced under. Page 2 of an old query is not page 2 of a new
-  // one, so a cursor taken under different criteria is discarded rather than replayed -- including
-  // when the criteria change by browser Back rather than by the controls.
-  const [page, setPage] = useState({ plan: null, cursor: null, append: false, token: 0 });
+  // Paging is TIED TO THE DESCRIPTOR it was produced under. A cursor taken under different
+  // criteria is discarded rather than replayed -- including when the criteria change by browser
+  // Back rather than by the controls.
+  const [page, setPage] = useState({ descriptor: null, cursor: null, append: false, token: 0 });
   const activePage = useMemo(
-    () => (page.plan === plan ? page : { plan, cursor: null, append: false, token: 0 }),
-    [page, plan],
+    () => (page.descriptor === descriptor ? page : { descriptor, cursor: null, append: false, token: 0 }),
+    [page, descriptor],
   );
-
-  const applyState = useCallback((next) => {
-    const params = toSearchParams(next, searchParams.toString());
-    setSearchParams(params, { replace: false });
-    rememberListState("parts", params.toString());
-  }, [searchParams, setSearchParams]);
-
-  // What was asked for and is NOT in effect, from both failure points. Named once so the banner and
-  // any future readout cannot drift apart.
-  const unapplied = useMemo(() => [
-    ...(listState.dropped ?? []).map((d) => d.label),
-    ...plan.unsupported.map((u) => u.field?.label ?? "an unknown field"),
-  ], [listState, plan]);
 
   const load = useCallback(() => {
     let cancelled = false;
     const { append, cursor } = activePage;
     if (!append) setState({ phase: "loading" });
     else setState((prev) => ({ ...prev, loadingMore: true }));
-    fetchPartMasterPage({ plan: activePage.plan ?? plan, cursor }).then((result) => {
+    fetchPartMasterPage({ descriptor: activePage.descriptor ?? descriptor, cursor }).then((result) => {
       if (cancelled) return;
       if (!result.ok) { setState({ phase: result.code === "permission-denied" ? "denied" : "error" }); return; }
       setState((prev) => ({
@@ -178,18 +193,17 @@ export default function PartMasterList(props) {
       }));
     });
     return () => { cancelled = true; };
-  }, [activePage, plan]);
+  }, [activePage, descriptor]);
   useEffect(() => load(), [load]);
 
-  // A refresh is an explicit new token, so re-reading the first page after a write is never mistaken
-  // for the same request and skipped.
+  // A refresh is an explicit new token, so re-reading the first page after a write is never
+  // mistaken for the same request and skipped.
   const reload = useCallback(() => {
-    setPage((prev) => ({ plan, cursor: null, append: false, token: prev.token + 1 }));
-  }, [plan]);
+    setPage((prev) => ({ descriptor, cursor: null, append: false, token: prev.token + 1 }));
+  }, [descriptor]);
   const loadMore = useCallback((cursor) => {
-    setPage((prev) => ({ plan, cursor, append: true, token: prev.token + 1 }));
-  }, [plan]);
-
+    setPage((prev) => ({ descriptor, cursor, append: true, token: prev.token + 1 }));
+  }, [descriptor]);
   const openCreate = () => { setForm({ stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" }); setOutcome(null); setPanel({ mode: "create" }); };
   const openEdit = (part) => { setForm({ ...part }); setOutcome(null); setPanel({ mode: "edit", part }); };
   const openStatus = (part) => { setOutcome(null); setPanel({ mode: "status", part }); };
@@ -268,48 +282,39 @@ export default function PartMasterList(props) {
         </Modal>
       )}
 
-      {/* THE SHARED CONTROLS, reading the Part metadata. No Parts-specific filter registry: the
-          fields, their operators and their sort vocabulary all come from the contract, so a newly
-          declared field becomes filterable without anybody editing this screen. */}
+      {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, reading the canonical Part metadata. No
+          Parts-specific filter registry: the fields, their operators and their sort vocabulary all
+          come from partEntity and partIndexList, so a newly declared, index-backed field becomes
+          filterable without anybody editing this screen. */}
       <div className="fo-listctl">
         <AddFilter
-          fields={PART_FIELDS}
-          objectLabel="Part"
+          def={partIndexList}
+          entity={partEntity}
           valueOptions={PART_FILTER_VALUES}
-          onAdd={(f) => applyState(addFilter(listState, f))}
+          onAdd={(c) => apply(addFilter(criteria, c))}
         />
         <SortControl
-          fields={PART_FIELDS}
-          state={listState}
-          onSort={(fieldId, direction) => applyState(setSort(listState, fieldId, direction))}
+          entity={partEntity}
+          criteria={criteria}
+          onSort={(fieldId, direction) => apply(setSort(criteria, fieldId, direction))}
         />
       </div>
-      <ActiveFilters
-        state={listState}
-        fields={PART_FIELDS}
+      <ActiveCriteria
+        criteria={criteria}
+        entity={partEntity}
         valueOptions={PART_FILTER_VALUES}
-        onRemove={(fieldId, operator) => applyState(removeFilter(listState, fieldId, operator))}
-        onClear={() => applyState(clearFilters(listState))}
+        onRemove={(fieldId, operator) => apply(removeFilter(criteria, fieldId, operator))}
+        onClear={() => apply(clearFilters(criteria))}
       />
 
-      {/* A criterion this list cannot execute is STATED, not silently dropped -- a filter that looks
-          applied but is not is how somebody concludes the catalogue is smaller than it is.
-
-          TWO sources, because a criterion can fail at two points: one this build cannot parse from
-          the URL at all (a link from an older build, a hand-edited address), and one it parses but
-          cannot execute. Both end with an unnarrowed list, so both have to say so. */}
-      {unapplied.length > 0 && (
-        <p className="fo-state fo-tone-muted fo-state-message" role="status">
-          Some criteria can’t be applied to this list: {unapplied.join(", ")}. Everything else is
-          applied, so this list is wider than the link asked for.
-        </p>
-      )}
-
+      {/* A criterion this list cannot execute is STATED, not silently dropped -- a filter that
+          looks applied but is not is how somebody concludes the catalogue is smaller than it is. */}
+      <DroppedCriteriaNotice message={droppedMessage} />
       {parts.length === 0 ? (
         // A list filtered to nothing and an empty catalogue are different statements.
         <ListEmptyState
-          state={listState}
-          onClear={() => applyState(clearFilters(listState))}
+          criteria={criteria}
+          onClear={() => apply(clearFilters(criteria))}
           emptyLabel="No canonical Part records exist yet. Use “New part” to create the first governed part."
         />
       ) : (
@@ -317,9 +322,11 @@ export default function PartMasterList(props) {
           <table className="fo-table">
             <thead>
               <tr>
-                <th>Part Number</th><th>Description</th><th>Category</th>
-                <th>Tracking</th><th>Stocking Class</th><th>Unit</th>
-                <th>Status</th><th>Actions</th>
+                {/* HEADINGS COME FROM THE METADATA, not from this file. Hand-typed ones drift: this
+                    table said "Description" over the `name` column while Sort offered "Name — A to Z"
+                    for the same field, so a person sorting could not tell which column moved. */}
+                {COLUMN_FIELDS.map((f) => <th key={f.id}>{f.label}</th>)}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>

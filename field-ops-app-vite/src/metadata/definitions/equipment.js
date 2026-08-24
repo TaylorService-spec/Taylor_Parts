@@ -1,4 +1,6 @@
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../entityDefinition.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
 import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort } from "../listViewDefinition.js";
 import { EQUIPMENT_COLLECTION } from "../../domain/constants.js";
 import { EQUIPMENT_STATUS_VALUES, EQUIPMENT_STATUS_LABEL } from "../../domain/equipmentStatus.js";
@@ -218,6 +220,36 @@ export const equipmentEntity = makeEntityDefinition({
   ],
   // No outbound relationships declared. account.equipment, if and when it exists,
   // points FROM Account and belongs on account.js — see the file header.
+  //
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Carried forward from the
+  // structured-object pilot (#1442), which corrected a sentence-shaped presentation on this object
+  // specifically:
+  //
+  //     Taylor C161 · S/N CW-C161-0001 · AVAILABLE · wh-main
+  //
+  // Five business attributes in one opaque string, exposing none of them: nothing could filter by
+  // status, sort by location or report on quantity, and the join that would have turned `wh-main`
+  // into "Main Warehouse" was never asked for — so a raw id was showing to a person as a primary
+  // label. Equipment, Serial Number, Quantity, Status, Location and Description are SIX FIELDS, and
+  // a responsive layout may reorder or drop them but must never concatenate them, because that is
+  // the one transformation the next consumer cannot undo.
+  gaps: [
+    makeGap({
+      id: "EQUIPMENT_LOCATION_NAME_NOT_PROJECTED",
+      title: "Equipment cannot be sorted by where it is",
+      entityId: "equipment",
+      fieldId: "locationId",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NOT_PROJECTED,
+      finding: "locationId is a reference; the location's name lives on another document.",
+      consequence:
+        "The location can be DISPLAYED through the batched reference resolver, and never ordered by.",
+      refused:
+        "Rendering the raw location id when the resolver has no answer. An unresolved reference says " +
+        "so — it does not fall back to a database key.",
+      resolution: "A projected location name, if a cross-Equipment query for it is ever really needed.",
+    }),
+  ],
 });
 
 /**

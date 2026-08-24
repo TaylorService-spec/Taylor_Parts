@@ -1,4 +1,7 @@
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../entityDefinition.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
+import { ABSENCE } from "../absence.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
 import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort } from "../listViewDefinition.js";
 import {
   PART_STATUSES, PART_STATUS_LABEL,
@@ -112,6 +115,7 @@ export const partEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "internalPartNumber",
       entityId: "part",
+      defaultVisible: true,
       label: "Part Number",
       type: "STRING",
       sortable: true,
@@ -120,6 +124,7 @@ export const partEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "name",
       entityId: "part",
+      defaultVisible: true,
       label: "Name",
       type: "STRING",
       sortable: true,
@@ -130,6 +135,11 @@ export const partEntity = makeEntityDefinition({
       entityId: "part",
       label: "Description",
       type: "TEXT",
+      // Firestore has no substring search, so a description filter that is actually useful needs an
+      // index or a projection. Neither exists -- see PART_DESCRIPTION_SEARCH_INDEX_GAP.
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
+      absence: ABSENCE.NOT_RECORDED,
       description: "Optional.",
     }),
     makeFieldDefinition({
@@ -137,11 +147,17 @@ export const partEntity = makeEntityDefinition({
       entityId: "part",
       label: "Category",
       type: "STRING",
+      // Free text with no canonical vocabulary: filtering it would need an index this list has not
+      // declared, and ordering it would order strings somebody typed rather than a real sequence.
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
+      absence: ABSENCE.NOT_RECORDED,
       description: "Optional, free text. No canonical vocabulary exists on the domain type.",
     }),
     makeFieldDefinition({
       id: "status",
       entityId: "part",
+      defaultVisible: true,
       label: "Status",
       type: "ENUM",
       enumValues: [...PART_STATUSES],
@@ -153,6 +169,7 @@ export const partEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "stockingClass",
       entityId: "part",
+      defaultVisible: true,
       label: "Stocking Class",
       type: "ENUM",
       enumValues: [...STOCKING_CLASSES],
@@ -173,15 +190,27 @@ export const partEntity = makeEntityDefinition({
       type: "ENUM",
       enumValues: [...UNIT_CODES],
       enumLabels: UNIT_CODE_LABEL,
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      // A unit of measure is a classification, not a progression. Ordering EACH before FOOT would be
+      // alphabetical coincidence presented as meaning.
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
     }),
     makeFieldDefinition({
       id: "controlType",
       entityId: "part",
+      defaultVisible: true,
       label: "Control Type",
       type: "ENUM",
       enumValues: [...CONTROL_TYPES],
       enumLabels: CONTROL_TYPE_LABEL,
-      description: "STANDARD / SERIALIZED / LOT / SERIALIZED_LOT — how units of this Part are tracked, decided elsewhere.",
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      // SERIALIZED and LOT are different KINDS of tracking, not stages of one.
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
+      description:
+        "PART MASTER's own tracking vocabulary — STANDARD / SERIALIZED / LOT / SERIALIZED_LOT. NOT the " +
+        "inventory ledger's `trackingMode`: partMaster/controlTypeTrackingMode.ts is the one mapping between " +
+        "them, and it exists because the mapping had already been copied twice. A surface showing one under the " +
+        "other's name is how two screens come to disagree about whether a part is counted by quantity or by serial.",
     }),
     // No manufacturer EntityDefinition is registered — see the header. Stays a plain
     // string id, not a REFERENCE, and the field id names what is actually STORED
@@ -199,8 +228,10 @@ export const partEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "primaryManufacturerPartNumber",
       entityId: "part",
-      label: "Manufacturer Part #",
+      label: "Manufacturer Part Number",
       type: "STRING",
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
       description: "Stored as primaryManufacturerPartNumber; the domain type calls it manufacturerPartNumber. Optional.",
     }),
     makeFieldDefinition({
@@ -219,8 +250,13 @@ export const partEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "wholeUnit",
       entityId: "part",
-      label: "Whole Unit",
+      label: "Item Type",
       type: "BOOLEAN",
+      // Reads as "Whole Unit" / "Part" — a rendering of the boolean, never a new stored enum. Not
+      // carried by the client projection (domain/partMasterView.js), which is a projection fix
+      // rather than a domain decision, and NOT_PROJECTED says exactly that.
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
       description: "Written to the document ONLY when true; absent otherwise, never stored as false.",
     }),
     // Upgraded to a REFERENCE — equipmentModel is now a registered entity. See the file
@@ -232,11 +268,141 @@ export const partEntity = makeEntityDefinition({
       label: "Equipment Model",
       type: "REFERENCE",
       referenceTo: "equipmentModel",
+      // The model's NAME lives on another document. Resolving it per row is what the batched
+      // reference resolver is for; ORDERING by a name this document does not hold is not possible
+      // at all, and neither is filtering until the id is projected.
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
+      absence: ABSENCE.UNRESOLVED,
       description:
         "Legal ONLY when wholeUnit is true (enforced by validatePart at the command layer, not by Rules or this " +
         "metadata). The stored value is the equipment_models document id, verified canonical and checked to " +
         "exist by assertEquipmentModelExists on every write — see the file header.",
     }),
+    // ── INVENTORY, EACH SCOPE NAMED ─────────────────────────────────────────────────────────
+    //
+    // NOT "Stock". `onHand` is warehouse-only by design and EXCLUDES truck stock, so a single
+    // ambiguous heading would be the FALSE_COMFORT failure: a picker reading "Stock: 8" cannot tell
+    // whether the vans are in that number.
+    //
+    // Declared, and deliberately NOT default columns. `getPartBalance` is a SINGLE-PART callable, so
+    // a balance COLUMN would issue one callable per row on the largest list in the platform —
+    // PART_LIST_BALANCE_N1_GAP. These belong on Part detail and scanner lookup, where they are one
+    // part at a time and genuinely cheap.
+    makeFieldDefinition({
+      id: "warehouseAvailable",
+      entityId: "part",
+      label: "Warehouse Available",
+      type: "NUMBER",
+      defaultVisible: false,
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
+      // UNKNOWN IS NOT ZERO. "0 available" sends somebody to an empty shelf certain; "not known"
+      // sends them to look. A falsy check turns the second into the first.
+      absence: ABSENCE.UNKNOWN,
+      description:
+        "getPartBalance → available (onHand − reserved, ACTIVE warehouses only, EXCLUDES truck stock). " +
+        "Not stored on the Part; resolved per part where a balance read has already run.",
+    }),
+    makeFieldDefinition({
+      id: "onOrder",
+      entityId: "part",
+      label: "On Order",
+      type: "NUMBER",
+      defaultVisible: false,
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
+      absence: ABSENCE.UNKNOWN,
+      description:
+        "getPartBalance → onOrder, the canonical outstanding inbound. This metadata consumes that " +
+        "projection and re-implements none of its SENT-counts / APPROVED-does-not rules.",
+    }),
+    makeFieldDefinition({
+      id: "reorderPoint",
+      entityId: "part",
+      label: "Reorder Point",
+      type: "NUMBER",
+      defaultVisible: false,
+      // Computed by inventoryAnalyticsService.calculateReorderPoint(usage, leadTimeDays, 1.5). There
+      // is nothing stored to order by, which is a different fact from "not projected".
+      unsupportedFilterReason: WHY.DERIVED_AT_READ,
+      unsupportedSortReason: WHY.DERIVED_AT_READ,
+      absence: ABSENCE.UNKNOWN,
+      description: "Calculated from usage, NOT stored on the Part.",
+    }),
+
+    // ── BLOCKED. Declared so the refusal and its reason are recorded, never displayed ────────
+    //
+    // `displayable: false` AND non-reportable AND non-exportable. Blocking a column and leaving the
+    // CSV open is the same field reaching the same person by a longer route.
+    makeFieldDefinition({
+      id: "unitCost",
+      entityId: "part",
+      label: "Unit Cost",
+      type: "CURRENCY_MINOR",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      unsupportedFilterReason: WHY.NO_AUTHORITY,
+      unsupportedSortReason: WHY.NO_AUTHORITY,
+      description: "BLOCKED — the canonical Part carries no cost of any kind. See PART_INVENTORY_VALUATION_AUTHORITY_GAP.",
+    }),
+    makeFieldDefinition({
+      id: "sellPrice",
+      entityId: "part",
+      label: "Sell Price",
+      type: "CURRENCY_MINOR",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      unsupportedFilterReason: WHY.NO_AUTHORITY,
+      unsupportedSortReason: WHY.NO_AUTHORITY,
+      description: "BLOCKED — no sell or list price exists on the Part.",
+    }),
+    makeFieldDefinition({
+      id: "businessLine",
+      entityId: "part",
+      label: "Business Line",
+      type: "STRING",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      unsupportedFilterReason: WHY.NO_AUTHORITY,
+      unsupportedSortReason: WHY.NO_AUTHORITY,
+      description: "BLOCKED — the Part carries no operating company. See PART_BUSINESS_LINE_NOT_AUTHORITATIVE.",
+    }),
+    makeFieldDefinition({
+      id: "mobileQuantity",
+      entityId: "part",
+      label: "Truck Stock",
+      type: "NUMBER",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      unsupportedFilterReason: WHY.NO_AUTHORITY,
+      unsupportedSortReason: WHY.NO_AUTHORITY,
+      description:
+        "BLOCKED — onHand is warehouse-only by design and no mobile figure is projected. Showing warehouse " +
+        "stock under a company-wide label is the FALSE_COMFORT failure.",
+    }),
+    makeFieldDefinition({
+      id: "preferredSupplierId",
+      entityId: "part",
+      label: "Preferred Supplier",
+      // STRING, not REFERENCE — the same restraint primaryManufacturerId applies: this program has not
+      // registered supplier alongside part, and declaring a REFERENCE this registry cannot resolve
+      // would claim a lookup capability that does not exist. It is blocked anyway; see the gap.
+      type: "STRING",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      unsupportedFilterReason: WHY.NOT_PROJECTED,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
+      description:
+        "BLOCKED — there is no preferredSupplierId ON the Part. PartSupplierItem{partId, supplierId, preferred} " +
+        "is a separate collection, and collapsing a many-to-many into one column would hide every other supplier.",
+    }),
+
     makeFieldDefinition({
       id: "version",
       entityId: "part",
@@ -273,6 +439,116 @@ export const partEntity = makeEntityDefinition({
       description: "Actor uid. Repository-owned; every stored Part carries one.",
     }),
   ],
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Carried forward from the Parts
+  // structured-list migration (#1444), where each was traced rather than assumed.
+  gaps: [
+    makeGap({
+      id: "PART_CATALOGUE_WHOLE_COLLECTION_READ",
+      title: "Seven surfaces still read the whole parts collection",
+      entityId: "part",
+      severity: GAP_SEVERITY.SCALE,
+      finding:
+        "fetchPartMasterList reads all of `parts` with no limit, cursor or criteria, and seven surfaces " +
+        "depend on getting all of it — name resolution, scanner lookup, two part pickers, the warehouse " +
+        "manager catalogue, the Parts catalog list and Part detail.",
+      consequence: "On a real catalogue these are slow. None of them is WRONG, which is why they were left alone.",
+      refused:
+        "Making the shared reader bounded so the list inherited paging for free. That was tried, and it " +
+        "silently truncated all seven: a scanner that cannot find part 51 reports the part does not exist.",
+      resolution:
+        "A targeted read per consumer — lookup by part number, a searched picker, a single-document detail " +
+        "read. Tracked in services/partMasterQueries.PART_CATALOGUE_WHOLE_COLLECTION_READ.",
+    }),
+    makeGap({
+      id: "PART_LIST_BALANCE_N1_GAP",
+      title: "Balance figures require one callable per part",
+      entityId: "part",
+      fieldId: "warehouseAvailable",
+      severity: GAP_SEVERITY.SCALE,
+      reason: WHY.NOT_PROJECTED,
+      finding: "getPartBalance is a SINGLE-PART callable. There is no batch or list-scoped balance read.",
+      consequence: "A Warehouse Available or On Order column would issue N callables per page.",
+      refused: "Rendering the columns anyway and hiding the cost behind a spinner.",
+      resolution: "A list-scoped balance projection, or an explicitly bounded batch read.",
+    }),
+    makeGap({
+      id: "PART_INVENTORY_VALUATION_AUTHORITY_GAP",
+      title: "The Part carries no cost or price, so there is no inventory value",
+      entityId: "part",
+      fieldId: "unitCost",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding:
+        "The canonical Part carries no cost of any kind — not unit, standard, average or latest — and no sell " +
+        "or list price.",
+      consequence: "There is no inventory value to display and no basis on which one could be computed.",
+      refused:
+        "Multiplying a quantity by whichever cost happened to exist elsewhere (a supplier item's unitPrice) " +
+        "and calling the result inventory value. That would invent a valuation policy in a list.",
+      resolution: "Financial Architecture. A valuation basis is a policy decision, not a column.",
+    }),
+    makeGap({
+      id: "PART_BUSINESS_LINE_NOT_AUTHORITATIVE",
+      title: "A Part has no operating company or business line",
+      entityId: "part",
+      fieldId: "businessLine",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding: "The Part carries no operating company and no line-of-business field.",
+      refused:
+        "Inferring Taylor vs Ventana from the manufacturer or from description text. The domain defines no " +
+        "such relationship, and a guess rendered as a filterable column becomes a fact somebody reports on.",
+    }),
+    makeGap({
+      id: "PART_DESCRIPTION_SEARCH_INDEX_GAP",
+      title: "Description cannot be searched by substring",
+      entityId: "part",
+      fieldId: "description",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NEEDS_INDEX,
+      finding: "Firestore has no substring search, and no search index or projection exists for Part text.",
+      refused: "Fetching every Part and running .includes() over descriptions in the browser.",
+      resolution: "Identifier-first search now (part number, manufacturer part number); a search projection later.",
+    }),
+    makeGap({
+      id: "PART_REORDER_POINT_IS_DERIVED",
+      title: "Reorder point is calculated, not stored",
+      entityId: "part",
+      fieldId: "reorderPoint",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.DERIVED_AT_READ,
+      finding: "inventoryAnalyticsService.calculateReorderPoint(usage, leadTimeDays, 1.5) computes it at read.",
+      consequence: "It can be displayed where the analytics read has run, but never filtered or sorted server-side.",
+      resolution: "A stored or projected reorder point, if a cross-Part query for it is ever really needed.",
+    }),
+    makeGap({
+      id: "PART_SUPPLIER_IS_MANY_TO_MANY",
+      title: "There is no single preferred supplier on a Part",
+      entityId: "part",
+      fieldId: "preferredSupplierId",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NOT_PROJECTED,
+      finding: "PartSupplierItem{partId, supplierId, …, preferred} is a separate collection.",
+      refused: "Inventing a single Vendor column on the Part, which would hide every other supplier.",
+    }),
+    makeGap({
+      id: "PART_LIST_FILTER_INDEX_GAP",
+      title: "Only status and stocking class are index-backed filters",
+      entityId: "part",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NEEDS_INDEX,
+      finding:
+        "The Part list offers filters on status and stockingClass. The retired pilot list also offered part " +
+        "number, tracking, unit and category — none of which had a declared composite index, so each would " +
+        "have failed at read time with an index-required error while CI stayed green.",
+      consequence: "Narrowing by tracking type or unit is not available on the list today.",
+      refused: "Keeping the four unverified filters. An offered filter that errors is worse than an absent one.",
+      resolution:
+        "Declare the composite indexes each additional filter combination needs — noting that optional filters " +
+        "multiply: two already demand three composites, and each further one grows that set.",
+    }),
+  ],
+
   // No relationships[] entries. The equipmentModel edge is already expressed as the
   // equipmentModelId REFERENCE field above — a relationships[] entry would duplicate that
   // same edge, not add a new one. The manufacturer edge stays undeclared — see the header.
