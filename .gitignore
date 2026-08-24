@@ -59,3 +59,8 @@ firebase-debug.log
 # are left on disk untouched; ignoring them is about what future commits can pick up, not about
 # deleting anyone's working output.
 field-ops-app-vite/.certification/
+
+# Release logs are transient operator output, not repository artifacts.
+.release.log
+.m.log
+.emu.log
