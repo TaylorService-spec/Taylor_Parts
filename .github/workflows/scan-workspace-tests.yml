@@ -381,7 +381,6 @@ jobs:
       - name: Warehouse offline runtime — exactly-once, dependencies, contended stock
         run: node --test test/warehouseOfflineRuntime.test.mjs
         working-directory: field-ops-app-vite
-        working-directory: field-ops-app-vite
 
       - name: Lookup-only scanning contract (pure)
         run: node --test test/partLookup.test.mjs test/partLookupAlias.test.mjs test/partLookupInventoryRows.test.mjs
