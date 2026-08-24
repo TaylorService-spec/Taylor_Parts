@@ -105,6 +105,12 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // Declared by the Warehouse and Supplier leaf definitions; not deployed.
   'warehouses|COLLECTION|status:ASCENDING,name:ASCENDING',
   'suppliers|COLLECTION|status:ASCENDING,name:ASCENDING',
+  // Declared by the Customers structured-list migration (accountIndexList lineOfBusiness filter);
+  // not deployed. Firestore serves ONE array filter per query, so an array filter adds its own
+  // index family rather than combining with relationshipTypes -- there is deliberately no
+  // relationshipTypes+lineOfBusiness index, because no index can serve that query at all.
+  'accounts|COLLECTION|lineOfBusiness:CONTAINS,updatedAt:DESCENDING',
+  'accounts|COLLECTION|status:ASCENDING,lineOfBusiness:CONTAINS,updatedAt:DESCENDING',
   // Declared by the Location leaf definition; not deployed.
   'locations|COLLECTION|accountId:ASCENDING,name:ASCENDING',
   // Declared by the Employee leaf definition; not deployed.

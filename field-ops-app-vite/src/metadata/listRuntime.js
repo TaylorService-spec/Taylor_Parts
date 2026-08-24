@@ -43,7 +43,25 @@ export const REQUEST_ERROR = Object.freeze([
   "UNKNOWN_SORT_FIELD",
   "PAGE_SIZE_EXCEEDED",
   "MISSING_PARENT_SCOPE",
+  /**
+   * Two array filters in one query. FIRESTORE CANNOT DO THIS — at most one
+   * `array-contains` / `array-contains-any` per query, and no index can be declared that
+   * would change that.
+   *
+   * `requiredIndexes()` already knew: it emits one index family PER array filter rather than
+   * combining them, precisely because the combination is unservable. The runtime did not, so a
+   * request naming both produced a descriptor that looked fine and failed at read time — the
+   * same class of defect as the retired Parts tie-break, and the reason this is refused at the
+   * plan rather than discovered by a user.
+   *
+   * Accounts is where it bites: `relationshipTypes` and `lineOfBusiness` are BOTH arrays, and
+   * "customers on the Taylor line" is the first thing anybody would try to ask.
+   */
+  "MULTIPLE_ARRAY_FILTERS",
 ]);
+
+/** The operators Firestore counts as array filters — at most one per query, combined. */
+const ARRAY_FILTER_OPERATORS = Object.freeze(["ARRAY_CONTAINS", "ARRAY_CONTAINS_ANY"]);
 
 const err = (kind, message) => Object.freeze({ kind, message });
 
@@ -84,6 +102,21 @@ export function buildQueryDescriptor(def, entity, request = {}) {
       continue;
     }
     filters.push(Object.freeze({ fieldId: req.fieldId, operator: req.operator, value: req.value }));
+  }
+
+  // FIRESTORE PERMITS ONE ARRAY FILTER PER QUERY, and no index changes that. Refused HERE
+  // rather than left to fail at read time — and refused WHOLE: applying one of the two and
+  // dropping the other would return a broader set than was asked for, labelled as though both
+  // had been applied, which is the worst available outcome.
+  const arrayFilters = filters.filter((f) => ARRAY_FILTER_OPERATORS.includes(f.operator));
+  if (arrayFilters.length > 1) {
+    errors.push(
+      err(
+        "MULTIPLE_ARRAY_FILTERS",
+        `Firestore allows one array filter per query; this asks for ${arrayFilters.length} ` +
+          `(${arrayFilters.map((f) => f.fieldId).join(", ")}). No index can serve the combination.`
+      )
+    );
   }
 
   // --- parent scope: a RELATED list is meaningless unscoped ---

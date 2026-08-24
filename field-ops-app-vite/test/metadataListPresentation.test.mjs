@@ -16,7 +16,7 @@ import {
   LIST_STATE,
   UNRESOLVED_REFERENCE_LABEL,
 } from "../src/metadata/listPresentation.js";
-import { formatTimestamp } from "../src/domain/displayTimestamp.js";
+import { formatDateOnly } from "../src/domain/displayTimestamp.js";
 import { formatMinor } from "../src/domain/accountArView.js";
 
 const entity = () => makeEntityDefinition({
@@ -105,13 +105,13 @@ test("#1093 — an unmapped enum value is shown verbatim rather than blanked", (
 
 // --- TIMESTAMP/DATE cells resolve through the shared formatter, never as raw epoch ---
 
-test("a TIMESTAMP cell renders a formatted date, not an epoch number, for a Firestore Timestamp", () => {
+test("a TIMESTAMP cell renders a formatted DATE — no clock time, never an epoch number — for a Firestore Timestamp", () => {
   // A fake client-SDK Firestore Timestamp — the shape domain/timestampMillis.js's
   // toMillis() already coerces via .toMillis().
   const stamp = { toMillis: () => 1_700_000_000_000 };
   const column = { fieldId: "createdAt", type: "TIMESTAMP" };
   const value = cellValue(column, { createdAt: stamp });
-  assert.equal(value, formatTimestamp(stamp), "must be the SAME shared formatter's output, not a hardcoded string");
+  assert.equal(value, formatDateOnly(stamp), "must be the SAME shared formatter's output, not a hardcoded string");
   assert.notEqual(value, 1_700_000_000_000, "an epoch number is a machine value reaching a user");
 });
 
@@ -122,31 +122,31 @@ test("a TIMESTAMP cell renders a formatted date, not an epoch number, for an epo
   const epochMs = 1_700_000_000_000;
   const column = { fieldId: "expectedCloseAt", type: "TIMESTAMP" };
   const value = cellValue(column, { expectedCloseAt: epochMs });
-  assert.equal(value, formatTimestamp(epochMs));
+  assert.equal(value, formatDateOnly(epochMs));
   assert.notEqual(value, epochMs, "an epoch number is a machine value reaching a user");
 });
 
 test("a DATE cell resolves through the same shared formatter as TIMESTAMP", () => {
   const epochMs = 1_700_000_000_000;
   const column = { fieldId: "installedDate", type: "DATE" };
-  assert.equal(cellValue(column, { installedDate: epochMs }), formatTimestamp(epochMs));
+  assert.equal(cellValue(column, { installedDate: epochMs }), formatDateOnly(epochMs));
 });
 
 test("invoice.dueDate, retyped to DATE, renders through the timestamp path, not as a raw epoch number", () => {
   // dueDate is stored as ms epoch (invoiceCommands.ts's isInt guard) but is a DATE by kind --
-  // formatTimestamp's own toMillis coercion already handles a plain epoch-millisecond NUMBER,
+  // formatDateOnly's own toMillis coercion already handles a plain epoch-millisecond NUMBER,
   // so no storage-shape change is implied by the retype.
   const epochMs = 1_700_000_000_000;
   const column = { fieldId: "dueDate", type: "DATE" };
   const value = cellValue(column, { dueDate: epochMs });
-  assert.equal(value, formatTimestamp(epochMs));
+  assert.equal(value, formatDateOnly(epochMs));
   assert.notEqual(value, epochMs, "a due date reaching a user must never be a raw epoch number");
 });
 
 test("an uninterpretable TIMESTAMP renders nothing rather than a raw number or a placeholder string", () => {
   // A value toMillis() cannot coerce (an unrecognized object shape) must not fall back
   // to the raw stored value — the same class of defect enum resolution exists to
-  // prevent (#1093). It also must not silently become formatTimestamp's default
+  // prevent (#1093). It also must not silently become formatDateOnly's default
   // "Unknown" placeholder text: this cell renders NOTHING, exactly like a missing value.
   const column = { fieldId: "expectedCloseAt", type: "TIMESTAMP" };
   const value = cellValue(column, { expectedCloseAt: { weird: "shape" } });
@@ -416,7 +416,7 @@ test("additivity — STRING, ENUM, ENUM_SET, TIMESTAMP/DATE, BOOLEAN and CURRENC
     "Customer"
   );
   const epochMs = 1_700_000_000_000;
-  assert.equal(cellValue({ fieldId: "createdAt", type: "TIMESTAMP" }, { createdAt: epochMs }), formatTimestamp(epochMs));
+  assert.equal(cellValue({ fieldId: "createdAt", type: "TIMESTAMP" }, { createdAt: epochMs }), formatDateOnly(epochMs));
   assert.equal(cellValue({ fieldId: "isPrimary", type: "BOOLEAN" }, { isPrimary: true }), "Yes");
   assert.equal(
     cellValue({ fieldId: "totalMinor", type: "CURRENCY_MINOR" }, { totalMinor: 12500, currency: "USD" }),

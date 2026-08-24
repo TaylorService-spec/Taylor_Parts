@@ -57,7 +57,11 @@ function sortOptionsFor(field) {
     case "CURRENCY_MINOR":
       return pair("Lowest first", "Highest first");
     case "ENUM":
-      return pair("First to last", "Last to first");
+      // GROUPED, NOT SEQUENCED. Firestore orders by the STORED STRING, so an enum sort puts every
+      // ACTIVE together and every PROSPECT together -- genuinely useful -- and the resulting order
+      // is alphabetical by machine value, not the lifecycle. "First to last" would read as the
+      // lifecycle and deliver the alphabet, which is a promise no stored ordinal exists to keep.
+      return pair("grouped A to Z", "grouped Z to A");
     default:
       return pair("A to Z", "Z to A");
   }

@@ -11,11 +11,15 @@ import {
   makeSavedView,
   makeSort,
 } from "../listViewDefinition.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
+import { ABSENCE } from "../absence.js";
 import {
   ACCOUNTS_COLLECTION,
   ACCOUNT_STATUS,
   ACCOUNT_STATUS_LABEL,
   ACCOUNT_RELATIONSHIP_TYPE,
+  ACCOUNT_LINE_OF_BUSINESS,
 } from "../../domain/constants.js";
 import {
   INVOICE_DELIVERY_METHOD,
@@ -64,6 +68,32 @@ export const accountEntity = makeEntityDefinition({
       label: "Customer",
       type: "STRING",
       sortable: true,
+      defaultVisible: true,
+      // A record with no name is malformed and says so. It NEVER falls back to the document id —
+      // the defect DECISIONS #106 forbids, and the one an unnamed record is most likely to reach.
+      absence: ABSENCE.NOT_RECORDED,
+      description:
+        "The business identity. Sorting and prefix search run against `nameLower` (below), because " +
+        "Firestore cannot compare case-insensitively and a query against the display name could not " +
+        "find \"Mesquite Soda Works\" for \"mesquite\".",
+    }),
+    // THE DERIVED SEARCH NAME, declared because a query actually uses it.
+    //
+    // Written by domain/accounts.js's own writers (`withDerivedSearchName`) rather than by call
+    // sites, so a caller cannot forget what it never had to remember — asserted by
+    // accountWriteContract.test.mjs. Not displayable: it is a normalized copy of `name`, and
+    // showing both would put the same value on screen twice, once in the wrong case.
+    makeFieldDefinition({
+      id: "nameLower",
+      entityId: "account",
+      label: "Customer (sort key)",
+      type: "STRING",
+      displayable: false,
+      reportable: false,
+      exportable: false,
+      sortable: true,
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      description: "Normalized lowercase copy of `name`. The only case-insensitive handle Firestore has.",
     }),
     makeFieldDefinition({
       id: "status",
@@ -75,6 +105,16 @@ export const accountEntity = makeEntityDefinition({
       filterable: true,
       sortable: true,
       operators: ["EQUALS", "IN"],
+      defaultVisible: true,
+      // SORTING GROUPS, IT DOES NOT SEQUENCE. Firestore orders by the STORED STRING, so a status
+      // sort puts every ACTIVE together and every PROSPECT together — genuinely useful — but the
+      // resulting order is alphabetical by enum value, not ACTIVE → INACTIVE → PROSPECT → ARCHIVED.
+      // No ordinal is stored, so a lifecycle order is not executable. See
+      // ACCOUNT_STATUS_LIFECYCLE_ORDER_NOT_EXECUTABLE, and note the sort control says "grouped"
+      // rather than "first to last" for exactly this reason.
+      description:
+        "PROSPECT IS A STATUS, not a separate type and not a separate collection. There is no second " +
+        "Customer identity model to avoid creating — the distinction is already a field.",
     }),
     // CORRECTION. This was first declared as a singular ENUM `relationshipType`, and
     // wiring the surface proved no such field is stored: accounts carry
@@ -99,7 +139,51 @@ export const accountEntity = makeEntityDefinition({
       // and Firestore permits one array filter per query — declaring both invites a
       // combination no declared index serves.
       operators: ["ARRAY_CONTAINS"],
+      defaultVisible: true,
+      // AN ARRAY HAS NO ORDER TO SORT BY. Sorting rows by an array field would order them by
+      // whatever Firestore does with the first element, which is not a business ordering of
+      // anything — and alphabetising the array's CONTENTS and calling the list "sorted by
+      // Relationship" would be worse: it looks sorted and means nothing.
+      sortable: false,
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
       description: "Multi-valued: an account can be both a customer and a vendor.",
+    }),
+    // LINE OF BUSINESS — declared because a surface already renders it.
+    //
+    // AccountDetail.jsx has read `account.lineOfBusiness` since the LOB wireframe shipped, and this
+    // definition did not declare it: metadata describing less than the document holds, which is the
+    // mirror image of this program's usual defect and just as misleading to the next reader.
+    //
+    // A FOURTH DISTINCT CONCEPT, and the separation is load-bearing. NOT operatingCompanyId (whose
+    // books a TRANSACTION lands in, per transaction). NOT salesChannel (retail vs national account,
+    // per order). NOT the manufacturer's line. "Both" is a first-class, expected value.
+    makeFieldDefinition({
+      id: "lineOfBusiness",
+      entityId: "account",
+      label: "Line of Business",
+      type: "ENUM_SET",
+      enumValues: Object.values(ACCOUNT_LINE_OF_BUSINESS),
+      enumLabels: { TAYLOR: "Taylor", VENTANA: "Ventana" },
+      filterable: true,
+      operators: ["ARRAY_CONTAINS"],
+      defaultVisible: true,
+      sortable: false,
+      unsupportedSortReason: WHY.NO_CANONICAL_ORDER,
+      description:
+        "Informational only — gates no authorization, and an unset value renders nothing rather than " +
+        "silently defaulting to Taylor.",
+    }),
+    makeFieldDefinition({
+      id: "createdAt",
+      entityId: "account",
+      label: "Created",
+      type: "TIMESTAMP",
+      sortable: true,
+      defaultVisible: true,
+      // Epoch milliseconds, matching makeCollectionStore's convention for this collection — not a
+      // Firestore Timestamp. Filtering by a date range is possible in principle and is not declared:
+      // an optional range filter multiplies the composite-index set, and nothing asks for it yet.
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
     }),
     makeFieldDefinition({
       id: "updatedAt",
@@ -107,6 +191,7 @@ export const accountEntity = makeEntityDefinition({
       label: "Last update",
       type: "TIMESTAMP",
       sortable: true,
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
     }),
     // Tags are stored as an array and the current page filters them in memory. The
     // field is declared so a column can render it, but NO operators are claimed:
@@ -223,6 +308,17 @@ export const accountEntity = makeEntityDefinition({
       label: "Owner",
       type: "REFERENCE",
       referenceTo: "employee",
+      defaultVisible: true,
+      // THE NAME LIVES ON THE EMPLOYEE. It is resolved for the rows already fetched, which is right
+      // for display and useless for a sort that has to happen inside the query choosing the rows —
+      // the same rule as customerId on a Work Order. Filtering by owner would need the id, and no
+      // index for it is declared.
+      filterable: false,
+      unsupportedFilterReason: WHY.NEEDS_INDEX,
+      sortable: false,
+      unsupportedSortReason: WHY.NOT_PROJECTED,
+      // An owner who no longer resolves reads as unavailable. Never the employee id.
+      absence: ABSENCE.UNRESOLVED,
       description: "Stored at accountOwner.assignedToEmployeeId, one of seven fields in the stored Person Assignment map. See the field comment above for which of the other six are deliberately left undeclared, and why.",
     }),
 
@@ -270,6 +366,137 @@ export const accountEntity = makeEntityDefinition({
       label: "Notes",
       type: "TEXT",
       description: "Free-form text. Rendered verbatim; no formatting or length constraint found in any write path.",
+    }),
+  ],
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Every one traced against the
+  // stored document and the write path, never inferred from what the CRM screens render.
+  gaps: [
+    makeGap({
+      id: "ACCOUNT_MULTI_ARRAY_FILTER_GAP",
+      title: "Relationship and Line of Business cannot be filtered together",
+      entityId: "account",
+      fieldId: "lineOfBusiness",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "Both relationshipTypes and lineOfBusiness are ARRAYS, and Firestore permits at most one " +
+        "array-contains-family constraint per query. No composite index can change that — " +
+        "requiredIndexes() already emits one index FAMILY per array filter rather than combining " +
+        "them, for exactly this reason.",
+      consequence:
+        "“Customers on the Taylor line” — the first question anybody would ask of these two fields " +
+        "together — is not executable against the current document shape.",
+      refused:
+        "Applying one array filter server-side and the other in the browser, and refusing to apply " +
+        "one silently. Both would return a set that does not match what was asked for while looking " +
+        "as though it did. The query planner returns MULTIPLE_ARRAY_FILTERS and the list says it is " +
+        "broader than requested.",
+      resolution:
+        "A denormalized scalar combining the two (e.g. a `relationshipLine` array of composite " +
+        "tokens), or a search index. Both are document-shape changes with their own maintenance " +
+        "authority, and neither belongs in a list migration.",
+    }),
+    makeGap({
+      id: "ACCOUNT_STATUS_LIFECYCLE_ORDER_NOT_EXECUTABLE",
+      title: "Status sorts alphabetically, not through its lifecycle",
+      entityId: "account",
+      fieldId: "status",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "Firestore orders by the STORED STRING. ACTIVE / INACTIVE / PROSPECT / ARCHIVED has a real " +
+        "business sequence, and no ordinal is stored anywhere, so the sequence cannot be executed.",
+      consequence:
+        "A status sort GROUPS — every ACTIVE together, every PROSPECT together — which is genuinely " +
+        "useful, and is not the lifecycle order.",
+      refused:
+        "Labelling the sort “first to last”. It would read as the lifecycle and deliver the " +
+        "alphabet. The control says “grouped” instead.",
+      resolution: "A stored ordinal, if anybody actually needs lifecycle order in a query.",
+    }),
+    makeGap({
+      id: "ACCOUNT_CITY_STATE_NOT_PROJECTED",
+      title: "An Account has no city or state",
+      entityId: "account",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "addressCity and addressState live on `locations`, joined to an Account by locationsFieldId. " +
+        "The Account document carries neither, and there is no primary-location concept: " +
+        "account.locations is ONE_TO_MANY with nothing marking one of them as the one.",
+      consequence: "City and State cannot be Account list columns, filters or sorts.",
+      refused:
+        "Taking the first Location as “the Account’s city”. A customer with three sites does not " +
+        "have one obvious city merely because a list wants a column, and whichever site happened to " +
+        "be created first is not an answer.",
+      resolution:
+        "Either a declared primary-location relationship, or a projected billing city on the Account. " +
+        "Both are domain decisions about what a customer's address MEANS, not list plumbing.",
+    }),
+    makeGap({
+      id: "ACCOUNT_PRIMARY_LOCATION_NOT_MODELLED",
+      title: "No Location is marked as an Account's primary",
+      entityId: "account",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "account.locations is a plain ONE_TO_MANY. Neither the Account nor the Location carries a " +
+        "primary/default flag, and no write path sets one.",
+      consequence:
+        "Every question of the form “where is this customer” is ambiguous for a multi-site account, " +
+        "which blocks City/State projection and any single-address display.",
+      refused: "Inventing a primary by creation order, by name, or by whichever has the most Equipment.",
+      resolution:
+        "A domain decision first — is a primary location a billing address, a headquarters, or the " +
+        "site that gets service most often? Those are three different fields.",
+    }),
+    makeGap({
+      id: "ACCOUNT_INSTALLED_BASE_ROLLUP_GAP",
+      title: "Equipment counts per Account require one query per row",
+      entityId: "account",
+      severity: GAP_SEVERITY.SCALE,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "`equipment` carries accountId and is queryable BY account, but nothing materializes a count " +
+        "onto the Account. There is no batched or aggregate read for it.",
+      consequence: "Installed Equipment Count and Active Equipment Count cannot be list columns.",
+      refused: "One Equipment query per Account row. On a 250,000-account book that is not a column, it is an outage.",
+      resolution: "A materialized rollup maintained by the Equipment writers, or a server-side aggregate read.",
+    }),
+    makeGap({
+      id: "ACCOUNT_SERVICE_ROLLUP_GAP",
+      title: "Open Work Orders and Last Service Date are not projected",
+      entityId: "account",
+      severity: GAP_SEVERITY.SCALE,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "fieldops_wos carries customerId and is queryable by it. Nothing projects a count, a most-recent " +
+        "service date or a next scheduled date onto the Account.",
+      consequence: "Open Work Orders, Last Service Date and Next Scheduled Service cannot be list columns.",
+      refused: "Querying Work Orders once per Account row.",
+      resolution: "A materialized service rollup, alongside ACCOUNT_INSTALLED_BASE_ROLLUP_GAP — they want the same machinery.",
+    }),
+    makeGap({
+      id: "ACCOUNT_CONTACT_ROLLUP_GAP",
+      title: "Primary Contact and Contact Count are not projected",
+      entityId: "account",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "`billingContactId` is stored (at billingContact.contactId) and is a BILLING role, not a general " +
+        "primary contact. No contact count exists, and no contact is flagged primary.",
+      consequence: "A Primary Contact or Contact Count column would be inventing a relationship the data does not hold.",
+      refused: "Promoting the billing contact to “the” primary contact. Who to invoice and who to call are different questions.",
+    }),
+    makeGap({
+      id: "ACCOUNT_FINANCIAL_METRICS_ABSENT",
+      title: "No revenue, pipeline or margin exists on an Account",
+      entityId: "account",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding:
+        "The Account carries commercial PROCESS metadata — payment terms, tax status, invoice delivery, " +
+        "default currency (an ISO code, not an amount) — and no monetary value of any kind.",
+      consequence: "Pipeline, Revenue, Sales-to-goal and Margin cannot appear on this list.",
+      refused: "Deriving any of them by summing related Sales Orders or Opportunities per row.",
+      resolution: "Financial and Reporting authority, which owns what those numbers mean before anything displays them.",
     }),
   ],
   // Outbound relationships live on the OWNING entity, which is what stops one edge being
@@ -338,12 +565,25 @@ export const accountIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "name", sortable: true }),
     makeColumn({ fieldId: "status", sortable: true }),
     makeColumn({ fieldId: "relationshipTypes" }),
+    makeColumn({ fieldId: "lineOfBusiness" }),
+    makeColumn({ fieldId: "accountOwnerEmployeeId" }),
+    // Tags stay a COLUMN and claim no filter, unchanged. Tag values are open, so the only way to
+    // know which exist is to read every account, and rebuilding the facet from the current page
+    // would present "the tags on these fifty rows" as "the tags that exist".
     makeColumn({ fieldId: "tags" }),
+    makeColumn({ fieldId: "createdAt", sortable: true }),
+    // The DEFAULT SORT's own field. A list ordered by most-recently-touched that does not show
+    // when each row was touched asks the reader to take the ordering on faith.
     makeColumn({ fieldId: "updatedAt", sortable: true }),
   ],
   filters: [
     makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
     makeFilter({ fieldId: "relationshipTypes", operators: ["ARRAY_CONTAINS"] }),
+    // THE THIRD FILTER, and its cost was checked before it was declared. Array filters do not
+    // combine with each other, so this adds one index FAMILY rather than doubling the set — and
+    // the combination `relationshipTypes AND lineOfBusiness` is refused at the query planner
+    // (MULTIPLE_ARRAY_FILTERS), because Firestore cannot serve it at any index cost.
+    makeFilter({ fieldId: "lineOfBusiness", operators: ["ARRAY_CONTAINS"] }),
   ],
   // Most-recently-touched first is the ordering that makes a first page useful when the
   // set is larger than anyone will scroll. Name-ascending is available as a sort but is

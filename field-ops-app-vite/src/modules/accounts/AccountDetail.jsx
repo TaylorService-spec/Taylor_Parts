@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
+import { savedListState } from "../../navigation/listStateMemory.js";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../../hooks/useContactsForAccount";
@@ -247,6 +249,13 @@ function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFoc
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
+  // BACK TO CUSTOMERS MEANS CUSTOMERS, whether this record was opened from the list, from a
+  // dashboard tile or from a pasted link -- and it lands on the list the person was actually using,
+  // filters and sort intact. Browser history would give one control four different behaviours; a
+  // hardcoded "/customers" would reset their work. The route comes from the nav config so a
+  // re-parented item follows automatically.
+  const backToCustomers = () =>
+    objectListPathWithState(OBJECT_LIST_KEY.CUSTOMERS, savedListState("customers"));
   // Guarded rather than a bare destructure: production always renders inside AuthProvider (App.jsx),
   // but several existing AccountDetail tests render this component with no AuthProvider ancestor --
   // useAuth() (useContext(AuthContext), no default value) returns undefined there. Falling back to
@@ -317,7 +326,7 @@ export default function AccountDetail() {
       <div className="fo-panel">
         <FailureState
           message="This customer could not be found."
-          action={<button type="button" onClick={() => navigate("/customers")}>Back to Customers</button>}
+          action={<button type="button" onClick={() => navigate(backToCustomers())}>Back to Customers</button>}
         />
       </div>
     );
@@ -435,7 +444,7 @@ export default function AccountDetail() {
 
   const actions = (
     <ActionRail
-      start={<button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">&larr; Back to Customers</button>}
+      start={<button type="button" onClick={() => navigate(backToCustomers())} className="fo-link-btn">&larr; Back to Customers</button>}
       primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit</Button> : null}
     />
   );
