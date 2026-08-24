@@ -920,6 +920,10 @@
     {
       "file": "test/workflowSyntax.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/shellScriptExecutability.test.mjs",
+      "runner": "node"
     }
   ]
 }
