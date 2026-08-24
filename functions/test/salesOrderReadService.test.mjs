@@ -52,10 +52,19 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
   // (salesOrderNumbering.ts). It is here so the detail page can render the reference instead
   // of the Firestore document id -- the id (`p.id`) stays available for routing but is never
   // this projection's stand-in for identity.
+  // THE ALLOW-LIST GREW BY THREE, ARGUED FOR RATHER THAN SLID IN — totalMinor, pricingState and
+  // unpricedLineCount. A Sales Order is the entry point of a sale, so it carries the sale's money
+  // (Owner ruling, 2026-08-24), and that money was already authoritative before this projection
+  // returned it: finance/invoiceCommands.ts snapshots each line's unitPrice as unitPriceMinor,
+  // refuses to bill a line without one (UNPRICED), and refuses any invoice price that disagrees
+  // with it (PRICE_MISMATCH). The invoice is DERIVED from the order and forbidden from
+  // contradicting it. Returning the number the whole billing chain already depends on is not a
+  // widening of this projection's authority; withholding it was the anomaly.
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "customerPO", "id", "lines", "locationId", "notes",
     "ownerEmployeeId", "salesChannel", "salesOrderNumber", "serviceWorkOrderIds", "sourceOpportunityId",
     "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
+    "totalMinor", "pricingState", "unpricedLineCount",
   ].sort());
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.sourceOpportunityId, "OPP-1");
@@ -67,17 +76,73 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
 
 test("projectSalesOrder projects lines with the full ordered/allocated/fulfilled/billed quantity model", () => {
   const p = projectSalesOrder("SO-1", baseDoc());
+  // The four quantities are unchanged; the two money fields are additions, and are null here
+  // because this fixture's line carries no unitPrice. NULL, not 0 — an unpriced line has no
+  // amount, and zero would state that it is free.
   assert.deepEqual(p.lines, [
-    { lineId: "line-1", kind: "PART", ref: "PRT-1", orderedQty: 5, allocatedQty: 3, fulfilledQty: 2, billedQty: 1 },
+    {
+      lineId: "line-1", kind: "PART", ref: "PRT-1",
+      orderedQty: 5, allocatedQty: 3, fulfilledQty: 2, billedQty: 1,
+      unitPriceMinor: null, extendedMinor: null,
+    },
   ]);
 });
 
-test("projectSalesOrder never exposes unitPrice or any other price field -- no pricing policy in this projection", () => {
+test("projectSalesOrder exposes the COMMITTED price and still no pricing policy", () => {
+  // THE BOUNDARY MOVED, AND IT DID NOT DISAPPEAR.
+  //
+  // This test used to assert no price field of any kind. The distinction its own title drew is the
+  // one that survives: a committed unit price is a STORED FACT, and a pricing POLICY is a decision.
+  // The projection now returns the fact — the same integer minor-unit value invoicing snapshots and
+  // refuses to contradict — and still computes no discount, no tax, no quote state and no margin.
   const p = projectSalesOrder("SO-1", baseDoc());
-  assert.deepEqual(Object.keys(p.lines[0]).sort(), ["allocatedQty", "billedQty", "fulfilledQty", "kind", "lineId", "orderedQty", "ref"]);
-  assert.equal("unitPrice" in p.lines[0], false);
-  assert.equal("price" in p.lines[0], false);
-  assert.equal("amount" in p.lines[0], false);
+  assert.deepEqual(
+    Object.keys(p.lines[0]).sort(),
+    ["allocatedQty", "billedQty", "extendedMinor", "fulfilledQty", "kind", "lineId", "orderedQty", "ref", "unitPriceMinor"],
+  );
+  // Still absent, and still deliberately: these are policy, not stored line facts.
+  for (const forbidden of ["discount", "discountMinor", "taxMinor", "margin", "quoteState", "pricingPolicy"]) {
+    assert.equal(forbidden in p.lines[0], false, `${forbidden} is pricing policy and does not belong in this projection`);
+  }
+});
+
+test("a partly priced order has NO total, because a partial sum is not the sale", () => {
+  // The one real hazard in exposing money here. `unitPrice` is OPTIONAL per line, so summing what
+  // happens to be priced yields a real number that is not the sale's total — worse than showing
+  // nothing, because somebody would act on it.
+  const priced = { lineId: "l1", kind: "PART", ref: "P1", orderedQty: 2, unitPrice: 1500 };
+  const unpriced = { lineId: "l2", kind: "PART", ref: "P2", orderedQty: 3 };
+
+  const whole = projectSalesOrder("SO-P", baseDoc({ lines: [priced] }));
+  assert.equal(whole.pricingState, "PRICED");
+  assert.equal(whole.totalMinor, 3000);
+  assert.equal(whole.unpricedLineCount, 0);
+
+  const partial = projectSalesOrder("SO-Q", baseDoc({ lines: [priced, unpriced] }));
+  assert.equal(partial.pricingState, "PARTIALLY_PRICED");
+  assert.equal(partial.totalMinor, null, "NULL IS NOT ZERO");
+  assert.equal(partial.unpricedLineCount, 1);
+
+  const none = projectSalesOrder("SO-R", baseDoc({ lines: [unpriced] }));
+  assert.equal(none.pricingState, "UNPRICED");
+  assert.equal(none.totalMinor, null);
+
+  const empty = projectSalesOrder("SO-S", baseDoc({ lines: [] }));
+  assert.equal(empty.pricingState, "NO_LINES");
+  assert.equal(empty.totalMinor, null);
+});
+
+test("a malformed stored price is treated as absent, never coerced into a total", () => {
+  // A negative or fractional price is not a price this money model accepts anywhere else.
+  // Coercing it would build a total out of a number the system rejects.
+  for (const bad of [-100, 12.5, "1500", null]) {
+    const p = projectSalesOrder("SO-B", baseDoc({
+      lines: [{ lineId: "l1", kind: "PART", ref: "P1", orderedQty: 1, unitPrice: bad }],
+    }));
+    assert.equal(p.lines[0].unitPriceMinor, null, `${bad} must not be accepted as a price`);
+    assert.equal(p.totalMinor, null);
+    assert.equal(p.pricingState, "UNPRICED");
+  }
 });
 
 test("projectSalesOrder returns null for an invalid/unrecognized state rather than trusting it", () => {
@@ -96,7 +161,13 @@ test("projectSalesOrder drops malformed lines rather than fabricating them, keep
     ],
   }));
   assert.deepEqual(p.lines, [
-    { lineId: "line-1", kind: "PART", ref: "ok", orderedQty: 1, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 },
+    {
+      lineId: "line-1", kind: "PART", ref: "ok",
+      orderedQty: 1, allocatedQty: 0, fulfilledQty: 0, billedQty: 0,
+      // The surviving line carries no price in this fixture. Null, not 0 — an unpriced line has
+      // no amount, and zero would state that it is free.
+      unitPriceMinor: null, extendedMinor: null,
+    },
   ]);
 });
 
