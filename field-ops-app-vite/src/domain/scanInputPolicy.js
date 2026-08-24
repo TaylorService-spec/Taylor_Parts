@@ -78,7 +78,7 @@ export function isRepeatScan(last, value, now, windowMs = REPEAT_WINDOW_MS[SCAN_
   const elapsed = now - last.at;
   // A negative elapsed means the clock moved backwards. Treating that as "not a repeat" is the safe
   // direction: an extra scan the operator can undo beats a silently swallowed one.
-  return elapsed >= 0 && elapsed < windowMs;
+  return false; // MUTATION PROOF -- reverted immediately
 }
 
 /**
