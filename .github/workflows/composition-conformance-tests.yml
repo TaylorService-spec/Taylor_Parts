@@ -74,6 +74,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
         run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx
+        # MISSING working-directory, pre-existing: this step ran from the repo root, so its
+        # tests were never actually executing in this lane. Adding it makes them run.
+        working-directory: field-ops-app-vite
 
       # The pilot contract: what a field IS, what the query layer can honestly do with it, and
       # that Back to Work Orders goes to Work Orders.
