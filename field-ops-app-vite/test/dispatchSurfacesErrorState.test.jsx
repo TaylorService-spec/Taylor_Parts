@@ -16,10 +16,17 @@ import { render, screen, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
+// WorkOrdersList moved off useWorkOrders onto the bounded metadata runtime. The PROPERTY under
+// test is unchanged and is the whole point of this file -- a failed read must never render as an
+// empty queue -- so the surface is still tested, through the read path it actually has now.
+vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: vi.fn() }));
+vi.mock("../src/hooks/useWorkOrderSearch", () => ({ useWorkOrderSearch: () => ({ state: "IDLE", results: [], truncated: false, message: null }) }));
+vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReferenceResolver: () => ({ resolveReference: () => undefined }) }));
 vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
+import { useMetadataList } from "../src/hooks/useMetadataList";
 import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
 import { useAuth } from "../src/auth/AuthContext";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
@@ -34,25 +41,52 @@ afterEach(() => {
 });
 
 describe("WorkOrdersList -- error is not swallowed into the empty state", () => {
-  it("renders an alert, not 'No work orders yet', when useWorkOrders returns an error", () => {
-    useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+  const listResult = (presentation) => ({
+    presentation, rows: [], loadMore: () => {}, retry: () => {}, descriptorErrors: [],
+  });
+
+  it("renders an alert, not an empty queue, when the bounded read is denied", () => {
+    // DENIED and EMPTY are different facts about the business, and only one of them means
+    // there is no work. Collapsing them is what let a dispatcher miss real, urgent jobs.
+    useMetadataList.mockReturnValue(listResult({
+      state: "DENIED", columns: [], rows: [], hasMore: false,
+      emptyMessage: "You do not have access to work orders.",
+    }));
+    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
       </MemoryRouter>
     );
     expect(screen.getByRole("alert")).toBeTruthy();
-    expect(screen.queryByText(/no work orders yet/i)).toBeNull();
+    expect(screen.queryByText(/nothing here yet/i)).toBeNull();
   });
 
-  it("still shows the honest empty state when there is no error", () => {
-    useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
+  it("renders an alert when the read fails for any other reason", () => {
+    useMetadataList.mockReturnValue(listResult({
+      state: "UNAVAILABLE", columns: [], rows: [], hasMore: false,
+      emptyMessage: "Work orders could not be loaded.",
+    }));
+    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
       </MemoryRouter>
     );
-    expect(screen.getByText(/no work orders yet/i)).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it("still shows the honest empty state when the read succeeded and found nothing", () => {
+    useMetadataList.mockReturnValue(listResult({
+      state: "EMPTY", columns: [], rows: [], hasMore: false, emptyMessage: null,
+    }));
+    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    render(
+      <MemoryRouter>
+        <WorkOrdersList />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/nothing here yet/i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

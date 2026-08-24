@@ -68,7 +68,11 @@ export const UX_MIGRATION_OBJECTS = Object.freeze([
   Object.freeze({
     objectId: "equipment",
     definition: "src/metadata/definitions/equipment.js",
-    screen: "src/modules/equipment/EquipmentRegister.jsx",
+    // CustomerEquipment, NOT EquipmentRegister. The manifest pointed at the register, which is
+    // the Account-scoped create flow and is deliberately not a business-wide list at all -- so it
+    // was measuring the wrong screen and would have reported the object CONTRACT_ONLY forever.
+    // The global installed register is the Customer Equipment tab.
+    screen: "src/modules/equipment/CustomerEquipment.jsx",
     route: "/equipment",
     requiresDollars: false,
   }),

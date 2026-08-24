@@ -916,6 +916,10 @@
     {
       "file": "test/objectListMetadataAuthority.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/workflowSyntax.test.mjs",
+      "runner": "node"
     }
   ]
 }

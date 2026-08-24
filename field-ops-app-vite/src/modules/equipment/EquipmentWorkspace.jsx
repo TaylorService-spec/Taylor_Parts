@@ -30,7 +30,12 @@ const TABS = [
   { id: "add", label: "Add Equipment" },
 ];
 
-export default function EquipmentWorkspace({ accessVersion }) {
+// `accessVersion` is still ACCEPTED and no longer used. App.jsx passes it, and the Customer
+// Equipment tab was its only consumer — it keyed the accessVersion-scoped paging hook that tab
+// no longer reads. Kept in the signature rather than removed from the call site, because the
+// access-version seam is a governance contract and quietly dropping the prop would make it look
+// as though this workspace had never been inside it. Underscored so lint agrees it is deliberate.
+export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
   const [active, setActive] = useState("customer");
   const tabRefs = useRef({});
 
@@ -74,7 +79,9 @@ export default function EquipmentWorkspace({ accessVersion }) {
       </div>
 
       <div role="tabpanel" id="eq-panel-customer" aria-labelledby="eq-tab-customer" hidden={active !== "customer"}>
-        <CustomerEquipment accessVersion={accessVersion} />
+        {/* The business-wide installed register: bounded metadata runtime, server-side filters.
+            Distinct from the Add Equipment tab below, which stays Account-scoped by design. */}
+        <CustomerEquipment />
       </div>
       <div role="tabpanel" id="eq-panel-available" aria-labelledby="eq-tab-available" hidden={active !== "available"}>
         <AvailableEquipment />

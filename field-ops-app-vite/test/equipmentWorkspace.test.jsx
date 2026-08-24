@@ -55,6 +55,23 @@ vi.mock("../src/hooks/useAvailableEquipmentSource", () => ({
 // shape: options plus an interpreted state. Left as useFirestoreCollection, the component
 // would sit in LOADING forever and the test would fail for a reason unrelated to what it
 // asserts.
+// CustomerEquipment moved off useInstalledEquipmentPage onto the bounded metadata runtime, so its
+// read is now useMetadataList and its names come from the two batched reference resolvers. The
+// PROPERTIES under test are unchanged -- every fail-closed state, rows, navigation and Load more --
+// they are simply driven through the read path the tab actually has.
+let mockEquipmentList = { presentation: { state: "EMPTY", columns: [], rows: [], hasMore: false }, rows: [], loadMore: () => {}, retry: () => {}, descriptorErrors: [] };
+vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: () => mockEquipmentList }));
+vi.mock("../src/hooks/useAccountReferenceResolver", () => ({
+  useAccountReferenceResolver: () => ({ resolveReference: (fieldId, id) => (
+    fieldId === "accountId" ? ({ a1: { state: "FOUND", label: "Acme" } }[id] ?? { state: "NOT_FOUND" }) : undefined
+  ) }),
+}));
+vi.mock("../src/hooks/useLocationReferenceResolver", () => ({
+  useLocationReferenceResolver: () => ({ resolveReference: (fieldId) => (
+    fieldId === "locationId" ? { state: "NOT_FOUND" } : undefined
+  ) }),
+}));
+
 vi.mock("../src/hooks/useAccountPicker", () => ({
   useAccountPicker: () => ({ state: "EMPTY", options: [], truncated: false, message: null, loading: false, error: null }),
 }));
@@ -64,6 +81,8 @@ vi.mock("../src/hooks/useLocationsForAccount", () => ({ useLocationsForAccount: 
 
 import EquipmentWorkspace from "../src/modules/equipment/EquipmentWorkspace";
 import CustomerEquipment from "../src/modules/equipment/CustomerEquipment";
+import { buildListPresentation } from "../src/metadata/listPresentation.js";
+import { equipmentEntity, equipmentIndexList } from "../src/metadata/definitions/equipment.js";
 import AvailableEquipment from "../src/modules/equipment/AvailableEquipment";
 import { NAV_DOMAINS, isNavItemVisible } from "../src/navigation/navConfig";
 import { ROLES, ROLE_NAV_ACCESS } from "../src/domain/constants";
@@ -207,91 +226,107 @@ describe("AvailableEquipment catalog filtering (READY source)", () => {
   });
 });
 
-// S-INV-EQUIPMENT -- CustomerEquipment now renders through the shared metadata
-// list runtime (buildListPresentation + MetadataListGrid over
-// equipmentIndexList/equipmentEntity) instead of a hand-written <ul>, though the
-// read itself is unchanged (still useInstalledEquipmentPage, injected via
-// `usePage` exactly as before -- see the module's own header comment for why a
-// second read via useMetadataList was not introduced). Rows render as a table;
-// navigation is a clickable/keyboard-activatable row (MetadataListGrid's
-// onRowClick), not a per-row <a> -- the same shape every other metadata-list
-// surface in this program uses (see AccountsList.jsx), not a regression specific
-// to this migration. State copy now comes from the shared runtime's own
-// vocabulary (emptyMessageFor/LoadingState defaults), which is why the asserted
-// strings below differ from the pre-migration copy.
+// THE BUSINESS-WIDE INSTALLED EQUIPMENT LIST, on the bounded metadata runtime.
+//
+// The tab used to filter the LOADED rows only: every customer it could offer was one it had already
+// downloaded, so choosing one narrowed a page rather than the register. Its filters are now
+// server-side, from the Equipment metadata, because the three composites that serve them are live.
+//
+// These cases hold the fail-closed states -- the reason the file exists -- through the read the tab
+// now has. DENIED, UNAVAILABLE and EMPTY stay three different facts, because only one of them means
+// there is no equipment.
 describe("CustomerEquipment states", () => {
-  const rowDocs = [
+  const listResult = (presentation, extra = {}) => ({
+    presentation, rows: [], loadMore: vi.fn(), retry: vi.fn(), descriptorErrors: [], ...extra,
+  });
+  const docs = [
     { id: "e1", accountId: "a1", locationId: "l1", name: "RTU One", status: "ACTIVE", serialNumber: "SN1" },
     { id: "e2", accountId: "a2", name: "Boiler Two", status: "INACTIVE" },
   ];
+  // a1 resolves, a2 does not -- so the honest "Unresolved reference" is exercised alongside a
+  // real name, which is the pair that matters.
+  const resolveReference = (fieldId, id) =>
+    (fieldId === "accountId" ? ({ a1: { state: "FOUND", label: "Acme" } }[id] ?? { state: "NOT_FOUND" }) : { state: "NOT_FOUND" });
+  const ready = (hasMore = false) => buildListPresentation({
+    def: equipmentIndexList, entity: equipmentEntity,
+    page: { rows: docs, hasMore }, loading: false, errorStatus: null, resolveReference,
+  });
+  const failed = (errorStatus) => buildListPresentation({
+    def: equipmentIndexList, entity: equipmentEntity,
+    page: null, loading: false, errorStatus, resolveReference,
+  });
 
-  it("ready: renders the loaded-only note and clickable rows that navigate to Equipment Detail", () => {
-    const usePage = () => pageState({ docs: rowDocs, accountNames: new Map([["a1", "Acme"], ["a2", "Beta"]]) });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
-    expect(screen.getByText(/not a global search/i)).toBeTruthy();
+  it("ready: renders rows, and a reference that did not resolve is named, never its id", () => {
+    mockEquipmentList = listResult(ready());
+    withRouter(<CustomerEquipment />);
     expect(screen.getByText("RTU One")).toBeTruthy();
     expect(screen.getByText("Boiler Two")).toBeTruthy();
-    // REFERENCE columns resolve from the accountNames Map already in hand -- no
-    // raw id ever reaches the cell, resolved or not (a2 has no entry -> honest
-    // "Unresolved reference", never "a2").
-    // "Acme" also appears as a Customer-filter <option>, so scope to the table cell.
-    const row = screen.getByText("RTU One").closest("tr");
-    expect(row.querySelector("td:nth-child(3)").textContent).toBe("Acme");
-    expect(screen.getByText("Unresolved reference")).toBeTruthy();
+    // NOT_FOUND renders "No longer exists", which is a statement about the reference.
+    // "a2" would be a statement about the database.
+    expect(screen.getAllByText("No longer exists").length).toBeGreaterThan(0);
+    // installedEquipmentListView's resolveName falls back to the raw id. This surface does not
+    // call it, so no document key can reach a cell.
     expect(screen.queryByText("a1")).toBeNull();
     expect(screen.queryByText("a2")).toBeNull();
-    expect(row.getAttribute("tabindex")).toBe("0");
   });
 
-  it("clicking/activating a row navigates via the declared rowNavigationTo template", () => {
-    const usePage = () => pageState({ docs: rowDocs, accountNames: new Map([["a1", "Acme"]]) });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
+  it("rows are activatable, so a unit can be opened from the keyboard", () => {
+    mockEquipmentList = listResult(ready());
+    withRouter(<CustomerEquipment />);
     const row = screen.getByText("RTU One").closest("tr");
+    expect(row.getAttribute("tabindex")).toBe("0");
     fireEvent.keyDown(row, { key: "Enter" });
-    // MemoryRouter has no visible URL assertion surface here; the important proof
-    // is that Enter activates the row without throwing and the row stays focusable
-    // -- full navigation is covered by MetadataRecordPage.jsx's own buildRowHref
-    // tests. This asserts the wiring, not the router internals.
     expect(row.getAttribute("tabindex")).toBe("0");
   });
 
-  it("loading state shows a loading indicator", () => {
-    const usePage = () => pageState({ loading: true, docs: [] });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
+  it("loading shows a loading indicator, not an empty register", () => {
+    mockEquipmentList = listResult(buildListPresentation({ def: equipmentIndexList, entity: equipmentEntity, page: null, loading: true, errorStatus: null }));
+    withRouter(<CustomerEquipment />);
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
-  it("denied state is fail-closed", () => {
-    const usePage = () => pageState({ denied: true });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
+  it("denied is fail-closed and says nothing about whether equipment exists", () => {
+    mockEquipmentList = listResult(failed("denied"));
+    withRouter(<CustomerEquipment />);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText(/do not have access to equipment/i)).toBeTruthy();
   });
 
-  it("unavailable state on a first-page error", () => {
-    const usePage = () => pageState({ error: "boom", docs: [] });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
+  it("unavailable is an alert, not an empty register", () => {
+    mockEquipmentList = listResult(failed("unavailable"));
+    withRouter(<CustomerEquipment />);
     expect(screen.getByRole("alert")).toBeTruthy();
-    expect(screen.getByText(/equipment could not be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/could not be loaded/i)).toBeTruthy();
   });
 
-  it("empty state when nothing loaded", () => {
-    const usePage = () => pageState({ docs: [] });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
-    expect(screen.getByText(/no equipment yet/i)).toBeTruthy();
+  it("empty means the read succeeded and there is genuinely nothing", () => {
+    mockEquipmentList = listResult(buildListPresentation({ def: equipmentIndexList, entity: equipmentEntity, page: { rows: [], hasMore: false }, loading: false, errorStatus: null }));
+    withRouter(<CustomerEquipment />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/nothing here yet/i)).toBeTruthy();
   });
 
-  it("partial state keeps rows and shows a non-destructive notice", () => {
-    const usePage = () => pageState({ docs: rowDocs, partialError: "couldn’t load more" });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
-    expect(screen.getByText("RTU One")).toBeTruthy(); // rows retained
-    expect(screen.getByText(/already-loaded rows are shown/i)).toBeTruthy();
+  it("a register filtered to nothing is not an empty register", () => {
+    // The two statements are different, and telling somebody they own no equipment because a
+    // filter excluded it is the more damaging of the two. Driven through the URL, because the
+    // criteria are what the empty state reads -- a FILTERED presentation with no criteria in the
+    // URL is a state the screen cannot actually be in.
+    mockEquipmentList = listResult(buildListPresentation({ def: equipmentIndexList, entity: equipmentEntity, page: { rows: [], hasMore: false }, loading: false, errorStatus: null, filtersActive: true }));
+    render(
+      <MemoryRouter initialEntries={["/equipment?f=status%3AEQUALS%3AACTIVE"]}>
+        <CustomerEquipment />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/no records match these filters/i)).toBeTruthy();
+    // Two: the ActiveCriteria chip row offers one, and the empty state offers its own so the
+    // dead end is escapable from where the reader is looking.
+    expect(screen.getAllByRole("button", { name: /clear filters/i }).length).toBe(2);
   });
 
-  it("Load more appears when hasMore and invokes loadMore", () => {
+  it("Load more appears when there is more and invokes it", () => {
     const loadMore = vi.fn();
-    const usePage = () => pageState({ docs: rowDocs, hasMore: true, loadMore });
-    withRouter(<CustomerEquipment accessVersion={1} usePage={usePage} />);
+    mockEquipmentList = listResult(ready(true), { loadMore });
+    withRouter(<CustomerEquipment />);
     fireEvent.click(screen.getByRole("button", { name: /load more/i }));
     expect(loadMore).toHaveBeenCalled();
   });

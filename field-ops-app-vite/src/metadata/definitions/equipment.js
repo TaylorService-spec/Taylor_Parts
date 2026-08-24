@@ -93,9 +93,13 @@ import { EQUIPMENT_STATUS_VALUES, EQUIPMENT_STATUS_LABEL } from "../../domain/eq
 // says so explicitly (no isActiveOperationalRole() call anywhere in this block) —
 // which is why nothing here declares one either.
 //
-// NO firestore.indexes.json ENTRIES EXIST FOR `equipment` TODAY. The index list
-// declared below is therefore a net-new demand this definition creates, not a
-// description of something already deployed — see REGISTRATION_PENDING.
+// THE INDEXES THIS LIST NEEDS ARE DECLARED AND LIVE. This comment used to say the
+// opposite, and said it correctly at the time: the list below was a net-new demand with
+// nothing behind it. Three `equipment` composites now exist in firestore.indexes.json AND
+// in the live estate, measured rather than assumed — (accountId, name), (status, name) and
+// (accountId, status, name). That is exactly what the two declared filters need, alone and
+// combined, alongside the `name ASC` default sort, which is why CustomerEquipment.jsx can
+// now filter on the server instead of over its loaded rows. REGISTRATION_PENDING is closed.
 
 export const equipmentEntity = makeEntityDefinition({
   id: "equipment",
@@ -249,20 +253,48 @@ export const equipmentEntity = makeEntityDefinition({
         "so — it does not fall back to a database key.",
       resolution: "A projected location name, if a cross-Equipment query for it is ever really needed.",
     }),
+    makeGap({
+      id: "EQUIPMENT_BUSINESS_LINE_NOT_RECORDED",
+      title: "Installed equipment does not say which line of business it belongs to",
+      entityId: "equipment",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "The equipment document carries no lineOfBusiness. The Account does, and the Available " +
+        "Equipment tab groups by line because a SERIALIZED ASSET can reach it through its Part — but " +
+        "the sandbox measurement found even that unrecorded for the available pool, because those " +
+        "assets' Parts carry no lineOfBusiness either. Nothing on an INSTALLED unit names a line.",
+      consequence:
+        "There is no Business Line column or filter on the installed register. Taylor and Ventana " +
+        "installed bases cannot be separated from this surface.",
+      refused:
+        "Deriving it from the owning Account. An account can hold equipment from both lines — that is " +
+        "the ordinary case for a customer who buys from both operating companies — so the derived " +
+        "value would be confidently wrong for exactly the customers it matters most for.",
+      resolution:
+        "Whether an installed unit records its line, and who writes it, is an operating-company " +
+        "decision. It changes the install path, not the list.",
+    }),
   ],
 });
 
 /**
  * The general Equipment index — a cross-Account, filterable register.
  *
- * Mirrors what modules/equipment/CustomerEquipment.jsx already renders (a cross-
- * customer list scoped optionally by Account and Location), but declares accountId
- * and status as REAL, backend-served filters rather than the LOADED-ONLY, client-
- * side filters that surface currently applies over its documentId()-ordered page —
- * see hooks/useInstalledEquipmentPage.js. That is INTENDED behavior this definition
- * states plainly, not a description of the live query today: no
- * firestore.indexes.json entries exist for `equipment` yet, so every index this list
- * demands is net-new. See REGISTRATION_PENDING in this program's handoff.
+ * This is what modules/equipment/CustomerEquipment.jsx renders: the business-wide
+ * installed register. Distinct from EquipmentRegister.jsx, which stays Account-scoped
+ * because §7 defines it that way and its create flow needs one fixed Account.
+ *
+ * THE FILTERS ARE REAL NOW. accountId and status are backend-served, not the LOADED-ONLY
+ * client-side selects this surface used to apply over a documentId()-ordered page. When
+ * this comment was first written no `equipment` composites existed and it said so
+ * plainly. Three are now live, measured against the estate rather than assumed:
+ * (accountId, name), (status, name) and (accountId, status, name) — exactly what these
+ * two filters need, alone and combined, alongside the `name ASC` default sort.
+ * REGISTRATION_PENDING is closed.
+ *
+ * Manufacturer and model stay COLUMNS. A filter on either would need its own composite
+ * with the sort field, and neither is declared nor live.
  */
 export const equipmentIndexList = makeListViewDefinition({
   id: "equipment.index",
@@ -276,6 +308,11 @@ export const equipmentIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "locationId" }),
     makeColumn({ fieldId: "manufacturer" }),
     makeColumn({ fieldId: "model" }),
+    // REGISTRATION_PENDING, closed. The Customer Equipment tab showed "S/N <value>" inline
+    // before its first migration and lost it, because the column was never declared here and
+    // that lane could not edit this file. The field always existed; only the column did not.
+    makeColumn({ fieldId: "serialNumber" }),
+    makeColumn({ fieldId: "installedDate" }),
   ],
   filters: [
     makeFilter({ fieldId: "accountId", operators: ["EQUALS"] }),

@@ -15,6 +15,7 @@ import {
 import { WORK_ORDERS_COLLECTION } from "../../domain/constants.js";
 import { WORK_ORDER_STATUS_LABEL, WORK_ORDER_STATUS_VALUES } from "../../domain/workOrderStatus.js";
 import { WORK_ORDER_PRIORITY_LABEL } from "../../domain/workOrderPriority.js";
+import { WORK_ORDER_TYPE_LABEL, WORK_ORDER_TYPE_VALUES } from "../../domain/workOrderType.js";
 
 // Work Orders — the Gate B non-CRM validation target.
 //
@@ -98,6 +99,39 @@ export const workOrderEntity = makeEntityDefinition({
       type: "TIMESTAMP",
       sortable: true,
     }),
+    makeFieldDefinition({
+      id: "type",
+      entityId: "workOrder",
+      label: "Type",
+      type: "ENUM",
+      enumValues: [...WORK_ORDER_TYPE_VALUES],
+      enumLabels: WORK_ORDER_TYPE_LABEL,
+      // A COLUMN, NOT A FILTER, and the index derivation is the reason. The default sort is
+      // createdAt DESC, so a type filter needs (type, createdAt) — which is not declared, and
+      // §20 of this package forbids deploying one. Declaring the filter anyway would offer a
+      // control that errors at read time in front of a dispatcher.
+      sortable: false,
+    }),
+    makeFieldDefinition({
+      id: "scheduledStart",
+      entityId: "workOrder",
+      label: "Scheduled",
+      type: "TIMESTAMP",
+      // SORTABLE, BUT SEE THE GAP. `scheduledStart` is OPTIONAL on the record — an unscheduled
+      // Work Order simply has no value — and Firestore's orderBy silently EXCLUDES documents
+      // missing the ordered field. Sorting by it therefore answers "the scheduled work, in
+      // schedule order", which is a legitimate and useful question, but it is NOT "all work
+      // orders". WORK_ORDER_SCHEDULED_SORT_HIDES_UNSCHEDULED says so, and the screen says so too.
+      sortable: true,
+    }),
+    makeFieldDefinition({
+      id: "locationId",
+      entityId: "workOrder",
+      label: "Location",
+      type: "REFERENCE",
+      referenceTo: "location",
+      description: "Where the work happens. A reference; the site name lives on the location.",
+    }),
     // Rendered, not filtered. A technician assignment is a reference whose display name
     // lives on another entity, and claiming a filter on the raw id would offer a control
     // whose values a user cannot type.
@@ -137,6 +171,77 @@ export const workOrderEntity = makeEntityDefinition({
         "nameLower does not need because it derives from the document it lives on. Nothing owns that " +
         "today, and it is a separate architecture decision rather than something to solve incidentally.",
     }),
+    makeGap({
+      id: "WORK_ORDER_SCHEDULED_SORT_HIDES_UNSCHEDULED",
+      title: "Sorting by Scheduled shows only work that has been scheduled",
+      entityId: "workOrder",
+      fieldId: "scheduledStart",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NO_CANONICAL_ORDER,
+      finding:
+        "scheduledStart is optional — a Work Order that has not been scheduled has no value at all — " +
+        "and Firestore's orderBy EXCLUDES every document missing the ordered field. The same mechanic " +
+        "removed 101 of 103 customers from the Accounts list while the header still read '103 Total'.",
+      consequence:
+        "Sorting Work Orders by Scheduled returns the scheduled ones in schedule order and silently " +
+        "omits the unscheduled. That is a useful view; it is not the whole list, and a shorter list " +
+        "does not look like a filtered one.",
+      refused:
+        "Offering the sort without saying so. Silent truncation is the worst failure a list can have, " +
+        "because nothing about the result announces that most of the work is missing.",
+      resolution:
+        "Either the sort states its own scope on screen — which is what it does today — or " +
+        "scheduledStart becomes required-with-a-sentinel, which is a scheduling decision and not a " +
+        "list one.",
+    }),
+    makeGap({
+      id: "WORK_ORDER_TEXT_SEARCH_GAP",
+      title: "Work Orders can be searched by number, and by nothing else",
+      entityId: "workOrder",
+      fieldId: "woNumber",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NO_CANONICAL_ORDER,
+      finding:
+        "domain/workOrderSearch.js issues a real bounded PREFIX range over `woNumber`, which works " +
+        "because the number is machine-generated in one closed format (WO-YYYY-######). Nothing " +
+        "equivalent exists for customer name — no operational document carries one, the same wall " +
+        "CUSTOMER_NAME_NOT_SORTABLE_ON_RELATED_LISTS describes — and complaint text needs a text index " +
+        "this platform does not have.",
+      consequence:
+        "Finding a Work Order across the whole collection requires its number. 'the Harbor Grill job' " +
+        "is answered by opening the customer and reading their work, not from the Work Orders list.",
+      refused:
+        "Keeping the old GlobalSearch provider, which filtered an array the screen supplied. Once the " +
+        "list is paged, that array is ONE PAGE — so the box would have searched fifty rows and " +
+        "reported 'no results' for a Work Order that exists. A search that is silently partial is " +
+        "worse than one that is honestly narrow.",
+      resolution:
+        "Customer-name search needs the same denormalized customer name a customer-name SORT needs — " +
+        "one decision covers both. Free-text needs a search index, which is a platform capability " +
+        "rather than a list feature.",
+    }),
+    makeGap({
+      id: "WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE",
+      title: "A Work Order does not record which equipment it is for",
+      entityId: "workOrder",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "types/workOrder.ts declares customerId and locationId and NO equipment reference. The link " +
+        "exists in the other direction and only after the fact: an INSTALL close-out writes an " +
+        "equipmentId into its outcome (domain/workOrderInstallCloseout.js), and equipment history is " +
+        "assembled from those events. Nothing on the Work Order itself names a unit.",
+      consequence:
+        "There is no Equipment column or filter on the Work Order list. A service call against a " +
+        "specific machine cannot be found by that machine from this surface.",
+      refused:
+        "Rendering an Equipment column populated from close-out outcomes. It would be empty for every " +
+        "open Work Order — exactly the rows a dispatcher is looking at — and populated only for work " +
+        "already finished, which reads as missing data rather than as a model that has no such field.",
+      resolution:
+        "Whether a Work Order names the equipment it is for is a service-model decision. It changes " +
+        "the write path and the wizard, not the list.",
+    }),
   ],
 });
 
@@ -150,6 +255,9 @@ export const workOrderIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "status", sortable: true }),
     makeColumn({ fieldId: "priority" }),
     makeColumn({ fieldId: "customerId" }),
+    makeColumn({ fieldId: "type" }),
+    makeColumn({ fieldId: "scheduledStart", sortable: true }),
+    makeColumn({ fieldId: "assignedTechId" }),
     makeColumn({ fieldId: "createdAt", sortable: true }),
   ],
   filters: [

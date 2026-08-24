@@ -31,6 +31,19 @@ on:
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
       - "field-ops-app-vite/test/uxMigrationManifest.test.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/domain/workOrderSearch.js"
+      - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
+      - "field-ops-app-vite/src/metadata/definitions/workOrder.js"
+      - "field-ops-app-vite/test/workOrdersListMigration.test.jsx"
+      - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
+      - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipment.js"
+      - "field-ops-app-vite/test/equipmentListMigration.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js"
+      - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
+      - "field-ops-app-vite/test/purchaseOrderSourceOfRecord.test.jsx"
+      - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
     branches: [main]
@@ -56,6 +69,19 @@ on:
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
       - "field-ops-app-vite/test/uxMigrationManifest.test.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/domain/workOrderSearch.js"
+      - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
+      - "field-ops-app-vite/src/metadata/definitions/workOrder.js"
+      - "field-ops-app-vite/test/workOrdersListMigration.test.jsx"
+      - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
+      - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipment.js"
+      - "field-ops-app-vite/test/equipmentListMigration.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js"
+      - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
+      - "field-ops-app-vite/test/purchaseOrderSourceOfRecord.test.jsx"
+      - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
 
@@ -102,4 +128,22 @@ jobs:
       # six migrated lists when two were; this is what makes that impossible to repeat.
       - name: UX migration manifest (derived, not asserted)
         run: npx vitest run test/uxMigrationManifest.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Work Orders: the bounded list AND the realtime dispatch subscription five other surfaces
+      # read. The migration risk was never the list -- it was paging the board along with it.
+      - name: Work Orders list migration (bounded list, realtime board intact)
+        run: npx vitest run test/workOrdersListMigration.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Equipment: TWO lists over one domain. The global register filters on the server; the
+      # Account register stays Account-scoped, because widening it would break the create flow.
+      - name: Equipment list migration (global vs account-scoped, index honesty)
+        run: npx vitest run test/equipmentListMigration.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Purchase Orders: which collection IS the Purchase Order. Pins the two-collections-one-name
+      # trap and the measured emptiness of the canonical one, so neither has to be re-derived.
+      - name: Purchase Order source of record (two collections, one name)
+        run: npx vitest run test/purchaseOrderSourceOfRecord.test.jsx
         working-directory: field-ops-app-vite

@@ -545,3 +545,121 @@ realtime join (`useReorderRequestsByStatuses` → `usePurchaseOrdersByIds`) over
 live composite indexes, so `purchaseOrder.index` can honestly declare zero filters today. Controls
 could be mounted over the join, but every filter offered would be unbacked. **Decision needed:** P-1
 first; indexes follow from it.
+
+---
+
+# UX CORE OBJECT MIGRATIONS — 2026-08-24
+
+Work Orders, Equipment, Purchase Orders, and the scan-workspace CI lane. **Nothing deployed.**
+
+## Migration matrix, derived from source
+
+| object | status | filters | sort | URL state | structured rows | cards |
+|---|---|---|---|---|---|---|
+| account | **MERGED_UI** | ✓ 3 | ✓ | ✓ | ✓ | ✓ |
+| part | **MERGED_UI** | ✓ 2 | ✓ | ✓ | ✓ | ✓ |
+| salesOrder | **MERGED_UI** | ✓ 1 | ✓ | ✓ | ✓ | ✓ |
+| workOrder | **MERGED_UI** | ✓ 2 | ✓ | ✓ | ✓ | ✓ |
+| equipment | **MERGED_UI** | ✓ 2 | ✓ | ✓ | ✓ | ✓ |
+| purchaseOrder | **CONTRACT_ONLY** | 0 — honest | — | — | — | — | 
+
+`src/metadata/uxMigrationManifest.js` derives every row by reading the real screen files; nothing
+in the table above is typed by hand.
+
+## Work Orders — a bounded list, and the board it did not take with it
+
+The list held an unfiltered `onSnapshot` over the whole collection. It is now bounded and paged,
+with the canonical controls. **`subscribeToWorkOrders` is unchanged**, because Dispatch, the
+Dispatcher Board, Control Tower, Job Assignments and Scheduling all read it and are realtime
+operational surfaces. Paging that subscription would have been a dispatch decision made under
+cover of a list migration.
+
+**`LIST PAGE ≠ SEARCH CORPUS`.** GlobalSearch's `workOrders` provider filtered an array the caller
+supplied, and the only caller that could supply a complete one was the subscription this page no
+longer holds. `domain/workOrderSearch.js` replaces it with a bounded prefix range over `woNumber` —
+honest because the number is machine-generated in one closed format, so the term is folded UP and
+no stored lowercase copy or composite index is involved. A Work Order on page nine is still
+findable. What it does not search is registered as `WORK_ORDER_TEXT_SEARCH_GAP`.
+
+The status chips lost their counts. "Open (34)" over a bounded page is a claim about the business
+derived from one screenful. Each chip applies `status IN [...]`, served by the same
+`(status, createdAt DESC)` composite an equality uses — no new index, and every lifecycle status
+belongs to exactly one chip, proved rather than assumed.
+
+New gaps: `WORK_ORDER_SCHEDULED_SORT_HIDES_UNSCHEDULED` (stated on the screen, not only in the
+register — `scheduledStart` is optional and Firestore's `orderBy` excludes rows missing it) and
+`WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE` (there is no such field; a column fed from install
+close-outs would be empty for every open job).
+
+## Equipment — two lists, one domain
+
+`EquipmentRegister` stays Account-scoped. §7 defines it that way, and its create flow needs one
+fixed Account because the Location options and the write itself are scoped to it. Widening it
+would have undone a real decision and broken the only path by which Equipment can be created.
+
+The **Customer Equipment tab** is the business-wide register, and its filters are now real. They
+were loaded-only: every customer it could offer was one it had already downloaded, so choosing one
+narrowed a page. Three `equipment` composites are declared **and live** — `(accountId, name)`,
+`(status, name)`, `(accountId, status, name)` — exactly what the two filters need alone and
+combined. Customer is a picker of names yielding an id; a REFERENCE filter with a text box asks a
+person to type a Firestore key.
+
+Two stale comments in `equipment.js` claimed no `equipment` indexes existed. They were right when
+written. The honesty of the server-side filters rests on which is true, so both are corrected and
+`REGISTRATION_PENDING` is closed. `serialNumber` and `installedDate` are columns again.
+
+New gap: `EQUIPMENT_BUSINESS_LINE_NOT_RECORDED` — not derived from the owning Account, because an
+account can hold equipment from **both** operating companies, so the derived value would be
+confidently wrong for exactly the customers it matters most for.
+
+## Purchase Orders — STOP, and the count that stops it
+
+The direction was to move the modern PO UX onto `purchase_orders`. **Measured read-only against
+`eos-platform-sandbox`, 2026-08-24:**
+
+```
+purchase_orders          0 documents   0 live composite indexes
+reorder_purchase_orders  3 documents   0 live composite indexes   (2 ORDERED, 1 VOIDED)
+reorder_requests         6 documents   (status,createdAt DESC) IS live
+```
+
+Every Purchase Order this business has is in the collection that stores no money. The collection
+that stores `totalCost` has never been written to. Switching the screen today replaces a working
+three-row list with an empty one, and the Dollars column it was switched for has no rows to appear
+on. "Dormant" was a judgement in a comment; this is the count.
+
+Also unresolved by a source switch: the reachable screen is a **request-driven lifecycle
+composite**, not a document list. `VOIDED` and `RECEIVED` live on the linked reorder request, never
+on the PO document — a plain metadata list would read "Ordered" on every row forever, including the
+voided ones — and the `ORPHAN` integrity state (an ORDERED request whose PO cannot be read) has no
+row in either collection to list.
+
+Recorded as `PURCHASE_ORDER_CANONICAL_COLLECTION_IS_EMPTY` and pinned by
+`test/purchaseOrderSourceOfRecord.test.jsx`, which fails the day a Dollars column becomes possible.
+
+**Decision required:** does procurement start writing canonical Purchase Orders, or are the
+existing records migrated under a stated normalization contract? The two collections share no
+shape, no identity and no status vocabulary, and §14 forbids merging them without that contract.
+It is a decision about what a Purchase Order **is**, not a list change.
+
+**Required indexes for a canonical PO list, when it happens:** with a `createdAt DESC` default
+sort, `(status, createdAt DESC)` and `(supplierId, createdAt DESC)`, plus
+`(status, supplierId, createdAt DESC)` for both together. **None declared, none live, none
+deployed by this package.**
+
+## Scanner CI — the lane had not run since 2026-08-23
+
+One duplicated `working-directory:` key inside a single step, from `bd192c7d`. GitHub refuses a
+workflow it cannot parse, so every run completed as `failure` in **0 seconds with no jobs, no steps
+and no logs** — and the ~24 scan-workspace suites it names had not executed once since.
+
+Nothing could notice: every other lane was green, and a workflow that never starts produces nothing
+to be red about. `test/workflowSyntax.test.mjs` now parses the whole workflow estate and fails on a
+key repeated inside a block, with a mutation proof over the exact text that broke and the two false
+positives that would otherwise make the guard unusable.
+
+## Index estate, re-measured
+
+Unchanged from the last measurement, and still **not deployed**: 38 live, 37 declared. A deploy
+would create 2 (`accounts` lineOfBusiness) and **delete 3** (`equipment_models`, live but
+undeclared). No reconciliation performed.

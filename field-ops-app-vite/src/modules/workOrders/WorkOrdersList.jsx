@@ -1,144 +1,236 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { useAccountNames } from "../../hooks/useAccountNames";
-import GlobalSearch from "../../shared/search/GlobalSearch";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { workOrderEntity, workOrderIndexList } from "../../metadata/definitions/workOrder.js";
+import { useMetadataList } from "../../hooks/useMetadataList";
+import { useListCriteria } from "../../hooks/useListCriteria.js";
+import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
+import { useWorkOrderSearch } from "../../hooks/useWorkOrderSearch.js";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
+import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import {
+  AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
+} from "../../metadata/MetadataListControls.jsx";
+import {
+  addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
+} from "../../metadata/listUrlState.js";
+import { OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ActionRail from "../../shared/ui/ActionRail.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
-import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
-import FailureState from "../../shared/ui/FailureState";
-import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { Button } from "../../shared/ui/primitives";
-import { workOrderStatusLabel } from "../../domain/workOrderStatus";
+import {
+  WORK_ORDER_STATUS_GROUPS,
+  activeStatusGroupKey,
+} from "../../domain/workOrderStatusGroups.js";
 
-// Sprint 2.0.3 -- Work Order Experience. The real Service > Work
-// Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
-// that previously sat at this nav slot (Jobs.jsx is relocated to
-// Service > Job Assignments -- see navConfig.js). Column conventions
-// (woNumber/status/customer/type/age) follow WorkOrderQueue.jsx's
-// existing choices, but this is a new, simpler component -- rows are
-// real <Link> navigations to /service/work-orders/:workOrderId, not a
-// selection-driven inline-preview pane (WorkOrderQueue.jsx stays
-// exactly as it is, serving DispatcherBoard.jsx's different layout).
+// Work Orders — the list, now on the canonical metadata runtime.
 //
-// Epic 9 -- Platform Workspace Framework: header/toolbar, status-group
-// filter bar, and loading/empty-state now come from shared/ui/ instead
-// of a locally-hand-rolled copy. No behavior change -- the filter bar
-// previously reused fo-nav-btn (tuned for the dark header nav); it now
-// uses FilterBar's own light-panel-appropriate styling instead.
-// "Active" vocabulary note: this tab's key stays "ACTIVE" (internal,
-// not persisted) but its user-facing label is deliberately NOT bare
-// "Active." This 5-status bucket (dispatched through work-in-progress)
-// is a different population than the Dispatcher Board capacity card's
-// "In Progress" count (TechnicianCapacityCard.jsx, WORK_IN_PROGRESS
-// only) and the Operations panel's 8-status "Active" column
-// (ExecutionInsightsPanel.jsx). All three are variants of the
-// discovered 5th "active" sense (Work Order in-progress) documented
-// in docs/architecture/ADR-012-persona-authority-composition-and-scope.md.
-// Counts are intentionally unchanged here -- only the label.
-const STATUS_GROUPS = [
-  { key: "ALL", label: "All", statuses: null },
-  { key: "OPEN", label: "Open", statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] },
-  { key: "ACTIVE", label: "Dispatched+", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
-  { key: "DONE", label: "Done", statuses: ["COMPLETED", "CLOSED"] },
-  { key: "CANCELLED", label: "Cancelled", statuses: ["CANCELLED"] },
-];
+// ══════════════════════ WHAT MOVED, AND WHAT DELIBERATELY DID NOT ══════════════════════
+//
+// This screen used to hold an UNFILTERED `onSnapshot` over the whole `fieldops_wos`
+// collection (useWorkOrders → subscribeToWorkOrders) and do all filtering and counting in
+// memory. Rows now come from a bounded, cursor-paged metadata query.
+//
+// `useWorkOrders` IS UNCHANGED AND STILL LIVE. Dispatch, the Dispatcher Board, Control
+// Tower, Job Assignments and Scheduling all read it, and they are REALTIME OPERATIONAL
+// SURFACES: a board that shows a job five seconds late is a board that sends the wrong
+// technician. Replacing that subscription with paged reads would have been this package
+// making a dispatch decision under cover of a list migration. Two surfaces, two contracts —
+// a realtime board and a bounded list — rather than one read primitive forced to do both.
+//
+// ══════════════════════ THE SEARCH BOX IS A REAL QUERY NOW ══════════════════════
+//
+// GlobalSearch's `workOrders` provider filters an array the caller supplies. The only
+// caller that could supply a complete one was the whole-collection subscription this page
+// no longer holds — so leaving it would have meant a box that searched FIFTY ROWS and said
+// "no results" about a Work Order that exists. LIST PAGE ≠ SEARCH CORPUS.
+//
+// domain/workOrderSearch.js is the replacement: a bounded Firestore prefix query on
+// `woNumber`, which is machine-generated in one closed format, so a Work Order on page
+// nine is still findable by its number. What it does NOT search — customer name, complaint
+// text — is recorded as WORK_ORDER_TEXT_SEARCH_GAP rather than implied to work.
+//
+// ══════════════════════ THE STATUS CHIPS LOST THEIR COUNTS, ON PURPOSE ══════════════════
+//
+// They used to read "Open (34)", counted from the full in-memory array. A count over a
+// bounded page is a claim about the business derived from one screenful, and it is wrong
+// in the direction that looks reassuring. Accounts has a governed server-side summary for
+// exactly this; Work Orders has none, so the chips filter and no longer count. A missing
+// number is a smaller loss than a confident wrong one.
 
-function formatAge(createdAt) {
-  if (!createdAt?.toMillis) return null;
-  const ms = Date.now() - createdAt.toMillis();
-  const hours = Math.floor(ms / (1000 * 60 * 60));
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
+// A group is applied as `status IN [...]`, which Firestore serves from the same
+// (status, createdAt DESC) composite an equality uses — so the chips cost no new index.
+// The groups themselves live in domain/workOrderStatusGroups.js, with the lifecycle
+// coverage proof: every status belongs to exactly one chip.
+const GROUP_BY_KEY = new Map(WORK_ORDER_STATUS_GROUPS.map((g) => [g.key, g]));
 
 export default function WorkOrdersList() {
-  const { data: workOrders, loading, error } = useWorkOrders();
-  const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
-  const [statusGroup, setStatusGroup] = useState("ALL");
+  const navigate = useNavigate();
 
-  const groupCounts = useMemo(() => {
-    const counts = {};
-    for (const group of STATUS_GROUPS) {
-      counts[group.key] = group.statuses ? workOrders.filter((wo) => group.statuses.includes(wo.status)).length : workOrders.length;
+  // CRITERIA LIVE IN THE URL, keyed as `workOrders` — the same key WorkOrderDetailPage's
+  // "Back to Work Orders" already reads (navigation/listStateMemory.js), so narrowing the
+  // list, opening a job and coming back returns the list that was narrowed.
+  const { criteria, apply } = useListCriteria(workOrderIndexList, workOrderEntity, OBJECT_LIST_KEY.WORK_ORDERS);
+
+  // DERIVED from the criteria rather than held beside them, so the chip and the filter
+  // chips cannot disagree about what is applied.
+  const groupKey = activeStatusGroupKey(
+    criteria.filters.find((f) => f.fieldId === "status")?.value ?? null,
+  );
+
+  const selectGroup = (key) => {
+    const group = GROUP_BY_KEY.get(key);
+    if (!group?.statuses) {
+      apply(removeFilter(criteria, "status", "IN"));
+      return;
     }
-    return counts;
-  }, [workOrders]);
+    apply(addFilter(criteria, makeCriterion({
+      fieldId: "status", operator: "IN", value: group.statuses, valueLabel: group.label,
+    })));
+  };
 
-  const filteredWorkOrders = useMemo(() => {
-    const group = STATUS_GROUPS.find((g) => g.key === statusGroup);
-    if (!group?.statuses) return workOrders;
-    return workOrders.filter((wo) => group.statuses.includes(wo.status));
-  }, [workOrders, statusGroup]);
+  // THE FEEDBACK PASS, as on Sales Orders: the account resolver needs the ids the loaded
+  // rows point at, and those rows come from the list hook — so the resolver cannot exist
+  // before the call that produces them. Rows land, state updates, names resolve.
+  const [resolvableRows, setResolvableRows] = useState([]);
+  const { resolveReference: resolveAccount } = useAccountReferenceResolver(resolvableRows);
 
-  const filterOptions = STATUS_GROUPS.map((group) => ({
-    key: group.key,
-    label: group.label,
-    count: groupCounts[group.key] ?? 0,
-  }));
+  // Technicians are bounded reference data (one small collection), so one read serves the
+  // whole page rather than one per row.
+  const { data: technicians, loading: techLoading, error: techError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
-  return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Work Orders">
-        <GlobalSearch providerKeys={["workOrders"]} context={{ workOrders }} placeholder="Search work orders..." />
+  const resolveReference = useCallback((fieldId, id) => {
+    if (fieldId !== "assignedTechId") return resolveAccount(fieldId, id);
+    // Delegated to the ONE technician vocabulary rather than a `find(...)?.name ?? id`
+    // written here — that fallback is exactly how a raw id reaches a screen.
+    const identity = resolveTechnicianIdentity(id, { technicians, loading: techLoading, error: techError });
+    if (identity.state === "loading") return { state: REFERENCE_STATE.LOADING };
+    if (identity.state === "error") return { state: REFERENCE_STATE.ERROR };
+    if (identity.state === "resolved") return { state: REFERENCE_STATE.FOUND, label: identity.name };
+    return { state: REFERENCE_STATE.NOT_FOUND };
+  }, [resolveAccount, technicians, techLoading, techError]);
+
+  const { presentation, rows, loadMore, retry, descriptorErrors } = useMetadataList(workOrderIndexList, workOrderEntity, {
+    filters: criteria.filters,
+    sort: criteria.sort,
+    resolveReference,
+  });
+
+  // `rows` is hook state, so its identity is stable between fetches and this cannot loop.
+  useEffect(() => { setResolvableRows(rows ?? []); }, [rows]);
+
+  const droppedMessage = useMemo(() => {
+    const fromUrl = describeDropped(criteria.dropped);
+    if (fromUrl) return fromUrl;
+    // Dropped and refused are different outcomes: dropped leaves a list that renders and
+    // is broader than asked for; refused runs no query at all.
+    return describeRefusal(descriptorErrors, "work orders");
+  }, [criteria, descriptorErrors]);
+
+  // Sorting by an OPTIONAL timestamp excludes every record missing it. Said on the screen,
+  // where the shorter list is, rather than only in the gap register.
+  const sortedByScheduled = criteria.sort?.some?.((s) => s.fieldId === "scheduledStart");
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const search = useWorkOrderSearch(searchTerm);
+
+  const actions = (
+    <ActionRail
+      primary={
         <Link to="/service/work-orders/new">
           <Button variant="primary">+ New Work Order</Button>
         </Link>
-      </WorkspaceHeader>
+      }
+    />
+  );
 
-      <FilterBar options={filterOptions} activeKey={statusGroup} onChange={setStatusGroup} />
+  return (
+    <WorkspaceShell title="Work Orders" actions={actions}>
+      <div className="fo-global-search" role="search">
+        <input
+          type="search"
+          placeholder="Search by work order number (starts with)…"
+          aria-label="Search work orders by number — matches numbers starting with what you type"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        {searchTerm.trim() && (
+          <div className="fo-global-search-results" role="status" aria-live="polite">
+            {search.state === "LOADING" && <div className="fo-muted fo-global-search-empty">Searching…</div>}
+            {search.state === "EMPTY" && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+            {search.state === "DENIED" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {search.state === "UNAVAILABLE" && <div className="fo-warning fo-global-search-empty">{search.message}</div>}
+            {(search.state === "READY" || search.state === "TRUNCATED") && (
+              <>
+                {search.results.map((wo) => (
+                  <button
+                    key={wo.id}
+                    type="button"
+                    className="fo-global-search-result"
+                    onClick={() => { setSearchTerm(""); navigate(`/service/work-orders/${wo.id}`); }}
+                  >
+                    {/* The NUMBER, never the document id. A result with no number is not
+                        rendered as a key — it is the one row this box cannot name. */}
+                    <span>{wo.woNumber ?? "Work order number unavailable"}</span>
+                  </button>
+                ))}
+                {search.truncated && <div className="fo-muted fo-global-search-empty">{search.message}</div>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
-      {loading ? (
-        <LoadingState>Loading work orders…</LoadingState>
-      ) : error ? (
-        // Fail VISIBLY. A denied/unavailable read used to fall through to the
-        // "no work orders yet" empty state -- indistinguishable from a genuinely
-        // empty queue, so a dispatcher could miss real work with no indication
-        // anything was wrong. Terminal subscription failure -- the content
-        // branch below is not reached, so no stale data is shown either.
-        <FailureState message={loadErrorMessage(error, { entity: "work orders" })} />
-      ) : filteredWorkOrders.length === 0 ? (
-        // Distinguish a genuinely empty database (the "All" group) from filters
-        // that merely hide existing work orders.
-        statusGroup === "ALL" ? (
-          <EmptyState
-            variant="database"
-            title="No work orders yet"
-            message="New work orders will appear here."
-            guidance="A work order is the customer-facing service record for one job at one customer location. Each one carries a status through its lifecycle — open, then active, then done — and that status is what the filters above group by."
-          />
-        ) : (
-          <EmptyState variant="filtered" message="No work orders in this group." />
-        )
-      ) : (
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>WO #</th>
-              <th>Status</th>
-              <th>Customer</th>
-              <th>Type</th>
-              <th>Age</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredWorkOrders.map((wo) => (
-              <tr key={wo.id}>
-                <td>
-                  <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
-                </td>
-                <td>
-                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{workOrderStatusLabel(wo.status)}</span>
-                </td>
-                <td className="fo-muted">{customerNames.get(wo.customerId) ?? wo.customerId}</td>
-                <td className="fo-muted">{wo.type}</td>
-                <td className="fo-muted">{formatAge(wo.createdAt) ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <FilterBar
+        options={WORK_ORDER_STATUS_GROUPS.map((g) => ({ key: g.key, label: g.label }))}
+        activeKey={groupKey}
+        onChange={selectGroup}
+        label="Work order status groups"
+      />
+
+      {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Work Order metadata. */}
+      <div className="fo-listctl">
+        <AddFilter
+          def={workOrderIndexList}
+          entity={workOrderEntity}
+          onAdd={(c) => apply(addFilter(criteria, c))}
+        />
+        <SortControl
+          entity={workOrderEntity}
+          criteria={criteria}
+          onSort={(fieldId, direction) => apply(setSort(criteria, fieldId, direction))}
+        />
+      </div>
+      <ActiveCriteria
+        criteria={criteria}
+        entity={workOrderEntity}
+        onRemove={(fieldId, operator) => apply(removeFilter(criteria, fieldId, operator))}
+        onClear={() => apply(clearFilters(criteria))}
+      />
+
+      <DroppedCriteriaNotice message={droppedMessage} />
+
+      {sortedByScheduled && (
+        <p className="fo-warning" role="status">
+          Sorted by Scheduled, so this shows scheduled work only. Work orders with no scheduled
+          date cannot appear in this order — sort by Created to see all of them.
+        </p>
       )}
-    </div>
+
+      {presentation?.state === "FILTERED" ? (
+        <ListEmptyState criteria={criteria} onClear={() => apply(clearFilters(criteria))} />
+      ) : (
+        <MetadataListGrid
+          presentation={presentation}
+          caption="Work Orders"
+          onRowClick={(id) => navigate(`/service/work-orders/${id}`)}
+          onLoadMore={loadMore}
+          onRetry={retry}
+        />
+      )}
+    </WorkspaceShell>
   );
 }
