@@ -157,6 +157,32 @@ export function serializedUnitFields(unit = {}, { locationName = null } = {}) {
   ]);
 }
 
+/**
+ * An available serialized unit, as fields.
+ *
+ * This replaces a line that read
+ *
+ *     Taylor C161 — S/N CW-C161-0001 · AVAILABLE · wh-main (unresolved id)
+ *
+ * Five attributes in one string, and a raw location id presented to a person twice over: once as a
+ * place, and once with a parenthetical admitting it was not one. An id that will not resolve is an
+ * ABSENCE — "Location unavailable" — because showing the key teaches people to memorise internal
+ * identifiers and gives them nothing they can search by.
+ */
+export function availableUnitFields(row = {}) {
+  return Object.freeze([
+    field({ label: "Equipment", value: row.title ?? null, kind: FIELD_KIND.TEXT, priority: 1 }),
+    field({ label: "Serial Number", value: row.serialNo ?? null, kind: FIELD_KIND.IDENTIFIER, priority: 1 }),
+    // A serialized unit is ALWAYS one. Stated rather than implied.
+    quantityField(1, { label: "Quantity", priority: 2 }),
+    statusField(row.lifecycleState ?? null, { priority: 1 }),
+    // Resolved only. `locationResolved === false` means the projection could not map it, and that is
+    // an absence, never the raw key.
+    locationField(row.locationResolved === false ? null : (row.location ?? null), { priority: 1 }),
+    field({ label: "Description", value: row.category ?? null, kind: FIELD_KIND.TEXT, priority: 3 }),
+  ]);
+}
+
 /** A part, as the handheld needs it. Master-data editing is a different authority and surface. */
 export function partFields(part = {}, { availableQty = null, availabilityUnknown = false, locationName = null } = {}) {
   return Object.freeze([

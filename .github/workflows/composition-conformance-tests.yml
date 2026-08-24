@@ -16,6 +16,15 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
+      # Structured Object UX pilot -- field metadata, list state, raw-id guard.
+      - "field-ops-app-vite/src/domain/fieldMetadata.js"
+      - "field-ops-app-vite/src/domain/objectFields.js"
+      - "field-ops-app-vite/src/domain/listQueryState.js"
+      - "field-ops-app-vite/src/domain/structuredFields.js"
+      - "field-ops-app-vite/src/navigation/objectRoutes.js"
+      - "field-ops-app-vite/src/navigation/listStateMemory.js"
+      - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
+      - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
     branches: [main]
@@ -26,6 +35,15 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
+      # Structured Object UX pilot -- field metadata, list state, raw-id guard.
+      - "field-ops-app-vite/src/domain/fieldMetadata.js"
+      - "field-ops-app-vite/src/domain/objectFields.js"
+      - "field-ops-app-vite/src/domain/listQueryState.js"
+      - "field-ops-app-vite/src/domain/structuredFields.js"
+      - "field-ops-app-vite/src/navigation/objectRoutes.js"
+      - "field-ops-app-vite/src/navigation/listStateMemory.js"
+      - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
+      - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
 
@@ -49,5 +67,11 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
-        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx
+
+      # The pilot contract: what a field IS, what the query layer can honestly do with it, and
+      # that Back to Work Orders goes to Work Orders.
+      - name: Structured object field metadata + list state + back navigation
+        run: node --test test/structuredObjectFields.test.mjs
+        working-directory: field-ops-app-vite
         working-directory: field-ops-app-vite

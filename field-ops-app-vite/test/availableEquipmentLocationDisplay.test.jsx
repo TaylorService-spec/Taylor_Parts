@@ -80,8 +80,22 @@ describe("Available Equipment location column -- the raw-id defect is gone when 
   });
 });
 
-describe("Available Equipment location column -- unresolved / ungoverned categories keep the honest raw-id fallback (never fabricated)", () => {
-  it("an id the resolver could not place (UNRESOLVED, e.g. CUSTOMER) still shows the raw id -- no guessed type/label", () => {
+// SUPERSEDED, DELIBERATELY.
+//
+// These three cases originally asserted that an unresolvable location "keeps the honest raw-id
+// fallback" -- showing `WH-9f2c8a1b` was judged more honest than fabricating a label, and given those
+// two options it was.
+//
+// The Structured Object UX standard supersedes that with a third option and a hard global rule:
+// FIRESTORE ID USER-VISIBLE = FALSE. An id that will not resolve is an ABSENCE, rendered
+// "Location: Unavailable" -- because a raw key in front of a person is not information. It cannot be
+// searched by the name they know, it cannot be read aloud, and it teaches people to memorise internal
+// identifiers.
+//
+// WHAT THESE TESTS PROTECT IS UNCHANGED and still asserted below: no label is ever fabricated, and a
+// denied or unavailable resolver must not take the whole tab down with it.
+describe("Available Equipment location column -- an unresolvable location is an ABSENCE, never a raw id", () => {
+  it("an id the resolver could not place (UNRESOLVED, e.g. CUSTOMER) shows an absence -- no raw id, no guessed label", () => {
     useAvailableEquipmentSource.mockReturnValue({ connected: true, status: "ready", assets: ONE_ASSET("CUST-loc-42") });
     useLocationDisplaySource.mockReturnValue({
       connected: true,
@@ -89,23 +103,27 @@ describe("Available Equipment location column -- unresolved / ungoverned categor
       displayMap: new Map([["CUST-loc-42", { locationId: "CUST-loc-42", type: "UNRESOLVED", label: null }]]),
     });
     render(<AvailableEquipment />);
-    expect(within(rowList()).getByText(/CUST-loc-42/)).toBeTruthy();
+    expect(within(rowList()).queryByText(/CUST-loc-42/)).toBeNull();
+    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
   });
 
-  it("the location resolver DENIED does not fail the whole Available Equipment tab -- rows still render with the raw id", () => {
+  it("the location resolver DENIED does not fail the whole Available Equipment tab", () => {
     useAvailableEquipmentSource.mockReturnValue({ connected: true, status: "ready", assets: ONE_ASSET("WH-9f2c8a1b") });
     useLocationDisplaySource.mockReturnValue({ connected: false, status: "denied", displayMap: new Map() });
     render(<AvailableEquipment />);
     expect(screen.queryByRole("alert")).toBeNull(); // location-resolver denial is not an Available Equipment failure
-    expect(within(rowList()).getByText(/WH-9f2c8a1b/)).toBeTruthy();
+    // The ROW still renders -- which was always the point -- and its location is an honest absence.
+    expect(within(rowList()).queryByText(/WH-9f2c8a1b/)).toBeNull();
+    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
   });
 
-  it("the location resolver UNAVAILABLE (transient failure) also degrades gracefully to the raw id", () => {
+  it("the location resolver UNAVAILABLE (transient failure) also degrades gracefully", () => {
     useAvailableEquipmentSource.mockReturnValue({ connected: true, status: "ready", assets: ONE_ASSET("WH-9f2c8a1b") });
     useLocationDisplaySource.mockReturnValue({ connected: false, status: "unavailable", displayMap: new Map() });
     render(<AvailableEquipment />);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(within(rowList()).getByText(/WH-9f2c8a1b/)).toBeTruthy();
+    expect(within(rowList()).queryByText(/WH-9f2c8a1b/)).toBeNull();
+    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
   });
 
   it("an asset with no location at all renders with neither a fabricated label nor a crash", () => {
