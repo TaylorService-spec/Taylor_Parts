@@ -1,3 +1,15 @@
+# SHELL SCRIPTS ARE LF, ALWAYS.
+#
+# A .sh checked out with CRLF is not a slow script or a subtly wrong one -- it does not run at
+# all. bash reads `set -euo pipefail<CR>` and reports "set: pipefail: invalid option name", and
+# the carriage return rewinds the cursor mid-line so the terminal shows a fragment like
+# "lin: invalid option name" instead. All four scripts in this repository were in that state,
+# including scripts/_prodRelease.run.sh, and none had ever been runnable from a Windows checkout.
+#
+# Every consumer of these files is bash. There is no platform on which CRLF is the right
+# checkout, so this is not a preference -- it is the only working setting.
+*.sh text eol=lf
+
 # Evidence-integrity byte stability (INV-1 PR 1.10): the migration-readiness
 # package is checksum-verified continuously by functions/test/
 # migrationEvidence.test.mjs, and the fixture's SHA-256 is pinned inside the
