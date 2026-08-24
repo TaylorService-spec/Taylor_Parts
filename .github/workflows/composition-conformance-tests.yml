@@ -25,6 +25,9 @@ on:
       - "field-ops-app-vite/src/navigation/listStateMemory.js"
       - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
       - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
+      # Purchase Order migration -- the first list with real money on it.
+      - "field-ops-app-vite/src/domain/purchaseOrderFields.js"
+      - "field-ops-app-vite/test/purchaseOrderStructuredList.test.mjs"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
     branches: [main]
@@ -44,6 +47,9 @@ on:
       - "field-ops-app-vite/src/navigation/listStateMemory.js"
       - "field-ops-app-vite/test/structuredObjectFields.test.mjs"
       - "field-ops-app-vite/test/rawIdPresentationGuard.test.jsx"
+      # Purchase Order migration -- the first list with real money on it.
+      - "field-ops-app-vite/src/domain/purchaseOrderFields.js"
+      - "field-ops-app-vite/test/purchaseOrderStructuredList.test.mjs"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
 
@@ -74,4 +80,8 @@ jobs:
       - name: Structured object field metadata + list state + back navigation
         run: node --test test/structuredObjectFields.test.mjs
         working-directory: field-ops-app-vite
+
+      # Purchase Orders: Dollars authority, unit convention, status vs receipt state.
+      - name: Purchase Order structured list + Dollars
+        run: node --test test/purchaseOrderStructuredList.test.mjs
         working-directory: field-ops-app-vite

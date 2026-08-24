@@ -912,6 +912,10 @@
     {
       "file": "test/structuredObjectFields.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/purchaseOrderStructuredList.test.mjs",
+      "runner": "node"
     }
   ]
 }
