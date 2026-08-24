@@ -1,4 +1,6 @@
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../entityDefinition.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
 import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort } from "../listViewDefinition.js";
 import { SALES_ORDER_STATE_VALUES, SALES_ORDER_STATE_LABEL } from "../../domain/salesOrderStatus.js";
 import { SALES_CHANNELS, CHANNEL_LABEL } from "../../domain/opportunityLifecycle.js";
@@ -159,6 +161,78 @@ export const salesOrderEntity = makeEntityDefinition({
   ],
   // account.salesOrders points FROM Account and is declared there. Traversal carries the
   // TARGET's authority: reading an account does not entitle a viewer to its orders.
+  //
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js.
+  //
+  // RESTORED, not newly discovered. The structured-object pilot (#1442) traced these and recorded
+  // them on its own contract; the metadata convergence (#1447) retired that contract and folded gaps
+  // onto part, purchaseOrder, workOrder and equipment — and MISSED this object. ADR-013 states pilot
+  // knowledge was preserved; for Sales Orders it was not, and the trace had to be recovered.
+  gaps: [
+    makeGap({
+      id: "SALES_ORDER_TOTAL_AUTHORITY_GAP",
+      title: "A Sales Order carries no authoritative money",
+      entityId: "salesOrder",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding:
+        "The Sales Order document stores NO total of any kind. `projectLine` projects four " +
+        "QUANTITIES; `unitPrice` is optional, is explicitly \"NOT computed here\", and is stripped by " +
+        "the projection before it reaches a client. The only `currency` on the record is an ISO code " +
+        "— a denomination, not an amount.",
+      consequence:
+        "There is no Dollars column for Sales Orders and no basis on which to compute one, so this " +
+        "list is asymmetric with Purchase Orders. That asymmetry is real and correct: a purchasing " +
+        "commitment has an authoritative number behind it and a sales order does not.",
+      refused:
+        "Deriving a total from the Invoice. INVOICE MONEY IS NOT SALES ORDER MONEY — an invoice may " +
+        "bill part of an order, more than one order, or carry charges and credits the order never " +
+        "had. Also refused: summing optional unitPrice values the projection deliberately drops, " +
+        "which would put a number on screen that no stored record agrees with.",
+      resolution:
+        "Financial Architecture. Whether a Sales Order HAS a total, and what it means when lines " +
+        "change after commitment, is a business decision — not a column a list can add.",
+    }),
+    makeGap({
+      id: "SALES_ORDER_CUSTOMER_NAME_NOT_SORTABLE",
+      title: "A Sales Order cannot be sorted by customer name",
+      entityId: "salesOrder",
+      fieldId: "accountId",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "accountId is a reference; the name lives on the Account. The batched resolver supplies names " +
+        "for the rows ALREADY FETCHED — right for display, useless for a sort that must happen inside " +
+        "the query choosing the rows.",
+      consequence: "Sorting this list by customer name is unavailable at any scale.",
+      refused:
+        "Paging by number, resolving names, then ordering the page and labelling it \"Customer A-Z\". " +
+        "That sorts the page, not the list.",
+      resolution:
+        "The same denormalized customerNameLower plus rename-propagation authority that " +
+        "CUSTOMER_NAME_NOT_SORTABLE_ON_RELATED_LISTS names on the Work Order. One decision covers both.",
+    }),
+    makeGap({
+      id: "SALES_ORDER_HAS_NO_USABLE_TIMESTAMP",
+      title: "No reliably-populated timestamp exists to order or filter by",
+      entityId: "salesOrder",
+      severity: GAP_SEVERITY.DEFECT,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "The write path stores createdAt/updatedAt as Firestore Timestamps; the read projection reads " +
+        "createdAtMillis/updatedAtMillis — field names nothing writes. Both project as null on every " +
+        "row today.",
+      consequence:
+        "No Created or Updated column, no date filter, no date sort. salesOrderNumber is monotonic " +
+        "within a year, so it is the honest best-available order and is the declared default.",
+      refused:
+        "Declaring a Created Date column that renders an absence on every row, which would read as " +
+        "missing data rather than as a projection defect.",
+      resolution:
+        "Align the projection field names with what the write path stores. A read-path fix, not a " +
+        "domain decision — and the cheapest of these three to close.",
+    }),
+  ],
 });
 
 export const salesOrderRelatedList = makeListViewDefinition({

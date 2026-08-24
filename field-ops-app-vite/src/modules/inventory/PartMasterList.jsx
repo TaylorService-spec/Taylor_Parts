@@ -124,6 +124,14 @@ function PartForm({ mode, form, setForm, disabled }) {
 const COLUMN_IDS = ["internalPartNumber", "name", "category", "controlType", "stockingClass", "stockingUnit", "status"];
 const COLUMN_FIELDS = COLUMN_IDS.map((id) => partEntity.fields.find((f) => f.id === id));
 
+/**
+ * Card labels, from the SAME fields the column headings come from.
+ *
+ * A hardcoded string here would drift from the heading directly above it, and the person reading the
+ * card would be told the field is called something the desktop table does not call it.
+ */
+const LABEL = Object.fromEntries(COLUMN_FIELDS.map((f) => [f.id, f.label]));
+
 const PART_FILTER_VALUES = Object.freeze({
   status: Object.entries(PART_STATUS_LABEL).map(([value, label]) => ({ value, label })),
   stockingClass: Object.entries(STOCKING_CLASS_LABEL).map(([value, label]) => ({ value, label })),
@@ -318,7 +326,13 @@ export default function PartMasterList(props) {
         />
       ) : (
         <div className="fo-table-scroll">
-          <table className="fo-table">
+          {/* fo-table--stack: BELOW THE PHONE BREAKPOINT EACH ROW BECOMES A LABELLED CARD.
+              This was the last migrated list still compressing eight columns into ~320px. Nothing
+              overflowed, which is exactly why it survived a geometry pass — and nothing was readable
+              either. `data-label` on every cell carries the column heading into the card, so a value
+              is never orphaned from the field it belongs to. Scroll stays right at a desk, which is
+              why the scroll container above is unchanged. */}
+          <table className="fo-table fo-table--stack">
             <thead>
               <tr>
                 {/* HEADINGS COME FROM THE METADATA, not from this file. Hand-typed ones drift: this
@@ -331,20 +345,20 @@ export default function PartMasterList(props) {
             <tbody>
               {parts.map((part) => (
                 <tr key={part.partId}>
-                  <td className="fo-pml__part-number">{part.internalPartNumber}</td>
-                  <td>{part.name}</td>
-                  <td>{part.category || "—"}</td>
+                  <td className="fo-pml__part-number" data-label={LABEL.internalPartNumber}>{part.internalPartNumber}</td>
+                  <td data-label={LABEL.name}>{part.name}</td>
+                  <td data-label={LABEL.category}>{part.category || "—"}</td>
                   {/* BUSINESS-READABLE wording, with the canonical value kept on the element so a
                       filter, a sort or a test reaches the enum rather than the phrasing.
                       `controlType` is PART MASTER's vocabulary and is never swapped for the
                       inventory ledger's trackingMode -- they are two vocabularies, not one. */}
-                  <td data-raw={part.controlType}>{CONTROL_TYPE_LABEL[part.controlType] ?? part.controlType}</td>
-                  <td data-raw={part.stockingClass}>{STOCKING_CLASS_LABEL[part.stockingClass] ?? part.stockingClass}</td>
-                  <td>{part.stockingUnit}</td>
-                  <td data-raw={part.status}>
+                  <td data-label={LABEL.controlType} data-raw={part.controlType}>{CONTROL_TYPE_LABEL[part.controlType] ?? part.controlType}</td>
+                  <td data-label={LABEL.stockingClass} data-raw={part.stockingClass}>{STOCKING_CLASS_LABEL[part.stockingClass] ?? part.stockingClass}</td>
+                  <td data-label={LABEL.stockingUnit}>{part.stockingUnit}</td>
+                  <td data-label={LABEL.status} data-raw={part.status}>
                     <StatusPill tone={partStatusTone(part.status)} label={PART_STATUS_LABEL[part.status] ?? part.status} />
                   </td>
-                  <td className="fo-pml__actions">
+                  <td className="fo-pml__actions" data-label="Actions">
                     <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}
                     <button type="button" onClick={() => openStatus(part)} disabled={busy} className="fo-btn-secondary">Status</button>
                   </td>
