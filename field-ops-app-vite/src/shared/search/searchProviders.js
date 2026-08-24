@@ -39,9 +39,23 @@ export const SEARCH_PROVIDERS = {
   },
 
   // Sprint 2.0.3 -- same client-side-filter-over-already-loaded-data
-  // shape as `accounts` above. `context.workOrders` is whatever
-  // WorkOrdersList.jsx already has from useWorkOrders(); this provider
+  // shape as `accounts` above. `context.workOrders` was whatever
+  // WorkOrdersList.jsx already had from useWorkOrders(); this provider
   // triggers no extra Firestore read of its own.
+  //
+  // NO CALLER, AS OF THE WORK ORDER LIST MIGRATION -- and it must not gain one on a
+  // bounded list. `accounts` is in the same position for the same reason.
+  //
+  // This shape is only honest when the caller holds the WHOLE collection. Both callers
+  // that did were unbounded whole-collection reads, and both were replaced by bounded
+  // paged queries -- so handing this provider what a paged screen has would search ONE
+  // PAGE and report "no results" for a record that plainly exists. LIST PAGE != SEARCH
+  // CORPUS. The replacements are real bounded Firestore queries: domain/accountSearch.js
+  // (name prefix) and domain/workOrderSearch.js (work order number prefix).
+  //
+  // Kept rather than deleted: `parts` still uses this registry legitimately, because
+  // PartsList.jsx genuinely holds the whole governed catalog composition. Removing the
+  // pattern would take that with it. The rule is about the CALLER's read, not the shape.
   workOrders: {
     key: "workOrders",
     label: "Work Orders",

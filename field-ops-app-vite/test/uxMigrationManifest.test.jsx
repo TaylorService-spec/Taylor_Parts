@@ -45,7 +45,7 @@ describe("the manifest describes real files", () => {
 // ═════════════════════════════════════════ the migrated lists
 
 describe("lists that mount the canonical runtime", () => {
-  for (const id of ["account", "part", "salesOrder"]) {
+  for (const id of ["account", "part", "salesOrder", "workOrder"]) {
     it(`${id} is MERGED_UI with every required control`, () => {
       const r = byId(id);
       expect(r.status).toBe("MERGED_UI");
@@ -72,7 +72,7 @@ describe("lists that mount the canonical runtime", () => {
 describe("lists that have NOT been migrated say so", () => {
   // These are not failures of this test — they are the current truth, pinned so it cannot be
   // reported otherwise. When each is migrated, its line moves to the block above.
-  for (const id of ["workOrder", "equipment", "purchaseOrder"]) {
+  for (const id of ["equipment", "purchaseOrder"]) {
     it(`${id} is CONTRACT_ONLY — metadata exists, the screen does not mount it`, () => {
       expect(byId(id).status).toBe("CONTRACT_ONLY");
     });

@@ -39,11 +39,26 @@ const rel = (p) => path.relative(SRC, p).split(path.sep).join("/");
 
 // --- Part 1: the M20 defect's named sites now route through the canonical map ------------------
 
-check("WorkOrdersList.jsx: status column uses workOrderStatusLabel, not the raw enum", () => {
+// The M20 route CHANGED here, and this check follows it rather than being relaxed.
+//
+// WorkOrdersList.jsx no longer renders a status cell of its own: the list moved onto the metadata
+// runtime, so MetadataListGrid renders the Status column from the field definition's `enumLabels`.
+// The canonical map is still the only vocabulary in play -- it simply arrives through
+// metadata/definitions/workOrder.js instead of an import in the screen. What must stay true is
+// that the labels come from workOrderStatus.js and that nothing renders the bare enum, so that is
+// what is asserted, at the place the rendering now happens.
+check("WorkOrdersList.jsx: status is rendered from the metadata enum labels, never the raw enum", () => {
   const text = read("modules/workOrders/WorkOrdersList.jsx");
-  assert.match(text, /import \{ workOrderStatusLabel \} from "\.\.\/\.\.\/domain\/workOrderStatus"/);
-  assert.match(text, /\{workOrderStatusLabel\(wo\.status\)\}/);
   assert.doesNotMatch(text, /[^(]\{wo\.status\}/, "raw {wo.status} render survived");
+  assert.match(text, /MetadataListGrid/, "status now renders through the metadata grid");
+
+  const def = read("metadata/definitions/workOrder.js");
+  assert.match(
+    def,
+    /import \{ WORK_ORDER_STATUS_LABEL, WORK_ORDER_STATUS_VALUES \} from "\.\.\/\.\.\/domain\/workOrderStatus\.js"/,
+    "the definition must take its labels from the canonical map, not restate them",
+  );
+  assert.match(def, /enumLabels: WORK_ORDER_STATUS_LABEL/);
 });
 
 check("WorkOrderPreview.jsx (Control Tower dispatcher preview pane): uses workOrderStatusLabel", () => {
