@@ -69,6 +69,25 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     sourceOpportunityNumber: so.sourceOpportunityNumber ?? null,
     ownerEmployeeId: so.ownerEmployeeId,
     salesChannel: so.salesChannel,
+    locationId: so.locationId ?? null,
+    // ════════════ THE MONEY, WHICH THIS VIEW MODEL WAS SILENTLY DROPPING ════════════
+    //
+    // The server projection has returned totalMinor / currency / pricingState since the Sales
+    // Order money work, and this function carried NONE of them through. Every consumer therefore
+    // read `view.totalMinor` as undefined and rendered an em dash — on orders that are fully
+    // priced. The stored data was right, the callable was right, and the value never crossed
+    // this line.
+    //
+    // It is the exact failure this programme keeps finding: a value asserted at one layer and
+    // never proved to arrive at the next. SO-2026-000001 carries unitPrice 5000 and displayed
+    // no dollars. `currency` and `locationId` were being dropped the same way, which is why the
+    // record page showed "—" for both.
+    currency: so.currency ?? null,
+    totalMinor: typeof so.totalMinor === "number" ? so.totalMinor : null,
+    // PRICED / PARTIALLY_PRICED / UNPRICED / NO_LINES. Carried so a reader is told WHY there is
+    // no total, instead of being shown a blank they have to interpret.
+    pricingState: so.pricingState ?? null,
+    unpricedLineCount: typeof so.unpricedLineCount === "number" ? so.unpricedLineCount : null,
     state: so.state,
     tone: salesOrderStateTone(so.state),
     customerPO: so.customerPO,

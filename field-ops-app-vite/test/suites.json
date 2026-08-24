@@ -924,6 +924,10 @@
     {
       "file": "test/shellScriptExecutability.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/salesOrderMoneyArrives.test.mjs",
+      "runner": "node"
     }
   ]
 }

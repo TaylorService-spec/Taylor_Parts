@@ -15,7 +15,7 @@ import { salesOrderRecordPage } from "../../metadata/definitions/salesOrderPage.
 import { pageSubset } from "../../metadata/pageDefinition.js";
 import { salesOrderEntity } from "../../metadata/definitions/salesOrder.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
-import { formatMinor } from "../../domain/accountArView.js";
+import { salesOrderDollars } from "../../domain/salesOrderMoneyDisplay.js";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
 // getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
@@ -149,9 +149,14 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
                 // when EVERY line is priced: totalMinor is null on a partly-priced order, because a
                 // sum over the priced lines would be a real number that is not the sale's total and
                 // somebody would act on it. NULL IS NOT ZERO -- an em dash, never "$0.00".
-                value: typeof view.totalMinor === "number"
-                  ? formatMinor(view.totalMinor, view.currency ?? null)
-                  : "—",
+                // "Not priced" / "Partly priced" rather than a blank a reader has to interpret.
+                // A partly-priced order still shows NO NUMBER: a sum over the priced lines is a
+                // real figure that is not the sale total, and it is worse than nothing because it
+                // is credible.
+                value: (() => {
+                  const d = salesOrderDollars(view);
+                  return d.title ? <span title={d.title}>{d.text}</span> : d.text;
+                })(),
               },
             ]}
           />
