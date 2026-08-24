@@ -32,6 +32,8 @@ export const FIELD_KIND = Object.freeze({
   TEXT: "TEXT",
   IDENTIFIER: "IDENTIFIER",
   QUANTITY: "QUANTITY",
+  /** Money. Right-aligned, and its RAW number kept so sorting never compares formatted strings. */
+  CURRENCY: "CURRENCY",
   STATUS: "STATUS",
   LOCATION: "LOCATION",
   DATE: "DATE",
@@ -131,6 +133,31 @@ export function quantityField(n, { label = "Quantity", priority = 1, unknown = f
     label, value: numeric ? String(n) : null, raw: numeric ? n : null,
     kind: FIELD_KIND.QUANTITY, absence: ABSENCE.NOT_RECORDED, priority,
   });
+}
+
+/**
+ * A currency amount.
+ *
+ * ============================ UNKNOWN IS NOT ZERO, ESPECIALLY HERE ============================
+ *
+ * `$0.00` is a statement that an order is worth nothing. A missing total is a statement that we do
+ * not know what it is worth. On a purchasing list those are opposite facts, and a falsy check that
+ * turns the second into the first would have somebody approving a blank commitment.
+ *
+ * `raw` keeps the NUMBER, so sorting and filtering compare values rather than formatted strings —
+ * "$1,000.00" sorts before "$9.00" as text, which is the classic way a money column lies.
+ */
+export function currencyField(amount, { label = "Dollars", currency = "USD", priority = 1, unknown = false } = {}) {
+  if (unknown || typeof amount !== "number" || !Number.isFinite(amount)) {
+    return field({
+      label, value: null, raw: null, kind: FIELD_KIND.CURRENCY,
+      absence: ABSENCE.NOT_RECORDED, priority,
+    });
+  }
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(amount);
+  return field({ label, value: formatted, raw: amount, kind: FIELD_KIND.CURRENCY, priority });
 }
 
 /** Drop everything below a priority. DROPS fields; never merges them. */
