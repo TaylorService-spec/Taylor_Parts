@@ -3666,6 +3666,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* -- PartMasterList.jsx -- */
 .fo-pml__part-number { font-family: monospace; }
 .fo-pml__actions { white-space: nowrap; }
+/* The pager sits under the table, left-aligned with it: paging is a continuation of the list,
+   not a decision that needs centring in the viewport. */
+.fo-pml__pager { display: flex; justify-content: flex-start; padding: 12px 0; }
+.fo-pml__pager button { min-height: 44px; }
 
 /* -- PartsList.jsx -- */
 .fo-parts__toolbar--end { justify-content: flex-end; }

@@ -62,6 +62,8 @@ const BARE_ACTIVE_ALLOWLIST = new Set([
   "modules/equipment/EquipmentEditModal.jsx", // Record active (form option)
   "modules/equipment/EquipmentRegister.jsx", // Record active
   "modules/equipment/equipmentStatusFilters.js", // Record active
+  "domain/partFields.js", // Record active -- the PART RECORD, as against superseded/discontinued;
+  //                            rendered in a Status column beside a Part Number on "Part Master"
   "modules/inventory/Warehouses.jsx", // Record active, page titled "Warehouses"
   "modules/purchasing/Suppliers.jsx", // Record active, page titled "Suppliers"
   "shared/supplier/SupplierPicker.jsx", // Record active, rendered alongside a Supplier name

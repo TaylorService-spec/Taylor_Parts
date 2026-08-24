@@ -1289,6 +1289,10 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const [canonicalRefreshToken, setCanonicalRefreshToken] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    // The FULL catalogue, and this page is one of the reasons the shared reader stayed that way: it
+    // composes one part plus its relationships through a composer that expects the whole set, so a
+    // first page would truncate a detail screen and look like missing data rather than like paging.
+    // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ alongside the other five.
     fetchPartMasterList().then((result) => {
       if (cancelled) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document

@@ -84,6 +84,11 @@ on:
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
+      # Parts structured-list migration: the field/query contract + the list screen.
+      - "field-ops-app-vite/src/domain/partFields.js"
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/test/partsStructuredList.test.jsx"
+      - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
       - "field-ops-app-vite/src/services/manufacturerReadCallableClient.js"
       - "field-ops-app-vite/src/hooks/useManufacturerCatalog.js"
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"
@@ -173,6 +178,11 @@ on:
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
+      # Parts structured-list migration: the field/query contract + the list screen.
+      - "field-ops-app-vite/src/domain/partFields.js"
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/test/partsStructuredList.test.jsx"
+      - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
       - "field-ops-app-vite/src/services/manufacturerReadCallableClient.js"
       - "field-ops-app-vite/src/hooks/useManufacturerCatalog.js"
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"

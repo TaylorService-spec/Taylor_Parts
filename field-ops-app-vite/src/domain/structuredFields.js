@@ -27,6 +27,10 @@
 // PURE. No JSX, no I/O. The renderer is separate on purpose: the same field list drives a phone
 // card, a desktop table row and, later, a report column.
 
+// The ONE Part Master tracking vocabulary, imported rather than restated. A second copy of this map
+// is how the handheld and the Part list would come to describe the same part differently.
+import { CONTROL_TYPE_LABEL } from "./partFields.js";
+
 /** How a value should be read, so a renderer never has to guess from the value's shape. */
 export const FIELD_KIND = Object.freeze({
   TEXT: "TEXT",
@@ -214,9 +218,31 @@ export function availableUnitFields(row = {}) {
 export function partFields(part = {}, { availableQty = null, availabilityUnknown = false, locationName = null } = {}) {
   return Object.freeze([
     field({ label: "Part", value: part.name ?? null, kind: FIELD_KIND.TEXT, priority: 1 }),
-    field({ label: "SKU", value: part.internalPartNumber ?? part.sku ?? part.partId ?? null, kind: FIELD_KIND.IDENTIFIER, priority: 1 }),
+    // NO `?? part.partId`. That fallback rendered the DOCUMENT ID as the part's SKU whenever the
+    // business number was missing — the one thing this platform never shows a person, reached exactly
+    // when the record is malformed and somebody is most likely to write the value down.
+    field({ label: "SKU", value: part.internalPartNumber ?? part.sku ?? null, kind: FIELD_KIND.IDENTIFIER, priority: 1 }),
     field({ label: "Description", value: part.description ?? null, kind: FIELD_KIND.TEXT, priority: 3 }),
-    field({ label: "Tracking", value: statusLabel(part.trackingMode ?? part.controlType ?? null), raw: part.trackingMode ?? null, kind: FIELD_KIND.STATUS, priority: 2 }),
+    // TWO VOCABULARIES, and the label says which one this value came from.
+    //
+    // This used to read `part.trackingMode ?? part.controlType`, silently preferring the LEDGER's word
+    // and then labelling either one "Tracking". Part Master says `controlType` (STANDARD | SERIALIZED
+    // | LOT | SERIALIZED_LOT); the ledger says `trackingMode`. They are mapped by exactly one file and
+    // are not interchangeable — merging them is how two screens come to disagree about whether a part
+    // is counted by quantity or by serial.
+    //
+    // So Part Master's value wins when present and is spoken in Part Master's own words ("Quantity",
+    // not "Standard"), which is also what the structured Part list shows. The raw value travels
+    // alongside either way.
+    part.controlType
+      ? field({
+          label: "Tracking", value: CONTROL_TYPE_LABEL[part.controlType] ?? statusLabel(part.controlType),
+          raw: part.controlType, kind: FIELD_KIND.STATUS, priority: 2,
+        })
+      : field({
+          label: "Tracking", value: statusLabel(part.trackingMode ?? null),
+          raw: part.trackingMode ?? null, kind: FIELD_KIND.STATUS, priority: 2,
+        }),
     statusField(part.status ?? null, { priority: 2 }),
     // UNKNOWN IS NOT ZERO. There is no governed client read for stock balances in several
     // environments, and rendering that as "0 available" would send somebody to an empty shelf
