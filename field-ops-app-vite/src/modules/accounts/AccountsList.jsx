@@ -10,6 +10,8 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
@@ -68,6 +70,11 @@ export default function AccountsList() {
   // shared, and could not be bookmarked — the work of narrowing 250,000 accounts to eleven was
   // thrown away by the most ordinary thing a person does with a list.
   const { criteria, apply } = useListCriteria(accountIndexList, accountEntity, "customers");
+
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(accountIndexList, accountEntity, criteria, apply);
 
   // The status a portfolio card is currently pressed for. DERIVED from the criteria rather than
   // held beside them, so the cards and the filter chips cannot disagree about what is applied.
@@ -296,6 +303,14 @@ export default function AccountsList() {
           field, hard-coded here, and could never have offered Line of Business without somebody
           editing this file — while the canonical control offers whatever the definition declares
           and its composite indexes prove. */}
+      <ListViewHeader
+        def={accountIndexList}
+        entity={accountEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={accountIndexList}

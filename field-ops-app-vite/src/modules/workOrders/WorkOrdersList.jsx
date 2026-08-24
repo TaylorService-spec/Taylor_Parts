@@ -14,6 +14,8 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
@@ -75,6 +77,11 @@ export default function WorkOrdersList() {
   // "Back to Work Orders" already reads (navigation/listStateMemory.js), so narrowing the
   // list, opening a job and coming back returns the list that was narrowed.
   const { criteria, apply } = useListCriteria(workOrderIndexList, workOrderEntity, OBJECT_LIST_KEY.WORK_ORDERS);
+
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(workOrderIndexList, workOrderEntity, criteria, apply);
 
   // DERIVED from the criteria rather than held beside them, so the chip and the filter
   // chips cannot disagree about what is applied.
@@ -204,6 +211,14 @@ export default function WorkOrdersList() {
       />
 
       {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Work Order metadata. */}
+      <ListViewHeader
+        def={workOrderIndexList}
+        entity={workOrderEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={workOrderIndexList}

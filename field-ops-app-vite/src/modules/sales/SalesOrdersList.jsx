@@ -6,6 +6,8 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
@@ -69,6 +71,11 @@ export default function SalesOrdersList() {
   // runtime was mounted, the CONTROLS never were, which is precisely the gap the release audit found.
   const { criteria, apply } = useListCriteria(salesOrderIndexList, salesOrderEntity, "salesOrders");
 
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(salesOrderIndexList, salesOrderEntity, criteria, apply);
+
   const { presentation, rows, loadMore, retry, descriptorErrors } = useMetadataList(salesOrderIndexList, salesOrderEntity, {
     filters: criteria.filters,
     sort: criteria.sort,
@@ -92,6 +99,14 @@ export default function SalesOrdersList() {
           offered, because sales_orders(state, salesOrderNumber DESC) is the only live composite —
           the definition declares exactly that one filter and this screen offers exactly what it
           declares. */}
+      <ListViewHeader
+        def={salesOrderIndexList}
+        entity={salesOrderEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={salesOrderIndexList}

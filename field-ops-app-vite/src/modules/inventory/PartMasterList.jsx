@@ -16,6 +16,8 @@ import { fetchPartMasterPage } from "../../services/partMasterPageQuery";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import { partEntity, partIndexList } from "../../metadata/definitions/part.js";
 import { buildQueryDescriptor } from "../../metadata/listRuntime.js";
 import {
@@ -148,6 +150,11 @@ export default function PartMasterList(props) {
   // LIST CRITERIA LIVE IN THE URL, so filters and sort survive opening a part and coming back --
   // and so a narrowed list can be shared or bookmarked rather than described over the phone.
   const { criteria, apply } = useListCriteria(partIndexList, partEntity, "partMaster");
+
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(partIndexList, partEntity, criteria, apply);
 
   // THE DESCRIPTOR IS WHAT THE READ EXECUTES, and it is the canonical runtime's, not this
   // screen's. It refuses any filter `partIndexList` did not declare -- which is the set whose
@@ -293,6 +300,14 @@ export default function PartMasterList(props) {
           Parts-specific filter registry: the fields, their operators and their sort vocabulary all
           come from partEntity and partIndexList, so a newly declared, index-backed field becomes
           filterable without anybody editing this screen. */}
+      <ListViewHeader
+        def={partIndexList}
+        entity={partEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={partIndexList}
