@@ -205,6 +205,8 @@ on:
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
+      - "functions/test/partBalanceBatchReadService.test.mjs"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
       - "functions/test/partBalanceTrackingModeAuthority.test.mjs"
       - "functions/src/partMaster/controlTypeTrackingMode.ts"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
@@ -328,6 +330,8 @@ on:
       - "field-ops-app-vite/test/transferScan.test.jsx"
       - "field-ops-app-vite/test/partLookupInventoryRows.test.mjs"
       - "functions/test/partBalanceReadService.test.mjs"
+      - "functions/test/partBalanceBatchReadService.test.mjs"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
       - "functions/test/partBalanceTrackingModeAuthority.test.mjs"
       - "functions/src/partMaster/controlTypeTrackingMode.ts"
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
@@ -400,6 +404,13 @@ jobs:
 
       - name: Shared inventory balance read (pure)
         run: node --test test/partBalanceReadService.test.mjs
+        working-directory: functions
+
+      # The BATCHED sibling: same pure composition, one set of reads for a page of parts. The
+      # parity assertion is the load-bearing one -- a batch that grouped ledger rows differently
+      # would return plausible numbers for every part and correct ones for none.
+      - name: Batched inventory balance read (pure)
+        run: node --test test/partBalanceBatchReadService.test.mjs
         working-directory: functions
 
       # The phone's primary navigation. Pure: who gets a bar, what is on it, which tab is selected.

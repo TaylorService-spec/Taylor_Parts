@@ -595,25 +595,39 @@ export const partEntity = makeEntityDefinition({
         "catalogue becomes an ordinary list and pages like any other; while it stands, the invariant is the " +
         "feature and it is whole-set by definition.",
     }),
+    // RESOLVED 2026-08-24 by Owner ruling, and kept rather than deleted: a closed gap is the record
+    // of a decision, and deleting it would leave the next reader to re-derive the question.
+    //
+    //   PART_CATALOGUE_BASELINE_IS_NOT_AVAILABILITY — the /inventory list showed the STATIC
+    //   catalogue's warehouseQty in the availability column when a Part had no ledger activity. The
+    //   catalogue proves a Part EXISTS; it does not prove we physically have N. The Owner ruled that
+    //   an unledgered Part has UNKNOWN availability, and the column now answers only from the
+    //   ledger. UNKNOWN is carried as null and rendered as "Not known" — never as 0, because
+    //   "nobody has looked at this shelf" and "this shelf is empty" are different facts and only
+    //   one of them is a reason to order.
     makeGap({
-      id: "PART_CATALOGUE_BASELINE_IS_NOT_AVAILABILITY",
-      title: "A catalogue baseline is shown in the Warehouse Available column",
+      id: "INVENTORY_HEALTH_SUMMARY_AND_GLOBAL_SORT_GAP",
+      title: "Health cannot be counted, filtered or sorted across the whole population",
       entityId: "part",
-      fieldId: "warehouseAvailable",
-      severity: GAP_SEVERITY.MODELLING,
+      severity: GAP_SEVERITY.SCALE,
+      reason: WHY.DERIVED_AT_READ,
       finding:
-        "When a Part has no ledger activity, the /inventory list shows the STATIC catalog's warehouseQty in " +
-        "the availability column, qualified as a baseline.",
+        "Balances are now readable for a PAGE of parts in a bounded, batched trusted read " +
+        "(getPartBalances), which is what a list needs. Health remains DERIVED from those balances at " +
+        "read time, so there is no stored, indexable health value for Firestore to count, filter or " +
+        "order by across every Part.",
       consequence:
-        "A number that is not a live warehouse figure sits under a heading that reads as one — FALSE_COMFORT " +
-        "in miniature, on the column people scan when deciding what to reorder.",
+        "Whole-population health counts, and global filter or sort BY health, are unavailable. Per-row " +
+        "health and bounded paging are not.",
       refused:
-        "Silently changing which number that column shows. Which figure belongs there is a business decision " +
-        "about what a part with no ledger history MEANS, not a presentation one. This package separated the " +
-        "figure from its caveat so both are readable, and recorded the semantic question here.",
+        "Materializing a health field to make it sortable. financeReadProjection.ts states the rule " +
+        "this follows: a possibly-stale stored balance is never trusted, and AR is derived from " +
+        "durable facts on every read. A cached health number is a number somebody will believe after " +
+        "it stops being true — and unlike a slow read, it fails silently.",
       resolution:
-        "Decide whether an unledgered Part has UNKNOWN availability (the FALSE_COMFORT-consistent answer) or " +
-        "whether the catalogue baseline is genuinely authoritative until the ledger sees it.",
+        "If whole-population counts are genuinely needed, a materialized projection must first define " +
+        "its update authority, freshness, failure behaviour, replay and repair. That is a decision " +
+        "about accepting staleness in exchange for queryability, not a technical gap to close.",
     }),
   ],
 

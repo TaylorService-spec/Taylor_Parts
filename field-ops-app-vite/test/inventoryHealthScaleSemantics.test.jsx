@@ -174,13 +174,23 @@ test("the Parts catalogue table recomposes into cards, with every cell labelled"
   }
 });
 
-test("the availability figure and its caveat are TWO things, not one string", () => {
+test("an UNLEDGERED part has UNKNOWN availability — never a catalogue baseline, never zero", () => {
+  // SUPERSEDES an earlier assertion in this file, deliberately rather than by deletion. That one
+  // required the static catalogue quantity and its "(baseline)" caveat to be two elements rather
+  // than one welded string. That was a real improvement and it stopped short of the actual problem:
+  // the NUMBER. The Owner ruled on 2026-08-24 that the catalogue is not an availability authority,
+  // so the requirement is now strictly stronger and subsumes the one it replaces.
   const src = read("src/modules/inventory/PartsList.jsx");
-  // The old cell was `${part.warehouseQty} (baseline)` — a number welded to a qualifier, which
-  // nothing could sort, filter or report on.
+
+  // The original requirement, still held: no welded string.
   expect(/\$\{part\.warehouseQty\} \(baseline\)/.test(src)).toBe(false);
-  expectMatch(src, /data-raw=\{health \? health\.stock\.availableStock : part\.warehouseQty\}/);
-  expectMatch(src, /catalogue baseline, not live stock/);
+  // The new one: no catalogue quantity in the availability column at all.
+  expect(/data-label="Warehouse Available"[^>]*part\.warehouseQty/.test(src)).toBe(false);
+
+  // UNKNOWN travels as null, never as 0 — a formatter handed a zero would print one, and "nobody
+  // has looked at this shelf" would become "this shelf is empty".
+  expectMatch(src, /data-raw=\{health \? health\.stock\.availableStock : null\}/);
+  expectMatch(src, /Not known/);
 });
 
 test("Inventory Health renders WORDS, never the stored urgency token", () => {
@@ -208,6 +218,12 @@ test("a link inside a stacked card is a real tap target", () => {
   const css = read("src/index.css");
   expectMatch(css, /\.fo-table--stack td a \{ display: inline-flex; align-items: center; min-height: 44px; \}/);
   // Scoped INSIDE the phone breakpoint: a 44px row height at a desk would wreck table density.
-  const stackBlock = css.slice(css.indexOf("@media (max-width: 640px) {\n  .fo-table--stack thead"));
-  expectMatch(stackBlock.slice(0, 1400), /\.fo-table--stack td a \{/);
+  // Line endings are normalized before slicing — this file is CRLF, and an offset search anchored on
+  // "\n" silently found nothing rather than failing, which made the assertion pass on an empty
+  // string once already.
+  const lf = css.split("\r\n").join("\n");
+  const start = lf.indexOf("@media (max-width: 640px) {\n  .fo-table--stack thead");
+  expectOk(start >= 0, "the stack breakpoint block must be findable");
+  const stackBlock = lf.slice(start, lf.indexOf("}", lf.indexOf(".fo-table--stack td a")) + 1);
+  expectMatch(stackBlock, /\.fo-table--stack td a \{/);
 });
