@@ -21,8 +21,28 @@ const client = (over = {}) => ({
   ...over,
 });
 
-const mount = (binClient = client(), s = session()) => {
-  render(<PutAwayScan deps={{ binClient, session: s, scanInputDeps }} />);
+/**
+ * A stand-in for the shared warehouse runtime.
+ *
+ * The screen is a handheld surface and gets its queue from the shell (or from the scan workspace),
+ * so a mount without one would be testing a configuration an operator never sees. What the runtime
+ * DOES with a queued stow is proven against the real store in warehouseOfflineRuntime.
+ */
+const runtime = () => {
+  const enqueued = [];
+  return {
+    principalUid: "uid-wh-1",
+    enqueue: async (intent) => {
+      if (!intent?.valid) return { queued: false, reason: intent?.reason };
+      enqueued.push(intent.value);
+      return { queued: true, durable: true, intentId: intent.value.intentId };
+    },
+    enqueued,
+  };
+};
+
+const mount = (binClient = client(), s = session(), offline = runtime()) => {
+  render(<PutAwayScan deps={{ binClient, session: s, scanInputDeps, offline }} />);
   return binClient;
 };
 

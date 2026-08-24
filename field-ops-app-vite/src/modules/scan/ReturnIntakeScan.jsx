@@ -4,6 +4,8 @@ import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { returnCommandClient } from "../../services/returnCommandClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { captureReturnIntake } from "../../offline/warehouseIntent.js";
 
 // TAKING A RETURN IN -- recording what came back, and nothing more.
 //
@@ -53,6 +55,8 @@ const newKey = () => `ret-${Date.now()}-${Math.random().toString(36).slice(2, 10
 
 export default function ReturnIntakeScan({ deps }) {
   const client = deps?.returnClient ?? returnCommandClient;
+  // ONE submit policy. Intake only -- there is no disposition to queue because there is none at all.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
   const [partId, setPartId] = useState(null);
   const [quantity, setQuantity] = useState(1);
@@ -79,19 +83,54 @@ export default function ReturnIntakeScan({ deps }) {
     if (!partId || condition === "" || busy) return;
     setBusy(true);
     setError(null);
+    const request = {
+      partId,
+      source,
+      // Only sent when there is something to say. An empty reference is not a fact worth storing.
+      ...(sourceReference.trim() ? { sourceReference: sourceReference.trim() } : {}),
+      condition,
+      ...(reason.trim() ? { reason: reason.trim() } : {}),
+      quantity,
+      idempotencyKey: keyRef.current,
+    };
+    // The shared policy carries back `serverIds` only, so the command's full response is kept here.
+    let serverResponse = null;
     try {
-      const result = await client.recordReturnIntake({
-        partId,
-        source,
-        // Only sent when there is something to say. An empty reference is not a fact worth storing.
-        ...(sourceReference.trim() ? { sourceReference: sourceReference.trim() } : {}),
-        condition,
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
-        quantity,
-        idempotencyKey: keyRef.current,
-      });
+      const submitted = await warehouse.submit(
+        async () => {
+          const result = await client.recordReturnIntake(request);
+          serverResponse = result;
+          return { ok: true, serverIds: { returnId: result?.returnId ?? null } };
+        },
+        // INTAKE ONLY, offline as online. Nothing in this capture restocks, disposes, credits,
+        // repairs or scraps -- those authorities do not exist.
+        (wasOffline) => captureReturnIntake({
+          principalUid: deps?.offline?.principalUid ?? "self",
+          sourceId: source, partId, quantity, condition,
+          notes: reason.trim() || null,
+          captureKey: keyRef.current, at: Date.now(), offline: wasOffline,
+        }),
+      );
       if (!alive.current) return;
-      setOutcome(result);
+
+      if (submitted?.result === WAREHOUSE_SUBMIT.SENT) {
+        setOutcome(serverResponse ?? { returnId: submitted.serverIds?.returnId ?? null });
+      } else if (submitted?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        // PENDING, and explicitly NOT restocked -- taking a return in never restores stock.
+        setOutcome({ queued: true, pendingText: PENDING_TEXT.RETURN_INTAKE });
+      } else if (submitted?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        setError(NOT_DURABLE_TEXT);
+      } else {
+        const raw = typeof submitted?.error?.code === "string" ? submitted.error.code : "";
+        const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal");
+        setError(
+          code === "permission-denied"
+            ? "You are not authorized to take returns in. That authority has not been granted, or is not switched on here."
+            : code === "invalid-argument"
+              ? "That return could not be accepted — check the part and the condition."
+              : "That return could not be recorded. Nothing was changed.",
+        );
+      }
     } catch (err) {
       if (!alive.current) return;
       const raw = typeof err?.code === "string" ? err.code : "";
@@ -114,6 +153,17 @@ export default function ReturnIntakeScan({ deps }) {
     setPartId(null); setQuantity(1); setSourceReference(""); setCondition(""); setReason("");
     setOutcome(null); setError(null);
   }, []);
+
+  // HELD, NOT RECORDED. Its own branch, above the recorded one, because "✓ Recorded" is a statement
+  // about the platform and the platform has not seen this.
+  if (outcome?.queued) {
+    return (
+      <div className="fo-returns">
+        <p className="fo-scan__notice fo-scan__notice--pending" role="status">{outcome.pendingText}</p>
+        <Button type="button" variant="primary" onClick={startAnother}>Take another return</Button>
+      </div>
+    );
+  }
 
   if (outcome) {
     return (

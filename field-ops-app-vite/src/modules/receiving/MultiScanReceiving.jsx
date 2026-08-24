@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { captureReceive } from "../../offline/warehouseIntent.js";
 import {
   createQueue, addScan, undoLastScan, removeEntry, setEntryQuantity, clearQueue,
   reconcile, buildSubmissionLines, ENTRY_STATE, ENTRY_STATE_REASON,
@@ -177,6 +179,10 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   const [typedScan, setTypedScan] = useState("");
   const [typedSerial, setTypedSerial] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  /** Set when the receipt is held on this phone. NOT a receipt, and never rendered as one. */
+  const [queuedNotice, setQueuedNotice] = useState(null);
+  // ONE submit policy, shared with every other warehouse screen.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const scanRef = useRef(null);
@@ -228,26 +234,62 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
     setError(null);
     const lines = buildSubmissionLines(reconciliation);
     if (lines === null || !locationId) return;
+    const request = {
+      source: { type: "PURCHASE_ORDER", purchaseOrderId },
+      receivingLocation: { type: "WAREHOUSE", locationId },
+      lines: lines.map((l) => ({ ...l })),
+      idempotencyKey: idempotencyKeyRef.current,
+      // Optimistic concurrency against the order the operator actually looked at. If someone else
+      // received against it meanwhile, this is refused rather than applied against state the
+      // operator never saw.
+      expectedVersion: progress.version,
+    };
     setSubmitting(true);
     try {
-      const res = await api.submitCanonicalReceive({
-        source: { type: "PURCHASE_ORDER", purchaseOrderId },
-        receivingLocation: { type: "WAREHOUSE", locationId },
-        lines: lines.map((l) => ({ ...l })),
-        idempotencyKey: idempotencyKeyRef.current,
-        // Optimistic concurrency against the order the operator actually looked at. If someone else
-        // received against it meanwhile, this is refused rather than applied against state the
-        // operator never saw.
-        expectedVersion: progress.version,
-      });
-      if (res.status === RECEIVING_OUTCOME.APPLIED || res.status === RECEIVING_OUTCOME.REPLAYED) {
-        setReceipt(res.receipt);
+      const outcome = await warehouse.submit(
+        async () => {
+          const res = await api.submitCanonicalReceive(request);
+          if (res.status === RECEIVING_OUTCOME.APPLIED || res.status === RECEIVING_OUTCOME.REPLAYED) {
+            return { ok: true, serverIds: { receipt: res.receipt } };
+          }
+          // A transport that is not ready never reached anybody to be refused BY, so it stays
+          // retryable and becomes queued work rather than an error the operator cannot act on.
+          return res.status === RECEIVING_OUTCOME.UNAVAILABLE
+            ? { ok: false, error: { code: "unavailable" } }
+            : { ok: false, error: { code: "failed-precondition", details: res.status } };
+        },
+        // SERIALS INDIVIDUALLY. One serial is one physical unit; collapsing them into a count would
+        // lose the identities the server needs to refuse a duplicate.
+        (wasOffline) => captureReceive({
+          principalUid: deps?.offline?.principalUid ?? "self",
+          sourceId: purchaseOrderId,
+          partId: lines[0]?.partId ?? lines[0]?.sku ?? null,
+          quantity: lines.reduce((n, l) => n + (typeof l.quantity === "number" ? l.quantity : 0), 0) || null,
+          serialNumbers: lines.flatMap((l) => (Array.isArray(l.serialNumbers) ? l.serialNumbers : [])),
+          destinationId: locationId,
+          captureKey: idempotencyKeyRef.current,
+          at: Date.now(),
+          offline: wasOffline,
+        }),
+      );
+
+      if (outcome?.result === WAREHOUSE_SUBMIT.SENT) {
+        setReceipt(outcome.serverIds?.receipt ?? null);
         setQueue(createQueue());
         // The intent is finished; a NEW receipt is a new intent and needs its own key.
         idempotencyKeyRef.current = newIdempotencyKey();
         await loadProgress();
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        // NOTHING HAS BEEN RECEIVED. The queue holds an observation; the platform's remaining
+        // quantity is untouched and will be re-derived at sync.
+        setQueuedNotice(PENDING_TEXT.INVENTORY_RECEIVE);
+        setQueue(createQueue());
+        idempotencyKeyRef.current = newIdempotencyKey();
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        // The scans STAY on screen -- this is the only copy that exists.
+        setError(NOT_DURABLE_TEXT);
       } else {
-        setError(res.status);
+        setError(outcome?.error?.details ?? outcome?.error?.code ?? "internal");
       }
     } finally {
       setSubmitting(false);
@@ -293,6 +335,12 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           </p>
         )}
       </section>
+
+      {/* HELD, NOT RECEIVED. Deliberately rendered ABOVE the receipt block and never inside it: the
+          word "Received" belongs only to a receipt the platform actually returned. */}
+      {queuedNotice && (
+        <p className="fo-scan__notice fo-scan__notice--pending" role="status">{queuedNotice}</p>
+      )}
 
       {receipt && (
         <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
@@ -430,12 +478,16 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
             ))}
           </select>
         </div>
-        {error && (
+        {error === NOT_DURABLE_TEXT ? (
+          // Not a refusal: the platform never saw this. The scans stay on screen because this is the
+          // only copy of them that exists.
+          <p className="fo-inline-error" role="alert">{NOT_DURABLE_TEXT}</p>
+        ) : error ? (
           <p className="fo-inline-error" role="alert">
             The receipt was not accepted ({String(error).toLowerCase()}). Nothing was received — reload
             the order and try again.
           </p>
-        )}
+        ) : null}
         <Button
           type="button"
           variant={canSubmit ? "primary" : "protected"}

@@ -3,6 +3,8 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { transferCommandClient } from "../../services/transferCommandClient.js";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { captureTransferDispatch, captureTransferReceive } from "../../offline/warehouseIntent.js";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
 import {
   buildTransferVerification,
@@ -129,6 +131,9 @@ function TransferPicker({ orders, loading, error, onPick }) {
 
 function TransferVerify({ order, deps, onBack }) {
   const submitCommand = deps?.transferClient ?? transferCommandClient;
+  // ONE submit policy. Truck handoff comes through this same screen and the same transfer
+  // lifecycle -- there is no second command and no second movement model.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
   const [observations, setObservations] = useState([]);
   const [confirmedLocation, setConfirmedLocation] = useState(null);
@@ -175,21 +180,58 @@ function TransferVerify({ order, deps, onBack }) {
     setSubmitting(true);
     setOutcome(null);
     const transferOrderId = order.transferOrderId ?? order.id;
+    const dispatching = state.action === TRANSFER_ACTION.DISPATCH;
     try {
-      // The command takes an ID. Everything else it re-derives and re-verifies itself.
-      const result = state.action === TRANSFER_ACTION.DISPATCH
-        ? await submitCommand.dispatchTransferOrder({ transferOrderId })
-        : await submitCommand.receiveTransferOrder({ transferOrderId });
+      const submitted = await warehouse.submit(
+        async () => {
+          try {
+            // The command takes an ID. Everything else it re-derives and re-verifies itself.
+            const result = dispatching
+              ? await submitCommand.dispatchTransferOrder({ transferOrderId })
+              : await submitCommand.receiveTransferOrder({ transferOrderId });
+            // Carried as serverIds: that is the field the shared policy reconciles and passes back.
+            return { ok: true, serverIds: { status: result?.status ?? null } };
+          } catch (err) {
+            const raw = typeof err?.code === "string" ? err.code : "";
+            const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal");
+            return { ok: false, error: { code, details: err?.details ?? null } };
+          }
+        },
+        (wasOffline) => (dispatching
+          ? captureTransferDispatch({
+              principalUid: deps?.offline?.principalUid ?? "self",
+              transferOrderId,
+              sourceId: order.origin?.locationId ?? null,
+              destinationId: order.destination?.locationId ?? null,
+              captureKey: `dispatch:${transferOrderId}`, at: Date.now(), offline: wasOffline,
+            })
+          : captureTransferReceive({
+              principalUid: deps?.offline?.principalUid ?? "self",
+              transferOrderId,
+              destinationId: order.destination?.locationId ?? null,
+              captureKey: `receive:${transferOrderId}`, at: Date.now(), offline: wasOffline,
+            })),
+      );
       if (!alive.current) return;
-      setOutcome({ ok: true, status: result?.status ?? null });
-    } catch (err) {
-      if (!alive.current) return;
-      const raw = typeof err?.code === "string" ? err.code : "";
-      setOutcome({ ok: false, code: raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal") });
+
+      if (submitted?.result === WAREHOUSE_SUBMIT.SENT) {
+        setOutcome({ ok: true, status: submitted.serverIds?.status ?? null });
+      } else if (submitted?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        // THE TRANSFER HAS NOT MOVED. Its own status is untouched and stays visible beside the sync
+        // status -- "Requested" and "Pending" are two different facts about two different things.
+        setOutcome({
+          ok: false, queued: true,
+          pendingText: dispatching ? PENDING_TEXT.TRANSFER_DISPATCH : PENDING_TEXT.TRANSFER_RECEIVE,
+        });
+      } else if (submitted?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        setOutcome({ ok: false, notDurable: true, pendingText: NOT_DURABLE_TEXT });
+      } else {
+        setOutcome({ ok: false, code: submitted?.error?.code ?? "internal" });
+      }
     } finally {
       if (alive.current) setSubmitting(false);
     }
-  }, [state.canSubmit, state.action, submitting, order, submitCommand]);
+  }, [state.canSubmit, state.action, submitting, order, submitCommand, warehouse, deps]);
 
   const transferOrderId = order.transferOrderId ?? order.id;
 
@@ -309,6 +351,15 @@ function Outcome({ outcome }) {
         ✓ Done{outcome.status ? ` — the transfer is now ${outcome.status}.` : "."}
       </p>
     );
+  }
+  // QUEUED IS NOT DONE AND NOT REFUSED. The transfer's own status is unchanged; only this device's
+  // attempt is outstanding. Rendered as neutral status rather than as an error, because nothing went
+  // wrong -- and never as "In Transit", which only the platform may say.
+  if (outcome.queued) {
+    return <p className="fo-scan__notice fo-scan__notice--pending" role="status">{outcome.pendingText}</p>;
+  }
+  if (outcome.notDurable) {
+    return <p className="fo-scan__notice fo-scan__notice--warn" role="alert">{outcome.pendingText}</p>;
   }
   // A refusal is rendered as a refusal. Every inventory.transfer.* capability is inert today, so
   // permission-denied is the expected answer and it must not look like a failure of the scan.
