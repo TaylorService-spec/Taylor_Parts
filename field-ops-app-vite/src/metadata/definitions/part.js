@@ -547,6 +547,74 @@ export const partEntity = makeEntityDefinition({
         "Declare the composite indexes each additional filter combination needs — noting that optional filters " +
         "multiply: two already demand three composites, and each further one grows that set.",
     }),
+    makeGap({
+      id: "INVENTORY_HEALTH_QUERY_PROJECTION_GAP",
+      title: "Inventory Health cannot be paged, filtered or sorted at the query",
+      entityId: "part",
+      severity: GAP_SEVERITY.SCALE,
+      reason: WHY.DERIVED_AT_READ,
+      finding:
+        "Health is NETTED from the append-only inventory_transactions ledger: the client reads the whole " +
+        "collection unbounded, sums it per part, and classifies. Two things follow. (1) A netted total over " +
+        "a truncated input is not partial, it is WRONG presented as complete — a page holding a receipt but " +
+        "not the reservation against it reports 16 available where the truth is 4. (2) The ledger has NO " +
+        "total-order field spanning every document: LEGACY entries carry `timestamp`, OPERATIONAL entries " +
+        "carry `recordedAt`, no entry carries both, and Firestore's orderBy silently EXCLUDES documents " +
+        "missing the ordered field — so any cursor order over it deletes an entire era of live entries with " +
+        "no error.",
+      consequence:
+        "Filtering or sorting the list BY health, and whole-population health counts, are all unavailable at " +
+        "scale. The health queue is correct today only because the read is unbounded.",
+      refused:
+        "Capping the ledger read to make the list page. That trades a slow honest number for a fast false " +
+        "one, and overstatement is the dangerous direction: it sends somebody to a shelf emptier than the " +
+        "screen claims.",
+      resolution:
+        "A trusted server-side health projection, maintained by the ledger's own writers, defining source " +
+        "facts, freshness, UNKNOWN, the onOrder and mobile/company splits, and its update authority. That is " +
+        "a backend package with its own contract, not something a list migration can bolt on.",
+    }),
+    makeGap({
+      id: "PART_CATALOGUE_RECONCILIATION_CANNOT_BE_PAGED",
+      title: "The /inventory catalogue is a reconciliation, not a list",
+      entityId: "part",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "composeGovernedPartsWorkspace reconciles the canonical `parts` read against the static catalog and " +
+        "enforces a FULL-ACCOUNTING invariant — every canonical Part resolves to exactly one row — by " +
+        "comparing whole-set counts. An incomplete read BLOCKS the catalogue outright rather than rendering " +
+        "a subset.",
+      consequence:
+        "Cursor paging that read would make canonicalCount the page size, so the invariant would compare 50 " +
+        "against 50 and pass while proving nothing.",
+      refused:
+        "Paging the composed rows and keeping the invariant's name. A guarantee that silently changes scope " +
+        "is worse than one that is removed, because the screen still claims it.",
+      resolution:
+        "Decide first whether the static-catalog reconciliation is still required. If it is retired, the " +
+        "catalogue becomes an ordinary list and pages like any other; while it stands, the invariant is the " +
+        "feature and it is whole-set by definition.",
+    }),
+    makeGap({
+      id: "PART_CATALOGUE_BASELINE_IS_NOT_AVAILABILITY",
+      title: "A catalogue baseline is shown in the Warehouse Available column",
+      entityId: "part",
+      fieldId: "warehouseAvailable",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "When a Part has no ledger activity, the /inventory list shows the STATIC catalog's warehouseQty in " +
+        "the availability column, qualified as a baseline.",
+      consequence:
+        "A number that is not a live warehouse figure sits under a heading that reads as one — FALSE_COMFORT " +
+        "in miniature, on the column people scan when deciding what to reorder.",
+      refused:
+        "Silently changing which number that column shows. Which figure belongs there is a business decision " +
+        "about what a part with no ledger history MEANS, not a presentation one. This package separated the " +
+        "figure from its caveat so both are readable, and recorded the semantic question here.",
+      resolution:
+        "Decide whether an unledgered Part has UNKNOWN availability (the FALSE_COMFORT-consistent answer) or " +
+        "whether the catalogue baseline is genuinely authoritative until the ledger sees it.",
+    }),
   ],
 
   // No relationships[] entries. The equipmentModel edge is already expressed as the

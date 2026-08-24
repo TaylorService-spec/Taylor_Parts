@@ -99,6 +99,11 @@ on:
       - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
+      # PartsList / Inventory Health scale semantics + phone cards.
+      - "field-ops-app-vite/src/domain/inventoryUrgencyTone.js"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
+      - "field-ops-app-vite/src/services/operationsQueries.ts"
+      - "field-ops-app-vite/test/inventoryHealthScaleSemantics.test.jsx"
       - "field-ops-app-vite/src/services/manufacturerReadCallableClient.js"
       - "field-ops-app-vite/src/hooks/useManufacturerCatalog.js"
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"
@@ -203,6 +208,11 @@ on:
       - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
+      # PartsList / Inventory Health scale semantics + phone cards.
+      - "field-ops-app-vite/src/domain/inventoryUrgencyTone.js"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
+      - "field-ops-app-vite/src/services/operationsQueries.ts"
+      - "field-ops-app-vite/test/inventoryHealthScaleSemantics.test.jsx"
       - "field-ops-app-vite/src/services/manufacturerReadCallableClient.js"
       - "field-ops-app-vite/src/hooks/useManufacturerCatalog.js"
       - "field-ops-app-vite/src/domain/manufacturerCatalogView.js"

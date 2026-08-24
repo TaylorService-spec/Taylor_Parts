@@ -27,7 +27,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
-import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { inventoryUrgencyTone, inventoryUrgencyLabel } from "../../domain/inventoryUrgencyTone.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
 import { RequestCards, AssignedRequestDetail } from "../../shared/reorder/AssociateRequestPanel.jsx";
@@ -768,32 +768,64 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         emptyText=""
       >
         <>
-          <table className="fo-table">
+          {/* fo-table--stack: BELOW THE PHONE BREAKPOINT EACH ROW BECOMES A LABELLED CARD.
+              This table was the last migrated list still compressing its columns into ~320px, which
+              is what PARTS PHONE-CARD READABILITY recorded: nothing overflowed, and nothing was
+              readable either. The modifier is the same one the shared metadata grid already uses;
+              `data-label` on every cell is what carries the column heading into the card, so a
+              value is never orphaned from the field it belongs to. Scroll stays the right answer
+              at a desk, which is why the scroll container above it is unchanged. */}
+          <table className="fo-table fo-table--stack">
             <thead>
               <tr>
                 <th>Part</th>
-                <th>SKU</th>
+                <th>Part Number</th>
                 <th>Category</th>
-                <th>Available</th>
-                <th>Risk</th>
+                <th>Warehouse Available</th>
+                <th>Inventory Health</th>
               </tr>
             </thead>
             <tbody>
               {pagedParts.map((part) => {
                 const health = healthByPartId.get(part.sku);
+                const urgency = health?.recommendation?.urgency ?? null;
                 return (
                   <tr key={part.sku}>
-                    <td>
+                    <td data-label="Part">
                       <Link to={partCatalogRoute(part)}>{part.name}</Link>
                     </td>
-                    <td className="fo-muted">{part.sku}</td>
-                    <td className="fo-muted">{part.category}</td>
-                    <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
-                    <td>
+                    {/* A BUSINESS IDENTIFIER, not a document id. The heading says Part Number
+                        because that is what a person reads off a shelf label. */}
+                    <td data-label="Part Number" className="fo-muted">{part.sku}</td>
+                    <td data-label="Category" className="fo-muted">{part.category}</td>
+                    {/* TWO FACTS, NOT ONE STRING. This rendered `${warehouseQty} (baseline)` --
+                        a number and a caveat about where it came from, welded into one value that
+                        nothing could sort, filter or report on. The number stays machine-readable
+                        on the cell; the caveat is its own element, and it is the load-bearing half:
+                        a catalogue baseline is NOT a live warehouse figure, and reading it as one
+                        is FALSE_COMFORT in miniature. Recorded as
+                        PART_CATALOGUE_BASELINE_IS_NOT_AVAILABILITY -- the displayed number is
+                        deliberately unchanged here, because which number belongs in that column is
+                        a business decision, not a presentation one. */}
+                    <td data-label="Warehouse Available" data-raw={health ? health.stock.availableStock : part.warehouseQty}>
+                      {health ? (
+                        health.stock.availableStock
+                      ) : (
+                        <>
+                          {part.warehouseQty}{" "}
+                          <span className="fo-muted fo-parts__qualifier">catalogue baseline, not live stock</span>
+                        </>
+                      )}
+                    </td>
+                    {/* INVENTORY HEALTH IS ITS OWN FIELD, and its three outcomes are three different
+                        statements: the ledger has never seen this part; it has, but with no usage
+                        history to plan from; or it has a computed urgency. Collapsing them into one
+                        "Risk" word loses the distinction that decides what to do next. */}
+                    <td data-label="Inventory Health" data-raw={urgency ?? (health ? "NEEDS_PLANNING" : "NO_LEDGER_ACTIVITY")}>
                       {!health ? (
                         <span className="fo-muted">No ledger activity</span>
                       ) : hasUsageHistory(health.usage) ? (
-                        <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
+                        <StatusPill tone={inventoryUrgencyTone(urgency)} label={inventoryUrgencyLabel(urgency)} />
                       ) : (
                         <StatusPill tone="unknown" label="Needs planning" />
                       )}
