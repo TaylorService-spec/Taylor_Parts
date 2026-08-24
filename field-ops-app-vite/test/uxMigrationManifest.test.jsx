@@ -109,20 +109,28 @@ describe("status derives from evidence", () => {
 // ═════════════════════════════════════════ the gap that was lost, and is back
 
 describe("Sales Order authority knowledge", () => {
-  it("SALES_ORDER_TOTAL_AUTHORITY_GAP is registered on the entity", async () => {
+  it("SALES_ORDER_TOTAL_AUTHORITY_GAP is CLOSED, with the wrong call recorded", async () => {
     const { salesOrderEntity } = await import("../src/metadata/definitions/salesOrder.js");
-    const ids = salesOrderEntity.gaps.map((g) => g.id);
-    // Lost in the metadata convergence, which folded gaps onto four other objects and missed this
-    // one. Restored from the pilot trace rather than re-derived.
-    expect(ids).toContain("SALES_ORDER_TOTAL_AUTHORITY_GAP");
-    const gap = salesOrderEntity.gaps.find((g) => g.id === "SALES_ORDER_TOTAL_AUTHORITY_GAP");
-    expect(gap.refused).toMatch(/INVOICE MONEY IS NOT SALES ORDER MONEY/);
+    // It is no longer a live gap: it claimed the order carries no authoritative money, and the
+    // billing engine disagrees.
+    expect(salesOrderEntity.gaps.map((g) => g.id)).not.toContain("SALES_ORDER_TOTAL_AUTHORITY_GAP");
+    // But it is not deleted either. A closed gap is the record of a decision, and this one is also
+    // the record of a wrong call worth not repeating.
+    const def = read("src/metadata/definitions/salesOrder.js");
+    expect(def).toMatch(/CLOSED, AND WRONG WHILE IT WAS OPEN/);
+    expect(def).toMatch(/PRICE_MISMATCH/);
+    // The one real hazard survives the closure.
+    expect(def).toMatch(/NULL IS NOT ZERO/);
   });
 
-  it("no Dollars field exists on Sales Order, and its absence is registered rather than forgotten", async () => {
+  it("the Sales Order DOES carry the money of the sale", async () => {
+    // THIS ASSERTION USED TO SAY THE OPPOSITE. It encoded a conclusion drawn from a gap register
+    // rather than from the billing engine, and the billing engine disagrees: invoiceCommands.ts
+    // snapshots each line's `unitPrice` as `unitPriceMinor`, refuses to bill a line without one,
+    // and refuses any invoice price that disagrees with it. The invoice is derived FROM the order.
+    // Full evidence and the partial-pricing rule live in test/salesOrderMoney.test.jsx.
     const { salesOrderEntity } = await import("../src/metadata/definitions/salesOrder.js");
-    expect(salesOrderEntity.fields.some((f) => /dollar|total/i.test(f.id))).toBe(false);
-    expect(salesOrderEntity.gaps.some((g) => g.id === "SALES_ORDER_TOTAL_AUTHORITY_GAP")).toBe(true);
+    expect(salesOrderEntity.fields.some((f) => f.id === "totalMinor")).toBe(true);
   });
 
   it("the Sales Order list offers only its ONE index-backed filter", async () => {

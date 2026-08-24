@@ -10,6 +10,8 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
@@ -63,6 +65,11 @@ export default function CustomerEquipment() {
   // returns the register that was narrowed.
   const { criteria, apply } = useListCriteria(equipmentIndexList, equipmentEntity, OBJECT_LIST_KEY.EQUIPMENT);
 
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(equipmentIndexList, equipmentEntity, criteria, apply);
+
   // THE CUSTOMER FILTER IS A PICKER OF NAMES. A REFERENCE filter whose value control was a
   // free-text box would ask a person to type a Firestore document id, which is not a thing
   // anybody knows. The picker read is itself bounded and discloses its own truncation.
@@ -108,6 +115,14 @@ export default function CustomerEquipment() {
         <p className="fo-muted" role="status">{accountPicker.message}</p>
       )}
 
+      <ListViewHeader
+        def={equipmentIndexList}
+        entity={equipmentEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={equipmentIndexList}

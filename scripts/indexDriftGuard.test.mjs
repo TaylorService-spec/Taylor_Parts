@@ -88,80 +88,81 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // index added without being listed here fails this test, which is the drift this guard exists to
 // catch. When a pooled deployment lands, the deployed key is REMOVED from this list, which is what
 // turns it back into an assertion that declared == live.
+// DECLARED BUT NOT LIVE — REGENERATED FROM A MEASUREMENT, 2026-08-24.
+//
+// This list previously named THIRTY-FIVE indexes as pending. Thirty-five of the declared indexes
+// are LIVE. The list had it almost exactly inverted: it was written when the estate held eight
+// composites and was never updated as the estate grew to thirty-eight, so it described a database
+// that had not existed for months.
+//
+// It still PASSED, because the assertion below compared declared-minus-pending against the same
+// stale eight. Two wrong numbers agreeing is not a check. This is the guard that produced this
+// programme's most dangerous wrong claim -- that an index deploy would be "purely additive" when
+// it would in fact have deleted three live indexes.
+//
+// Re-measured with `firebase firestore:indexes --project eos-platform-sandbox`:
+//
+//     38 live  ·  43 declared  ·  35 declared AND live  ·  8 declared and NOT live
+//     3 live and NOT declared:  equipment_models × 3
+//
+// THE THREE UNDECLARED equipment_models COMPOSITES STAY UNDECLARED. D4 governs that collection and
+// declares no compound index for it (functions/test/equipmentCompatibilityRegistry.test.mjs
+// asserts exactly that), the collection is deny-all in Rules, and nothing queries it -- so those
+// three serve no query at all. A deploy removing them is reconciliation clearing dead indexes, not
+// a loss. That is the OPPOSITE of what this programme previously recorded, and the correction
+// matters: "a deploy would delete three live indexes" was the stated reason index deploys stayed
+// blocked.
+//
+// When a deploy really lands, the deployed key is REMOVED from this list, which is what turns it
+// back into an assertion that declared == live.
 const PENDING_DEPLOY_INDEX_KEYS = new Set([
-  // Declared by the TransferOrder leaf definition; not deployed.
-  'transfer_orders|COLLECTION|status:ASCENDING,createdAt:DESCENDING',
-  // Declared by the MobileLocation leaf definition; not deployed.
-  'mobile_locations|COLLECTION|active:ASCENDING,displayLabel:ASCENDING',
-  // Declared by the Stock Location leaf definition; not deployed.
-  'stock_locations|COLLECTION|warehouseId:ASCENDING,binCode:ASCENDING',
-  // Declared by the Truck leaf definition; not deployed. (EquipmentModel's were removed --
-  // equipment_models is D4-governed; see equipmentModel.js's boundary note.)
-  'trucks|COLLECTION|status:ASCENDING,displayLabel:ASCENDING',
-  'trucks|COLLECTION|homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
-  'trucks|COLLECTION|status:ASCENDING,homeWarehouseId:ASCENDING,displayLabel:ASCENDING',
-  // Declared by the Manufacturer leaf definition; not deployed.
-  'manufacturers|COLLECTION|status:ASCENDING,name:ASCENDING',
-  // Declared by the Warehouse and Supplier leaf definitions; not deployed.
-  'warehouses|COLLECTION|status:ASCENDING,name:ASCENDING',
-  'suppliers|COLLECTION|status:ASCENDING,name:ASCENDING',
-  // Declared by the Customers structured-list migration (accountIndexList lineOfBusiness filter);
-  // not deployed. Firestore serves ONE array filter per query, so an array filter adds its own
-  // index family rather than combining with relationshipTypes -- there is deliberately no
-  // relationshipTypes+lineOfBusiness index, because no index can serve that query at all.
+  // The Line of Business filter on the Customers list. Firestore serves ONE array filter per
+  // query, so this adds its own index family rather than combining with relationshipTypes -- there
+  // is deliberately no relationshipTypes+lineOfBusiness index, because no index can serve it.
   'accounts|COLLECTION|lineOfBusiness:CONTAINS,updatedAt:DESCENDING',
   'accounts|COLLECTION|status:ASCENDING,lineOfBusiness:CONTAINS,updatedAt:DESCENDING',
-  // Declared by the Location leaf definition; not deployed.
-  'locations|COLLECTION|accountId:ASCENDING,name:ASCENDING',
-  // Declared by the Employee leaf definition; not deployed.
-  'employees|COLLECTION|operationalRoles:CONTAINS,displayName:ASCENDING',
-  'employees|COLLECTION|employmentStatus:ASCENDING,displayName:ASCENDING',
-  'employees|COLLECTION|employmentStatus:ASCENDING,operationalRoles:CONTAINS,displayName:ASCENDING',
-  // Declared by the Part and Equipment leaf definitions; not deployed.
-  'parts|COLLECTION|status:ASCENDING,internalPartNumber:ASCENDING',
-  'parts|COLLECTION|stockingClass:ASCENDING,internalPartNumber:ASCENDING',
-  'parts|COLLECTION|status:ASCENDING,stockingClass:ASCENDING,internalPartNumber:ASCENDING',
-  'equipment|COLLECTION|accountId:ASCENDING,name:ASCENDING',
-  'equipment|COLLECTION|status:ASCENDING,name:ASCENDING',
-  'equipment|COLLECTION|accountId:ASCENDING,status:ASCENDING,name:ASCENDING',
-  // Declared by the Account metadata definition (#1137), NOT yet deployed. Index
-  // deployment is a separate authorized action, so account.index's declared filters are
-  // a promise the repository keeps and the environment does not yet -- and listing the
-  // key here states that gap rather than letting the guard read as drift.
-  'accounts|COLLECTION|status:ASCENDING,updatedAt:DESCENDING',
-  'accounts|COLLECTION|relationshipTypes:CONTAINS,updatedAt:DESCENDING',
-  'accounts|COLLECTION|status:ASCENDING,relationshipTypes:CONTAINS,updatedAt:DESCENDING',
-  // Declared by the Work Order metadata definition (Gate B). The other two shapes it
-  // demands were already live before the definition existed.
-  'fieldops_wos|COLLECTION|status:ASCENDING,customerId:ASCENDING,createdAt:DESCENDING',
-  // Declared by the operational board scope contract: all three of its queries filter
-  // status IN (an equality) plus a scheduledStart range or equality.
-  'fieldops_wos|COLLECTION|status:ASCENDING,scheduledStart:ASCENDING',
-  // Declared by the Contact and Opportunity definitions (first Account related-list
-  // dependencies). Opportunities are CALLABLE-read, so this serves the server's own query.
-  'contacts|COLLECTION|accountId:ASCENDING,name:ASCENDING',
-  'opportunities|COLLECTION|stage:ASCENDING,expectedCloseAt:ASCENDING',
-  // Declared by the Sales Order definition (S-CRM-SALES-ORDER-DEFINITION). Sales Orders are
-  // CALLABLE-read like Opportunities, so this serves the server's own listSalesOrdersForAccount
-  // query shape, not a client-direct read.
-  'sales_orders|COLLECTION|state:ASCENDING,salesOrderNumber:DESCENDING',
-  //
-  // The Cycle Count serialized_assets(partId, currentLocationId, inventoryState) composite was the
-  // last pending entry; the sandbox convergence deployment shipped it, so it was removed here. That
-  // removal is the point of this list -- it is what turns the assertion below back into a strict
-  // declared == live check. Leaving a deployed key listed would let a genuinely undeclared index
-  // hide behind it, which is the drift this guard exists to catch.
+  // Priority and Type filters on Work Orders. Every list offered exactly as many filters as its
+  // collection had LIVE composites, so "+ Add Filter" opened onto almost nothing. Each needs a
+  // composite with the list's default sort, and one with status too, because a dispatcher filters
+  // status AND one more thing far more often than either alone.
+  'fieldops_wos|COLLECTION|priority:ASCENDING,createdAt:DESCENDING',
+  'fieldops_wos|COLLECTION|status:ASCENDING,priority:ASCENDING,createdAt:DESCENDING',
+  'fieldops_wos|COLLECTION|type:ASCENDING,createdAt:DESCENDING',
+  'fieldops_wos|COLLECTION|status:ASCENDING,type:ASCENDING,createdAt:DESCENDING',
+  // "This customer's orders" is the first question anybody asks of a Sales Order list and has never
+  // been answerable: sales_orders had exactly ONE live composite.
+  'sales_orders|COLLECTION|accountId:ASCENDING,salesOrderNumber:DESCENDING',
+  'sales_orders|COLLECTION|state:ASCENDING,accountId:ASCENDING,salesOrderNumber:DESCENDING',
 ]);
 
 test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {
   const pending = declared.filter((i) => PENDING_DEPLOY_INDEX_KEYS.has(indexKey(i)));
   const expectedLive = declared.length - pending.length;
 
-  // The live estate is EIGHT indexes as of the sandbox convergence deployment, which shipped the
-  // serialized_assets(partId, currentLocationId, inventoryState) composite. This number only moves
-  // when a deployment really happens -- it moved from seven to eight because one did, verified
-  // against `firebase firestore:indexes --project eos-platform-sandbox` (8 live, 8 declared).
-  assert.equal(expectedLive, 8, 'declared-minus-pending must match the live index count');
+  // THE LIVE COUNT WAS WRONG, AND THAT IS WHY THIS GUARD COULD NOT SEE DRIFT.
+  //
+  // It said EIGHT, describing an estate from the sandbox convergence deployment. Re-measured
+  // 2026-08-24 against `firebase firestore:indexes --project eos-platform-sandbox`:
+  //
+  //     38 live  -  43 declared  -  35 declared AND live  -  8 declared, not live
+  //     3 live and NOT declared: equipment_models x3
+  //
+  // The stale 8 passed only because declared-minus-pending happened to equal it, so the guard
+  // asserted a coincidence rather than the estate. It is the guard that produced this programme's
+  // most dangerous wrong claim -- that an index deploy was "purely additive" when it would have
+  // deleted three live indexes.
+  //
+  // THE THREE UNDECLARED equipment_models COMPOSITES ARE LEFT UNDECLARED, deliberately. D4 governs
+  // that collection and declares no compound index for it (functions/test/
+  // equipmentCompatibilityRegistry.test.mjs asserts exactly that); the collection is deny-all in
+  // Rules and nothing queries it, so those three serve no query. A deploy removing them is
+  // reconciliation clearing dead indexes, not a loss -- which is the opposite of what this
+  // programme previously recorded, and the correction matters because it was the stated reason
+  // index deploys stayed blocked.
+  //
+  // A comparison against a MEASURED number, not a remembered one. When a deploy really lands,
+  // both sides move together and the pending list shrinks.
+  assert.equal(expectedLive, 35, 'declared-minus-pending must match the live index count (35 declared AND live of 38 live)');
   assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });

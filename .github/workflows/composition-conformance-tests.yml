@@ -43,6 +43,11 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js"
       - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
       - "field-ops-app-vite/test/purchaseOrderSourceOfRecord.test.jsx"
+      - "field-ops-app-vite/src/metadata/ListViewHeader.jsx"
+      - "field-ops-app-vite/src/metadata/listViewSummary.js"
+      - "field-ops-app-vite/src/hooks/useListViewChrome.js"
+      - "field-ops-app-vite/test/salesOrderMoney.test.jsx"
+      - "field-ops-app-vite/test/listViewChrome.test.jsx"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
@@ -81,6 +86,11 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js"
       - "field-ops-app-vite/src/modules/purchasing/PurchaseOrders.jsx"
       - "field-ops-app-vite/test/purchaseOrderSourceOfRecord.test.jsx"
+      - "field-ops-app-vite/src/metadata/ListViewHeader.jsx"
+      - "field-ops-app-vite/src/metadata/listViewSummary.js"
+      - "field-ops-app-vite/src/hooks/useListViewChrome.js"
+      - "field-ops-app-vite/test/salesOrderMoney.test.jsx"
+      - "field-ops-app-vite/test/listViewChrome.test.jsx"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
@@ -146,4 +156,9 @@ jobs:
       # trap and the measured emptiness of the canonical one, so neither has to be re-derived.
       - name: Purchase Order source of record (two collections, one name)
         run: npx vitest run test/purchaseOrderSourceOfRecord.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The money a Sales Order carries, and the shared list-view header every object renders.
+      - name: Sales Order money + shared list view chrome
+        run: npx vitest run test/salesOrderMoney.test.jsx test/listViewChrome.test.jsx
         working-directory: field-ops-app-vite

@@ -4806,3 +4806,122 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-listctl__builder { flex-direction: column; align-items: stretch; }
   .fo-listctl__step select, .fo-listctl__step input { width: 100%; }
 }
+
+/* ===========================================================================
+   RECORD FIELD GRID — the Details layout for a metadata record page
+   ---------------------------------------------------------------------------
+   A record page exists to show what an object IS. The previous rendering was
+   `.fo-detail-list`: a label-beside-value pair list, one pair per row. It is
+   correct and it is dense, and on a record carrying sixteen fields it reads as
+   a wall — the eye has to travel the full width to pair each label with its
+   value, and nothing groups.
+
+   This is the layout every record page in this category uses instead: fields
+   flow into TWO columns, and within each field the LABEL SITS ABOVE ITS VALUE.
+   That pairing is what makes it scannable — label and value are adjacent
+   vertically, so the eye reads a field as one unit rather than tracking across
+   a gap.
+
+   NOT a change to `.fo-detail-list`. Five other surfaces render through that
+   class (EquipmentDetail, the install closeout, three modals), and re-styling
+   it would silently relayout all of them. This is a new class; that one is
+   untouched.
+
+   ONE COLUMN ON A PHONE. Two columns of stacked fields at 375px gives each
+   value ~160px, which wraps a customer name to three lines. The breakpoint
+   matches the table-to-card breakpoint (`fo-table--stack`) so a record and a
+   list change shape at the same width rather than at two arbitrary ones.
+   ========================================================================= */
+.fo-record-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 32px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.fo-record-fields dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  /* The label is the quieter half. It identifies the value; it is not the content. */
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.fo-record-fields dd {
+  margin: 0 0 0 0;
+  color: var(--color-text-primary);
+  /* A long value wraps inside its own column rather than widening the grid and
+     pushing the page into horizontal scroll. */
+  overflow-wrap: anywhere;
+}
+
+/* Each dt/dd pair occupies one grid cell stacked vertically. Without this the
+   grid would place dt and dd in SEPARATE cells and the two columns would read
+   as "all the labels, then all the values". */
+.fo-record-fields > dt { grid-column: auto; }
+.fo-record-fields > div.fo-record-field { display: block; }
+
+@media (max-width: 640px) {
+  .fo-record-fields { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
+
+/* ===========================================================================
+   LIST VIEW HEADER — the strip that says what you are looking at
+   ---------------------------------------------------------------------------
+   A named view, and one line of provenance beneath it:
+
+       Open work ▾
+       31 items · Sorted by Created (newest first) · Filtered by Status
+
+   The meta line is deliberately quiet. It is orientation, not content — a
+   reader consults it when something looks wrong ("why are there only eleven?")
+   and should not have to read past it the rest of the time.
+   ========================================================================= */
+.fo-listview-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.fo-listview-header__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fo-listview-header__heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* The view selector carries the weight a heading would, because it IS the
+   heading — it names the list you are on. */
+.fo-listview-header__view select {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  max-width: 100%;
+}
+
+.fo-listview-header__view select:hover,
+.fo-listview-header__view select:focus-visible {
+  /* It does not LOOK like a control until you reach for it, then it does. A
+     permanently-bordered select here would read as a form field on every screen. */
+  border-color: var(--color-border, #d8d5cf);
+  background: var(--color-surface, #fff);
+}
+
+.fo-listview-header__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}

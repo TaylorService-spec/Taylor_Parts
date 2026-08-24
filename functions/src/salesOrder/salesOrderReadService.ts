@@ -35,6 +35,18 @@ export interface SalesOrderLineProjection {
   allocatedQty: number;
   fulfilledQty: number;
   billedQty: number;
+  /**
+   * The committed unit price, integer minor units. Null when the line carries none.
+   *
+   * This is the SAME field invoicing already treats as authoritative: invoiceCommands.ts
+   * refuses to bill a line whose `unitPrice` is absent (UNPRICED) and refuses any invoice
+   * price that disagrees with it (PRICE_MISMATCH). The invoice is DERIVED from this number
+   * and forbidden from contradicting it, which makes the Sales Order the source of the
+   * sale's money rather than a document that happens not to have any.
+   */
+  unitPriceMinor: number | null;
+  /** orderedQty x unitPriceMinor, integer minor units. Null when the line is unpriced. */
+  extendedMinor: number | null;
 }
 
 // The minimal projected shape the Sales Order UX consumes. No raw UID beyond createdByUid/updatedByUid
@@ -63,9 +75,31 @@ export interface SalesOrderProjection {
   state: SalesOrderState | null;
   lines: SalesOrderLineProjection[];
   serviceWorkOrderIds: string[];
+  /**
+   * What this sale is worth: the sum of every line's ordered extended price, integer minor
+   * units, in this order's own `currency`.
+   *
+   * NULL IS NOT ZERO. A Sales Order line may be created without a price, so an order can be
+   * partly priced — and a total over a partly-priced order is a real number that is not the
+   * sale's total, which is worse than no number because somebody would act on it. The total
+   * is populated ONLY when every line carries a committed price; otherwise it is null and
+   * `pricingState` says why.
+   */
+  totalMinor: number | null;
+  /**
+   * PRICED             every line carries a committed unit price; totalMinor is the sale.
+   * PARTIALLY_PRICED   some lines do; totalMinor is null because a partial sum is not a total.
+   * UNPRICED           no line carries one.
+   * NO_LINES           nothing to price yet.
+   */
+  pricingState: SalesOrderPricingState;
+  /** How many lines carry no committed price. Zero when PRICED. */
+  unpricedLineCount: number;
   createdAtMillis: number | null;
   updatedAtMillis: number | null;
 }
+
+export type SalesOrderPricingState = "PRICED" | "PARTIALLY_PRICED" | "UNPRICED" | "NO_LINES";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -98,6 +132,12 @@ function projectLine(raw: unknown, index: number): SalesOrderLineProjection | nu
   // fabricated. lineId falls back to a positional id only if the stored one is missing, mirroring
   // salesOrderCommands.ts's own `line-${index+1}` convention.
   if (!kind || !ref || orderedQty === null) return null;
+  // The stored price is already integer minor units -- the same value invoicing snapshots as
+  // `unitPriceMinor`. A non-integer or negative stored price is NOT coerced: it is treated as
+  // absent, so a malformed record makes the order partly priced rather than silently producing
+  // a total from a number the money model does not accept.
+  const rawPrice = num(l.unitPrice);
+  const unitPriceMinor = rawPrice !== null && Number.isInteger(rawPrice) && rawPrice >= 0 ? rawPrice : null;
   return {
     lineId: str(l.lineId) ?? `line-${index + 1}`,
     kind,
@@ -106,6 +146,8 @@ function projectLine(raw: unknown, index: number): SalesOrderLineProjection | nu
     allocatedQty: nonNegNum(l.allocatedQty),
     fulfilledQty: nonNegNum(l.fulfilledQty),
     billedQty: nonNegNum(l.billedQty),
+    unitPriceMinor,
+    extendedMinor: unitPriceMinor === null ? null : orderedQty * unitPriceMinor,
   };
 }
 
@@ -118,6 +160,33 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
   if (!state) return null;
   const rawLines = Array.isArray(data.lines) ? data.lines : [];
   const lines = rawLines.map((l, i) => projectLine(l, i)).filter((l): l is SalesOrderLineProjection => l !== null);
+  // ============================ WHAT THIS SALE IS WORTH ============================
+  //
+  // A Sales Order is the entry point of a sale, so it carries the sale's money. That is not a
+  // new claim: invoiceCommands.ts already treats `line.unitPrice` as the committed price
+  // snapshot in integer minor units, refuses to bill a line that has none (UNPRICED), and
+  // refuses any invoice price that disagrees with it (PRICE_MISMATCH). Billing is DERIVED from
+  // this number. The order is the source.
+  //
+  // It was never projected, so every reader of this service saw an order with four quantities
+  // and no amount, and the list above it had no Dollars column to show.
+  //
+  // NULL IS NOT ZERO, and this is the whole reason the total is computed here rather than in a
+  // client that would have to guess: `unitPrice` is OPTIONAL per line, so an order can be
+  // partly priced. Summing what happens to be priced produces a real number that is not the
+  // sale's total -- worse than no number, because somebody would act on it. The total is
+  // populated ONLY when every line carries a price.
+  const pricedLines = lines.filter((l) => l.unitPriceMinor !== null);
+  const unpricedLineCount = lines.length - pricedLines.length;
+  const pricingState: SalesOrderPricingState =
+    lines.length === 0 ? "NO_LINES"
+      : unpricedLineCount === 0 ? "PRICED"
+        : pricedLines.length === 0 ? "UNPRICED"
+          : "PARTIALLY_PRICED";
+  const totalMinor = pricingState === "PRICED"
+    ? lines.reduce((sum, l) => sum + (l.extendedMinor ?? 0), 0)
+    : null;
+
   const rawServiceWoIds = Array.isArray(data.serviceWorkOrderIds) ? data.serviceWorkOrderIds : [];
   const serviceWorkOrderIds = rawServiceWoIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
   return {
@@ -146,6 +215,9 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
     // reported "this order has no creation date" for all 14 sandbox orders, and no consumer
     // existed to notice. The defect would only have surfaced as a column of em dashes the
     // first time a timestamp was displayed -- data that looks absent rather than wrong.
+    totalMinor,
+    pricingState,
+    unpricedLineCount,
     createdAtMillis: toMillis(data.createdAt),
     updatedAtMillis: toMillis(data.updatedAt),
   };

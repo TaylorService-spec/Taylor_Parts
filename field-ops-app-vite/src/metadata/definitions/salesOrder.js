@@ -41,9 +41,20 @@ import { SALES_CHANNELS, CHANNEL_LABEL } from "../../domain/opportunityLifecycle
 // document, not a flat column any list here could render; both are left undeclared rather than
 // approximated.
 //
-// currency IS A FREE-FORM STRING, NOT A CURRENCY TYPE. There is no minor-unit amount stored
-// anywhere beside it — the same gap opportunity.js's expectedValue already names — so declaring
-// CURRENCY_MINOR would assert storage semantics this record does not have.
+// THE ORDER CARRIES THE SALE'S MONEY, AND THIS FILE USED TO SAY IT DID NOT.
+//
+// The previous version of this comment stated there was "no minor-unit amount stored anywhere
+// beside" currency. That was wrong, and it was wrong in the direction that removed a column
+// nobody could then ask for. Every Sales Order LINE stores `unitPrice` in integer minor units,
+// and it is already authoritative: functions/src/finance/invoiceCommands.ts snapshots it as
+// `unitPriceMinor`, REFUSES to bill a line that has none (UNPRICED), and REFUSES any invoice
+// price that disagrees with it (PRICE_MISMATCH). Billing is derived from this number; the order
+// is its source.
+//
+// `totalMinor` below is that money, summed over the order's lines and projected server-side by
+// salesOrderReadService.ts. It travels beside `currency`, which is the sibling the
+// CURRENCY_MINOR renderer reads from the row — so an amount never borrows a currency symbol its
+// own record does not carry.
 //
 // STATE LABELS COME FROM domain/salesOrderStatus.js, never a second copy here — the same rule
 // workOrder.js's status field follows, for the workOrderStatus.js/#1093 reason it names.
@@ -89,7 +100,27 @@ export const salesOrderEntity = makeEntityDefinition({
       enumValues: [...SALES_CHANNELS],
       enumLabels: CHANNEL_LABEL,
     }),
-    // A plain string with NO minor-unit amount stored anywhere. See the file header.
+    // WHAT THE SALE IS WORTH. Integer minor units, in this order's own `currency`.
+    //
+    // NULL IS NOT ZERO, and the projection guarantees the difference: a line's `unitPrice` is
+    // OPTIONAL, so an order can be partly priced, and a sum over the priced lines would be a
+    // real number that is not the sale's total. The server populates this ONLY when every line
+    // carries a committed price, and reports `pricingState` / `unpricedLineCount` otherwise —
+    // so this column renders an amount or it renders nothing. It never renders 0.00 for
+    // "we don't know".
+    //
+    // Sorting uses the stored integer, never the formatted string.
+    makeFieldDefinition({
+      id: "totalMinor",
+      entityId: "salesOrder",
+      label: "Dollars",
+      type: "CURRENCY_MINOR",
+      sortable: false,
+      description:
+        "Sum of every line's ordered extended price (orderedQty x committed unitPrice), integer " +
+        "minor units. Null unless every line is priced — see pricingState.",
+    }),
+    // The sibling the CURRENCY_MINOR renderer reads. See the file header.
     makeFieldDefinition({
       id: "currency",
       entityId: "salesOrder",
@@ -169,30 +200,31 @@ export const salesOrderEntity = makeEntityDefinition({
   // onto part, purchaseOrder, workOrder and equipment — and MISSED this object. ADR-013 states pilot
   // knowledge was preserved; for Sales Orders it was not, and the trace had to be recovered.
   gaps: [
-    makeGap({
-      id: "SALES_ORDER_TOTAL_AUTHORITY_GAP",
-      title: "A Sales Order carries no authoritative money",
-      entityId: "salesOrder",
-      severity: GAP_SEVERITY.MISSING_AUTHORITY,
-      reason: WHY.NO_AUTHORITY,
-      finding:
-        "The Sales Order document stores NO total of any kind. `projectLine` projects four " +
-        "QUANTITIES; `unitPrice` is optional, is explicitly \"NOT computed here\", and is stripped by " +
-        "the projection before it reaches a client. The only `currency` on the record is an ISO code " +
-        "— a denomination, not an amount.",
-      consequence:
-        "There is no Dollars column for Sales Orders and no basis on which to compute one, so this " +
-        "list is asymmetric with Purchase Orders. That asymmetry is real and correct: a purchasing " +
-        "commitment has an authoritative number behind it and a sales order does not.",
-      refused:
-        "Deriving a total from the Invoice. INVOICE MONEY IS NOT SALES ORDER MONEY — an invoice may " +
-        "bill part of an order, more than one order, or carry charges and credits the order never " +
-        "had. Also refused: summing optional unitPrice values the projection deliberately drops, " +
-        "which would put a number on screen that no stored record agrees with.",
-      resolution:
-        "Financial Architecture. Whether a Sales Order HAS a total, and what it means when lines " +
-        "change after commitment, is a business decision — not a column a list can add.",
-    }),
+    // ═══ CLOSED, AND WRONG WHILE IT WAS OPEN — SALES_ORDER_TOTAL_AUTHORITY_GAP ═══
+    //
+    // It said: "A Sales Order carries no authoritative money", and refused a Dollars column on the
+    // grounds that "INVOICE MONEY IS NOT SALES ORDER MONEY".
+    //
+    // It had the direction backwards. functions/src/finance/invoiceCommands.ts snapshots each
+    // line's `unitPrice` as `unitPriceMinor` (integer minor units), REFUSES to bill a line that
+    // has none (UNPRICED), and REFUSES any invoice price that disagrees with it (PRICE_MISMATCH).
+    // The invoice is DERIVED from the order's committed price and forbidden from contradicting it.
+    // The order is the source of the sale's money, not a document that happens not to have any.
+    //
+    // The gap was written from the pilot trace and never checked against the billing engine. It
+    // then removed the column, which meant nobody could see the number and ask why it was missing —
+    // the failure a gap register is supposed to prevent, produced by the register itself.
+    //
+    // Owner ruling, 2026-08-24: "a sales order is the entry point of a sale. it needs to have the
+    // dollars of that sale." `totalMinor` is projected server-side and declared as a field above.
+    //
+    // WHAT SURVIVES the closure, because it was the one real hazard: `unitPrice` is OPTIONAL per
+    // line, so an order can be PARTLY priced, and summing what happens to be priced yields a real
+    // number that is not the sale's total. The projection populates `totalMinor` only when every
+    // line is priced, and reports `pricingState` / `unpricedLineCount` otherwise. NULL IS NOT ZERO.
+    //
+    // Kept as a record rather than deleted: a closed gap is the record of a decision, and this one
+    // is also the record of a wrong call worth not repeating.
     makeGap({
       id: "SALES_ORDER_CUSTOMER_NAME_NOT_SORTABLE",
       title: "A Sales Order cannot be sorted by customer name",
@@ -245,6 +277,10 @@ export const salesOrderRelatedList = makeListViewDefinition({
   columns: [
     makeColumn({ fieldId: "salesOrderNumber", sortable: true }),
     makeColumn({ fieldId: "state", sortable: true }),
+    // NOT sortable: sorting by total needs a stored order-level field for Firestore to order by,
+    // and the total is derived from the lines at read time. Sorting the PAGE and calling it
+    // "by value" would sort fifty rows and label it as the list.
+    makeColumn({ fieldId: "totalMinor" }),
     makeColumn({ fieldId: "salesChannel" }),
     makeColumn({ fieldId: "customerPO" }),
     makeColumn({ fieldId: "sourceOpportunityNumber" }),
@@ -292,6 +328,10 @@ export const salesOrderIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "salesOrderNumber", sortable: true }),
     makeColumn({ fieldId: "accountId" }),
     makeColumn({ fieldId: "state", sortable: true }),
+    // WHAT THE SALE IS WORTH. Not sortable: the total is derived from the lines at read time,
+    // so there is no stored order-level field for Firestore to order by, and sorting the PAGE
+    // would sort fifty rows while labelling it as the list.
+    makeColumn({ fieldId: "totalMinor" }),
     makeColumn({ fieldId: "salesChannel" }),
     makeColumn({ fieldId: "customerPO" }),
   ],

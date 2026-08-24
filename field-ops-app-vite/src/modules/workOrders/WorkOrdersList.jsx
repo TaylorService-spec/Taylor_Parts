@@ -5,6 +5,7 @@ import { useMetadataList } from "../../hooks/useMetadataList";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
 import { useWorkOrderSearch } from "../../hooks/useWorkOrderSearch.js";
+import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
@@ -13,6 +14,8 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
+import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
@@ -75,6 +78,11 @@ export default function WorkOrdersList() {
   // list, opening a job and coming back returns the list that was narrowed.
   const { criteria, apply } = useListCriteria(workOrderIndexList, workOrderEntity, OBJECT_LIST_KEY.WORK_ORDERS);
 
+  // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
+  // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
+  // any failure.
+  const { activeViewId, selectView, total } = useListViewChrome(workOrderIndexList, workOrderEntity, criteria, apply);
+
   // DERIVED from the criteria rather than held beside them, so the chip and the filter
   // chips cannot disagree about what is applied.
   const groupKey = activeStatusGroupKey(
@@ -97,6 +105,17 @@ export default function WorkOrdersList() {
   // before the call that produces them. Rows land, state updates, names resolve.
   const [resolvableRows, setResolvableRows] = useState([]);
   const { resolveReference: resolveAccount } = useAccountReferenceResolver(resolvableRows);
+
+  // THE CUSTOMER FILTER IS A PICKER OF NAMES.
+  //
+  // Without this it rendered a free-text box, so "filter by Customer" meant "type a Firestore
+  // document id" — which nobody knows, which made the field unusable, and which left the filter
+  // menu effectively offering ONE choice. The same fix was made on the Equipment register in this
+  // same package and not carried here.
+  const accountPicker = useAccountPicker();
+  const valueOptions = useMemo(() => ({
+    customerId: (accountPicker.options ?? []).map((a) => ({ value: a.id, label: a.name })),
+  }), [accountPicker.options]);
 
   // Technicians are bounded reference data (one small collection), so one read serves the
   // whole page rather than one per row.
@@ -192,10 +211,19 @@ export default function WorkOrdersList() {
       />
 
       {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Work Order metadata. */}
+      <ListViewHeader
+        def={workOrderIndexList}
+        entity={workOrderEntity}
+        criteria={criteria}
+        total={total}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+      />
       <div className="fo-listctl">
         <AddFilter
           def={workOrderIndexList}
           entity={workOrderEntity}
+          valueOptions={valueOptions}
           onAdd={(c) => apply(addFilter(criteria, c))}
         />
         <SortControl

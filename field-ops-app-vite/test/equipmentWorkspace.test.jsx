@@ -282,7 +282,12 @@ describe("CustomerEquipment states", () => {
   it("loading shows a loading indicator, not an empty register", () => {
     mockEquipmentList = listResult(buildListPresentation({ def: equipmentIndexList, entity: equipmentEntity, page: null, loading: true, errorStatus: null }));
     withRouter(<CustomerEquipment />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    // getAllByRole, not getByRole: the list-view header also announces politely (the
+    // "N items / Sorted by / Filtered by" line), so there is legitimately more than one status
+    // region now. The assertion is that a LOADING indicator is present, not that exactly one
+    // element announces.
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+    expect(screen.getByText(/loading/i)).toBeTruthy();
   });
 
   it("denied is fail-closed and says nothing about whether equipment exists", () => {
