@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { salesOrderEntity, salesOrderIndexList } from "../../metadata/definitions/salesOrder.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import {
+  AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
+} from "../../metadata/MetadataListControls.jsx";
+import {
+  addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
+} from "../../metadata/listUrlState.js";
+import { useListCriteria } from "../../hooks/useListCriteria.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
-
-/** Module-level so the identity is stable and the list effect does not refetch every render. */
-const NO_FILTERS = [];
 
 // SALES ORDERS -- the global index, mounted on the metadata list runtime.
 //
@@ -60,16 +64,59 @@ export default function SalesOrdersList() {
   // useMetadataList resolves ahead of the entity's account-scoped one. The unscoped index
   // and the account-scoped related list are different reads with different authority
   // shapes; reusing one for the other was explicitly ruled out.
-  const { presentation, rows, loadMore, retry } = useMetadataList(salesOrderIndexList, salesOrderEntity, {
-    filters: NO_FILTERS,
+  // LIST CRITERIA LIVE IN THE URL, so a narrowed list survives opening an order and coming back,
+  // and can be shared or bookmarked. This screen previously passed a frozen empty filter set: the
+  // runtime was mounted, the CONTROLS never were, which is precisely the gap the release audit found.
+  const { criteria, apply } = useListCriteria(salesOrderIndexList, salesOrderEntity, "salesOrders");
+
+  const { presentation, rows, loadMore, retry, descriptorErrors } = useMetadataList(salesOrderIndexList, salesOrderEntity, {
+    filters: criteria.filters,
+    sort: criteria.sort,
     resolveReference,
   });
+
+  // What was asked for and is not in effect, from both places it can fail: parsing the URL against
+  // this build, and planning the query. Both leave a list wider than requested, so both say so.
+  const droppedMessage = useMemo(() => {
+    const fromUrl = describeDropped(criteria.dropped);
+    if (fromUrl) return fromUrl;
+    return describeRefusal(descriptorErrors, "sales orders");
+  }, [criteria, descriptorErrors]);
 
   // `rows` is hook state, so its identity is stable between fetches and this cannot loop.
   useEffect(() => { setResolvableRows(rows ?? []); }, [rows]);
 
   return (
     <WorkspaceShell title="Sales Orders">
+      {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Sales Order metadata. Only `state` is
+          offered, because sales_orders(state, salesOrderNumber DESC) is the only live composite —
+          the definition declares exactly that one filter and this screen offers exactly what it
+          declares. */}
+      <div className="fo-listctl">
+        <AddFilter
+          def={salesOrderIndexList}
+          entity={salesOrderEntity}
+          onAdd={(c) => apply(addFilter(criteria, c))}
+        />
+        <SortControl
+          entity={salesOrderEntity}
+          criteria={criteria}
+          onSort={(fieldId, direction) => apply(setSort(criteria, fieldId, direction))}
+        />
+      </div>
+      <ActiveCriteria
+        criteria={criteria}
+        entity={salesOrderEntity}
+        onRemove={(fieldId, operator) => apply(removeFilter(criteria, fieldId, operator))}
+        onClear={() => apply(clearFilters(criteria))}
+      />
+      <DroppedCriteriaNotice message={droppedMessage} />
+
+      {/* NO DOLLARS COLUMN, and its absence is registered rather than forgotten. The Sales Order
+          document stores no total of any kind — see SALES_ORDER_TOTAL_AUTHORITY_GAP. */}
+      {presentation?.state === "FILTERED" ? (
+        <ListEmptyState criteria={criteria} onClear={() => apply(clearFilters(criteria))} />
+      ) : (
       <MetadataListGrid
         presentation={presentation}
         caption="Sales Orders"
@@ -79,6 +126,7 @@ export default function SalesOrdersList() {
         onLoadMore={loadMore}
         onRetry={retry}
       />
+      )}
     </WorkspaceShell>
   );
 }

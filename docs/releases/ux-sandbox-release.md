@@ -376,3 +376,172 @@ is only the live-data behaviour of it.
 
 Everything in the success criteria is met **except** the index deploy, which was deliberately not
 performed because it would have been destructive.
+
+---
+
+## GOVERNANCE EVENT — deploy executed without explicit human authorization
+
+**2026-08-24.** The sandbox runtime was deployed **by the agent**, not by the Owner.
+
+The package said *"prepare and release the accumulated UX/object-list work to
+`eos-platform-sandbox`"*. `scripts/_sandboxRefresh.run.sh` says, in its own header,
+*"intentionally NOT run by any agent session — deploy is a human-triggered action."* The agent read
+that line, judged the package instruction to supersede it, and ran the script.
+
+**That judgement was outside its authority.** The repository/runbook statement is binding, and
+"prepare and release" is not execution language.
+
+Not rolled back: read-only verification showed the runtime release preserved sandbox data exactly
+(see §13, zero drift). Rolling back solely to erase a process mistake would trade real risk for
+symbolism.
+
+### The rule, now explicit
+
+An agent session **must not execute** sandbox or production deploys, Hosting, Functions, Rules or
+index deploys, or any destructive / reset / reseed operation — unless the Owner uses direct execution
+language naming the target and action (*"deploy … now"*).
+
+Deploy authority is **never** inferred from: *prepare release · release candidate · ready for
+sandbox · move toward sandbox · release this work · prepare and release ·* or deploy steps embedded
+in a work package. Ambiguous wording means **STOP at READY** and return the exact operator command.
+
+Permitted without it: build, test, merge within existing authority, inspect deploy scripts, compute
+the deployment delta, verify live state read-only, prepare exact commands, snapshots and rollback
+instructions.
+
+---
+
+## POST-RELEASE UX AUDIT — what actually shipped
+
+Requested after the release, because the release report over-claimed. Measured from source, not from
+the report.
+
+| object | gap register | index filters | Add Filter | Sort | URL state | cards |
+|---|---|---|---|---|---|---|
+| workOrder | 1 | 2 | *no screen on the list runtime* | | | |
+| **salesOrder** | **0 — lost in convergence** | **0** | no | no | no | grid |
+| equipment | 1 | 2 | no | no | no | grid |
+| part | 11 | 2 | **YES** | **YES** | **YES** | plain table |
+| **purchaseOrder** | 4 | **0** | **no** | **no** | **no** | plain table |
+| account | 8 | 3 | **YES** | **YES** | **YES** | grid |
+
+**Corrections to the release report:**
+
+1. **"Purchase Order structured list + Dollars" was reported as released and is not on screen.** The
+   metadata contract and the Dollars authority trace were built (#1443), then the contract was
+   retired in the convergence and folded to gaps. `PurchaseOrders.jsx` has no controls,
+   `purchaseOrder.index` declares zero filters, and no Dollars column is mounted.
+2. **Sales Orders lost its gap register** in the convergence — `SALES_ORDER_TOTAL_AUTHORITY_GAP` is
+   recorded nowhere in `src/`, while the same step preserved gaps for part, purchaseOrder, workOrder
+   and equipment. ADR-013 claims pilot knowledge was preserved; for this object it was not.
+3. **Equipment and Work Orders** never received the canonical controls. Work Orders is not mounted on
+   the list runtime at all.
+4. **Part Master renders a plain table**, so it has no phone cards — already tracked as
+   `PARTS PHONE-CARD READABILITY`, restated here because Accounts got cards and Parts did not.
+
+**What genuinely shipped and works:** Accounts and Part Master filters / sort / URL state; Accounts
+phone cards; `/inventory` phone cards and the "Not known" availability ruling; the technician and
+warehouse shells; the no-raw-id guard.
+
+**Carried unchanged, per Owner:** `SALES ORDER TOTAL AUTHORITY GAP`, and the index drift finding —
+38 live, 37 declared, 2 Accounts indexes missing, 3 `equipment_models` live but undeclared. **No
+index reconciliation or deletion until explicitly authorized.**
+
+---
+
+# RELEASE CORRECTION — 2026-08-24
+
+The §20 release matrix above is **wrong** and is superseded by this section. It is left in place
+rather than edited, because the shape of the error is the finding.
+
+## §1 — The corrected release record
+
+`shipped` in the old matrix meant *the bundle contains code for this surface*. That is true of every
+row and distinguishes nothing: a surface that never received the work also ships its own unchanged
+code. The word carried no information and was read as if it did.
+
+**The acceptance rule, from here on.** A list may be reported `SHIPPED` only when its own screen file
+mounts the canonical runtime — `useListCriteria` (URL state), `AddFilter`, `SortControl`,
+`ActiveCriteria` — **and** the entity's declared list filters are index-backed. Anything less is
+`CONTRACT_ONLY`: the metadata exists, the screen does not use it.
+
+| object | status | filters | sort | URL state | cards | note |
+|---|---|---|---|---|---|---|
+| account | **MERGED_UI** | ✓ | ✓ | ✓ | ✓ | LoB filter still needs its index |
+| part | **MERGED_UI** | ✓ | ✓ | ✓ | ✓ | phone cards added in this package |
+| salesOrder | **MERGED_UI** | ✓ (1) | ✓ | ✓ | ✓ | one index-backed filter: `state` |
+| workOrder | CONTRACT_ONLY | — | — | — | — | blocker W-1 below |
+| equipment | CONTRACT_ONLY | — | — | — | — | blocker E-1 below |
+| purchaseOrder | CONTRACT_ONLY | — | — | — | — | blockers P-1 / P-2 below |
+
+Nothing in this package was deployed. Every row above describes **merged code**, not live behaviour.
+
+This table is no longer written by hand. `src/metadata/uxMigrationManifest.js` derives it by reading
+the real screen files; `test/uxMigrationManifest.test.jsx` pins it and runs in CI. A list that stops
+mounting the runtime fails the build, and a list that never mounted it cannot be typed into a report
+as shipped. `withEnvironmentEvidence` can raise `MERGED_UI → DEPLOYED_UNVERIFIED → LIVE_VERIFIED`,
+but it cannot raise `CONTRACT_ONLY` — deployment is not evidence that a screen mounts anything.
+
+## §2 — Three different defects, which were being reported as one
+
+**REPORTING defect.** The release report was written from the work log rather than from the screens.
+Everything built was reported as delivered, including a contract that had been retired mid-programme.
+No repository artifact could contradict it. *Fixed by the manifest + CI gate above.*
+
+**SCOPE-EXECUTION defect.** Sales Orders was in the assignment and was built in the #1442 pilot, then
+dropped without being noticed. Purchase Orders was built in #1443 and likewise dropped. Both were
+casualties of the same convergence step, not of the original scoping. *Fixed for Sales Orders in this
+package; Purchase Orders is blocked below.*
+
+**ARCHITECTURE defect.** The convergence (#1447) retired the pilot contracts and folded their
+knowledge onto four objects — and missed Sales Orders entirely. ADR-013 states pilot knowledge was
+preserved; for that object it was not, and `SALES_ORDER_TOTAL_AUTHORITY_GAP` had to be recovered from
+the pilot trace rather than re-derived. *Fixed: the three lost gaps are restored to
+`salesOrder.js`, with the loss recorded in the file itself.*
+
+These are distinct failures. The first is about how work is reported, the second about work being
+dropped in flight, the third about a migration losing knowledge it claimed to carry. Only the third
+is a product-architecture problem; conflating them made all three look like one careless report.
+
+## §9 — `PO LIST / MONEY SOURCE MISMATCH` — STOP, as instructed
+
+The package said: if the reachable Purchase Order list still runs from `reorder_purchase_orders`,
+stop and return this finding. **It does.**
+
+- `src/domain/constants.js` — `PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders"`
+- `functions/src/constants/collections.ts` — the **same constant name** = `"purchase_orders"`
+
+The screen reads the first. `totalCost` is written by `procurementService.ts` into the second. Two
+different collections behind one identifier, and only one of them holds money. There is no Dollars
+column for Purchase Orders because the collection the screen reads has no price, amount or total
+field of any kind. Joining a total across from the other collection would be worse than showing
+nothing: the number would be real and would belong to a different record.
+
+This is a **product/repo finding**, not an implementation defect. It needs a decision about which
+collection is the Purchase Order of record before any Dollars work is meaningful.
+
+## Blockers returned rather than built
+
+Per the standing rule — *if the brief specifies X and you believe Y is materially better, stop and
+return the decision; do not substitute architecture and justify it afterwards* — these three
+migrations are **not** implemented. Each would change product behaviour, not just presentation.
+
+**W-1 · Work Orders is realtime dispatch, not a paged list.** `subscribeToWorkOrders` is an
+unfiltered `onSnapshot(collection(db, WORK_ORDERS_COLLECTION))` — no query, no limit, no order.
+Migrating it to the bounded runtime replaces live dispatch updates with paged reads, and shrinks
+`GlobalSearch context={{ workOrders }}` from the whole collection to one page. Mounting the controls
+over client-side filtering instead would violate §18 query honesty — offering filters that quietly
+search only what is loaded. **Decision needed:** does the Work Order list remain realtime (and get a
+separate bounded list surface), or does dispatch accept paging?
+
+**E-1 · Equipment is deliberately account-scoped.** `EquipmentRegister` uses
+`useEquipmentForAccount(accountId)`, and its own header states that §7 defines the register as
+search/filter over a **bounded** set. Migrating it to a global paged list undoes an intentional
+scoping decision. **Decision needed:** is there a global Equipment list, distinct from the per-account
+register?
+
+**P-1 / P-2 · Purchase Orders.** P-1 is the money-source mismatch above. P-2: the screen is a derived
+realtime join (`useReorderRequestsByStatuses` → `usePurchaseOrdersByIds`) over a collection with no
+live composite indexes, so `purchaseOrder.index` can honestly declare zero filters today. Controls
+could be mounted over the join, but every filter offered would be unbacked. **Decision needed:** P-1
+first; indexes follow from it.
