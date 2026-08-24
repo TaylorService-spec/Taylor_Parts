@@ -11,8 +11,17 @@
 // injects an explicit readiness + a mocked client (usePartMasterWrite deps), the same flows exercise the
 // governed outcomes. Authorization is enforced server-side regardless; the UI never claims a success it
 // did not receive.
-import { useCallback, useEffect, useState } from "react";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchPartMasterPage, PARTS_PAGE_SIZE } from "../../services/partMasterQueries";
+import { useSearchParams } from "react-router-dom";
+import { AddFilter, ActiveFilters, SortControl, ListEmptyState } from "../../shared/ui/ListControls.jsx";
+import {
+  PART_FIELDS, PART_STATUS_LABEL, CONTROL_TYPE_LABEL, STOCKING_CLASS_LABEL,
+} from "../../domain/partFields.js";
+import {
+  fromSearchParams, toSearchParams, addFilter, removeFilter, clearFilters, setSort, toQueryPlan,
+} from "../../domain/listQueryState.js";
+import { rememberListState } from "../../navigation/listStateMemory.js";
 import { usePartMasterWrite } from "../../hooks/usePartMasterWrite";
 import {
   CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES,
@@ -93,6 +102,18 @@ function PartForm({ mode, form, setForm, disabled }) {
   );
 }
 
+/**
+ * The filter value pickers, built from the canonical enums.
+ *
+ * Human labels for the person, canonical values for the query -- the same split the table cells
+ * make. A picker offering raw enum tokens would be teaching people the storage vocabulary.
+ */
+const PART_FILTER_VALUES = Object.freeze({
+  status: Object.entries(PART_STATUS_LABEL).map(([value, label]) => ({ value, label })),
+  controlType: Object.entries(CONTROL_TYPE_LABEL).map(([value, label]) => ({ value, label })),
+  stockingClass: Object.entries(STOCKING_CLASS_LABEL).map(([value, label]) => ({ value, label })),
+});
+
 export default function PartMasterList(props) {
   const [state, setState] = useState({ phase: "loading" });
   const [panel, setPanel] = useState(null); // {mode:"create"} | {mode:"edit", part} | {mode:"status", part}
@@ -101,17 +122,73 @@ export default function PartMasterList(props) {
   const [outcome, setOutcome] = useState(null);
   const { writeReady, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(props?.writeDeps);
 
+  // LIST STATE LIVES IN THE URL, so filters and sort survive opening a part and coming back --
+  // and so a narrowed list can be shared or bookmarked rather than described over the phone.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listState = useMemo(
+    () => fromSearchParams(searchParams.toString(), PART_FIELDS),
+    [searchParams],
+  );
+
+  // THE PLAN IS WHAT THE READ EXECUTES. Anything the metadata declares unqueryable arrives here in
+  // `unsupported` and is said out loud -- never quietly turned into a pass over the whole catalogue.
+  const plan = useMemo(
+    () => toQueryPlan(listState, PART_FIELDS, { pageSize: PARTS_PAGE_SIZE }),
+    [listState],
+  );
+
+  // Paging is TIED TO THE PLAN it was produced under. Page 2 of an old query is not page 2 of a new
+  // one, so a cursor taken under different criteria is discarded rather than replayed -- including
+  // when the criteria change by browser Back rather than by the controls.
+  const [page, setPage] = useState({ plan: null, cursor: null, append: false, token: 0 });
+  const activePage = useMemo(
+    () => (page.plan === plan ? page : { plan, cursor: null, append: false, token: 0 }),
+    [page, plan],
+  );
+
+  const applyState = useCallback((next) => {
+    const params = toSearchParams(next, searchParams.toString());
+    setSearchParams(params, { replace: false });
+    rememberListState("parts", params.toString());
+  }, [searchParams, setSearchParams]);
+
+  // What was asked for and is NOT in effect, from both failure points. Named once so the banner and
+  // any future readout cannot drift apart.
+  const unapplied = useMemo(() => [
+    ...(listState.dropped ?? []).map((d) => d.label),
+    ...plan.unsupported.map((u) => u.field?.label ?? "an unknown field"),
+  ], [listState, plan]);
+
   const load = useCallback(() => {
     let cancelled = false;
-    setState({ phase: "loading" });
-    fetchPartMasterList().then((result) => {
+    const { append, cursor } = activePage;
+    if (!append) setState({ phase: "loading" });
+    else setState((prev) => ({ ...prev, loadingMore: true }));
+    fetchPartMasterPage({ plan: activePage.plan ?? plan, cursor }).then((result) => {
       if (cancelled) return;
-      if (!result.ok) setState({ phase: result.code === "permission-denied" ? "denied" : "error" });
-      else setState({ phase: "ready", parts: result.parts, invalidCount: result.invalid.length });
+      if (!result.ok) { setState({ phase: result.code === "permission-denied" ? "denied" : "error" }); return; }
+      setState((prev) => ({
+        phase: "ready",
+        // Appending rather than replacing: the page already on screen stays on screen.
+        parts: append && prev.parts ? [...prev.parts, ...result.parts] : result.parts,
+        invalidCount: result.invalid.length,
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor,
+        loadingMore: false,
+      }));
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [activePage, plan]);
   useEffect(() => load(), [load]);
+
+  // A refresh is an explicit new token, so re-reading the first page after a write is never mistaken
+  // for the same request and skipped.
+  const reload = useCallback(() => {
+    setPage((prev) => ({ plan, cursor: null, append: false, token: prev.token + 1 }));
+  }, [plan]);
+  const loadMore = useCallback((cursor) => {
+    setPage((prev) => ({ plan, cursor, append: true, token: prev.token + 1 }));
+  }, [plan]);
 
   const openCreate = () => { setForm({ stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" }); setOutcome(null); setPanel({ mode: "create" }); };
   const openEdit = (part) => { setForm({ ...part }); setOutcome(null); setPanel({ mode: "edit", part }); };
@@ -125,8 +202,8 @@ export default function PartMasterList(props) {
   // After a governed applied/replayed change, refresh from the trusted read so the UI reflects real state.
   const afterWrite = useCallback((o) => {
     setOutcome(o);
-    if (o.kind === "applied" || o.kind === "replayed") { close(); load(); }
-  }, [load]);
+    if (o.kind === "applied" || o.kind === "replayed") { close(); reload(); }
+  }, [reload]);
 
   const submitCreate = async () => { setBusy(true); afterWrite(await runCreate(form)); setBusy(false); };
   const submitEdit = async () => { setBusy(true); afterWrite(await runUpdate(panel.part.partId, panel.part.version, form, panel.part)); setBusy(false); };
@@ -191,15 +268,57 @@ export default function PartMasterList(props) {
         </Modal>
       )}
 
+      {/* THE SHARED CONTROLS, reading the Part metadata. No Parts-specific filter registry: the
+          fields, their operators and their sort vocabulary all come from the contract, so a newly
+          declared field becomes filterable without anybody editing this screen. */}
+      <div className="fo-listctl">
+        <AddFilter
+          fields={PART_FIELDS}
+          objectLabel="Part"
+          valueOptions={PART_FILTER_VALUES}
+          onAdd={(f) => applyState(addFilter(listState, f))}
+        />
+        <SortControl
+          fields={PART_FIELDS}
+          state={listState}
+          onSort={(fieldId, direction) => applyState(setSort(listState, fieldId, direction))}
+        />
+      </div>
+      <ActiveFilters
+        state={listState}
+        fields={PART_FIELDS}
+        valueOptions={PART_FILTER_VALUES}
+        onRemove={(fieldId, operator) => applyState(removeFilter(listState, fieldId, operator))}
+        onClear={() => applyState(clearFilters(listState))}
+      />
+
+      {/* A criterion this list cannot execute is STATED, not silently dropped -- a filter that looks
+          applied but is not is how somebody concludes the catalogue is smaller than it is.
+
+          TWO sources, because a criterion can fail at two points: one this build cannot parse from
+          the URL at all (a link from an older build, a hand-edited address), and one it parses but
+          cannot execute. Both end with an unnarrowed list, so both have to say so. */}
+      {unapplied.length > 0 && (
+        <p className="fo-state fo-tone-muted fo-state-message" role="status">
+          Some criteria can’t be applied to this list: {unapplied.join(", ")}. Everything else is
+          applied, so this list is wider than the link asked for.
+        </p>
+      )}
+
       {parts.length === 0 ? (
-        <p className="fo-muted">No canonical Part records exist yet. Use “New part” to create the first governed part.</p>
+        // A list filtered to nothing and an empty catalogue are different statements.
+        <ListEmptyState
+          state={listState}
+          onClear={() => applyState(clearFilters(listState))}
+          emptyLabel="No canonical Part records exist yet. Use “New part” to create the first governed part."
+        />
       ) : (
         <div className="fo-table-scroll">
           <table className="fo-table">
             <thead>
               <tr>
-                <th>Part #</th><th>Name</th><th>Category</th>
-                <th>Control</th><th>Class</th><th>Unit</th>
+                <th>Part Number</th><th>Description</th><th>Category</th>
+                <th>Tracking</th><th>Stocking Class</th><th>Unit</th>
                 <th>Status</th><th>Actions</th>
               </tr>
             </thead>
@@ -209,10 +328,16 @@ export default function PartMasterList(props) {
                   <td className="fo-pml__part-number">{part.internalPartNumber}</td>
                   <td>{part.name}</td>
                   <td>{part.category || "—"}</td>
-                  <td>{part.controlType}</td>
-                  <td>{part.stockingClass}</td>
+                  {/* BUSINESS-READABLE wording, with the canonical value kept on the element so a
+                      filter, a sort or a test reaches the enum rather than the phrasing.
+                      `controlType` is PART MASTER's vocabulary and is never swapped for the
+                      inventory ledger's trackingMode -- they are two vocabularies, not one. */}
+                  <td data-raw={part.controlType}>{CONTROL_TYPE_LABEL[part.controlType] ?? part.controlType}</td>
+                  <td data-raw={part.stockingClass}>{STOCKING_CLASS_LABEL[part.stockingClass] ?? part.stockingClass}</td>
                   <td>{part.stockingUnit}</td>
-                  <td><StatusPill tone={partStatusTone(part.status)} label={part.status} /></td>
+                  <td data-raw={part.status}>
+                    <StatusPill tone={partStatusTone(part.status)} label={PART_STATUS_LABEL[part.status] ?? part.status} />
+                  </td>
                   <td className="fo-pml__actions">
                     <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}
                     <button type="button" onClick={() => openStatus(part)} disabled={busy} className="fo-btn-secondary">Status</button>
@@ -221,6 +346,20 @@ export default function PartMasterList(props) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* PAGED, not truncated. The read asks for one document more than it shows, so “there is more”
+          is something the query answered rather than something this screen guessed. */}
+      {state.hasMore && (
+        <div className="fo-pml__pager">
+          <Button
+            variant="secondary"
+            onClick={() => loadMore(state.nextCursor)}
+            disabled={busy || state.loadingMore}
+          >
+            {state.loadingMore ? "Loading…" : "Load more parts"}
+          </Button>
         </div>
       )}
     </WorkspaceShell>

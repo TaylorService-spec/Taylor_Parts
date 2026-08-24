@@ -258,7 +258,15 @@ export const NAV_DOMAINS = [
       // the route/component/commands/tests/audit are all unchanged and still reachable by direct URL for
       // whoever needs the bulk-catalog-review workflow. Re-promote to normal nav if that judgment is
       // wrong, or build the equivalent status-browse view inside Parts and then fully retire this route.
-      { key: "partMaster", label: "Part Master", path: "part-master", navHidden: true },
+      //
+      // PARTS STRUCTURED-LIST MIGRATION (2026-08-23): RE-PROMOTED to normal navigation, which is the
+      // outcome the note above explicitly invited. The gate it named was that this table had no
+      // equivalent inside Parts and no real way to work at catalogue scale. It now has one: the shared
+      // Add Filter / Sort / active-filter controls read the Part field metadata, the query is ordered,
+      // limited and cursored at Firestore, and list state lives in the URL. That is the master-data
+      // browse workflow the comment was preserving, so hiding the only screen that offers it would be
+      // keeping the workflow and hiding the door.
+      { key: "partMaster", label: "Part Master", path: "part-master" },
       // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
       // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
       // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority

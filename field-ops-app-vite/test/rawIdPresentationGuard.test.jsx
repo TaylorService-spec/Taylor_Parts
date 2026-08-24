@@ -22,6 +22,7 @@ import {
 } from "../src/domain/structuredFields.js";
 import { ActiveFilters } from "../src/shared/ui/ListControls.jsx";
 import { WORK_ORDER_FIELDS } from "../src/domain/objectFields.js";
+import { PART_FIELDS } from "../src/domain/partFields.js";
 import { makeFilter, emptyListState, addFilter } from "../src/domain/listQueryState.js";
 import { OPERATOR } from "../src/domain/fieldMetadata.js";
 
@@ -40,8 +41,22 @@ const RAW_ID_PATTERNS = [
   /\bcw-emp-\d+/i,           // employee document ids
   /\bloc-[a-z0-9-]+/i,       // location ids
   /\bsa-[a-z0-9]{6,}/i,      // serialized asset ids
+  /\bpart-[a-z0-9]{6,}/i,    // part document ids
+  /\bmodel-[a-z0-9-]+/i,     // equipment model document ids (a Part references one)
+  /\bmfr-[a-z0-9-]+/i,       // manufacturer document ids
   /\bunresolved id\b/i,      // the parenthetical that admits an id is being shown
   /\(unresolved/i,
+];
+
+/**
+ * Business identifiers that LOOK id-shaped and MUST pass.
+ *
+ * The other half of the contract, and the half that decides whether this guard survives: one that
+ * rejects `PRT-1001` gets disabled within a week. So the passing cases are asserted against the
+ * patterns directly, not just implied by the render tests.
+ */
+const BUSINESS_IDENTIFIERS = [
+  "PRT-1001", "CW-P-0004", "WO-2026-0001", "CW-C161-0001", "ISI-203SN", "IM-0460-AH",
 ];
 
 /**
@@ -138,9 +153,71 @@ describe("business surfaces show human identities", () => {
   });
 });
 
+// ═══════════════════════════════════════════ PARTS
+
+describe("Part identities", () => {
+  it("business part numbers pass every id pattern untouched", () => {
+    for (const id of BUSINESS_IDENTIFIERS) {
+      for (const pattern of RAW_ID_PATTERNS) {
+        expect(id, `${id} must not look like a document id to ${pattern}`).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it("a Part row shows its part NUMBER, and the document id appears nowhere", () => {
+    const { container } = render(
+      <StructuredFields
+        fields={partFields({ internalPartNumber: "PRT-1001", name: "Beater assembly", controlType: "STANDARD" })}
+      />,
+    );
+    expect(screen.getByText("PRT-1001")).toBeTruthy();
+    assertNoRawIds(container, "part row");
+  });
+
+  it("an unresolved equipment model says so instead of falling back to its id", () => {
+    // The Part stores `equipmentModelId` and the model's NAME lives on another document — exactly the
+    // shape that produces "model-c161 (unresolved id)" on screen when nobody decides what absence
+    // should read as.
+    const { container } = render(
+      <StructuredFields
+        fields={[
+          field({ label: "Part Number", value: "CW-P-0004" }),
+          field({ label: "Equipment Model", value: null, absence: "Equipment model unavailable" }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Equipment model unavailable")).toBeTruthy();
+    assertNoRawIds(container, "unresolved equipment model");
+  });
+
+  it("a Part filter chip carries the human label, never a document id", () => {
+    const state = addFilter(emptyListState, makeFilter({
+      fieldId: "status", operator: OPERATOR.IS, value: "ACTIVE", valueLabel: "Active",
+    }));
+    const { container } = render(
+      <ActiveFilters state={state} fields={PART_FIELDS} onRemove={() => {}} onClear={() => {}} />,
+    );
+    assertNoRawIds(container, "part filter chip");
+  });
+});
+
 // ═══════════════════════════════════════════ THE MUTATION PROOF
 
 describe("the guard bites", () => {
+  it("FAILS when a raw PART document id is rendered as the part's label", () => {
+    const { container } = render(
+      <StructuredFields fields={[field({ label: "Part", value: "part-8f21c4" })]} />,
+    );
+    expect(() => assertNoRawIds(container, "deliberate violation")).toThrow();
+  });
+
+  it("FAILS when an unresolved equipment model falls back to its id", () => {
+    const { container } = render(
+      <StructuredFields fields={[field({ label: "Equipment Model", value: "model-c161" })]} />,
+    );
+    expect(() => assertNoRawIds(container, "deliberate violation")).toThrow();
+  });
+
   it("FAILS when a raw account id is rendered as a normal label", () => {
     // Deliberately doing the wrong thing, through the same helper the real screens use.
     const { container } = render(

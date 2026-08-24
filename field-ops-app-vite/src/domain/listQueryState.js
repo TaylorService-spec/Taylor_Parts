@@ -63,22 +63,45 @@ export function toSearchParams(state, existing = null) {
  * Unknown or malformed entries are DROPPED rather than thrown on: a URL is user-editable and may be
  * from an older build, and a stale filter should degrade to an unfiltered list rather than a broken
  * screen. Fields are validated against the metadata, so a removed field cannot resurrect itself.
+ *
+ * ============================ DROPPED IS REPORTED, NOT SILENT ============================
+ *
+ * Degrading safely and degrading QUIETLY are different things. A link that asked for
+ * `name contains valve` on a build where that is unqueryable used to render a complete, unfiltered
+ * list with no filter chip and no explanation -- and somebody who followed that link would read the
+ * whole catalogue as the filtered subset. The narrowing they asked for silently became no narrowing
+ * at all, which is the worst direction for this particular mistake to fail in.
+ *
+ * So every rejected entry is returned in `dropped`, with the reason the metadata gave. The list still
+ * renders; it just no longer pretends the criterion was applied.
  */
 export function fromSearchParams(params, fields = []) {
   const search = new URLSearchParams(params ?? "");
   const byId = new Map(fields.map((f) => [f.id, f]));
 
+  const dropped = [];
   const filters = search.getAll("f").map((raw) => {
     const first = raw.indexOf(":");
     const second = raw.indexOf(":", first + 1);
-    if (first < 0 || second < 0) return null;
+    if (first < 0 || second < 0) return null; // not a filter record at all; nothing to report
     const fieldId = raw.slice(0, first);
     const operator = raw.slice(first + 1, second);
     const value = decodeURIComponent(raw.slice(second + 1));
     const field = byId.get(fieldId);
     // A filter naming a field this build no longer offers, or an operator that field never allowed,
     // is not honoured -- otherwise a stale URL could ask for something the query layer cannot mean.
-    if (!field || !field.filterable || !field.operators.includes(operator)) return null;
+    if (!field) {
+      dropped.push({ fieldId, operator, label: fieldId, kind: "filter", reason: "UNKNOWN_FIELD" });
+      return null;
+    }
+    if (!field.filterable) {
+      dropped.push({ fieldId, operator, label: field.label, kind: "filter", reason: field.unsupportedFilterReason });
+      return null;
+    }
+    if (!field.operators.includes(operator)) {
+      dropped.push({ fieldId, operator, label: field.label, kind: "filter", reason: "OPERATOR_NOT_ALLOWED" });
+      return null;
+    }
     return makeFilter({ fieldId, operator, value: value === "" ? null : value });
   }).filter(Boolean);
 
@@ -87,7 +110,14 @@ export function fromSearchParams(params, fields = []) {
   if (rawSort) {
     const [fieldId, direction] = rawSort.split(":");
     const field = byId.get(fieldId);
-    if (field?.sortable && (direction === "asc" || direction === "desc")) sort = { fieldId, direction };
+    const usable = direction === "asc" || direction === "desc";
+    if (field?.sortable && usable) sort = { fieldId, direction };
+    else if (usable) {
+      dropped.push({
+        fieldId, kind: "sort", label: field?.label ?? fieldId,
+        reason: field ? field.unsupportedSortReason : "UNKNOWN_FIELD",
+      });
+    }
   }
 
   return Object.freeze({
@@ -96,6 +126,7 @@ export function fromSearchParams(params, fields = []) {
     cursor: null,
     search: search.get("q") ?? "",
     view: search.get("view") ?? null,
+    dropped: Object.freeze(dropped),
   });
 }
 
@@ -240,14 +271,31 @@ export function resolveRelativeRange(range, now = Date.now()) {
   }
 }
 
-/** What an active filter chip reads as. Values are HUMAN labels, never ids. */
-export function describeFilter(filter, fields) {
+/**
+ * What an active filter chip reads as. Values are HUMAN labels, never ids or storage tokens.
+ *
+ * @param valueOptions optional {fieldId: [{value, label}]}, the same map the filter picker uses.
+ *
+ * ============================ WHY THE THIRD ARGUMENT EXISTS ============================
+ *
+ * `valueLabel` is captured when somebody picks a value, and a URL does not carry it -- `f` encodes
+ * field, operator and value, and nothing else. So the chip was human on the render that created it
+ * and a raw token on every render after a reload, a bookmark or a shared link. "Status: ACTIVE" is
+ * exactly the storage vocabulary this platform does not show people, and it appeared only on the path
+ * where somebody had gone out of their way to keep the view.
+ *
+ * Re-resolving from the picker's own option list fixes it at the source of truth for labels rather
+ * than by widening what the URL carries.
+ */
+export function describeFilter(filter, fields, valueOptions = null) {
   const field = fields.find((f) => f.id === filter.fieldId);
   const label = field?.label ?? filter.fieldId;
   if (filter.operator === OPERATOR.RELATIVE) {
     return `${label}: ${RELATIVE_RANGE_LABEL[filter.value] ?? filter.value}`;
   }
-  // valueLabel is the resolved human identity. Its absence falls back to the value, which for an
-  // enum IS human -- but a reference filter must always carry a label, and its picker supplies one.
-  return `${label}: ${filter.valueLabel ?? filter.value ?? ""}`;
+  const resolved = (valueOptions?.[filter.fieldId] ?? [])
+    .find((o) => String(o.value) === String(filter.value))?.label;
+  // Order of preference: the label captured at pick time, the label the picker still knows, then the
+  // raw value -- which for a free-text filter IS what the person typed.
+  return `${label}: ${filter.valueLabel ?? resolved ?? filter.value ?? ""}`;
 }

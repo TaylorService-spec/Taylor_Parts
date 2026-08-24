@@ -149,18 +149,18 @@ function FilterValueInput({ field, operator, value, onChange, options }) {
 }
 
 /** The chips. Visible on the page, each removable on its own. */
-export function ActiveFilters({ state, fields, onRemove, onClear }) {
+export function ActiveFilters({ state, fields, onRemove, onClear, valueOptions = null }) {
   const count = activeFilterCount(state);
   if (count === 0) return null;
   return (
     <div className="fo-listctl__active" role="group" aria-label="Active filters">
       {state.filters.map((f) => (
         <span className="fo-listctl__chip" key={`${f.fieldId}:${f.operator}`}>
-          {describeFilter(f, fields)}
+          {describeFilter(f, fields, valueOptions)}
           <button
             type="button"
             className="fo-listctl__chip-remove"
-            aria-label={`Remove filter ${describeFilter(f, fields)}`}
+            aria-label={`Remove filter ${describeFilter(f, fields, valueOptions)}`}
             onClick={() => onRemove(f.fieldId, f.operator)}
           >
             ×
