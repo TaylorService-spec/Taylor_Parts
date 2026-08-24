@@ -48,6 +48,13 @@ on:
       - "field-ops-app-vite/src/hooks/useListViewChrome.js"
       - "field-ops-app-vite/test/salesOrderMoney.test.jsx"
       - "field-ops-app-vite/test/listViewChrome.test.jsx"
+      - "field-ops-app-vite/src/metadata/MetadataRecordPage.jsx"
+      - "field-ops-app-vite/src/metadata/pageDefinition.js"
+      - "field-ops-app-vite/src/metadata/definitions/accountPage.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
+      - "field-ops-app-vite/src/modules/accounts/accountFieldInputs.js"
+      - "field-ops-app-vite/test/accountRecordPage.test.jsx"
+      - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   push:
@@ -91,6 +98,13 @@ on:
       - "field-ops-app-vite/src/hooks/useListViewChrome.js"
       - "field-ops-app-vite/test/salesOrderMoney.test.jsx"
       - "field-ops-app-vite/test/listViewChrome.test.jsx"
+      - "field-ops-app-vite/src/metadata/MetadataRecordPage.jsx"
+      - "field-ops-app-vite/src/metadata/pageDefinition.js"
+      - "field-ops-app-vite/src/metadata/definitions/accountPage.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
+      - "field-ops-app-vite/src/modules/accounts/accountFieldInputs.js"
+      - "field-ops-app-vite/test/accountRecordPage.test.jsx"
+      - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
   workflow_dispatch:
@@ -161,4 +175,10 @@ jobs:
       # The money a Sales Order carries, and the shared list-view header every object renders.
       - name: Sales Order money + shared list view chrome
         run: npx vitest run test/salesOrderMoney.test.jsx test/listViewChrome.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The shared record page, proved on Account: derived two-column fields, truthful nulls, and
+      # an edit allowlist compared against the payload the governed form actually sends.
+      - name: Account record page (shared shell + editability allowlist)
+        run: npx vitest run test/accountRecordPage.test.jsx
         working-directory: field-ops-app-vite

@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
+import { accountRecordPage } from "../../metadata/definitions/accountPage.js";
+import { ACCOUNT_GOVERNED_FIELD_IDS } from "../../metadata/definitions/account.js";
+import { fieldEditability } from "../../metadata/pageDefinition.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
@@ -261,7 +264,32 @@ export default function AccountDetail() {
   // useAuth() (useContext(AuthContext), no default value) returns undefined there. Falling back to
   // {} keeps `user` undefined/null in that case, which useAccountPageCapabilityDecisions already
   // treats as signed-out (fail-closed, denies every capability) -- never a permissive default.
-  const { user } = useAuth() ?? {};
+  const { user, role } = useAuth() ?? {};
+
+  // THE TWO GOVERNED FIELDS, AND WHO MAY CHANGE THEM.
+  //
+  // firestore.rules' accountGovernedFieldsUnchanged() lets a dispatcher update an Account only if
+  // paymentTerms and taxStatus are UNCHANGED; an admin may change them. This mirrors that rule for
+  // PRESENTATION -- it decides which pencils appear, and it decides nothing else. Rules remain the
+  // enforcement: a dispatcher who reaches the write anyway is denied at the server, exactly as
+  // AccountForm already relies on (it does not hide these fields from them either).
+  const isAdmin = role === "admin";
+  const accountEditability = useCallback(
+    (fieldId) => fieldEditability(accountRecordPage, fieldId, {
+      isAdmin,
+      adminOnlyFieldIds: ACCOUNT_GOVERNED_FIELD_IDS,
+    }),
+    [isAdmin],
+  );
+
+  // A pencil opens the SAME governed form the page-level Edit opens, focused on the field that was
+  // clicked. There is no per-field write path and this does not invent one: every save still goes
+  // through AccountForm -> handleEditSubmit -> updateAccount, with Rules deciding.
+  const [focusFieldId, setFocusFieldId] = useState(null);
+  const editField = useCallback((fieldId) => {
+    setFocusFieldId(fieldId);
+    setIsEditing(true);
+  }, []);
   const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
@@ -346,6 +374,7 @@ export default function AccountDetail() {
       throw blockedErr;
     }
     setIsEditing(false);
+    setFocusFieldId(null);
   }
 
   // Called by LocationCreateModal. On a blocked/denied write this THROWS so the
@@ -455,7 +484,8 @@ export default function AccountDetail() {
         <AccountForm
           initialValues={account}
           onSubmit={handleEditSubmit}
-          onCancel={() => setIsEditing(false)}
+          focusFieldId={focusFieldId}
+          onCancel={() => { setIsEditing(false); setFocusFieldId(null); }}
           submitLabel="Save Changes"
           contacts={contacts}
           contactsLoading={contactsLoading}
@@ -538,6 +568,8 @@ export default function AccountDetail() {
           <MetadataRecordPage
             definition={accountRecordPageMainSubset}
             record={account}
+            onEditField={editField}
+            editability={accountEditability}
             capabilityDecisions={capabilityDecisions}
             listResolver={accountPageListResolver}
             entityResolver={accountPageEntityResolver}

@@ -55,6 +55,20 @@ export const FIELD_TYPE = Object.freeze([
   // an account with a single status, and typing it as ENUM would let a scalar equality
   // filter be declared on a field no scalar query can match.
   "ENUM_SET",
+  // A structured postal address: { street, city, state, zip }, every part optional.
+  //
+  // Added because a real field needed it, which is the bar this list sets. `accounts.billingAddress`
+  // has been STORED and WRITTEN by AccountForm since the Commercial Profile work and was never
+  // declared here — so the Customer record page could render it only by reaching around the
+  // metadata layer, and no list could offer it at all.
+  //
+  // NOT modelled as four STRING fields. The parts are written and cleared together (the form sends
+  // the whole object or null), and splitting them would let a definition declare "City" as though
+  // it were independently present, filterable and sortable. It is none of those.
+  //
+  // NOT filterable or sortable, and the contract has no way to make it either: Firestore cannot
+  // order by a map, and a "city" filter would need a projected scalar nothing writes.
+  "ADDRESS",
   "REFERENCE", // points at another entity; requires referenceTo
   "ID", // a machine identifier; see IDENTITY BELOW
 ]);

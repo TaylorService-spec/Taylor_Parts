@@ -42,6 +42,11 @@ export const FIELD_TYPE_V2 = Object.freeze([
   ...NUMERIC_KIND,
   // v1's minor-unit integer currency remains valid where it is the authoritative storage.
   "CURRENCY_MINOR",
+  // A structured postal address, carried forward from v1 unchanged. Kept in step deliberately:
+  // this list and v1's FIELD_TYPE are two vocabularies for the same fields, and a type v1 accepts
+  // that v2 does not makes every v1 field of that type unmigratable -- which is exactly what
+  // fieldArchitectureV2Compatibility caught the moment ADDRESS was added to only one of them.
+  "ADDRESS",
 ]);
 
 const NUMERIC_TYPES = Object.freeze([...NUMERIC_KIND, "CURRENCY_MINOR"]);

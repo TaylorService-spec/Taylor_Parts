@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { componentRegistry, actionRegistry } from "./registry.js";
 import { buildCompositionPlan, applyVisibility } from "./pageRuntime.js";
-import { REGION } from "./pageDefinition.js";
+import { REGION, fieldEditability, EDITABILITY_REASON_TEXT } from "./pageDefinition.js";
+import { formatAddress } from "../domain/address.js";
 import { findField } from "./entityDefinition.js";
 import { buildQueryDescriptor } from "./listRuntime.js";
 import { buildListPresentation, cellValue, buildRowHref } from "./listPresentation.js";
@@ -11,6 +12,8 @@ import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
 import FailureState from "../shared/ui/FailureState";
 import { SectionHeader } from "../shared/ui/primitives/index.js";
+import { Pencil } from "lucide-react";
+import Icon from "../shared/ui/Icon.jsx";
 
 // Renders a PageDefinition. Thin by design: every decision about WHICH sections appear,
 // where, in what order, and whether a viewer may see them was already made by
@@ -176,7 +179,7 @@ function resolveFieldGroupPartMap(section) {
  * (existing `items.length === 0` -> `null` branch, untouched); WITHHELD is this new note;
  * UNAVAILABLE is the entity-not-registered message above, unrelated to capability at all.
  */
-function FieldGroup({ section, record, entity }) {
+function FieldGroup({ section, record, entity, page = null, onEditField = null, editability = null }) {
   if (!entity) {
     return <p className="fo-muted">Field details are unavailable — this section&rsquo;s entity is not registered.</p>;
   }
@@ -220,11 +223,27 @@ function FieldGroup({ section, record, entity }) {
     // (billingContactId/accountOwnerEmployeeId) — this fixes what would otherwise happen to
     // any OTHER definition that lets a REFERENCE field reach GAP 1 unrouted.
     const column = { fieldId, type: field?.type ?? "STRING", enumLabels: field?.enumLabels ?? null };
-    const value = cellValue(column, record ?? {});
+    // ADDRESS is formatted by the ONE address formatter this app already has, rather than
+    // stringified. `String({street: ...})` renders "[object Object]", which is the shape of
+    // defect this whole renderer exists to prevent.
+    const value = field?.type === "ADDRESS"
+      ? formatAddress(record?.[fieldId])
+      : cellValue(column, record ?? {});
+    const edit = editability
+      ? editability(fieldId)
+      : fieldEditability(page, fieldId);
     return {
       fieldId,
       label: field?.label ?? fieldId,
+      // MISSING RENDERS TRUTHFULLY. An em dash says "there is no value here"; a blank cell says
+      // nothing at all and reads as a rendering bug.
       display: value === null || value === undefined || value === "" ? "—" : String(value),
+      isMissing: value === null || value === undefined || value === "",
+      editable: edit.editable,
+      // A field a person cannot edit stays VISIBLE, with the reason available. Hiding it would
+      // answer "where did that go" with silence, and the reason is usually what they need: a
+      // value only an administrator can change is a different problem from one nothing writes.
+      notEditableReason: edit.editable ? null : EDITABILITY_REASON_TEXT[edit.reason] ?? null,
     };
   });
 
@@ -236,16 +255,38 @@ function FieldGroup({ section, record, entity }) {
         <p className="fo-muted">Some fields in this section are not available to you.</p>
       )}
       {items.length > 0 && (
-        <dl className="fo-detail-list">
-          {/* dt/dd stay DIRECT children of dl, not wrapped — .fo-detail-list is a
-              two-column CSS grid (EquipmentDetail.jsx's own Row helper does the same for
-              this reason), and a wrapper element would collapse each pair into a single
-              grid cell. */}
+        <dl className="fo-record-fields">
+          {/* TWO COLUMNS OF STACKED FIELDS, label ABOVE value.
+              Each pair is wrapped in its own grid cell on purpose -- the OPPOSITE of
+              .fo-detail-list, where dt/dd must stay direct children because that grid pairs them
+              across two columns. Here the grid cell IS the field, so label and value sit adjacent
+              vertically and the eye reads a field as one unit instead of tracking across a gap.
+              One column below 640px; see .fo-record-fields in index.css. */}
           {items.map((item) => (
-            <Fragment key={item.fieldId}>
-              <dt>{item.label}</dt>
-              <dd>{item.display}</dd>
-            </Fragment>
+            <div className="fo-record-field" key={item.fieldId}>
+              <dt id={`fld-${section.id}-${item.fieldId}`}>{item.label}</dt>
+              <dd
+                aria-labelledby={`fld-${section.id}-${item.fieldId}`}
+                className={item.isMissing ? "fo-record-field__value fo-muted" : "fo-record-field__value"}
+              >
+                {item.display}
+                {item.editable && onEditField && (
+                  <button
+                    type="button"
+                    className="fo-record-field__edit"
+                    onClick={() => onEditField(item.fieldId)}
+                    // Names the FIELD, not just "Edit": a page of identical "Edit" buttons is
+                    // unusable from a screen reader.
+                    aria-label={`Edit ${item.label}`}
+                  >
+                    <Icon icon={Pencil} size="dense" />
+                  </button>
+                )}
+                {!item.editable && item.notEditableReason && (
+                  <span className="fo-sr-only">{item.notEditableReason}</span>
+                )}
+              </dd>
+            </div>
           ))}
         </dl>
       )}
@@ -522,6 +563,8 @@ function Section({
   entityResolver,
   capabilityDecisions,
   relatedListFocus,
+  onEditField,
+  editability,
 }) {
   const entry = section.componentId ? componentRegistry.resolve(section.componentId) : null;
 
@@ -559,7 +602,16 @@ function Section({
     // No registered component names this FIELD_GROUP — fall back to the generic
     // renderer rather than an empty shell (GAP 1, see the FieldGroup comment above).
     const entity = entityResolver ? entityResolver(definition?.entityId) : null;
-    return <FieldGroup section={section} record={record} entity={entity} />;
+    return (
+      <FieldGroup
+        section={section}
+        record={record}
+        entity={entity}
+        page={definition}
+        onEditField={onEditField}
+        editability={editability}
+      />
+    );
   }
 
   return null;
@@ -568,6 +620,17 @@ function Section({
 export default function MetadataRecordPage({
   definition,
   record,
+  // PER-FIELD EDIT, ROUTED BACK TO THE CALLER'S OWN GOVERNED COMMAND.
+  //
+  // This component never writes. It reports WHICH field somebody asked to edit, and the owning
+  // screen opens its existing form against its existing command -- which is the only reason a
+  // pencil can appear here at all without inventing write authority. A page that passes no
+  // handler renders no pencils.
+  onEditField = null,
+  // Optional override for "can this field be edited", for a screen that knows something the page
+  // definition cannot -- e.g. that paymentTerms is admin-only at the Rules layer and this viewer
+  // is not an admin. Defaults to the definition's own allowlist.
+  editability = null,
   capabilityDecisions = {},
   listResolver,
   listRenderer,
@@ -675,6 +738,8 @@ export default function MetadataRecordPage({
                     entityResolver={entityResolver}
                     capabilityDecisions={capabilityDecisions}
                     relatedListFocus={relatedListFocus}
+                    onEditField={onEditField}
+                    editability={editability}
                   />
                 </section>
               );
