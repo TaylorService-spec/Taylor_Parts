@@ -3,6 +3,8 @@ import {
   makeFieldDefinition,
   makeIdentity,
 } from "../entityDefinition.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
 import {
   makeColumn,
   makeFilter,
@@ -106,6 +108,34 @@ export const workOrderEntity = makeEntityDefinition({
       type: "REFERENCE",
       referenceTo: "employee",
       description: "Display resolution belongs to the employee entity, not to this list.",
+    }),
+  ],
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Carried forward from the
+  // structured-object pilot (#1442), whose contract was retired by the object-list metadata
+  // convergence; the finding was worth keeping.
+  gaps: [
+    makeGap({
+      id: "CUSTOMER_NAME_NOT_SORTABLE_ON_RELATED_LISTS",
+      title: "A Work Order cannot be sorted or filtered by customer name",
+      entityId: "workOrder",
+      fieldId: "customerId",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NOT_PROJECTED,
+      finding:
+        "customerId is a reference; the name lives only on the Account. `accounts.nameLower` is a " +
+        "maintained denormalized field and makes the ACCOUNT list sortable — but no related " +
+        "operational document carries a customer name at all. `useAccountReferenceResolver` resolves " +
+        "names for the rows ALREADY FETCHED, which is correct for display and useless for a sort that " +
+        "has to happen inside the query choosing which rows to fetch.",
+      consequence: "Sorting or filtering Work Orders by customer name is not available at any scale.",
+      refused:
+        "Fetching an unbounded page and sorting by names resolved afterwards. That sorts the page, not " +
+        "the list, and labels the result as though it sorted the list.",
+      resolution:
+        "A denormalized `customerNameLower` ON the Work Order, maintained by the same writer discipline " +
+        "`accounts.nameLower` already proves works — PLUS a rename-propagation authority, which " +
+        "nameLower does not need because it derives from the document it lives on. Nothing owns that " +
+        "today, and it is a separate architecture decision rather than something to solve incidentally.",
     }),
   ],
 });

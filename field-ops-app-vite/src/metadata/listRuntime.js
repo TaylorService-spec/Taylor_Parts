@@ -190,44 +190,16 @@ export function interpretPage(descriptor, docs = []) {
   });
 }
 
-/** URL state, so a filtered view is linkable and survives a refresh (spec §6). */
-export function toUrlParams(descriptor, def = null) {
-  const params = new URLSearchParams();
-  for (const f of descriptor?.filters ?? []) params.append("f", `${f.fieldId}:${f.operator}:${f.value}`);
-
-  // The tiebreaker is NOT serialized. It is appended by the runtime on every request, so
-  // putting it in the URL would round-trip it back as a user-requested sort on a field
-  // that may not exist on the entity (documentId() does not) — which the validator then
-  // correctly rejects, breaking the link. Caught by the round-trip test, which is why
-  // that test asserts a rebuild rather than just comparing strings.
-  const tiebreaker = def?.tiebreaker ?? descriptor?.sort?.[descriptor.sort.length - 1]?.fieldId ?? null;
-  for (const s of descriptor?.sort ?? []) {
-    if (s.fieldId === tiebreaker) continue;
-    params.append("s", `${s.fieldId}:${s.direction}`);
-  }
-
-  if (descriptor?.pageSize) params.set("n", String(descriptor.pageSize));
-  return params.toString();
-}
-
-/**
- * Parse URL state back into a request.
- *
- * Deliberately does NOT trust what it parses: the result goes through
- * buildQueryDescriptor like any other request, so a hand-edited URL cannot introduce a
- * filter the list never declared. A parser that returned a ready-to-run query would make
- * the address bar an input to the query layer.
- */
-export function fromUrlParams(search) {
-  const params = new URLSearchParams(search ?? "");
-  const filters = params.getAll("f").map((raw) => {
-    const [fieldId, operator, ...rest] = raw.split(":");
-    return { fieldId, operator, value: rest.join(":") };
-  });
-  const sort = params.getAll("s").map((raw) => {
-    const [fieldId, direction] = raw.split(":");
-    return { fieldId, direction };
-  });
-  const n = Number.parseInt(params.get("n") ?? "", 10);
-  return { filters, sort, ...(Number.isInteger(n) ? { pageSize: n } : {}) };
-}
+// ============================ URL STATE LIVES IN metadata/listUrlState.js ============================
+//
+// This module used to carry `toUrlParams`/`fromUrlParams`, a descriptor-shaped URL pair. They were
+// tested and NEVER mounted on a screen -- the same shape as `descriptorErrors`, which useMetadataList
+// returned and nothing rendered: the capability existed and no surface used it.
+//
+// The object-list metadata convergence (ADR-013) replaced them with `metadata/listUrlState.js`, which
+// works at the CRITERIA level rather than the descriptor level and does the thing the retired pair
+// could not: it REPORTS what it dropped. A URL asking for a field this build no longer offers used to
+// parse to a request that buildQueryDescriptor then rejected, leaving the list unfiltered and silent
+// -- and a person following that link reads the whole collection as the filtered subset.
+//
+// Two URL layers is the duplication this convergence exists to remove, so the unused one went.

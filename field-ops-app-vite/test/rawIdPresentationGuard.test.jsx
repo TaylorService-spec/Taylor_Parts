@@ -20,11 +20,10 @@ import StructuredFields from "../src/shared/ui/StructuredFields.jsx";
 import {
   availableUnitFields, serializedUnitFields, partFields, transferFields, field, locationField,
 } from "../src/domain/structuredFields.js";
-import { ActiveFilters } from "../src/shared/ui/ListControls.jsx";
-import { WORK_ORDER_FIELDS } from "../src/domain/objectFields.js";
-import { PART_FIELDS } from "../src/domain/partFields.js";
-import { makeFilter, emptyListState, addFilter } from "../src/domain/listQueryState.js";
-import { OPERATOR } from "../src/domain/fieldMetadata.js";
+import { ActiveCriteria } from "../src/metadata/MetadataListControls.jsx";
+import { workOrderEntity } from "../src/metadata/definitions/workOrder.js";
+import { partEntity } from "../src/metadata/definitions/part.js";
+import { makeCriterion, EMPTY_CRITERIA, addFilter } from "../src/metadata/listUrlState.js";
 
 afterEach(cleanup);
 
@@ -141,12 +140,12 @@ describe("business surfaces show human identities", () => {
   });
 
   it("A FILTER CHIP SHOWS THE CUSTOMER'S NAME, and the id stays in the query", () => {
-    const state = addFilter(emptyListState, makeFilter({
-      fieldId: "customer.name", operator: OPERATOR.IS,
+    const criteria = addFilter(EMPTY_CRITERIA, makeCriterion({
+      fieldId: "customerId", operator: "EQUALS",
       value: "acct-harbor", valueLabel: "Harbor Grill Restaurant Group",
     }));
     const { container } = render(
-      <ActiveFilters state={state} fields={WORK_ORDER_FIELDS} onRemove={() => {}} onClear={() => {}} />,
+      <ActiveCriteria criteria={criteria} entity={workOrderEntity} onRemove={() => {}} onClear={() => {}} />,
     );
     expect(container.textContent).toContain("Harbor Grill Restaurant Group");
     assertNoRawIds(container, "filter chip");
@@ -191,11 +190,11 @@ describe("Part identities", () => {
   });
 
   it("a Part filter chip carries the human label, never a document id", () => {
-    const state = addFilter(emptyListState, makeFilter({
-      fieldId: "status", operator: OPERATOR.IS, value: "ACTIVE", valueLabel: "Active",
+    const criteria = addFilter(EMPTY_CRITERIA, makeCriterion({
+      fieldId: "status", operator: "EQUALS", value: "ACTIVE", valueLabel: "Active",
     }));
     const { container } = render(
-      <ActiveFilters state={state} fields={PART_FIELDS} onRemove={() => {}} onClear={() => {}} />,
+      <ActiveCriteria criteria={criteria} entity={partEntity} onRemove={() => {}} onClear={() => {}} />,
     );
     assertNoRawIds(container, "part filter chip");
   });

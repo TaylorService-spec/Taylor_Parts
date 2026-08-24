@@ -1,4 +1,6 @@
 import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../entityDefinition.js";
+import { makeGap, GAP_SEVERITY } from "../gapRegister.js";
+import { UNSUPPORTED_REASON as WHY } from "../unsupportedReason.js";
 import { makeColumn, makeListViewDefinition, makeSavedView, makeSort } from "../listViewDefinition.js";
 import { PURCHASE_ORDERS_COLLECTION, PURCHASE_ORDER_STATUS } from "../../domain/constants.js";
 
@@ -241,6 +243,71 @@ export const purchaseOrderEntity = makeEntityDefinition({
   ],
   // No relationships declared. The one real parent edge (Reorder Request -> Purchase Order) has
   // no registered `reorderRequest` entity to own it — see the file header and REGISTRATION_PENDING.
+  // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Carried forward from the Purchase
+  // Order structured-list migration (#1443), whose findings turned out to describe a DIFFERENT
+  // collection from the one this entity models. That is the single most useful thing that trace
+  // produced, so it is recorded here rather than lost with the retired contract.
+  gaps: [
+    makeGap({
+      id: "PURCHASE_ORDER_MONEY_LIVES_ON_A_DIFFERENT_COLLECTION",
+      title: "The authoritative purchase total is not on this record",
+      entityId: "purchaseOrder",
+      severity: GAP_SEVERITY.MODELLING,
+      reason: WHY.NO_AUTHORITY,
+      finding:
+        "Two collections wear the name Purchase Order. This entity models the LIVE " +
+        "reorder_purchase_orders, which has no price, amount or total field of any kind. The dormant " +
+        "Epic-5 purchase_orders collection is where procurementService.createPurchaseOrder stores " +
+        "totalCost = SUM(quantity x unitPrice), validated against empty line sets and negative prices.",
+      consequence:
+        "A Dollars column on THIS list would have nothing to read. The retired pilot contract declared " +
+        "one, having traced the other collection — it was never mounted, so nothing shipped, but the " +
+        "two-collections-one-name confusion is real and will catch the next reader too.",
+      refused:
+        "Pointing a Dollars column at the dormant collection from a list of live reorder records, or " +
+        "deriving a total from quantity when this record stores no price at all.",
+      resolution:
+        "Financial Architecture decides which collection is the Purchase Order. Until then, money " +
+        "questions belong to the collection that stores an amount.",
+    }),
+    makeGap({
+      id: "PURCHASE_ORDER_TOTAL_UNIT_CONVENTION",
+      title: "totalCost declares no currency and no unit",
+      entityId: "purchaseOrder",
+      severity: GAP_SEVERITY.MODELLING,
+      finding:
+        "On the dormant purchase_orders collection, totalCost is a plain number. It declares no " +
+        "currency and carries no *Minor suffix, unlike invoiceCommands.ts's totalMinor or money.js's " +
+        "explicit minor units. Major units are INFERRED from sumLineItems multiplying without a " +
+        "scaling factor, and from procurementService's own validator comment calling an empty order " +
+        "\"a $0 PO\".",
+      consequence: "A 100x formatting error on a purchasing total is severe, and only an inference stands between.",
+      refused: "Treating the inference as a declaration.",
+      resolution: "A declared minor-unit migration, settled alongside Invoices, which already store totalMinor.",
+    }),
+    makeGap({
+      id: "PURCHASE_ORDER_BUYER_NOT_AUTHORITATIVE",
+      title: "Neither Purchase Order shape stores a buyer",
+      entityId: "purchaseOrder",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding: "No buyer, requestedBy or orderedBy field exists on either collection.",
+      refused:
+        "Attributing one from createdBy audit metadata or fixture provenance. That makes a column out " +
+        "of something the record cannot prove.",
+    }),
+    makeGap({
+      id: "PURCHASE_ORDER_BUSINESS_LINE_NOT_DERIVABLE",
+      title: "A Purchase Order has no single business line",
+      entityId: "purchaseOrder",
+      severity: GAP_SEVERITY.MISSING_AUTHORITY,
+      reason: WHY.NO_AUTHORITY,
+      finding: "A PO carries no operating company, and its lines are Parts, which carry none either.",
+      refused:
+        "Assigning one by inference. A multi-line order may legitimately mix Taylor and Ventana parts, " +
+        "so there is no single business line to assign even in principle.",
+    }),
+  ],
 });
 
 /**

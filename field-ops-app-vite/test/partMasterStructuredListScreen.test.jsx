@@ -1,15 +1,17 @@
-// THE STRUCTURED PART LIST, ON SCREEN.
+// THE PART MASTER LIST, ON THE CANONICAL METADATA RUNTIME.
 //
-// Separate from test/partsStructuredList.test.jsx on purpose: that file remocks Firestore per case,
-// and doing that alongside eight React renders accumulates eight full module graphs and exhausts the
-// heap. Here the mocks are hoisted ONCE and driven through a mutable holder, so every case renders
-// against the same graph.
+// After the object-list metadata convergence (ADR-013), this screen is a CONSUMER: its filters, its
+// sort vocabulary, its labels and the bound on its read all come from `partEntity` / `partIndexList`
+// and `metadata/listRuntime`. Nothing here is a screen-local registry, and that is what these
+// assertions are really protecting.
 //
-// What is real: the component, the shared list controls, the Part field metadata, and the list-state
-// module. Only the read and the write-readiness hook are faked — so the assertions below are about
-// what the actual screen renders from actual metadata.
+// What is real: the component, the canonical controls, the canonical definitions, the query
+// descriptor builder, and the URL-state parser. Only the Firestore read and the write-readiness hook
+// are faked — so a failure here means the metadata and the screen actually disagree.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const h = vi.hoisted(() => ({
   page: { ok: true, parts: [], invalid: [], hasMore: false, nextCursor: null },
@@ -18,9 +20,8 @@ const h = vi.hoisted(() => ({
   fetchPartMasterPage: null,
 }));
 
-vi.mock("../src/services/partMasterQueries", () => ({
+vi.mock("../src/services/partMasterPageQuery", () => ({
   fetchPartMasterPage: (h.fetchPartMasterPage = vi.fn(() => Promise.resolve(h.page))),
-  PARTS_PAGE_SIZE: 50,
 }));
 vi.mock("../src/hooks/usePartMasterWrite", () => ({
   usePartMasterWrite: () => ({
@@ -37,6 +38,7 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 import PartMasterList from "../src/modules/inventory/PartMasterList.jsx";
+import { partEntity, partIndexList } from "../src/metadata/definitions/part.js";
 
 // Two REAL business part numbers in the shapes this catalogue actually mints. Both must survive every
 // id check below untouched — a guard that rejects PRT-1001 is a guard nobody keeps.
@@ -64,14 +66,17 @@ function setup({ page, search = "" } = {}) {
 
 afterEach(cleanup);
 
-describe("the Part list renders business words, not storage tokens", () => {
+describe("the list renders business words, not storage tokens", () => {
   it("shows the human label and keeps the canonical value on the cell", async () => {
     const { container } = setup();
     await screen.findByText("PRT-1001");
 
-    expect(screen.getByText("Quantity")).toBeTruthy();   // STANDARD
+    // Labels come from domain/partVocabulary.js — the ONE Part label authority. The retired pilot
+    // kept a second map reading "Quantity" where this one reads "Standard", which is the
+    // two-maps-for-one-enum split that put "0 Active" beside a table of ACTIVE rows in #1093.
+    expect(screen.getByText("Standard")).toBeTruthy();
     expect(screen.getByText("Serialized")).toBeTruthy();
-    expect(screen.getByText("Non-stock")).toBeTruthy();  // NON_STOCK
+    expect(screen.getByText("Non-Stock")).toBeTruthy();
     expect(screen.getByText("Superseded")).toBeTruthy();
 
     // Nobody is shown a raw enum token...
@@ -84,14 +89,17 @@ describe("the Part list renders business words, not storage tokens", () => {
     expect(container.querySelector('[data-raw="SUPERSEDED"]')).toBeTruthy();
   });
 
-  it("headings are the metadata's labels, not abbreviations of them", async () => {
+  it("column headings come from the metadata, so Sort and the table agree", async () => {
     setup();
     await screen.findByText("PRT-1001");
-    for (const label of ["Part Number", "Description", "Tracking", "Stocking Class", "Status"]) {
-      expect(screen.getByRole("columnheader", { name: label }), label).toBeTruthy();
+    const headings = [...document.querySelectorAll("th")].map((t) => t.textContent);
+    for (const id of ["internalPartNumber", "name", "status", "controlType", "stockingClass"]) {
+      const field = partEntity.fields.find((f) => f.id === id);
+      expect(headings, id).toContain(field.label);
     }
-    // "Control" and "Class" were the old headings. Neither names the concept.
-    expect(screen.queryByRole("columnheader", { name: "Control" })).toBeNull();
+    // The old hand-typed heading said "Description" over the `name` column while Sort offered
+    // "Name — A to Z" for the same field, so a person sorting could not tell which column moved.
+    expect(headings).toContain("Name");
   });
 
   it("business identifiers appear verbatim and DOCUMENT ids never appear at all", async () => {
@@ -99,23 +107,57 @@ describe("the Part list renders business words, not storage tokens", () => {
     await screen.findByText("PRT-1001");
     expect(screen.getByText("CW-P-0004")).toBeTruthy();
 
-    // The rendered VALUES, read individually: `container.textContent` would concatenate a heading
-    // with a cell and destroy the word boundary these checks depend on.
+    // The rendered CELLS, read individually: `container.textContent` would concatenate a heading with
+    // a cell and destroy the word boundary these checks depend on.
     const cells = [...container.querySelectorAll("td")].map((td) => td.textContent).join(" | ");
     expect(cells).not.toMatch(/\bp1\b/);
     expect(cells).not.toMatch(/\bp2\b/);
-    // And the identifiers that LOOK id-shaped but are business identity survive.
     expect(cells).toMatch(/PRT-1001/);
     expect(cells).toMatch(/CW-P-0004/);
   });
 });
 
-describe("the shared controls are mounted in the ACTUAL list", () => {
-  it("offers Add Filter and Sort, built from the Part metadata", async () => {
+describe("the controls come from metadata, not from this screen", () => {
+  it("offers Add Filter and Sort", async () => {
     setup();
     await screen.findByText("PRT-1001");
     expect(screen.getByRole("button", { name: /add filter/i })).toBeTruthy();
     expect(screen.getByLabelText(/^sort$/i)).toBeTruthy();
+  });
+
+  it("offers EXACTLY the filters the list definition declares — no more", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /add filter/i }));
+
+    const options = [...screen.getByLabelText(/^field$/i).querySelectorAll("option")]
+      .map((o) => o.value).filter(Boolean);
+    // The load-bearing assertion of the whole convergence. The declared set is what
+    // scripts/listIndexCoverage.mjs proved a composite index for; the retired pilot ALSO offered
+    // part number, tracking, unit and category, none of which had one — each would have failed at
+    // read time with "index required" while CI stayed green.
+    expect(options.slice().sort()).toEqual(partIndexList.filters.map((f) => f.fieldId).sort());
+    expect(options).not.toContain("controlType");
+    expect(options).not.toContain("category");
+  });
+
+  it("offers EXACTLY the sorts the entity declares sortable", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    const sortValues = [...screen.getByLabelText(/^sort$/i).querySelectorAll("option")]
+      .map((o) => o.value).filter(Boolean).map((v) => v.split(":")[0]);
+    const declared = partEntity.fields
+      .filter((f) => f.sortable && f.displayable !== false).map((f) => f.id);
+    expect([...new Set(sortValues)].sort()).toEqual([...new Set(declared)].sort());
+  });
+
+  it("explains a field a person can see but cannot filter", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /add filter/i }));
+    // A disabled capability with no explanation is a dead end: nobody can tell whether to wait, ask,
+    // or work around it. Category is NEEDS_INDEX and says so.
+    expect(document.querySelector(".fo-listctl__why").textContent).toMatch(/index that has not been set up/i);
   });
 
   it("a chosen filter goes to the URL — not to a client-side pass over the rows", async () => {
@@ -124,31 +166,47 @@ describe("the shared controls are mounted in the ACTUAL list", () => {
     fireEvent.click(screen.getByRole("button", { name: /add filter/i }));
 
     fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "status" } });
-    // The value control is a PICKER of human labels for an enum, so Apply stays disabled until a real
-    // canonical value is chosen.
     fireEvent.change(await screen.findByLabelText(/^value$/i), { target: { value: "ACTIVE" } });
     fireEvent.click(screen.getByRole("button", { name: /^apply$/i }));
+
     await waitFor(() => expect(h.setSearchParams).toHaveBeenCalled());
     expect(h.setSearchParams.mock.calls[0][0].toString()).toMatch(/status/);
   });
 
   it("an active filter shows as a removable chip in business words", async () => {
-    setup({ search: "f=status:IS:ACTIVE" });
+    setup({ search: "f=status:EQUALS:ACTIVE" });
     await screen.findByText("PRT-1001");
     const chips = [...document.querySelectorAll(".fo-listctl__chip")].map((c) => c.textContent).join(" ");
     expect(chips).toMatch(/Status/i);
-    // From a URL there is no captured valueLabel, so the chip has to RE-RESOLVE the label from the
-    // picker options. Without that this reads "Status: ACTIVE" -- a storage token, shown only to the
+    // From a URL there is no captured valueLabel, so the chip re-resolves from the field's own
+    // enumLabels. Without that this reads "Status: ACTIVE" — a storage token, shown only to the
     // people who bookmarked or shared their view.
     expect(chips).toMatch(/Active/);
     expect(chips).not.toMatch(/ACTIVE/);
   });
+});
 
-  it("an unqueryable criterion is SAID, not silently dropped", async () => {
-    // `name contains valve` is NEEDS_INDEX: Firestore has no substring search. A filter that looks
-    // applied and is not makes the catalogue look smaller than it is.
-    setup({ search: "f=name:CONTAINS:valve" });
-    expect(await screen.findByText(/can’t be applied to this list/i)).toBeTruthy();
+describe("a link that asks for something this build cannot do", () => {
+  it("says the list is BROADER than requested rather than silently widening it", async () => {
+    // `description` is declared NEEDS_INDEX: Firestore has no substring search.
+    setup({ search: "f=description:EQUALS:valve" });
+    const notice = await screen.findByRole("status", { name: /criteria not applied/i });
+    expect(notice.textContent).toMatch(/broader than requested/i);
+    expect(notice.textContent).toMatch(/Description/);
+    // And it says WHY, not just that something was dropped.
+    expect(notice.textContent).toMatch(/index that has not been set up/i);
+  });
+
+  it("a field this build no longer has is reported too, not ignored", async () => {
+    setup({ search: "f=retiredField:EQUALS:x" });
+    const notice = await screen.findByRole("status", { name: /criteria not applied/i });
+    expect(notice.textContent).toMatch(/no longer available/i);
+  });
+
+  it("a clean link produces no notice — the report is not noise on the normal path", async () => {
+    setup({ search: "f=status:EQUALS:ACTIVE" });
+    await screen.findByText("PRT-1001");
+    expect(screen.queryByRole("status", { name: /criteria not applied/i })).toBeNull();
   });
 });
 
@@ -156,9 +214,9 @@ describe("the list says which kind of empty it is", () => {
   it("filtered to nothing reads as filtered, not as an empty catalogue", async () => {
     setup({
       page: { ok: true, parts: [], invalid: [], hasMore: false, nextCursor: null },
-      search: "f=status:IS:DISCONTINUED",
+      search: "f=status:EQUALS:DISCONTINUED",
     });
-    expect(await screen.findByText(/no .*match/i)).toBeTruthy();
+    expect(await screen.findByText(/no records match these filters/i)).toBeTruthy();
     // Telling somebody the catalogue is empty when they filtered it empty sends them hunting a bug
     // that is not there.
     expect(screen.queryByText(/No canonical Part records exist yet/i)).toBeNull();
@@ -175,7 +233,35 @@ describe("the list says which kind of empty it is", () => {
   });
 });
 
-describe("paging", () => {
+describe("the read is bounded by the canonical runtime", () => {
+  it("the first read carries a descriptor with a limit and no cursor", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    const { descriptor, cursor } = h.fetchPartMasterPage.mock.calls[0][0];
+    // The descriptor ALWAYS carries a limit — the runtime has no argument that removes one. It is
+    // pageSize + 1 on purpose: the extra row is how truncation is DETECTED rather than assumed, and
+    // interpretPage is what keeps that probe row out of the rendered page.
+    expect(descriptor.pageSize).toBe(partIndexList.pageSize);
+    expect(descriptor.limit).toBe(partIndexList.pageSize + 1);
+    expect(cursor).toBeNull();
+  });
+
+  it("a URL filter reaches the descriptor as a real query constraint", async () => {
+    setup({ search: "f=status:EQUALS:ACTIVE" });
+    await screen.findByText("PRT-1001");
+    const { descriptor } = h.fetchPartMasterPage.mock.calls[0][0];
+    expect(descriptor.filters).toEqual([{ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }]);
+  });
+
+  it("an undeclared filter NEVER reaches the descriptor", async () => {
+    setup({ search: "f=category:EQUALS:Drive" });
+    await screen.findByText("PRT-1001");
+    const { descriptor } = h.fetchPartMasterPage.mock.calls[0][0];
+    // Parsed out at the URL, and refused again by buildQueryDescriptor if it ever got past. Two
+    // gates, because this is the one that would otherwise fail in production.
+    expect(descriptor.filters).toEqual([]);
+  });
+
   it("a complete page offers no pager", async () => {
     setup();
     await screen.findByText("PRT-1001");
@@ -183,10 +269,9 @@ describe("paging", () => {
   });
 
   it("more pages offer a pager that CARRIES the cursor", async () => {
-    setup({ page: { ok: true, parts: PART_ROWS, invalid: [], hasMore: true, nextCursor: ["PRT-1001", "p1"] } });
+    setup({ page: { ok: true, parts: PART_ROWS, invalid: [], hasMore: true, nextCursor: ["PRT-1001"] } });
     await screen.findByText("PRT-1001");
 
-    // Page 2 comes back with different rows, so appending is visible rather than assumed.
     h.page = {
       ok: true, hasMore: false, nextCursor: null, invalid: [],
       parts: [{ ...PART_ROWS[0], partId: "p3", internalPartNumber: "PRT-1099", name: "Seal kit" }],
@@ -194,36 +279,23 @@ describe("paging", () => {
     fireEvent.click(screen.getByRole("button", { name: /load more parts/i }));
 
     await waitFor(() => expect(h.fetchPartMasterPage).toHaveBeenCalledTimes(2));
-    expect(h.fetchPartMasterPage.mock.calls[1][0].cursor).toEqual(["PRT-1001", "p1"]);
+    expect(h.fetchPartMasterPage.mock.calls[1][0].cursor).toEqual(["PRT-1001"]);
     // Appended, not replaced: the page already on screen stays on screen.
     expect(await screen.findByText("PRT-1099")).toBeTruthy();
     expect(screen.getByText("PRT-1001")).toBeTruthy();
-  });
-
-  it("the first read is bounded — a plan with a page size, every time", async () => {
-    setup();
-    await screen.findByText("PRT-1001");
-    const { plan, cursor } = h.fetchPartMasterPage.mock.calls[0][0];
-    expect(plan.pageSize).toBe(50);
-    expect(cursor).toBeNull();
   });
 });
 
 // ═════════════════════════════════════════ on a phone
 //
 // jsdom does not lay out, so pixel geometry cannot be measured here. What CAN be asserted — and what
-// actually regresses — is the STRUCTURE that produces the geometry: which classes carry the sizing
-// rules, that the rules are in the stylesheet, and that a wide table is inside something that
-// scrolls instead of pushing the page sideways. Live measurement is recorded separately in the
-// migration doc.
-
-import { readFileSync } from "node:fs";
-import path from "node:path";
+// actually regresses — is the STRUCTURE that produces the geometry. The live four-width measurement
+// is recorded in docs/architecture/parts-structured-list.md.
 
 const css = readFileSync(path.resolve(process.cwd(), "src/index.css"), "utf8");
 
 describe("the Part list on a 320px phone", () => {
-  it("every control the list adds is at least 44px tall", () => {
+  it("every control on the list is at least 44px tall", () => {
     for (const rule of [
       ".fo-listctl__add { min-height: 44px; }",
       ".fo-listctl__clear { min-height: 44px; }",
@@ -234,7 +306,6 @@ describe("the Part list on a 320px phone", () => {
     ]) {
       expect(css, rule).toContain(rule);
     }
-    // The builder's own selects and the sort select, which are the controls somebody uses one-handed.
     expect(css).toMatch(/\.fo-listctl__step select[^}]*min-height: 44px/);
     expect(css).toMatch(/\.fo-listctl__sort select \{ min-height: 44px; \}/);
   });
@@ -244,11 +315,10 @@ describe("the Part list on a 320px phone", () => {
     expect(css).toMatch(/\.fo-listctl__step select, \.fo-listctl__step input \{ width: 100%; \}/);
   });
 
-  it("the eight-column table scrolls INSIDE its own container, so the page never scrolls sideways", async () => {
+  it("the table scrolls INSIDE its own container, so the page never scrolls sideways", async () => {
     setup();
     await screen.findByText("PRT-1001");
     expect(document.querySelector(".fo-table-scroll table.fo-table")).toBeTruthy();
-    // And no hardcoded pixel width in the markup that a 320px screen would clip.
     const src = readFileSync(path.resolve(process.cwd(), "src/modules/inventory/PartMasterList.jsx"), "utf8");
     expect(src).not.toMatch(/width:\s*\d{3,}px/);
   });

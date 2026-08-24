@@ -28,8 +28,10 @@
 // card, a desktop table row and, later, a report column.
 
 // The ONE Part Master tracking vocabulary, imported rather than restated. A second copy of this map
-// is how the handheld and the Part list would come to describe the same part differently.
-import { CONTROL_TYPE_LABEL } from "./partFields.js";
+// is how the handheld and the Part list come to describe the same part differently -- which is exactly
+// what happened: the retired pilot kept its own map reading "Quantity" where this one reads
+// "Standard". domain/partVocabulary.js is the authority, and the metadata layer reads the same file.
+import { CONTROL_TYPE_LABEL } from "./partVocabulary.js";
 
 /** How a value should be read, so a renderer never has to guess from the value's shape. */
 export const FIELD_KIND = Object.freeze({
