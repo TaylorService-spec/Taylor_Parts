@@ -15,6 +15,10 @@ on:
       - "functions/src/assistant/**"
       - "functions/test/assistantSecurityBoundary.test.mjs"
       - "functions/test/assistantStartersAndEvaluation.test.mjs"
+      - "functions/test/aiProviderPolicyAndSelfHosted.test.mjs"
+      - "functions/scripts/aiProviderSelfCheck.mjs"
+      - "field-ops-app-vite/src/**"
+      - "docs/architecture/eos-ai-provider-policy.md"
       - "functions/src/access/**"
       - "docs/architecture/eos-contextual-assistant.md"
       - "functions/package.json"
@@ -26,6 +30,10 @@ on:
       - "functions/src/assistant/**"
       - "functions/test/assistantSecurityBoundary.test.mjs"
       - "functions/test/assistantStartersAndEvaluation.test.mjs"
+      - "functions/test/aiProviderPolicyAndSelfHosted.test.mjs"
+      - "functions/scripts/aiProviderSelfCheck.mjs"
+      - "field-ops-app-vite/src/**"
+      - "docs/architecture/eos-ai-provider-policy.md"
       - "functions/src/access/**"
       - "docs/architecture/eos-contextual-assistant.md"
       - "functions/package.json"
@@ -64,9 +72,21 @@ jobs:
       # way to catch it.
       - name: EOS domain code must not import a provider SDK
         run: |
-          if grep -rn --include=*.ts -E "from ['\"]openai|require\(['\"]openai" functions/src \
-              | grep -v "functions/src/assistant/openAiProvider.ts"; then
+          if grep -rn --include=*.ts -E "from ['\"](openai|@anthropic-ai/)|require\(['\"](openai|@anthropic-ai/)" functions/src \
+              | grep -vE "functions/src/assistant/(openAiProvider|anthropicProvider)\.ts"; then
             echo "::error::A provider SDK is imported outside the adapter boundary."
             exit 1
           fi
-          echo "provider SDK confined to the adapter"
+          echo "provider SDK confined to the adapters"
+
+      # The private gateway is the ONLY local-model boundary. An adapter that reached past it to a
+      # model runtime would silently drop authentication, the tenant boundary, rate limiting,
+      # metering and audit -- while still looking, from EOS, exactly like the gateway adapter.
+      - name: EOS must never address a model runtime directly
+        run: |
+          if grep -rn --include=*.ts --include=*.tsx --include=*.mjs -E "11434|localhost:11434|/api/generate|ollama" \
+              functions/src functions/scripts field-ops-app-vite/src; then
+            echo "::error::EOS addresses a model runtime directly. It may only speak to the Private AI Gateway."
+            exit 1
+          fi
+          echo "no direct model-runtime access"

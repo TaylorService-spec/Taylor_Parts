@@ -55,7 +55,17 @@ three security tests.
 ## 2 — Provider abstraction
 
 `AiProvider` — `respond`, optional `stream`, `health`, normalized errors, provider/model metadata,
-usage metadata. `OpenAiProvider` is the only file that knows OpenAI exists.
+usage metadata. Each adapter is the only file that knows its vendor exists.
+
+**Three providers now implement it:** `OpenAiProvider`, `AnthropicProvider` and `SelfHostedProvider`
+(the Private AI Gateway). Adding the latter two required **no change to this gateway and no change
+to any domain file**, which is the evidence the seam is in the right place. Which provider a given
+request may use is a governed policy decision, documented separately in
+[`eos-ai-provider-policy.md`](eos-ai-provider-policy.md) — including why a private-only request can
+never fall back to an external vendor when the private model is down.
+
+**EOS asks for a workload class, never a model.** `ROUTINE` / `REASONING`; the provider owns model
+selection. No model id from any deployment appears in EOS domain code.
 
 **Contained inside the adapter:** SDK usage, request shape, model ids, retry policy, error
 translation, token accounting. **EOS domain code must never import a provider SDK** — a
@@ -88,6 +98,11 @@ client environment, Firestore, the repository, seed data, or logs.
   with nothing to say and hide the outage.
 
 Operator setup: `docs/runbooks/openai-secret-setup.md`. It contains no key.
+
+The same rules apply verbatim to the Private AI Gateway key and to the Anthropic key. The gateway
+adds one boundary of its own: **EOS never speaks to a model runtime directly** — the gateway is the
+only local-model boundary, enforced by CI grep and by test. See
+[`eos-ai-provider-policy.md`](eos-ai-provider-policy.md) §2.
 
 ---
 
@@ -327,7 +342,7 @@ prose — so it is caught structurally.
 | E | Certification World question evaluation | schema built, corpus pending world seeding |
 | F | Broader EOS read coverage | future |
 | G | Explicitly confirmed governed actions | **separate from V1** |
-| H | Provider routing / optional self-hosted model | future |
+| H | Provider routing / optional self-hosted model | **built**, disabled by default — see [`eos-ai-provider-policy.md`](eos-ai-provider-policy.md) |
 
 **Write actions remain outside V1 entirely.**
 
