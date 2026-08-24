@@ -798,23 +798,26 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                         because that is what a person reads off a shelf label. */}
                     <td data-label="Part Number" className="fo-muted">{part.sku}</td>
                     <td data-label="Category" className="fo-muted">{part.category}</td>
-                    {/* TWO FACTS, NOT ONE STRING. This rendered `${warehouseQty} (baseline)` --
-                        a number and a caveat about where it came from, welded into one value that
-                        nothing could sort, filter or report on. The number stays machine-readable
-                        on the cell; the caveat is its own element, and it is the load-bearing half:
-                        a catalogue baseline is NOT a live warehouse figure, and reading it as one
-                        is FALSE_COMFORT in miniature. Recorded as
-                        PART_CATALOGUE_BASELINE_IS_NOT_AVAILABILITY -- the displayed number is
-                        deliberately unchanged here, because which number belongs in that column is
-                        a business decision, not a presentation one. */}
-                    <td data-label="Warehouse Available" data-raw={health ? health.stock.availableStock : part.warehouseQty}>
+                    {/* AN UNLEDGERED PART HAS UNKNOWN AVAILABILITY. Owner ruling, 2026-08-24.
+                        This cell has been wrong twice, in the same direction. It first rendered the
+                        static catalogue quantity welded to a "(baseline)" caveat, which nothing
+                        could sort, filter or report on. Separating the two made it readable and left
+                        the deeper problem: the NUMBER itself.
+
+                        The static catalogue proves a Part EXISTS. It does not prove we physically
+                        have N of it. A figure that is not a live warehouse count, sitting under a
+                        heading that reads as one, is FALSE_COMFORT on the exact column people scan
+                        when deciding what to reorder.
+
+                        And UNKNOWN is not zero either. "Nobody has looked at this shelf" and "this
+                        shelf is empty" are different facts, and only one of them is a reason to
+                        order. Part Master is the CATALOGUE authority; the ledger is the INVENTORY
+                        authority, and this cell now answers only from the second. */}
+                    <td data-label="Warehouse Available" data-raw={health ? health.stock.availableStock : null}>
                       {health ? (
                         health.stock.availableStock
                       ) : (
-                        <>
-                          {part.warehouseQty}{" "}
-                          <span className="fo-muted fo-parts__qualifier">catalogue baseline, not live stock</span>
-                        </>
+                        <span className="fo-muted">Not known</span>
                       )}
                     </td>
                     {/* INVENTORY HEALTH IS ITS OWN FIELD, and its three outcomes are three different

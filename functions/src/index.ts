@@ -386,6 +386,9 @@ export {
 // Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every
 // principal until separately authorized. EXPORT != DEPLOY.
 export { getPartBalanceCallable as getPartBalance } from "./inventory/partBalanceReadService";
+// The BATCHED sibling, for a page of parts. Same capability, same pure composition; one set of
+// reads instead of N. See partBalanceBatchReadService.ts for why the shared inputs dominate.
+export { getPartBalancesCallable as getPartBalances } from "./inventory/partBalanceBatchReadService";
 
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
