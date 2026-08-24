@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSalesOrder } from "../../hooks/useSalesOrder.js";
 import { salesOrderView, SALES_ORDER_VIEW_STATE } from "../../domain/salesOrderView.js";
@@ -10,6 +10,12 @@ import SalesOrderActions from "./SalesOrderActions.jsx";
 import SalesOrderFulfillmentSection from "./SalesOrderFulfillmentSection.jsx";
 import { useAccountNamesWithStatus, ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
 import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/referenceResolution.js";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import { salesOrderRecordPage } from "../../metadata/definitions/salesOrderPage.js";
+import { pageSubset } from "../../metadata/pageDefinition.js";
+import { salesOrderEntity } from "../../metadata/definitions/salesOrder.js";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { formatMinor } from "../../domain/accountArView.js";
 
 // Minimum usable Sales Order view (Owner-ratified 2026-08-15) over the trusted
 // getSalesOrderContext read (salesOrder.read — admin/dispatcher, sandbox-activated), with
@@ -28,6 +34,10 @@ import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/reference
 // passed straight through to SalesOrderActions so it can render Advance/Cancel/Allocate/Create Service
 // as live only for a principal actually granted salesOrder.write/.fulfill/.service -- fail-closed
 // (protected + disabled + honest) when omitted, same posture as every other write-readiness seam.
+// The summary band is the ContextBand above, which renders LINKED references and a status pill the
+// field grid cannot. The shell renders the BODY sections only, so the customer is not printed twice.
+const SALES_ORDER_BODY = pageSubset(salesOrderRecordPage, ["salesOrderCommercial", "salesOrderOrigin"]);
+
 export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   const { salesOrderId } = useParams();
   const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
@@ -63,6 +73,27 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   // Order created before numbering existed has no salesOrderNumber -- that is rendered as an
   // honest unavailable state, not a fabricated or id-derived one. `view.id` remains available
   // to the rest of the tree for routing only.
+  // ONE DIRECTORY READ FOR THE PAGE, resolving the Owner to a person.
+  //
+  // The summary band rendered `view.ownerEmployeeId ?? "—"` — a raw employee id where a name
+  // belongs. The directory is a single bounded subscription keyed by employee id, so naming the
+  // owner costs no per-row read.
+  const directory = useEmployeeDirectory();
+  const resolveSalesOrderReference = useCallback((fieldId, id) => {
+    if (fieldId === "accountId") {
+      return accountName
+        ? { state: REFERENCE_STATE.FOUND, label: accountName }
+        : { state: accountFallbackState };
+    }
+    if (fieldId !== "ownerEmployeeId") return undefined;
+    if (directory.loading) return { state: REFERENCE_STATE.LOADING };
+    const employee = directory.byEmployeeId?.get(id);
+    const name = employee?.displayName ?? employee?.name ?? null;
+    // NOT_FOUND rather than the id. An owner who no longer resolves reads as gone; the employee
+    // id is a routing key and never content.
+    return name ? { state: REFERENCE_STATE.FOUND, label: name } : { state: REFERENCE_STATE.NOT_FOUND };
+  }, [directory, accountName, accountFallbackState]);
+
   const title =
     view.kind === SALES_ORDER_VIEW_STATE.READY
       ? view.salesOrderNumber
@@ -111,10 +142,34 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
                   : "—",
               },
               { key: "state", label: "Lifecycle state", value: <StatusPill tone={view.tone} label={view.state} /> },
-              { key: "channel", label: "Channel", value: view.salesChannel ?? "—" },
-              { key: "owner", label: "Owner", value: view.ownerEmployeeId ?? "—" },
-              { key: "po", label: "Customer PO", value: view.customerPO ?? "—" },
+              {
+                key: "dollars",
+                label: "Dollars",
+                // WHAT THIS SALE IS WORTH, from the authoritative server projection. Rendered only
+                // when EVERY line is priced: totalMinor is null on a partly-priced order, because a
+                // sum over the priced lines would be a real number that is not the sale's total and
+                // somebody would act on it. NULL IS NOT ZERO -- an em dash, never "$0.00".
+                value: typeof view.totalMinor === "number"
+                  ? formatMinor(view.totalMinor, view.currency ?? null)
+                  : "—",
+              },
             ]}
+          />
+
+          {/* ═══ THE SHARED RECORD SHELL ═══
+              Order Details and Origin & Notes render in the same grammar every other core object
+              uses. NO PENCILS, and that is derived rather than chosen: there is no field-update
+              command for a Sales Order at all. Every write in this domain is a governed ACTION with
+              its own capability and state guard (allocate, create service, advance, cancel), and
+              those stay exactly where they are, above.
+
+              The ContextBand above remains the summary band -- it carries the two LINKED references
+              and the state pill, which a field grid cannot render. */}
+          <MetadataRecordPage
+            definition={SALES_ORDER_BODY}
+            record={view}
+            entityResolver={() => salesOrderEntity}
+            resolveReference={resolveSalesOrderReference}
           />
 
           <section aria-labelledby="so-lines-h">

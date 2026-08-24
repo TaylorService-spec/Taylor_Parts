@@ -19,6 +19,9 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import { equipmentRecordPage } from "../../metadata/definitions/equipmentPage.js";
+import { equipmentEntity } from "../../metadata/definitions/equipment.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -159,6 +162,10 @@ export default function EquipmentDetail() {
     />
   );
 
+  // A pencil opens the SAME modal the Edit action opens, against the same command. There is no
+  // per-field write path for Equipment and this does not invent one.
+  const openEditFor = () => setEditing(true);
+
   return (
     <WorkspaceShell title={equipmentDisplayName(equipment)} actions={actions} context={context} className="fo-equipment-detail">
       <div className="fo-detail-grid">
@@ -203,26 +210,25 @@ export default function EquipmentDetail() {
           </dl>
         </section>
 
-        {/* §8 manufacturer / model / serial / asset tag. */}
-        <section className="fo-panel" aria-labelledby="equip-identity" data-identification-section>
-          <h2 id="equip-identity">Identification</h2>
-          <dl className="fo-detail-list">
-            <Row label="Manufacturer" value={equipment.manufacturer} />
-            <Row label="Model" value={equipment.model} />
-            <Row label="Serial number" value={equipment.serialNumber} />
-            <Row label="Asset tag" value={equipment.assetTag} />
-          </dl>
-        </section>
+        {/* ═══ THE SHARED RECORD SHELL ═══
+            Identification and Service information were two hand-written <dl>s on this screen.
+            They are now the SAME grammar every other core object renders: two columns of
+            labelled fields on desktop, one on a phone, an em dash where a value is genuinely
+            absent, and a pencil only on the fields updateEquipment actually accepts.
 
-        {/* §8 service information. */}
-        <section className="fo-panel" aria-labelledby="equip-service">
-          <h2 id="equip-service">Service information</h2>
-          <dl className="fo-detail-list">
-            <Row label="Installed" value={equipment.installedDate} />
-            <Row label="Warranty expires" value={equipment.warrantyExpiresDate} />
-            <Row label="Notes" value={equipment.notes} />
-          </dl>
-        </section>
+            The "Customer & location" panel above is deliberately NOT folded in -- it
+            distinguishes a FAILED read from a genuinely-unknown one and offers a Retry, which
+            the generic grid has no slot for. Losing it would turn "we could not look" back into
+            "Unknown customer" stated as a fact.
+
+            Editing routes to the SAME EquipmentEditModal this screen already opened, against the
+            same updateEquipment command. This adds no write authority. */}
+        <MetadataRecordPage
+          definition={equipmentRecordPage}
+          record={equipment}
+          entityResolver={() => equipmentEntity}
+          onEditField={openEditFor}
+        />
 
         {/* Ventana lifecycle — two-condition inventory-control read (install complete AND sale
             close). The sale-close signal is a separate Sales Order authority not available on

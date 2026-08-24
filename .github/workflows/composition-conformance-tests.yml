@@ -54,6 +54,12 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
       - "field-ops-app-vite/src/modules/accounts/accountFieldInputs.js"
       - "field-ops-app-vite/test/accountRecordPage.test.jsx"
+      - "field-ops-app-vite/src/metadata/RecordSection.jsx"
+      - "field-ops-app-vite/src/metadata/recordPageManifest.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
+      - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
+      - "field-ops-app-vite/src/metadata/definitions/workOrderPage.js"
+      - "field-ops-app-vite/test/coreRecordPages.test.jsx"
       - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
@@ -104,6 +110,12 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
       - "field-ops-app-vite/src/modules/accounts/accountFieldInputs.js"
       - "field-ops-app-vite/test/accountRecordPage.test.jsx"
+      - "field-ops-app-vite/src/metadata/RecordSection.jsx"
+      - "field-ops-app-vite/src/metadata/recordPageManifest.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
+      - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
+      - "field-ops-app-vite/src/metadata/definitions/workOrderPage.js"
+      - "field-ops-app-vite/test/coreRecordPages.test.jsx"
       - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
@@ -181,4 +193,11 @@ jobs:
       # an edit allowlist compared against the payload the governed form actually sends.
       - name: Account record page (shared shell + editability allowlist)
         run: npx vitest run test/accountRecordPage.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Equipment / Sales Order / Work Order on the same record grammar, and the two objects that
+      # are deliberately NOT on it. Density, collapse, touch floor, and the editability that is
+      # derived from each object's own write path rather than chosen.
+      - name: Core record pages (density, collapse, per-object authority)
+        run: npx vitest run test/coreRecordPages.test.jsx
         working-directory: field-ops-app-vite
