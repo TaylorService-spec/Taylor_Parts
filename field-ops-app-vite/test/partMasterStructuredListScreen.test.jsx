@@ -228,6 +228,9 @@ describe("the Part list on a 320px phone", () => {
       ".fo-listctl__add { min-height: 44px; }",
       ".fo-listctl__clear { min-height: 44px; }",
       ".fo-pml__pager button { min-height: 44px; }",
+      // Found by MEASURING, not by reading: the row actions were 47x31 and 62x31. They predate the
+      // list controls, so no 44px rule covered them and no structural assertion knew to look.
+      ".fo-pml__actions button { min-height: 44px; min-width: 44px; }",
     ]) {
       expect(css, rule).toContain(rule);
     }

@@ -3666,6 +3666,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* -- PartMasterList.jsx -- */
 .fo-pml__part-number { font-family: monospace; }
 .fo-pml__actions { white-space: nowrap; }
+/* THE ROW ACTIONS ARE TOUCH TARGETS TOO. Measured at 47x31 and 62x31 -- the only sub-44px controls
+   on this screen, and the ones a person reaches for most. The structural test could not see this:
+   the list's own new controls all carry 44px rules, and these buttons predate them. */
+.fo-pml__actions button { min-height: 44px; min-width: 44px; }
 /* The pager sits under the table, left-aligned with it: paging is a continuation of the list,
    not a decision that needs centring in the viewport. */
 .fo-pml__pager { display: flex; justify-content: flex-start; padding: 12px 0; }
