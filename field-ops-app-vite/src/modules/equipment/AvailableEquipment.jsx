@@ -56,6 +56,8 @@ import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives";
+import StructuredFields from "../../shared/ui/StructuredFields.jsx";
+import { availableUnitFields } from "../../domain/structuredFields.js";
 
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
@@ -203,18 +205,18 @@ export default function AvailableEquipment() {
             <ul className="fo-list" aria-label={`${group.label} available serialized assets`}>
               {group.rows.map((r) => (
                 <li key={r.serialNo}>
-                  {/* THE PRODUCT IS THE LABEL. The serial identifies the individual machine and
-                      belongs beside it, not in place of it. */}
-                  <span>{r.title}</span>
-                  <span className="fo-muted">
-                    {" — S/N "}{r.serialNo}
-                    {r.category ? ` · ${r.category}` : ""}
-                    {r.lifecycleState ? ` · ${r.lifecycleState}` : ""}
-                    {r.location ? ` · ${r.location}` : ""}
-                    {/* An unresolved location renders its raw id, and says so, rather than
-                        presenting an id as if it were a place name. */}
-                    {r.location && !r.locationResolved ? " (unresolved id)" : ""}
-                  </span>
+                  {/* SIX ATTRIBUTES, SIX FIELDS.
+                      This was one line — "Taylor C161 — S/N CW-C161-0001 · AVAILABLE · wh-main
+                      (unresolved id)" — which exposed none of them and put a raw location key in
+                      front of a person twice: once as a place, and once with a parenthetical
+                      admitting it was not one. An id that will not resolve is now an ABSENCE
+                      ("Location unavailable"), because showing the key teaches people to memorise
+                      internal identifiers and gives them nothing they can search by. */}
+                  <StructuredFields
+                    fields={availableUnitFields(r)}
+                    label={`Unit ${r.serialNo}`}
+                    maxPriority={2}
+                  />
                   {canInstall ? (
                     <Button variant="secondary" onClick={() => setInstalling(r)} disabled={!r.available}>
                       Install / Assign to Customer

@@ -4748,3 +4748,44 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* "No count available" is a statement, not a number, and must not read as one. */
 .fo-wh-queue__count--none { font-weight: 400; color: var(--color-text-muted); }
 .fo-wh-queue__reason { font-size: 0.8125rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------------------
+   STRUCTURED OBJECT LIST CONTROLS. Add Filter, active-filter chips, and sort.
+   Metadata-driven: nothing here knows what a Work Order is. Chips stay ON THE
+   PAGE rather than inside a dismissed modal -- a short list must never leave
+   somebody guessing whether the data is short or their filters are.
+   --------------------------------------------------------------------------- */
+.fo-listctl { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+.fo-listctl__add { min-height: 44px; }
+.fo-listctl__builder {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  padding: 12px; border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface-subtle, #f7f5f0);
+}
+.fo-listctl__step { display: grid; gap: 4px; font-size: 0.8125rem; color: var(--color-text-secondary); }
+.fo-listctl__step select, .fo-listctl__step input { min-height: 44px; min-width: 0; box-sizing: border-box; }
+.fo-listctl__actions { display: flex; gap: 8px; }
+.fo-listctl__actions button { min-height: 44px; }
+.fo-listctl__sort { display: grid; gap: 4px; font-size: 0.8125rem; color: var(--color-text-secondary); }
+.fo-listctl__sort select { min-height: 44px; }
+
+.fo-listctl__active { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.fo-listctl__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 12px; border-radius: 999px;
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  font-size: 0.875rem; overflow-wrap: anywhere;
+}
+/* 44px on the remove control: it is a target on a phone, not a decoration. */
+.fo-listctl__chip-remove {
+  min-width: 44px; min-height: 44px; border: 0; background: none; cursor: pointer;
+  font-size: 1.125rem; line-height: 1; color: var(--color-text-secondary);
+}
+.fo-listctl__clear { min-height: 44px; }
+.fo-listctl__empty { display: grid; gap: 10px; justify-items: start; padding: 16px 0; }
+
+@media (max-width: 639.98px) {
+  /* The builder stacks on a phone: three controls side by side leave each too narrow to read. */
+  .fo-listctl__builder { flex-direction: column; align-items: stretch; }
+  .fo-listctl__step select, .fo-listctl__step input { width: 100%; }
+}

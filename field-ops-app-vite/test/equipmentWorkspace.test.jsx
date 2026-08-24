@@ -188,7 +188,8 @@ describe("AvailableEquipment catalog filtering (READY source)", () => {
     expect(screen.queryByLabelText(/customer/i)).toBeNull();
     expect(screen.getByText(/2 of 2 available/i)).toBeTruthy();
     expect(screen.getByText("IPN-1")).toBeTruthy(); // S1 internal identifier
-    expect(screen.getByText(/S\/N S2/)).toBeTruthy(); // S3 (installed) never shown
+    // The serial is its own FIELD now, not "S/N S2" folded into a sentence. S3 (installed) never shown.
+    expect(screen.getByText("S2")).toBeTruthy();
   });
 
   it("combined filters narrow the list and update the count; Clear resets", () => {

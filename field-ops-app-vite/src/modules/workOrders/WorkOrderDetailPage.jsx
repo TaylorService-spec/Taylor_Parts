@@ -11,6 +11,8 @@ import { Button } from "../../shared/ui/primitives";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
+import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
+import { savedListState } from "../../navigation/listStateMemory.js";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -30,6 +32,23 @@ import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsP
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
+
+  /**
+   * BACK TO WORK ORDERS — and it now goes there.
+   *
+   * It navigated to "/service/work-orders", which matches NO route: the Work Orders nav item declares
+   * `path: ""` and is therefore the INDEX of /service. An unmatched path fell through to the
+   * catch-all, so a control labelled "Back to Work Orders" reliably landed on the Dashboard. The
+   * label was telling the truth about intent; the code was not.
+   *
+   * The path is DERIVED from the nav config rather than typed, so a future move follows
+   * automatically. The saved list state rides along, so filters and sort survive the round trip —
+   * and deliberately NOT browser history, which would send this control somewhere different
+   * depending on where the record happened to be opened from.
+   */
+  const backToWorkOrders = () => navigate(
+    objectListPathWithState(OBJECT_LIST_KEY.WORK_ORDERS, savedListState(OBJECT_LIST_KEY.WORK_ORDERS)),
+  );
   const { role, user } = useAuth();
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
@@ -60,7 +79,7 @@ export default function WorkOrderDetailPage() {
       <div className="fo-panel">
         <FailureState
           message="This work order could not be found."
-          action={<Button variant="secondary" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</Button>}
+          action={<Button variant="secondary" onClick={backToWorkOrders}>Back to Work Orders</Button>}
         />
       </div>
     );
@@ -75,7 +94,7 @@ export default function WorkOrderDetailPage() {
 
   return (
     <div className="fo-panel">
-      <Button variant="tertiary" onClick={() => navigate("/service/work-orders")} className="fo-link-btn">
+      <Button variant="tertiary" onClick={backToWorkOrders} className="fo-link-btn">
         &larr; Back to Work Orders
       </Button>
       {/* H14 -- these two reads used to be dropped entirely (no error, no
