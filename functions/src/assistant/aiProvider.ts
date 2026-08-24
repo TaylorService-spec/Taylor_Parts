@@ -14,6 +14,19 @@
 //
 // THIS FILE DELIBERATELY CONTAINS NO SECRETS AND NO NETWORK CODE. It is a contract.
 
+/**
+ * Workload class. What EOS asks for, in EOS terms.
+ *
+ * EOS names the KIND OF THINKING it needs; it never names a model. `qwen32-8k`, `gpt-4o` and
+ * `claude-sonnet-4` are facts about a vendor's catalogue this quarter, and putting one in domain
+ * code moves a routing decision that belongs to infrastructure into the wrong layer. Each adapter
+ * maps these two values onto whatever its provider currently calls them.
+ *
+ *   ROUTINE   -- summarise, explain, answer from supplied facts. The overwhelming majority.
+ *   REASONING -- multi-step analysis where a stronger, slower, dearer model is worth it.
+ */
+export type AiWorkloadClass = "ROUTINE" | "REASONING";
+
 /** Provider-neutral role labels. Deliberately not a provider's own enum. */
 export type AssistantMessageRole = "system" | "user" | "assistant";
 
@@ -95,6 +108,13 @@ export interface AiRespondRequest {
   /** Correlates this call with the EOS audit record. Never contains protected business data. */
   readonly correlationId: string;
   readonly timeoutMs?: number;
+  /** Defaults to ROUTINE. The adapter maps it to a model; the caller must not. */
+  readonly workloadClass?: AiWorkloadClass;
+  /**
+   * Optional ceiling on the provider's input context window, where the provider accepts one.
+   * Advisory: a provider that cannot honour it ignores it rather than failing the request.
+   */
+  readonly contextTokenLimit?: number;
 }
 
 export interface AiRespondResult {
@@ -104,6 +124,18 @@ export interface AiRespondResult {
   readonly latencyMs: number;
   /** True when the provider stopped at the token ceiling rather than finishing. */
   readonly truncated: boolean;
+  /**
+   * The provider's own id for this call, for reconciling an EOS audit record against a provider's
+   * log. Diagnostics only -- never branched on, never a business identifier.
+   */
+  readonly providerRequestId?: string;
+  /**
+   * Time the request spent queued before inference began, where the provider reports it. A
+   * self-hosted gateway with finite GPUs has real queueing; a hosted API generally does not, so
+   * this is ABSENT rather than zero when unknown -- zero would read as "no wait" and make a
+   * saturated queue invisible in exactly the deployment where it matters.
+   */
+  readonly queueWaitMs?: number;
 }
 
 export interface AiHealthResult {
