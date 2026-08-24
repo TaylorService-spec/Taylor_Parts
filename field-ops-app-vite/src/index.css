@@ -4337,6 +4337,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     gap: 12px; align-items: baseline; }
   .fo-table--stack td[data-label]::before { content: attr(data-label); color: var(--color-text-muted);
     font-size: 11px; text-transform: uppercase; letter-spacing: .03em; flex: none; }
+  /* THE LINK IN A CARD IS THE CARD'S TAP TARGET, and at desk density it is a 19px line of text.
+     Measurement found exactly that on the Parts catalogue: "Compressor" was 74x19, while the row
+     with a long wrapping name cleared 44px by accident -- so the targets that failed were the SHORT
+     names, which is most of them. Scoped to the stack breakpoint, so desktop table density is
+     untouched. */
+  .fo-table--stack td a { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 /* =============================================================================
@@ -4794,6 +4800,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Why a field a person can SEE is not in the filter menu. Quiet by design: it is an explanation
    sitting under the builder, not a warning about anything being wrong. */
 .fo-listctl__why { flex-basis: 100%; margin: 4px 0 0; font-size: 0.8125rem; line-height: 1.4; }
+/* A qualifier on a figure -- "catalogue baseline, not live stock". Visibly secondary to the number
+   it qualifies, and never merged into it: the number is the value, this is what is known about it. */
+.fo-parts__qualifier { font-size: 0.75rem; }
 
 @media (max-width: 639.98px) {
   /* The builder stacks on a phone: three controls side by side leave each too narrow to read. */
