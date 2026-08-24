@@ -13,6 +13,11 @@ import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import { workOrderRecordPage } from "../../metadata/definitions/workOrderPage.js";
+import { workOrderEntity } from "../../metadata/definitions/workOrder.js";
+import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -92,6 +97,32 @@ export default function WorkOrderDetailPage() {
   // it AT. Passing the Work Order itself keeps the detail panel's contract.
   const jobsForThisWorkOrder = [workOrder];
 
+  // REFERENCES BECOME NAMES, through the resolvers this page already reads.
+  //
+  // Every one of these ids is a routing key, never content. Where a read failed the page already
+  // renders a visible failure above; the field itself says the reference did not resolve rather
+  // than printing the key (DECISIONS #106).
+  const resolveWorkOrderReference = (fieldId, id) => {
+    if (fieldId === "customerId") {
+      return account?.name
+        ? { state: REFERENCE_STATE.FOUND, label: account.name }
+        : { state: REFERENCE_STATE.NOT_FOUND };
+    }
+    if (fieldId === "locationId") {
+      return location?.name
+        ? { state: REFERENCE_STATE.FOUND, label: location.name }
+        : { state: REFERENCE_STATE.NOT_FOUND };
+    }
+    if (fieldId === "assignedTechId") {
+      // Delegated to the ONE technician vocabulary rather than a `find(...)?.name ?? id` written
+      // here -- that fallback is exactly how a raw id reaches a screen.
+      const identity = resolveTechnicianIdentity(id, { technicians });
+      if (identity.state === "resolved") return { state: REFERENCE_STATE.FOUND, label: identity.name };
+      return { state: REFERENCE_STATE.NOT_FOUND };
+    }
+    return undefined;
+  };
+
   return (
     <div className="fo-panel">
       <Button variant="tertiary" onClick={backToWorkOrders} className="fo-link-btn">
@@ -109,6 +140,23 @@ export default function WorkOrderDetailPage() {
       {techniciansError && (
         <FailureState message="You don't have access to the technician list. Some assignment info may be missing." />
       )}
+      {/* ═══ THE SHARED RECORD SHELL ═══
+          The Work Order's own facts, in the same grammar every other core object uses.
+
+          NO PENCILS, and that is derived rather than restrained: there is no field-patch command
+          for a Work Order at all. STATUS especially is the OUTPUT of a lifecycle transition --
+          transitionWorkOrder takes an ACTION NAME and the engine decides whether it is legal from
+          where the record is now. A status dropdown would bypass every guard silently, landing the
+          record in a state no transition could have produced. Assignment is the same: it is what a
+          Dispatch action DOES, and a patched assignedTechId is an assignment nobody dispatched.
+
+          The lifecycle, execution and parts-planning actions below are untouched. */}
+      <MetadataRecordPage
+        definition={workOrderRecordPage}
+        record={workOrder}
+        entityResolver={() => workOrderEntity}
+        resolveReference={resolveWorkOrderReference}
+      />
       <WorkOrderDetail
         workOrder={workOrder}
         jobs={jobsForThisWorkOrder}

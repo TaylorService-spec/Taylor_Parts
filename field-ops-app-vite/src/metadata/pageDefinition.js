@@ -131,6 +131,66 @@ export const OPERATIONAL_SECTION_KINDS = Object.freeze([
  * entirely — the same "denied, not empty" outcome a fully-denied single-gate section
  * already produces.
  */
+/**
+ * HOW PROMINENT A SECTION IS. Four values, and deliberately only four.
+ *
+ * A record page that renders every declared field at once is a wall, and the reader pays for the
+ * completeness whether or not they wanted it. Density is how a definition says which facts answer
+ * "what is this and what state is it in" and which are reference material.
+ *
+ *   SUMMARY    the small set the first viewport must answer: what is this, what state is it in,
+ *              what does it hang off, what can be done next. If everything is summary, nothing is.
+ *   DETAILS    ordinary record facts, visible by default. The default when nothing is declared,
+ *              because a section that says nothing about its prominence is an ordinary one.
+ *   SECONDARY  real business information consulted occasionally. Grouped and collapsed.
+ *   SYSTEM     identifiers, timestamps, audit metadata. Collapsed.
+ *
+ * DECLARED ON THE SECTION, NOT THE FIELD. Sections already group fields, so section-level density
+ * needs no per-field vocabulary and no precedence rules between the two. A field that needs
+ * different prominence from its neighbours is telling you it belongs in a different section.
+ *
+ * NOTHING IS HIDDEN. Collapsed is not absent: every section renders, carries its heading, and opens
+ * from the keyboard. Density orders a page; it never removes anything from it, and it has no
+ * bearing on authority.
+ */
+export const SECTION_DENSITY = Object.freeze(["SUMMARY", "DETAILS", "SECONDARY", "SYSTEM"]);
+
+/** Which densities arrive collapsed. Reference material, never primary facts. */
+export const COLLAPSED_BY_DENSITY = Object.freeze(["SECONDARY", "SYSTEM"]);
+
+/**
+ * Should this section render collapsed?
+ *
+ * An explicit `collapsedByDefault` always wins — a definition that has thought about it beats a
+ * rule of thumb. Otherwise density decides.
+ *
+ * THE SMALL-PAGE EXCEPTION: collapsing on a record with almost nothing on it hides most of the page
+ * behind a click, to save space the page does not need. Below the threshold, everything opens.
+ */
+export function sectionStartsCollapsed(section, { totalFieldCount = Infinity } = {}) {
+  if (typeof section?.collapsedByDefault === "boolean") return section.collapsedByDefault;
+  if (totalFieldCount <= 8) return false;
+  return COLLAPSED_BY_DENSITY.includes(section?.density);
+}
+
+/**
+ * The same page definition, narrowed to some of its sections.
+ *
+ * Promoted from accountPageComponents.js, which has been doing exactly this privately -- a screen
+ * that hand-composes part of a record needs to render SOME sections through the shell without the
+ * shell also rendering the ones the screen draws itself.
+ *
+ * The concrete case: Sales Order keeps its ContextBand as the summary band, because the band
+ * carries LINKED references and a status pill that a field grid cannot render. Letting the shell
+ * also render the summary section would print the customer twice.
+ *
+ * A subset keeps every other property of the definition -- including editableFieldIds and
+ * writeCommand -- so narrowing what is DISPLAYED can never widen what is WRITABLE.
+ */
+export function pageSubset(def, sectionIds) {
+  return Object.freeze({ ...def, sections: Object.freeze((def?.sections ?? []).filter((s) => sectionIds.includes(s.id))) });
+}
+
 export function makeSection(input = {}) {
   return Object.freeze({
     id: input.id,
@@ -143,6 +203,9 @@ export function makeSection(input = {}) {
     listId: input.listId ?? null, // RELATED_LIST only
     actions: Object.freeze([...(input.actions ?? [])]), // REGISTERED action ids
     capabilityRequirement: input.capabilityRequirement ?? null,
+    // DETAILS is the honest default: a section saying nothing about its prominence is an ordinary
+    // one, and defaulting to SUMMARY would let every page claim the first viewport.
+    density: input.density ?? "DETAILS",
     // Mutually exclusive with capabilityRequirement — see the doc comment above. `null`
     // (the default) means this section is still the ordinary single-gate (or ungated)
     // shape every existing definition already uses.

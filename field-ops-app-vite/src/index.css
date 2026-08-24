@@ -4947,10 +4947,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 32px, not the 16px the glyph needs: this is the governed mobile touch floor, and a
-     pencil is exactly the control somebody taps on a phone with one thumb. */
-  min-width: 32px;
-  min-height: 32px;
+  /* 44px, not the 16px the glyph needs and not the 32px this first shipped at. 32px was below
+     the governed mobile floor -- a pencil is exactly the control somebody taps on a phone with
+     one thumb, and it was the smallest target on the page. */
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -4974,3 +4975,41 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (hover: none), (max-width: 640px) {
   .fo-record-field__edit { opacity: 1; }
 }
+
+/* ===========================================================================
+   COLLAPSIBLE RECORD SECTION
+   ---------------------------------------------------------------------------
+   The heading CONTAINS the control, so the accessible name of the button is the
+   section name rather than a page full of controls all called "Toggle".
+   ========================================================================= */
+.fo-record-section-title--toggle { margin: 0; }
+
+.fo-record-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  /* 44px. This is the control that reveals a whole section, and on a phone it is
+     the one somebody reaches for first -- it must not be the smallest thing on
+     the page. Usable at 320px because it takes the full width rather than
+     shrinking to fit the label. */
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fo-record-section__toggle:focus-visible {
+  outline: 2px solid var(--color-accent, #2f7d4f);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The chevron is orientation, not decoration: it turns with the state, and
+   aria-expanded carries the same fact to assistive tech. Neither is the only
+   signal -- state is never communicated by colour alone. */
+.fo-record-section__toggle svg { flex: 0 0 auto; }

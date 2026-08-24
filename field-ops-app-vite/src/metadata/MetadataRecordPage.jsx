@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { componentRegistry, actionRegistry } from "./registry.js";
 import { buildCompositionPlan, applyVisibility } from "./pageRuntime.js";
-import { REGION, fieldEditability, EDITABILITY_REASON_TEXT } from "./pageDefinition.js";
+import { REGION, fieldEditability, EDITABILITY_REASON_TEXT, sectionStartsCollapsed } from "./pageDefinition.js";
+import RecordSection from "./RecordSection.jsx";
 import { formatAddress } from "../domain/address.js";
 import { findField } from "./entityDefinition.js";
 import { buildQueryDescriptor } from "./listRuntime.js";
@@ -179,7 +180,7 @@ function resolveFieldGroupPartMap(section) {
  * (existing `items.length === 0` -> `null` branch, untouched); WITHHELD is this new note;
  * UNAVAILABLE is the entity-not-registered message above, unrelated to capability at all.
  */
-function FieldGroup({ section, record, entity, page = null, onEditField = null, editability = null }) {
+function FieldGroup({ section, record, entity, page = null, onEditField = null, editability = null, resolveReference = null }) {
   if (!entity) {
     return <p className="fo-muted">Field details are unavailable — this section&rsquo;s entity is not registered.</p>;
   }
@@ -226,9 +227,15 @@ function FieldGroup({ section, record, entity, page = null, onEditField = null, 
     // ADDRESS is formatted by the ONE address formatter this app already has, rather than
     // stringified. `String({street: ...})` renders "[object Object]", which is the shape of
     // defect this whole renderer exists to prevent.
+    // A REFERENCE RESOLVES THROUGH THE CALLER'S RESOLVER, exactly as a list column does.
+    //
+    // Without one, cellValue falls back to UNRESOLVED_REFERENCE_LABEL -- honest, and never the
+    // stored id. WITH one, an ownerEmployeeId becomes a person's name. Sales Order's summary band
+    // rendered `ownerEmployeeId ?? "—"` before this existed, which put a raw employee id on screen
+    // where a name belongs.
     const value = field?.type === "ADDRESS"
       ? formatAddress(record?.[fieldId])
-      : cellValue(column, record ?? {});
+      : cellValue(column, record ?? {}, resolveReference ? { resolveReference } : undefined);
     const edit = editability
       ? editability(fieldId)
       : fieldEditability(page, fieldId);
@@ -565,6 +572,7 @@ function Section({
   relatedListFocus,
   onEditField,
   editability,
+  resolveReference,
 }) {
   const entry = section.componentId ? componentRegistry.resolve(section.componentId) : null;
 
@@ -610,6 +618,7 @@ function Section({
         page={definition}
         onEditField={onEditField}
         editability={editability}
+        resolveReference={resolveReference}
       />
     );
   }
@@ -627,6 +636,9 @@ export default function MetadataRecordPage({
   // pencil can appear here at all without inventing write authority. A page that passes no
   // handler renders no pencils.
   onEditField = null,
+  // Turns a stored reference into a business label. Threaded, never invented here -- the shell has
+  // no idea what an employee id means, and guessing would be how a document key reaches a reader.
+  resolveReference = null,
   // Optional override for "can this field be edited", for a screen that knows something the page
   // definition cannot -- e.g. that paymentTerms is admin-only at the Rules layer and this viewer
   // is not an admin. Defaults to the definition's own allowlist.
@@ -686,6 +698,13 @@ export default function MetadataRecordPage({
     );
   }
 
+  // HOW MUCH IS ON THIS RECORD AT ALL. Collapsing a section on a page with almost nothing on it
+  // hides most of it behind a click to save space the page does not need, so the small-page
+  // exception in sectionStartsCollapsed needs the whole-page count, not a per-section one.
+  const totalFieldCount = Object.values(plan.regions ?? {})
+    .flat()
+    .reduce((n, sec) => n + (sec?.fieldIds?.length ?? 0), 0);
+
   return (
     <div className="fo-record-page" data-composition-mode={plan.compositionMode}>
       {RENDER_ORDER.filter((r) => REGION.includes(r)).map((region) => {
@@ -720,15 +739,20 @@ export default function MetadataRecordPage({
               const sectionClassName = ["fo-record-section", isGenericFieldGroup ? "fo-panel" : ""]
                 .filter(Boolean)
                 .join(" ");
+              // COLLAPSE IS A DENSITY DECISION, made once in pageDefinition.js and applied here.
+              // Reference material (SECONDARY/SYSTEM) arrives closed; primary facts do not. A page
+              // with very little on it opens everything, because collapsing three fields hides most
+              // of the record to save space it does not need.
+              const collapsedByDefault = sectionStartsCollapsed(section, { totalFieldCount });
               return (
-                <section
+                <RecordSection
                   key={section.id}
+                  section={section}
+                  label={section.label ?? humanizeSectionId(section.id)}
                   className={sectionClassName}
-                  aria-label={section.label ?? humanizeSectionId(section.id)}
+                  collapsible={collapsedByDefault || section.density === "SECONDARY" || section.density === "SYSTEM"}
+                  defaultCollapsed={collapsedByDefault}
                 >
-                  {section.label && (
-                    <SectionHeader title={section.label} level={3} className="fo-record-section-title" />
-                  )}
                   <Section
                     section={section}
                     record={record}
@@ -740,8 +764,9 @@ export default function MetadataRecordPage({
                     relatedListFocus={relatedListFocus}
                     onEditField={onEditField}
                     editability={editability}
+                    resolveReference={resolveReference}
                   />
-                </section>
+                </RecordSection>
               );
             })}
           </div>
