@@ -261,14 +261,55 @@ eight-column table scrolls inside `.fo-table-scroll` so the page never scrolls s
 lay out, so what is asserted is the structure that produces the geometry — which is also what
 regresses.
 
-**The live browser pass was NOT performed, and that is a gap rather than a pass.** The local emulator
-could not start (port 8080 held by another session's emulator; killing a process this session does not
-own is not an acceptable way to get a measurement). Every prior package in this program found at least
-one sub-44px target *only* by measuring in a real browser — twice in WO-03A, once in WO-05A — so the
-structural gate above should be treated as necessary and not sufficient. **The four-width measurement
-of `/inventory/part-master` is outstanding work**, and the two things worth measuring specifically are
-the `+ Add Filter` builder's three stacked controls at 320px and the active-filter chip's `×` remove
-button, which is the smallest new target on the screen.
+### Live measurement — performed 2026-08-24
+
+The emulator port was still held by another session, so the measurement was taken against a temporary
+harness: the **real** `PartMasterList`, the **real** stylesheet, real browser layout, with only the
+governed read stubbed. Geometry was what was being measured, not data. The harness was deleted after
+the run.
+
+Fixture: three rows including a 41-character part number
+(`TAYLOR-C713-BEATER-ASSY-COMPLETE-0000912`) and a 95-character description, plus two active filter
+chips and one unapplied criterion.
+
+| width | page overflow | clipped outside scrollers | sub-44px controls |
+|---|---|---|---|
+| 320 | none | none | **2 kinds × 3 rows** → fixed → none |
+| 375 | none | none | none |
+| 390 | none | none | none |
+| 414 | none | none | none |
+
+**One real defect, and the structural gate could not have caught it.** The row actions `Edit` (47×31)
+and `Status` (62×31) were the only sub-44px controls on the screen. They **predate** the list controls,
+so no 44px rule covered them and no structural assertion knew to look — that gate asserts the controls
+*this migration added* carry sizing rules, and these were not among them. Fixed with
+`.fo-pml__actions button { min-height: 44px; min-width: 44px; }`, and added to the mobile gate.
+
+That is the fourth package in a row where a real browser found a sub-44px target no other check did.
+
+Verified in the browser at 320:
+
+- `+ Add Filter` 112×44 · `Sort` select 154×44 · `Clear filters` 113×44 · pager 144×44
+- chip remove `×` **44×44** — the smallest new target, and it holds
+- the filter builder **stacks**: field, condition and value controls all 163×44, zero clipped
+  elements, builder 295px tall with the value control open
+- chips read **Status: Active** and **Tracking: Serialized** from a URL that carries no `valueLabel` —
+  the re-resolution fix, confirmed in a real browser rather than in jsdom
+- the unapplied-criteria banner renders, naming Description
+
+### A readability finding that is NOT a geometry failure
+
+At 414 the eight-column table **compresses to fit** rather than scrolling: columns squeeze to
+89/96/100/79/77/54/129/133px, and the row carrying the long description is **226px tall** against 61px
+for ordinary rows.
+
+Every hard requirement passes — no overflow, nothing clipped, no small targets. But a squeezed
+eight-column table with a 226px row is not a screen anybody wants to read on a phone, and
+`.fo-table-scroll` does not help: the table never exceeds the viewport, it just gets narrower.
+
+Recorded rather than fixed here. Turning the Part list into structured **cards** below the phone
+breakpoint is a UX change of its own, and the Customers / Accounts package already requires that card
+treatment — the pattern established there should come back to Parts.
 
 ---
 
