@@ -369,6 +369,9 @@ jobs:
       # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
       - name: Scan workflow availability (pure)
         run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs test/personaOperability.test.mjs
+        # MISSING, and invisible for as long as the lane never started: without this the step
+        # runs from the repository root, where none of these files exist.
+        working-directory: field-ops-app-vite
 
       # WO-04. Who is offered which queue, what may carry a count, the structured-field standard,
       # the offline classification WO-05 inherits, and a guard that the shell is actually reachable.

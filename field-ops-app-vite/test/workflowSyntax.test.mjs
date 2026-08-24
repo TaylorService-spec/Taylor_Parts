@@ -132,3 +132,52 @@ test("a shell script inside a block scalar is not read as keys", () => {
   ].join("\n");
   assert.deepEqual(duplicateKeys(scalar), []);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE SECOND DEFECT THE SAME DEAD LANE WAS HIDING.
+//
+// With the duplicate key removed, scan-workspace-tests.yml finally started — and failed on its
+// fourth step, which had no `working-directory` at all and so ran `node --test test/...` from the
+// repository root, where none of those files exist. It had been wrong for as long as the lane had
+// been dead, and nothing could report it, because a workflow that never starts never runs a step.
+//
+// Both packages here run from `field-ops-app-vite/`, so a bare `node --test test/...` or
+// `npx vitest run test/...` at the root is always a mistake rather than a style choice.
+
+const CLIENT_TEST_STEP = /^\s*(run:\s*)?(npx vitest run|node(\s+--test)?)\s+test\//;
+
+test("no workflow runs a client test suite without saying where", () => {
+  const offenders = [];
+  for (const file of files) {
+    const text = readFileSync(path.join(WORKFLOW_DIR, file), "utf8");
+    const lines = text.split(/\r?\n/);
+    lines.forEach((line, i) => {
+      if (!/^\s*run:\s*(npx vitest run|node(\s+--test)?)\s+test\//.test(line)) return;
+      // The step's own keys: everything from here until the next list item at the same or a
+      // shallower indent. `working-directory` may sit either side of `run:`, so both are searched.
+      const indent = line.search(/\S/);
+      let start = i;
+      while (start > 0 && !/^\s*-\s/.test(lines[start])) start -= 1;
+      let end = i + 1;
+      while (end < lines.length && !/^\s*-\s/.test(lines[end]) && !(lines[end].trim() && lines[end].search(/\S/) < indent)) end += 1;
+      const step = lines.slice(start, end).join("\n");
+      if (!/working-directory:\s*\S/.test(step)) {
+        offenders.push(`${file}:${i + 1} runs ${line.trim().slice(0, 60)}`);
+      }
+    });
+  }
+  assert.deepEqual(
+    offenders, [],
+    `these steps run from the repository root, where their test files do not exist:\n  ${offenders.join("\n  ")}`,
+  );
+});
+
+test("the working-directory detector detects the shape that broke", () => {
+  // Mutation proof. Without this the guard above could pass by never matching anything.
+  const dir = WORKFLOW_DIR;
+  assert.ok(dir.length > 0);
+  assert.match("        run: node --test test/scanWorkflows.test.mjs", CLIENT_TEST_STEP);
+  assert.match("        run: npx vitest run test/foo.test.jsx", CLIENT_TEST_STEP);
+  // Not every `run:` is a client suite -- a functions-package command must not be flagged.
+  assert.doesNotMatch("        run: npm install", CLIENT_TEST_STEP);
+});
