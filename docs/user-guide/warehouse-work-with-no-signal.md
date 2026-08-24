@@ -50,6 +50,23 @@ All of these can be captured offline:
 | Return intake | Yes |
 | **Reviewing a count (reconciling)** | **No — see section 6** |
 
+## 2a. What each screen says when it holds your work
+
+None of them says the work is done. Each says what has *not* happened yet:
+
+| Screen | With no signal |
+|---|---|
+| Receiving | *Receipt pending sync — nothing has been received yet.* |
+| Put away | *Put-away pending sync — the stock has not been moved yet.* |
+| Pick / stage | *Pick/stage pending sync — nothing is held for this job.* |
+| Transfer | *Transfer dispatch pending sync — the transfer has not moved yet.* |
+| Cycle count | *Count pending sync — nothing has been counted on the platform yet.* |
+| Return | *Return intake pending sync — nothing has gone back into stock.* |
+
+If the platform **refuses** something — you are not authorized, or the record is in the wrong state —
+you are told straight away. A refusal is never held as "pending", because it will not get better by
+waiting.
+
 ## 3. Where to see what's outstanding
 
 - **A banner at the top of Home** tells you how many items are waiting, or how many need you.

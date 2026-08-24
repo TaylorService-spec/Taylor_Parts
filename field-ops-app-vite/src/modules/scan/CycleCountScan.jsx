@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { captureCycleCountSubmit } from "../../offline/warehouseIntent.js";
+
+/** A sentinel code, so the durability failure is not mistaken for a server error code. */
+const STORAGE_FAILED = "__storage_failed__";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
@@ -60,6 +65,9 @@ const LOCATION_TYPES = [
 
 export default function CycleCountScan({ deps }) {
   const client = deps?.cycleCountClient ?? cycleCountCommandClient;
+  // ONE submit policy. The COUNT may be queued; reconciliation may not, and there is no path here
+  // that could queue one.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
   const [session, setSession] = useState(null);
   const [observations, setObservations] = useState(Object.freeze([]));
@@ -143,17 +151,52 @@ export default function CycleCountScan({ deps }) {
       setBusy(false);
       return;
     }
+    // The shared policy carries back `serverIds` only, so the command's full response is kept here.
+    let serverResponse = null;
     try {
-      const submitted = await client.submitCycleCount(built.value);
+      const outcome = await warehouse.submit(
+        async () => {
+          try {
+            const submitted = await client.submitCycleCount(built.value);
+            serverResponse = submitted;
+            return { ok: true, serverIds: { status: submitted?.status ?? null } };
+          } catch (err) {
+            return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null }, thrown: err };
+          }
+        },
+        // BLIND COUNT PRESERVED BY CONSTRUCTION. The capture carries only what was observed -- there
+        // is nowhere in this payload for an expected quantity, a variance or a materiality decision
+        // to hide, and the server derives all three at sync.
+        (wasOffline) => captureCycleCountSubmit({
+          principalUid: deps?.offline?.principalUid ?? "self",
+          cycleCountId: session.cycleCountId,
+          countedQuantity: built.value.countedQuantity ?? null,
+          countedSerials: built.value.countedSerials ?? null,
+          partId: session.partId,
+          locationId: session.location?.locationId ?? null,
+          captureKey: `count:${session.cycleCountId}`,
+          at: Date.now(),
+          offline: wasOffline,
+        }),
+      );
       if (!alive.current) return;
-      setResult(submitted);
-      setSession((s) => (s ? { ...s, status: submitted?.status ?? "SUBMITTED" } : s));
-    } catch (err) {
-      if (alive.current) fail(err);
+
+      if (outcome?.result === WAREHOUSE_SUBMIT.SENT) {
+        setResult(serverResponse ?? { status: outcome.serverIds?.status ?? "SUBMITTED" });
+        setSession((s) => (s ? { ...s, status: outcome.serverIds?.status ?? "SUBMITTED" } : s));
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        // PENDING. Nothing has been counted on the platform, and no variance exists yet.
+        setResult({ queued: true, pendingText: PENDING_TEXT.CYCLE_COUNT_SUBMIT });
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        // The observed quantity STAYS on screen -- this is the only copy that exists.
+        setError(STORAGE_FAILED);
+      } else {
+        fail(outcome?.thrown ?? outcome?.error ?? new Error("count refused"));
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, session, client, fail]);
+  }, [state, busy, session, client, fail, warehouse, deps]);
 
   if (!session) return <StartCount onStart={start} busy={busy} error={error} />;
 
@@ -267,6 +310,15 @@ function StartCount({ onStart, busy, error }) {
  * recorded and there is nothing left to anchor.
  */
 function CountResult({ result, serialTracked }) {
+  // HELD, NOT COUNTED. Its own branch and its own tone: no variance exists yet, because variance is
+  // the server's arithmetic and the server has not seen this.
+  if (result?.queued) {
+    return (
+      <section className="fo-scan__notice fo-scan__notice--pending" role="status">
+        <p>{result.pendingText}</p>
+      </section>
+    );
+  }
   const variance = result?.variance;
   const serialVariance = result?.serialVariance;
   return (
@@ -291,6 +343,11 @@ function CountResult({ result, serialTracked }) {
 }
 
 function CountError({ code }) {
+  // The durability failure has wording of its own -- mapping it through a code would lose the one
+  // instruction that matters, which is to stay on this screen.
+  if (code === STORAGE_FAILED) {
+    return <p className="fo-scan__state fo-scan__state--denied" role="alert">{NOT_DURABLE_TEXT}</p>;
+  }
   const message = code === "permission-denied"
     ? "You are not authorized to count stock. The cycle count commands are built and governed; they have not been granted or switched on."
     : code === "invalid-argument"

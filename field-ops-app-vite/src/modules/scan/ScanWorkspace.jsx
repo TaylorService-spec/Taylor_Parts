@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -12,6 +12,10 @@ import {
   unavailableText,
 } from "../../access/scanWorkflows.js";
 import MultiScanReceiving from "../receiving/MultiScanReceiving.jsx";
+import { useOfflineRuntime } from "../../hooks/useOfflineRuntime";
+import { OfflineRuntimeProvider, useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
+import { createWarehouseBindings } from "../../offline/warehouseCommandBindings.js";
+import { WAREHOUSE_STORE_NAMESPACE } from "../../offline/warehouseIntent.js";
 import PartsScanner from "../mobile/PartsScanner.jsx";
 import LookupScan from "./LookupScan.jsx";
 import TransferScan from "./TransferScan.jsx";
@@ -130,7 +134,34 @@ function ScanBackControl({ pendingWork, onLeave }) {
   );
 }
 
+/**
+ * THE WAREHOUSE QUEUE BELONGS TO WAREHOUSE WORK, NOT TO ONE SHELL.
+ *
+ * This workspace is reachable from the handheld shell AND directly from Service -> Scan. A stow
+ * started from the second route is the same stow, on the same phone, in the same dead zone — so the
+ * runtime is provided here too, and the shell's provider simply wins when there is one.
+ *
+ * `disabled` keeps the hook call unconditional without opening a second queue over one storage key,
+ * and the provider is skipped entirely when something above already owns the queue.
+ */
 export default function ScanWorkspace({ deps }) {
+  const provided = useProvidedOfflineRuntime();
+  const bindings = useMemo(() => createWarehouseBindings(deps?.commandDeps ?? {}), [deps?.commandDeps]);
+  const own = useOfflineRuntime({
+    disabled: !!provided,
+    namespace: WAREHOUSE_STORE_NAMESPACE,
+    bindings,
+  });
+  if (provided) return <ScanWorkspaceBody deps={deps} />;
+  return (
+    <OfflineRuntimeProvider value={own}>
+      <ScanWorkspaceBody deps={deps} />
+    </OfflineRuntimeProvider>
+  );
+}
+
+function ScanWorkspaceBody({ deps }) {
+
   // `initialWorkflow` lets a shell open somebody DIRECTLY on the task they chose, rather than
   // landing them on a menu of tasks they have just picked from. It beats the remembered workflow
   // because it is a fresh, deliberate choice; the remembered one is only a convenience for somebody

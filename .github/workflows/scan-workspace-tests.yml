@@ -157,12 +157,15 @@ on:
       - "field-ops-app-vite/src/shared/ui/StructuredFields.jsx"
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
-      - "field-ops-app-vite/test/warehouseShell.test.jsx test/warehouseOfflineBindings.test.jsx"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx test/warehouseOfflineBindings.test.jsx test/warehouseOfflineScreens.test.jsx"
       # WO-05 -- the warehouse offline runtime sits under these same workflows.
       - "field-ops-app-vite/src/offline/**"
       - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
       - "field-ops-app-vite/test/warehouseOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/warehouseOfflineBindings.test.jsx"
+      # WO-05A -- every warehouse form now routes through the shared submit policy.
+      - "field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx"
+      - "field-ops-app-vite/test/warehouseOfflineScreens.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -283,6 +286,9 @@ on:
       - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
       - "field-ops-app-vite/test/warehouseOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/warehouseOfflineBindings.test.jsx"
+      # WO-05A -- every warehouse form now routes through the shared submit policy.
+      - "field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx"
+      - "field-ops-app-vite/test/warehouseOfflineScreens.test.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
-import { isRetryableCode } from "../../domain/offlineSubmissionQueue.js";
-import SubmissionQueueStatus from "../../shared/ui/SubmissionQueueStatus.jsx";
-import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { capturePutAway } from "../../offline/warehouseIntent.js";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { binCommandClient } from "../../services/binCommandClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
@@ -148,26 +147,14 @@ export default function PutAwayScan({ deps }) {
     return { feedback: FEEDBACK.REJECTED, detail: STOW_OBSERVATION_TEXT[observation.state] };
   }, [session]);
 
-  // The transport the queue uses is the SAME client every other call goes through, so an offline
-  // submission and an online one are literally the same request — the queue adds persistence and
-  // honest state, never a second code path.
-  const invoke = useCallback(async (callable, payload) => {
-    if (callable !== "recordPutAway") throw new Error(`unsupported callable ${callable}`);
-    return client.recordPutAway(payload);
-  }, [client]);
-
-  const { queue, summary, add, flush, clearConfirmed } = useSubmissionQueue({
-    invoke,
-    deps: deps?.queueDeps,
-  });
-
-  // Try again whenever the browser says the network is back. Not a poll: a timer that retries into a
-  // dead zone every few seconds drains a handheld battery for nothing.
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    window.addEventListener("online", flush);
-    return () => window.removeEventListener("online", flush);
-  }, [flush]);
+  // MIGRATED TO THE ONE WAREHOUSE QUEUE (WO-05A).
+  //
+  // This screen already had the right POLICY -- send, and queue only what retrying could fix -- but
+  // against a second queue whose storage key was not scoped to a principal. Two warehouse queues on
+  // one device is two writers; an unscoped key is one warehouse worker seeing another's stows. Both
+  // are gone: there is now one durable, principal-scoped queue for all warehouse work, and the
+  // reconnect trigger and retry belong to it rather than to this screen.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
   const confirm = useCallback(async () => {
     if (!state.canSubmit || busy) return;
@@ -179,28 +166,51 @@ export default function PutAwayScan({ deps }) {
       ...(note.trim() ? { note: note.trim() } : {}),
     };
     try {
-      const result = await client.recordPutAway(payload);
+      // ONE POLICY, shared with every other warehouse screen. A refusal the server MEANT is never
+      // queued -- that would turn a clear "no" into an indefinite "maybe".
+      const outcomeState = await warehouse.submit(
+        async () => {
+          try {
+            const result = await client.recordPutAway(payload);
+            return { ok: true, serverIds: { placementId: result?.placementId ?? null }, result };
+          } catch (err) {
+            return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null }, thrown: err };
+          }
+        },
+        // The capture key is the stow: this part, into this bin, under this stow's own key. The
+        // intent id becomes the command's idempotency key, so a retry lands on the same placement.
+        (wasOffline) => capturePutAway({
+          principalUid: deps?.offline?.principalUid ?? warehouse.principalUid ?? "self",
+          partId: session.partId,
+          serialNo: payload.serialNo ?? null,
+          destinationBinId: bin?.binId ?? bin?.code ?? payload.destinationBinId,
+          quantity: payload.quantity ?? null,
+          captureKey: stowKey.current,
+          at: Date.now(),
+          offline: wasOffline,
+        }),
+      );
       if (!alive.current) return;
-      setOutcome(result);
-    } catch (err) {
-      if (!alive.current) return;
-      // A refusal the server MEANT is not a connectivity problem, and queueing it would turn a clear
-      // "no" into an indefinite "maybe". Only a failure that might succeed later is queued; the
-      // queue's own terminal-code list is the authority on which is which.
-      if (isRetryableCode(err?.code) && add({
-        callable: "recordPutAway",
-        payload,
-        idempotencyKey: stowKey.current,
-        describe: `Put ${session.partId} into ${bin?.code ?? "a bin"}`,
-      })) {
-        setOutcome({ ...payload, binCode: bin?.code, queued: true });
+
+      if (outcomeState?.result === WAREHOUSE_SUBMIT.SENT) {
+        setOutcome(outcomeState.serverIds ? { ...payload, binCode: bin?.code } : payload);
+      } else if (outcomeState?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        // PENDING, never "put away". The stock has not moved.
+        setOutcome({ ...payload, binCode: bin?.code, queued: true, pendingText: PENDING_TEXT.PUT_AWAY });
+      } else if (outcomeState?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        // The destination STAYS ON SCREEN: the device would not promise to keep it, so this is the
+        // only copy that exists.
+        // Shaped like every other error on this screen so PutAwayError renders it. A bare string
+        // would fall through to the generic message and the operator would never learn that the
+        // phone could not keep their stow.
+        setError({ code: "storage", message: NOT_DURABLE_TEXT });
       } else {
-        fail(err);
+        fail(outcomeState?.error ?? new Error("put-away refused"));
       }
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, session, bin, note, fail, add]);
+  }, [state, busy, client, session, bin, note, fail, warehouse]);
 
   const startAnother = useCallback(() => {
     // A NEW key: the next stow is a different event, and reusing the key would make it replay the
@@ -225,7 +235,6 @@ export default function PutAwayScan({ deps }) {
   if (outcome) {
     return (
       <div className="fo-putaway">
-        <SubmissionQueueStatus summary={summary} queue={queue} onRetry={flush} onDismissConfirmed={clearConfirmed} />
         {outcome.queued ? (
           // NOT a success message wearing a different colour. The operator is told the truth in the
           // words that matter: we have it, we have not been told it landed, do not assume it is done.
@@ -249,7 +258,6 @@ export default function PutAwayScan({ deps }) {
   return (
     <div className="fo-putaway">
       {/* Outstanding work is stated wherever the operator is, not only where they finished. */}
-      <SubmissionQueueStatus summary={summary} queue={queue} onRetry={flush} onDismissConfirmed={clearConfirmed} />
       <section className="fo-scan__result" aria-label={`Put away ${session.partId}`}>
         <p className="fo-scan__kind">Put away</p>
         <h3 className="fo-scan__id">{session.partId}</h3>
@@ -336,6 +344,11 @@ export default function PutAwayScan({ deps }) {
 }
 
 function PutAwayError({ error }) {
+  // An explicit message wins: the durability failure has wording of its own, and mapping it through
+  // a code would lose the one instruction that matters.
+  if (error.message) {
+    return <p className="fo-scan__state fo-scan__state--denied" role="alert">{error.message}</p>;
+  }
   // The bin's own vocabulary survives the transport: three different physical problems, three
   // different sentences, because they send an operator to different places.
   const binReason = BIN_RESULT_TEXT[error.detail];

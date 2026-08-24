@@ -2353,6 +2353,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--color-surface-elevated); color: var(--color-text-primary);
 }
 .fo-returns__submit { width: 100%; min-height: 52px; font-size: 16px; }
+/* EVERY button on this form, not only the submit. "Take another return" is the control an operator
+   presses between every single return of a shift, and it was rendering under 44px -- measured on a
+   real phone once the queued state gave it a screen of its own to sit on. */
+.fo-returns button { min-height: 44px; }
 
 .fo-jobnote__actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .fo-jobnote__actions button { width: 100%; min-height: 48px; }

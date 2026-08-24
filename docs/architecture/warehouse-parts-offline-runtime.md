@@ -1,7 +1,15 @@
-# Warehouse / Parts Offline Runtime (WO-05)
+# Warehouse / Parts Offline Runtime (WO-05 / WO-05A)
 
-**Owner-directed slice, 2026-08-23.** Durable warehouse observations → governed sync →
-inventory-safe reconciliation.
+**Owner-directed slices, 2026-08-23.** Durable warehouse observations → governed sync →
+inventory-safe reconciliation, and every warehouse form routed through it.
+
+**UI-integrated today — all eight:** receiving · put-away · pick/stage · transfer dispatch ·
+transfer receipt · truck handoff · cycle count · return intake. Each submits through one shared
+policy (`useWarehouseSubmit`) and is proven through the **rendered form** in
+`test/warehouseOfflineScreens.test.jsx`. The earlier caveat that the runtime was wired but the
+screens were online-first no longer applies.
+
+**Reconciliation is still absent, by design** — no intent type, no binding, and no screen path.
 
 ---
 
@@ -158,6 +166,42 @@ and no technician UI chunk is pulled into the warehouse path.
 The structured conflict card — the hardest thing here to fit on a phone — measured with the shipped
 stylesheet at all four widths: **no overflow, no clipping, no sub-44px control, nav pinned**, and both
 status fields present and distinct at 320.
+
+## 11a. Screen integration (WO-05A)
+
+One submit policy for every warehouse form, in `offline/useWarehouseSubmit.js`:
+
+| server available and accepts | canonical result |
+|---|---|
+| device knows it is offline, or a retryable transport failure | durable queue intent |
+| **business refusal or permission denial** | **shown immediately, never queued** |
+
+A clear server "no" never becomes `Pending sync`. Six screens submitting warehouse work would
+otherwise have produced six slightly different send-or-queue rules — one trusting `navigator.onLine`,
+one queueing on any error, one burying a permission denial in a retry queue that never gives up.
+
+**Put-away was migrated, not merely wired.** It already had the right policy but against a second
+queue whose `localStorage` key was **not scoped to a principal** — two warehouse workers on one
+device shared it. That queue is gone from this path; there is now one durable, principal-scoped
+queue for all warehouse work, and its standing summary lives in one place (More → Sync status)
+rather than inside a single form.
+
+**The runtime is provided by the scan workspace as well as by the shell.** The workspace is reachable
+directly from Service → Scan, and a stow started from that route is the same stow, on the same phone,
+in the same dead zone. The shell's provider wins when there is one; `disabled` keeps the hook call
+unconditional without opening a second queue.
+
+**Per-workflow pending copy**, because "Receipt pending sync" and "Count pending sync" are what a
+person is actually waiting on — and each says what has *not* happened:
+
+- `Receipt pending sync — nothing has been received yet.`
+- `Put-away pending sync — the stock has not been moved yet.`
+- `Transfer dispatch pending sync — the transfer has not moved yet.`
+- `Count pending sync — nothing has been counted on the platform yet.`
+- `Return intake pending sync — nothing has gone back into stock.`
+
+Each screen renders its queued state in **its own branch**, above and separate from the success
+branch — `✓ Recorded` is a statement about the platform, and a truthy outcome is not the same thing.
 
 ## 12. What WO-05 did NOT build
 

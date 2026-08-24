@@ -3,6 +3,8 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { binCommandClient } from "../../services/binCommandClient.js";
+import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
+import { capturePickStage } from "../../offline/warehouseIntent.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { BIN_RESULT, BIN_RESULT_TEXT } from "../../domain/putAwaySession.js";
 import {
@@ -49,6 +51,8 @@ const newPickKey = () => `pick_${Date.now().toString(36)}_${Math.random().toStri
 
 export default function PickScan({ deps }) {
   const client = deps?.binClient ?? binCommandClient;
+  // ONE submit policy, shared with every other warehouse screen.
+  const warehouse = useWarehouseSubmit({ offline: deps?.offline });
   const workOrder = deps?.workOrder ?? null;
   const warehouseId = deps?.warehouseId ?? null;
 
@@ -104,30 +108,70 @@ export default function PickScan({ deps }) {
     if (!state.canStage || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await client.recordPutAway({
-        ...toStageRequest({
-          warehouseId, line, lineState: state, stagingBin,
-          workOrderId: workOrder?.id ?? workOrder?.woNumber,
-          idempotencyKey: `${pickKey.current}__${line.partId}`,
-        }),
-        ...(note.trim() ? { note: note.trim() } : {}),
-      });
-      if (!alive.current) return;
+    const request = {
+      ...toStageRequest({
+        warehouseId, line, lineState: state, stagingBin,
+        workOrderId: workOrder?.id ?? workOrder?.woNumber,
+        idempotencyKey: `${pickKey.current}__${line.partId}`,
+      }),
+      ...(note.trim() ? { note: note.trim() } : {}),
+    };
+    const clearLine = () => {
       // The line's outcome is kept so the job list shows what is done and what came up short.
       setStaged((prev) => Object.freeze({
         ...prev,
-        [line.partId]: { quantity: state.quantity, shortBy: state.shortBy, state: state.state },
+        [line.partId]: { quantity: state.quantity, shortBy: state.shortBy, state: state.state, pending: undefined },
       }));
       setActivePartId(null);
       setObservations(Object.freeze([]));
       setNote("");
-    } catch (err) {
-      if (alive.current) fail(err);
+    };
+
+    try {
+      const outcome = await warehouse.submit(
+        async () => {
+          try {
+            await client.recordPutAway(request);
+            return { ok: true };
+          } catch (err) {
+            return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null }, thrown: err };
+          }
+        },
+        // PICKING RESERVES NOTHING, offline or online. This captures what was gathered and where it
+        // was staged -- the same placement the online path records -- and never a reservation the
+        // product deliberately does not have.
+        (wasOffline) => capturePickStage({
+          principalUid: deps?.offline?.principalUid ?? "self",
+          workOrderId: workOrder?.id ?? workOrder?.woNumber,
+          partId: line.partId,
+          pickedQuantity: state.quantity,
+          stagingBinId: stagingBin?.binId ?? stagingBin?.code ?? request.destinationBinId,
+          captureKey: `${pickKey.current}__${line.partId}`,
+          at: Date.now(),
+          offline: wasOffline,
+        }),
+      );
+      if (!alive.current) return;
+
+      if (outcome?.result === WAREHOUSE_SUBMIT.SENT) {
+        clearLine();
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED) {
+        clearLine();
+        // PENDING, never staged. Nothing is held for this job either way.
+        setStaged((prev) => Object.freeze({
+          ...prev,
+          [line.partId]: { ...prev[line.partId], pending: PENDING_TEXT.PICK_STAGE },
+        }));
+      } else if (outcome?.result === WAREHOUSE_SUBMIT.QUEUED_NOT_DURABLE) {
+        // The scan STAYS on screen -- this is the only copy that exists.
+        setError({ code: "storage", message: NOT_DURABLE_TEXT });
+      } else {
+        fail(outcome?.error ?? new Error("stage refused"));
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, warehouseId, line, stagingBin, workOrder, note, fail]);
+  }, [state, busy, client, warehouseId, line, stagingBin, workOrder, note, fail, warehouse, deps]);
 
   if (!workOrder || !warehouseId) {
     return (
@@ -258,6 +302,10 @@ export default function PickScan({ deps }) {
 }
 
 function PickError({ error }) {
+  // An explicit message wins -- see the note in PutAwayScan's error renderer.
+  if (error.message) {
+    return <p className="fo-scan__state fo-scan__state--denied" role="alert">{error.message}</p>;
+  }
   const binReason = BIN_RESULT_TEXT[error.detail];
   const message = binReason
     ? binReason
