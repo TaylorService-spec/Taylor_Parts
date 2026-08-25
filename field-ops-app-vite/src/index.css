@@ -5147,7 +5147,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-page__crumb { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
   flex-wrap: wrap; padding: 14px 0 10px; font-size: 11px; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--color-text-secondary); }
-.ns-page__crumb-right { letter-spacing: 0.08em; color: var(--verenward-moon); }
+/* MOON IS A COLOUR FOR THE DARK RAIL, NOT FOR PAPER.
+   --verenward-moon (#B9C1BE) is the restrained neutral used on the evergreen application rail,
+   where it has real contrast. Six North Star classes had picked it up on the light ground, where
+   it measures 1.61:1 against the page -- text that is present in the DOM and effectively invisible
+   on screen, on both the record and the workspace. The approved compositions specify the grey-green
+   family here, not moon; --color-text-secondary is that family at 6.32:1. One step darker than the
+   #6B7A74 the mock draws, because #6B7A74 measures 3.96:1 and these labels are 10.5-13px, which is
+   not large text under AA. */
+.ns-page__crumb-right { letter-spacing: 0.08em; color: var(--color-text-secondary); }
 /* THE CRUMB IS A REAL TARGET, so it meets the handheld floor.
    It failed the 44px sweep at 375 and 320 as a 15px anchor -- small type in a tight strip is still
    something a thumb has to hit, and "it is only a breadcrumb" is how a touch floor becomes advisory.
@@ -5169,7 +5177,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-identity__facts { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center;
   font-size: 13px; color: var(--color-text-secondary); }
 .ns-identity__fact { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; }
-.ns-identity__fact-label { color: var(--verenward-moon); }
+.ns-identity__fact-label { color: var(--color-text-secondary); }
 .ns-identity__fact-value { color: var(--color-text-primary); font-weight: 500;
   /* Long customer and equipment names are the norm in this domain. Clamp with a route to the full
      value (title attribute), never a silent cut. */
@@ -5226,7 +5234,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-table-wrap { overflow-x: auto; }
 .ns-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 .ns-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--verenward-moon); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
+  color: var(--color-text-secondary); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
   border-bottom: 2px solid var(--color-text-primary); }
 .ns-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
   color: var(--color-text-secondary); vertical-align: top; }
@@ -5241,17 +5249,32 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-lineage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .ns-lineage__row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
 .ns-lineage__label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--verenward-moon); font-weight: 600; min-width: 11ch; }
+  color: var(--color-text-secondary); font-weight: 600; min-width: 11ch; }
 /* An unresolved reference is stated. It is never the document id (DECISIONS #106). */
 .ns-lineage__unresolved { color: var(--color-text-secondary); font-style: italic; }
 
 /* ── The two-column record body. The master/detail split EOS never had:
    zero module files used grid-template-columns for a split before this. */
 .ns-record-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 56px; }
-/* The concept splits at 900px, not 1024: the rail is reference material a dispatcher reads
-   beside the work, and a tablet in landscape is a dispatcher screen. */
-@media (min-width: 900px) {
+
+/* THE SPLIT IS DECIDED BY THE SPACE THE PAGE HAS, NOT BY THE SIZE OF THE WINDOW.
+   This was a viewport media query at 900px, and measured in the real shell that was wrong in a way
+   a mockup cannot show: the application rail takes ~250-300px before this page gets any width at
+   all, so a 900px window gave the record body 656px, and 1fr/340px resolved to a 196px column of
+   WORK beside a 340px column of REFERENCE. The rail was wider than the job. At 1024 it was still
+   320px against 340px.
+   A container query asks the right question -- how much room does the composition actually have --
+   and 900px of CONTAINER is the width at which 1fr finally exceeds the rail. */
+.ns-page { container-type: inline-size; container-name: ns-record; }
+@container ns-record (min-width: 900px) {
   .ns-record-body { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+/* Fallback where container queries are unavailable: a viewport breakpoint high enough that the
+   shell rail cannot invert the split. Scoped so it never fights the container query above. */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1200px) {
+    .ns-record-body { grid-template-columns: minmax(0, 1fr) 340px; }
+  }
 }
 .ns-rail { min-width: 0; }
 
@@ -5265,7 +5288,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Step 2 of the header scale: 34px workspace, against the record page's 40px. */
 .ns-workspace__title { font-family: var(--font-record-title); font-size: 34px; line-height: 1.08;
   font-weight: 700; margin: 0; }
-.ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--verenward-moon);
+.ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums; }
 .ns-workspace__count-label { font-weight: 400; }
 .ns-workspace__summary { font-size: 13px; color: var(--color-text-secondary); margin: 6px 0 0; }
@@ -5276,7 +5299,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    farm: "the North Star at working density is rules + type, not cards + whitespace." */
 .ns-workspace .fo-table, .ns-workspace table { border-collapse: collapse; width: 100%; }
 .ns-workspace .fo-table th, .ns-workspace table th { font-size: 10.5px; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--verenward-moon); font-weight: 600;
+  text-transform: uppercase; color: var(--color-text-secondary); font-weight: 600;
   border-bottom: 2px solid var(--color-text-primary); padding: 8px 12px 8px 0; background: none; }
 .ns-workspace .fo-table td, .ns-workspace table td { padding: 7px 12px 7px 0;
   border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
@@ -5306,6 +5329,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: 11px; color: var(--color-text-secondary); margin-right: 4px; white-space: nowrap; }
 .ns-chip { font-family: var(--font-interface); font-weight: 600; font-size: 12.5px;
   padding: 8px 20px; border: none; cursor: pointer; white-space: nowrap;
+  /* THE HANDHELD TOUCH FLOOR. Measured in the browser the chips were 31-32px tall at every width,
+     including 375 and 320 -- under the 44px floor the crumb was already fixed to meet (#1489).
+     Relaxed above 768px, where the concept-s tighter band is a pointer target, not a thumb one. */
+  min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   transition: background var(--duration-fast, 140ms);
   clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); }
 /* The first chip has no left notch and the last no right point: the band reads as one
@@ -5317,7 +5344,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-chip--complete:hover { background: var(--verenward-border-strong); }
 .ns-chip--current { background: var(--verenward-evergreen); color: #fff; }
 .ns-chip--current:hover { background: var(--verenward-guardian); }
-.ns-chip--future { background: var(--verenward-stone-card); color: var(--color-text-muted);
+/* --color-text-muted on stone-card measures 4.32:1 at 12.5px, a hair under AA. One step darker
+   keeps the chip visibly quieter than the reached ones and clears the floor. */
+.ns-chip--future { background: var(--verenward-stone-card); color: var(--color-text-secondary);
   outline: 1px solid var(--verenward-border); outline-offset: -1px; }
 .ns-chip--future:hover { background: var(--verenward-stone-sunken); }
 .ns-chip--terminal { background: var(--color-danger-surface); color: var(--color-danger); cursor: default; }
@@ -5326,6 +5355,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--verenward-bronze); margin-left: 5px; animation: ns-pulse 2s ease-in-out infinite; }
 @keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .ns-chip__pulse { animation: none; } }
+@media (min-width: 768px) { .ns-chip { min-height: 0; } }
 .ns-lifecycle__tail { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
 
 /* One line of recorded fact for whichever stage is open. Reserved height, so opening and
@@ -5349,13 +5379,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-timeline { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-border); }
 .ns-timeline__row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px;
   padding: 10px 0; border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
-.ns-timeline__when { color: var(--color-text-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+/* The when-column is deliberately quieter than the event, but 3.96:1 is under AA at 12.5px. */
+.ns-timeline__when { color: var(--color-text-secondary); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 @media (max-width: 599.98px) { .ns-timeline__row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 
 /* ── The header action cluster, in the concept-s weights: exactly one filled button
    (the most likely next transition), outlines for the rest, and Cancel as red text.
    Scoped to the record header so no other surface-s buttons change. */
 .ns-identity__actions .fo-button { border-radius: 0; font-weight: 600; font-size: 13px; padding: 9px 16px; }
+/* The shared Button primitive comes out 40px tall -- four short of the handheld touch floor. Raised
+   here for the record header only; the primitive is app-wide and its floor is REPORTED, not changed
+   from inside a page-family PR. */
+@media (max-width: 767.98px) {
+  .ns-identity__actions .fo-button { min-height: 44px; }
+}
 .ns-identity__actions .fo-button--primary { background: var(--verenward-evergreen);
   border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
 .ns-identity__actions .fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {

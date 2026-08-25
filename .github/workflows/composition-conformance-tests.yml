@@ -40,6 +40,13 @@ on:
       # The North Star lifecycle band (Work Order design handoff, family 1).
       - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
       - "field-ops-app-vite/test/lifecycleBand.test.jsx"
+      # The Work Order record surface, its action-emphasis rule, and the shared enum display.
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/WorkOrderActions.jsx"
+      - "field-ops-app-vite/src/metadata/listPresentation.js"
+      - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
+      - "field-ops-app-vite/test/workOrderActionEmphasisRule.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -104,6 +111,13 @@ on:
       # The North Star lifecycle band (Work Order design handoff, family 1).
       - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
       - "field-ops-app-vite/test/lifecycleBand.test.jsx"
+      # The Work Order record surface, its action-emphasis rule, and the shared enum display.
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/WorkOrderActions.jsx"
+      - "field-ops-app-vite/src/metadata/listPresentation.js"
+      - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
+      - "field-ops-app-vite/test/workOrderActionEmphasisRule.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -157,7 +171,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
-        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasisRule.test.jsx
         # MISSING working-directory, pre-existing: this step ran from the repo root, so its
         # tests were never actually executing in this lane. Adding it makes them run.
         working-directory: field-ops-app-vite
