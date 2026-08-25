@@ -235,3 +235,88 @@ is forbidden from disagreeing with it.** That is the shape the rest should copy.
 
 **§D, pricing completeness** — once decision 3 has a route. Fully specified, source-grounded, no
 artifact needed, proven symptom, and it is the smallest change that makes CONFIRMED mean something.
+
+---
+
+# Owner decisions — RESOLVED 2026-08-25
+
+The five open decisions are answered. Recorded here so the matrix above reads against them, and so
+nothing below re-opens them.
+
+## 1 — Service invoicing anchor: WORK ORDER, explicitly
+
+A service call does **not** manufacture a Sales Order to be billable. Invoicing gains an explicit
+origin:
+
+```
+InvoiceOrigin = SALES_ORDER | WORK_ORDER      exactly one reference per invoice
+```
+
+Not two nullable references. The Sales Order billing path is unchanged, and Work Order billing must
+derive its money from governed service authority — never client-submitted amounts.
+
+**Consequence for the matrix:** gap 1 is no longer "no path exists"; it is a bounded contract to
+build. §M's charge categories now have somewhere to live.
+
+## 2 — Commercial commitment: a governed `salesAgreement`
+
+Opportunity stays pre-commitment forecast. **Sales Agreement owns commitment.** Sales Order becomes
+the operational order created from an accepted Agreement, and does not become the negotiation
+object.
+
+Every Agreement field from §C is classified in the matrix above, and the classification rule is
+Decision 2's: canonical reference · transaction-specific fact · immutable commercial snapshot ·
+derived total · acceptance evidence.
+
+## 3 — CONFIRMED pricing: forward invariant now
+
+The seven unpriced sandbox orders are **invalid legacy fixtures**. No prices invented, no mutation
+in this package. They remain useful as negative test records.
+
+Forward: creation into CONFIRMED rejects unpriced billable lines, with an explicit code naming
+which. Invoice `UNPRICED` stays as defence in depth.
+
+**All three line kinds are billable.** `billingEligibleQty` in `invoiceCommands.ts` discriminates by
+quantity, never by kind — so "every billable line" is every line.
+
+## 4 — Equipment spec ownership
+
+```
+Equipment Model / catalog   invariant model facts: nominal voltage, phase, refrigerant type
+Installed Equipment         installation facts: account, location, serial, asset tag, dates
+WO Service Measurements     observed values: actual voltage, pressures, temperatures, recovered
+```
+
+**Dependency recorded, not acted on:** `equipment_models` is deny-all in Rules and D4-governed. The
+ownership rule above is the contract; activating that catalog is a separate D4/D5 decision, and the
+operational contract stays honest about the fact that the model-level home is not yet reachable.
+
+## 5 — Artifact access
+
+The artifact-derived field inventories in the Owner instruction are **accepted evidence**. Detailed
+vocabulary that genuinely is not in that text — principally the Site Survey field wording — is
+marked `ARTIFACT_DETAIL_PENDING` rather than invented.
+
+### `ARTIFACT_DETAIL_PENDING` register
+
+| area | what is pending |
+|---|---|
+| Site Survey / Installation Readiness | exact question wording, answer vocabularies, per-question response types. Categories are accepted (access, parking, door/path dimensions, flooring, roof access, electrical, water, drainage, gas, equipment removal, product availability, training/readiness, notes, return-needed, sign-off) |
+| Service measurements | the measurement list is accepted as **examples, explicitly not exhaustive**, so the vocabulary must be governed and extensible rather than fixed |
+| Line `condition` | the permitted values (new / used / refurbished / …) are not stated |
+| `ship via` | carrier vocabulary not stated |
+| Warranty commitment | whether it is a term, a date, or a reference to a warranty product |
+
+## Slice order, as directed
+
+```
+1  Sales Order pricing completeness      ← implement first
+2  Work Order -> Equipment
+3  Service invoice origin contract
+4  Sales Agreement
+5  Fulfillment / pick
+6  Authoritative WO parts used
+7  Installation readiness
+8  Service measurements
+9  Service charge taxonomy
+```
