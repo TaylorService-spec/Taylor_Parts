@@ -13,7 +13,7 @@
 // may not use is a module that still denies.
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { recordNavigation, recordIdentity } from "./diagnostics/crashDiagnostics.js";
+import { recordNavigation, recordIdentity, diagnosticsVisible } from "./diagnostics/crashDiagnostics.js";
 import { routerBasenameFrom } from "./routerBasename";
 const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
 import Jobs from "./modules/jobs/Jobs";
@@ -224,6 +224,29 @@ function TruckInventoryConnected({ accessVersion, role }) {
  *
  * ROLE, NEVER A UID. A role reproduces a crash; a uid identifies a person and reproduces nothing.
  */
+/**
+ * THE BOUNDARY MUST BE ABLE TO FAIL, and be seen doing it.
+ *
+ * The RAW_ID detector in the certification harness sat inert for months reporting a confident zero,
+ * and only a mutation proof exposed it. A crash boundary is the same kind of instrument: it reports
+ * nothing almost all of the time, and "nothing" is indistinguishable from "broken" until something
+ * deliberately makes it fire.
+ *
+ * `?__crashtest=1` throws during render, so the regression gate can prove -- against the DEPLOYED
+ * build, not a unit test -- that the boundary catches, that a crash id is issued, and that the
+ * diagnostic is complete and free of anything sensitive.
+ *
+ * NON-PRODUCTION ONLY, and it needs an explicit query parameter nobody types by accident.
+ * diagnosticsVisible() fails closed on an unknown environment, so a build that cannot say what it
+ * is does not get a crash trigger.
+ */
+function CrashTest() {
+  const location = useLocation();
+  if (!diagnosticsVisible()) return null;
+  if (!new URLSearchParams(location.search).get("__crashtest")) return null;
+  throw new Error("Deliberate crash test (?__crashtest=1) — proving the error boundary and its diagnostic work.");
+}
+
 function CrashTrailRecorder() {
   const location = useLocation();
   const { user, role } = useAuth();
@@ -912,6 +935,7 @@ export default function App() {
             Router and cannot ask react-router anything -- least of all when the crash IS a routing
             problem -- so the trail is kept in a module the boundary can read without context. */}
         <CrashTrailRecorder />
+        <CrashTest />
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
           {/* Gate 2 -- AppHeader is now mounted INSIDE AppShell, as the workspace
