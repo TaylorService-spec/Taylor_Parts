@@ -75,7 +75,7 @@ const ACTION_LABEL = {
   Cancel: "Cancel",
 };
 
-export default function WorkOrderActions({ workOrder, role, technicians }) {
+export default function WorkOrderActions({ workOrder, role, technicians, showStatus = true }) {
   const [submitting, setSubmitting] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
@@ -132,13 +132,24 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
     runAction("Dispatch", { assignedTechId: selectedTechId });
   }
 
+// THE STATUS PILL IS OPTIONAL, because a surface may already have rendered it.
+//
+// The North Star record header states the status once, in words, at the top of the page. This
+// component rendering its own pill beside the action row is the second of the "status appears four
+// times in four treatments" the pilot audit found -- one fact, two renderings, free to disagree
+// (NS-P4). Callers that already state it pass showStatus={false}.
+//
+// Defaults to TRUE so every existing consumer (ControlTower, the dispatcher board) is untouched.
+const statusPill = (status) =>
+  status ? <span className={`wo-status wo-${String(status).toLowerCase()}`}>{STATUS_LABEL[status] ?? "State not recognised"}</span> : null;
+
   if (READ_ONLY_STATUSES.has(workOrder.status) || workOrder.status === "CLOSED" || workOrder.status === "CANCELLED") {
-    return <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{STATUS_LABEL[workOrder.status]}</span>;
+    return showStatus ? statusPill(workOrder.status) : null;
   }
 
   return (
     <div className="wo-actions">
-      <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{STATUS_LABEL[workOrder.status]}</span>
+      {showStatus ? statusPill(workOrder.status) : null}
 
       <div className="fo-btn-row wo-action-row">
         {primaryActions.map((action) => (

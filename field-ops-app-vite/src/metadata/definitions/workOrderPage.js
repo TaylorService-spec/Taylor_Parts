@@ -70,3 +70,25 @@ export const workOrderRecordPage = makePageDefinition({
     }),
   ],
 });
+
+// THE RAIL SUBSET — what the North Star record header has NOT already said.
+//
+// The approved `Proposed - Work Order.dc.html` states the reference, status, priority, customer,
+// site, technician and window in the header, and keeps the rail for reference material: the unit,
+// the type, when it was created. Mounting the whole record page in the rail would render the
+// customer name and status a second time on the same screen — one fact, two renderings, which is
+// the exact defect (NS-P4) the pilot audit found on this page ("status appears four times in four
+// treatments").
+//
+// The shell itself is unchanged and still mounted with its resolvers, so references still become
+// names and never ids. Only the field selection narrows.
+//
+// Follows the subsetting convention accountPageComponents.js already established.
+const RAIL_FIELDS = new Set(["equipmentId", "type", "createdAt"]);
+
+export const workOrderRecordPageRailSubset = {
+  ...workOrderRecordPage,
+  sections: workOrderRecordPage.sections
+    .map((s) => ({ ...s, fieldIds: (s.fieldIds ?? []).filter((f) => RAIL_FIELDS.has(f)) }))
+    .filter((s) => (s.fieldIds ?? []).length > 0),
+};

@@ -5105,3 +5105,123 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-crash-id strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .04em; color: var(--color-text-primary); }
 .fo-crash-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   NORTH STAR RECORD GRAMMAR
+   Source: docs/design/eos-north-star-design-grammar.md, extracted from the approved
+   `Proposed - Work Order.dc.html` and its companion concepts.
+
+   EVERY VALUE HERE IS AN EXISTING VERENWARD TOKEN. That is not restraint, it is the finding: the
+   concepts were built on this palette, so implementing the North Star required adding no colour at
+   all. `#102B24` is --verenward-evergreen, `#F3F0E9` is --verenward-stone-page, `#B08A55` is
+   --verenward-bronze. The gap between EOS and the concepts was never the token layer.
+
+   STRUCTURE IS WHITESPACE AND RULES, NOT BOXES. There is no border-radius, no box-shadow and no
+   card in this block. `.fo-panel` -- a bordered, padded, rounded, shadowed card -- became the
+   de-facto page model in ~35 screens, and that is the composition defect the pilot diagnosed.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* The thick–thin rule pair is page identity. It is the one place rules print at full strength. */
+.ns-page { max-width: 1360px; margin: 0 auto; padding: 0 32px 80px; }
+.ns-page__crumb { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; padding: 14px 0 10px; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-page__crumb-right { letter-spacing: 0.08em; color: var(--verenward-moon); }
+.ns-rulepair { border-top: 3px solid var(--color-text-primary);
+  border-bottom: 1px solid var(--color-text-primary); height: 3px; }
+
+/* ── Record identity (pattern 1) */
+.ns-identity { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+  padding: 26px 0 18px; flex-wrap: wrap; }
+.ns-identity__main { min-width: 0; }
+.ns-identity__kicker { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--verenward-bronze); font-weight: 600; margin: 0 0 6px; }
+/* The serif title, step 1 of the three-step header scale (40 / 30–34 / 22). */
+.ns-identity__title { font-family: var(--font-display, Georgia, serif); font-size: 40px;
+  line-height: 1.05; font-weight: 700; margin: 0 0 10px; overflow-wrap: anywhere; }
+.ns-identity__facts { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center;
+  font-size: 13px; color: var(--color-text-secondary); }
+.ns-identity__fact { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; }
+.ns-identity__fact-label { color: var(--verenward-moon); }
+.ns-identity__fact-value { color: var(--color-text-primary); font-weight: 500;
+  /* Long customer and equipment names are the norm in this domain. Clamp with a route to the full
+     value (title attribute), never a silent cut. */
+  max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-identity__unknown { color: var(--color-text-secondary); font-style: italic; }
+.ns-identity__actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+@media (max-width: 767px) {
+  .ns-page { padding: 0 16px 64px; }
+  .ns-identity__title { font-size: 28px; }
+  .ns-identity__fact-value { max-width: 100%; white-space: normal; }
+}
+
+/* ── Attention block (pattern 3). Severity in a word AND a tone, so it survives grayscale. */
+.ns-attention { margin: 4px 0 22px; }
+.ns-attention__list { list-style: none; margin: 0; padding: 0; }
+.ns-attention__item { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
+  padding: 10px 0 10px 14px; border-left: 3px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-border); }
+.ns-attention__item:last-child { border-bottom: 0; }
+.ns-attention__item.is-blocking { border-left-color: var(--color-danger, #B23B3B); }
+.ns-attention__item.is-attention { border-left-color: var(--verenward-bronze); }
+.ns-attention__severity { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 700; white-space: nowrap; }
+.ns-attention__item.is-blocking .ns-attention__severity { color: var(--color-danger, #B23B3B); }
+.ns-attention__item.is-attention .ns-attention__severity { color: var(--verenward-bronze); }
+.ns-attention__fact { flex: 1 1 22ch; min-width: 0; color: var(--color-text-primary); font-size: 14.5px; }
+.ns-attention__owner, .ns-attention__link { font-size: 13px; color: var(--color-text-secondary); }
+
+/* ── Ruled section. A rule above, nothing around. */
+.ns-section { margin: 0 0 30px; }
+.ns-section__head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  border-top: 2px solid var(--color-text-primary); padding: 10px 0 12px; }
+/* Step 3 of the header scale. */
+.ns-section__title { font-family: var(--font-display, Georgia, serif); font-size: 22px;
+  line-height: 1.2; font-weight: 700; margin: 0; }
+.ns-section__meta { font-size: 12.5px; color: var(--color-text-secondary); }
+.ns-section__actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+/* The ruled panel: the THIRD structural element, admitted for editors, dialogs and suggestion
+   bands only. Never for read-only layout (Grammar R13). */
+.ns-section--panel > .ns-section__body { border: 1px solid var(--color-border);
+  background: var(--verenward-stone-card); padding: 16px; }
+
+/* ── Honest states. Each situation gets one rendering, in words. */
+.ns-state { margin: 0; padding: 12px 0; font-size: 14.5px; color: var(--color-text-secondary);
+  max-width: 68ch; }
+.ns-state--denied, .ns-state--not-enabled { border-left: 3px solid var(--color-border-strong);
+  padding-left: 14px; }
+/* NOT APPLICABLE is quieter than the others on purpose: nothing is wrong, the fact simply does not
+   apply to this record. It still says so rather than rendering blank. */
+.ns-state--na { font-style: italic; }
+
+/* ── The operational table. Thick head rule, hairline rows, tabular numerals, NEVER in a card. */
+.ns-table-wrap { overflow-x: auto; }
+.ns-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.ns-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--verenward-moon); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
+  border-bottom: 2px solid var(--color-text-primary); }
+.ns-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary); vertical-align: top; }
+.ns-table td:first-child { color: var(--color-text-primary); font-weight: 500; }
+/* Data numerals are Inter with tabular figures, right-aligned (Grammar R11) -- the serif is for
+   titles and display numbers only, because serif numerals jitter in dense tables. */
+.ns-table .ns-num, .ns-table th.ns-num { text-align: right; font-variant-numeric: tabular-nums;
+  font-family: inherit; }
+.ns-table__note { font-size: 12.5px; color: var(--color-text-secondary); margin: 10px 0 0; }
+
+/* ── Lineage list */
+.ns-lineage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ns-lineage__row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
+.ns-lineage__label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--verenward-moon); font-weight: 600; min-width: 11ch; }
+/* An unresolved reference is stated. It is never the document id (DECISIONS #106). */
+.ns-lineage__unresolved { color: var(--color-text-secondary); font-style: italic; }
+
+/* ── The two-column record body. The master/detail split EOS never had:
+   zero module files used grid-template-columns for a split before this. */
+.ns-record-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 40px; }
+@media (min-width: 1024px) {
+  .ns-record-body { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+.ns-rail { min-width: 0; }
