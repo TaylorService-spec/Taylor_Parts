@@ -62,6 +62,13 @@ const DECIDED = {
   "inventory.catalog.manage": "OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
   "crm.activity.read": "OWNER-2026-08-19", "crm.activity.create": "OWNER-2026-08-19",
   "inventory.stock.receive": "EI Phase-2 grant gate",
+  // Slice 4. Granted to exactly the three roles that already hold opportunity.createSalesOrder,
+  // because that capability became UNREACHABLE without these: a Sales Order is now created only
+  // from an ACCEPTED Sales Agreement, so a role that can create the order but not the commitment it
+  // comes from holds an authority it cannot exercise. There is no CRUD row because the Agreement is
+  // a new object; the decision is recorded rather than the gate bypassed.
+  "salesAgreement.create": "#121", "salesAgreement.updateDraft": "#121",
+  "salesAgreement.accept": "#121", "salesAgreement.read": "#121",
 };
 // WORKFLOW GRANTS. A capability with no matrix row and no composition, held because a recorded
 // Owner direction describes the SEQUENCE the Role performs. A workflow is not one write, and the

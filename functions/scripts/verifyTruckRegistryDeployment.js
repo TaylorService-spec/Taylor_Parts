@@ -30,7 +30,13 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // 4605a7f0... to track the Cycle Count `cycle_counts` deny-all block (Part 6): a NEW collection
 // whose block is purely ADDITIVE -- no existing collection's deny was weakened. That is the only
 // kind of rules change this pin should be re-pinned for without a wider review.
-const GOVERNED_RULES_SHA256 = "4605a7f0775986da7b087abcbab00c53d7dde6e0167ff2a3dd223208263bd1cf";
+// Re-pinned 2026-08-25 for the authorized sales_agreements deny-all block (Slice 4 §D). The pin
+// exists so this verifier accepts EXACTLY the governed ruleset and refuses a drifted one; a Rules
+// change therefore requires a deliberate re-pin, which is the guard working rather than an
+// obstacle. Previous pin: 4605a7f0775986da7b087abcbab00c53d7dde6e0167ff2a3dd223208263bd1cf, whose
+// ruleset is still the one named in docs/releases/sandbox-convergence-state-2026-08-16.md -- that
+// record describes what was deployed on that date and is deliberately NOT rewritten.
+const GOVERNED_RULES_SHA256 = "c2840d12f30ed89becbc9223a4acda69748ae6be8f777ee57f9c9ac2fd017b27";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

@@ -5,10 +5,10 @@
   "activationOverrides": 35
  },
  "catalog": {
-  "total": 120,
+  "total": 124,
   "globallyActive": 72,
   "activeInThisEnvironment": 107,
-  "inactiveInThisEnvironment": 13
+  "inactiveInThisEnvironment": 17
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -428,7 +428,7 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 120,
+   "grantedCount": 124,
    "operableCount": 107,
    "assignments": [
     {
@@ -477,7 +477,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 77,
+   "grantedCount": 81,
    "operableCount": 77,
    "assignments": [
     {
@@ -519,7 +519,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 77,
+   "grantedCount": 81,
    "operableCount": 77,
    "assignments": [
     {
@@ -561,7 +561,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 70,
+   "grantedCount": 74,
    "operableCount": 70,
    "assignments": [
     {
@@ -604,7 +604,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 70,
+   "grantedCount": 74,
    "operableCount": 70,
    "assignments": [
     {
@@ -645,7 +645,7 @@
     "officeManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [
     {
@@ -676,7 +676,7 @@
     "officeManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [
     {
@@ -705,7 +705,7 @@
    "securityRole": "dispatcher",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [
     {
@@ -730,7 +730,7 @@
    "securityRole": "dispatcher",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [
     {
@@ -755,7 +755,7 @@
    "securityRole": "dispatcher",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [
     {
@@ -782,7 +782,7 @@
     "fieldManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 43,
+   "grantedCount": 47,
    "operableCount": 43,
    "assignments": [
     {
@@ -817,7 +817,7 @@
     "fieldManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 43,
+   "grantedCount": 47,
    "operableCount": 43,
    "assignments": [
     {
@@ -1101,7 +1101,7 @@
     "inventoryCycleCountReconciler",
     "inventoryCatalogAdministrator"
    ],
-   "grantedCount": 47,
+   "grantedCount": 51,
    "operableCount": 47,
    "assignments": [
     {
@@ -1140,7 +1140,7 @@
     "inventoryCycleCountReconciler",
     "inventoryCatalogAdministrator"
    ],
-   "grantedCount": 47,
+   "grantedCount": 51,
    "operableCount": 47,
    "assignments": [
     {
@@ -1180,7 +1180,7 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 48,
+   "grantedCount": 52,
    "operableCount": 48,
    "assignments": [
     {
@@ -1224,7 +1224,7 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 48,
+   "grantedCount": 52,
    "operableCount": 48,
    "assignments": [
     {
@@ -1268,7 +1268,7 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 48,
+   "grantedCount": 52,
    "operableCount": 48,
    "assignments": [
     {
@@ -1312,7 +1312,7 @@
     "inventoryPutAwayOperator",
     "inventoryCycleCountCounter"
    ],
-   "grantedCount": 48,
+   "grantedCount": 52,
    "operableCount": 48,
    "assignments": [
     {
@@ -1356,7 +1356,7 @@
     "inventoryReturnsIntakeClerk",
     "inventoryBinAdministrator"
    ],
-   "grantedCount": 49,
+   "grantedCount": 53,
    "operableCount": 49,
    "assignments": [
     {
@@ -1396,7 +1396,7 @@
     "inventoryLookupReader",
     "inventoryPutAwayOperator"
    ],
-   "grantedCount": 44,
+   "grantedCount": 48,
    "operableCount": 44,
    "assignments": [
     {
@@ -1437,7 +1437,7 @@
     "inventoryLookupReader",
     "inventoryPutAwayOperator"
    ],
-   "grantedCount": 44,
+   "grantedCount": 48,
    "operableCount": 44,
    "assignments": [
     {
@@ -1478,7 +1478,7 @@
     "inventoryLookupReader",
     "inventoryPutAwayOperator"
    ],
-   "grantedCount": 44,
+   "grantedCount": 48,
    "operableCount": 44,
    "assignments": [
     {
@@ -1516,7 +1516,7 @@
     "salesManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 41,
+   "grantedCount": 45,
    "operableCount": 41,
    "assignments": [
     {
@@ -1549,7 +1549,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 42,
+   "grantedCount": 46,
    "operableCount": 42,
    "assignments": [
     {
@@ -1581,7 +1581,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 42,
+   "grantedCount": 46,
    "operableCount": 42,
    "assignments": [
     {
@@ -1613,7 +1613,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 42,
+   "grantedCount": 46,
    "operableCount": 42,
    "assignments": [
     {
@@ -1645,7 +1645,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 42,
+   "grantedCount": 46,
    "operableCount": 42,
    "assignments": [
     {
@@ -1675,7 +1675,7 @@
     "purchasingManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 41,
+   "grantedCount": 45,
    "operableCount": 41,
    "assignments": [
     {
@@ -1707,7 +1707,7 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 79,
+   "grantedCount": 83,
    "operableCount": 79,
    "assignments": [
     {
@@ -1745,7 +1745,7 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 79,
+   "grantedCount": 83,
    "operableCount": 79,
    "assignments": [
     {
@@ -1783,7 +1783,7 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 72,
+   "grantedCount": 76,
    "operableCount": 72,
    "assignments": [
     {
@@ -1821,7 +1821,7 @@
     "supportStaff"
    ],
    "functionalRoles": [],
-   "grantedCount": 38,
+   "grantedCount": 42,
    "operableCount": 38,
    "assignments": [],
    "overPrivilegedFor": [
@@ -1846,7 +1846,7 @@
     "inventoryLookupReader",
     "inventoryTransferOperator"
    ],
-   "grantedCount": 46,
+   "grantedCount": 50,
    "operableCount": 46,
    "assignments": [
     {
@@ -1885,7 +1885,7 @@
     "inventoryLookupReader",
     "inventoryReturnsIntakeClerk"
    ],
-   "grantedCount": 44,
+   "grantedCount": 48,
    "operableCount": 44,
    "assignments": [
     {
@@ -1923,7 +1923,7 @@
    "functionalRoles": [
     "inventoryBinAdministrator"
    ],
-   "grantedCount": 45,
+   "grantedCount": 49,
    "operableCount": 45,
    "assignments": [
     {
@@ -1958,7 +1958,7 @@
     "purchasingManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 41,
+   "grantedCount": 45,
    "operableCount": 41,
    "assignments": [
     {

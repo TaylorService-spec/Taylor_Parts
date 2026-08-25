@@ -1886,3 +1886,27 @@ If B is ever built it must be a SUMMARY projection serving that one named surfac
 balance authority — and it must ship with a rebuild path, a source-versus-derived parity test, and a
 visible staleness stamp. Two authorities for one number is how a warehouse and a screen come to
 disagree, and the screen wins because it is the one somebody is looking at.
+
+## #121 — Sales Agreement authority goes to the roles that already sell
+
+**Owner, 2026-08-25.** `salesAgreement.create`, `.updateDraft`, `.accept` and `.read` are granted to
+**Salesperson, Sales Manager and General Manager** — exactly the three governed Roles that already
+hold `opportunity.createSalesOrder` — plus the admin/dispatcher compatibility base, which Owner
+inherits by composition. Technician holds none of them.
+
+The reason is not symmetry. A Sales Order is now created ONLY from an ACCEPTED Sales Agreement, so
+`opportunity.createSalesOrder` became unreachable without these: a Role that can create the order but
+not the commitment it comes from holds an authority it cannot exercise.
+
+**Four ids, not one.** A single `salesAgreement.write` would make drafting terms and BINDING THE
+BUSINESS TO THEM the same permission. Separating them keeps a future approval-limit model possible
+without renaming a published capability, and keeps a read-only grant possible.
+
+**Recorded gap, deliberately not closed here.** There is no approval-limit or discount-authority
+model in this repository, so `salesAgreement.accept` is all-or-nothing per Role: a Salesperson may
+bind the same terms a General Manager can. That is a governance gap to close with a deliberate
+authority model, not a reason to withhold the capability that makes the commercial chain work.
+
+**Grant is not activation.** All four are registered `active:false` and are eligible for
+per-environment activation only; production remains triple-blocked (role-keyed resolution, no
+override key on any production entry, asserted by test).
