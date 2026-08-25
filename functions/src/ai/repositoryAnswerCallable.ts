@@ -12,13 +12,13 @@ const MAX_QUESTION_CHARS = 2000;
 const DEFAULT_CONTEXT_BUDGET = 4000;
 const MAX_CONTEXT_BUDGET = 8000;
 
-function projectAllowsAskEOS(): boolean {
-  if (process.env.FUNCTIONS_EMULATOR === "true") return true;
-  const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "";
+export function projectAllowsAskEOS(environment: NodeJS.ProcessEnv = process.env): boolean {
+  if (environment.FUNCTIONS_EMULATOR === "true") return true;
+  const projectId = environment.GCLOUD_PROJECT ?? environment.GOOGLE_CLOUD_PROJECT ?? "";
   return projectId === "eos-platform-sandbox";
 }
 
-function safeQuestion(data: unknown): { question: string; contextBudget: number } {
+export function parseAskEOSInput(data: unknown): { question: string; contextBudget: number } {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new HttpsError("invalid-argument", "Request data must be an object.");
   }
@@ -71,7 +71,7 @@ export const askEOSRepository = onCall({ region: "us-central1", timeoutSeconds: 
     throw new HttpsError("failed-precondition", "Ask EOS V1 is enabled only in development and sandbox.");
   }
 
-  const { question, contextBudget } = safeQuestion(request.data);
+  const { question, contextBudget } = parseAskEOSInput(request.data);
   const user = await getFirestore().collection("users").doc(request.auth.uid).get();
   if (user.data()?.role !== "admin") {
     throw new HttpsError("permission-denied", "Ask EOS V1 is currently available to administrators only.");
