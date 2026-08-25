@@ -1,13 +1,13 @@
-import { READINESS, workOrderPartsPlan } from "./workOrderNorthStar.js";
+import { workOrderPartsPlan } from "./workOrderNorthStar.js";
 
 // NORTH STAR WORK ORDER INTELLIGENCE CONTRACT
 //
 // This is the seam between governed EOS facts and future model interpretation.
 // It is deliberately PURE: no Firestore, no model, no clock, no write path.
 //
-// The UI must never infer business meaning from raw records independently. EOS derives facts here,
-// then a future Keystone-backed interpreter may explain those facts. Deterministic signals are
-// labelled DETERMINISTIC and must never be presented as AI.
+// IMPORTANT: readiness is NOT derived here. `workOrderPartsReadiness.js` already owns that authority.
+// This layer consumes its projection and turns governed facts into the structured North Star
+// intelligence contract. A second readiness engine here would create two truths.
 
 export const INTELLIGENCE_ORIGIN = Object.freeze({
   DETERMINISTIC: "DETERMINISTIC",
@@ -31,22 +31,28 @@ export const NO_INSIGHT_REASON = Object.freeze({
   NO_ACTIONABLE_SIGNAL: "NO_ACTIONABLE_SIGNAL",
   RECORD_CLOSED: "RECORD_CLOSED",
   NO_GOVERNED_PARTS_PLAN: "NO_GOVERNED_PARTS_PLAN",
+  PARTS_READY: "PARTS_READY",
 });
 
 /**
  * Build the model-safe Work Order context from facts already derived by EOS.
  *
- * This function intentionally excludes document ids and does not fetch anything. A future trusted
- * server-side context assembler may add capability-authorized facts, but the model boundary remains
- * this explicit shape rather than an unrestricted record/database handle.
+ * `partsReadiness` must be the canonical `buildWorkOrderPartsReadiness(...)` result, assembled from
+ * capability-authorized source data by a trusted caller. This function never accepts a database
+ * handle and never fetches or expands authority on its own.
  */
-export function buildWorkOrderIntelligenceContext(workOrder, { partsPlan = null } = {}) {
+export function buildWorkOrderIntelligenceContext(
+  workOrder,
+  { partsPlan = null, partsReadiness = null } = {},
+) {
   if (!workOrder) return null;
 
   const plan = partsPlan ?? workOrderPartsPlan(workOrder);
   const reference = typeof workOrder.woNumber === "string" && workOrder.woNumber.trim()
     ? workOrder.woNumber.trim()
     : null;
+
+  const readiness = sanitizeReadinessProjection(partsReadiness);
 
   return {
     schemaVersion: 1,
@@ -60,31 +66,36 @@ export function buildWorkOrderIntelligenceContext(workOrder, { partsPlan = null 
     parts: {
       plannedLineCount: plan.length,
       plannedQuantity: plan.reduce((sum, line) => sum + finiteOrZero(line.qtyPlanned), 0),
-      readinessAuthorityAvailable: plan.length > 0 && plan.every((line) => line.readiness !== READINESS.UNKNOWN),
       lines: plan.map((line) => ({
         name: line.name ?? null,
         sku: line.sku ?? null,
         qtyPlanned: Number.isFinite(line.qtyPlanned) ? line.qtyPlanned : null,
-        readiness: line.readiness,
       })),
+      readinessProjectionAvailable: readiness != null,
+      readiness,
     },
   };
 }
 
 /**
- * First North Star intelligence proof: parts readiness honesty.
+ * First North Star intelligence proof: parts readiness.
  *
- * EOS knows the governed plan. EOS does NOT yet know truck/staged/missing availability. That gap is
- * operationally relevant, so the system may say readiness cannot be confirmed. It may NOT say a
- * part is unavailable, late, on a truck, staged, or likely to cause a delay because no authority
- * currently proves those claims.
+ * The projection authority already exists in `workOrderPartsReadiness.js`. This function does not
+ * recompute it. It explains one of four truthful states:
  *
- * The full structured object is future-model-ready, while `attentionItem` is the truthful
- * deterministic rendering used by today's North Star page. This is not AI and must not be labelled
- * as AI in the UI.
+ * - no projection supplied -> readiness cannot be confirmed;
+ * - UNKNOWN -> readiness still cannot be confirmed and degraded sources are named;
+ * - ATTENTION -> the canonical projection proves at least one line needs attention;
+ * - READY -> stay silent. A clean band is the North Star's clean signal.
+ *
+ * The full structured object is future-model-ready, while `attentionItem` is the deterministic
+ * rendering today's Work Order page can consume. It is NOT AI and must never be labelled as AI.
  */
-export function deriveWorkOrderIntelligence(workOrder, { partsPlan = null } = {}) {
-  const context = buildWorkOrderIntelligenceContext(workOrder, { partsPlan });
+export function deriveWorkOrderIntelligence(
+  workOrder,
+  { partsPlan = null, partsReadiness = null } = {},
+) {
+  const context = buildWorkOrderIntelligenceContext(workOrder, { partsPlan, partsReadiness });
   if (!context) return noInsight(NO_INSIGHT_REASON.NO_ACTIONABLE_SIGNAL, null);
 
   if (isClosed(context.subject.status)) {
@@ -92,58 +103,157 @@ export function deriveWorkOrderIntelligence(workOrder, { partsPlan = null } = {}
   }
 
   if (context.parts.plannedLineCount === 0) {
-    // The existing North Star attention derivation already owns "No parts planned". Repeating it
-    // here would violate one-fact-one-rendering and would train the intelligence layer to fill space.
+    // Existing North Star attention owns "No parts planned". Do not restate it as intelligence.
     return noInsight(NO_INSIGHT_REASON.NO_GOVERNED_PARTS_PLAN, context);
   }
 
-  if (!context.parts.readinessAuthorityAvailable) {
-    const lineWord = context.parts.plannedLineCount === 1 ? "part" : "parts";
-    const quantityText = context.parts.plannedQuantity > 0
-      ? `${context.parts.plannedQuantity} planned unit${context.parts.plannedQuantity === 1 ? "" : "s"} across ${context.parts.plannedLineCount} ${lineWord}`
-      : `${context.parts.plannedLineCount} planned ${lineWord}`;
+  const projection = context.parts.readiness;
+  if (!projection) return readinessUnknownSignal(context, null);
 
-    return {
-      speak: true,
-      origin: INTELLIGENCE_ORIGIN.DETERMINISTIC,
-      key: "parts-readiness-unverified",
-      context,
-      observedFact: `${quantityText} are recorded on this work order.`,
-      interpretation: "EOS has a governed parts plan, but no governed truck or staging availability signal for these lines.",
-      businessConsequence: "Parts readiness cannot be confirmed before dispatch from the evidence EOS currently holds.",
-      confidence: {
-        level: CONFIDENCE.HIGH,
-        basis: "The conclusion is limited to the presence of a governed parts plan and the explicit absence of a readiness authority.",
-      },
-      recommendedAction: null,
-      authority: {
-        state: AUTHORITY_STATE.NOT_APPLICABLE,
-        action: null,
-        reason: "No governed readiness action is proposed until availability evidence exists.",
-      },
-      evidence: [
-        {
-          kind: "WORK_ORDER_PARTS_PLAN",
-          subjectReference: context.subject.reference,
-          source: "workOrder.inventorySnapshot",
-          facts: {
-            plannedLineCount: context.parts.plannedLineCount,
-            plannedQuantity: context.parts.plannedQuantity,
-          },
-        },
-      ],
-      outcome: null,
-      attentionItem: {
-        key: "parts-readiness-unverified",
-        severity: "ATTENTION",
-        fact: `Parts readiness cannot be confirmed — ${quantityText} have no governed truck or staging availability signal yet.`,
-      },
-    };
+  if (projection.jobReadiness === "READY") {
+    return noInsight(NO_INSIGHT_REASON.PARTS_READY, context);
   }
 
-  // A future governed readiness projection will enter here. Until it exists, the contract chooses
-  // silence rather than fabricating a recommendation from incomplete evidence.
+  if (projection.jobReadiness === "UNKNOWN") {
+    return readinessUnknownSignal(context, projection);
+  }
+
+  if (projection.jobReadiness === "ATTENTION") {
+    return readinessAttentionSignal(context, projection);
+  }
+
+  // NO_PLAN should already be impossible when the governed plan has lines. Any future/unknown value
+  // stays silent rather than being interpreted optimistically.
   return noInsight(NO_INSIGHT_REASON.NO_ACTIONABLE_SIGNAL, context);
+}
+
+function readinessUnknownSignal(context, projection) {
+  const quantityText = plannedQuantityText(context.parts);
+  const degraded = projection?.degraded?.length ? projection.degraded.join(", ") : null;
+
+  return {
+    speak: true,
+    origin: INTELLIGENCE_ORIGIN.DETERMINISTIC,
+    key: "parts-readiness-unverified",
+    context,
+    observedFact: `${quantityText} are recorded on this work order.`,
+    interpretation: degraded
+      ? `The canonical readiness projection cannot confirm coverage because these sources are unavailable or incomplete: ${degraded}.`
+      : "A canonical parts-readiness projection has not been assembled for this work order yet.",
+    businessConsequence: "Parts readiness cannot be confirmed before dispatch from the evidence currently assembled for this work order.",
+    confidence: {
+      level: CONFIDENCE.HIGH,
+      basis: "The statement is limited to the governed parts plan and the readiness projection's explicit UNKNOWN or unavailable state.",
+    },
+    recommendedAction: null,
+    authority: {
+      state: AUTHORITY_STATE.NOT_APPLICABLE,
+      action: null,
+      reason: "No governed readiness action is proposed until the evidence identifies a specific actionable condition.",
+    },
+    evidence: evidenceFor(context, projection),
+    outcome: null,
+    attentionItem: {
+      key: "parts-readiness-unverified",
+      severity: "ATTENTION",
+      fact: `Parts readiness cannot be confirmed — ${quantityText}${degraded ? `; incomplete sources: ${degraded}` : "; no canonical readiness projection is assembled yet"}.`,
+    },
+  };
+}
+
+function readinessAttentionSignal(context, projection) {
+  const attentionCount = projection.counts?.ATTENTION ?? 0;
+  const unknownCount = projection.counts?.UNKNOWN ?? 0;
+  const readyCount = projection.counts?.READY ?? 0;
+  const detail = [
+    `${attentionCount} need${attentionCount === 1 ? "s" : ""} attention`,
+    readyCount > 0 ? `${readyCount} ready` : null,
+    unknownCount > 0 ? `${unknownCount} still unknown` : null,
+  ].filter(Boolean).join("; ");
+
+  return {
+    speak: true,
+    origin: INTELLIGENCE_ORIGIN.DETERMINISTIC,
+    key: "parts-readiness-attention",
+    context,
+    observedFact: `The governed parts-readiness projection reports ${detail}.`,
+    interpretation: "At least one planned part has a readiness condition that EOS can substantiate as needing attention.",
+    businessConsequence: "This work order should not be treated as fully parts-ready until the identified readiness conditions are resolved.",
+    confidence: {
+      level: CONFIDENCE.HIGH,
+      basis: "The signal is a direct explanation of the canonical readiness projection; it does not infer availability independently.",
+    },
+    recommendedAction: null,
+    authority: {
+      state: AUTHORITY_STATE.NOT_APPLICABLE,
+      action: null,
+      reason: "A specific governed action is not proposed until the readiness reason is mapped to an existing EOS command and actor authority is checked.",
+    },
+    evidence: evidenceFor(context, projection),
+    outcome: null,
+    attentionItem: {
+      key: "parts-readiness-attention",
+      severity: "ATTENTION",
+      fact: `Parts readiness needs attention — ${detail}.`,
+    },
+  };
+}
+
+function sanitizeReadinessProjection(projection) {
+  if (!projection || typeof projection !== "object") return null;
+  const counts = projection.counts && typeof projection.counts === "object"
+    ? {
+        READY: finiteOrZero(projection.counts.READY),
+        ATTENTION: finiteOrZero(projection.counts.ATTENTION),
+        UNKNOWN: finiteOrZero(projection.counts.UNKNOWN),
+      }
+    : { READY: 0, ATTENTION: 0, UNKNOWN: 0 };
+
+  return {
+    jobReadiness: typeof projection.jobReadiness === "string" ? projection.jobReadiness : "UNKNOWN",
+    counts,
+    degraded: Array.isArray(projection.degraded)
+      ? projection.degraded.filter((v) => typeof v === "string")
+      : [],
+    rows: Array.isArray(projection.rows)
+      ? projection.rows.map((row) => ({
+          name: typeof row?.name === "string" ? row.name : null,
+          qtyPlanned: Number.isFinite(row?.qtyPlanned) ? row.qtyPlanned : null,
+          readiness: typeof row?.readiness === "string" ? row.readiness : "UNKNOWN",
+          reason: typeof row?.reason === "string" ? row.reason : null,
+          knownShortfall: Number.isFinite(row?.knownShortfall) ? row.knownShortfall : null,
+        }))
+      : [],
+  };
+}
+
+function evidenceFor(context, projection) {
+  const evidence = [
+    {
+      kind: "WORK_ORDER_PARTS_PLAN",
+      subjectReference: context.subject.reference,
+      source: "workOrder.inventorySnapshot",
+      facts: {
+        plannedLineCount: context.parts.plannedLineCount,
+        plannedQuantity: context.parts.plannedQuantity,
+      },
+    },
+  ];
+
+  if (projection) {
+    evidence.push({
+      kind: "WORK_ORDER_PARTS_READINESS",
+      subjectReference: context.subject.reference,
+      source: "workOrderPartsReadiness",
+      facts: {
+        jobReadiness: projection.jobReadiness,
+        counts: projection.counts,
+        degraded: projection.degraded,
+      },
+    });
+  }
+
+  return evidence;
 }
 
 function noInsight(reason, context) {
@@ -162,6 +272,13 @@ function noInsight(reason, context) {
     outcome: null,
     attentionItem: null,
   };
+}
+
+function plannedQuantityText(parts) {
+  const lineWord = parts.plannedLineCount === 1 ? "part" : "parts";
+  return parts.plannedQuantity > 0
+    ? `${parts.plannedQuantity} planned unit${parts.plannedQuantity === 1 ? "" : "s"} across ${parts.plannedLineCount} ${lineWord}`
+    : `${parts.plannedLineCount} planned ${lineWord}`;
 }
 
 function isClosed(status) {
