@@ -38,7 +38,7 @@ test("create: stamps currency USD on the header — server-set, not client-suppl
   // currency is a single-currency default on the SO HEADER; issueInvoice's verifySalesOrderMatch compares
   // input.currency against so.currency, so a missing header currency makes an order permanently unbillable.
   const so = buildCreateSalesOrder(
-    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] },
     CTX
   );
   assert.equal(so.currency, "USD");
@@ -46,7 +46,7 @@ test("create: stamps currency USD on the header — server-set, not client-suppl
   // The command invents no currency authority: a client-sent `currency` in the raw payload is NOT trusted —
   // CreateSalesOrderInput declares no currency field, so the builder unconditionally sets it server-side.
   const injected = buildCreateSalesOrder(
-    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", currency: "CAD", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", currency: "CAD", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] },
     CTX
   );
   assert.equal(injected.currency, "USD", "a client-supplied currency must be ignored (server-set)");
@@ -54,7 +54,7 @@ test("create: stamps currency USD on the header — server-set, not client-suppl
 
 test("create: accepts the ratified STRATEGIC_ACCOUNTS channel (#15)", () => {
   const so = buildCreateSalesOrder(
-    { accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] },
     CTX
   );
   assert.equal(so.salesChannel, "STRATEGIC_ACCOUNTS");
@@ -74,9 +74,9 @@ test("create: a serialized-asset line is FORBIDDEN (commercial != physical)", ()
 });
 
 test("create: fails closed on missing account/owner/channel/lines and bad qty", () => {
-  assert.throws(() => buildCreateSalesOrder({ ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] }, CTX), (e) => e.code === "ACCOUNT_REQUIRED");
-  assert.throws(() => buildCreateSalesOrder({ accountId: "A", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] }, CTX), (e) => e.code === "OWNER_REQUIRED");
-  assert.throws(() => buildCreateSalesOrder({ accountId: "A", ownerEmployeeId: "E", salesChannel: "X", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] }, CTX), (e) => e.code === "CHANNEL_INVALID");
+  assert.throws(() => buildCreateSalesOrder({ ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] }, CTX), (e) => e.code === "ACCOUNT_REQUIRED");
+  assert.throws(() => buildCreateSalesOrder({ accountId: "A", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] }, CTX), (e) => e.code === "OWNER_REQUIRED");
+  assert.throws(() => buildCreateSalesOrder({ accountId: "A", ownerEmployeeId: "E", salesChannel: "X", lines: [{ kind: "PART", ref: "p", orderedQty: 1, unitPrice: 2500 }] }, CTX), (e) => e.code === "CHANNEL_INVALID");
   assert.throws(() => buildCreateSalesOrder({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [] }, CTX), (e) => e.code === "NO_LINES");
   assert.throws(() => buildCreateSalesOrder({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 0 }] }, CTX), (e) => e.code === "QTY_INVALID");
   assert.throws(() => buildCreateSalesOrder({ accountId: "A", ownerEmployeeId: "E", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "p", orderedQty: 1.5 }] }, CTX), (e) => e.code === "QTY_INVALID");

@@ -61,7 +61,7 @@ test("a retried ADVANCE on an Opportunity does NOT skip a stage -- replay return
 test("a retried ADVANCE on a Sales Order does NOT skip a state -- replay returns the prior result", async () => {
   const actorUid = id("actor");
   const built = buildCreateSalesOrder(
-    { accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1 }] },
+    { accountId: id("account"), ownerEmployeeId: id("owner"), salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1, unitPrice: 2500 }] },
     { actorUid, nowMillis: Date.now() },
   );
   const created = await db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, actorUid, id("create-key")));
