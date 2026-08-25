@@ -2,7 +2,16 @@
 // pipeline over the injected SYNTHETIC source: open opportunities appear (closed excluded from the queue),
 // attention sorts to the top, selecting a row drives the detail aside, and the write affordance is inert.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+// SalesWorkspace URL-STATES its Open/Won/Lost view (useSearchParams), matching what every metadata
+// list here already does through useListCriteria -- so it needs a Router, exactly as it has one in
+// the app. Wrapped here rather than weakening the component to work routerless, which would make
+// the test environment the thing the code is designed for. Same convention as
+// accountPageComponents.test.jsx and the other router-dependent suites.
+const render = (ui, { route = "/" } = {}) =>
+  rtlRender(<MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>);
 import SalesWorkspace from "../src/modules/sales/SalesWorkspace.jsx";
 import { opportunityEntity, opportunityIndexList } from "../src/metadata/definitions/opportunity.js";
 

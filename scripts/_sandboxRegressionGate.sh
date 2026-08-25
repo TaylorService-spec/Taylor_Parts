@@ -100,6 +100,17 @@ echo "== [4/6] structural + responsive sweep (5 widths) =="
 # that reports incomplete coverage into a check that hides it. There is no retry here on purpose.
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certify.mjs" admin 1440,1024,768,375,320 )
 
+# 4b. DYNAMIC DETAIL ROUTES. The step above sweeps routes.json -- 54 NAV destinations, none of
+#     them a record page, because a detail URL does not exist until a record does. It reported ZERO
+#     raw-id findings across 270 visits while SalesOrderDetail was rendering a Firestore document id
+#     as visible content. A clean sweep and a broken page looked identical from the outside.
+#
+#     Records are RESOLVED through the governed lists, never pinned by id, so this survives a
+#     reseed. An entity that cannot be resolved is a FIXTURE_PRECONDITION failure and exits
+#     non-zero -- "no record to open" is exactly the state that hid the Opportunity defect.
+echo "== [4b/6] dynamic detail routes (record pages) =="
+( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certifyDynamic.mjs" admin 1440,375 )
+
 # 5. PERSONA REACHABILITY. The representative three, not all fifteen -- the fixture-only identities
 #    belong to targeted suites, and sweeping them here buys duplicate coverage at real cost.
 echo "== [5/6] persona reachability (representative set) =="

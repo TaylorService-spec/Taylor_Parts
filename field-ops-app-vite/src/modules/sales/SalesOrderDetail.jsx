@@ -218,12 +218,25 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
 
           <section aria-labelledby="so-service-h">
             <h3 id="so-service-h">Service / Work Order lineage</h3>
-            {view.serviceWorkOrderIds.length === 0 ? (
+            {/* A DOCUMENT ID IS A ROUTING KEY, NOT A NAME (DECISIONS #106).
+                This rendered `<li key={woId}>{woId}</li>` — the raw Firestore id as the visible
+                content of the list. The id is still what identifies the row and would still be what
+                a link routes by; it is simply never what a reader is shown.
+
+                Where the governed WO-YYYY-###### reference is not available the fallback says THAT,
+                rather than falling back to the id — which is the substitution the decision exists to
+                forbid. Until the read service that resolves these references is deployed, every row
+                takes this branch, and that is honest: the app genuinely cannot name them yet. */}
+            {view.serviceWorkOrders.length === 0 ? (
               <p className="fo-muted">No Work Orders linked yet.</p>
             ) : (
               <ul className="fo-list">
-                {view.serviceWorkOrderIds.map((woId) => (
-                  <li key={woId}>{woId}</li>
+                {view.serviceWorkOrders.map((wo) => (
+                  <li key={wo.workOrderId}>
+                    {wo.workOrderNumber ?? (
+                      <span className="fo-muted">Work order reference unavailable</span>
+                    )}
+                  </li>
                 ))}
               </ul>
             )}

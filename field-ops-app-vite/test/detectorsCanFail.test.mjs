@@ -45,9 +45,19 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
-const CERTIFY = readFileSync(
-  path.join(ROOT, ".claude/skills/run-field-ops-app-vite/certify.mjs"), "utf8",
-);
+// THE DETECTOR MOVED, AND THIS GUARD CORRECTLY NOTICED.
+//
+// PROBE was extracted from certify.mjs into probe.mjs so the new dynamic-detail sweep runs the
+// IDENTICAL detector rather than a copy that would drift. This assertion promptly failed with
+// "certify.mjs lost its guard for: desktop controls vs a touch floor" — which is the guard doing
+// its job: those false-positive histories genuinely were no longer in the file it was reading.
+//
+// Both files are read and concatenated, so the histories are found wherever the detector lives, and
+// moving a check back into certify.mjs would not silently stop covering it.
+const CERTIFY = [
+  ".claude/skills/run-field-ops-app-vite/certify.mjs",
+  ".claude/skills/run-field-ops-app-vite/probe.mjs",
+].map((f) => readFileSync(path.join(ROOT, f), "utf8")).join("\n");
 
 test("the inline technician-lookup guard fires on a real violation", () => {
   // The exact defect it exists to catch, in the exact form nine surfaces had written it.

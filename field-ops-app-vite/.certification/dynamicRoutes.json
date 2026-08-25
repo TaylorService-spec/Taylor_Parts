@@ -1,0 +1,62 @@
+{
+  "_comment": "DYNAMIC DETAIL ROUTES — the pages certify.mjs's static sweep can never see. routes.json holds the 54 NAV destinations; a record page only exists once a record does, so its URL cannot be written down in advance. The sweep therefore reported ZERO raw-id findings across 270 visits while SalesOrderDetail was printing a Firestore document id as visible content. Each entry says how to REACH one representative record through the app's own governed list — never a hardcoded document id, which would rot the first time the sandbox is reseeded. A record that cannot be resolved is a FIXTURE_PRECONDITION failure, never a silent skip: a detail page nobody could open is exactly the state that hid the defect.",
+  "entities": [
+    {
+      "key": "account",
+      "label": "Account detail",
+      "listRoute": "/customers",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "^/customers/[^/]+$"
+    },
+    {
+      "key": "opportunity",
+      "label": "Opportunity detail",
+      "listRoute": "/customers/opportunities?view=all",
+      "rowSelector": "tbody tr",
+      "navigates": false,
+      "_comment": "A master-detail pane: selecting a row fills the aside rather than changing the URL. ?view=all is required because the sandbox has 0 OPEN opportunities — the very condition that made this detail unreachable before the history views landed."
+    },
+    {
+      "key": "salesOrder",
+      "label": "Sales Order detail",
+      "listRoute": "/customers/sales-orders",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "^/customers/opportunities/sales-order/[^/]+$"
+    },
+    {
+      "key": "workOrder",
+      "label": "Work Order detail",
+      "listRoute": "/service",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "work-orders/[^/]+$"
+    },
+    {
+      "key": "contact",
+      "label": "Contact (on the Account record)",
+      "listRoute": "/customers",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "^/customers/[^/]+$",
+      "_comment": "Contacts have no route of their own — /customers/contacts is retired and redirects. A Contact is reached as a section of the Account record, so this probes the same destination as `account` and exists to state that explicitly rather than let a reader assume Contact detail went unswept."
+    },
+    {
+      "key": "equipment",
+      "label": "Equipment detail",
+      "listRoute": "/equipment",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "^/equipment/[^/]+$"
+    },
+    {
+      "key": "part",
+      "label": "Part detail",
+      "listRoute": "/inventory",
+      "rowSelector": "tbody tr",
+      "navigates": true,
+      "expectRoutePattern": "^/inventory/[^/]+$"
+    }
+  ]
+}

@@ -280,6 +280,15 @@ export default function AccountsList() {
           already fetched, and any shortfall is stated in the reader's own terms. This does not
           fix the missing field -- it makes its absence impossible to mistake for an empty
           business. */}
+      {/* TWO DIFFERENT SHORTFALLS, AND THEY MUST NOT WEAR THE SAME SENTENCE.
+          "More pages exist" and "these records can never appear" are different facts with
+          different remedies -- one is answered by Load more, the other only by changing the sort --
+          and the guard above suppressed BOTH by requiring !hasMore. On the 106-customer sandbox
+          list that meant no message at all, which is how the sinking-record defect stayed invisible
+          even after the count disagreed with the rows.
+          Only the !hasMore case can be attributed to the missing sort field, and only that case
+          says so. With more pages outstanding the shortfall is not yet diagnosable, so the message
+          states what IS known -- the page boundary -- and claims nothing further. */}
       {summaryState === "READY"
         && summary?.total > 0
         && criteria.filters.length === 0
@@ -288,13 +297,19 @@ export default function AccountsList() {
         // reading undefined and short-circuiting: the warning it describes has never once rendered.
         // A safeguard against silent truncation that is itself silent is the worst of both.
         && presentation?.state === "READY"
-        && !presentation.hasMore
         && presentation.rows.length < summary.total && (
-        <p className="fo-warning" role="status">
-          Showing {presentation.rows.length} of {summary.total} customers. The rest are missing
-          the “last update” value this list is sorted by, so they cannot appear here. Sort or filter
-          by another field to reach them.
-        </p>
+        presentation.hasMore ? (
+          <p className="fo-muted" role="status">
+            Showing the first {presentation.rows.length} of {summary.total} customers. Load more to
+            see the rest.
+          </p>
+        ) : (
+          <p className="fo-warning" role="status">
+            Showing {presentation.rows.length} of {summary.total} customers. The rest are missing
+            the “last update” value this list is sorted by, so they cannot appear here. Sort or filter
+            by another field to reach them.
+          </p>
+        )
       )}
 
       {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Account metadata.

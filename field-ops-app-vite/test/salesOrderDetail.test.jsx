@@ -116,7 +116,15 @@ describe("SalesOrderDetail", () => {
           customerPO: "PO-1",
           notes: null,
           lines: [{ lineId: "line-1", kind: "PART", ref: "PRT-9", orderedQty: 4, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }],
-          serviceWorkOrderIds: ["WO-1", "WO-2"],
+          serviceWorkOrderIds: ["wo-doc-1", "wo-doc-2"],
+          // The lineage as the trusted read returns it: one Work Order whose governed reference
+          // resolved, and one whose did not. The fixture used to be ["WO-1","WO-2"] -- ids that
+          // happened to LOOK like references, which is why the assertion below passed while the
+          // page was printing raw Firestore document ids in production.
+          serviceWorkOrders: [
+            { workOrderId: "wo-doc-1", workOrderNumber: "WO-2026-000001" },
+            { workOrderId: "wo-doc-2", workOrderNumber: null },
+          ],
         },
       },
     });
@@ -137,8 +145,16 @@ describe("SalesOrderDetail", () => {
     expect(screen.queryByText("OPP-7")).toBeNull();
     expect(screen.getByText("CONFIRMED")).toBeTruthy();
     expect(screen.getByText("PRT-9")).toBeTruthy();
-    expect(screen.getByText("WO-1")).toBeTruthy();
-    expect(screen.getByText("WO-2")).toBeTruthy();
+    // THE GOVERNED REFERENCE, not the document id (DECISIONS #106).
+    expect(screen.getByText("WO-2026-000001")).toBeTruthy();
+    // An unresolved one says so rather than falling back to the key.
+    expect(screen.getByText("Work order reference unavailable")).toBeTruthy();
+    expect(screen.queryByText("wo-doc-1")).toBeNull();
+    expect(screen.queryByText("wo-doc-2")).toBeNull();
+    // The second Work Order is the UNRESOLVED one, already asserted above by its truthful fallback.
+    // There is deliberately no second reference to find: the page must never invent one, and must
+    // never reach for `wo-doc-2` to fill the gap.
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
   });
 
   // DECISIONS #106 -- a missing business reference is NOT permission to display a record id.

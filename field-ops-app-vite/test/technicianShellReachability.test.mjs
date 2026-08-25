@@ -135,7 +135,7 @@ describe("no authority widened by mounting the shell", () => {
     // deny-all to clients anyway -- so this would fail at runtime AND be wrong.
     const offenders = OFFLINE_SOURCES.flatMap(filesUnder)
       .filter((f) => /\.(jsx?|tsx?)$/.test(f))
-      .filter((f) => /(setDoc|updateDoc|addDoc|deleteDoc|writeBatch)\s*\(/.test(readFileSync(f, "utf8")))
+      .filter((f) => /\b(setDoc|updateDoc|addDoc|deleteDoc|writeBatch)\s*\(/.test(readFileSync(f, "utf8")))
       .map((f) => path.relative(root, f));
     assert.deepEqual(offenders, []);
   });
