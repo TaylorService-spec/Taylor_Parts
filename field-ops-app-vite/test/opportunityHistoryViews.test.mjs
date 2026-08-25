@@ -1,0 +1,142 @@
+// WON AND LOST OPPORTUNITIES ARE REACHABLE, WITHOUT DILUTING THE QUEUE.
+// Run: node --test test/opportunityHistoryViews.test.mjs
+//
+// ════════════════════ THE DEFECT THIS CLOSES ════════════════════
+//
+// buildOpportunityPipeline returns `rows: open`, and the table rendered `rows`. WON and LOST fed
+// the summary tiles and nothing else, and `all` was only ever used to re-find an already-selected
+// id — never listed. So a closed opportunity could not be opened at all.
+//
+// In sandbox that meant 0 open / 7 WON / 1 LOST and NO reachable Opportunity detail anywhere, which
+// took the Sales Order lineage link and the Sales Agreement panel down with it. Observed live.
+//
+// The fix is a VIEW over facts that already exist. These cases hold that line: the selector must
+// FILTER `all`, never re-derive stage, attention or closure, because a second derivation is how two
+// screens come to disagree about one deal.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildOpportunityPipeline,
+  selectOpportunityView,
+  normalizeOpportunityView,
+  OPPORTUNITY_VIEW,
+  OPPORTUNITY_VIEW_LABEL,
+  OPPORTUNITY_EMPTY_TEXT,
+} from "../src/domain/opportunityLifecycle.js";
+
+/** The sandbox shape that exposed this: nothing open, seven won, one lost. */
+const opp = (id, over = {}) => ({
+  id,
+  accountId: "acct-1",
+  ownerEmployeeId: "emp-1",
+  salesChannel: "RETAIL",
+  stage: "DECISION",
+  outcome: null,
+  lines: [{ kind: "PART", ref: "P1", qty: 1 }],
+  ...over,
+});
+const SANDBOX = [
+  ...Array.from({ length: 7 }, (_, i) => opp(`won-${i}`, { outcome: "WON" })),
+  opp("lost-1", { outcome: "LOST" }),
+];
+const build = (list) => buildOpportunityPipeline(list, { nowMillis: 1_754_600_000_000, accountNameById: {} });
+
+// ═════════════════════════════════════════ the sandbox case, exactly
+
+test("THE 0-OPEN / 7-WON / 1-LOST FIXTURE MAKES CLOSED WORK REACHABLE", () => {
+  const p = build(SANDBOX);
+  // The state that produced an unreachable detail pane.
+  assert.equal(p.rows.length, 0, "no open work — the operational queue is genuinely empty");
+  assert.equal(p.counts.won, 7);
+  assert.equal(p.counts.lost, 1);
+
+  assert.equal(selectOpportunityView(p, OPPORTUNITY_VIEW.WON).rows.length, 7);
+  assert.equal(selectOpportunityView(p, OPPORTUNITY_VIEW.LOST).rows.length, 1);
+  assert.equal(selectOpportunityView(p, OPPORTUNITY_VIEW.ALL).rows.length, 8);
+  // And the queue still says what it always said.
+  assert.equal(selectOpportunityView(p, OPPORTUNITY_VIEW.OPEN).rows.length, 0);
+});
+
+test("OPEN REMAINS THE DEFAULT, and an unknown view does not break the page", () => {
+  // The pipeline is a work queue first; history is somewhere you go.
+  assert.equal(normalizeOpportunityView(undefined), OPPORTUNITY_VIEW.OPEN);
+  assert.equal(normalizeOpportunityView(""), OPPORTUNITY_VIEW.OPEN);
+  assert.equal(normalizeOpportunityView("nonsense"), OPPORTUNITY_VIEW.OPEN);
+  // A hand-edited or stale URL normalises rather than throwing at the router.
+  assert.equal(normalizeOpportunityView("WON"), OPPORTUNITY_VIEW.WON, "case-insensitive");
+  assert.equal(normalizeOpportunityView(" lost "), OPPORTUNITY_VIEW.LOST, "trimmed");
+  assert.equal(selectOpportunityView(build(SANDBOX), "nonsense").view, OPPORTUNITY_VIEW.OPEN);
+});
+
+// ═════════════════════════════════════════ it filters, it does not re-derive
+
+test("EVERY VIEW SHOWS THE SAME ROW OBJECTS the pipeline already built", () => {
+  // Identity, not equality. A view that constructed its own rows could disagree with the queue
+  // about a deal's stage or attention, and the two screens would both look right.
+  const p = build([...SANDBOX, opp("open-1")]);
+  const all = selectOpportunityView(p, OPPORTUNITY_VIEW.ALL).rows;
+  for (const row of all) assert.ok(p.all.includes(row), `${row.id} must be the pipeline's own row object`);
+  const openRows = selectOpportunityView(p, OPPORTUNITY_VIEW.OPEN).rows;
+  assert.equal(openRows, p.rows, "the OPEN view IS the operational queue, not a copy of it");
+});
+
+test("the views partition the population — nothing is invented and nothing is lost", () => {
+  const p = build([...SANDBOX, opp("open-1"), opp("open-2")]);
+  const n = (v) => selectOpportunityView(p, v).rows.length;
+  assert.equal(n(OPPORTUNITY_VIEW.OPEN) + n(OPPORTUNITY_VIEW.WON) + n(OPPORTUNITY_VIEW.LOST), n(OPPORTUNITY_VIEW.ALL));
+  assert.equal(n(OPPORTUNITY_VIEW.ALL), 10);
+});
+
+test("selecting a view CHANGES NOTHING about the opportunities", () => {
+  // A filter is a question, not a write. Frozen input proves no view mutates a row in place.
+  const source = SANDBOX.map((o) => Object.freeze({ ...o }));
+  const p = build(source);
+  const before = JSON.stringify(p.all);
+  for (const v of Object.values(OPPORTUNITY_VIEW)) selectOpportunityView(p, v);
+  assert.equal(JSON.stringify(p.all), before);
+});
+
+// ═════════════════════════════════════════ four emptinesses, four sentences
+
+test("EACH EMPTY STATE NAMES ITS OWN FACT", () => {
+  // "Nothing here" tells a new tenant their data failed to load and an established one their
+  // pipeline is broken. These are different facts with different next actions.
+  const none = build([]);
+  for (const v of Object.values(OPPORTUNITY_VIEW)) {
+    assert.equal(selectOpportunityView(none, v).emptyReason, "none",
+      "no opportunities at all outranks the per-view answer");
+  }
+
+  const wonOnly = build([opp("w", { outcome: "WON" })]);
+  assert.equal(selectOpportunityView(wonOnly, OPPORTUNITY_VIEW.OPEN).emptyReason, "open");
+  assert.equal(selectOpportunityView(wonOnly, OPPORTUNITY_VIEW.LOST).emptyReason, "lost");
+  assert.equal(selectOpportunityView(wonOnly, OPPORTUNITY_VIEW.WON).emptyReason, null, "not empty");
+
+  // Every reason has copy, and no two views share a sentence.
+  const texts = ["none", "open", "won", "lost"].map((r) => OPPORTUNITY_EMPTY_TEXT[r]);
+  assert.ok(texts.every(Boolean), "every empty reason has a sentence");
+  assert.equal(new Set(texts).size - 1, 3, "only `none` and `all` may share copy");
+  // The open case points the reader at the way out, which is the whole reason the defect was
+  // invisible: the screen said "No open opportunities" and offered nowhere to go.
+  assert.match(OPPORTUNITY_EMPTY_TEXT.open, /Won or Lost/);
+});
+
+test("every view has a label, and the vocabulary is closed", () => {
+  assert.deepEqual(Object.keys(OPPORTUNITY_VIEW_LABEL).sort(), ["all", "lost", "open", "won"]);
+  for (const v of Object.values(OPPORTUNITY_VIEW)) assert.ok(OPPORTUNITY_VIEW_LABEL[v], `${v} needs a label`);
+});
+
+// ═════════════════════════════════════════ closed stays closed
+
+test("REACHABLE IS NOT EDITABLE — a closed opportunity keeps its terminal semantics", async () => {
+  // Making history browseable must not hand anybody a pencil on a WON deal: its terms are what the
+  // Sales Order was derived from, and editing them afterwards would make the two disagree with no
+  // record of which is right.
+  const { isOpportunityEditable } = await import("../src/domain/opportunitySectionSave.js");
+  const p = build(SANDBOX);
+  for (const row of selectOpportunityView(p, OPPORTUNITY_VIEW.ALL).rows) {
+    assert.equal(row.commercial.closed, true);
+    assert.equal(isOpportunityEditable(row), false, `${row.id} is closed and must not be editable`);
+  }
+});

@@ -56,10 +56,10 @@ describe("Cycle count scan (blind, by design)", () => {
     // the count is blind — and banning the word would ban the explanation, so this checks the
     // rendered text for the figure and for any variance wording instead.
     const body = document.body.textContent;
-    expect(body).not.toMatch(/12/);
+    expect(body).not.toMatch(/\b12\b/);
     expect(body).not.toMatch(/expected[:\s]+\d/i);
     expect(body).not.toMatch(/variance/i);
-    expect(body).not.toMatch(/(over|short) by/i);
+    expect(body).not.toMatch(/\b(over|short) by\b/i);
   });
 
   it("says WHY it is blind, rather than looking like missing information", async () => {

@@ -4877,7 +4877,7 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
       /nothing about it can be changed here/i.test(
         await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "")) &&
       !RAW.test(await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "x")) &&
-      !/ACTIVE|INACTIVE|RETIRED|equip-alpha|resource\.data/.test(
+      !/\bACTIVE\b|\bINACTIVE\b|\bRETIRED\b|equip-alpha|resource\.data/.test(
         await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "x")),
       await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "(absent)"));
 

@@ -4,7 +4,7 @@
 // distinction stays a caller concern (this module only builds the projection).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { projectSalesOrder } from "../lib/salesOrder/salesOrderReadService.js";
+import { projectSalesOrder, resolveServiceWorkOrders, MAX_RESOLVED_SERVICE_WORK_ORDERS } from "../lib/salesOrder/salesOrderReadService.js";
 
 function baseDoc(overrides = {}) {
   return {
@@ -63,7 +63,7 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
   // widening of this projection's authority; withholding it was the anomaly.
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "customerPO", "id", "lines", "locationId", "notes",
-    "ownerEmployeeId", "salesChannel", "salesOrderNumber", "serviceWorkOrderIds", "sourceOpportunityId",
+    "ownerEmployeeId", "salesChannel", "salesOrderNumber", "serviceWorkOrderIds", "serviceWorkOrders", "sourceOpportunityId",
     "sourceAgreementId", "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
     "totalMinor", "pricingState", "unpricedLineCount",
   ].sort());
@@ -202,4 +202,72 @@ test("projectSalesOrder reports salesOrderNumber as null for a legacy Sales Orde
   assert.equal(p.salesOrderNumber, null);
   assert.notEqual(p.salesOrderNumber, p.id);
   assert.equal(p.id, "SO-8");
+});
+
+// ════════════════════ WORK ORDER LINEAGE CARRIES A READABLE REFERENCE ════════════════════
+//
+// SalesOrderDetail rendered the stored Work Order document id as visible content
+// (`<li key={woId}>{woId}</li>`) -- observed live on SO-2026-000007 as FkA7SbwObO2tkORMgpCl.
+// DECISIONS #106: a document id is a routing key, not a name. The Sales Order stores only ids, so
+// the surface had nothing else to show; this read resolves the governed WO-YYYY-###### reference.
+
+test("projectSalesOrder stays PURE -- the list paths pay for no lineage read", () => {
+  const p = projectSalesOrder("so-1", baseDoc({ serviceWorkOrderIds: ["wo-a", "wo-b"] }));
+  assert.deepEqual(p.serviceWorkOrderIds, ["wo-a", "wo-b"], "the ids still project");
+  assert.deepEqual(p.serviceWorkOrders, [], "resolved lineage stays empty until the single-record read fills it");
+});
+
+/** A Firestore double: only the two methods the resolver actually uses. */
+const fakeDb = (onGetAll) => ({
+  collection: () => ({ doc: (id) => ({ id }) }),
+  getAll: onGetAll,
+});
+
+test("resolveServiceWorkOrders returns the GOVERNED REFERENCE for each linked Work Order", async () => {
+  const db = fakeDb(async (...refs) => refs.map((r) => ({
+    exists: r.id !== "wo-missing",
+    data: () => (r.id === "wo-unnumbered" ? {} : { woNumber: "WO-2026-000042" }),
+  })));
+  const out = await resolveServiceWorkOrders(db, ["wo-000042", "wo-unnumbered", "wo-missing"]);
+  assert.equal(out.length, 3, "every link is listed -- silently omitting one says the Work Order is gone");
+  assert.equal(out[0].workOrderNumber, "WO-2026-000042");
+  // NULL, never the id. A Work Order predating numbering and one this read could not fetch are both
+  // "no reference to show", and neither is permission to show the key instead.
+  assert.equal(out[1].workOrderNumber, null, "unnumbered resolves to null");
+  assert.equal(out[2].workOrderNumber, null, "missing resolves to null");
+  for (const e of out) assert.notEqual(e.workOrderNumber, e.workOrderId);
+  assert.deepEqual(out.map((e) => e.workOrderId), ["wo-000042", "wo-unnumbered", "wo-missing"], "order follows the stored ids");
+});
+
+test("THE LINEAGE READ IS BOUNDED -- one pathological record cannot decide this read's cost", async () => {
+  let fetched = 0;
+  const db = fakeDb(async (...refs) => {
+    fetched += refs.length;
+    return refs.map(() => ({ exists: true, data: () => ({ woNumber: "WO-2026-000001" }) }));
+  });
+  const ids = Array.from({ length: MAX_RESOLVED_SERVICE_WORK_ORDERS + 5 }, (_, i) => `wo-${i}`);
+  const out = await resolveServiceWorkOrders(db, ids);
+  assert.equal(fetched, MAX_RESOLVED_SERVICE_WORK_ORDERS, "never reads beyond the cap");
+  // Beyond the cap the entries still APPEAR, unresolved. A silently shortened list would be a
+  // lineage that lies about how many Work Orders exist.
+  assert.equal(out.length, ids.length);
+  assert.equal(out[MAX_RESOLVED_SERVICE_WORK_ORDERS].workOrderNumber, null);
+});
+
+test("a FAILED lineage read does not take the whole Sales Order down with it", async () => {
+  // A display enrichment on top of an already-successful read. Throwing would turn a readable order
+  // into an unavailable page over a label.
+  const db = fakeDb(async () => { throw new Error("boom"); });
+  assert.deepEqual(await resolveServiceWorkOrders(db, ["wo-a", "wo-b"]), [
+    { workOrderId: "wo-a", workOrderNumber: null },
+    { workOrderId: "wo-b", workOrderNumber: null },
+  ]);
+});
+
+test("no linked Work Orders performs NO read at all", async () => {
+  let called = false;
+  const db = fakeDb(async () => { called = true; return []; });
+  assert.deepEqual(await resolveServiceWorkOrders(db, []), []);
+  assert.deepEqual(await resolveServiceWorkOrders(db, ["", "   "]), [], "blank ids are not links");
+  assert.equal(called, false);
 });

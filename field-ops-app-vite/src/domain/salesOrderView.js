@@ -99,5 +99,20 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     lines,
     allLinesFulfilled: lines.length > 0 && lines.every((l) => l.fullyFulfilled),
     serviceWorkOrderIds: Array.isArray(so.serviceWorkOrderIds) ? so.serviceWorkOrderIds : [],
+    // THE SAME LINEAGE, CARRYING A READABLE REFERENCE.
+    //
+    // Built from the ids so the surface ALWAYS has one entry per linked Work Order, whether or not
+    // the projection resolved a number for it — and never has to reach for the id to fill a gap.
+    //
+    // COMPATIBLE WITH THE PROJECTION CURRENTLY DEPLOYED, which returns no `serviceWorkOrders` at
+    // all: every entry then carries workOrderNumber null and the surface says so truthfully. When
+    // the read service ships, the same code shows real WO-YYYY-###### references with no further
+    // change here.
+    serviceWorkOrders: (Array.isArray(so.serviceWorkOrderIds) ? so.serviceWorkOrderIds : []).map((workOrderId) => {
+      const resolved = Array.isArray(so.serviceWorkOrders)
+        ? so.serviceWorkOrders.find((w) => w?.workOrderId === workOrderId)
+        : null;
+      return { workOrderId, workOrderNumber: resolved?.workOrderNumber ?? null };
+    }),
   };
 }

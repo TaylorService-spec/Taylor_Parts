@@ -1,5 +1,5 @@
 import { ACCOUNTS_COLLECTION } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
+import { makeCollectionStore, TIMESTAMP_SHAPE } from "../firebase/collectionStore";
 import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
@@ -39,7 +39,20 @@ import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 // admin/dispatcher client-direct-write path is valid only until PR 3b's
 // audit log + trusted server-side writer ship, at which point Commercial
 // Profile mutations move there and direct client mutation is Rules-denied.
-export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION);
+// ACCOUNTS ARE GOVERNED AS TIMESTAMP, and this is the one collection on the shared writer that is.
+//
+// metadata/definitions/account.js declares createdAt and updatedAt as TIMESTAMP, and the existing
+// population stores Firestore Timestamps. The writer's default is epoch milliseconds -- correct for
+// equipment, locations, inventory_actions and reorder_requests, all of which govern NUMBER, and
+// wrong here. A number sorts BELOW every Timestamp under `updatedAt DESC` (Firestore orders by type
+// first), so a newly created Customer landed at the BOTTOM of a 106-row list with a 50-row page and
+// was unreachable from the list it was created in.
+//
+// Declared here rather than inferred anywhere: the entity definition is the authority on the type,
+// and this line is the writer agreeing with it.
+export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION, {
+  timestamps: TIMESTAMP_SHAPE.SERVER_TIMESTAMP,
+});
 
 // ============================ THE DERIVED SEARCH NAME ============================
 //
@@ -67,5 +80,11 @@ export function createAccount(data) {
 }
 
 export function updateAccount(id, data) {
-  return accountsStore.update(id, { ...withDerivedSearchName(data), updatedAt: Date.now() });
+  // THE SAME SHAPE THE CREATE PATH WRITES. This hardcoded Date.now(), so an edit re-broke a record
+  // that had been created correctly -- the account sank down the date-ordered list the moment
+  // anybody touched it. Asking the store for its own governed stamp means the two can never drift.
+  return accountsStore.update(id, {
+    ...withDerivedSearchName(data),
+    updatedAt: accountsStore.timestampValue(),
+  });
 }

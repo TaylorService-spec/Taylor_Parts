@@ -932,6 +932,26 @@
     {
       "file": "test/salesAgreementSurface.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/collectionStoreTimestampContract.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/opportunityHistoryViews.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/workOrderLineageLabel.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/dynamicDetailCertification.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/noLiteralControlBytes.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -20,9 +20,9 @@
 // EXPORT != DEPLOY, REGISTER != GRANT. Exported for build/test only; nothing runs in production
 // until a separate deploy + capability grant + per-environment activation.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, FieldPath } from "firebase-admin/firestore";
+import { getFirestore, FieldPath, type Firestore } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
-import { SALES_ORDERS_COLLECTION } from "../constants/collections";
+import { SALES_ORDERS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { SALES_ORDER_STATES, SALES_ORDER_LINE_KINDS, type SalesOrderState, type SalesOrderLineKind } from "./salesOrderLifecycle";
 
 export const SALES_ORDER_READ_CAPABILITY = "salesOrder.read";
@@ -85,6 +85,25 @@ export interface SalesOrderProjection {
   state: SalesOrderState | null;
   lines: SalesOrderLineProjection[];
   serviceWorkOrderIds: string[];
+  /**
+   * The SAME Work Orders, carrying the governed reference a person can read.
+   *
+   * WHY THIS EXISTS. SalesOrderDetail rendered `<li>{woId}</li>` — a Firestore document id as
+   * visible content, which DECISIONS #106 forbids: a document id is a routing key, not a name. The
+   * ids array above is what the Sales Order stores, and it is all it stores, so the surface had
+   * nothing else to show.
+   *
+   * RESOLVED, NOT DENORMALIZED. createServiceForSalesOrder already computes `wo.woNumber` and
+   * returns it to its caller before discarding it, so denormalizing onto the Sales Order was the
+   * obvious fix — and it would only ever help links written AFTER the change, leaving every
+   * existing one showing a raw id. A bounded read fixes both at once and needs no migration.
+   *
+   * POPULATED ONLY BY THE SINGLE-RECORD READ. The list paths share projectSalesOrder and must not
+   * pay N extra reads per row for a field no list renders; there it stays an empty array, which is
+   * why the client treats "no entry" and "no number" as the same truthful fallback rather than
+   * reaching for the id.
+   */
+  serviceWorkOrders: SalesOrderWorkOrderLineage[];
   /**
    * What this sale is worth: the sum of every line's ordered extended price, integer minor
    * units, in this order's own `currency`.
@@ -201,6 +220,9 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
   const serviceWorkOrderIds = rawServiceWoIds.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
   return {
     id,
+    // Empty here by design: this projection is PURE and shared with the list paths. The
+    // single-record read enriches it (resolveServiceWorkOrders below).
+    serviceWorkOrders: [],
     salesOrderNumber: str(data.salesOrderNumber),
     accountId: str(data.accountId),
     ownerEmployeeId: str(data.ownerEmployeeId),
@@ -232,6 +254,64 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
     createdAtMillis: toMillis(data.createdAt),
     updatedAtMillis: toMillis(data.updatedAt),
   };
+}
+
+/**
+ * One Work Order in a Sales Order's service lineage.
+ *
+ * `workOrderId` is for ROUTING ONLY and must never be rendered; `workOrderNumber` is the
+ * displayed identity, and is honestly null when the Work Order carries none (a record predating
+ * WO numbering, or one this read could not fetch) so the surface can say so rather than fall back
+ * to the id.
+ */
+export interface SalesOrderWorkOrderLineage {
+  workOrderId: string;
+  workOrderNumber: string | null;
+}
+
+/**
+ * How many Work Orders one Sales Order's lineage will resolve.
+ *
+ * BOUNDED ON PURPOSE. A Sales Order accumulates service Work Orders over its life and nothing caps
+ * the stored array, so an unbounded getAll() would let one pathological record decide this read's
+ * cost. Beyond the cap the remaining entries still appear, with a null number — the same truthful
+ * fallback an unnumbered Work Order gets, rather than a silently shortened list.
+ */
+export const MAX_RESOLVED_SERVICE_WORK_ORDERS = 20;
+
+/**
+ * Turn a Sales Order's stored Work Order IDS into the governed references a person can read.
+ *
+ * ONE round trip (getAll), capped. Every entry is returned whether or not it resolved — an id that
+ * could not be fetched, or a Work Order with no `woNumber`, comes back with `workOrderNumber:
+ * null` so the surface renders a truthful fallback instead of the raw id. Dropping it would be
+ * worse: a lineage list that silently omits what it could not resolve tells the reader the Work
+ * Order does not exist.
+ *
+ * FAILS SOFT. This is a display enrichment on top of an already-successful read; if it throws, the
+ * Sales Order still returns with null numbers rather than the whole page becoming unavailable.
+ */
+export async function resolveServiceWorkOrders(
+  db: Firestore,
+  workOrderIds: string[],
+): Promise<SalesOrderWorkOrderLineage[]> {
+  const ids = workOrderIds.filter((v) => typeof v === "string" && v.trim().length > 0);
+  if (ids.length === 0) return [];
+  const resolvable = ids.slice(0, MAX_RESOLVED_SERVICE_WORK_ORDERS);
+  const beyondCap = ids.slice(MAX_RESOLVED_SERVICE_WORK_ORDERS).map((workOrderId) => ({ workOrderId, workOrderNumber: null }));
+  try {
+    const snaps = await db.getAll(...resolvable.map((id) => db.collection(WORK_ORDERS_COLLECTION).doc(id)));
+    return [
+      ...snaps.map((snap, i) => ({
+        workOrderId: resolvable[i],
+        workOrderNumber: snap.exists ? str((snap.data() as Record<string, unknown>)?.woNumber) : null,
+      })),
+      ...beyondCap,
+    ];
+  } catch (err) {
+    console.error("resolveServiceWorkOrders: lineage read failed", err);
+    return ids.map((workOrderId) => ({ workOrderId, workOrderNumber: null }));
+  }
 }
 
 export type SalesOrderReadStatus = "ready" | "not-found";
@@ -370,7 +450,12 @@ export const getSalesOrderContext = onCall({ region: "us-central1" }, async (req
       // would incorrectly imply the id itself is wrong) nor as a guessed "ready" shape.
       throw new HttpsError("internal", "The Sales Order read is temporarily unavailable.");
     }
-    const result: SalesOrderReadResult = { status: "ready", salesOrder: projection };
+    // The lineage the DETAIL page renders, resolved here and only here — the list paths share
+    // projectSalesOrder and must not pay for a field no list shows.
+    const result: SalesOrderReadResult = {
+      status: "ready",
+      salesOrder: { ...projection, serviceWorkOrders: await resolveServiceWorkOrders(db, projection.serviceWorkOrderIds) },
+    };
     return result;
   } catch (err) {
     if (err instanceof HttpsError) throw err;

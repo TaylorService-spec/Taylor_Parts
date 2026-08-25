@@ -7,7 +7,12 @@ import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
-import { buildOpportunityPipeline, channelLabel, stageProgress } from "../../domain/opportunityLifecycle.js";
+import {
+  buildOpportunityPipeline, channelLabel, stageProgress,
+  OPPORTUNITY_VIEW, OPPORTUNITY_VIEW_LABEL, OPPORTUNITY_EMPTY_TEXT,
+  normalizeOpportunityView, selectOpportunityView,
+} from "../../domain/opportunityLifecycle.js";
+import { useSearchParams } from "react-router-dom";
 import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "../../domain/opportunityFieldModel.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
@@ -550,9 +555,30 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
     [opportunities, accountNameById]
   );
 
+  // WHICH SLICE OF HISTORY IS ON SCREEN, in the URL.
+  //
+  // URL-stated so refresh and Back preserve it, matching what every metadata list here already does
+  // through useListCriteria -- this pipeline is not a metadata list, so it holds the one parameter
+  // itself rather than borrowing a hook built for a different shape. An unknown value normalises to
+  // OPEN in the domain rather than throwing at the router.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = normalizeOpportunityView(searchParams.get("view"));
+  const setView = (next) => {
+    const params = new URLSearchParams(searchParams);
+    // OPEN is the default, so it leaves no parameter behind -- a shared link stays clean and the
+    // default can be changed later without stale URLs pinning the old one.
+    if (next === OPPORTUNITY_VIEW.OPEN) params.delete("view");
+    else params.set("view", next);
+    setSearchParams(params, { replace: true });
+    setSelectedId(null); // the previous selection may not exist in the new view
+  };
+
+  // FILTERS facts that already exist -- it never re-derives stage, attention or closure.
+  const selected = useMemo(() => selectOpportunityView(pipeline, view), [pipeline, view]);
+
   const selectedRow = useMemo(
-    () => pipeline.all.find((r) => r.id === selectedId) ?? pipeline.rows[0] ?? null,
-    [pipeline, selectedId]
+    () => pipeline.all.find((r) => r.id === selectedId) ?? selected.rows[0] ?? null,
+    [pipeline, selected, selectedId]
   );
 
   const contextItems = [
@@ -657,8 +683,42 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
         // Genuinely not wired: no source configured for this environment. Distinct from a
         // successfully-read but empty pipeline below.
         <p className="fo-muted">The opportunity pipeline source is not connected yet.</p>
-      ) : pipeline.rows.length === 0 ? (
-        <p className="fo-muted">No open opportunities.</p>
+      ) : (
+        <>
+          {/* THE HISTORY CONTROL. Rendered whenever the read succeeded -- including when the current
+              view is empty, because a control that disappears exactly when you need it to escape an
+              empty view is worse than no control. Radio semantics, not buttons: these are four
+              mutually exclusive views of one list, and a screen reader should hear that.
+
+              The counts stay in the ContextBand above as plain text. They are NOT wired as the
+              controls: a number that looks clickable and is not is its own defect, and turning the
+              band into an input would change a component four other workspaces share. */}
+          <div className="fo-sales-views" role="radiogroup" aria-label="Opportunity view">
+            {[OPPORTUNITY_VIEW.OPEN, OPPORTUNITY_VIEW.WON, OPPORTUNITY_VIEW.LOST, OPPORTUNITY_VIEW.ALL].map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={view === v}
+                className={`fo-sales-view ${view === v ? "is-active" : ""}`.trim()}
+                onClick={() => setView(v)}
+              >
+                {OPPORTUNITY_VIEW_LABEL[v]}
+                {v !== OPPORTUNITY_VIEW.ALL && (
+                  <span className="fo-sales-view__count">
+                    {v === OPPORTUNITY_VIEW.OPEN ? pipeline.counts.open
+                      : v === OPPORTUNITY_VIEW.WON ? pipeline.counts.won
+                      : pipeline.counts.lost}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {selected.rows.length === 0 ? (
+        // FOUR DIFFERENT EMPTINESSES, four sentences. A quiet queue, a business that has never won,
+        // one that has never lost, and one with no opportunities at all are different facts with
+        // different next actions -- and "nothing here" tells a new tenant their data failed to load.
+        <p className="fo-muted">{OPPORTUNITY_EMPTY_TEXT[selected.emptyReason] ?? OPPORTUNITY_EMPTY_TEXT.none}</p>
       ) : (
         // Overflow-safe wrapper: the pipeline can NEVER paint over the detail rail (the original intermediate-
         // width defect — the 6-col table overflowed its grid cell and overlapped the detail aside). The wrapper
@@ -677,12 +737,14 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
               </tr>
             </thead>
             <tbody>
-              {pipeline.rows.map((row) => (
+              {selected.rows.map((row) => (
                 <PipelineRow key={row.id} row={row} selected={selectedRow?.id === row.id} onSelect={setSelectedId} />
               ))}
             </tbody>
           </table>
         </div>
+          )}
+        </>
       )}
     </WorkspaceShell>
   );

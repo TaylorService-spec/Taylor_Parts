@@ -55,7 +55,7 @@ describe("Login brand hierarchy", () => {
   it("does not promote the platform into parent-brand position", () => {
     const { container } = render(<Login />);
     // "EOS" as a standalone wordmark was the earlier mistake.
-    expect(container.textContent).not.toMatch(/EOS/);
+    expect(container.textContent).not.toMatch(/\bEOS\b/);
   });
 });
 

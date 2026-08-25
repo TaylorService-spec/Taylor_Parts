@@ -164,7 +164,10 @@ export function buildOpportunityPipeline(opportunities = [], { nowMillis = null,
   const stageCounts = {};
   for (const s of OPPORTUNITY_STAGES) stageCounts[s] = open.filter((r) => r.stage === s).length;
   return {
+    // The OPERATIONAL queue: open work, attention-first. Unchanged, and still the default.
     rows: open,
+    // Every opportunity, closed ones included. Already built and already sorted-into by `rows`;
+    // the history views below FILTER this rather than deriving a second pipeline.
     all: rows,
     stageCounts,
     counts: {
@@ -175,3 +178,68 @@ export function buildOpportunityPipeline(opportunities = [], { nowMillis = null,
     },
   };
 }
+
+// ════════════════════ HISTORY IS BROWSEABLE, WITHOUT DILUTING THE QUEUE ════════════════════
+//
+// THE DEFECT THIS CLOSES. `rows` is open work only, and the table renders `rows`. WON and LOST
+// contributed to the summary tiles and to nothing else, so a closed opportunity could not be opened
+// at all. In sandbox that meant 0 open / 7 WON / 1 LOST and NO reachable Opportunity detail
+// anywhere -- taking the Sales Order lineage link and the Sales Agreement panel down with it.
+//
+// The fix is a VIEW over facts that already exist. `all` is the same array of the same rows built
+// by the same derivation; selecting a view filters it. Nothing here re-derives stage, attention or
+// closure, because a second derivation is how two screens come to disagree about one deal.
+//
+// OPEN STAYS THE DEFAULT. The pipeline is a work queue first; history is somewhere you go.
+
+export const OPPORTUNITY_VIEW = Object.freeze({
+  OPEN: "open",
+  WON: "won",
+  LOST: "lost",
+  ALL: "all",
+});
+
+export const OPPORTUNITY_VIEW_LABEL = Object.freeze({
+  open: "Open",
+  won: "Won",
+  lost: "Lost",
+  all: "All",
+});
+
+/** Unknown or absent input resolves to the operational default rather than throwing at a router. */
+export function normalizeOpportunityView(value) {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return Object.values(OPPORTUNITY_VIEW).includes(v) ? v : OPPORTUNITY_VIEW.OPEN;
+}
+
+/**
+ * The rows one view shows, and — when there are none — WHICH emptiness it is.
+ *
+ * The four empty states are genuinely different facts: a quiet queue, a business that has never won
+ * anything, one that has never lost anything, and one with no opportunities at all. Collapsing them
+ * into "nothing here" tells a new tenant their data failed to load and tells an established one
+ * their pipeline is broken.
+ */
+export function selectOpportunityView(pipeline, view) {
+  const v = normalizeOpportunityView(view);
+  const all = pipeline?.all ?? [];
+  const rows =
+    v === OPPORTUNITY_VIEW.OPEN ? (pipeline?.rows ?? [])
+    : v === OPPORTUNITY_VIEW.WON ? all.filter((r) => r.outcome === "WON")
+    : v === OPPORTUNITY_VIEW.LOST ? all.filter((r) => r.outcome === "LOST")
+    : all;
+
+  // "No opportunities at all" outranks the per-view answer: telling somebody they have no WON deals
+  // when they have no deals of any kind describes the wrong problem.
+  const emptyReason = rows.length > 0 ? null : all.length === 0 ? "none" : v;
+  return { view: v, rows, emptyReason };
+}
+
+/** The sentence for an empty view. Exported so the copy is tested rather than inspected. */
+export const OPPORTUNITY_EMPTY_TEXT = Object.freeze({
+  none: "No opportunities yet.",
+  open: "No open opportunities. Switch to Won or Lost to see closed ones.",
+  won: "No opportunities have been won yet.",
+  lost: "No opportunities have been lost.",
+  all: "No opportunities yet.",
+});
