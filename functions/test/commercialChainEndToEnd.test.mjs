@@ -283,7 +283,7 @@ test("AN EXPLICIT ZERO SURVIVES; an ABSENT price blocks acceptance", async () =>
   assert.equal(zeroDoc.lines[0].unitPrice, 0);
 
   const unpricedOpp = await seedOpportunity();
-  const unpriced = await createAgreement(unpricedOpp, { lines: [{ kind: "PART", ref: "TBD", quantity: 1 }] });
+  const unpriced = await createAgreement(unpricedOpp, { lines: [{ kind: "PART", ref: "PRT-2001", quantity: 1 }] });
   await assert.rejects(accept(unpriced.salesAgreementId), (e) => /committed unit price/.test(e.message));
   assert.equal((await readAgreement(unpriced.salesAgreementId)).state, "DRAFT", "a refused accept leaves it a draft");
 });
@@ -343,7 +343,7 @@ test("THE FULL CHAIN: the price a salesperson typed reaches the Sales Order line
   const opp = await seedOpportunity({ stage: "DECISION" });
   const created = await createAgreement(opp, {
     lines: [
-      { kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice: 500000 },
+      { kind: "EQUIPMENT_MODEL", ref: "taylor--c713", quantity: 2, unitPrice: 500000 },
       { kind: "PART", ref: "PRT-1005", quantity: 4, unitPrice: 2500 },
     ],
   });
@@ -351,7 +351,7 @@ test("THE FULL CHAIN: the price a salesperson typed reaches the Sales Order line
   await editDraft(created.salesAgreementId, {
     customerPO: "PO-CHAIN",
     lines: [
-      { kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice: 475000 },
+      { kind: "EQUIPMENT_MODEL", ref: "taylor--c713", quantity: 2, unitPrice: 475000 },
       { kind: "PART", ref: "PRT-1005", quantity: 4, unitPrice: 2500 },
     ],
   });

@@ -105,7 +105,7 @@ function PartTypeahead({ value, onChange, disabled, lineNumber }) {
         {hit?.displayName ? <span className="fo-muted"> — {hit.displayName}</span> : null}
         <button
           type="button"
-          className="fo-linkbutton"
+          className="fo-link-btn"
           disabled={disabled}
           aria-label={`Line ${lineNumber} change part`}
           onClick={() => { setOpen(true); setText(""); }}
