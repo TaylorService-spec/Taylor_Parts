@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildWorkOrderIntelligenceContext,
   deriveWorkOrderIntelligence,
@@ -8,6 +9,8 @@ import {
   AUTHORITY_STATE,
   NO_INSIGHT_REASON,
 } from "../src/domain/workOrderIntelligence.js";
+import { buildWorkOrderPartsReadiness } from "../src/domain/workOrderPartsReadiness.js";
+import { resolveEnvironment } from "../../scripts/resolveEnvironment.mjs";
 
 const wo = (over = {}) => ({
   id: "cIk3hlPDTXH5IB3VHdLy",
@@ -113,6 +116,69 @@ test("ATTENTION canonical readiness is explained, not independently re-derived",
   assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
   assert.equal(signal.evidence.length, 2);
   assert.equal(signal.evidence[1].kind, "WORK_ORDER_PARTS_READINESS");
+});
+
+test("trusted source dimensions flow through the canonical readiness projection before intelligence speaks", () => {
+  const serverContext = {
+    plannedParts: [
+      {
+        name: "Scraper Blade Kit",
+        sku: "X49463-3",
+        qtyPlanned: 2,
+        qtyUsed: 0,
+        reservedForJob: 0,
+        warehouse: { status: "KNOWN", available: 2 },
+        truck: { status: "UNAVAILABLE" },
+        procurement: { status: "NONE" },
+      },
+      {
+        name: "Seal Kit",
+        sku: "S-100",
+        qtyPlanned: 1,
+        qtyUsed: 0,
+        reservedForJob: 0,
+        warehouse: { status: "KNOWN", available: 0 },
+        truck: { status: "UNAVAILABLE" },
+        procurement: { status: "PENDING" },
+      },
+    ],
+    capabilities: { warehouse: true, truckInventory: false, purchasing: true },
+  };
+  const projection = buildWorkOrderPartsReadiness({
+    workOrder: wo(),
+    plannedParts: serverContext.plannedParts,
+    capabilities: serverContext.capabilities,
+  });
+  assert.equal(projection.jobReadiness, "ATTENTION");
+  assert.deepEqual(projection.counts, { READY: 1, ATTENTION: 1, UNKNOWN: 0 });
+
+  const signal = deriveWorkOrderIntelligence(wo(), { partsReadiness: projection });
+  assert.equal(signal.speak, true);
+  assert.equal(signal.attentionItem.key, "parts-readiness-attention");
+});
+
+test("the client transport is fail-closed before Firebase loads and sends only workOrderId", () => {
+  const source = readFileSync(
+    new URL("../src/services/workOrderReadinessContextClient.js", import.meta.url),
+    "utf8",
+  );
+  const gate = source.indexOf("if (!WORK_ORDER_READINESS_CONTEXT_READY)");
+  const firebaseImport = source.indexOf('import("firebase/functions")');
+  assert.ok(gate >= 0 && firebaseImport > gate, "transport must refuse before dynamically loading Firebase");
+  assert.match(source, /callable\(\{ workOrderId: workOrderId\.trim\(\) \}\)/);
+  for (const forbidden of ["partId:", "customerId:", "warehouseId:", "reorderRequestId:"]) {
+    assert.doesNotMatch(source, new RegExp(forbidden));
+  }
+});
+
+test("every environment explicitly declares the Work Order readiness transport and it remains off", () => {
+  const registry = JSON.parse(readFileSync(new URL("../../config/environments.json", import.meta.url), "utf8"));
+  for (const env of registry.environments) {
+    assert.equal(typeof env.readiness?.WORK_ORDER_READINESS_CONTEXT_READY, "boolean", env.id);
+    assert.equal(env.readiness.WORK_ORDER_READINESS_CONTEXT_READY, false, env.id);
+  }
+  const sandbox = resolveEnvironment(registry, "platform-sandbox");
+  assert.equal(sandbox.readiness.WORK_ORDER_READINESS_CONTEXT_READY, false);
 });
 
 test("the intelligence signal attaches to the existing attention channel instead of creating a second band", () => {

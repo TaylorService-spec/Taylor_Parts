@@ -11,10 +11,10 @@
     "Adding an entry does not create an environment; it records one that exists or is planned.",
     "",
     "MODELLING: `role` (what an environment is FOR) is independent of `deployment` (whose instance",
-    "it is). `production` is NOT synonymous with Taylor Parts \u00e2\u20ac\u201d see docs/architecture/ADR-011.",
+    "it is). `production` is NOT synonymous with Taylor Parts — see docs/architecture/ADR-011.",
     "",
     "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
-    "is a public project identifier, not a credential \u00e2\u20ac\u201d access is enforced by Firestore Rules and",
+    "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
     "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
     "file, and a test asserts that."
   ],
@@ -34,6 +34,7 @@
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
         "INVENTORY_BALANCE_READ_READY": false,
+        "WORK_ORDER_READINESS_CONTEXT_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -63,6 +64,7 @@
         "RECEIVING_TRANSPORT_READY": true,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
         "INVENTORY_BALANCE_READ_READY": false,
+        "WORK_ORDER_READINESS_CONTEXT_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -135,6 +137,7 @@
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
         "INVENTORY_BALANCE_READ_READY": false,
+        "WORK_ORDER_READINESS_CONTEXT_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -165,6 +168,7 @@
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
         "INVENTORY_BALANCE_READ_READY": false,
+        "WORK_ORDER_READINESS_CONTEXT_READY": false,
         "TRUCK_MANAGEMENT_WRITE_READY": false,
         "TRUCK_DEACTIVATE_READY": false,
         "TRUCK_DELETE_READY": false,
@@ -179,7 +183,7 @@
           "url": "https://taylor-parts.web.app",
           "versionPath": "/version.json",
           "governed": true,
-          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for any unmatched path, so manifest ABSENCE cannot be detected by status code \u00e2\u20ac\u201d the checker validates content, never status alone."
+          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for any unmatched path, so manifest ABSENCE cannot be detected by status code — the checker validates content, never status alone."
         },
         {
           "id": "pages",

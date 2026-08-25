@@ -89,6 +89,12 @@ export { recordRefund } from "./finance/refundCallables";
 // accompany it -- see docs/assessments/f1-technician-customer-identity.md.
 export { getWorkOrderFieldContext } from "./getWorkOrderFieldContext";
 
+// --- North Star Work Order readiness context ---
+// Trusted READ-ONLY assembler for #1492. Request carries workOrderId only; every inventory/procurement
+// join key is derived from the authorized Work Order server-side. EXPORT != DEPLOY and the client stays
+// fail-closed behind WORK_ORDER_READINESS_CONTEXT_READY until a separately authorized sandbox release.
+export { getWorkOrderReadinessContext } from "./ai/workOrderReadinessContext";
+
 // --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
 // production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until
