@@ -310,7 +310,12 @@ test("a CURRENCY_MINOR cell is exponent-aware through the SAME shared formatter 
   const column = { fieldId: "totalMinor", type: "CURRENCY_MINOR" };
   const value = cellValue(column, { totalMinor: 1000, currency: "JPY" });
   assert.equal(value, formatMinor(1000, "JPY"));
-  assert.equal(value, "JPY 1000");
+  // X-SALES-ORDER-USD-DISPLAY: the shape changed from an ISO-code prefix to normal currency
+  // presentation. The ORIGINAL INTENT is unchanged and is what still matters here -- JPY has
+  // exponent 0, so a hardcoded /100 would render "10.00" or "¥10.00". No decimal point appears,
+  // which is the whole assertion.
+  assert.equal(value, "¥1,000");
+  assert.equal(value.includes("."), false, "JPY has no minor unit; a decimal point means /100 crept back in");
 });
 
 // --- REFERENCE never renders the raw stored id (DECISIONS #106, X-LIST-REFERENCE-RENDERS-ID) ---

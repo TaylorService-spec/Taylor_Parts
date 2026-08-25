@@ -11,7 +11,7 @@
 // ready (ready, at least one invoice). Never fabricates a total; a currency split across
 // multiple currencies is shown per-currency, never blindly summed.
 
-import { formatMinorUnits } from "./money.js";
+import { formatMoneyDisplay } from "./moneyDisplay.js";
 
 export const ACCOUNT_AR_STATE = {
   LOADING: "loading",
@@ -55,12 +55,18 @@ export function arPositionTone(position) {
 // salesOrderCommands.ts calls multi-currency "a separate future seam", so the hardcoded
 // `/100` was a defect waiting to happen, not a safe assumption. This is the ONE call
 // this codebase's metadata renderer reaches for CURRENCY_MINOR cells (see
-// metadata/listPresentation.js's `cellValue`) -- it only adds the optional currency-code
-// prefix on top of money.js's shared core, never a second division.
+// metadata/listPresentation.js's `cellValue`).
+//
+// X-SALES-ORDER-USD-DISPLAY: it used to PREFIX THE ISO CODE ("USD 50.00") when the record carried
+// a currency and print bare digits ("50.00") when it did not, so two Sales Orders worth the same
+// fifty dollars rendered differently -- the display was reporting a metadata gap as though it were
+// a fact about the money, and neither shape was normal US currency presentation. It now delegates
+// to domain/moneyDisplay.js, the ONE display path, which renders a known currency in that
+// currency's normal presentation ($50.00) and an unknown one as bare digits. Delegation rather
+// than a second implementation, for the same reason the /100 duplication above was removed: two
+// formatters for one job is how two screens come to disagree about one amount.
 export function formatMinor(amountMinor, currency) {
-  const major = formatMinorUnits(amountMinor, currency);
-  if (major === "—") return major;
-  return currency ? `${currency} ${major}` : major;
+  return formatMoneyDisplay(amountMinor, currency);
 }
 
 // Build the render-ready view from the callable's raw result ({status, invoices, summary})

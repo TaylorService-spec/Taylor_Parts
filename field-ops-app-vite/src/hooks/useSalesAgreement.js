@@ -36,13 +36,20 @@ export function useSalesAgreement(opportunityId) {
   const keys = useRef({});
   // Guards a stale response from an earlier Opportunity overwriting a newer one's.
   const requestSeq = useRef(0);
+  // AND GUARDS AN UNMOUNTED TREE. The sequence check above only orders responses WITHIN a mount;
+  // a read still in flight when the workspace unmounts resolved into a component that no longer
+  // exists. React's own logs call that a leak; under jsdom it is worse -- the environment is torn
+  // down first, so the setState lands on a global that has been removed and the whole suite fails
+  // with "window is not defined", pointing at a file that did nothing wrong.
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const refresh = useCallback(async () => {
     if (!opportunityId) { setResult(null); setErrorStatus(null); return; }
     const mine = ++requestSeq.current;
     setLoading(true);
     const res = await getSalesAgreementForOpportunity({ opportunityId });
-    if (mine !== requestSeq.current) return; // a newer request already answered
+    if (!mounted.current || mine !== requestSeq.current) return; // unmounted, or already superseded
     setLoading(false);
     if (res.errorStatus) { setErrorStatus(res.errorStatus); setResult(null); return; }
     setErrorStatus(null);
@@ -56,6 +63,9 @@ export function useSalesAgreement(opportunityId) {
     setCommandError(null);
     keys.current[intent] = keys.current[intent] ?? mintKey(intent);
     const res = await fn(keys.current[intent]);
+    // A command that lands after unmount still SUCCEEDED on the server -- the write is real and the
+    // idempotency key is spent. Only the local state update is abandoned.
+    if (!mounted.current) return res.errorStatus ? { ok: false, errorStatus: res.errorStatus } : { ok: true, result: res.result };
     setPending(null);
     if (res.errorStatus) {
       // The key is DELIBERATELY kept: the next attempt is a retry of the same intent, and the

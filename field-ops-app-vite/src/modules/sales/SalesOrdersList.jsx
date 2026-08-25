@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { salesOrderEntity, salesOrderIndexList } from "../../metadata/definitions/salesOrder.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import { salesOrderDisplayCurrency } from "../../domain/salesOrderDisplayCurrency.js";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
@@ -80,6 +81,13 @@ export default function SalesOrdersList() {
     filters: criteria.filters,
     sort: criteria.sort,
     resolveReference,
+    // X-SALES-ORDER-USD-DISPLAY. Orders created before PR #976 carry no `currency` field, so the
+    // Dollars column rendered "USD 50.00" for one order and "50.00" for another worth the same
+    // fifty dollars. The projection is right to report the gap honestly; this surface knows every
+    // Sales Order this implementation can create is USD (buildCreateSalesOrder hardcodes it and
+    // takes no parameter that could produce anything else), so it says so HERE rather than letting
+    // a formatter decide that unlabelled money is dollars. See domain/salesOrderDisplayCurrency.js.
+    resolveCurrency: salesOrderDisplayCurrency,
   });
 
   // What was asked for and is not in effect, from both places it can fail: parsing the URL against

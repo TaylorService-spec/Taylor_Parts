@@ -64,7 +64,7 @@ function selectListSource(entity, def) {
 // read backs a given reference, so it takes the resolver from the caller -- the party that already
 // fetched or joined the referenced entity -- exactly as listPresentation's own contract describes.
 // Resolving here would mean a Firestore read from generic code and, worse, one read per row.
-export function useMetadataList(def, entity, { filters = [], sort = [], enabled = true, resolveReference = null } = {}) {
+export function useMetadataList(def, entity, { filters = [], sort = [], enabled = true, resolveReference = null, resolveCurrency = null } = {}) {
   const [rows, setRows] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(enabled);
@@ -165,8 +165,11 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         errorStatus,
         filtersActive: filters.length > 0,
         resolveReference,
+        // Threaded, not invented here -- the same discipline resolveReference follows. Only a
+        // surface that knows what its records are denominated in may supply one.
+        resolveCurrency,
       }),
-    [def, entity, rows, hasMore, loading, errorStatus, filters.length, resolveReference]
+    [def, entity, rows, hasMore, loading, errorStatus, filters.length, resolveReference, resolveCurrency]
   );
 
   return {

@@ -420,7 +420,54 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 
 ---
 
+### 18. Multi-Currency + FX Governance
+
+- **Business problem:** Every monetary figure in EOS today is implicitly single-currency, and one surface has
+  already had to make an implementation-scoped assumption to render consistently. Once a second currency is
+  real, the question is not conversion arithmetic — it is WHICH RATE APPLIED WHEN, and whether a commitment
+  the business already made can move underneath it.
+- **Primary domains:** Sales (Agreement, Sales Order), Billing/AR (Invoice, Payment, Adjustment, Refund),
+  Purchasing, Inventory valuation, Reporting.
+- **Known canonical authorities:** `salesAgreementCommands.ts` and `salesOrderCommands.ts` both hardcode
+  `currency: "USD"` and take no parameter that could produce anything else. `account.js`'s
+  `defaultCurrency` ALREADY validates against the full ISO 4217 set, so the schema is wider than the write
+  paths. Invoicing fail-closed-verifies the caller's currency against the Sales-Order-committed value.
+  `money.js` is exponent-aware per currency. There is NO company/tenant currency setting of any kind.
+- **Scope:**
+  - company **base / reporting** currency, and the allowed **transaction** currencies;
+  - **Account default** currency, and the transaction currency on each document;
+  - **governed FX-rate configuration** with effective dates and recorded rate **provenance** (who or what
+    supplied it, and when);
+  - an accepted or completed commercial transaction **SNAPSHOTS AND LOCKS its FX rate**;
+  - subsequent rate changes affect **future transactions only**;
+  - altering a locked transaction requires an **explicit, audited correction or amendment** — never a silent
+    re-rate;
+  - **Agreement → Sales Order → Invoice preserves the locked currency and FX snapshot** end to end, the same
+    way the committed unit price already travels that chain.
+- **Key business questions:** What is this sale worth in the currency the customer pays, and in the currency
+  the business reports? Which rate did we commit to, and when? If the rate moved after acceptance, who
+  decided to change what we told the customer, and where is that recorded? Can two documents in one chain
+  ever disagree about the rate?
+- **Non-negotiable architecture:** integer minor units remain the storage authority — a rate is never applied
+  by a formatter and never stored as a rounded major-unit float. Rate application is a governed, audited
+  command, not a read-time derivation, precisely because a read-time conversion would give two people looking
+  at the same document on different days two different answers.
+- **Current maturity:** `IDENTIFIED`. Recorded 2026-08-25 alongside the Sales Order USD display fix.
+- **Runway protection (now):** money display resolves a currency it is GIVEN and refuses to invent one — see
+  `domain/moneyDisplay.js`. The one place that supplies a missing currency is
+  `domain/salesOrderDisplayCurrency.js`, which is explicitly Taylor-implementation-scoped, names its
+  evidence (PR #976), touches no stored data, and is intended to be DELETED rather than adjusted when a
+  governed company currency exists. Do NOT build FX conversion, add exchange-rate fields, or establish
+  "missing currency means USD" as an EOS-wide invariant.
+
+---
+
 ## Change log
+
+- **2026-08-25** — Added #18 Multi-Currency + FX Governance (`IDENTIFIED`), recorded while fixing the Sales
+  Order Dollars column: two orders worth the same fifty dollars rendered `USD 50.00` and `50.00` because
+  orders predating PR #976 store no `currency`. The display fix is deliberately single-currency; the rate
+  governance it implies is this entry, and none of it was built.
 
 - **2026-08-17** — Added #16 Tenant Metadata Configuration & Governed Self-Service Platform (`IDENTIFIED`):
   admin data-model configuration, automation, EQL and bulk data recorded as ONE capability over one shared
