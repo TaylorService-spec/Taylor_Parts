@@ -5,16 +5,24 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
+      - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/test/aiWorkOrderContext.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   push:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
+      - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/test/aiWorkOrderContext.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   workflow_dispatch:
 
@@ -25,17 +33,26 @@ jobs:
   work-order-intelligence:
     name: North Star Work Order intelligence contract
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: field-ops-app-vite/package-lock.json
-      - name: Install dependencies
+
+      - name: Install client dependencies
         run: npm ci
         working-directory: field-ops-app-vite
-      - name: Governed intelligence contract
+      - name: Governed client intelligence contract
         run: node --test test/workOrderIntelligence.test.mjs
         working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Governed server context authority
+        run: node --test test/aiWorkOrderContext.test.mjs
+        working-directory: functions
