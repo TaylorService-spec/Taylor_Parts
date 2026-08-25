@@ -58,7 +58,11 @@ firebase-debug.log
 # Deliberately narrow: this one directory, not a wildcard over artefacts in general. Existing files
 # are left on disk untouched; ignoring them is about what future commits can pick up, not about
 # deleting anyone's working output.
-field-ops-app-vite/.certification/
+# The CONTENTS, not the directory itself. Git does not descend into an excluded DIRECTORY, so a
+# `!path/to/file` negation under `dir/` never takes effect -- the re-include below silently did
+# nothing and CI failed on a file that existed only on one machine. `dir/*` excludes the same
+# things while leaving the directory walkable, which is what makes the negation possible at all.
+field-ops-app-vite/.certification/*
 # ...EXCEPT the one file in there that is AUTHORED rather than generated. routes.json is produced by
 # the tooling from navConfig; dynamicRoutes.json is written by hand and reviewed, because it encodes
 # a JUDGEMENT the tooling cannot make -- which governed list to resolve a representative record
