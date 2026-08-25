@@ -6,6 +6,7 @@
 // Run: node --test test/workOrderNorthStar.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync as fsReadFileSync } from "node:fs";
 import {
   workOrderSpine,
   workOrderStatusWords,
@@ -247,4 +248,17 @@ test("NO DERIVATION ANYWHERE EMITS A DOCUMENT-ID-SHAPED STRING AS CONTENT", () =
     lineage: workOrderLineage(record, { salesOrderReference: null }).map(({ targetId: _routingKey, ...rest }) => rest),
   };
   assert.doesNotMatch(JSON.stringify(rendered), RAW, "a document id reached a rendered value");
+});
+
+// ═════════════════════════════════════════ the timeline reads the right field
+
+// The runtime shape assertion lives in the VITEST suite: timelineBuilder imports extensionless
+// module paths that Vite resolves and node:test cannot. The static guard below stays here.
+test("the detail page reads timestamp, not at", () => {
+  // A static guard, because the runtime symptom of getting this wrong is a plausible-looking word
+  // rather than a crash.
+  const readFileSync = fsReadFileSync;
+  const src = readFileSync(new URL("../src/modules/workOrders/WorkOrderDetailPage.jsx", import.meta.url), "utf8");
+  assert.match(src, /formatClockTime\(e\.timestamp\)/);
+  assert.doesNotMatch(src, /formatClockTime\(e\.at\)/);
 });

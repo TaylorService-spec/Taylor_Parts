@@ -138,3 +138,22 @@ describe("RuledSection — structure without boxes", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Timeline" })).toBeTruthy();
   });
 });
+
+describe("the timeline reads the field the events actually carry", () => {
+  it("A CANONICAL EVENT CARRIES `timestamp`, NOT `at`", async () => {
+    // The Work Order timeline rendered a column of "Unknown" times. Not a data problem: the
+    // component read `e.at`, the canonical event carries `timestamp`, and displayTimestamp
+    // correctly renders an absent value as "Unknown" -- so an honest absence-state hid a typo
+    // behind a truthful word. That is the dangerous kind of bug: it looks like a fact.
+    const { buildTimeline } = await import("../src/domain/timelineBuilder.js");
+    const events = buildTimeline([{
+      id: "wo-1", woNumber: "WO-2026-000873", status: "CREATED", createdAt: 1787000000000,
+    }]) ?? [];
+    expect(events.length).toBeGreaterThan(0);
+    for (const e of events) {
+      expect(e).toHaveProperty("timestamp");
+      expect("at" in e).toBe(false);
+      expect(typeof e.timestamp).toBe("number");
+    }
+  });
+});
