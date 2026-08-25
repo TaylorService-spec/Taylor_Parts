@@ -1,0 +1,145 @@
+.ask-eos-trigger {
+  min-height: 44px;
+}
+
+.ask-eos-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.ask-eos-panel {
+  width: min(680px, 100%);
+  height: 100%;
+  overflow: auto;
+  background: var(--fo-surface, #fff);
+  color: var(--fo-text, #172033);
+  box-shadow: -16px 0 40px rgba(15, 23, 42, 0.18);
+  padding: 24px;
+}
+
+.ask-eos-head,
+.ask-eos-actions,
+.ask-eos-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ask-eos-head h2,
+.ask-eos-result h3 {
+  margin: 0;
+}
+
+.ask-eos-head p,
+.ask-eos-status,
+.ask-eos-boundary,
+.ask-eos-citations span {
+  color: var(--fo-muted, #64748b);
+}
+
+.ask-eos-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.ask-eos-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.ask-eos-form label {
+  font-weight: 700;
+}
+
+.ask-eos-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+}
+
+.ask-eos-actions button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ask-eos-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ask-eos-error,
+.ask-eos-warning {
+  margin-top: 16px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.ask-eos-result {
+  margin-top: 22px;
+}
+
+.ask-eos-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.ask-eos-meta span {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+.ask-eos-index--current {
+  font-weight: 700;
+}
+
+.ask-eos-answer {
+  margin: 18px 0 22px;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.ask-eos-citations {
+  display: grid;
+  gap: 10px;
+  padding-left: 24px;
+}
+
+.ask-eos-citations li {
+  display: grid;
+  gap: 3px;
+}
+
+.ask-eos-boundary {
+  border-top: 1px solid #e2e8f0;
+  margin-top: 24px;
+  padding-top: 16px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .ask-eos-panel {
+    padding: 18px;
+  }
+}
