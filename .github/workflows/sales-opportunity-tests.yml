@@ -16,6 +16,7 @@ on:
     paths:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/hooks/useProductReferenceSearch.js"
       - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
       - "field-ops-app-vite/src/domain/opportunityCreateForm.js"
       - "field-ops-app-vite/src/domain/opportunityCommandOutcome.js"
@@ -71,6 +72,7 @@ on:
     paths:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/hooks/useProductReferenceSearch.js"
       - "field-ops-app-vite/src/domain/opportunityCreateForm.js"
       - "field-ops-app-vite/src/domain/opportunityCommandOutcome.js"
       - "field-ops-app-vite/src/domain/localDateInput.js"
@@ -159,7 +161,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity + Sales Order workspace component tests (vitest + jsdom)
-        run: npx vitest run test/salesWorkspace.test.jsx test/salesWorkspaceDate.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx test/opportunityLifecycleControl.test.jsx test/newOpportunityForm.test.jsx
+        run: npx vitest run test/salesWorkspace.test.jsx test/salesWorkspaceDate.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx test/opportunityLifecycleControl.test.jsx test/newOpportunityForm.test.jsx test/productReferencePicker.test.jsx test/useProductReferenceSearch.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)
