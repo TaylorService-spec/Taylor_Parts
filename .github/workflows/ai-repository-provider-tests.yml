@@ -58,12 +58,19 @@ jobs:
       # A production runtime that reaches a developer workstation would work for exactly one person
       # and fail for everybody else, having first shipped the address to all of them. Checked
       # textually because a default that happens to work where it was written passes every test.
+      # Checked against EXECUTABLE lines. The module explains that it bakes in no localhost, and a
+      # raw grep flags it for documenting the guarantee it honours -- a check that fails on the code
+      # doing the right thing is a check somebody deletes.
       - name: The AI seam must hard-code no endpoint
         run: |
-          if grep -rn --include=*.ts -E "127\.0\.0\.1|localhost|:11434" functions/src/ai; then
-            echo "::error::The AI seam hard-codes an endpoint. It must be configured, or absent."
-            exit 1
-          fi
+          failed=0
+          for file in $(find functions/src/ai -name '*.ts'); do
+            if sed -E 's://.*::' "$file" | grep -nE "127\.0\.0\.1|localhost|:11434"; then
+              echo "::error file=$file::The AI seam hard-codes an endpoint. It must be configured, or absent."
+              failed=1
+            fi
+          done
+          [ "$failed" -eq 0 ] || exit 1
           echo "no endpoint is hard-coded in the AI seam"
 
       # The browser talks to a callable; only the backend knows a gateway URL. `127.0.0.1:8080` in
