@@ -36,6 +36,10 @@ import {
   workOrderLineage,
   EDGE,
 } from "../../domain/workOrderNorthStar.js";
+import {
+  deriveWorkOrderIntelligence,
+  mergeWorkOrderAttention,
+} from "../../domain/workOrderIntelligence.js";
 
 // THE WORK ORDER, COMPOSED IN THE NORTH STAR GRAMMAR.
 //
@@ -92,9 +96,20 @@ export default function WorkOrderDetailPage() {
   const header = useMemo(() => workOrderHeader(workOrder), [workOrder]);
   const spine = useMemo(() => workOrderSpine(workOrder?.status), [workOrder?.status]);
   const plan = useMemo(() => workOrderPartsPlan(workOrder), [workOrder]);
-  const attention = useMemo(
+  const baseAttention = useMemo(
     () => workOrderAttention(workOrder, { nowMillis: Date.now(), partsPlan: plan }),
     [workOrder, plan],
+  );
+  // Intelligence joins the SAME attention channel; it never creates a second copilot/suggestion band.
+  // Until a trusted readiness assembler supplies the canonical projection, deriveWorkOrderIntelligence
+  // returns speak:false and this composition remains byte-for-byte quiet to the user.
+  const intelligence = useMemo(
+    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan }),
+    [workOrder, plan],
+  );
+  const attention = useMemo(
+    () => mergeWorkOrderAttention(baseAttention, intelligence),
+    [baseAttention, intelligence],
   );
   // The Sales Order reference is not resolvable from this page today — there is no per-id governed
   // read reachable here for it. The edge therefore renders as UNRESOLVED, naming the entity and
@@ -207,7 +222,7 @@ export default function WorkOrderDetailPage() {
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
       ) : null}
 
-      {/* ATTENTION BEFORE WORK. Renders nothing when clean. */}
+      {/* ATTENTION BEFORE WORK. Existing rules + governed intelligence share ONE band. */}
       <AttentionBand items={attention} />
 
       {/* Read failures are stated ONCE, here, rather than each section inventing its own blank. */}
