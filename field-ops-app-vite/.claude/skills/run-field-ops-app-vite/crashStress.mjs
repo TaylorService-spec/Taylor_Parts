@@ -182,10 +182,13 @@ try {
     const sawCrashLog = signals.some((x) => x.kind === "UI_CRASH" || x.kind === "pageerror" || x.kind === "console.error");
     console.log(`
 BOUNDARY SELF-TEST  boundary=${boundary}  crashId=${id ?? "(none)"}  detected=${sawCrashLog}`);
-    if (!boundary || !id || !sawCrashLog) {
-      failures += 1;
-      console.log("*** THE CRASH DETECTOR CANNOT DETECT A CRASH. Every clean result above is unproven.");
-    }
+    // THREE SEPARATE CLAIMS, and the first deployed run proved why they must be checked apart:
+    // the boundary caught and the harness detected, but no crash id rendered -- the componentDidCatch
+    // edit had silently failed to apply, so the diagnostic was imported and never built. A combined
+    // assertion would have read as "mostly working".
+    if (!boundary) { failures += 1; console.log("*** THE BOUNDARY DID NOT CATCH. Every clean result above is unproven."); }
+    if (!sawCrashLog) { failures += 1; console.log("*** THE HARNESS SAW NO CRASH SIGNAL. Every clean result above is unproven."); }
+    if (!id) { failures += 1; console.log("*** NO CRASH ID RENDERED. The next real crash will be as undiagnosable as the last one."); }
     await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" }).catch(() => {});
     await page.waitForTimeout(1200);
   }
