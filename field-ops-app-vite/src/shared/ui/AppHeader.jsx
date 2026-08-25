@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
@@ -10,6 +10,7 @@ import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
+import AskEOSPanel from "../../ai/AskEOSPanel.jsx";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -45,6 +46,7 @@ const previewHasPermission = createPermissionPreviewer(
 // rail is off-canvas there and needs an opener.
 export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRef = null, navOpen = false } = {}) {
   const { user, role, logout } = useAuth();
+  const [askEOSOpen, setAskEOSOpen] = useState(false);
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
   // Legacy admin/dispatcher check retained as the `fallback` in case the
@@ -53,6 +55,10 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
   const canSeeReorderRequests = previewHasPermission("reorder.request.read.queue", role, {
     fallback: role === "admin" || role === "dispatcher",
   });
+  // Ask EOS V1 is deliberately admin-only at the presentation layer. The trusted callable independently
+  // re-reads users/{uid}.role and enforces the same decision server-side, so hiding this button is convenience,
+  // never the security boundary.
+  const canAskEOS = role === "admin";
   // OD-3: one canonical part-name read for the whole header, threaded as `resolveName` into
   // NotificationPanel (never an independent read per notification). ENABLED only when the role
   // can see reorder notifications -- a technician/unauthorized role never triggers a canonical
@@ -115,47 +121,55 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
   }, [pendingReorderRequests, partsManagerRequests, assignedToYouRequests, purchasingStartedRequests]);
 
   return (
-    <div className="fo-appheader">
-      <div className="fo-appheader-left">
-        {onOpenNav && (
-          <button
-            type="button"
-            ref={navToggleRef}
-            className="fo-navtoggle"
-            onClick={onOpenNav}
-            aria-expanded={navOpen}
-            aria-label="Open navigation"
-          >
-            <span className="fo-navtoggle__bars" aria-hidden="true" />
-          </button>
-        )}
-        {/* REMOVED by Gate 2 persona review, all four personas concurring:
-              - "Field Ops Platform" was a FIFTH product name on a screen that
-                already states Verenward / Enterprise Operations OS / Taylor
-                Parts / Arizona Operations in the rail head. The rail
-                establishes identity; repeating a different name here only
-                contradicted it.
-              - "Home" was a genuine SECOND NAVIGATION AXIS (verified: it
-                navigated /service -> /dashboard), which is precisely what
-                Option B's single-axis mandate exists to eliminate.
-              - "Refresh" shipped a browser function as application chrome,
-                sitting beside Home looking identical while doing something
-                completely different.
-            The bar now carries session utilities only. */}
-      </div>
+    <>
+      <div className="fo-appheader">
+        <div className="fo-appheader-left">
+          {onOpenNav && (
+            <button
+              type="button"
+              ref={navToggleRef}
+              className="fo-navtoggle"
+              onClick={onOpenNav}
+              aria-expanded={navOpen}
+              aria-label="Open navigation"
+            >
+              <span className="fo-navtoggle__bars" aria-hidden="true" />
+            </button>
+          )}
+          {/* REMOVED by Gate 2 persona review, all four personas concurring:
+                - "Field Ops Platform" was a FIFTH product name on a screen that
+                  already states Verenward / Enterprise Operations OS / Taylor
+                  Parts / Arizona Operations in the rail head. The rail
+                  establishes identity; repeating a different name here only
+                  contradicted it.
+                - "Home" was a genuine SECOND NAVIGATION AXIS (verified: it
+                  navigated /service -> /dashboard), which is precisely what
+                  Option B's single-axis mandate exists to eliminate.
+                - "Refresh" shipped a browser function as application chrome,
+                  sitting beside Home looking identical while doing something
+                  completely different.
+              The bar now carries session utilities only. */}
+        </div>
 
-      <div className="fo-appheader-right">
-        {canSeeReorderRequests && (
-          <NotificationPanel
-            sections={notificationSections}
-            error={reorderRequestsError}
-            resolveName={resolveName}
-          />
-        )}
-        <span className="fo-appheader-email">{user?.email}</span>
-        <Button variant="tertiary" onClick={logout}>Logout</Button>
+        <div className="fo-appheader-right">
+          {canAskEOS && (
+            <Button className="ask-eos-trigger" variant="secondary" onClick={() => setAskEOSOpen(true)}>
+              Ask EOS
+            </Button>
+          )}
+          {canSeeReorderRequests && (
+            <NotificationPanel
+              sections={notificationSections}
+              error={reorderRequestsError}
+              resolveName={resolveName}
+            />
+          )}
+          <span className="fo-appheader-email">{user?.email}</span>
+          <Button variant="tertiary" onClick={logout}>Logout</Button>
+        </div>
       </div>
-    </div>
+      {askEOSOpen && <AskEOSPanel onClose={() => setAskEOSOpen(false)} />}
+    </>
   );
 }
 
