@@ -112,6 +112,23 @@ export function deriveWorkOrderIntelligence(
   return noInsight(NO_INSIGHT_REASON.NO_ACTIONABLE_SIGNAL, context);
 }
 
+/**
+ * Attach intelligence to the already-approved North Star attention channel.
+ *
+ * This does not create a second band. Existing deterministic Work Order attention remains first and
+ * authoritative for the facts it owns. A speaking intelligence signal contributes exactly one
+ * AttentionBand-shaped item; a quiet signal contributes nothing. Keys are de-duplicated so the same
+ * fact can never render twice if a future deterministic rule takes ownership of it.
+ */
+export function mergeWorkOrderAttention(existingItems = [], intelligence = null) {
+  const items = Array.isArray(existingItems) ? existingItems.filter(Boolean) : [];
+  if (!intelligence?.speak || !intelligence.attentionItem) return items;
+
+  const candidate = intelligence.attentionItem;
+  if (candidate.key && items.some((item) => item?.key === candidate.key)) return items;
+  return [...items, candidate];
+}
+
 function readinessAttentionSignal(context, projection) {
   const attentionCount = projection.counts?.ATTENTION ?? 0;
   const unknownCount = projection.counts?.UNKNOWN ?? 0;
