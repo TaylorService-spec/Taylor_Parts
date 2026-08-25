@@ -117,6 +117,15 @@
 
   /* --- Fonts (self-hosted, see ./assets/fonts + @font-face below) ---------- */
   --font-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  /* THE NORTH STAR RECORD TITLE IS A SERIF, and --font-display is not one.
+     The approved concepts set record titles in Source Serif 4 against Inter for everything else --
+     the contrast between the two IS the identity of the page. Pointing the title at --font-display
+     rendered it in Barlow Condensed, a condensed SANS, which reads as the current product rather
+     than the concept.
+     Source Serif 4 is not vendored here (fonts are self-hosted with no CDN dependency, and adding a
+     face is an asset decision, not a CSS one), so this carries a real serif stack today and becomes
+     one token to repoint when the face is vendored. Stated rather than silently approximated. */
+  --font-record-title: Georgia, "Times New Roman", "Source Serif 4", serif;
   --font-interface: "Inter", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 
   /* --- Type scale. Interface font unless noted; line-heights tuned for
@@ -5127,6 +5136,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   flex-wrap: wrap; padding: 14px 0 10px; font-size: 11px; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--color-text-secondary); }
 .ns-page__crumb-right { letter-spacing: 0.08em; color: var(--verenward-moon); }
+/* THE CRUMB IS A REAL TARGET, so it meets the handheld floor.
+   It failed the 44px sweep at 375 and 320 as a 15px anchor -- small type in a tight strip is still
+   something a thumb has to hit, and "it is only a breadcrumb" is how a touch floor becomes advisory.
+   Enforced here, in the primitive, rather than patched on the page (Grammar R16). */
+.ns-page__crumb a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (min-width: 768px) { .ns-page__crumb a { min-height: 0; } }
 .ns-rulepair { border-top: 3px solid var(--color-text-primary);
   border-bottom: 1px solid var(--color-text-primary); height: 3px; }
 
@@ -5137,7 +5152,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-identity__kicker { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--verenward-bronze); font-weight: 600; margin: 0 0 6px; }
 /* The serif title, step 1 of the three-step header scale (40 / 30–34 / 22). */
-.ns-identity__title { font-family: var(--font-display, Georgia, serif); font-size: 40px;
+.ns-identity__title { font-family: var(--font-record-title); font-size: 40px;
   line-height: 1.05; font-weight: 700; margin: 0 0 10px; overflow-wrap: anywhere; }
 .ns-identity__facts { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center;
   font-size: 13px; color: var(--color-text-secondary); }
@@ -5177,7 +5192,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-section__head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   border-top: 2px solid var(--color-text-primary); padding: 10px 0 12px; }
 /* Step 3 of the header scale. */
-.ns-section__title { font-family: var(--font-display, Georgia, serif); font-size: 22px;
+.ns-section__title { font-family: var(--font-record-title); font-size: 22px;
   line-height: 1.2; font-weight: 700; margin: 0; }
 .ns-section__meta { font-size: 12.5px; color: var(--color-text-secondary); }
 .ns-section__actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
