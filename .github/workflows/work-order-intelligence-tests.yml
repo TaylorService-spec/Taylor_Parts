@@ -9,9 +9,13 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   push:
@@ -23,9 +27,13 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   workflow_dispatch:
@@ -57,6 +65,6 @@ jobs:
       - name: Build Functions
         run: npm run build
         working-directory: functions
-      - name: Governed server context authority
-        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs
+      - name: Governed server context authority and readiness assembly
+        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs test/aiWorkOrderReadinessContext.test.mjs
         working-directory: functions
