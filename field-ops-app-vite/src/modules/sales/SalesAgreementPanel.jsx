@@ -4,6 +4,7 @@ import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { salesAgreementRecordPage, salesAgreementEntityResolver } from "../../metadata/definitions/salesAgreementPage.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import ProductReferencePicker from "./ProductReferencePicker.jsx";
 import { formatMinorUnits } from "../../domain/money.js";
 import {
   SALES_AGREEMENT_VIEW_STATE as STATE,
@@ -71,14 +72,23 @@ function LinesEditor({ lines, onChange, disabled }) {
     <div className="fo-agreement-lines">
       {lines.map((l, i) => (
         <div key={i} className="fo-agreement-line">
+          {/* CHANGING THE KIND CLEARS THE REF, and that is the correct destructive default.
+              A ref belongs to exactly one catalog: a part id carried over into an EQUIPMENT_MODEL
+              line is not a value worth preserving, it is the wrong-kind error waiting to happen at
+              submit. Clearing says so immediately, at the moment the user made the choice. */}
           <select aria-label={`Line ${i + 1} kind`} value={l.kind} disabled={disabled}
-            onChange={(e) => set(i, { kind: e.target.value })}>
+            onChange={(e) => set(i, { kind: e.target.value, ref: "" })}>
             <option value="EQUIPMENT_MODEL">Equipment model</option>
             <option value="PART">Part</option>
             <option value="SERVICE">Service</option>
           </select>
-          <input aria-label={`Line ${i + 1} item`} placeholder="Item" value={l.ref} disabled={disabled}
-            onChange={(e) => set(i, { ref: e.target.value })} />
+          <ProductReferencePicker
+            kind={l.kind}
+            value={l.ref}
+            lineNumber={i + 1}
+            disabled={disabled}
+            onChange={(ref) => set(i, { ref })}
+          />
           <input aria-label={`Line ${i + 1} quantity`} inputMode="numeric" value={l.quantity} disabled={disabled}
             onChange={(e) => set(i, { quantity: e.target.value })} />
           {/* Left empty this is an UNPRICED line, which a draft is allowed to carry. It becomes the
