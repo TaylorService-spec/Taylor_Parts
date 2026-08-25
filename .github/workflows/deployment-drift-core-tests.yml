@@ -15,6 +15,9 @@ on:
   pull_request:
     paths:
       - "scripts/deploymentDrift.mjs"
+      - "sandbox-refresh.ps1"
+      - "scripts/Invoke-SandboxRefresh.ps1"
+      - "scripts/sandboxRefreshWrapper.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
@@ -44,6 +47,9 @@ on:
     branches: [main]
     paths:
       - "scripts/deploymentDrift.mjs"
+      - "sandbox-refresh.ps1"
+      - "scripts/Invoke-SandboxRefresh.ps1"
+      - "scripts/sandboxRefreshWrapper.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
@@ -84,6 +90,8 @@ jobs:
           node-version: 20
       - name: Deployment drift pure-core tests
         run: node --test scripts/deploymentDrift.test.mjs
+      - name: Sandbox refresh operator wrapper
+        run: node --test scripts/sandboxRefreshWrapper.test.mjs
       # O-3 — locks the environment-configuration invariants: no production
       # hard-coding, no wildcard project acceptance, no role/deployment
       # conflation, no weakened production guard.

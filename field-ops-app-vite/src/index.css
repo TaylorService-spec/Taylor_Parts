@@ -5240,3 +5240,36 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .ns-record-body { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 .ns-rail { min-width: 0; }
+
+/* ── The North Star WORKSPACE header. Same crumb and rule pair as the record page, deliberately:
+   entering Work Orders and opening one must not feel like crossing between two products. */
+.ns-workspace { max-width: 1360px; margin: 0 auto; padding: 0 32px 80px; }
+.ns-workspace__head { display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 24px; flex-wrap: wrap; padding: 22px 0 14px; }
+.ns-workspace__titleblock { min-width: 0; }
+.ns-workspace__titlerow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+/* Step 2 of the header scale: 34px workspace, against the record page's 40px. */
+.ns-workspace__title { font-family: var(--font-record-title); font-size: 34px; line-height: 1.08;
+  font-weight: 700; margin: 0; }
+.ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--verenward-moon);
+  font-variant-numeric: tabular-nums; }
+.ns-workspace__count-label { font-weight: 400; }
+.ns-workspace__summary { font-size: 13px; color: var(--color-text-secondary); margin: 6px 0 0; }
+.ns-workspace__summary .is-attention { color: var(--verenward-bronze); font-weight: 600; }
+.ns-workspace__action { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Operational density. The workspace is scanned, so rows are tight and the table is never a card
+   farm: "the North Star at working density is rules + type, not cards + whitespace." */
+.ns-workspace .fo-table, .ns-workspace table { border-collapse: collapse; width: 100%; }
+.ns-workspace .fo-table th, .ns-workspace table th { font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--verenward-moon); font-weight: 600;
+  border-bottom: 2px solid var(--color-text-primary); padding: 8px 12px 8px 0; background: none; }
+.ns-workspace .fo-table td, .ns-workspace table td { padding: 7px 12px 7px 0;
+  border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
+/* The grid is not wrapped in a card (R12). Any panel chrome the runtime brings is neutralised
+   here rather than by forking the runtime. */
+.ns-workspace .fo-panel { border: 0; background: none; box-shadow: none; padding: 0; border-radius: 0; }
+.ns-workspace .fo-listctl { padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+
+/* The views row: ghost buttons under a small-caps label, as the concept draws them. */
+.ns-workspace .fo-filterbar { padding: 12px 0 4px; border: 0; background: none; }

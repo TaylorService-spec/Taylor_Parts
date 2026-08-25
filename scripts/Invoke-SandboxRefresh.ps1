@@ -74,8 +74,13 @@ if ($code -ne 0) {
     # Said explicitly, because a half-finished deploy is the dangerous outcome: some functions may
     # already have updated. Re-running is safe (every step is idempotent), but check WHICH batch
     # failed before assuming nothing shipped.
-    Write-Host "FAILED (exit $code). Some functions may already have deployed." -ForegroundColor Red
-    Write-Host "Check which batch failed above, then re-run. Every step is idempotent." -ForegroundColor Red
+    if ($code -eq 3) {
+        # 3 = a pre-flight guard refused. Nothing was deployed.
+        Write-Host "REFUSED (exit 3). A pre-flight guard stopped the release; nothing was deployed." -ForegroundColor Yellow
+    } else {
+        Write-Host "FAILED (exit $code). Some functions may already have deployed." -ForegroundColor Red
+        Write-Host "Check which batch failed above, then re-run. Every step is idempotent." -ForegroundColor Red
+    }
     exit $code
 }
 

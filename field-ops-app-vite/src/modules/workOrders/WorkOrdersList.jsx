@@ -20,8 +20,7 @@ import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
-import ActionRail from "../../shared/ui/ActionRail.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { Button } from "../../shared/ui/primitives";
 import {
@@ -156,18 +155,37 @@ export default function WorkOrdersList() {
   const [searchTerm, setSearchTerm] = useState("");
   const search = useWorkOrderSearch(searchTerm);
 
+  // ONE filled primary -- the likeliest next act from this workspace (Grammar R07).
   const actions = (
-    <ActionRail
-      primary={
-        <Link to="/service/work-orders/new">
-          <Button variant="primary">+ New Work Order</Button>
-        </Link>
-      }
-    />
+    <Link to="/service/work-orders/new">
+      <Button variant="primary">New work order</Button>
+    </Link>
   );
 
+  // THE SUMMARY LINE STATES ONLY WHAT THIS PAGE CAN COUNT TRUTHFULLY.
+  //
+  // The concept shows "4 past due · 11 unassigned · 38 this week". Those are collection-wide counts,
+  // and this list is BOUNDED and cursor-paged: counting the loaded page would make a claim about the
+  // collection from a sample of it. The status chips on this very screen had their counts removed
+  // for precisely that reason, and re-introducing them here in a prettier font would undo a decision
+  // somebody already made correctly.
+  //
+  // So the line carries the view the user is actually in, and the total the runtime genuinely knows.
+  // The per-bucket counts stay absent until a counting authority exists -- a truthful gap, named in
+  // the return rather than approximated.
+  const summaryItems = [
+    { key: "view", label: WORK_ORDER_STATUS_GROUPS.find((g) => g.key === groupKey)?.label ?? "All" },
+  ];
+
   return (
-    <WorkspaceShell title="Work Orders" actions={actions}>
+    <WorkspaceIdentity
+      crumb="Service → Work Orders"
+      title="Work Orders"
+      count={typeof total === "number" ? total : null}
+      countLabel={total === 1 ? "work order" : "work orders"}
+      summaryItems={summaryItems}
+      action={actions}
+    >
       <div className="fo-global-search" role="search">
         <input
           type="search"
@@ -259,6 +277,6 @@ export default function WorkOrdersList() {
           onRetry={retry}
         />
       )}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }
