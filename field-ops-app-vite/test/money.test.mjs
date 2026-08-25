@@ -115,6 +115,13 @@ test("the historical disagreement is closed: money.js's formatMoneyMajor and acc
   // Before the fix, formatMinor hardcoded /100 and would have rendered "10.00" for 1000
   // JPY minor units -- wrong, since JPY's minor unit IS the major unit (exponent 0).
   assert.equal(formatMoneyMajor(money(1000, "JPY")), "1000");
-  assert.equal(formatMinor(1000, "JPY"), "JPY 1000");
-  assert.equal(formatMinor(1000, "JPY").replace(/^JPY /, ""), formatMoneyMajor(money(1000, "JPY")));
+  // X-SALES-ORDER-USD-DISPLAY: formatMinor now renders normal currency presentation rather than an
+  // ISO-code prefix. The historical disagreement this case exists to hold closed is about the
+  // DIGITS, not the decoration -- so it is the digits that are compared, stripped of symbol and
+  // grouping. If a hardcoded /100 ever returned, "1,000" would become "10.00" and this fails.
+  assert.equal(formatMinor(1000, "JPY"), "¥1,000");
+  assert.equal(
+    formatMinor(1000, "JPY").replace(/[^0-9.]/g, ""),
+    formatMoneyMajor(money(1000, "JPY")),
+  );
 });

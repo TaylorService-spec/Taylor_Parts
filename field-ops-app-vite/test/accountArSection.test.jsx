@@ -50,7 +50,9 @@ describe("AccountArSection", () => {
     render(<AccountArSection accountId="acc-1" />);
     expect(screen.getByText("INV-1001")).toBeTruthy();
     expect(screen.getByText("OVERDUE")).toBeTruthy();
-    expect(screen.getAllByText(/USD 150\.00/).length).toBeGreaterThan(0);
+    // X-SALES-ORDER-USD-DISPLAY: normal currency presentation replaced the ISO-code prefix. The
+    // assertion's point is unchanged — the real outstanding amount reaches the screen.
+    expect(screen.getAllByText(/\$150\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText(/12d overdue/)).toBeTruthy();
     expect(screen.getByText(/1 open, 1 overdue/)).toBeTruthy();
   });

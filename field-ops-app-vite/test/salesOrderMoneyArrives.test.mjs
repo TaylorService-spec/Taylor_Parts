@@ -25,6 +25,9 @@ import assert from "node:assert/strict";
 
 import { salesOrderView, SALES_ORDER_VIEW_STATE } from "../src/domain/salesOrderView.js";
 import { salesOrderDollars, PRICING_STATE_TEXT } from "../src/domain/salesOrderMoneyDisplay.js";
+import { formatMoneyDisplay } from "../src/domain/moneyDisplay.js";
+import { formatMinorUnits } from "../src/domain/money.js";
+import { salesOrderDisplayCurrency } from "../src/domain/salesOrderDisplayCurrency.js";
 
 /** Exactly the shape functions/src/salesOrder/salesOrderReadService.ts returns. */
 function projection(overrides = {}) {
@@ -75,13 +78,69 @@ test("currency and location cross too — both were being dropped the same way",
   assert.equal(v.locationId, "loc-1");
 });
 
-test("an order with no stored currency keeps its total and reports no currency", () => {
-  // Six of fourteen sandbox orders store no `currency`. The amount still renders; it simply
-  // carries no symbol, because a field must never claim a currency its record does not have.
+test("AN ORDER WITH NO STORED CURRENCY RENDERS IDENTICALLY TO ONE THAT HAS IT", () => {
+  // THE DEFECT. Six of fourteen sandbox orders store no `currency` -- they were created before
+  // PR #976 added `currency: "USD"` to buildCreateSalesOrder. Two orders worth the same fifty
+  // dollars therefore rendered "USD 50.00" and "50.00": the display was reporting a metadata gap
+  // as though it were a fact about the money.
+  //
+  // This test used to assert "50.00" and pass, which is how the difference survived. The older
+  // records are not orders in an unknown currency; they are USD orders written before the field
+  // existed, and buildCreateSalesOrder takes no parameter that could have produced anything else.
+  const stored = view({ currency: "USD" });
+  const legacy = view({ currency: undefined });
+
+  assert.equal(legacy.totalMinor, 5000, "the amount is untouched");
+  assert.equal(legacy.currency, null, "and the VIEW still reports the gap honestly -- nothing was written");
+
+  assert.equal(salesOrderDollars(stored).text, "$50.00");
+  assert.equal(salesOrderDollars(legacy).text, "$50.00");
+  assert.equal(
+    salesOrderDollars(stored).text,
+    salesOrderDollars(legacy).text,
+    "two equivalent USD Sales Orders must render identically",
+  );
+});
+
+test("an explicit ZERO renders as an amount, not as an absence", () => {
+  const d = salesOrderDollars(view({ totalMinor: 0, pricingState: "PRICED" }));
+  assert.equal(d.text, "$0.00");
+  assert.equal(d.isAmount, true);
+});
+
+test("the FALLBACK is Sales-Order-scoped and does not become a global USD default", () => {
+  // moneyDisplay.js is reusable EOS domain code. If a missing currency silently became USD there,
+  // "unlabelled money is dollars" would be a system-wide financial invariant established by a
+  // formatter -- the wrong place for a monetary decision and the wrong reason to make one.
+  assert.equal(formatMoneyDisplay(5000, null), "50.00", "no currency, no symbol");
+  assert.equal(formatMoneyDisplay(5000, undefined), "50.00");
+  assert.equal(formatMoneyDisplay(5000, ""), "50.00");
+  // The Sales Order surface knows better about its OWN records, and says so there.
+  assert.equal(salesOrderDisplayCurrency({ currency: null }), "USD");
+  // What is STORED always wins, so a real multi-currency record renders correctly the day one
+  // exists, without this fallback needing to learn about it.
+  assert.equal(salesOrderDisplayCurrency({ currency: "CAD" }), "CAD");
+  assert.equal(salesOrderDollars({ totalMinor: 5000, currency: "JPY" }).text, "¥5,000", "exponent 0: 5000 minor units IS 5000 yen, not 50");
+});
+
+test("FORMATTING NEVER ALTERS STORED MONEY", () => {
   const v = view({ currency: undefined });
-  assert.equal(v.totalMinor, 5000);
-  assert.equal(v.currency, null);
-  assert.equal(salesOrderDollars(v).text, "50.00");
+  const before = { totalMinor: v.totalMinor, currency: v.currency };
+  salesOrderDollars(v);
+  formatMoneyDisplay(v.totalMinor, salesOrderDisplayCurrency(v));
+  assert.deepEqual({ totalMinor: v.totalMinor, currency: v.currency }, before);
+  assert.equal(Number.isInteger(v.totalMinor), true, "integer minor units remain the authority");
+});
+
+test("the DIGITS Intl prints equal the exact integer math, for every magnitude", () => {
+  // money.js's exponent table stays the authority; Intl supplies the symbol and grouping. If the
+  // two ever disagree about a currency's decimals, this fails rather than silently rendering an
+  // amount with the wrong number of digits.
+  for (const [minor, currency] of [[1, "USD"], [5000, "USD"], [0, "USD"], [123456789, "USD"], [1000, "JPY"], [999, "USD"]]) {
+    const exact = formatMinorUnits(minor, currency);
+    const shown = formatMoneyDisplay(minor, currency).replace(/[^0-9.]/g, "");
+    assert.equal(shown, exact, `${minor} ${currency}`);
+  }
 });
 
 // ═════════════════════════════════════════ a blank is not an answer

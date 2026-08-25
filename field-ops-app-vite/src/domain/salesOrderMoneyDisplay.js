@@ -1,4 +1,5 @@
-import { formatMinor } from "./accountArView.js";
+import { formatMoneyDisplay } from "./moneyDisplay.js";
+import { salesOrderDisplayCurrency } from "./salesOrderDisplayCurrency.js";
 
 // WHAT A SALES ORDER'S DOLLARS CELL SAYS, AND WHY.
 //
@@ -41,7 +42,15 @@ export const PRICING_STATE_TEXT = Object.freeze({
  */
 export function salesOrderDollars(view) {
   if (typeof view?.totalMinor === "number") {
-    return { text: formatMinor(view.totalMinor, view.currency ?? null), isAmount: true, title: null };
+    // ONE display path, and the currency resolved the Taylor way: an order written before PR #976
+    // added the field is a USD order that predates the field, not an order in an unknown currency.
+    // See domain/salesOrderDisplayCurrency.js for why that inference is scoped to Sales Orders and
+    // to this implementation rather than made a system-wide default.
+    return {
+      text: formatMoneyDisplay(view.totalMinor, salesOrderDisplayCurrency(view)),
+      isAmount: true,
+      title: null,
+    };
   }
 
   const state = view?.pricingState ?? null;

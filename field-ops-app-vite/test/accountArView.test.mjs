@@ -46,7 +46,11 @@ test("ready with invoices summarizes open/overdue counts and per-currency outsta
   assert.equal(view.overdueCount, 1);
   assert.deepEqual(
     view.outstandingLines.map((l) => l.text).sort(),
-    ["CAD 5.00", "USD 10.00"]
+    // X-SALES-ORDER-USD-DISPLAY: the shape is now normal currency presentation. The INTENT is
+    // unchanged and still the point of this line -- the two currencies are listed SEPARATELY and
+    // never summed, and each carries its own symbol (CA$ vs $) so a reader cannot mistake one for
+    // the other.
+    ["$10.00", "CA$5.00"].sort()
   );
   assert.equal(view.rows.length, 2);
   assert.equal(view.rows[0].daysOverdueText, "5d overdue");
@@ -72,10 +76,14 @@ test("arPositionTone covers every position and fails closed to unknown", () => {
 });
 
 test("formatMinor never divides a non-finite amount", () => {
-  assert.equal(formatMinor(1050, "USD"), "USD 10.50");
-  assert.equal(formatMinor(0, "USD"), "USD 0.00");
+  assert.equal(formatMinor(1050, "USD"), "$10.50");
+  assert.equal(formatMinor(0, "USD"), "$0.00", "zero is a real amount, not an absence");
   assert.equal(formatMinor(NaN, "USD"), "—");
   assert.equal(formatMinor(undefined, "USD"), "—");
+  // NO CURRENCY, NO SYMBOL. A missing currency must never silently become USD in reusable domain
+  // code -- that would make "unlabelled money is dollars" a system-wide invariant established by a
+  // formatter. The Sales Order surface supplies its own, scoped to that object (see
+  // domain/salesOrderDisplayCurrency.js).
   assert.equal(formatMinor(1000, null), "10.00");
 });
 
@@ -84,7 +92,10 @@ test("formatMinor never divides a non-finite amount", () => {
 // currency whose minor unit is not 1/100 (JPY, exponent 0) rather than silently
 // disagreeing with money.js's own formatMoneyMajor.
 test("formatMinor is exponent-aware for a non-2-exponent currency (JPY) -- no longer a hardcoded /100", () => {
-  assert.equal(formatMinor(1000, "JPY"), "JPY 1000");
-  assert.equal(formatMinor(0, "JPY"), "JPY 0"); // zero still renders as zero, not blank
-  assert.equal(formatMinor(-9, "JPY"), "JPY -9");
+  // Exponent 0: no decimal point at all. A hardcoded /100 would render "10.00" here, which is the
+  // defect this case has always existed to catch — the shape around the digits changed, the rule did not.
+  assert.equal(formatMinor(1000, "JPY"), "¥1,000");
+  assert.equal(formatMinor(1000, "JPY").includes("."), false);
+  assert.equal(formatMinor(0, "JPY"), "¥0"); // zero still renders as zero, not blank
+  assert.equal(formatMinor(-9, "JPY"), "-¥9"); // and a negative stays visibly negative
 });

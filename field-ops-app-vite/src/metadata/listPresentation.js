@@ -126,10 +126,18 @@ export function resolveColumns(def, entity) {
 // is narrow. Re-exported so existing importers are unaffected.
 export { UNRESOLVED_REFERENCE_LABEL, REFERENCE_STATE } from "./referenceResolution.js";
 
-export function cellValue(column, row, { resolveReference } = {}) {
+export function cellValue(column, row, { resolveReference, resolveCurrency } = {}) {
   const raw = row?.[column.fieldId];
   if (raw === null || raw === undefined || raw === "") return null;
-  if (column.type === "CURRENCY_MINOR") return formatMinor(raw, row?.currency ?? null);
+  // A CURRENCY_MINOR field travels with its own sibling `currency` by contract, and that is still
+  // the default. `resolveCurrency` exists because ONE entity has a legitimate reason to know
+  // better than its own row: a Sales Order written before PR #976 carries no currency field, and
+  // the surface that renders it knows every Sales Order this implementation can create is USD.
+  // Injected rather than assumed here, so the knowledge stays with the caller that has it and this
+  // generic renderer never decides what an unlabelled amount is denominated in.
+  if (column.type === "CURRENCY_MINOR") {
+    return formatMinor(raw, resolveCurrency ? resolveCurrency(row) : row?.currency ?? null);
+  }
   if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? raw;
   // A multi-valued enum resolves EVERY member. Rendering the array as-is would print
   // "CUSTOMERVENDOR" — machine values, concatenated, in front of a user.
@@ -169,7 +177,7 @@ export function cellValue(column, row, { resolveReference } = {}) {
  * not here. Omitting it is a legitimate, honest choice (a caller with no live resolver wired
  * yet): every REFERENCE cell then renders `UNRESOLVED_REFERENCE_LABEL`, never the stored id.
  */
-export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null } = {}) {
+export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null, resolveCurrency = null } = {}) {
   const columns = resolveColumns(def, entity);
 
   const state = (() => {
@@ -188,7 +196,7 @@ export function buildListPresentation({ def, entity, page = null, loading = fals
         // The routing key. Deliberately separate from anything displayed, so a document
         // id can be used to navigate without ever becoming a label.
         key: row.id,
-        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row, { resolveReference }) }))),
+        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row, { resolveReference, resolveCurrency }) }))),
       }))
     : [];
 
