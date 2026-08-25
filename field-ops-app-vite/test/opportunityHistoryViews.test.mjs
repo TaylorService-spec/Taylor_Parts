@@ -140,3 +140,44 @@ test("REACHABLE IS NOT EDITABLE — a closed opportunity keeps its terminal sema
     assert.equal(isOpportunityEditable(row), false, `${row.id} is closed and must not be editable`);
   }
 });
+
+// ═════════════════════════════════════════ the owner is a person, not a key
+
+test("THE OWNER DISPLAY IS NEVER THE EMPLOYEE ID", async () => {
+  // DECISIONS #106, found live by the dynamic-detail sweep: the detail rendered
+  // `95kFz8WWgiSn2nU2O3Ml` where a name belongs. TWO sites had it -- the ContextBand fact and this
+  // field model -- and fixing the first is exactly why the second survived: the page looked fixed
+  // while the sweep kept reporting RAW_ID on it.
+  const { opportunityDetailModel } = await import("../src/domain/opportunityFieldModel.js");
+  const { UNRESOLVED_REFERENCE_LABEL } = await import("../src/metadata/referenceResolution.js");
+  const EMPLOYEE_ID = "95kFz8WWgiSn2nU2O3Ml"; // the real one, from the live sandbox page
+  const ownerField = (opts) =>
+    opportunityDetailModel({ id: "o1", ownerEmployeeId: EMPLOYEE_ID, lines: [] }, opts)
+      .sections.flatMap((s) => s.fields).find((f) => f.key === "ownerEmployeeId");
+
+  // Resolved: the name, and nothing that looks like a key.
+  const named = ownerField({ resolveOwnerName: () => "Mikael Andersson" });
+  assert.equal(named.display, "Mikael Andersson");
+  assert.notEqual(named.display, EMPLOYEE_ID);
+
+  // UNRESOLVED: the shared label -- never the id filling the gap. This is the normal outcome for a
+  // caller whose role cannot read the employees collection at all.
+  for (const opts of [{}, { resolveOwnerName: () => null }, { resolveOwnerName: () => undefined }]) {
+    const f = ownerField(opts);
+    assert.equal(f.display, UNRESOLVED_REFERENCE_LABEL);
+    assert.notEqual(f.display, EMPLOYEE_ID);
+    assert.doesNotMatch(f.display, /\b[A-Za-z0-9]{20}\b/, "the display must not be id-shaped");
+  }
+
+  // THE VALUE KEEPS THE ID, because the owner picker edits by id. Only the display changed.
+  assert.equal(ownerField({}).value, EMPLOYEE_ID);
+});
+
+test("no owner at all is an em dash, not an unresolved reference", () => {
+  // "Nobody owns this" and "somebody owns it and we cannot name them" are different facts.
+  return import("../src/domain/opportunityFieldModel.js").then(({ opportunityDetailModel }) => {
+    const f = opportunityDetailModel({ id: "o1", ownerEmployeeId: null, lines: [] }, {})
+      .sections.flatMap((s) => s.fields).find((x) => x.key === "ownerEmployeeId");
+    assert.equal(f.display, "—");
+  });
+});

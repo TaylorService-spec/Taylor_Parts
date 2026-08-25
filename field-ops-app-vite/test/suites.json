@@ -952,6 +952,10 @@
     {
       "file": "test/noLiteralControlBytes.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/salesAgreementBackendSkew.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -20,6 +20,7 @@ import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
 import SalesAgreementPanel from "./SalesAgreementPanel.jsx";
 import { useSalesAgreement } from "../../hooks/useSalesAgreement.js";
+import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
 import OwnerSelect from "./OwnerSelect.jsx";
 import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
@@ -376,8 +377,13 @@ function ownerName(employeeId, directory) {
 function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps, directory, hasCapability }) {
   const [editingSection, setEditingSection] = useState(null);
   const model = useMemo(
-    () => opportunityDetailModel(row, { format: { currency, date: shortDate } }),
-    [row]
+    // The SAME resolver the ContextBand uses, so the two can never disagree about who owns a deal —
+    // which is how the second raw-id site survived the first fix.
+    () => opportunityDetailModel(row, {
+      format: { currency, date: shortDate },
+      resolveOwnerName: (employeeId) => ownerName(employeeId, directory),
+    }),
+    [row, directory]
   );
   // Called unconditionally (rules-of-hooks) — `row?.id ?? null` scopes the transition idempotency cache to
   // whichever Opportunity is selected right now; useOpportunityTransitions resets its cache on an id change.
@@ -387,7 +393,11 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
   const sectionSave = useOpportunitySectionSave(row?.id ?? null, saveDeps);
   // Same unconditional-call discipline (rules of hooks): scoped to whichever Opportunity is
   // selected, and re-read from scratch when that changes.
-  const agreement = useSalesAgreement(row?.id ?? null);
+  // Gated on the READ capability: an ungranted caller issues no request at all, so a feature that
+  // is not deployed cannot fill the console with failed round trips.
+  const agreement = useSalesAgreement(row?.id ?? null, {
+    enabled: hasCapability?.(SALES_AGREEMENT_READ_CAPABILITY) === true,
+  });
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
 
   // WON and LOST are terminal. The command refuses to edit them (CLOSED) because the deal terms
