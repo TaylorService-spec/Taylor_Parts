@@ -1,0 +1,79 @@
+name: EOS AI Provider Seam
+
+# Where an AI request may originate, and what it may gain by being AI.
+#
+# A failure here is a RELEASE BLOCKER, not a bug to triage. The suite proves that asking through a
+# model gains no capability, that the browser cannot reach a model runtime or a developer
+# workstation, and that production does not silently depend on one.
+#
+# No credential is required and none may be added. `fetch` is injected, so the tests exercise the
+# real request-building code without a real endpoint.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/ai/**"
+      - "functions/test/aiRepositoryProvider.test.mjs"
+      - "field-ops-app-vite/src/**"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/ai-repository-provider-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/ai/**"
+      - "functions/test/aiRepositoryProvider.test.mjs"
+      - "field-ops-app-vite/src/**"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/ai-repository-provider-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ai-provider-seam:
+    name: Capability and workstation-dependency boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: AI provider seam tests
+        run: npm run test:aiRepository
+        working-directory: functions
+
+      # A production runtime that reaches a developer workstation would work for exactly one person
+      # and fail for everybody else, having first shipped the address to all of them. Checked
+      # textually because a default that happens to work where it was written passes every test.
+      - name: The AI seam must hard-code no endpoint
+        run: |
+          if grep -rn --include=*.ts -E "127\.0\.0\.1|localhost|:11434" functions/src/ai; then
+            echo "::error::The AI seam hard-codes an endpoint. It must be configured, or absent."
+            exit 1
+          fi
+          echo "no endpoint is hard-coded in the AI seam"
+
+      # The browser talks to a callable; only the backend knows a gateway URL. `127.0.0.1:8080` in
+      # this repository is the FIRESTORE EMULATOR, so this checks gateway ROUTES and the Ollama
+      # port rather than a bare host:port that would fire on unrelated dev tooling.
+      - name: The client must not address the gateway or a model runtime
+        run: |
+          if grep -rn --include=*.js --include=*.jsx --include=*.ts --include=*.tsx \
+              -E ":11434|/v1/repository/answer|/v1/chat|KEYSTONE_GATEWAY" field-ops-app-vite/src; then
+            echo "::error::Client code references a model runtime or the Keystone gateway."
+            exit 1
+          fi
+          echo "the client reaches neither the gateway nor a model runtime"
