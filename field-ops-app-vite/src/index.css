@@ -5040,6 +5040,32 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-agreement-line input[inputmode="decimal"],
 .fo-agreement-line input[inputmode="numeric"] { text-align: right; font-variant-numeric: tabular-nums; }
 
+/* THE PRODUCT PICKER, in the line editor's second column.
+   The typeahead's suggestion list is absolutely positioned so opening it cannot reflow the grid
+   under the person's cursor -- a list that pushes the quantity and price fields down moves the
+   target they were about to click. */
+.fo-agreement-line__typeahead { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fo-agreement-line__typeahead input { width: 100%; }
+.fo-typeahead__list { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; margin: 2px 0 0;
+  padding: 0; list-style: none; max-height: 240px; overflow-y: auto;
+  background: var(--color-surface-elevated); border: 1px solid var(--color-border);
+  border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
+.fo-typeahead__list li { margin: 0; }
+.fo-typeahead__list button { display: flex; gap: 8px; align-items: baseline; width: 100%;
+  /* 44px is the handheld touch floor this app holds everywhere else -- a picker used on a phone in
+     a warehouse is not an exception to it. */
+  min-height: 44px; padding: 8px 10px; border: 0; background: none; text-align: left;
+  cursor: pointer; font-size: 13px; color: var(--color-text-primary); }
+.fo-typeahead__list button:hover,
+.fo-typeahead__list button:focus-visible,
+.fo-typeahead__list button.is-active { background: var(--color-surface-sunken); }
+.fo-typeahead__name { font-weight: 600; }
+
+/* A chosen part: the canonical ref, its name, and a way to change it. Deliberately NOT an input --
+   there is no text box here whose contents could be mistaken for the stored identity. */
+.fo-agreement-line__chosen { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  min-width: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+
 .fo-agreement-lines-block { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .fo-agreement-lines-block h4 { margin: 0; font-size: 12px; text-transform: uppercase;
   letter-spacing: .03em; color: var(--color-text-secondary); }

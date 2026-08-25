@@ -53,3 +53,14 @@ export const getSalesAgreementContext = ({ salesAgreementId }) =>
 // agreement exists yet. A "not-found" result is a real answer, not an error.
 export const getSalesAgreementForOpportunity = ({ opportunityId }) =>
   call("getSalesAgreementForOpportunity", { opportunityId });
+
+// THE PRODUCT PICKER'S READ. One callable serves both the Part typeahead and the Equipment Model
+// picker (functions/src/salesAgreement/productReferenceSearchService.ts), behind the existing
+// inventory.catalog.read authority -- neither catalog is client-readable, and `parts` would be a
+// whole-catalog download even if it were.
+//
+// `query` is ignored for EQUIPMENT_MODEL: that population is reference-data small and is listed
+// whole (capped), so the surface can present a real select rather than making somebody guess a
+// prefix of a canonical id they have never seen.
+export const searchProductReferences = ({ kind, query, limit }) =>
+  call("searchProductReferences", { kind, query, limit });

@@ -23,7 +23,7 @@
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
-import test, { after } from "node:test";
+import test, { after, before } from "node:test";
 import admin from "firebase-admin";
 
 admin.initializeApp({ projectId: "taylor-parts" });
@@ -41,6 +41,40 @@ const request = (data, uid) => ({ data, auth: uid ? { uid, token: {} } : undefin
 
 const createdOpportunities = [];
 const createdAgreements = [];
+
+// THE CATALOG THIS SUITE SELLS FROM.
+//
+// Every ref below was invented text until the reference control landed -- "PRT-1005", "A", "FREE"
+// named nothing, and the suite passed because non-empty was the entire validation. It now fails,
+// correctly, and the fix is to make the fixtures NAME REAL PRODUCTS rather than to weaken the rule
+// so the old fixtures keep passing. A test that has to disable the control it runs under is
+// asserting the absence of the feature.
+//
+// Seeded and torn down here so the suite still leaves the emulator as it found it.
+const FIXTURE_PARTS = ["PRT-1005", "A", "FREE", "PRT-2001"];
+const FIXTURE_MODELS = ["taylor--c713"];
+
+async function seedCatalog() {
+  await Promise.all([
+    ...FIXTURE_PARTS.map((id) =>
+      db.collection("parts").doc(id).set({ partId: id, sku: id, name: `Fixture part ${id}`, status: "ACTIVE" })),
+    ...FIXTURE_MODELS.map((id) =>
+      db.collection("equipment_models").doc(id).set({
+        equipmentModelId: id, manufacturerId: "taylor", manufacturerName: "Taylor",
+        modelNumber: id.split("--")[1], displayName: `Taylor ${id.split("--")[1].toUpperCase()}`,
+        status: "ACTIVE",
+      })),
+  ]);
+}
+
+async function clearCatalog() {
+  await Promise.all([
+    ...FIXTURE_PARTS.map((id) => db.collection("parts").doc(id).delete().catch(() => {})),
+    ...FIXTURE_MODELS.map((id) => db.collection("equipment_models").doc(id).delete().catch(() => {})),
+  ]);
+}
+
+before(seedCatalog);
 
 async function seedOpportunity(over = {}) {
   const id = uniq("chain-opp");
@@ -100,6 +134,7 @@ after(async () => {
   await Promise.all(createdAgreements.map((id) => db.collection("sales_agreements").doc(id).delete().catch(() => {})));
   const audits = await db.collection("auditEvents").where("actorUid", "==", ACTOR).get();
   await Promise.all(audits.docs.map((d) => d.ref.delete()));
+  await clearCatalog();
 });
 
 // ═════════════════════════════════════════ 1-2. the callable boundary
@@ -248,7 +283,7 @@ test("AN EXPLICIT ZERO SURVIVES; an ABSENT price blocks acceptance", async () =>
   assert.equal(zeroDoc.lines[0].unitPrice, 0);
 
   const unpricedOpp = await seedOpportunity();
-  const unpriced = await createAgreement(unpricedOpp, { lines: [{ kind: "PART", ref: "TBD", quantity: 1 }] });
+  const unpriced = await createAgreement(unpricedOpp, { lines: [{ kind: "PART", ref: "PRT-2001", quantity: 1 }] });
   await assert.rejects(accept(unpriced.salesAgreementId), (e) => /committed unit price/.test(e.message));
   assert.equal((await readAgreement(unpriced.salesAgreementId)).state, "DRAFT", "a refused accept leaves it a draft");
 });
@@ -308,7 +343,7 @@ test("THE FULL CHAIN: the price a salesperson typed reaches the Sales Order line
   const opp = await seedOpportunity({ stage: "DECISION" });
   const created = await createAgreement(opp, {
     lines: [
-      { kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice: 500000 },
+      { kind: "EQUIPMENT_MODEL", ref: "taylor--c713", quantity: 2, unitPrice: 500000 },
       { kind: "PART", ref: "PRT-1005", quantity: 4, unitPrice: 2500 },
     ],
   });
@@ -316,7 +351,7 @@ test("THE FULL CHAIN: the price a salesperson typed reaches the Sales Order line
   await editDraft(created.salesAgreementId, {
     customerPO: "PO-CHAIN",
     lines: [
-      { kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice: 475000 },
+      { kind: "EQUIPMENT_MODEL", ref: "taylor--c713", quantity: 2, unitPrice: 475000 },
       { kind: "PART", ref: "PRT-1005", quantity: 4, unitPrice: 2500 },
     ],
   });

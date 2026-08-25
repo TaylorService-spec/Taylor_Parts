@@ -48,6 +48,10 @@ export type SalesAgreementErrorCode =
   | "UNPRICED_LINE"
   /** A draft edit named a field outside the explicit allowlist -- identity, currency, acceptance or totals. */
   | "FIELD_NOT_EDITABLE"
+  /** A line named a product that does not exist in the authoritative catalog for its kind. */
+  | "REFERENCE_NOT_FOUND"
+  /** The reference is real, but it belongs to a different kind than the line declares. */
+  | "REFERENCE_WRONG_KIND"
   | "ILLEGAL_TRANSITION";
 
 export class SalesAgreementCommandError extends Error {
