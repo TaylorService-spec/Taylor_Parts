@@ -159,4 +159,32 @@ export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, 
     await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   }
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 25000 });
+  await assertSignedIn(page, accountKey);
+}
+
+/**
+ * A SIGNED-OUT SWEEP REPORTS CLEAN, AND THAT IS THE WORST RESULT A HARNESS CAN PRODUCE.
+ *
+ * Session establishment fails intermittently against the deployed origin. When it does, every
+ * subsequent `page.goto` lands on the sign-in screen — which has no tables, no raw ids, no overflow
+ * and no crashes. A full 54-route sweep then reports "54/54 visits measured, 0 findings", identical
+ * in every respect to a genuinely clean run.
+ *
+ * That happened during this certification: a RAW_ID sweep returned zero across every route while
+ * /service/job-assignments was still rendering six document ids, because the sweep was measuring
+ * the login page. The result was not wrong by a little — it was measuring a different application.
+ *
+ * So being signed in is asserted, not assumed, and the failure is loud. Every lane that calls
+ * establishSession inherits it.
+ */
+export async function assertSignedIn(page, accountKey) {
+  const body = (await page.locator("body").innerText().catch(() => "")) || "";
+  const looksLikeLogin = /Sign in to continue|Work email|Forgot password\?/i.test(body);
+  const hasShell = (await page.locator(".fo-appheader, .fo-rail").count()) > 0;
+  if (looksLikeLogin || !hasShell) {
+    throw new Error(
+      `NOT SIGNED IN as '${accountKey}' — the harness is looking at the sign-in screen. ` +
+        "Every measurement from here would describe the login page and report clean. Refusing to continue.",
+    );
+  }
 }
