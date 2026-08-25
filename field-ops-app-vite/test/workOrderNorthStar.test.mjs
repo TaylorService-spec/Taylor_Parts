@@ -307,3 +307,28 @@ test("a work order with nothing recorded yields an empty list, not a row of unkn
   assert.deepEqual(workOrderTimeline({}), []);
   assert.deepEqual(workOrderTimeline(null), []);
 });
+
+// ═════ THE WORK ORDER TIMELINE IS NOT THE JOB FEED
+
+// #1491 added a static guard here asserting the page renders formatClockTime(e.timestamp). Its
+// finding — the canonical event carries `timestamp`, not `at` — is real, and it is still asserted
+// at RUNTIME in workOrderNorthStarSurface.test.jsx. The guard itself could not survive, because
+// this page no longer renders job events at all: buildTimeline stamps every event it derives for
+// a work order with createdAt, so the fixed rendering showed four different events at one time,
+// one of which (READY) the record never reached. See the comment on WorkOrderTimeline.
+//
+// This is the guard that replaces it, and it is BEHAVIOURAL rather than a source-text match: the
+// page's timeline derivation must never invent a moment.
+test("THE TIMELINE NEVER INVENTS A MOMENT — no two events may share one borrowed timestamp", () => {
+  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22) }));
+  const times = rows.map((r) => r.at);
+  assert.equal(new Set(times).size, times.length, "two events resolved to the same recorded moment");
+  // And every row's time is a field the DOCUMENT carries, never one borrowed from another row.
+  assert.ok(rows.every((r) => r.at != null));
+});
+
+test("AN INFERRED STAGE IS NOT AN EVENT — a status never reached contributes no row", () => {
+  // buildTimeline infers WORK_ORDER_READY from field phase. Nothing here is inferred.
+  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22) }));
+  assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
+});

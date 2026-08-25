@@ -389,7 +389,35 @@ export default function WorkOrderDetailPage() {
   );
 }
 
-/** The recorded lifecycle events, newest first, in the Work Order-s own vocabulary. */
+// THE RECORDED LIFECYCLE EVENTS, newest first, in the Work Order-s own vocabulary.
+//
+// ════════ WHY THIS DOES NOT RENDER buildTimeline, AND WHAT THAT COLLIDES WITH ════════
+//
+// This page used to call buildTimeline([workOrder]) — the JOB/activity-feed model — and #1491
+// fixed a real typo in that rendering (it read `e.at`; the canonical event carries `timestamp`).
+// That fix is correct about the shared event shape and is kept in the suites. It is not enough to
+// make the job model truthful ABOUT A WORK ORDER, and the fix made the untruth harder to see: the
+// column of "Unknown" times that hid the typo was at least visibly empty.
+//
+// What buildTimeline([workOrder]) actually returns for a DISPATCHED work order carrying a real
+// createdAt and a real dispatchedAt (measured, not reasoned about):
+//
+//   JOB_ASSIGNED         "Job assigned"              stamped createdAt
+//   WORK_ORDER_READY     "Work order became READY"   stamped createdAt
+//   JOB_CREATED          "Job created"               stamped createdAt
+//   WORK_ORDER_CREATED   "Work order created"        stamped createdAt
+//
+// Three problems, in order of severity. Every event carries the SAME time, because jobEvents()
+// stamps each one `toMillis(job.createdAt)` — so the page asserts an assignment happened at a
+// moment nothing recorded. The record was never READY; that event is inferred from field phase,
+// not read. And `dispatchedAt`, a governed timestamp the document genuinely carries, does not
+// appear at all. A reader cannot tell any of that apart from recorded history.
+//
+// buildTimeline remains the authority where its inputs are jobs — Control Tower and the Activity
+// Timeline panel — and nothing about it changes here. For a Work Order, the document-s own
+// lifecycle timestamps are the record of when, and this reads those and only those. Which model
+// owns Work Order history across surfaces is a real architectural question and is REPORTED, not
+// settled here; what is settled is that this page will not render a fabricated one.
 function WorkOrderTimeline({ workOrder }) {
   const events = useMemo(() => workOrderTimeline(workOrder), [workOrder]);
   if (events.length === 0) {
