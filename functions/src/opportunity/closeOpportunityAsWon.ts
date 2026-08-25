@@ -60,7 +60,13 @@ import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWri
 import { OPPORTUNITIES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { buildCreateSalesOrder, SalesOrderCommandError, type BuiltSalesOrder } from "../salesOrder/salesOrderCommands";
 import { allocateSalesOrderNumber } from "../salesOrder/salesOrderNumbering";
-import { deriveSalesOrderLines, OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY, type OpportunityDoc } from "./createSalesOrderFromOpportunity";
+import { OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY, type OpportunityDoc } from "./createSalesOrderFromOpportunity";
+import { SALES_AGREEMENTS_COLLECTION } from "../constants/collections.js";
+import {
+  assertAgreementConvertible,
+  salesOrderLinesFromAgreement,
+  salesOrderFieldsFromAgreement,
+} from "../salesAgreement/agreementToSalesOrder.js";
 import { buildTransitionPatch, OpportunityCommandError } from "./opportunityCommands";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./opportunityCallables";
 import { isChannel, type SalesChannel } from "./opportunityLifecycle";
@@ -224,6 +230,41 @@ export async function persistCloseOpportunityAsWon(
     };
   }
 
+  // ══════════ THE AGREEMENT IS THE PRICE SOURCE — STILL IN THE READ PHASE ══════════
+  //
+  // This path had the SAME unpriced shortcut as createSalesOrderFromOpportunity: it mapped
+  // Opportunity { kind, ref, qty } through with no price. Fixing only the other one would have left
+  // the hole open through the atomic WON route, which is the route that actually runs.
+  //
+  // Read here, before the first write, because Firestore requires every read to precede every write
+  // and the counter allocation below is a write.
+  //
+  // ONE equality predicate on one field: Firestore's automatic single-field index serves it. No
+  // composite is declared, and none is needed.
+  const agreementSnap = await tx.get(
+    db.collection(SALES_AGREEMENTS_COLLECTION).where("sourceOpportunityId", "==", opportunityId).limit(1),
+  );
+  const agreementDoc = agreementSnap.empty ? null : agreementSnap.docs[0];
+  const agreementData = agreementDoc?.data() ?? {};
+
+  assertAgreementConvertible(
+    {
+      exists: agreementDoc !== null,
+      state: agreementData.state,
+      accountId: agreementData.accountId ?? null,
+      sourceOpportunityId: agreementData.sourceOpportunityId ?? null,
+      lines: agreementData.lines ?? [],
+    },
+    { id: opportunityId, accountId: opp.accountId },
+  );
+
+  const agreementLines = salesOrderLinesFromAgreement({ state: agreementData.state, lines: agreementData.lines ?? [] });
+  const fromAgreement = salesOrderFieldsFromAgreement({
+    locationId: agreementData.locationId ?? null,
+    customerPO: agreementData.customerPO ?? null,
+    specialInstructions: agreementData.specialInstructions ?? null,
+  });
+
   // Build the Sales Order body BEFORE the first write: pure, and a validation failure here
   // must not leave a reserved counter behind.
   let built: BuiltSalesOrder;
@@ -233,10 +274,12 @@ export async function persistCloseOpportunityAsWon(
         accountId: opp.accountId,
         ownerEmployeeId: input.ownerEmployeeId,
         salesChannel: input.salesChannel,
-        locationId: input.locationId ?? undefined,
+        // The caller's own values still win where supplied; the Agreement fills what was left out.
+        locationId: input.locationId ?? fromAgreement.locationId,
         sourceOpportunityId: opportunityId,
-        customerPO: input.customerPO ?? undefined,
-        lines: deriveSalesOrderLines(opp.lines),
+        customerPO: input.customerPO ?? fromAgreement.customerPO,
+        notes: fromAgreement.notes,
+        lines: agreementLines,
       },
       { actorUid, nowMillis: Date.now() },
     );
@@ -255,10 +298,16 @@ export async function persistCloseOpportunityAsWon(
   // ------------------------------------------------ 7 + 9. transition and lineage, one write
   const oppPatch: Record<string, unknown> = {
     salesOrderId: soRef.id,
+    // BESIDE salesOrderId, never instead of it: existing consumers navigate by the order link, and
+    // one id field cannot mean two objects.
+    salesAgreementId: agreementDoc!.id,
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (transitionPatch) Object.assign(oppPatch, transitionPatch);
   tx.update(opportunityRef, oppPatch);
+  // The agreement's result link, in the SAME commit -- it can never point at an order that was not
+  // committed. A replay returns the prior outcome long before reaching here.
+  tx.update(agreementDoc!.ref, { salesOrderId: soRef.id, updatedAt: FieldValue.serverTimestamp() });
 
   // ------------------------------------------------------------------ 8. the Sales Order
   tx.set(soRef, {
@@ -267,6 +316,8 @@ export async function persistCloseOpportunityAsWon(
     // Denormalized deliberately: the reference is IMMUTABLE, so a copy cannot go stale. The
     // Opportunity's human NAME is deliberately not copied, for the opposite reason.
     sourceOpportunityNumber: opp.opportunityNumber ?? null,
+    // Which commitment this order fulfils.
+    sourceAgreementId: agreementDoc!.id,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

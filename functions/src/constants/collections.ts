@@ -42,6 +42,14 @@ export const OPPORTUNITIES_COLLECTION = "opportunities";
 // posture as the ledger/opportunities collections: firestore.rules denies ALL direct client read/write; the
 // only write path is the trusted salesOrder command (salesOrder/salesOrderCallables.ts). No UI writes.
 export const SALES_ORDERS_COLLECTION = "sales_orders";
+
+// Commercial commitment -- the accepted terms and committed line prices a Sales Order is created
+// FROM. Admin-SDK-only: there is no firestore.rules block for it, and Firestore denies an
+// undeclared collection to every client by default, so the only write path is the trusted
+// salesAgreement commands. An explicit deny-all block matching the sales_territories / refunds
+// convention is a Rules change and is deliberately left for a separate authorized step -- it would
+// document the existing behaviour rather than change it.
+export const SALES_AGREEMENTS_COLLECTION = "sales_agreements";
 // Finance — governed invoices (Admin-SDK-only; deny-all client Rules). Sensitive/audited.
 export const INVOICES_COLLECTION = "invoices";
 // Finance — cash receipts (money received) + payment applications (how it is applied to invoices). Separate

@@ -19,6 +19,12 @@ import { getFirestore, FieldValue, type Firestore, type Transaction } from "fire
 import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
+import { SALES_AGREEMENTS_COLLECTION } from "../constants/collections.js";
+import {
+  assertAgreementConvertible,
+  salesOrderLinesFromAgreement,
+  salesOrderFieldsFromAgreement,
+} from "../salesAgreement/agreementToSalesOrder.js";
 import { OPPORTUNITIES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import { buildCreateSalesOrder, SalesOrderCommandError, type BuiltSalesOrder, type SalesOrderLineInput } from "../salesOrder/salesOrderCommands";
 import { allocateSalesOrderNumber } from "../salesOrder/salesOrderNumbering";
@@ -50,6 +56,10 @@ export interface OpportunityDoc {
   accountId?: string;
   lines?: OpportunityLineDoc[];
   salesOrderId?: string | null;
+  // The commercial commitment this Opportunity produced. Distinct from salesOrderId: one names the
+  // agreement, the other the order, and overloading a single id with both meanings is how lineage
+  // becomes unreadable.
+  salesAgreementId?: string | null;
 }
 
 export interface CreateSalesOrderFromOpportunityInput {
@@ -71,24 +81,21 @@ export interface CreateSalesOrderFromOpportunityResult {
 // Translate the Opportunity's PRE-COMMITMENT lines (kind/ref/qty?) into the Sales Order builder's
 // SalesOrderLineInput shape. `qty` is OPTIONAL on an Opportunity line but REQUIRED (as orderedQty) on a Sales
 // Order line — a missing qty is a fail-closed condition here, never defaulted (e.g. to 1).
-export function deriveSalesOrderLines(lines: OpportunityLineDoc[] | undefined): SalesOrderLineInput[] {
-  if (!Array.isArray(lines) || lines.length === 0) {
-    throw new HttpsError("failed-precondition", "Opportunity has no lines to seed a Sales Order from.");
-  }
-  return lines.map((l, i) => {
-    if (typeof l.qty !== "number" || !Number.isFinite(l.qty) || l.qty <= 0) {
-      throw new HttpsError(
-        "failed-precondition",
-        `Opportunity line ${i} (${l.ref ?? "unknown"}) is missing a qty; refusing to default a Sales Order quantity.`,
-      );
-    }
-    return {
-      kind: l.kind as SalesOrderLineInput["kind"],
-      ref: l.ref,
-      orderedQty: l.qty,
-    };
-  });
-}
+// ═══ RETIRED — deriveSalesOrderLines ═══
+//
+// It mapped Opportunity { kind, ref, qty } to Sales Order lines and carried NO PRICE, because an
+// Opportunity has none: it holds `expectedValue`, one forecast number on the header. Every order
+// it produced was therefore unpriced, and invoicing refuses to bill an unpriced line — which is
+// exactly the contradiction the seven sandbox records demonstrate.
+//
+// DELETED RATHER THAN DEPRECATED. Both WON routes now source their lines from the accepted Sales
+// Agreement (salesAgreement/agreementToSalesOrder.ts), and a function that still produced unpriced
+// lines would sit here as the obvious thing for the next person to call. A comment saying "do not
+// use this" is not a control.
+//
+// The replacement is deriveSalesOrderLinesFromAgreement, which refuses a DRAFT outright: a price
+// nobody accepted is not a commitment.
+
 
 // Transactional core, exported so tests can exercise the business rules directly (below the capability gate —
 // `opportunity.createSalesOrder` is registered active:false, a hard deny for everyone until a separate Owner
@@ -136,7 +143,46 @@ export async function persistSalesOrderFromOpportunity(
   if (!opp.accountId) {
     throw new HttpsError("failed-precondition", "Opportunity has no accountId; cannot derive Sales Order account.");
   }
-  const lines = deriveSalesOrderLines(opp.lines);
+  // ══════════ THE AGREEMENT IS THE PRICE SOURCE, NOT THE OPPORTUNITY ══════════
+  //
+  // deriveSalesOrderLines mapped Opportunity { kind, ref, qty } through with NO price, because an
+  // Opportunity has none. That shortcut produced the unpriced CONFIRMED orders.
+  //
+  // READ PHASE. Firestore requires every read before any write, so the agreement is fetched here,
+  // alongside the opportunity and the duplicate check, and never after the first tx.set.
+  //
+  // LOOKED UP BY THE AGREEMENT'S OWN DECLARATION of its source, not by the Opportunity's backlink:
+  // the backlink is navigation, the declaration is the relationship. A single equality predicate on
+  // one field — Firestore's automatic single-field index serves it, and no composite is required.
+  const agreementQuery = db
+    .collection(SALES_AGREEMENTS_COLLECTION)
+    .where("sourceOpportunityId", "==", opportunityId)
+    .limit(1);
+  const agreementSnap = await tx.get(agreementQuery);
+  const agreementDoc = agreementSnap.empty ? null : agreementSnap.docs[0];
+  const agreement = agreementDoc?.data() ?? {};
+
+  assertAgreementConvertible(
+    {
+      exists: agreementDoc !== null,
+      state: agreement.state,
+      accountId: agreement.accountId ?? null,
+      sourceOpportunityId: agreement.sourceOpportunityId ?? null,
+      locationId: agreement.locationId ?? null,
+      customerPO: agreement.customerPO ?? null,
+      specialInstructions: agreement.specialInstructions ?? null,
+      lines: agreement.lines ?? [],
+    },
+    { id: opportunityId, accountId: opp.accountId },
+  );
+
+  const lines = salesOrderLinesFromAgreement({ state: agreement.state, lines: agreement.lines ?? [] });
+  const fromAgreement = salesOrderFieldsFromAgreement({
+    locationId: agreement.locationId ?? null,
+    customerPO: agreement.customerPO ?? null,
+    specialInstructions: agreement.specialInstructions ?? null,
+  });
+  const agreementId = agreementDoc!.id;
 
   let built: BuiltSalesOrder;
   try {
@@ -145,9 +191,13 @@ export async function persistSalesOrderFromOpportunity(
         accountId: opp.accountId,
         ownerEmployeeId: input.ownerEmployeeId,
         salesChannel: input.salesChannel,
-        locationId: input.locationId,
+        // The CALLER's value still wins where it supplied one -- this callable's own contract has
+        // always accepted a location and a PO. The Agreement fills what the caller left out rather
+        // than overriding an operational decision made at order time.
+        locationId: input.locationId ?? fromAgreement.locationId,
         sourceOpportunityId: opportunityId,
-        customerPO: input.customerPO,
+        customerPO: input.customerPO ?? fromAgreement.customerPO,
+        notes: fromAgreement.notes,
         lines,
       },
       { actorUid, nowMillis: Date.now() },
@@ -186,10 +236,23 @@ export async function persistSalesOrderFromOpportunity(
     ...fields,
     salesOrderNumber,
     sourceOpportunityNumber: opp.opportunityNumber ?? null,
+    // WHICH COMMITMENT THIS ORDER FULFILS. Its own field, never folded into the opportunity
+    // reference: the order came FROM an agreement, and the agreement came from the opportunity.
+    sourceAgreementId: agreementId,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  tx.update(opportunityRef, { salesOrderId: soRef.id, updatedAt: FieldValue.serverTimestamp() });
+  // BOTH BACKLINKS, in the same commit as the order. salesOrderId is preserved exactly as it was --
+  // existing consumers navigate by it -- and salesAgreementId is added beside it rather than
+  // replacing it.
+  tx.update(opportunityRef, {
+    salesOrderId: soRef.id,
+    salesAgreementId: agreementId,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  // The agreement's own result link, written in the SAME transaction so it can never point at an
+  // order that was not committed. Set once: a retry returns the prior outcome before reaching here.
+  tx.update(agreementDoc!.ref, { salesOrderId: soRef.id, updatedAt: FieldValue.serverTimestamp() });
 
   stageAuditEventWithId(tx, aid, {
     actorUid,

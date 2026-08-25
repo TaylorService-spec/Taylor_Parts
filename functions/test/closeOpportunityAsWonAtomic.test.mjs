@@ -31,7 +31,33 @@ const ACTOR = "actor-won-1";
 let seq = 0;
 const uniq = () => `won-${Date.now()}-${++seq}`;
 
+// WHY EVERY FIXTURE NOW SEEDS AN AGREEMENT
+//
+// An Opportunity alone can no longer produce a Sales Order, and that is the point of the change
+// under test: an Opportunity carries `expectedValue`, one forecast number, and lines with NO price.
+// Orders derived from it were unpriced, which is where the seven unpriced CONFIRMED sandbox records
+// came from. Prices now come from the ACCEPTED Agreement.
+//
+// So a WON-convertible Opportunity is an Opportunity PLUS an accepted Agreement. Seeding one here is
+// not a workaround for the gate -- it is the fixture telling the truth about the precondition. The
+// refusal cases below pass `agreement: null` and assert the gate directly.
+async function seedAgreement(opportunityId, over = {}) {
+  const id = `agr-${opportunityId}`;
+  await db.collection("sales_agreements").doc(id).set({
+    accountId: "acct-1",
+    ownerEmployeeId: "emp-1",
+    sourceOpportunityId: opportunityId,
+    state: "ACCEPTED",
+    currency: "USD",
+    lines: [{ lineId: "l1", kind: "PART", ref: "PRT-1005", quantity: 1, unitPrice: 2500, extendedMinor: 2500 }],
+    ...over,
+  });
+  createdAgreements.push(id);
+  return id;
+}
+
 async function seedOpportunity(over = {}) {
+  const { agreement, ...oppOver } = over;
   const id = uniq();
   await db.collection("opportunities").doc(id).set({
     opportunityNumber: `OPP-2026-${String(seq).padStart(6, "0")}`,
@@ -41,9 +67,11 @@ async function seedOpportunity(over = {}) {
     stage: "DECISION",
     outcome: null,
     lines: [{ kind: "PART", ref: "PRT-1005", qty: 1 }],
-    ...over,
+    ...oppOver,
   });
   createdOpportunities.push(id);
+  // `agreement: null` means "seed no agreement" -- for the cases that assert the refusal.
+  if (agreement !== null) await seedAgreement(id, agreement ?? {});
   return id;
 }
 
@@ -73,6 +101,7 @@ const ordersFor = (opportunityId) =>
 // when both run against the same emulator. Leaving the collection as we found it keeps the
 // two suites independent without either having to know about the other.
 const createdOpportunities = [];
+const createdAgreements = [];
 const seededIds = () => createdOpportunities;
 
 after(async () => {
@@ -81,6 +110,7 @@ after(async () => {
     await Promise.all(orders.docs.map((d) => d.ref.delete()));
     await db.collection("opportunities").doc(id).delete().catch(() => {});
   }
+  await Promise.all(createdAgreements.map((id) => db.collection("sales_agreements").doc(id).delete().catch(() => {})));
   // Audit events are keyed by this suite's actor, so they are removable without touching
   // anything another suite depends on.
   const audits = await db.collection("auditEvents").where("actorUid", "==", ACTOR).get();
@@ -116,12 +146,59 @@ test("DECISION + open + no order -> atomically WON with exactly one Sales Order 
   assert.equal(orders.docs[0].data().accountId, "acct-1", "account is server-derived from the Opportunity");
 });
 
-test("solution lines transfer to the Sales Order", async () => {
-  const opp = await seedOpportunity({ lines: [{ kind: "PART", ref: "PRT-1005", qty: 3 }] });
+test("THE AGREEMENT'S PRICED LINES REACH THE PERSISTED ORDER -- not the Opportunity's", async () => {
+  // The Opportunity says qty 3 of PRT-1005 with no price; the Agreement commits qty 7 at 12,500.
+  // They are deliberately different, because a test where both agree cannot tell you which one
+  // the code read. What lands in Firestore names the authority.
+  const opp = await seedOpportunity({
+    lines: [{ kind: "PART", ref: "PRT-1005", qty: 3 }],
+    agreement: {
+      lines: [{ lineId: "l1", kind: "PART", ref: "PRT-9", quantity: 7, unitPrice: 12500, extendedMinor: 87500 }],
+    },
+  });
   await run(opp);
   const order = (await ordersFor(opp)).docs[0].data();
   assert.equal(order.lines.length, 1);
-  assert.equal(order.lines[0].orderedQty, 3, "quantity transfers");
+  assert.equal(order.lines[0].ref, "PRT-9", "the Agreement's line, not the Opportunity's");
+  assert.equal(order.lines[0].orderedQty, 7);
+  assert.equal(order.lines[0].unitPrice, 12500, "THE COMMITTED PRICE ARRIVES -- this is the whole slice");
+  assert.equal(order.currency, "USD");
+});
+
+test("LINEAGE: the order, the opportunity and the agreement all point at each other after one commit", async () => {
+  const opp = await seedOpportunity();
+  const res = await run(opp);
+  const order = (await ordersFor(opp)).docs[0].data();
+  const oppDoc = (await db.collection("opportunities").doc(opp).get()).data();
+  const agr = (await db.collection("sales_agreements").doc(`agr-${opp}`).get()).data();
+  assert.equal(order.sourceAgreementId, `agr-${opp}`, "the order names the commitment it fulfils");
+  assert.equal(oppDoc.salesAgreementId, `agr-${opp}`, "added beside salesOrderId, not replacing it");
+  assert.equal(oppDoc.salesOrderId, res.salesOrderId, "the existing backlink is preserved exactly");
+  // Written in the SAME transaction, so it can never point at an order that was not committed.
+  assert.equal(agr.salesOrderId, res.salesOrderId);
+});
+
+// ---------------------------------------------------------------- the gate
+
+test("NO AGREEMENT: an Opportunity alone cannot become a Sales Order, and NOTHING is written", async () => {
+  const opp = await seedOpportunity({ agreement: null });
+  await assert.rejects(run(opp), (e) => /no sales agreement/i.test(e.message));
+  const oppDoc = (await db.collection("opportunities").doc(opp).get()).data();
+  assert.equal(oppDoc.outcome, null, "the opportunity must not be closed");
+  assert.equal(oppDoc.salesOrderId ?? null, null);
+  assert.equal((await ordersFor(opp)).size, 0, "no order, and no counter consumed for one");
+});
+
+test("DRAFT AGREEMENT: provisional prices are not a commitment", async () => {
+  const opp = await seedOpportunity({ agreement: { state: "DRAFT" } });
+  await assert.rejects(run(opp), (e) => /has not been accepted/i.test(e.message));
+  assert.equal((await ordersFor(opp)).size, 0);
+});
+
+test("AN AGREEMENT FOR ANOTHER ACCOUNT is refused rather than converted", async () => {
+  const opp = await seedOpportunity({ agreement: { accountId: "acct-OTHER" } });
+  await assert.rejects(run(opp), (e) => /different customer/i.test(e.message));
+  assert.equal((await ordersFor(opp)).size, 0);
 });
 
 // ---------------------------------------------------------------- replay + retry
