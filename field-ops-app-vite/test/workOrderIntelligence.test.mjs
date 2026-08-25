@@ -171,14 +171,18 @@ test("the client transport is fail-closed before Firebase loads and sends only w
   }
 });
 
-test("every environment explicitly declares the Work Order readiness transport and it remains off", () => {
+test("Work Order readiness transport is activated only in platform sandbox", () => {
   const registry = JSON.parse(readFileSync(new URL("../../config/environments.json", import.meta.url), "utf8"));
   for (const env of registry.environments) {
     assert.equal(typeof env.readiness?.WORK_ORDER_READINESS_CONTEXT_READY, "boolean", env.id);
-    assert.equal(env.readiness.WORK_ORDER_READINESS_CONTEXT_READY, false, env.id);
+    assert.equal(
+      env.readiness.WORK_ORDER_READINESS_CONTEXT_READY,
+      env.id === "platform-sandbox",
+      env.id,
+    );
   }
-  const sandbox = resolveEnvironment(registry, "platform-sandbox");
-  assert.equal(sandbox.readiness.WORK_ORDER_READINESS_CONTEXT_READY, false);
+  assert.equal(resolveEnvironment(registry, "platform-sandbox").readiness.WORK_ORDER_READINESS_CONTEXT_READY, true);
+  assert.equal(resolveEnvironment(registry, "taylor-parts-production").readiness.WORK_ORDER_READINESS_CONTEXT_READY, false);
 });
 
 test("the intelligence signal attaches to the existing attention channel instead of creating a second band", () => {
