@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildWorkOrderIntelligenceContext,
   deriveWorkOrderIntelligence,
+  mergeWorkOrderAttention,
   INTELLIGENCE_ORIGIN,
   AUTHORITY_STATE,
   NO_INSIGHT_REASON,
@@ -112,6 +113,35 @@ test("ATTENTION canonical readiness is explained, not independently re-derived",
   assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
   assert.equal(signal.evidence.length, 2);
   assert.equal(signal.evidence[1].kind, "WORK_ORDER_PARTS_READINESS");
+});
+
+test("the intelligence signal attaches to the existing attention channel instead of creating a second band", () => {
+  const existing = [{ key: "schedule-window-passed", severity: "ATTENTION", fact: "Scheduled window has passed." }];
+  const signal = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({
+      jobReadiness: "ATTENTION",
+      counts: { READY: 1, ATTENTION: 1, UNKNOWN: 0 },
+    }),
+  });
+  const merged = mergeWorkOrderAttention(existing, signal);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0], existing[0], "existing North Star attention remains first");
+  assert.equal(merged[1].key, "parts-readiness-attention");
+});
+
+test("quiet intelligence contributes no attention item", () => {
+  const existing = [{ key: "schedule-window-passed", severity: "ATTENTION", fact: "Scheduled window has passed." }];
+  const merged = mergeWorkOrderAttention(existing, deriveWorkOrderIntelligence(wo()));
+  assert.deepEqual(merged, existing);
+});
+
+test("attention attachment de-duplicates by fact key", () => {
+  const existing = [{ key: "parts-readiness-attention", severity: "ATTENTION", fact: "Existing owner." }];
+  const signal = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({ jobReadiness: "ATTENTION", counts: { READY: 1, ATTENTION: 1, UNKNOWN: 0 } }),
+  });
+  const merged = mergeWorkOrderAttention(existing, signal);
+  assert.deepEqual(merged, existing, "one fact must never render twice");
 });
 
 test("no parts plan stays quiet because the existing attention rule already owns that fact", () => {
