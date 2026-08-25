@@ -26,6 +26,10 @@ export type SalesOrderErrorCode =
   | "NO_LINES"
   | "LINE_INVALID"
   | "SERIALIZED_LINE_FORBIDDEN"
+  // A confirmed Sales Order with a line nobody priced. Distinct from LINE_INVALID because the line
+  // is well formed -- the commercial decision is what is missing, and the caller needs to be sent
+  // to a person, not to a validator.
+  | "UNPRICED_LINE"
   | "QTY_INVALID"
   | "TERMINAL"
   | "ILLEGAL_TRANSITION"
@@ -44,7 +48,10 @@ export interface SalesOrderLineInput {
   kind: SalesOrderLineKind;
   ref: string; // model number / partId / service code — PRODUCT-level, never a serial
   orderedQty: number;
-  unitPrice?: number; // optional passive pricing snapshot; NOT computed here
+  // COMMITTED UNIT PRICE, integer minor units. REQUIRED, because creation goes straight to
+  // CONFIRMED -- see requireCompletePricing below. Still not COMPUTED here: this command records
+  // the price it is given, it does not price anything.
+  unitPrice?: number;
 }
 
 export interface CreateSalesOrderInput {
@@ -61,6 +68,8 @@ export interface CreateSalesOrderInput {
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const posInt = (v: unknown): v is number => finiteNum(v) && v > 0 && Number.isInteger(v);
+/** Integer minor units, non-negative. Zero is a real committed price; negative is not a price. */
+const minorUnits = (v: unknown): v is number => finiteNum(v) && Number.isInteger(v) && v >= 0;
 
 interface BuiltLine {
   lineId: string;
@@ -89,8 +98,16 @@ function validateLine(line: unknown, index: number): BuiltLine {
   }
   if (!nonEmpty(l.ref)) throw new SalesOrderCommandError("LINE_INVALID", `Line ${index} is missing a product reference`);
   if (!posInt(l.orderedQty)) throw new SalesOrderCommandError("QTY_INVALID", `Line ${index} orderedQty must be a positive integer`);
-  if (l.unitPrice !== undefined && !finiteNum(l.unitPrice)) {
-    throw new SalesOrderCommandError("LINE_INVALID", `Line ${index} unitPrice must be a number when present`);
+  // INTEGER MINOR UNITS, and non-negative. The invoice engine snapshots this exact value as
+  // `unitPriceMinor` and refuses any invoice price that disagrees with it, so a float here is not a
+  // rounding inconvenience -- it is a price no downstream consumer can honour. A fractional value
+  // was previously accepted and then silently treated as ABSENT by the read projection, which
+  // produced an order that looked priced and billed as unpriced.
+  if (l.unitPrice !== undefined && !minorUnits(l.unitPrice)) {
+    throw new SalesOrderCommandError(
+      "LINE_INVALID",
+      `Line ${index} unitPrice must be a non-negative integer in minor units`
+    );
   }
   const out: BuiltLine = {
     lineId: `line-${index + 1}`,
@@ -103,6 +120,50 @@ function validateLine(line: unknown, index: number): BuiltLine {
   };
   if (l.unitPrice !== undefined) out.unitPrice = l.unitPrice as number;
   return out;
+}
+
+/**
+ * A COMMERCIALLY CONFIRMED SALES ORDER CARRIES A PRICE ON EVERY BILLABLE LINE.
+ *
+ * ════════════════════ THE CONTRADICTION THIS CLOSES ════════════════════
+ *
+ * `unitPrice` was optional and creation goes straight to CONFIRMED, while invoiceCommands REFUSES
+ * to bill a line that has none (UNPRICED). So the system let somebody commit to an order it would
+ * later decline to invoice, and nothing said so until billing. Seven of fourteen sandbox orders are
+ * in exactly that state.
+ *
+ * EVERY LINE IS BILLABLE. `billingEligibleQty` discriminates by QUANTITY -- min(ordered, fulfilled)
+ * -- and never by kind, so EQUIPMENT_MODEL, PART and SERVICE are equally billable and there is no
+ * subset to exempt.
+ *
+ * ════════════════════ WHAT THIS IS NOT ════════════════════
+ *
+ * NOT a pricing engine. It computes nothing, looks nothing up, and defaults nothing. It requires
+ * that a price was DECIDED somewhere with the authority to decide it, and refuses the order
+ * otherwise.
+ *
+ * NOT a zero default. Zero is a real committed price -- a no-charge line is a legitimate commercial
+ * act -- and defaulting an ABSENT price to zero would turn "nobody priced this" into "this is free",
+ * which is the single most expensive mistake available here.
+ *
+ * ════════════════════ IT REPORTS EVERY UNPRICED LINE, NOT THE FIRST ════════════════════
+ *
+ * Failing on line 1 of a six-line order makes pricing an order a six-round trip. The error names
+ * them all.
+ *
+ * The existing seven records are NOT touched. They are invalid fixtures; inventing prices for them
+ * would be the same failure in the opposite direction.
+ */
+function requireCompletePricing(lines: BuiltLine[]): void {
+  const unpriced = lines
+    .map((l, i) => ({ index: i, lineId: l.lineId, ref: l.ref, priced: typeof l.unitPrice === "number" }))
+    .filter((l) => !l.priced);
+  if (unpriced.length === 0) return;
+  throw new SalesOrderCommandError(
+    "UNPRICED_LINE",
+    `A confirmed Sales Order requires a committed unit price on every line. Unpriced: ` +
+      unpriced.map((l) => `${l.lineId} (${l.ref})`).join(", ")
+  );
 }
 
 export interface BuiltSalesOrder {
@@ -135,6 +196,7 @@ export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actor
   if (!isSalesChannel(input.salesChannel)) throw new SalesOrderCommandError("CHANNEL_INVALID", "salesChannel is invalid");
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new SalesOrderCommandError("NO_LINES", "A Sales Order requires at least one line");
   const lines = input.lines.map((l, i) => validateLine(l, i));
+  requireCompletePricing(lines);
   return {
     accountId: input.accountId.trim(),
     ownerEmployeeId: input.ownerEmployeeId.trim(),
