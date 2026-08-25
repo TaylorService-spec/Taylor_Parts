@@ -19,15 +19,62 @@ recoverable because the original package still existed in a Downloads folder.
 
 ## The three authorities
 
-| Authority | Held by | Meaning |
-| --- | --- | --- |
-| **Visual / compositional** | The approved recovered `Proposed - *` artifacts | What the screen looks like and how it is composed |
-| **Behavioral / domain** | Existing governed EOS backend contracts — commands, state machines, capabilities, Rules, audit | What the system may do and who may do it |
-| **Translation** | [`eos-north-star-design-grammar.md`](./eos-north-star-design-grammar.md) | How the first is expressed in terms of the second |
+Ratified by the Owner, 2026-08-25. This supersedes the earlier table, which named Visual,
+Behavioral and *Translation* as the three, and which resolved every conflict in favour of the
+domain. What changed and why is recorded under **Reconciliation** below.
 
-Where the visual source implies a behavior the domain authority does not grant, **the domain
-authority wins and the gap is reported** — it is never closed by inventing backend semantics to
-satisfy a mockup.
+| Authority | Held by | Owns |
+| --- | --- | --- |
+| **Design** | Claude Design | Visual composition, hierarchy, interaction presentation, responsive behavior, and the North Star design grammar |
+| **Behavioral** | The EOS repository / Claude Code | Domain vocabulary, data authority, permissions, capabilities, state transitions, reads, writes, accounting and inventory truth, transactional behavior |
+| **Acceptance** | The running sandbox + the Owner | Whether a page is North Star-complete |
+
+### The three rules that bind them
+
+> Design may restructure presentation substantially but **may not invent authority**.
+>
+> Code may correct implementation defects but **may not materially reinterpret an approved
+> composition for implementation convenience**.
+>
+> When Design and behavioral reality conflict, **neither silently wins**. The conflict is surfaced
+> as a **named product decision**.
+
+### What "North Star-complete" means
+
+A page is not complete when it renders, when its tests pass, or when a reviewer approves the diff.
+It is complete when **the real sandbox implementation has passed engineering regression AND has been
+visually compared against the approved Design source by Design and by the Owner.**
+
+Merged is not complete. Deployed is not complete. Green CI is not complete. Those are the gates
+Acceptance runs *through*, not a substitute for it.
+
+Open named decisions live in
+[`north-star-open-product-decisions.md`](./north-star-open-product-decisions.md). A page family
+carrying an unresolved decision can still ship — the decision is named and visible rather than
+silently resolved by whichever authority happened to be holding the keyboard.
+
+### Reconciliation with what this replaces
+
+Two differences are load-bearing, and neither is cosmetic.
+
+**Translation is no longer an authority.** [`eos-north-star-design-grammar.md`](./eos-north-star-design-grammar.md)
+remains the instrument by which Design is expressed in Behavioral terms, and every rule in it still
+holds. It is not a third party to a disagreement: it is how the first two speak to each other. The
+third authority is **Acceptance**, which the old table had no seat for at all — and its absence is
+exactly why a page could be declared done on the strength of a diff.
+
+**"The domain authority wins" is narrowed to "the domain constrains what ships".** The old sentence
+read: *where the visual source implies a behavior the domain does not grant, the domain wins and the
+gap is reported*. The first half survives intact and is not negotiable — **an implementation still
+may not invent backend semantics to satisfy a mockup**, and a gap is still reported rather than
+closed in the UI. What no longer follows is that reporting it settles it. The domain constrains the
+*code*; it does not decide the *product*. A composition asking for something the engine cannot do is
+as likely to be a gap in the engine as an error in the composition, and which one it is is a named
+decision, not an implementation detail.
+
+The practical test: if resolving a conflict would change what the business can do, it is a product
+decision and gets named. If it would only change how something already permitted is drawn, Design
+decides. If it would change who may do what, or what is recorded, Behavioral decides — and says so.
 
 ## Inventory
 

@@ -1910,3 +1910,41 @@ authority model, not a reason to withhold the capability that makes the commerci
 **Grant is not activation.** All four are registered `active:false` and are eligible for
 per-environment activation only; production remains triple-blocked (role-keyed resolution, no
 override key on any production entry, asserted by test).
+
+## #122 — The North Star runs on three authorities, and Acceptance is one of them
+
+**Date:** 2026-08-25
+**Decision:** Owner ratified the three-authority model for all North Star work.
+**Design** (Claude Design) owns visual composition, hierarchy, interaction presentation, responsive
+behavior and the design grammar. **Behavioral** (this repository / Claude Code) owns domain
+vocabulary, data authority, permissions, capabilities, state transitions, reads, writes,
+accounting/inventory truth and transactional behavior. **Acceptance** (the running sandbox + the
+Owner) owns whether a page is North Star-complete — and it is not complete until the real sandbox
+implementation has passed engineering regression AND been visually compared against the approved
+Design source by Design and the Owner.
+
+Design may restructure presentation substantially but may not invent authority. Code may correct
+implementation defects but may not materially reinterpret an approved composition for implementation
+convenience. Where the two conflict, neither silently wins: the conflict becomes a named product
+decision, recorded in `docs/design/north-star-open-product-decisions.md`.
+
+**Reason:** the programme had two authorities and no seat for the only one that can say a page is
+done. A page could be declared complete on the strength of a passing diff, which is how a surface
+ships correct and unusable. It also had no home for a conflict — so a disagreement between the
+mockup and the engine was settled by whichever side happened to be implementing, and the reasoning
+survived only in a PR description.
+
+**Supersedes:** the "three authorities" table in `docs/design/eos-north-star-sources.md`, which named
+Translation as the third and resolved every conflict in favour of the domain. Translation
+(`eos-north-star-design-grammar.md`) remains in force as the *instrument* by which Design is
+expressed in Behavioral terms; it is not a party to a disagreement. The domain still constrains what
+may ship — an implementation may not invent backend semantics to satisfy a mockup — but that
+constrains the code, not the product: a composition asking for something the engine cannot do is as
+likely to be a gap in the engine as an error in the composition.
+
+**Alternatives rejected:** keeping "the domain authority wins" (it settles engineering questions by
+fiat and product questions by accident); leaving conflicts in PR descriptions (already proven to
+evaporate); a single combined design+build authority (removes the independent check that found seven
+open questions on the first page family).
+
+**Seeded with:** ND-1 … ND-7 from the Work Order family review (#1494).
