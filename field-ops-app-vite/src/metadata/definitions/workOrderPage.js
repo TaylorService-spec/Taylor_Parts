@@ -43,7 +43,7 @@ export const workOrderRecordPage = makePageDefinition({
       order: 0,
       label: "Overview",
       density: "SUMMARY",
-      fieldIds: ["woNumber", "status", "priority", "customerId", "assignedTechId"],
+      fieldIds: ["woNumber", "status", "priority", "customerId", "equipmentId"],
     }),
     makeSection({
       id: "workOrderOperational",
@@ -54,7 +54,7 @@ export const workOrderRecordPage = makePageDefinition({
       density: "DETAILS",
       // scheduledStart is OPTIONAL on the record — an unscheduled Work Order simply has none, and
       // the field renders an em dash rather than implying a date nobody set.
-      fieldIds: ["type", "scheduledStart", "locationId"],
+      fieldIds: ["type", "scheduledStart", "locationId", "assignedTechId"],
     }),
     makeSection({
       id: "workOrderRecordMeta",

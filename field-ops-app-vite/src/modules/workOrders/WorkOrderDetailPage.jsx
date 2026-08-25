@@ -18,6 +18,8 @@ import { workOrderRecordPage } from "../../metadata/definitions/workOrderPage.js
 import { workOrderEntity } from "../../metadata/definitions/workOrder.js";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
+import { useEquipmentDoc } from "../../hooks/useEquipment";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
 // (/service/work-orders/:workOrderId). Thin route wrapper: fetches
@@ -57,6 +59,10 @@ export default function WorkOrderDetailPage() {
   const { role, user } = useAuth();
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
+  // ONE read for the referenced unit, so the summary can name it rather than showing a key. Absent
+  // on legacy records and on INSTALL work: the hook returns nothing and the field renders as an
+  // unresolved reference, never as an id.
+  const { data: equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
   const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
@@ -112,6 +118,17 @@ export default function WorkOrderDetailPage() {
       return location?.name
         ? { state: REFERENCE_STATE.FOUND, label: location.name }
         : { state: REFERENCE_STATE.NOT_FOUND };
+    }
+    if (fieldId === "equipmentId") {
+      // The unit renders as what it IS -- name plus the disambiguating manufacturer / model /
+      // serial line, the same one the Equipment register uses. Duplicate names are legal, which is
+      // why the summary is part of the label rather than decoration.
+      if (!equipment) return { state: REFERENCE_STATE.NOT_FOUND };
+      const summary = equipmentSummary(equipment);
+      return {
+        state: REFERENCE_STATE.FOUND,
+        label: summary ? equipmentDisplayName(equipment) + " — " + summary : equipmentDisplayName(equipment),
+      };
     }
     if (fieldId === "assignedTechId") {
       // Delegated to the ONE technician vocabulary rather than a `find(...)?.name ?? id` written

@@ -216,16 +216,20 @@ describe("the limits are recorded as gaps rather than worked around", () => {
     expect(SCREEN).toMatch(/scheduled work only/);
   });
 
-  it("search narrowness and the missing equipment reference are registered", () => {
+  it("search narrowness is still registered", () => {
     expect(ids()).toContain("WORK_ORDER_TEXT_SEARCH_GAP");
-    expect(ids()).toContain("WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE");
   });
 
-  it("no Equipment column is declared, because the record has no such field", () => {
-    // types/workOrder.ts declares customerId and locationId and no equipment reference. A column
-    // fed from install close-outs would be empty for every OPEN work order — the rows a dispatcher
-    // is actually looking at.
-    expect(workOrderEntity.fields.some((f) => /equipment/i.test(f.id))).toBe(false);
+  it("the equipment gap is CLOSED — the record has its own reference now", () => {
+    // This used to assert the OPPOSITE, and it was right at the time: the record carried no
+    // equipment reference, and a column fed from install close-outs would have been empty for every
+    // OPEN work order. Slice 2 closed it by giving the record its own governed reference rather
+    // than deriving one.
+    expect(ids()).not.toContain("WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE");
+    const field = workOrderEntity.fields.find((f) => f.id === "equipmentId");
+    expect(field).toBeTruthy();
+    expect(field.type).toBe("REFERENCE");
+    expect(field.referenceTo).toBe("equipment");
   });
 });
 
