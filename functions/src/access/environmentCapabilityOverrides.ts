@@ -78,6 +78,25 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "inventory.cycleCount.submit",
   "inventory.cycleCount.reconcile",
   "inventory.cycleCount.cancel",
+  // SALES AGREEMENT (Slice 4). Eligible so the commercial chain is exercisable in sandbox AT ALL:
+  // WON -> Sales Order now REQUIRES an accepted Agreement, so without these the sales spine that is
+  // already active here is unreachable — correct and unusable.
+  //
+  // THIS LIST IS LOAD-BEARING, not documentation. The registry entry alone activates nothing: the
+  // resolver INTERSECTS the environment's declared overrides with this set, so a capability listed
+  // in config/environments.json and in ENVIRONMENT_ACTIVATION_REGISTRY but missing here stays
+  // denied. That is exactly what happened on first deploy — the four ids were in the registry and
+  // not here, every persona resolved false, and the live check caught what a CLI "Deploy complete!"
+  // never would have.
+  //
+  // Eligibility is not activation and neither is authorization: config/environments.json decides
+  // what an environment DOES activate, and a principal still needs a qualifying Role grant.
+  // Production stays triple-blocked — role-keyed resolution, no override key on any production
+  // entry, and a test asserting its absence.
+  "salesAgreement.create",
+  "salesAgreement.updateDraft",
+  "salesAgreement.accept",
+  "salesAgreement.read",
   // SCANNER PROMOTION. The six capabilities the scanner program added, made ELIGIBLE so the sandbox
   // can exercise them at all -- without these, put-away, pick, bin administration, returns intake
   // and every lookup read are permanently denied and there is nothing to validate.

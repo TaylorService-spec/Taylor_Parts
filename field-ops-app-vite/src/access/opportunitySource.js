@@ -45,7 +45,23 @@ export function mapOpportunityReadResult({ ok, payload, errorCode } = {}) {
       status,
       synthetic: false,
       opportunities: Array.isArray(payload.opportunities) ? payload.opportunities : [],
-      accountNameById: {},
+      // THE NAMES NOW ARRIVE, and this line is why they used to not.
+      //
+      // It read `accountNameById: {}` -- a hard-coded empty map with a comment explaining that names
+      // "resolve separately from the canonical Account authority". The reasoning was right and the
+      // resolution was never built, so the Customer column of the Sales pipeline rendered an em dash
+      // for every Opportunity in the product. The comment described an intention as though it were a
+      // mechanism.
+      //
+      // listOpportunityContext now resolves them server-side, under the server's authority, bounded
+      // by DISTINCT accountId (opportunityReadService.ts). Still no Customer PII on the Opportunity
+      // projection -- one display name per account, resolved beside it.
+      //
+      // Defaulted rather than assumed: an older backend that does not send the map yields {}, which
+      // is exactly today's behaviour, so a client ahead of its functions degrades to the em dash
+      // instead of throwing.
+      accountNameById:
+        payload.accountNameById && typeof payload.accountNameById === "object" ? payload.accountNameById : {},
       error: status === "degraded" ? "degraded" : null,
     };
   }

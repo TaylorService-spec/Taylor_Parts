@@ -2,13 +2,13 @@
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
  "environment": {
   "projectId": "eos-platform-sandbox",
-  "activationOverrides": 35
+  "activationOverrides": 39
  },
  "catalog": {
   "total": 124,
   "globallyActive": 72,
-  "activeInThisEnvironment": 107,
-  "inactiveInThisEnvironment": 17
+  "activeInThisEnvironment": 111,
+  "inactiveInThisEnvironment": 13
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -49,10 +49,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 1994,
-  "fromCompatibilityRoleOnly": 1224,
+  "operableHoldingsTotal": 2138,
+  "fromCompatibilityRoleOnly": 1336,
   "fromGovernedRoleOnly": 403,
-  "fromBoth": 367,
+  "fromBoth": 399,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -429,7 +429,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 124,
-   "operableCount": 107,
+   "operableCount": 111,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
@@ -478,7 +478,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 81,
-   "operableCount": 77,
+   "operableCount": 81,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -520,7 +520,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 81,
-   "operableCount": 77,
+   "operableCount": 81,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -562,7 +562,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 74,
-   "operableCount": 70,
+   "operableCount": 74,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -605,7 +605,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 74,
-   "operableCount": 70,
+   "operableCount": 74,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -646,7 +646,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -677,7 +677,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -706,7 +706,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -731,7 +731,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -756,7 +756,7 @@
    "businessRoles": [],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [
     {
      "workstream": "DISPATCH",
@@ -783,7 +783,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 47,
-   "operableCount": 43,
+   "operableCount": 47,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -818,7 +818,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 47,
-   "operableCount": 43,
+   "operableCount": 47,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1102,7 +1102,7 @@
     "inventoryCatalogAdministrator"
    ],
    "grantedCount": 51,
-   "operableCount": 47,
+   "operableCount": 51,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",
@@ -1141,7 +1141,7 @@
     "inventoryCatalogAdministrator"
    ],
    "grantedCount": 51,
-   "operableCount": 47,
+   "operableCount": 51,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",
@@ -1181,7 +1181,7 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 52,
-   "operableCount": 48,
+   "operableCount": 52,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1225,7 +1225,7 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 52,
-   "operableCount": 48,
+   "operableCount": 52,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1269,7 +1269,7 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 52,
-   "operableCount": 48,
+   "operableCount": 52,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1313,7 +1313,7 @@
     "inventoryCycleCountCounter"
    ],
    "grantedCount": 52,
-   "operableCount": 48,
+   "operableCount": 52,
    "assignments": [
     {
      "workstream": "PARTS_LOOKUP",
@@ -1357,7 +1357,7 @@
     "inventoryBinAdministrator"
    ],
    "grantedCount": 53,
-   "operableCount": 49,
+   "operableCount": 53,
    "assignments": [
     {
      "workstream": "TRANSFERS",
@@ -1397,7 +1397,7 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 48,
-   "operableCount": 44,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
@@ -1438,7 +1438,7 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 48,
-   "operableCount": 44,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
@@ -1479,7 +1479,7 @@
     "inventoryPutAwayOperator"
    ],
    "grantedCount": 48,
-   "operableCount": 44,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "PUT_AWAY",
@@ -1517,7 +1517,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 45,
-   "operableCount": 41,
+   "operableCount": 45,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -1550,7 +1550,7 @@
     "crmActivityContributor"
    ],
    "grantedCount": 46,
-   "operableCount": 42,
+   "operableCount": 46,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -1582,7 +1582,7 @@
     "crmActivityContributor"
    ],
    "grantedCount": 46,
-   "operableCount": 42,
+   "operableCount": 46,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -1614,7 +1614,7 @@
     "crmActivityContributor"
    ],
    "grantedCount": 46,
-   "operableCount": 42,
+   "operableCount": 46,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -1646,7 +1646,7 @@
     "crmActivityContributor"
    ],
    "grantedCount": 46,
-   "operableCount": 42,
+   "operableCount": 46,
    "assignments": [
     {
      "workstream": "CRM_SALES",
@@ -1676,7 +1676,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 45,
-   "operableCount": 41,
+   "operableCount": 45,
    "assignments": [
     {
      "workstream": "PROCUREMENT",
@@ -1708,7 +1708,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 83,
-   "operableCount": 79,
+   "operableCount": 83,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1746,7 +1746,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 83,
-   "operableCount": 79,
+   "operableCount": 83,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1784,7 +1784,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 76,
-   "operableCount": 72,
+   "operableCount": 76,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1822,7 +1822,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 42,
-   "operableCount": 38,
+   "operableCount": 42,
    "assignments": [],
    "overPrivilegedFor": [
     "CRM_SALES",
@@ -1847,7 +1847,7 @@
     "inventoryTransferOperator"
    ],
    "grantedCount": 50,
-   "operableCount": 46,
+   "operableCount": 50,
    "assignments": [
     {
      "workstream": "TRANSFERS",
@@ -1886,7 +1886,7 @@
     "inventoryReturnsIntakeClerk"
    ],
    "grantedCount": 48,
-   "operableCount": 44,
+   "operableCount": 48,
    "assignments": [
     {
      "workstream": "RETURNS",
@@ -1924,7 +1924,7 @@
     "inventoryBinAdministrator"
    ],
    "grantedCount": 49,
-   "operableCount": 45,
+   "operableCount": 49,
    "assignments": [
     {
      "workstream": "BIN_ADMINISTRATION",
@@ -1959,7 +1959,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 45,
-   "operableCount": 41,
+   "operableCount": 45,
    "assignments": [
     {
      "workstream": "PROCUREMENT",
