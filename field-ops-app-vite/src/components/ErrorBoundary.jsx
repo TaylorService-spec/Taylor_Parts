@@ -26,9 +26,10 @@ import { buildCrashDiagnostic, diagnosticsVisible, formatCrashSummary } from "..
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, resetKey: 0, retryCount: 0 };
+    this.state = { hasError: false, resetKey: 0, retryCount: 0, diagnostic: null, copied: false };
     this.handleRetry = this.handleRetry.bind(this);
     this.handleReload = this.handleReload.bind(this);
+    this.handleCopy = this.handleCopy.bind(this);
   }
 
   static getDerivedStateFromError() {
@@ -38,8 +39,44 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    // The developer channel keeps full fidelity, including the component stack.
+    // A CRASH NOBODY CAN DESCRIBE IS A RUMOUR, NOT A BUG REPORT.
+    //
+    // This logged the error and the component stack and nothing else. A user hit this boundary in
+    // sandbox twice while the automated harness — 63 routes, 15 driver accounts, 12 real personas,
+    // a signed-out pass, an interaction suite and a throttled race suite — came back clean every
+    // time. The occurrence that actually happened carried no route, no build, no persona and no
+    // stack, so there was nothing to act on.
+    //
+    // The diagnostic is BOUNDED BY CONSTRUCTION (see crashDiagnostics.js): where the user was, where
+    // they came from, which build, what threw, and the component stack. No credentials, no tokens,
+    // no request bodies, no form contents, no customer text — never collected, not filtered later.
+    let diagnostic = null;
+    try {
+      diagnostic = buildCrashDiagnostic(error, info?.componentStack ?? info);
+      // The summary first, so a screenshot of the console is already actionable.
+      console.error(formatCrashSummary(diagnostic));
+      console.error("UI Crash diagnostic:", diagnostic);
+    } catch (diagnosticError) {
+      // The diagnostic must never become the reason a crash screen cannot render.
+      console.error("UI Crash: diagnostic capture failed", diagnosticError);
+    }
+    // Unchanged, and kept deliberately: the raw error and component stack in the developer channel.
     console.error("UI Crash:", error, info?.componentStack ?? info);
+    this.setState({ diagnostic });
+  }
+
+  async handleCopy() {
+    const { diagnostic } = this.state;
+    if (!diagnostic) return;
+    const text = JSON.stringify(diagnostic, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // A denied clipboard is not worth a second error screen — the payload is already in the
+      // console, and saying where to find it is more useful than a dead button.
+      console.error("UI Crash diagnostic (clipboard unavailable, copy from here):\n" + text);
+    }
+    this.setState({ copied: true });
   }
 
   handleRetry() {
@@ -49,6 +86,10 @@ export default class ErrorBoundary extends React.Component {
       hasError: false,
       resetKey: s.resetKey + 1,
       retryCount: s.retryCount + 1,
+      // A retry that crashes again is a NEW occurrence and gets a new id. Carrying the previous
+      // diagnostic forward would let somebody report the first crash while looking at the second.
+      diagnostic: null,
+      copied: false,
     }));
   }
 
