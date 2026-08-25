@@ -5,8 +5,12 @@
 // equal to that destination, so a write is impossible by accidental default
 // (docs/engineering/governed-migration-safety-pattern.md, gates 2 and 3).
 //
-//   node scripts/migrateWorkOrderComplaintReferences.mjs                       # dry run
-//   node scripts/migrateWorkOrderComplaintReferences.mjs \
+// LIVES IN functions/scripts/ because that is where firebase-admin resolves. Every Admin-SDK script
+// in this repository lives there (backfillOperationalNumbering, migrateEquipmentModelIdentity, ...);
+// a root-level copy cannot import the package at all.
+//
+//   node functions/scripts/migrateWorkOrderComplaintReferences.mjs               # dry run
+//   node functions/scripts/migrateWorkOrderComplaintReferences.mjs \
 //        --apply --project eos-platform-sandbox --confirm eos-platform-sandbox/(default) \
 //        --plan <fingerprint-from-the-dry-run>
 //
@@ -22,7 +26,7 @@ import {
   planWorkOrderComplaintCorrection,
   MAX_MIGRATED_WORK_ORDERS,
   LEGACY_COMPLAINT_PATTERN,
-} from "../functions/lib/serviceMigrations/workOrderComplaintReferenceMigration.js";
+} from "../lib/serviceMigrations/workOrderComplaintReferenceMigration.js";
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
