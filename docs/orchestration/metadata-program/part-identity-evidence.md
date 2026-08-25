@@ -132,8 +132,9 @@ confirm `partId` must stay inert precisely so the number can move around it.
 
 **Yes — every observed row has them equal**, but the production evidence that is often read as saying
 `internalPartNumber` is *absent* actually only says it wasn't captured by one specific read-back's
-projection. `docs/audits/inv-convergence-b/production-parts-export.csv` marks `internalPartNumber` as
-`NOT_EXPOSED_IN_SOURCE` for all 190 rows, and `docs/audits/inv-convergence-b/evidence-review.md` §2.1
+projection. `docs/audits/inv-convergence-b/production-parts-export.evidence.json` records that
+`internalPartNumber` was `NOT_EXPOSED_IN_SOURCE` for all 190 rows (the read-back itself has been
+removed from the repository as operational-provenance content), and `docs/audits/inv-convergence-b/evidence-review.md` §2.1
 explains why: the source read (`postwrite-analyzer/row-results.json`) exposed `partId, name, stockingUnit,
 status` only — `internalPartNumber` and `category` were outside that analyzer's projected fields, not
 outside the stored document.
@@ -208,7 +209,8 @@ should be recorded as its own ledger item rather than folded into this identity 
 
 - Whether any Part in the live production `parts` collection today actually has `internalPartNumber !=
   partId` was not independently verified by a fresh read — the closest evidence
-  (`production-parts-export.csv`) explicitly did not capture that column. Every code path examined (write,
+  (`production-parts-export.evidence.json`, describing the removed read-back) records that the column
+  was explicitly not captured. Every code path examined (write,
   migration, seed) is consistent with the two always being equal in practice so far, but "not established"
   by direct production read for this audit.
 - Whether any deployed UI screen other than the four named in §5 sources a part-identifier string from

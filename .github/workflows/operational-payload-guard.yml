@@ -1,0 +1,42 @@
+name: Operational Payload Guard
+
+# Refuses committed files that are operational record snapshots.
+#
+# It exists because a production Firestore `parts` read-back was committed at
+# docs/audits/inv-convergence-b/production-parts-export.csv and sat there through several audits.
+# Its row values turned out to be seeded test data, so nothing was exposed -- but the artifact's
+# PROVENANCE was a production read, and the next one will not announce itself so clearly.
+#
+# The check reads SHAPE, not filenames: a header of record-identity fields with many rows beneath
+# it. A filename check catches the honest cases and misses every careless one, because the name is
+# exactly what survives a mistake untouched.
+#
+# Prose is never inspected. An audit narrative that discusses an export by name is doing its job.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  payload-guard:
+    name: No committed operational record snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Guard contract tests
+        run: node --test scripts/operationalPayloadGuard.test.mjs
+
+      - name: Scan the tracked repository
+        run: node scripts/operationalPayloadGuard.mjs

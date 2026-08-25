@@ -64,3 +64,34 @@ field-ops-app-vite/.certification/
 .release.log
 .m.log
 .emu.log
+
+# ---------------------------------------------------------------------------------------------
+# Local operator payloads (root-anchored)
+#
+# These sit untracked at the repository root on operator machines and are NOT repository content.
+# None of them was ignored before, so `git add -A` would have committed them -- which is how a
+# production `parts` read-back ended up under docs/audits/ in the first place.
+#
+# Every pattern below is anchored with a leading slash. `conflicts.csv` and `invalid-rows.csv` are
+# legitimately committed under docs/audits/, and an unanchored rule would silently shadow them.
+#
+# Ignoring is not deleting. Migration evidence, audit decks and role matrices may carry business or
+# legal value, and removing them is an owner decision.
+# ---------------------------------------------------------------------------------------------
+
+# Generated: emulator and run logs, and the bundles produced beside them.
+/firestore-debug.log
+/firestore-debug.*.log
+/*-terminal.log
+/inventory-effects-production-detection-*
+/*.tar.gz
+/*.tar.gz.sha256
+/*.tar.gz(*).sha256
+
+# Operator evidence and working documents. Untracked deliberately; owner-owned.
+/Taylor-Migration-Evidence/
+/Sandbox_CRM_and_Role_Audit_*/
+/Sandbox_CRM_and_Role_Audit_*.ndjson
+/Users/
+/Hierarchy.xlsx
+/Do not ask me to inspect Firestore.docx
