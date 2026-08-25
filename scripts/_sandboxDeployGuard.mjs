@@ -15,7 +15,11 @@ const TARGET_PROJECT = "eos-platform-sandbox";
 const FORBIDDEN_PROJECT = "taylor-parts";
 
 const env = resolveEnvironment(registry, TARGET_ENV);
-const fail = (m) => { console.error("ABORT:", m); process.exit(1); };
+// EXIT 3 IS "REFUSED BEFORE DEPLOYING", distinct from a mid-run failure. This guard runs before any
+// deploy step, so nothing has shipped when it fires -- and the operator wrapper says so rather than
+// warning about functions that may already have updated.
+const REFUSED_BEFORE_DEPLOY = 3;
+const fail = (m) => { console.error("ABORT:", m); process.exit(REFUSED_BEFORE_DEPLOY); };
 
 if (isProductionEnvironment(env)) fail(`role is production (${env.role})`);
 if (env.role === "production") fail("role === production");

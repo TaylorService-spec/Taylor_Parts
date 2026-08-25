@@ -97,7 +97,11 @@ test("success is printed only on exit 0", () => {
   const failIdx = wrapperSrc.indexOf("SANDBOX REFRESH FAILED\"");
   const okIdx = wrapperSrc.lastIndexOf("SANDBOX REFRESH COMPLETE");
   assert.ok(failIdx < okIdx, "the failure branch must precede the success banner");
-  assert.match(wrapperSrc, /if \(\$code -ne 0\)[\s\S]{0,600}?exit \$code/, "a nonzero code must exit before success");
+  // Asserted structurally rather than by character distance. The earlier version used a 600-char
+  // window and broke the moment the failure branch grew a case — a test that fails because correct
+  // code got longer is measuring the wrong thing.
+  const failBlock = wrapperSrc.slice(wrapperSrc.indexOf("if ($code -ne 0)"), okIdx);
+  assert.match(failBlock, /exit \$code/, "the failure branch must exit before reaching the success banner");
 });
 
 // ═════════════════════════════════════════ behaviour, against a STUB
@@ -123,6 +127,18 @@ test("A NONZERO CHILD EXIT FAILS THE COMMAND, with the real code", { skip: !powe
     assert.match(out, /SANDBOX REFRESH FAILED/);
     assert.match(out, /Exit code: 37/);
     assert.doesNotMatch(out, /SANDBOX REFRESH COMPLETE/, "success must never print after a failure");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("EXIT 3 SAYS NOTHING WAS DEPLOYED, because a pre-flight guard refused", { skip: !powershellAvailable }, () => {
+  // A guard firing at step 0/5 has shipped nothing. Warning about functions that may already have
+  // updated sends the operator hunting for a partial deploy that never happened.
+  const root = stubTree({ exitCode: 3 });
+  try {
+    const { code, out } = runWrapper(root);
+    assert.equal(code, 3);
+    assert.match(out, /NOTHING WAS DEPLOYED/i);
+    assert.doesNotMatch(out, /may already have deployed/i, "a refusal must not imply a partial deploy");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

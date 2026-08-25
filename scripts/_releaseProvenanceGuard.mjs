@@ -17,6 +17,7 @@ const verdict = evaluateReleaseProvenance(state, { releaseBranch: DEFAULT_RELEAS
 for (const d of verdict.detail) console.log(`  ${d}`);
 if (!verdict.ok) {
   console.error(`ABORT: release provenance refused — ${verdict.failures.join(", ")}`);
-  process.exit(1);
+  // 3 = refused before any deploy step ran. See _sandboxDeployGuard.mjs.
+  process.exit(3);
 }
 console.log(`PROVENANCE OK: HEAD ${state.head.slice(0, 8)} is origin/${DEFAULT_RELEASE_BRANCH}${allowCommit ? " (explicitly allowed)" : ""}`);

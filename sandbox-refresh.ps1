@@ -85,10 +85,18 @@ if ($code -ne 0) {
     Write-Host "SANDBOX REFRESH FAILED"
     Write-Host "Exit code: $code"
     Write-Host "========================================"
-    # A half-finished deploy is the dangerous outcome: some functions may already have updated.
-    # Re-running is safe (every step is idempotent), but read WHICH batch failed first.
-    Write-Host "Some functions may already have deployed. Check which step failed above." -ForegroundColor Red
-    Write-Host "Every step is idempotent, so re-running is safe." -ForegroundColor Red
+    # EXIT 3 MEANS A GUARD REFUSED BEFORE ANY DEPLOY STEP RAN, so nothing shipped. Saying "some
+    # functions may already have deployed" there sends the operator hunting for a partial deploy
+    # that never happened -- the opposite of the reassurance it was meant to give.
+    if ($code -eq 3) {
+        Write-Host "NOTHING WAS DEPLOYED. A pre-flight guard refused the release." -ForegroundColor Yellow
+        Write-Host "Fix what the ABORT above names, then re-run." -ForegroundColor Yellow
+    } else {
+        # A half-finished deploy IS the dangerous outcome: some functions may already have updated.
+        # Re-running is safe (every step is idempotent), but read WHICH batch failed first.
+        Write-Host "Some functions may already have deployed. Check which step failed above." -ForegroundColor Red
+        Write-Host "Every step is idempotent, so re-running is safe." -ForegroundColor Red
+    }
     exit $code
 }
 
