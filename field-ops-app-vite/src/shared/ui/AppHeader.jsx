@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
@@ -10,7 +10,11 @@ import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
-import AskEOSPanel from "../../ai/AskEOSPanel.jsx";
+
+// Keep the repository-AI transport out of AppHeader's baseline dependency graph.
+// Offline shell/view-model tests import AppHeader without Firebase transport available,
+// and normal users should not pay to load Ask EOS unless an admin opens it.
+const AskEOSPanel = lazy(() => import("../../ai/AskEOSPanel.jsx"));
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -168,7 +172,11 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
           <Button variant="tertiary" onClick={logout}>Logout</Button>
         </div>
       </div>
-      {askEOSOpen && <AskEOSPanel onClose={() => setAskEOSOpen(false)} />}
+      {askEOSOpen && (
+        <Suspense fallback={<p className="ask-eos-status" role="status">Loading Ask EOS…</p>}>
+          <AskEOSPanel onClose={() => setAskEOSOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }
