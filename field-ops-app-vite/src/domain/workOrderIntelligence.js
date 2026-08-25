@@ -31,6 +31,8 @@ export const NO_INSIGHT_REASON = Object.freeze({
   NO_ACTIONABLE_SIGNAL: "NO_ACTIONABLE_SIGNAL",
   RECORD_CLOSED: "RECORD_CLOSED",
   NO_GOVERNED_PARTS_PLAN: "NO_GOVERNED_PARTS_PLAN",
+  READINESS_NOT_ASSEMBLED: "READINESS_NOT_ASSEMBLED",
+  READINESS_UNKNOWN: "READINESS_UNKNOWN",
   PARTS_READY: "PARTS_READY",
 });
 
@@ -51,7 +53,6 @@ export function buildWorkOrderIntelligenceContext(
   const reference = typeof workOrder.woNumber === "string" && workOrder.woNumber.trim()
     ? workOrder.woNumber.trim()
     : null;
-
   const readiness = sanitizeReadinessProjection(partsReadiness);
 
   return {
@@ -80,16 +81,12 @@ export function buildWorkOrderIntelligenceContext(
 /**
  * First North Star intelligence proof: parts readiness.
  *
- * The projection authority already exists in `workOrderPartsReadiness.js`. This function does not
- * recompute it. It explains one of four truthful states:
+ * Unknown is NOT attention. The Work Order already has an honest readiness state in its parts table;
+ * repeating "we do not know" in the attention band would violate one-fact-one-rendering and turn a
+ * missing capability into noise. The intelligence layer speaks only when the canonical projection
+ * proves an actionable ATTENTION condition. READY and UNKNOWN are deliberately quiet.
  *
- * - no projection supplied -> readiness cannot be confirmed;
- * - UNKNOWN -> readiness still cannot be confirmed and degraded sources are named;
- * - ATTENTION -> the canonical projection proves at least one line needs attention;
- * - READY -> stay silent. A clean band is the North Star's clean signal.
- *
- * The full structured object is future-model-ready, while `attentionItem` is the deterministic
- * rendering today's Work Order page can consume. It is NOT AI and must never be labelled as AI.
+ * This remains deterministic and must never be labelled as AI in the UI.
  */
 export function deriveWorkOrderIntelligence(
   workOrder,
@@ -97,10 +94,7 @@ export function deriveWorkOrderIntelligence(
 ) {
   const context = buildWorkOrderIntelligenceContext(workOrder, { partsPlan, partsReadiness });
   if (!context) return noInsight(NO_INSIGHT_REASON.NO_ACTIONABLE_SIGNAL, null);
-
-  if (isClosed(context.subject.status)) {
-    return noInsight(NO_INSIGHT_REASON.RECORD_CLOSED, context);
-  }
+  if (isClosed(context.subject.status)) return noInsight(NO_INSIGHT_REASON.RECORD_CLOSED, context);
 
   if (context.parts.plannedLineCount === 0) {
     // Existing North Star attention owns "No parts planned". Do not restate it as intelligence.
@@ -108,57 +102,14 @@ export function deriveWorkOrderIntelligence(
   }
 
   const projection = context.parts.readiness;
-  if (!projection) return readinessUnknownSignal(context, null);
-
-  if (projection.jobReadiness === "READY") {
-    return noInsight(NO_INSIGHT_REASON.PARTS_READY, context);
-  }
-
-  if (projection.jobReadiness === "UNKNOWN") {
-    return readinessUnknownSignal(context, projection);
-  }
-
-  if (projection.jobReadiness === "ATTENTION") {
-    return readinessAttentionSignal(context, projection);
-  }
+  if (!projection) return noInsight(NO_INSIGHT_REASON.READINESS_NOT_ASSEMBLED, context);
+  if (projection.jobReadiness === "READY") return noInsight(NO_INSIGHT_REASON.PARTS_READY, context);
+  if (projection.jobReadiness === "UNKNOWN") return noInsight(NO_INSIGHT_REASON.READINESS_UNKNOWN, context);
+  if (projection.jobReadiness === "ATTENTION") return readinessAttentionSignal(context, projection);
 
   // NO_PLAN should already be impossible when the governed plan has lines. Any future/unknown value
   // stays silent rather than being interpreted optimistically.
   return noInsight(NO_INSIGHT_REASON.NO_ACTIONABLE_SIGNAL, context);
-}
-
-function readinessUnknownSignal(context, projection) {
-  const quantityText = plannedQuantityText(context.parts);
-  const degraded = projection?.degraded?.length ? projection.degraded.join(", ") : null;
-
-  return {
-    speak: true,
-    origin: INTELLIGENCE_ORIGIN.DETERMINISTIC,
-    key: "parts-readiness-unverified",
-    context,
-    observedFact: `${quantityText} are recorded on this work order.`,
-    interpretation: degraded
-      ? `The canonical readiness projection cannot confirm coverage because these sources are unavailable or incomplete: ${degraded}.`
-      : "A canonical parts-readiness projection has not been assembled for this work order yet.",
-    businessConsequence: "Parts readiness cannot be confirmed before dispatch from the evidence currently assembled for this work order.",
-    confidence: {
-      level: CONFIDENCE.HIGH,
-      basis: "The statement is limited to the governed parts plan and the readiness projection's explicit UNKNOWN or unavailable state.",
-    },
-    recommendedAction: null,
-    authority: {
-      state: AUTHORITY_STATE.NOT_APPLICABLE,
-      action: null,
-      reason: "No governed readiness action is proposed until the evidence identifies a specific actionable condition.",
-    },
-    evidence: evidenceFor(context, projection),
-    outcome: null,
-    attentionItem: {
-      key: "parts-readiness-unverified",
-      severity: "ATTENTION",
-      fact: `Parts readiness cannot be confirmed — ${quantityText}${degraded ? `; incomplete sources: ${degraded}` : "; no canonical readiness projection is assembled yet"}.`,
-    },
-  };
 }
 
 function readinessAttentionSignal(context, projection) {
@@ -228,7 +179,7 @@ function sanitizeReadinessProjection(projection) {
 }
 
 function evidenceFor(context, projection) {
-  const evidence = [
+  return [
     {
       kind: "WORK_ORDER_PARTS_PLAN",
       subjectReference: context.subject.reference,
@@ -238,10 +189,7 @@ function evidenceFor(context, projection) {
         plannedQuantity: context.parts.plannedQuantity,
       },
     },
-  ];
-
-  if (projection) {
-    evidence.push({
+    {
       kind: "WORK_ORDER_PARTS_READINESS",
       subjectReference: context.subject.reference,
       source: "workOrderPartsReadiness",
@@ -250,10 +198,8 @@ function evidenceFor(context, projection) {
         counts: projection.counts,
         degraded: projection.degraded,
       },
-    });
-  }
-
-  return evidence;
+    },
+  ];
 }
 
 function noInsight(reason, context) {
@@ -272,13 +218,6 @@ function noInsight(reason, context) {
     outcome: null,
     attentionItem: null,
   };
-}
-
-function plannedQuantityText(parts) {
-  const lineWord = parts.plannedLineCount === 1 ? "part" : "parts";
-  return parts.plannedQuantity > 0
-    ? `${parts.plannedQuantity} planned unit${parts.plannedQuantity === 1 ? "" : "s"} across ${parts.plannedLineCount} ${lineWord}`
-    : `${parts.plannedLineCount} planned ${lineWord}`;
 }
 
 function isClosed(status) {
