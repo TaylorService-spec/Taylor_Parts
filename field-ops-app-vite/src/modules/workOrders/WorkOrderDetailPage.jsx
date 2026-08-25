@@ -66,10 +66,9 @@ import {
 // ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
 //
 // No ETA, no arrival confidence, no first-visit-fix percentage, no "3 repairs in 12 months", no
-// suggestion band. Those belong to `North Star - Work Order.dc.html`, whose own header states that
-// none of the services behind them exist. A number that looks computed and is not is the single most
-// damaging thing an operations system can render, so the composition leaves the space and the
-// numbers stay unwritten until something can compute them.
+// separate suggestion panel. Governed intelligence is allowed to contribute to the existing
+// AttentionBand only when it has a substantiated signal. Until a trusted readiness assembler exists,
+// the intelligence contract returns speak:false and renders nothing.
 //
 // ════════════════════ ROUTE GATE (unchanged) ════════════════════
 //
@@ -102,7 +101,7 @@ export default function WorkOrderDetailPage() {
   );
   // Intelligence joins the SAME attention channel; it never creates a second copilot/suggestion band.
   // Until a trusted readiness assembler supplies the canonical projection, deriveWorkOrderIntelligence
-  // returns speak:false and this composition remains byte-for-byte quiet to the user.
+  // returns speak:false and this composition remains quiet to the user.
   const intelligence = useMemo(
     () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan }),
     [workOrder, plan],
@@ -133,7 +132,6 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  // A successful read that found nothing is EMPTY, and stays distinct from the failed read above.
   if (!workOrder) {
     return (
       <div className="ns-page">
@@ -146,8 +144,6 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  // REFERENCES BECOME NAMES. Where a read failed the page states that above; the field itself says
-  // the reference did not resolve rather than printing the key (DECISIONS #106).
   const resolveWorkOrderReference = (fieldId, id) => {
     if (fieldId === "customerId") {
       return account?.name ? { state: REFERENCE_STATE.FOUND, label: account.name } : { state: REFERENCE_STATE.NOT_FOUND };
@@ -177,9 +173,6 @@ export default function WorkOrderDetailPage() {
     ? [equipmentDisplayName(equipment), equipmentSummary(equipment)].filter(Boolean).join(" · ")
     : null;
   const window = formatWindow(workOrder.scheduledStart, workOrder.scheduledEnd);
-
-  // THE KICKER: object type · governed reference. Priority rides here because the concept puts
-  // "Work Order · Repair · P2 High" above the title.
   const kicker = ["Work Order", titleCase(workOrder.type), workOrderPriorityText(workOrder.priority)]
     .filter(Boolean)
     .join(" · ");
@@ -209,23 +202,16 @@ export default function WorkOrderDetailPage() {
           { key: "tech", label: "Tech", value: techName ?? (workOrder.scheduledTechId ? "reference unavailable" : "Unassigned") },
           { key: "window", label: "Window", value: window },
         ]}
-        actions={
-          // The governed action cluster, unchanged. Legality is decided by getAllowedActions and the
-          // engine; this file neither widens nor narrows it.
-          <WorkOrderActions workOrder={workOrder} role={role} technicians={technicians} showStatus={false} />
-        }
+        actions={<WorkOrderActions workOrder={workOrder} role={role} technicians={technicians} showStatus={false} />}
       />
 
-      {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent. */}
       <LifecycleChevrons steps={spine.steps} terminal={spine.terminal} ariaLabel="Work order lifecycle" />
       {spine.unrecognised ? (
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
       ) : null}
 
-      {/* ATTENTION BEFORE WORK. Existing rules + governed intelligence share ONE band. */}
       <AttentionBand items={attention} />
 
-      {/* Read failures are stated ONCE, here, rather than each section inventing its own blank. */}
       {accountError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={accountError} /> : null}
       {locationError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={locationError} /> : null}
       {techniciansError ? (
@@ -270,9 +256,6 @@ export default function WorkOrderDetailPage() {
                             {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
                           </td>
                           <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
-                          {/* THE HONEST READINESS. The concept shows "✓ On truck"; EOS cannot see a
-                              truck, and a fabricated tick would send a technician to a job without
-                              the part. */}
                           <td><span className="ns-state--na">Not available</span></td>
                         </tr>
                       ))}
@@ -287,8 +270,6 @@ export default function WorkOrderDetailPage() {
             )}
           </RuledSection>
 
-          {/* The parts plan EDITOR keeps its panel: it is an editor, which is the one context the
-              ruled panel is admitted for (Grammar R13). */}
           <RuledSection title="Edit parts plan" panel>
             <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
           </RuledSection>
@@ -324,7 +305,6 @@ export default function WorkOrderDetailPage() {
                   {edge.state === EDGE.RESOLVED ? (
                     <span>{edge.reference}</span>
                   ) : edge.state === EDGE.UNRESOLVED ? (
-                    // Names the entity, states the absence. Never the document id.
                     <span className="ns-lineage__unresolved">Linked — reference unavailable</span>
                   ) : (
                     <span className="ns-lineage__unresolved">Not linked</span>
@@ -334,14 +314,6 @@ export default function WorkOrderDetailPage() {
             </ul>
           </RuledSection>
 
-          {/* RECORD DETAIL — the shared metadata shell, in the rail where the concept puts it.
-              This was briefly hand-rolled here as three rows, which was a second derivation of
-              facts the metadata layer already owns: exactly the NS-P4 violation this whole
-              implementation exists to remove, introduced while implementing it. The conformance
-              suite caught it, which is what conformance suites are for.
-
-              The shell also carries the reference RESOLVERS, so customer, site, unit and technician
-              render as what they are and never as stored ids (DECISIONS #106). */}
           <RuledSection title="Record">
             <MetadataRecordPage
               definition={workOrderRecordPageRailSubset}
@@ -357,7 +329,6 @@ export default function WorkOrderDetailPage() {
   );
 }
 
-/** The recorded events, in the same vocabulary the rest of the product already uses. */
 function WorkOrderTimeline({ workOrder }) {
   const events = useMemo(() => buildTimeline([workOrder]) ?? [], [workOrder]);
   if (events.length === 0) {
@@ -367,12 +338,6 @@ function WorkOrderTimeline({ workOrder }) {
     <ul className="ns-lineage">
       {events.map((e, i) => (
         <li className="ns-lineage__row" key={e.id ?? `event-${i}`}>
-          {/* THE FIELD IS `timestamp`, NOT `at`.
-              Reading `e.at` gave every row an undefined time, which displayTimestamp correctly
-              renders as "Unknown" -- so the timeline showed a column of Unknowns and looked like a
-              data problem in the Work Order rather than a typo in this component. The honest
-              fallback did its job and hid my bug behind a truthful word, which is exactly how a
-              good absence-state can mask a real defect. */}
           <span className="ns-lineage__label">{formatClockTime(e.timestamp)}</span>
           <span>{describeEvent(e)}</span>
         </li>
@@ -381,7 +346,6 @@ function WorkOrderTimeline({ workOrder }) {
   );
 }
 
-/** Enum-shaped vocabulary rendered as a word (R04). Unknown returns null rather than a guess. */
 function titleCase(v) {
   if (typeof v !== "string" || !v.trim()) return null;
   return v.trim().toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
