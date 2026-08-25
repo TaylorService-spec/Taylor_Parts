@@ -150,6 +150,19 @@ test("the boundary renders the id and the copy control, and only outside product
   assert.match(src, /diagnosticsVisible\(\)/, "the control is gated on the environment");
   // The original developer channel must survive — it is what every existing report relies on.
   assert.match(src, /console\.error\("UI Crash:", error/);
+
+  // THE BOUNDARY MUST ACTUALLY BUILD THE DIAGNOSTIC, not merely import the builder.
+  //
+  // It did exactly that for one deploy: the import and the render branch shipped while the
+  // componentDidCatch edit silently failed to apply, so `diagnostic` was always null, the crash id
+  // never rendered, and the copy control never appeared. Importing a function is not calling it —
+  // and the assertions here passed throughout, because they only asked whether the file MENTIONED
+  // the right things.
+  assert.match(src, /componentDidCatch\([\s\S]*?buildCrashDiagnostic\(/, "componentDidCatch must build the diagnostic");
+  assert.match(src, /componentDidCatch\([\s\S]*?this\.setState\(\{ diagnostic \}\)/, "and store it, or nothing can render it");
+  assert.match(src, /diagnostic: null, copied: false/, "the constructor must seed both fields");
+  assert.match(src, /this\.handleCopy = this\.handleCopy\.bind\(this\)/, "the copy handler must be bound");
+  assert.match(src, /async handleCopy\(\)/, "and must exist");
   // And the boundary must not put the stack itself on screen.
   assert.doesNotMatch(src, /\{diagnostic\.error\.stack\}/);
   assert.doesNotMatch(src, /\{diagnostic\.componentStack\}/);
