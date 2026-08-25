@@ -72,8 +72,28 @@ function makeOpportunity(overrides = {}) {
   };
 }
 
+// AN ACCEPTED AGREEMENT IS PART OF WHAT A CONVERTIBLE OPPORTUNITY IS.
+//
+// The Opportunity's own lines carry no price -- deriving orders from them is what produced the
+// unpriced CONFIRMED records. Prices come from the ACCEPTED Agreement now, so a fixture that seeds
+// only an Opportunity is describing a state that can no longer be converted. Pass `agreement: null`
+// for the cases that assert that refusal.
+async function seedAgreement(opportunityId, overrides = {}) {
+  await db.collection("sales_agreements").doc(`agr-${opportunityId}`).set({
+    accountId: "acct-1",
+    ownerEmployeeId: "emp-owner",
+    sourceOpportunityId: opportunityId,
+    state: "ACCEPTED",
+    currency: "USD",
+    lines: [{ lineId: "l1", kind: "PART", ref: "PART-1", quantity: 3, unitPrice: 4200, extendedMinor: 12600 }],
+    ...overrides,
+  });
+}
+
 async function seedOpportunity(id, overrides = {}) {
-  await db.collection("opportunities").doc(id).set(makeOpportunity(overrides));
+  const { agreement, ...oppOverrides } = overrides;
+  await db.collection("opportunities").doc(id).set(makeOpportunity(oppOverrides));
+  if (agreement !== null) await seedAgreement(id, agreement ?? {});
 }
 
 async function runCore(input) {
@@ -120,21 +140,44 @@ await check("WON, no prior Sales Order -> Sales Order created with correct sourc
   assert.equal(so.locationId, "loc-1");
   assert.equal(so.customerPO, "PO-77");
   assert.equal(so.state, "CONFIRMED");
-  assert.deepEqual(so.lines, [{ lineId: "line-1", kind: "PART", ref: "PART-1", orderedQty: 3, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }]);
+  // unitPrice 4200 is the AGREEMENT's committed price arriving on the persisted order. Before this
+  // slice every line here was priceless, and invoicing refuses to bill a priceless line.
+  assert.deepEqual(so.lines, [{ lineId: "line-1", kind: "PART", ref: "PART-1", orderedQty: 3, unitPrice: 4200, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }]);
+  assert.equal(so.sourceAgreementId, `agr-${oppId}`, "the order names the commitment it fulfils");
 
   const oppSnap = await db.collection("opportunities").doc(oppId).get();
   assert.equal(oppSnap.data().salesOrderId, result.salesOrderId);
 });
 
-await check("Opportunity line missing qty -> fail-closed, no Sales Order, no default quantity fabricated", async () => {
+await check("Agreement line missing a quantity -> fail-closed, no default quantity fabricated", async () => {
+  // This case used to point at the OPPORTUNITY's lines. It still would have thrown
+  // failed-precondition after this change -- but for the wrong reason ("no agreement"), which is a
+  // test that passes while measuring nothing. It now asserts the quantity rule where quantities
+  // actually live, and asserts the MESSAGE so it cannot drift back into passing by accident.
   const oppId = `opp-noqty-${Date.now()}`;
-  await seedOpportunity(oppId, { lines: [{ kind: "PART", ref: "PART-2" }] });
+  await seedOpportunity(oppId, { agreement: { lines: [{ lineId: "l1", kind: "PART", ref: "PART-2", unitPrice: 100 }] } });
   await assert.rejects(
     runCore({ opportunityId: oppId, ownerEmployeeId: "emp-1", salesChannel: "RETAIL", idempotencyKey: `k-${oppId}` }),
-    (error) => error?.code === "failed-precondition",
+    // invalid-argument, not failed-precondition: the quantity rule now fires in
+    // buildCreateSalesOrder, which the caller maps to invalid-argument. Asserting the old code
+    // here would have been a test written to the old wiring rather than to the behaviour.
+    (error) => error?.code === "invalid-argument" && /orderedQty/.test(error.message),
   );
   const soSnap = await db.collection("sales_orders").where("sourceOpportunityId", "==", oppId).get();
   assert.equal(soSnap.empty, true);
+});
+
+await check("NO AGREEMENT -> fail-closed, and the refusal names the missing agreement", async () => {
+  const oppId = `opp-noagr-${Date.now()}`;
+  await seedOpportunity(oppId, { agreement: null });
+  await assert.rejects(
+    runCore({ opportunityId: oppId, ownerEmployeeId: "emp-1", salesChannel: "RETAIL", idempotencyKey: `k-${oppId}` }),
+    (error) => error?.code === "failed-precondition" && /no sales agreement/i.test(error.message),
+  );
+  const soSnap = await db.collection("sales_orders").where("sourceOpportunityId", "==", oppId).get();
+  assert.equal(soSnap.empty, true);
+  const oppSnap = await db.collection("opportunities").doc(oppId).get();
+  assert.equal(oppSnap.data().salesOrderId, undefined, "and no back-link is written");
 });
 
 await check("WON with an existing Sales Order for it -> rejected (dedup on sourceOpportunityId)", async () => {
