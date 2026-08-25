@@ -3,7 +3,7 @@
 // only), invalid-field dropping, and the degraded/empty summary semantics.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { projectOpportunity, summarizeReadResult } from "../lib/opportunity/opportunityReadService.js";
+import { projectOpportunity, summarizeReadResult, resolveAccountNames } from "../lib/opportunity/opportunityReadService.js";
 
 test("projectOpportunity returns only the minimal Sales-workspace fields", () => {
   const p = projectOpportunity("O1", {
@@ -149,4 +149,63 @@ test("a non-numeric version is dropped rather than passed through", () => {
     updatedAtMillis: "2026-08-20T00:00:00Z",
   });
   assert.equal(p.updatedAtMillis, null, "a Timestamp or string version would fail the numeric comparison silently");
+});
+
+// ═════════════════════════════════════════ customer names actually arrive
+
+test("resolveAccountNames reads DISTINCT accounts, not one per row", () => {
+  // The em dash in the Customer column was never a rendering bug -- nothing resolved a name at all,
+  // and every layer was individually correct about that. The N+1 read this replaces is the reason
+  // it was never done on the client: fifty Opportunities across four accounts must cost four reads.
+  const calls = [];
+  const db = {
+    collection: () => ({ doc: (id) => ({ id }) }),
+    getAll: async (...refs) => {
+      calls.push(refs.map((r) => r.id));
+      return refs.map((r) => ({ id: r.id, exists: true, data: () => ({ name: `Account ${r.id}` }) }));
+    },
+  };
+  const rows = [
+    { accountId: "a" }, { accountId: "b" }, { accountId: "a" }, { accountId: "a" }, { accountId: null },
+  ];
+  return resolveAccountNames(db, rows).then((map) => {
+    assert.deepEqual(calls, [["a", "b"]], "one batched read over the DISTINCT ids, nulls dropped");
+    assert.deepEqual(map, { a: "Account a", b: "Account b" });
+  });
+});
+
+test("an unnamed or missing account is ABSENT from the map, never a raw id", () => {
+  // DECISIONS #106. A missing name is not permission to display a document id, so the map simply
+  // has no entry and the column renders the honest em dash it renders today.
+  const db = {
+    collection: () => ({ doc: (id) => ({ id }) }),
+    getAll: async (...refs) => refs.map((r) => ({
+      id: r.id,
+      exists: r.id !== "gone",
+      data: () => (r.id === "blank" ? { name: "   " } : r.id === "named" ? { name: " Harbor Foods " } : {}),
+    })),
+  };
+  return resolveAccountNames(db, [{ accountId: "named" }, { accountId: "blank" }, { accountId: "gone" }])
+    .then((map) => {
+      assert.deepEqual(map, { named: "Harbor Foods" }, "trimmed; the unnamed and the missing are simply absent");
+      for (const id of ["blank", "gone"]) assert.equal(map[id], undefined);
+    });
+});
+
+test("A FAILED NAME READ LOSES THE LABELS, NEVER THE PIPELINE", () => {
+  // Somebody deciding what to work next needs the opportunities more than they need the words.
+  const db = {
+    collection: () => ({ doc: (id) => ({ id }) }),
+    getAll: async () => { throw new Error("denied"); },
+  };
+  return resolveAccountNames(db, [{ accountId: "a" }]).then((map) => assert.deepEqual(map, {}));
+});
+
+test("no accounts to resolve issues NO read at all", () => {
+  let called = false;
+  const db = { collection: () => ({ doc: (id) => ({ id }) }), getAll: async () => { called = true; return []; } };
+  return resolveAccountNames(db, [{ accountId: null }, {}]).then((map) => {
+    assert.deepEqual(map, {});
+    assert.equal(called, false, "an empty id set must not cost a round trip");
+  });
 });

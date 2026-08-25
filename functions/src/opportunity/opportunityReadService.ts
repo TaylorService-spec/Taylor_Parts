@@ -148,6 +148,65 @@ export function summarizeReadResult(docs: Array<{ id: string; data: Record<strin
   return { status: skipped > 0 ? "degraded" : "ready", opportunities, skipped };
 }
 
+// ═══════════════════════════════ CUSTOMER NAMES, RESOLVED WHERE THE AUTHORITY IS ═══════════════════════════
+//
+// THE DEFECT. The Sales pipeline rendered an em dash in the Customer column of every Opportunity a
+// real user has ever opened. Not a rendering bug: this projection returns `accountId` and nothing
+// else (deliberately -- it does not copy Customer PII onto the Opportunity), the client source
+// hard-codes `accountNameById: {}` for every governed read, and DECISIONS #106 correctly refuses to
+// print a document id in a column labelled "Customer". So the column was honest, and useless.
+//
+// WHY NOT RESOLVE IT ON THE CLIENT. `useAccountNames` already does batched name resolution, and
+// wiring it here would have worked -- for admins and dispatchers. firestore.rules grants `accounts`
+// read to `isAdminOrDispatcher()` only, so the SALESPERSON -- the role whose workspace this is --
+// would be told they are not authorized to see the name of the customer on their own opportunity.
+// Fixing THAT by widening the Rules would hand the whole Account document, commercial profile and
+// payment terms included, to a role that needs one string.
+//
+// So names resolve HERE, under the server's authority, exactly as F1 solved the identical problem
+// for technicians (getWorkOrderFieldContext): a narrow projection that emits the display name and
+// nothing else, for records the caller is ALREADY authorized to read.
+//
+// BOUNDED BY DISTINCT ANCHOR, not by row count. Fifty Opportunities across four accounts cost four
+// reads, not fifty. The cap guards an unexpected fan-out; it is not an expected size.
+//
+// FAIL-SOFT. A failed name read must never fail the Opportunity read: losing the labels must not
+// lose the pipeline. An unresolved id is simply absent from the map and the client renders the same
+// honest em dash it renders today -- no worse than the current behaviour, and never a raw id.
+const ACCOUNTS_COLLECTION = "accounts";
+const MAX_RESOLVED_ACCOUNT_NAMES = 40;
+
+/** The ONLY field this resolution may emit. Same rule and same shape as getWorkOrderFieldContext. */
+function accountDisplayName(data: FirebaseFirestore.DocumentData | undefined): string | null {
+  const raw = data?.name;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export async function resolveAccountNames(
+  db: FirebaseFirestore.Firestore,
+  opportunities: OpportunityProjection[]
+): Promise<Record<string, string>> {
+  const ids = [...new Set(opportunities.map((o) => o.accountId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return {};
+  const bounded = ids.slice(0, MAX_RESOLVED_ACCOUNT_NAMES);
+  try {
+    const snaps = await db.getAll(...bounded.map((id) => db.collection(ACCOUNTS_COLLECTION).doc(id)));
+    const out: Record<string, string> = {};
+    for (const snap of snaps) {
+      // A missing account and an unnamed account are both simply UNRESOLVED here. That distinction
+      // matters on a record page; in a list column both render the same honest absence.
+      const name = snap.exists ? accountDisplayName(snap.data()) : null;
+      if (name) out[snap.id] = name;
+    }
+    return out;
+  } catch (err) {
+    console.error("[resolveAccountNames] name resolution failed; returning the pipeline unlabelled", err);
+    return {};
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // ACCOUNT-SCOPED read (Wave 7 completion, PART 2). Answers "which Opportunities belong to THIS Account?" --
 // listOpportunityContext above returns the caller's whole authorized scope with no accountId filter, which
@@ -272,7 +331,8 @@ export const listOpportunityContext = onCall({ region: "us-central1" }, async (r
     const truncated = snap.size > OPPORTUNITY_CONTEXT_LIMIT;
     const docs = snap.docs.slice(0, OPPORTUNITY_CONTEXT_LIMIT);
     const result = summarizeReadResult(docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> })));
-    return { status: result.status, opportunities: result.opportunities, skipped: result.skipped, truncated };
+    const accountNameById = await resolveAccountNames(db, result.opportunities);
+    return { status: result.status, opportunities: result.opportunities, skipped: result.skipped, truncated, accountNameById };
   } catch {
     // A read failure is UNAVAILABLE, distinct from denied/empty — surfaced as internal so the client seam
     // can render an honest "not connected / unavailable" state rather than "you have zero opportunities".
