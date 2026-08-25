@@ -6,7 +6,7 @@
   "stale or generated summaries"
  ],
  "totals": {
-  "EXPLICIT_OWNER_DECISION": 56,
+  "EXPLICIT_OWNER_DECISION": 68,
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2
@@ -228,6 +228,46 @@
     "partsManager",
     "shopManager",
     "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesAgreement.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesAgreement.updateDraft",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesAgreement.accept",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "salesAgreement.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson"
    ]
   },
   {
@@ -500,6 +540,46 @@
   },
   {
    "roleId": "salesManager",
+   "capability": "salesAgreement.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "salesAgreement.updateDraft",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "salesAgreement.accept",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "salesAgreement.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson"
+   ]
+  },
+  {
+   "roleId": "salesManager",
    "capability": "opportunity.createSalesOrder",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
@@ -679,6 +759,46 @@
     "partsManager",
     "shopManager",
     "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesAgreement.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesAgreement.updateDraft",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesAgreement.accept",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "salesAgreement.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #121",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager"
    ]
   },
   {
@@ -2800,5 +2920,5 @@
  "reverseSweep": {
   "missingDecidedMappings": []
  },
- "decisionsFileSha": "sha256:ce39f4f14991ad822c50e0672914382ceaeedd08d22662fa523edc3c82db4799"
+ "decisionsFileSha": "sha256:b4c35e1def2733dbec8abe8cc9ebe91a3c8420ca2a3488ed1ab1e777fedfd938"
 }

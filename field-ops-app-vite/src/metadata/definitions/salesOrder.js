@@ -174,22 +174,15 @@ export const salesOrderEntity = makeEntityDefinition({
       id: "sourceAgreementId",
       entityId: "salesOrder",
       label: "Source Agreement",
-      // STRING, NOT REFERENCE, AND THAT IS THE HONEST TYPE TODAY.
-      //
-      // REFERENCE was the first instinct and the entity guard refused it: there is no salesAgreement
-      // entity definition, so it would have been a link to a place that does not exist. Declaring
-      // the reference first and building the destination later gets the order backwards -- the
-      // registry would carry a promise nothing could keep.
-      //
-      // It is also not placed on the page. A Sales Agreement has no human reference yet (D1 added no
-      // numbering), and a missing business reference is not permission to display a document id
-      // (DECISIONS #106). This becomes a REFERENCE, and renderable, when the agreement surface and
-      // its numbering exist.
-      type: "STRING",
+      // NOW A REFERENCE. It shipped as a STRING because the entity guard refused the reference —
+      // there was no salesAgreement entity to point at, and declaring the link before building the
+      // destination would have made the registry carry a promise nothing could keep. The Sales
+      // Agreement surface exists now, with its own SA-YYYY-###### identity, so the link resolves.
+      type: "REFERENCE",
+      referenceTo: "salesAgreement",
       description:
         "The accepted Sales Agreement this order fulfils. Written by both WON paths since Slice 4 D2; " +
-        "null on orders predating it and on orders created directly — honestly null, never backfilled. " +
-        "Carried for lineage; not displayed, because agreements have no human reference yet.",
+        "null on orders predating it and on orders created directly — honestly null, never backfilled.",
     }),
     makeFieldDefinition({
       id: "sourceOpportunityNumber",

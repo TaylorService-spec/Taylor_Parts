@@ -1867,3 +1867,46 @@ The corollary matters as much as the rule: **an existing capability is never bro
 avoid a rollout step.** Where least privilege requires a new narrow capability, one is registered
 inert and ungranted — as `inventory.catalog.alias.read` and `inventory.balance.read` already were —
 rather than pointing a scanner at a write capability that happens to be active.
+
+## #120 — Inventory Health: derive at read now, materialize later and only when scoped
+
+**Owner, 2026-08-25.** Of the three options in
+`docs/architecture/inventory-health-ab-decision-memo.md`: **A now, B later, scoped.**
+
+`composePartBalance` stays the single authority for every inventory figure a person acts on. Health
+continues to be derived at read, per bounded page, so it cannot be stale — there is nothing stored to
+go stale.
+
+A materialized health projection is **deferred, not refused**. It is reopened when a POPULATION-level
+surface is authorized — a Goals Home health tile, a health sort, a health filter, or a health export.
+Until one of those is named, B would add a class of failure (a stale number nobody doubts) to answer
+a question nobody has asked.
+
+If B is ever built it must be a SUMMARY projection serving that one named surface — never the general
+balance authority — and it must ship with a rebuild path, a source-versus-derived parity test, and a
+visible staleness stamp. Two authorities for one number is how a warehouse and a screen come to
+disagree, and the screen wins because it is the one somebody is looking at.
+
+## #121 — Sales Agreement authority goes to the roles that already sell
+
+**Owner, 2026-08-25.** `salesAgreement.create`, `.updateDraft`, `.accept` and `.read` are granted to
+**Salesperson, Sales Manager and General Manager** — exactly the three governed Roles that already
+hold `opportunity.createSalesOrder` — plus the admin/dispatcher compatibility base, which Owner
+inherits by composition. Technician holds none of them.
+
+The reason is not symmetry. A Sales Order is now created ONLY from an ACCEPTED Sales Agreement, so
+`opportunity.createSalesOrder` became unreachable without these: a Role that can create the order but
+not the commitment it comes from holds an authority it cannot exercise.
+
+**Four ids, not one.** A single `salesAgreement.write` would make drafting terms and BINDING THE
+BUSINESS TO THEM the same permission. Separating them keeps a future approval-limit model possible
+without renaming a published capability, and keeps a read-only grant possible.
+
+**Recorded gap, deliberately not closed here.** There is no approval-limit or discount-authority
+model in this repository, so `salesAgreement.accept` is all-or-nothing per Role: a Salesperson may
+bind the same terms a General Manager can. That is a governance gap to close with a deliberate
+authority model, not a reason to withhold the capability that makes the commercial chain work.
+
+**Grant is not activation.** All four are registered `active:false` and are eligible for
+per-environment activation only; production remains triple-blocked (role-keyed resolution, no
+override key on any production entry, asserted by test).

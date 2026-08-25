@@ -219,7 +219,10 @@ function OpportunityWorkspaceConnected() {
   const { hasCapability } = useOpportunityCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
-  return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} />;
+  // The SAME trusted feed answers the Sales Agreement capabilities (one request, one accessVersion
+  // -- see OPPORTUNITY_CAPABILITY_REQUEST). Threaded rather than resolved inside the panel so the
+  // fail-closed default still holds for every test that injects nothing.
+  return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} hasCapability={hasCapability} />;
 }
 
 // Fixes the known defect (SalesOrderActions.jsx) where the Sales Order Advance/Cancel/Allocate/

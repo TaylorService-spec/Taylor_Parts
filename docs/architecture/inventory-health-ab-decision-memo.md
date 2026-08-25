@@ -89,12 +89,29 @@ somebody is looking at.
 
 ---
 
-## Decision required
+## Decision — MADE
 
-- [ ] **A only** — accept that health cannot be sorted, filtered or counted across the population.
-- [ ] **A now, B later, scoped** *(recommended)* — proceed as above; revisit when a population-level
-      surface is authorized.
-- [ ] **B now** — authorize the staleness class, the trigger fan-out, and the rebuild machinery, and
-      name the surface that justifies it.
+**Owner, 2026-08-25: A NOW, B LATER, SCOPED.**
 
-No work proceeds on this until one is chosen.
+- [ ] ~~A only~~
+- [x] **A now, B later, scoped** — **CHOSEN**
+- [ ] ~~B now~~
+
+`composePartBalance` remains the single authority for every number a person acts on. B is not
+refused; it is **not yet justified**, because no authorized surface asks a population-level question.
+
+What this decision permits now:
+
+- continue deriving health at read, per bounded page;
+- the deploy-gated bounded paging of `/inventory`, unchanged.
+
+What it defers, and the trigger that reopens it: **B is revisited when a population-level surface is
+authorized** — a Goals Home health tile, a health sort, a health filter, or a health export. Until
+one of those is named, building B would be adding a staleness class to answer a question nobody has
+asked.
+
+The four non-negotiables recorded above survive the deferral and are conditions on ever building B:
+a summary projection serving one named surface (never the general balance authority), a rebuild
+path, a source/projection parity test, and a visible staleness stamp.
+
+**Not authorized by this decision:** implementing B, adding triggers, or storing any health figure.

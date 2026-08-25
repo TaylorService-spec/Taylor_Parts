@@ -12,6 +12,8 @@ import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "..
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
+import SalesAgreementPanel from "./SalesAgreementPanel.jsx";
+import { useSalesAgreement } from "../../hooks/useSalesAgreement.js";
 import OwnerSelect from "./OwnerSelect.jsx";
 import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
@@ -359,7 +361,7 @@ function SectionReadBody({ section }) {
 // The detail aside. A ContextBand scans the key facts (read), then the editing-ready sections operate on the
 // underlying data. Same datum can appear as a scannable fact AND be maintained in a section — scan up top,
 // operate below. Lifecycle sits between the derived attention and the read-only record.
-function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps, directory }) {
+function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps, directory, hasCapability }) {
   const [editingSection, setEditingSection] = useState(null);
   const model = useMemo(
     () => opportunityDetailModel(row, { format: { currency, date: shortDate } }),
@@ -371,6 +373,9 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
   // Same unconditional-call discipline: the governed section-save command, scoped to whichever
   // Opportunity is selected right now.
   const sectionSave = useOpportunitySectionSave(row?.id ?? null, saveDeps);
+  // Same unconditional-call discipline (rules of hooks): scoped to whichever Opportunity is
+  // selected, and re-read from scratch when that changes.
+  const agreement = useSalesAgreement(row?.id ?? null);
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
 
   // WON and LOST are terminal. The command refuses to edit them (CLOSED) because the deal terms
@@ -392,8 +397,11 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
     {
       key: "salesOrder",
       label: "Sales Order",
+      // The link's LABEL is what it is, not the key it routes by. This rendered the raw document
+      // id as a business identifier -- the exact substitution DECISIONS #106 forbids. The
+      // Opportunity row does not carry the SO number, so the honest label is the generic one.
       value: row.salesOrderId
-        ? <Link to={`/customers/opportunities/sales-order/${row.salesOrderId}`}>{row.salesOrderId}</Link>
+        ? <Link to={`/customers/opportunities/sales-order/${row.salesOrderId}`}>View Sales Order</Link>
         : row.outcome === "WON"
           ? <span className="fo-muted">Not created yet</span>
           : "—",
@@ -454,6 +462,12 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
       <section className="fo-sales-detail__block" aria-label="Lifecycle" data-dataclass={OPPORTUNITY_DATA_CLASS.LIFECYCLE_ACTION}>
         <div className="fo-sales-detail__block-head"><h4>Lifecycle</h4></div>
         <OpportunityLifecycleControl row={row} readiness={readiness} transitions={transitions} onChanged={onChanged} />
+      </section>
+      {/* THE COMMERCIAL COMMITMENT. Placed directly after Lifecycle because winning this
+          Opportunity now REQUIRES an accepted agreement -- the two are one decision, and putting
+          the agreement further down would hide the precondition for the button above it. */}
+      <section className="fo-sales-detail__block" aria-label="Sales Agreement">
+        <SalesAgreementPanel agreement={agreement} hasCapability={hasCapability} />
       </section>
       {renderSection("attention")}
       {renderSection("record")}
@@ -517,7 +531,10 @@ function PipelineRow({ row, selected, onSelect }) {
 // <SalesWorkspace readiness={...} /> from App.jsx's connected wrapper, which computes readiness from the REAL
 // trusted capability feed (access/useOpportunityCapabilities); a caller that passes none of these (every
 // existing test here) still gets the seam's own fail-closed default and writes nothing.
-export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory } = {}) {
+// `hasCapability` defaults to fail-closed for every caller that injects none -- the same discipline
+// `readiness` already follows, and the reason SalesOrderActions' live-but-unauthorized buttons were
+// a defect rather than a cosmetic issue.
+export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory, hasCapability = () => false } = {}) {
   const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -593,6 +610,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
         <OpportunityDetail
           row={selectedRow}
           readiness={writeReadiness}
+          hasCapability={hasCapability}
           onSaveSection={onSaveSection}
           onChanged={refetch}
           saveDeps={saveDeps}

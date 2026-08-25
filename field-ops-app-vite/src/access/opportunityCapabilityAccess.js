@@ -19,8 +19,19 @@ export {
 } from "./reportCapabilityAccess.js";
 
 export const OPPORTUNITY_WRITE_CAPABILITY = "opportunity.write";
+import { SALES_AGREEMENT_CAPABILITY_REQUEST } from "./salesAgreementCapabilityAccess.js";
 
 // The capability the trusted feed is asked to decide, in ONE request. Kept as a list (mirroring
 // REPORT_CAPABILITY_REQUEST's shape) so a later increment can widen it (e.g. opportunity.createSalesOrder)
 // without changing the hook's request-building code.
-export const OPPORTUNITY_CAPABILITY_REQUEST = Object.freeze([OPPORTUNITY_WRITE_CAPABILITY]);
+// The Sales Agreement capabilities ride in the SAME request, which is what the list shape was for.
+// One request means all five decisions resolve against ONE accessVersion -- a screen that asked
+// twice could render an ACCEPT control authorized under a version the edit was already denied
+// under, and the two answers would be about different moments.
+//
+// The agreement panel lives on this workspace, so this is where its decisions belong; a second
+// feed hook for the same surface would double the round trips to answer one question.
+export const OPPORTUNITY_CAPABILITY_REQUEST = Object.freeze([
+  OPPORTUNITY_WRITE_CAPABILITY,
+  ...SALES_AGREEMENT_CAPABILITY_REQUEST,
+]);

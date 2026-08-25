@@ -272,6 +272,22 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
+    // Sales Agreement (Slice 4). The commercial commitment is this role's instrument: drafting terms,
+    // revising them during negotiation, and recording the customer's acceptance are the sales job,
+    // and without them the WON -> priced Sales Order path this role ALREADY holds cannot be reached
+    // at all. Granted to exactly the three roles that already hold opportunity.createSalesOrder --
+    // Salesperson, Sales Manager, General Manager -- because that capability is now unreachable
+    // without these, and a role that can create the order but not the commitment it comes from
+    // holds an authority it cannot exercise.
+    //
+    // ACCEPT IS GRANTED WITH A RECORDED CAVEAT: there is no approval-limit or discount-authority
+    // model in this repo, so acceptance is all-or-nothing per role and a Salesperson may bind the
+    // same terms a General Manager can. That is a real governance gap to close deliberately, not a
+    // reason to withhold the capability that makes the chain work.
+    "salesAgreement.create",
+    "salesAgreement.updateDraft",
+    "salesAgreement.accept",
+    "salesAgreement.read",
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
@@ -311,6 +327,22 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
+    // Sales Agreement (Slice 4). The commercial commitment is this role's instrument: drafting terms,
+    // revising them during negotiation, and recording the customer's acceptance are the sales job,
+    // and without them the WON -> priced Sales Order path this role ALREADY holds cannot be reached
+    // at all. Granted to exactly the three roles that already hold opportunity.createSalesOrder --
+    // Salesperson, Sales Manager, General Manager -- because that capability is now unreachable
+    // without these, and a role that can create the order but not the commitment it comes from
+    // holds an authority it cannot exercise.
+    //
+    // ACCEPT IS GRANTED WITH A RECORDED CAVEAT: there is no approval-limit or discount-authority
+    // model in this repo, so acceptance is all-or-nothing per role and a Salesperson may bind the
+    // same terms a General Manager can. That is a real governance gap to close deliberately, not a
+    // reason to withhold the capability that makes the chain work.
+    "salesAgreement.create",
+    "salesAgreement.updateDraft",
+    "salesAgreement.accept",
+    "salesAgreement.read",
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
@@ -540,6 +572,22 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    // Sales Agreement (Slice 4). The commercial commitment is this role's instrument: drafting terms,
+    // revising them during negotiation, and recording the customer's acceptance are the sales job,
+    // and without them the WON -> priced Sales Order path this role ALREADY holds cannot be reached
+    // at all. Granted to exactly the three roles that already hold opportunity.createSalesOrder --
+    // Salesperson, Sales Manager, General Manager -- because that capability is now unreachable
+    // without these, and a role that can create the order but not the commitment it comes from
+    // holds an authority it cannot exercise.
+    //
+    // ACCEPT IS GRANTED WITH A RECORDED CAVEAT: there is no approval-limit or discount-authority
+    // model in this repo, so acceptance is all-or-nothing per role and a Salesperson may bind the
+    // same terms a General Manager can. That is a real governance gap to close deliberately, not a
+    // reason to withhold the capability that makes the chain work.
+    "salesAgreement.create",
+    "salesAgreement.updateDraft",
+    "salesAgreement.accept",
+    "salesAgreement.read",
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",

@@ -46,6 +46,8 @@ export type SalesAgreementErrorCode =
   | "INTENT_INVALID"
   /** Acceptance attempted while a billable line still has no committed price. */
   | "UNPRICED_LINE"
+  /** A draft edit named a field outside the explicit allowlist -- identity, currency, acceptance or totals. */
+  | "FIELD_NOT_EDITABLE"
   | "ILLEGAL_TRANSITION";
 
 export class SalesAgreementCommandError extends Error {
@@ -332,4 +334,154 @@ export function deriveSalesOrderLinesFromAgreement(
     }
     return { kind: l.kind, ref: l.ref, orderedQty: l.quantity, unitPrice: l.unitPrice };
   });
+}
+
+// ════════════════════ BOUNDED DRAFT EDITING ════════════════════
+//
+// GOVERNANCE: Owner Slice 4 §H, authorized explicitly — "without bounded Draft editing the
+// create → accept workflow is not operationally usable."
+//
+// A draft is a negotiation: prices move, lines are added and dropped, the PO number arrives after
+// the terms do. Without an edit path the only way to correct a typo would be to abandon the
+// agreement and create another, and the counter would carry the scars.
+//
+// THIS IS NOT A PATCH ENDPOINT. It takes an explicit ALLOWLIST of commercial fields and nothing
+// else. A generic update would let a caller move accountId, sourceOpportunityId, currency, state,
+// acceptedByUid, createdAtMillis or the totals — every one of which is either identity or a
+// server-derived fact, and all of which the create and accept commands exist to own.
+//
+// WHAT CANNOT MOVE, AND WHY:
+//
+//   accountId, sourceOpportunityId  IDENTITY. An agreement that could change customer or
+//                                   opportunity is a different agreement wearing the same number.
+//                                   Repointing it would silently rewrite lineage a Sales Order may
+//                                   already depend on.
+//   salesAgreementNumber            immutable by construction (salesAgreementNumbering.ts).
+//   currency                        server-set, single-currency; a conversion nobody authorised.
+//   state, acceptedAtMillis,        the ACCEPT command's to write, from server context. A client
+//   acceptedByUid                   that could set them could accept its own unpriced agreement.
+//   totals                          COMPUTED here from the lines and charges, never accepted from
+//                                   a caller. A supplied total is a second answer to a question
+//                                   the lines already answer.
+//   salesOrderId                    written by the conversion, in the same commit as the order.
+//
+// ONLY WHILE DRAFT. ACCEPTED and DECLINED are terminal (salesAgreementLifecycle.ts): an accepted
+// commitment whose prices could still move is not a commitment, and a Sales Order created from it
+// would be quoting a number that changed after the customer signed. Amendment of an accepted
+// agreement is deliberately NOT in this slice — it is a new commercial conversation, and modelling
+// it means versioning, which is its own decision.
+
+/** Exactly the fields a draft may change. Anything not named here cannot be reached. */
+export const SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS = Object.freeze([
+  "locationId",
+  "customerPO",
+  "isLease",
+  "fulfillmentIntent",
+  "shippingInstructions",
+  "shipVia",
+  "specialInstructions",
+  "lines",
+  "shippingMinor",
+  "installChargeMinor",
+  "taxMinor",
+  "downPaymentMinor",
+  "tradeInMinor",
+] as const);
+
+export type SalesAgreementDraftEditableField = (typeof SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS)[number];
+
+export interface UpdateSalesAgreementDraftInput {
+  locationId?: string | null;
+  customerPO?: string | null;
+  isLease?: boolean;
+  fulfillmentIntent?: FulfillmentIntent | null;
+  shippingInstructions?: string | null;
+  shipVia?: string | null;
+  specialInstructions?: string | null;
+  lines?: SalesAgreementLineInput[];
+  shippingMinor?: number;
+  installChargeMinor?: number;
+  taxMinor?: number;
+  downPaymentMinor?: number;
+  tradeInMinor?: number;
+}
+
+/**
+ * The patch a bounded draft edit produces.
+ *
+ * Returns a PATCH, not a whole document: a command that rebuilt the agreement would have to
+ * restate the identity fields it must not touch, and restating them is how they come to move.
+ */
+export function buildUpdateSalesAgreementDraft(
+  current: { state: SalesAgreementState; lines: BuiltAgreementLine[]; totals: AgreementTotals },
+  input: UpdateSalesAgreementDraftInput,
+  ctx: { actorUid: string; nowMillis: number },
+): Record<string, unknown> {
+  if (current?.state !== "DRAFT") {
+    throw new SalesAgreementCommandError(
+      "ILLEGAL_TRANSITION",
+      `A ${current?.state ?? "missing-state"} agreement cannot be edited. Only a DRAFT is still being negotiated.`,
+    );
+  }
+
+  // REJECT, never ignore. Silently dropping an unknown key lets a caller believe they changed
+  // something they did not — and a UI built against that belief ships a control that does nothing.
+  const allowed = new Set<string>(SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS);
+  const unknown = Object.keys(input ?? {}).filter((k) => !allowed.has(k));
+  if (unknown.length > 0) {
+    throw new SalesAgreementCommandError(
+      "FIELD_NOT_EDITABLE",
+      `These fields cannot be changed on a Sales Agreement: ${unknown.join(", ")}. ` +
+        "Identity, currency, acceptance and totals are not caller-supplied.",
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+
+  if ("locationId" in input) patch.locationId = trimmed(input.locationId);
+  if ("customerPO" in input) patch.customerPO = trimmed(input.customerPO);
+  if ("shippingInstructions" in input) patch.shippingInstructions = trimmed(input.shippingInstructions);
+  if ("shipVia" in input) patch.shipVia = trimmed(input.shipVia);
+  if ("specialInstructions" in input) patch.specialInstructions = trimmed(input.specialInstructions);
+  // Explicit boolean only: `isLease: "yes"` is a caller mistake, not a lease.
+  if ("isLease" in input) {
+    if (typeof input.isLease !== "boolean") {
+      throw new SalesAgreementCommandError("INTENT_INVALID", "isLease must be true or false");
+    }
+    patch.isLease = input.isLease;
+  }
+  if ("fulfillmentIntent" in input) {
+    const v = input.fulfillmentIntent;
+    // Null is legitimate: not every agreement states delivery intent, and clearing it is an edit.
+    if (v !== null && v !== undefined && !(FULFILLMENT_INTENTS as readonly string[]).includes(v)) {
+      throw new SalesAgreementCommandError("INTENT_INVALID", "fulfillmentIntent must be DELIVER, INSTALL or BOTH");
+    }
+    patch.fulfillmentIntent = v ?? null;
+  }
+
+  // Lines run through the SAME validator the create command uses. A second, laxer line rule on the
+  // edit path is how a serialized reference or a fractional price reaches a document that the
+  // create path would have refused.
+  const lines = "lines" in input ? (input.lines ?? []).map((l, i) => validateLine(l, i)) : current.lines;
+  if ("lines" in input && lines.length === 0) {
+    throw new SalesAgreementCommandError("NO_LINES", "An agreement requires at least one line");
+  }
+  if ("lines" in input) patch.lines = lines;
+
+  // TOTALS ARE ALWAYS RECOMPUTED, even when only a charge moved — the balance depends on both, and
+  // a patch that changed shipping without re-deriving the total would leave the document
+  // internally inconsistent for as long as nobody looked.
+  const charge = (k: keyof AgreementTotals, inputKey: keyof UpdateSalesAgreementDraftInput) =>
+    inputKey in input ? (input[inputKey] as number | undefined) : (current.totals?.[k] as number | undefined);
+  patch.totals = computeAgreementTotals(lines, {
+    shippingMinor: charge("shippingMinor", "shippingMinor"),
+    installChargeMinor: charge("installChargeMinor", "installChargeMinor"),
+    taxMinor: charge("taxMinor", "taxMinor"),
+    downPaymentMinor: charge("downPaymentMinor", "downPaymentMinor"),
+    tradeInMinor: charge("tradeInMinor", "tradeInMinor"),
+  });
+
+  patch.updatedAtMillis = ctx.nowMillis;
+  patch.updatedByUid = ctx.actorUid;
+  return patch;
 }
