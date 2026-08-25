@@ -9,8 +9,10 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   push:
     branches: [main]
@@ -21,8 +23,10 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   workflow_dispatch:
 
@@ -54,5 +58,5 @@ jobs:
         run: npm run build
         working-directory: functions
       - name: Governed server context authority
-        run: node --test test/aiWorkOrderContext.test.mjs
+        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs
         working-directory: functions
