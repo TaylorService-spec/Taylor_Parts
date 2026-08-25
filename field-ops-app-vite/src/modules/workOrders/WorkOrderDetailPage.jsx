@@ -6,6 +6,7 @@ import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useEquipmentDoc } from "../../hooks/useEquipment";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useWorkOrderReadinessContext } from "../../hooks/useWorkOrderReadinessContext.js";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { Button } from "../../shared/ui/primitives";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
@@ -36,6 +37,8 @@ import {
   workOrderLineage,
   EDGE,
 } from "../../domain/workOrderNorthStar.js";
+import { buildWorkOrderPartsReadiness } from "../../domain/workOrderPartsReadiness.js";
+import { READINESS } from "../../domain/readinessLanguage.js";
 import {
   deriveWorkOrderIntelligence,
   mergeWorkOrderAttention,
@@ -66,9 +69,8 @@ import {
 // ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
 //
 // No ETA, no arrival confidence, no first-visit-fix percentage, no "3 repairs in 12 months", no
-// separate suggestion panel. Governed intelligence is allowed to contribute to the existing
-// AttentionBand only when it has a substantiated signal. Until a trusted readiness assembler exists,
-// the intelligence contract returns speak:false and renders nothing.
+// separate suggestion panel. Governed intelligence contributes to the existing AttentionBand only
+// when the canonical readiness projection has a substantiated ATTENTION state. UNKNOWN remains quiet.
 //
 // ════════════════════ ROUTE GATE (unchanged) ════════════════════
 //
@@ -86,6 +88,7 @@ export default function WorkOrderDetailPage() {
 
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
+  const { context: readinessContext } = useWorkOrderReadinessContext(workOrderId);
   const { data: equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
@@ -99,12 +102,22 @@ export default function WorkOrderDetailPage() {
     () => workOrderAttention(workOrder, { nowMillis: Date.now(), partsPlan: plan }),
     [workOrder, plan],
   );
+  // The trusted callable returns SOURCE DIMENSIONS, not a second readiness answer. The existing pure
+  // projection remains the one authority that derives READY / ATTENTION / UNKNOWN.
+  const partsReadiness = useMemo(
+    () => readinessContext && workOrder
+      ? buildWorkOrderPartsReadiness({
+          workOrder,
+          plannedParts: readinessContext.plannedParts ?? [],
+          capabilities: readinessContext.capabilities ?? {},
+        })
+      : null,
+    [readinessContext, workOrder],
+  );
   // Intelligence joins the SAME attention channel; it never creates a second copilot/suggestion band.
-  // Until a trusted readiness assembler supplies the canonical projection, deriveWorkOrderIntelligence
-  // returns speak:false and this composition remains quiet to the user.
   const intelligence = useMemo(
-    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan }),
-    [workOrder, plan],
+    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan, partsReadiness }),
+    [workOrder, plan, partsReadiness],
   );
   const attention = useMemo(
     () => mergeWorkOrderAttention(baseAttention, intelligence),
@@ -249,22 +262,30 @@ export default function WorkOrderDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.map((line, i) => (
-                        <tr key={line.partId ?? `line-${i}`}>
-                          <td>
-                            {line.name ?? <span className="ns-state--na">Part — reference unavailable</span>}
-                            {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
-                          </td>
-                          <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
-                          <td><span className="ns-state--na">Not available</span></td>
-                        </tr>
-                      ))}
+                      {plan.map((line, i) => {
+                        const readiness = readinessForRow(partsReadiness, i);
+                        return (
+                          <tr key={line.partId ?? `line-${i}`}>
+                            <td>
+                              {line.name ?? <span className="ns-state--na">Part — reference unavailable</span>}
+                              {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
+                            </td>
+                            <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
+                            <td>
+                              {readiness
+                                ? <span>{readiness.label}</span>
+                                : <span className="ns-state--na">Not available</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
                 <p className="ns-table__note">
-                  Planning demand only — never reserves stock or records usage. Truck and staging
-                  readiness aren&rsquo;t available yet, so this shows what was planned, not what is on hand.
+                  {partsReadiness
+                    ? "Readiness is derived from governed reservation, warehouse and procurement evidence. Truck inventory is still unavailable, so a part that depends on truck stock remains Unknown."
+                    : "Planning demand only — never reserves stock or records usage. Readiness evidence is not active in this environment yet."}
                 </p>
               </>
             )}
@@ -344,6 +365,11 @@ function WorkOrderTimeline({ workOrder }) {
       ))}
     </ul>
   );
+}
+
+function readinessForRow(partsReadiness, index) {
+  const key = partsReadiness?.rows?.[index]?.readiness;
+  return typeof key === "string" ? READINESS[key] ?? null : null;
 }
 
 function titleCase(v) {
