@@ -37,6 +37,9 @@ export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } 
 // registered active:false and deny for everyone until a separate grant + per-environment activation.
 export { createSalesAgreement, updateSalesAgreementDraft, acceptSalesAgreement } from "./salesAgreement/salesAgreementCallables";
 export { getSalesAgreementContext, getSalesAgreementForOpportunity } from "./salesAgreement/salesAgreementReadService";
+// The product picker read. Serves BOTH the Part typeahead and the Equipment Model picker, behind
+// the existing inventory.catalog.read authority -- no new capability, no widened Firestore Rules.
+export { searchProductReferences } from "./salesAgreement/productReferenceSearchService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.

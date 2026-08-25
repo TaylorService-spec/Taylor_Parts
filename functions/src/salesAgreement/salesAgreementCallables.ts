@@ -54,6 +54,7 @@ import {
 } from "./salesAgreementCommands";
 import type { SalesAgreementState } from "./salesAgreementLifecycle";
 import { allocateSalesAgreementNumber } from "./salesAgreementNumbering";
+import { validateSalesAgreementLineReferences } from "./salesAgreementLineReferences";
 
 export const SALES_AGREEMENT_CREATE_CAPABILITY = "salesAgreement.create";
 export const SALES_AGREEMENT_ACCEPT_CAPABILITY = "salesAgreement.accept";
@@ -167,6 +168,12 @@ export async function persistCreateSalesAgreement(
     { actorUid, nowMillis: Date.now() },
   );
 
+  // ── 4b. READ: every product reference must name something that exists. Placed HERE, after the
+  //        pure build and before the counter, for the reason step 4 already states: a validation
+  //        failure must not leave a reserved agreement number behind. Inside the transaction, so
+  //        these reads belong to the same snapshot as the write.
+  await validateSalesAgreementLineReferences(db, tx, built.lines);
+
   // ── 5. READ+WRITE: the number. Last read in the phase, exactly as the Sales Order path orders it.
   const { salesAgreementNumber } = await allocateSalesAgreementNumber(tx, new Date().getUTCFullYear());
 
@@ -265,6 +272,15 @@ export async function persistUpdateSalesAgreementDraft(
   // The DRAFT-only rule and the field allowlist both live in the pure command.
   const patch = buildUpdateSalesAgreementDraft(current, patchInput, { actorUid, nowMillis: Date.now() });
 
+  // Validate the lines the draft will ACTUALLY have after this patch, not the ones that were sent.
+  // An edit that touches only the PO number leaves the existing lines in place, and those were
+  // already validated when they were written -- but re-checking them costs one batched read and
+  // means the rule is stated once, over the resulting document, rather than conditionally over the
+  // input. A conditional check is where "we only validate when lines change" turns into a way to
+  // keep an invalid line alive by never editing it again.
+  const linesAfterPatch = (patch as { lines?: BuiltAgreementLine[] }).lines ?? current.lines ?? [];
+  await validateSalesAgreementLineReferences(db, tx, linesAfterPatch);
+
   tx.update(ref, { ...patch, updatedAt: FieldValue.serverTimestamp() });
   stageAuditEventWithId(tx, aid, {
     actorUid,
@@ -345,6 +361,17 @@ export async function persistAcceptSalesAgreement(
   // the server clock; neither is reachable from any input on this callable. A client that could set
   // them could record somebody else as having accepted, on a date of its choosing.
   const patch = buildAcceptSalesAgreement(current, { actorUid, nowMillis: Date.now() });
+
+  // REVALIDATION AT THE COMMITMENT BOUNDARY, and this is the one that matters.
+  //
+  // The draft's references were checked when they were written. That proves they were real THEN.
+  // Acceptance is the moment the business becomes bound, and a product deleted or renamed in
+  // between must not bind anybody merely because it existed on the day somebody typed it. Trusting
+  // the earlier check here is exactly the TOCTOU hole a picker-only fix would have left: the UI
+  // validates, and ACCEPT takes the draft's word for it.
+  //
+  // Same transaction, same snapshot, so a concurrent catalogue change retries rather than commits.
+  await validateSalesAgreementLineReferences(db, tx, current.lines ?? []);
 
   tx.update(ref, { ...patch, updatedAt: FieldValue.serverTimestamp() });
   stageAuditEventWithId(tx, aid, {
