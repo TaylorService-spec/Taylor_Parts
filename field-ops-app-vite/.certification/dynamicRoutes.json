@@ -54,9 +54,10 @@
       "key": "part",
       "label": "Part detail",
       "listRoute": "/inventory",
-      "rowSelector": "tbody tr",
+      "rowSelector": "tbody tr td a[href*=\"/inventory/\"]",
       "navigates": true,
-      "expectRoutePattern": "^/inventory/[^/]+$"
+      "expectRoutePattern": "^/inventory/[^/]+$",
+      "_comment": "The Parts list opens a Part from a LINK inside the row, not from a row click -- the row itself has no handler. Resolving by row click reported a truthful FIXTURE_PRECONDITION failure (it genuinely did not navigate), which is the harness being right about the wrong question: the record IS reachable, just not that way."
     }
   ]
 }

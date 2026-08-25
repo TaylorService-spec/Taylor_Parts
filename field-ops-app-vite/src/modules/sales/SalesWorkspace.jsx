@@ -13,6 +13,7 @@ import {
   normalizeOpportunityView, selectOpportunityView,
 } from "../../domain/opportunityLifecycle.js";
 import { useSearchParams } from "react-router-dom";
+import { UNRESOLVED_REFERENCE_LABEL } from "../../metadata/referenceResolution.js";
 import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "../../domain/opportunityFieldModel.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
@@ -366,6 +367,12 @@ function SectionReadBody({ section }) {
 // The detail aside. A ContextBand scans the key facts (read), then the editing-ready sections operate on the
 // underlying data. Same datum can appear as a scannable fact AND be maintained in a section — scan up top,
 // operate below. Lifecycle sits between the derived attention and the read-only record.
+/** The owner's display name, or null when the directory cannot name them. Never the id. */
+function ownerName(employeeId, directory) {
+  const employee = directory?.byEmployeeId?.get?.(employeeId);
+  return employee?.displayName || employee?.name || null;
+}
+
 function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps, directory, hasCapability }) {
   const [editingSection, setEditingSection] = useState(null);
   const model = useMemo(
@@ -394,7 +401,21 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
     { key: "stage", label: "State", value: <StatusPill tone={row.commercial.tone} label={row.commercial.label} /> },
     { key: "value", label: "Est. value", value: currency(row.expectedValue) },
     { key: "close", label: "Expected close", value: shortDate(row.expectedCloseAt) },
-    { key: "owner", label: "Owner", value: row.ownerEmployeeId ?? "—" },
+    // AN EMPLOYEE ID IS NOT A PERSON (DECISIONS #106). This rendered `row.ownerEmployeeId` raw —
+    // found by the new dynamic-detail certification sweep the moment this pane became reachable,
+    // which is exactly what that sweep was added to do.
+    //
+    // The directory the workspace already holds resolves it. When it cannot — an owner who has
+    // left, a record predating the directory, or a caller whose role cannot read employees at all
+    // (that collection is admin/dispatcher only) — the shared unresolved label says so rather than
+    // printing the key.
+    {
+      key: "owner",
+      label: "Owner",
+      value: row.ownerEmployeeId
+        ? (ownerName(row.ownerEmployeeId, directory) ?? <span className="fo-muted">{UNRESOLVED_REFERENCE_LABEL}</span>)
+        : "—",
+    },
     // Sales Order lineage (Owner-ratified 2026-08-15: "Preserve Opportunity -> Sales Order
     // lineage visibly"). WON-with-no-SO-yet is an honest, distinct state from "not applicable" --
     // never hidden just because the row isn't WON (a real link should always be reachable the
