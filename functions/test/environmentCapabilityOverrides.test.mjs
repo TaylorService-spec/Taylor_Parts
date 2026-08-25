@@ -63,6 +63,13 @@ const SPINE_11 = [
   "inventory.cycleCount.submit",
   "inventory.cycleCount.reconcile",
   "inventory.cycleCount.cancel",
+  // SALES AGREEMENT ACTIVATION 2026-08-25. Made eligible so platform-sandbox can exercise the
+  // commercial chain at all: WON -> Sales Order now requires an accepted Agreement, so without
+  // these the already-active sales spine is unreachable.
+  "salesAgreement.create",
+  "salesAgreement.updateDraft",
+  "salesAgreement.accept",
+  "salesAgreement.read",
   // SCANNER PROMOTION 2026-08-20. The six capabilities the scanner program added, made eligible so
   // platform-sandbox can exercise put-away, pick, bin administration, returns intake and the lookup
   // reads at all. inventory.stock.receive is NOT here and needs no override -- it is not active:false.
@@ -82,9 +89,9 @@ const SPINE_11 = [
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 35 eligible capability ids", () => {
+test("eligible allow-list is exactly the 39 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 35);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 39);
 });
 
 test("sandbox project resolves the full spine override set", () => {
@@ -243,4 +250,42 @@ test("runtime resolution with no project identity -> EMPTY", () => {
     else process.env.GOOGLE_CLOUD_PROJECT = prevGG;
     __resetRuntimeCapabilityOverridesCacheForTest();
   }
+});
+
+// ════════════════════ THE ELIGIBLE LIST IS LOAD-BEARING, NOT DOCUMENTATION ════════════════════
+//
+// On the first Sales Agreement activation deploy, all five callables went live, Rules shipped, and
+// EVERY persona still resolved salesAgreement.create = false. The four ids were in
+// config/environments.json AND in the embedded ENVIRONMENT_ACTIVATION_REGISTRY -- and NOT in
+// SPINE_OVERRIDE_ELIGIBLE_IDS. The resolver intersects the two, so registry data alone activates
+// nothing.
+//
+// That is the triple-block working exactly as designed, and it is worth pinning: a capability an
+// environment DECLARES but that is not ELIGIBLE stays denied, silently, and the CLI reports
+// "Deploy complete!" either way. Only a live capability check caught it.
+
+test("EVERY DECLARED OVERRIDE IS ALSO ELIGIBLE -- a declaration alone activates nothing", () => {
+  // Computed from the registry rather than restated, so the next capability added to an environment
+  // fails here until it is made eligible, naming itself.
+  const declared = new Set();
+  for (const env of ENVIRONMENT_ACTIVATION_REGISTRY.environments ?? []) {
+    for (const id of env.capabilityActivationOverrides ?? []) declared.add(id);
+  }
+  assert.ok(declared.size > 0, "the registry must declare overrides, or this test proves nothing");
+  const notEligible = [...declared].filter((id) => !SPINE_OVERRIDE_ELIGIBLE_IDS.has(id));
+  assert.deepEqual(
+    notEligible,
+    [],
+    "declared in an environment but not in SPINE_OVERRIDE_ELIGIBLE_IDS -- the resolver intersects the " +
+      "two, so these are silently denied no matter what the environment says: " + notEligible.join(", "),
+  );
+});
+
+test("the Sales Agreement family is eligible AND resolves in sandbox", () => {
+  const family = ["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesAgreement.read"];
+  for (const id of family) assert.ok(SPINE_OVERRIDE_ELIGIBLE_IDS.has(id), `${id} must be eligible`);
+  const sandbox = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
+  for (const id of family) assert.ok(sandbox.has(id), `${id} must resolve in platform-sandbox`);
+  // And production stays empty regardless -- role-keyed, not name-keyed.
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts").size, 0);
 });

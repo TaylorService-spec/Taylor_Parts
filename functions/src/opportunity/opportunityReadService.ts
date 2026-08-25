@@ -54,6 +54,15 @@ export interface OpportunityProjection {
   // previously written but never projected, so the lineage existed in Firestore but was invisible
   // to every reader (the exact "coordination invisibility" finding from the gap audit).
   salesOrderId: string | null;
+  // The Sales Agreement forward-link createSalesAgreement writes atomically onto the Opportunity
+  // (salesAgreementCallables.ts). Found during the sandbox activation E2E: EXACTLY the same defect
+  // as salesOrderId above, one generation later. The commercial chain now runs
+  // Opportunity -> Agreement -> WON -> Sales Order, and five of the six lineage directions were
+  // readable while this one -- the link from the record a salesperson actually opens to the
+  // agreement that governs its price -- was written to Firestore and projected to nobody.
+  //
+  // Being persisted is not being visible. The write is the easy half.
+  salesAgreementId: string | null;
   // THE OPTIMISTIC-CONCURRENCY TOKEN, and the reason editing could not be wired at all.
   //
   // updateOpportunity REQUIRES expectedUpdatedAtMillis -- it rejects any caller that cannot
@@ -107,6 +116,7 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     nextAction: str(data.nextAction),
     lines,
     salesOrderId: str(data.salesOrderId),
+    salesAgreementId: str(data.salesAgreementId),
     createdAtMillis: num(data.createdAtMillis),
     updatedAtMillis: num(data.updatedAtMillis),
   };

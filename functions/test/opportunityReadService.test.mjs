@@ -18,6 +18,7 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
     nextAction: "call",
     lines: [{ kind: "PART", ref: "PRT-1", qty: 2 }],
     salesOrderId: "SO-1",
+    salesAgreementId: "SA-1",
     // fields that must NOT leak into the projection:
     createdByUid: "uid-abc",
     customerName: "Should Not Copy Co",
@@ -46,11 +47,12 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
   // an exception to it.
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "expectedCloseAt", "expectedValue", "id", "lines", "name",
-    "need", "nextAction", "opportunityNumber", "outcome", "ownerEmployeeId", "salesChannel",
+    "need", "nextAction", "opportunityNumber", "outcome", "ownerEmployeeId", "salesAgreementId", "salesChannel",
     "salesOrderId", "stage", "updatedAtMillis",
   ]);
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.salesOrderId, "SO-1");
+  assert.equal(p.salesAgreementId, "SA-1");
   // no raw UID, no copied Customer name
   assert.equal("createdByUid" in p, false);
   assert.equal("customerName" in p, false);
@@ -78,6 +80,15 @@ test("projectOpportunity fails to null on missing id or data (counted as a degra
 test("projectOpportunity defaults salesOrderId to null (a WON Opportunity with no Sales Order created yet)", () => {
   const p = projectOpportunity("O4", { stage: "DECISION", outcome: "WON" });
   assert.equal(p.salesOrderId, null);
+});
+
+test("projectOpportunity projects salesAgreementId, the link a salesperson opens the record to follow", () => {
+  // Found live during the sandbox Sales Agreement activation: the field was written atomically by
+  // createSalesAgreement and projected by nothing, so the Opportunity could not reach the agreement
+  // that governs its price. Identical in shape to the salesOrderId omission this file already
+  // records -- which is why it is asserted here rather than only noticed again later.
+  assert.equal(projectOpportunity("O5", { salesAgreementId: "SA-2026-000003" }).salesAgreementId, "SA-2026-000003");
+  assert.equal(projectOpportunity("O6", { stage: "QUOTING" }).salesAgreementId, null, "absent until an agreement exists");
 });
 
 test("summarizeReadResult: clean set is ready; any skip makes it degraded; empty is ready+[]", () => {
