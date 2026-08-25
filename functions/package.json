@@ -96,7 +96,7 @@
     "verify:firestore-deployment": "node scripts/verifyFirestoreDeployment.js",
     "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
-    "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js",
+    "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js test/workOrderEquipment.test.mjs",
     "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js",
     "test:fRules1": "node test/legacyJobsTechniciansRules.test.js",
     "test:receivingGrantGate": "npm run build && node test/receivingGrantGate.test.mjs && node test/receivingCapabilityRegistration.test.mjs && node test/resolveEffectivePermission.test.mjs",

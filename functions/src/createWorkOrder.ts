@@ -9,6 +9,14 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import { allocateWorkOrderNumber } from "./woNumbering";
+import {
+  assertEquipmentAllowedForType,
+  assertEquipmentIntegrity,
+  WorkOrderEquipmentError,
+} from "./workOrderEquipment";
+// Reused from the install command rather than re-declared: two constants naming the same collection
+// is exactly how a read and a write come to disagree about where a record lives.
+import { EQUIPMENT_COLLECTION } from "./workOrderInstall/workOrderInstallCommand";
 import { auditEventDocRef, stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
 import { createWorkOrderAuditId } from "./workOrderCreateMath";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
@@ -28,6 +36,10 @@ interface CreateWorkOrderInput {
   // submit. The key guards ONLY this callable, not the shared createWorkOrderRecord core (the Sales -> Service
   // seam creates through the core and is intentionally unaffected).
   idempotencyKey?: string;
+  // WHICH MACHINE THIS IS ABOUT. Optional, and validated server-side when present -- see
+  // workOrderEquipment.ts for the two rules (existing unit for service types; refused on INSTALL,
+  // where the unit does not exist until completion).
+  equipmentId?: string;
 }
 
 // The governed Work Order creation CORE, factored out so the callable AND other trusted server commands (e.g.
@@ -65,6 +77,7 @@ export async function createWorkOrderRecord(
     customerId: input.customerId,
     locationId: input.locationId,
     ...(input.complaint ? { complaint: input.complaint } : {}),
+    ...(input.equipmentId ? { equipmentId: input.equipmentId } : {}),
     ...(input.salesOrderId ? { salesOrderId: input.salesOrderId } : {}),
     ...(Array.isArray(input.salesOrderLineRefs) && input.salesOrderLineRefs.length ? { salesOrderLineRefs: input.salesOrderLineRefs } : {}),
     ...(Array.isArray(input.inventorySnapshot) && input.inventorySnapshot.length ? { inventorySnapshot: input.inventorySnapshot } : {}),
@@ -94,6 +107,15 @@ function assertValidInput(data: unknown): asserts data is CreateWorkOrderInput {
       "Either complaint or type (service classification) is required."
     );
   }
+  // TYPE RULE FIRST, and it needs no read: an INSTALL naming a unit is wrong regardless of whether
+  // that unit exists, and refusing it here means never fetching a document to reject the request
+  // for a reason the fetch had nothing to do with.
+  try {
+    assertEquipmentAllowedForType(input.type, input.equipmentId);
+  } catch (err) {
+    if (err instanceof WorkOrderEquipmentError) throw new HttpsError("invalid-argument", err.message);
+    throw err;
+  }
   if (input.idempotencyKey !== undefined) {
     if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.trim().length === 0) {
       throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
@@ -112,7 +134,7 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
   }
 
   assertValidInput(request.data);
-  const { customerId, locationId, priority, severity, type, complaint, idempotencyKey } = request.data;
+  const { customerId, locationId, priority, severity, type, complaint, idempotencyKey, equipmentId } = request.data;
   const actorUid = request.auth.uid;
   const aid = idempotencyKey ? createWorkOrderAuditId(actorUid, `${customerId}|${locationId}`, idempotencyKey) : null;
 
@@ -130,7 +152,25 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
         return { id: targetId, woNumber: (woSnap?.data()?.woNumber as string) ?? null, replayed: true as const };
       }
     }
-    const created = await createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint }, year);
+    // EQUIPMENT INTEGRITY IS PROVEN FROM THE STORED RECORD, INSIDE THE TRANSACTION.
+    //
+    // The client picker filters by account, and that filter is a convenience for the person
+    // choosing -- it is not evidence. A caller can send any id, so the account and location are
+    // checked against the Equipment document itself, read here, before anything is written.
+    if (equipmentId) {
+      const eqSnap = await tx.get(db.collection(EQUIPMENT_COLLECTION).doc(equipmentId));
+      const eq = eqSnap.data();
+      try {
+        assertEquipmentIntegrity(
+          { exists: eqSnap.exists, accountId: (eq?.accountId as string) ?? null, locationId: (eq?.locationId as string) ?? null },
+          { customerId, locationId },
+        );
+      } catch (err) {
+        if (err instanceof WorkOrderEquipmentError) throw new HttpsError("invalid-argument", err.message);
+        throw err;
+      }
+    }
+    const created = await createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint, equipmentId }, year);
     // Audit trail (M9/H19 remediation): EVERY create gets an Audit Event, staged in the SAME transaction so
     // the WO and its Audit Event commit atomically -- no longer conditional on an optional idempotencyKey
     // (a keyless legacy caller previously left no audit trail at all). When a key IS supplied, the event is

@@ -11,6 +11,8 @@ import {
   createIdempotencyKeyHolder,
 } from "../../domain/workOrderWizard";
 import CustomerPicker from "./CustomerPicker";
+import EquipmentPicker from "./EquipmentPicker";
+import { equipmentAllowedAtCreate } from "../../domain/workOrderEquipmentRule.js";
 import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
 import { Button } from "../../shared/ui/primitives";
 
@@ -97,6 +99,9 @@ export default function WorkOrderWizard() {
   const [type, setType] = useState("");
   const [severity, setSeverity] = useState("");
   const [complaint, setComplaint] = useState("");
+  // WHICH MACHINE. Null is a real answer -- a service call can be raised before anyone knows the
+  // unit, and the server treats the reference as optional.
+  const [equipmentId, setEquipmentId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -138,6 +143,9 @@ export default function WorkOrderWizard() {
         severity: severity || undefined,
         type: type || undefined,
         complaint: complaint.trim() || undefined,
+        // Never sent on an INSTALL: the unit does not exist yet, and the server refuses it. Cleared
+        // rather than hidden, so switching type to INSTALL cannot smuggle a stale selection through.
+        equipmentId: (equipmentAllowedAtCreate(type) && equipmentId) || undefined,
         idempotencyKey: idempotencyKeyHolderRef.current.getKey(),
       });
       navigate(`/service/work-orders/${result.id}`);
@@ -236,7 +244,13 @@ export default function WorkOrderWizard() {
 
           <div className="fo-wizard-field">
             <label className="fo-wizard-field-label" htmlFor="wo-type">Type</label>
-            <select id="wo-type" className="fo-wizard-control" value={type} onChange={(e) => setType(e.target.value)}>
+            <select id="wo-type" className="fo-wizard-control" value={type} onChange={(e) => {
+                const next = e.target.value;
+                setType(next);
+                // Switching to INSTALL clears any unit already chosen, so a stale selection cannot
+                // survive into a submit the server would refuse.
+                if (!equipmentAllowedAtCreate(next)) setEquipmentId(null);
+              }}>
               <option value="">(no type -- complaint required instead)</option>
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
@@ -244,6 +258,21 @@ export default function WorkOrderWizard() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-equipment">Equipment</label>
+            {/* Chosen by what the machine IS -- name, manufacturer, model, serial -- never by a
+                document id. Scoped to the customer and, where one is chosen, the site; that scope is
+                a convenience for the person choosing, and the server re-reads the record and
+                validates the relationship regardless of what this list offered. */}
+            <EquipmentPicker
+              accountId={selectedAccount?.id ?? null}
+              locationId={selectedLocationId || null}
+              type={type}
+              value={equipmentId}
+              onChange={setEquipmentId}
+            />
           </div>
 
           <div className="fo-wizard-field">

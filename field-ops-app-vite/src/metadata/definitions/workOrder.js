@@ -124,6 +124,21 @@ export const workOrderEntity = makeEntityDefinition({
       // orders". WORK_ORDER_SCHEDULED_SORT_HIDES_UNSCHEDULED says so, and the screen says so too.
       sortable: true,
     }),
+    // WHICH MACHINE THIS IS ABOUT.
+    //
+    // Rendered, not filtered. A cross-Work-Order query by equipment would need its own composite
+    // with the default sort, and none is declared or live -- offering the filter would put a
+    // control on screen that errors at read time.
+    makeFieldDefinition({
+      id: "equipmentId",
+      entityId: "workOrder",
+      label: "Equipment",
+      type: "REFERENCE",
+      referenceTo: "equipment",
+      description:
+        "The installed unit this work is about. Absent on legacy records and on INSTALL work, where " +
+        "the unit is created at completion rather than named at creation.",
+    }),
     makeFieldDefinition({
       id: "locationId",
       entityId: "workOrder",
@@ -220,28 +235,18 @@ export const workOrderEntity = makeEntityDefinition({
         "one decision covers both. Free-text needs a search index, which is a platform capability " +
         "rather than a list feature.",
     }),
-    makeGap({
-      id: "WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE",
-      title: "A Work Order does not record which equipment it is for",
-      entityId: "workOrder",
-      severity: GAP_SEVERITY.MISSING_AUTHORITY,
-      reason: WHY.NOT_PROJECTED,
-      finding:
-        "types/workOrder.ts declares customerId and locationId and NO equipment reference. The link " +
-        "exists in the other direction and only after the fact: an INSTALL close-out writes an " +
-        "equipmentId into its outcome (domain/workOrderInstallCloseout.js), and equipment history is " +
-        "assembled from those events. Nothing on the Work Order itself names a unit.",
-      consequence:
-        "There is no Equipment column or filter on the Work Order list. A service call against a " +
-        "specific machine cannot be found by that machine from this surface.",
-      refused:
-        "Rendering an Equipment column populated from close-out outcomes. It would be empty for every " +
-        "open Work Order — exactly the rows a dispatcher is looking at — and populated only for work " +
-        "already finished, which reads as missing data rather than as a model that has no such field.",
-      resolution:
-        "Whether a Work Order names the equipment it is for is a service-model decision. It changes " +
-        "the write path and the wizard, not the list.",
-    }),
+    // ═══ CLOSED — WORK_ORDER_CARRIES_NO_EQUIPMENT_REFERENCE ═══
+    //
+    // It said the record carried no equipment reference and that a column fed from install
+    // close-outs would be empty for every open job. Both were true.
+    //
+    // Closed by giving the record its own reference rather than deriving one: `equipmentId` is
+    // declared above, validated server-side at creation against the Equipment document itself
+    // (account strict, location where both sides know it), and refused on INSTALL — where the unit
+    // genuinely does not exist until completion, and where workOrderInstallCommand already links it
+    // from the delivered serialized asset.
+    //
+    // Kept as a record rather than deleted: a closed gap is the record of a decision.
   ],
 });
 
@@ -258,6 +263,7 @@ export const workOrderIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "type" }),
     makeColumn({ fieldId: "scheduledStart", sortable: true }),
     makeColumn({ fieldId: "assignedTechId" }),
+    makeColumn({ fieldId: "equipmentId" }),
     makeColumn({ fieldId: "createdAt", sortable: true }),
   ],
   filters: [

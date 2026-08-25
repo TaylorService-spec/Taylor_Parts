@@ -70,6 +70,12 @@ export interface WorkOrder {
   customerId: string;
   locationId: string;
 
+  // WHICH MACHINE THIS IS ABOUT. Optional: every Work Order written before this existed has none,
+  // and a service call can legitimately be raised before anyone knows the unit. Refused on an
+  // INSTALL at creation -- that unit does not exist until installation completes, when the install
+  // command links it from the serialized asset that was delivered.
+  equipmentId?: string;
+
   assignedTechId?: string;
 
   // Planning (mutable)
