@@ -101,7 +101,12 @@ describe("WorkOrderDetailPage -- Work Order read fail-closed (H14)", () => {
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
     useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
     renderPage();
-    expect(screen.getByTestId("wo-detail")).toBeTruthy();
+    // The assertion used to be getByTestId("wo-detail") — a handle on the legacy WorkOrderDetail
+    // card, which the approved North Star composition replaces. The INVARIANT it was protecting is
+    // unchanged and asserted here directly: a resolved read renders the RECORD, identified by its
+    // governed reference as the page's h1, and raises no alert.
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("WO-1");
+    expect(screen.getByText("Acme Foods")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

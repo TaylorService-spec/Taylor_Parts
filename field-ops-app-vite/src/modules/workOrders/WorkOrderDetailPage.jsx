@@ -1,128 +1,146 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useWorkOrder } from "../../hooks/useWorkOrder";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
+import { useEquipmentDoc } from "../../hooks/useEquipment";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
-import LoadingState from "../../shared/ui/LoadingState";
-import FailureState from "../../shared/ui/FailureState";
 import { Button } from "../../shared/ui/primitives";
-import WorkOrderDetail from "../controlTower/WorkOrderDetail";
+import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
+import AttentionBand from "../../shared/ui/AttentionBand.jsx";
+import RuledSection from "../../shared/ui/RuledSection.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import LifecycleChevrons from "../../shared/ui/LifecycleChevrons.jsx";
+import WorkOrderActions from "../controlTower/WorkOrderActions";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
-import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
-import { workOrderRecordPage } from "../../metadata/definitions/workOrderPage.js";
-import { workOrderEntity } from "../../metadata/definitions/workOrder.js";
-import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
-import { useEquipmentDoc } from "../../hooks/useEquipment";
+import { workOrderPriorityText } from "../../domain/workOrderPriority";
+import { formatClockTime } from "../../domain/displayTimestamp";
+import { buildTimeline } from "../../domain/timelineBuilder";
+import { describeEvent } from "../../domain/eventModel";
+import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
+import { workOrderRecordPageRailSubset } from "../../metadata/definitions/workOrderPage.js";
+import { workOrderEntity } from "../../metadata/definitions/workOrder.js";
+import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
+import {
+  workOrderHeader,
+  workOrderSpine,
+  workOrderAttention,
+  workOrderPartsPlan,
+  workOrderLineage,
+  EDGE,
+} from "../../domain/workOrderNorthStar.js";
 
-// Sprint 2.0.3 -- Service > Work Orders detail route
-// (/service/work-orders/:workOrderId). Thin route wrapper: fetches
-// the Work Order + its Account/Location (for display names) +
-// job/technician context, then renders the existing WorkOrderDetail.jsx
-// unchanged in structure.
+// THE WORK ORDER, COMPOSED IN THE NORTH STAR GRAMMAR.
 //
-// This route is gated to admin/dispatcher only at the routing layer
-// (App.jsx) -- see Sprint 2.0.3's implementation plan Section 7 for
-// why (WorkOrderActions.jsx embedded here is dispatcher-only in
-// intent; a technician's real lifecycle-action flow is
-// TechnicianWorkOrderActions.jsx, on their own separate
-// TechnicianDashboard route). Because of that gate, this component
-// only ever mounts for admin/dispatcher -- calling useAccount()/
-// useLocation() unconditionally here is therefore safe, not a
-// technician-facing permission-denied risk.
+// Source of truth for the composition: the approved `Proposed - Work Order.dc.html`.
+// Translation contract: docs/design/eos-north-star-design-grammar.md.
+// Domain authority: unchanged — every action still resolves through transitionWorkOrder, and this
+// file adds no command, no capability and no write path of its own.
+//
+// ════════════════════ WHAT ACTUALLY CHANGED, AND WHY IT IS NOT A RESTYLE ════════════════════
+//
+// The pilot audit of this page found "three UI generations stacked on one page: a metadata field
+// grid, a legacy text-run card, and a parts-plan card, each with its own typography and table style.
+// Status appears four times in four treatments." The old composition was: back-link, a metadata
+// record grid, a presentation panel, a parts editor — each a card, in shipping order.
+//
+// The grammar replaces the ORDER, not the paint (NS-P2):
+//
+//   kicker → header → lifecycle → attention → work → rail
+//
+// The record grid no longer leads. THE JOB leads, because the pilot's hierarchy verdict was
+// explicit: "The record grid leads; the job is buried. What should lead: state + the next
+// transition." Type, priority and creator move to the rail as reference material.
+//
+// ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
+//
+// No ETA, no arrival confidence, no first-visit-fix percentage, no "3 repairs in 12 months", no
+// suggestion band. Those belong to `North Star - Work Order.dc.html`, whose own header states that
+// none of the services behind them exist. A number that looks computed and is not is the single most
+// damaging thing an operations system can render, so the composition leaves the space and the
+// numbers stay unwritten until something can compute them.
+//
+// ════════════════════ ROUTE GATE (unchanged) ════════════════════
+//
+// App.jsx gates this route to admin/dispatcher. That is why useAccount()/useLocation() may be called
+// unconditionally: a technician never mounts this component — their surface is
+// TechnicianWorkOrderDetail. Persona composition, authority untouched (NS-P5).
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
+  const { role, user } = useAuth();
 
-  /**
-   * BACK TO WORK ORDERS — and it now goes there.
-   *
-   * It navigated to "/service/work-orders", which matches NO route: the Work Orders nav item declares
-   * `path: ""` and is therefore the INDEX of /service. An unmatched path fell through to the
-   * catch-all, so a control labelled "Back to Work Orders" reliably landed on the Dashboard. The
-   * label was telling the truth about intent; the code was not.
-   *
-   * The path is DERIVED from the nav config rather than typed, so a future move follows
-   * automatically. The saved list state rides along, so filters and sort survive the round trip —
-   * and deliberately NOT browser history, which would send this control somewhere different
-   * depending on where the record happened to be opened from.
-   */
   const backToWorkOrders = () => navigate(
     objectListPathWithState(OBJECT_LIST_KEY.WORK_ORDERS, savedListState(OBJECT_LIST_KEY.WORK_ORDERS)),
   );
-  const { role, user } = useAuth();
+
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
-  // ONE read for the referenced unit, so the summary can name it rather than showing a key. Absent
-  // on legacy records and on INSTALL work: the hook returns nothing and the field renders as an
-  // unresolved reference, never as an id.
   const { data: equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
   const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
-  if (loading) return <div className="fo-panel"><LoadingState>Loading work order…</LoadingState></div>;
+  // ONE DERIVATION PER FACT (NS-P4). Everything below renders what these return; nothing re-derives.
+  const header = useMemo(() => workOrderHeader(workOrder), [workOrder]);
+  const spine = useMemo(() => workOrderSpine(workOrder?.status), [workOrder?.status]);
+  const plan = useMemo(() => workOrderPartsPlan(workOrder), [workOrder]);
+  const attention = useMemo(
+    () => workOrderAttention(workOrder, { nowMillis: Date.now(), partsPlan: plan }),
+    [workOrder, plan],
+  );
+  // The Sales Order reference is not resolvable from this page today — there is no per-id governed
+  // read reachable here for it. The edge therefore renders as UNRESOLVED, naming the entity and
+  // stating the absence, and never as the document id.
+  const lineage = useMemo(() => workOrderLineage(workOrder, { salesOrderReference: null }), [workOrder]);
 
-  // H14 -- a denied/failed Work Order read used to leave `loading` true
-  // forever (no error, no recovery). It now resolves with a distinct
-  // failure, never conflated with the CONFIRMED-absence "could not be
-  // found" message below, which only applies to a successful read that
-  // found no such Work Order.
+  if (loading) {
+    return <div className="ns-page"><HonestState state={HONEST_STATE.LOADING} subject="work order" /></div>;
+  }
+
   if (error) {
     return (
-      <div className="fo-panel">
-        <FailureState
-          message={error}
-          action={<Button variant="secondary" onClick={retry}>Retry</Button>}
+      <div className="ns-page">
+        <HonestState
+          state={HONEST_STATE.UNAVAILABLE}
+          subject="This work order"
+          detail={error}
+          action={<Button variant="secondary" onClick={retry}>Try again</Button>}
         />
       </div>
     );
   }
 
+  // A successful read that found nothing is EMPTY, and stays distinct from the failed read above.
   if (!workOrder) {
     return (
-      <div className="fo-panel">
-        <FailureState
-          message="This work order could not be found."
+      <div className="ns-page">
+        <HonestState
+          state={HONEST_STATE.EMPTY}
+          detail="This work order could not be found."
           action={<Button variant="secondary" onClick={backToWorkOrders}>Back to Work Orders</Button>}
         />
       </div>
     );
   }
 
-  // F0 -- a governed Work Order has no child job rows: it IS the execution
-  // record, carrying its own status, lifecycle timestamps and executionLog.
-  // The legacy fieldops_jobs read that populated this has been removed rather
-  // than repointed, because there is nothing on the governed model to repoint
-  // it AT. Passing the Work Order itself keeps the detail panel's contract.
-  const jobsForThisWorkOrder = [workOrder];
-
-  // REFERENCES BECOME NAMES, through the resolvers this page already reads.
-  //
-  // Every one of these ids is a routing key, never content. Where a read failed the page already
-  // renders a visible failure above; the field itself says the reference did not resolve rather
-  // than printing the key (DECISIONS #106).
+  // REFERENCES BECOME NAMES. Where a read failed the page states that above; the field itself says
+  // the reference did not resolve rather than printing the key (DECISIONS #106).
   const resolveWorkOrderReference = (fieldId, id) => {
     if (fieldId === "customerId") {
-      return account?.name
-        ? { state: REFERENCE_STATE.FOUND, label: account.name }
-        : { state: REFERENCE_STATE.NOT_FOUND };
+      return account?.name ? { state: REFERENCE_STATE.FOUND, label: account.name } : { state: REFERENCE_STATE.NOT_FOUND };
     }
     if (fieldId === "locationId") {
-      return location?.name
-        ? { state: REFERENCE_STATE.FOUND, label: location.name }
-        : { state: REFERENCE_STATE.NOT_FOUND };
+      return location?.name ? { state: REFERENCE_STATE.FOUND, label: location.name } : { state: REFERENCE_STATE.NOT_FOUND };
     }
     if (fieldId === "equipmentId") {
-      // The unit renders as what it IS -- name plus the disambiguating manufacturer / model /
-      // serial line, the same one the Equipment register uses. Duplicate names are legal, which is
-      // why the summary is part of the label rather than decoration.
       if (!equipment) return { state: REFERENCE_STATE.NOT_FOUND };
       const summary = equipmentSummary(equipment);
       return {
@@ -131,8 +149,6 @@ export default function WorkOrderDetailPage() {
       };
     }
     if (fieldId === "assignedTechId") {
-      // Delegated to the ONE technician vocabulary rather than a `find(...)?.name ?? id` written
-      // here -- that fallback is exactly how a raw id reaches a screen.
       const identity = resolveTechnicianIdentity(id, { technicians });
       if (identity.state === "resolved") return { state: REFERENCE_STATE.FOUND, label: identity.name };
       return { state: REFERENCE_STATE.NOT_FOUND };
@@ -140,54 +156,219 @@ export default function WorkOrderDetailPage() {
     return undefined;
   };
 
+  const techIdentity = resolveTechnicianIdentity(workOrder.scheduledTechId, { technicians });
+  const techName = techIdentity.state === "resolved" ? techIdentity.name : null;
+  const equipmentLabel = equipment
+    ? [equipmentDisplayName(equipment), equipmentSummary(equipment)].filter(Boolean).join(" · ")
+    : null;
+  const window = formatWindow(workOrder.scheduledStart, workOrder.scheduledEnd);
+
+  // THE KICKER: object type · governed reference. Priority rides here because the concept puts
+  // "Work Order · Repair · P2 High" above the title.
+  const kicker = ["Work Order", titleCase(workOrder.type), workOrderPriorityText(workOrder.priority)]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className="fo-panel">
-      <Button variant="tertiary" onClick={backToWorkOrders} className="fo-link-btn">
-        &larr; Back to Work Orders
-      </Button>
-      {/* H14 -- these two reads used to be dropped entirely (no error, no
-          loading) even though useAccount.js/useFirestoreCollection.js
-          already exposed them. A denied Account read rendered a blank/
-          raw-id customer name with no indication anything failed; a denied
-          Technicians read rendered as an empty list, indistinguishable from
-          "no technicians exist". Both now render a visible failure instead
-          of silently falling back. */}
-      {accountError && <FailureState message={accountError} />}
-      {locationError && <FailureState message={locationError} />}
-      {techniciansError && (
-        <FailureState message="You don't have access to the technician list. Some assignment info may be missing." />
-      )}
-      {/* ═══ THE SHARED RECORD SHELL ═══
-          The Work Order's own facts, in the same grammar every other core object uses.
+    <div className="ns-page">
+      <div className="ns-page__crumb">
+        <span>Enterprise Operations OS</span>
+        <span className="ns-page__crumb-right">
+          <Link to={objectListPathWithState(OBJECT_LIST_KEY.WORK_ORDERS, savedListState(OBJECT_LIST_KEY.WORK_ORDERS))}>
+            Service → Work Orders
+          </Link>
+          {header.reference ? ` → ${header.reference}` : null}
+        </span>
+      </div>
+      <div className="ns-rulepair" />
 
-          NO PENCILS, and that is derived rather than restrained: there is no field-patch command
-          for a Work Order at all. STATUS especially is the OUTPUT of a lifecycle transition --
-          transitionWorkOrder takes an ACTION NAME and the engine decides whether it is legal from
-          where the record is now. A status dropdown would bypass every guard silently, landing the
-          record in a state no transition could have produced. Assignment is the same: it is what a
-          Dispatch action DOES, and a patched assignedTechId is an assignment nobody dispatched.
+      <RecordIdentity
+        kicker={kicker}
+        reference={header.reference}
+        fallbackName="Work Order"
+        statusWords={header.statusWords}
+        statusTone={header.statusTone}
+        facts={[
+          { key: "customer", label: null, value: account?.name ?? (accountError ? "Customer — not available to you" : "Customer — reference unavailable") },
+          { key: "site", label: null, value: location?.name ?? (locationError ? "Site — not available to you" : "Site — reference unavailable") },
+          { key: "tech", label: "Tech", value: techName ?? (workOrder.scheduledTechId ? "reference unavailable" : "Unassigned") },
+          { key: "window", label: "Window", value: window },
+        ]}
+        actions={
+          // The governed action cluster, unchanged. Legality is decided by getAllowedActions and the
+          // engine; this file neither widens nor narrows it.
+          <WorkOrderActions workOrder={workOrder} role={role} technicians={technicians} showStatus={false} />
+        }
+      />
 
-          The lifecycle, execution and parts-planning actions below are untouched. */}
-      <MetadataRecordPage
-        definition={workOrderRecordPage}
-        record={workOrder}
-        entityResolver={() => workOrderEntity}
-        resolveReference={resolveWorkOrderReference}
-      />
-      <WorkOrderDetail
-        workOrder={workOrder}
-        jobs={jobsForThisWorkOrder}
-        role={role}
-        technicians={technicians}
-        customerName={account?.name}
-        locationLabel={location?.name}
-      />
-      {/* WO Parts Planning. Hosted here rather than inside WorkOrderDetail because this route is the
-          admin/dispatcher-gated planning surface (see the gate note above), while WorkOrderDetail is a
-          pure presentation component. No refresh prop is needed: useWorkOrder is an onSnapshot
-          listener, so a saved plan re-renders from the persisted document rather than from optimistic
-          client state. */}
-      <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
+      {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent. */}
+      <LifecycleChevrons steps={spine.steps} terminal={spine.terminal} ariaLabel="Work order lifecycle" />
+      {spine.unrecognised ? (
+        <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
+      ) : null}
+
+      {/* ATTENTION BEFORE WORK. Renders nothing when clean. */}
+      <AttentionBand items={attention} />
+
+      {/* Read failures are stated ONCE, here, rather than each section inventing its own blank. */}
+      {accountError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={accountError} /> : null}
+      {locationError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={locationError} /> : null}
+      {techniciansError ? (
+        <HonestState
+          state={HONEST_STATE.UNAVAILABLE}
+          detail="You don’t have access to the technician list. Some assignment info may be missing."
+        />
+      ) : null}
+
+      <div className="ns-record-body">
+        <div>
+          <RuledSection title="The job">
+            <p><strong>Complaint.</strong>{" "}
+              {workOrder.complaint
+                ? workOrder.complaint
+                : <span className="ns-state--na">No complaint was recorded.</span>}
+            </p>
+          </RuledSection>
+
+          <RuledSection
+            title="Parts plan"
+            meta={plan.length > 0 ? `${plan.length} part${plan.length === 1 ? "" : "s"} planned` : null}
+          >
+            {plan.length === 0 ? (
+              <HonestState state={HONEST_STATE.EMPTY} detail="No parts have been planned for this visit." />
+            ) : (
+              <>
+                <div className="ns-table-wrap">
+                  <table className="ns-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Part</th>
+                        <th scope="col" className="ns-num">Planned</th>
+                        <th scope="col">Readiness</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.map((line, i) => (
+                        <tr key={line.partId ?? `line-${i}`}>
+                          <td>
+                            {line.name ?? <span className="ns-state--na">Part — reference unavailable</span>}
+                            {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
+                          </td>
+                          <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
+                          {/* THE HONEST READINESS. The concept shows "✓ On truck"; EOS cannot see a
+                              truck, and a fabricated tick would send a technician to a job without
+                              the part. */}
+                          <td><span className="ns-state--na">Not available</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="ns-table__note">
+                  Planning demand only — never reserves stock or records usage. Truck and staging
+                  readiness aren&rsquo;t available yet, so this shows what was planned, not what is on hand.
+                </p>
+              </>
+            )}
+          </RuledSection>
+
+          {/* The parts plan EDITOR keeps its panel: it is an editor, which is the one context the
+              ruled panel is admitted for (Grammar R13). */}
+          <RuledSection title="Edit parts plan" panel>
+            <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
+          </RuledSection>
+
+          <RuledSection title="Timeline">
+            <WorkOrderTimeline workOrder={workOrder} />
+          </RuledSection>
+        </div>
+
+        <aside className="ns-rail">
+          <RuledSection title="Equipment">
+            {equipmentLabel
+              ? <p>{equipmentLabel}</p>
+              : workOrder.equipmentId
+                ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Equipment — reference unavailable." />
+                : <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="No unit is recorded on this work order." />}
+          </RuledSection>
+
+          <RuledSection title="Site">
+            {location?.name ? <p>{location.name}</p> : null}
+            {locationError
+              ? <HonestState state={HONEST_STATE.DENIED} subject="The site record" />
+              : !location?.name
+                ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Site — reference unavailable." />
+                : null}
+          </RuledSection>
+
+          <RuledSection title="Lineage">
+            <ul className="ns-lineage">
+              {lineage.map((edge) => (
+                <li className="ns-lineage__row" key={edge.key}>
+                  <span className="ns-lineage__label">{edge.label}</span>
+                  {edge.state === EDGE.RESOLVED ? (
+                    <span>{edge.reference}</span>
+                  ) : edge.state === EDGE.UNRESOLVED ? (
+                    // Names the entity, states the absence. Never the document id.
+                    <span className="ns-lineage__unresolved">Linked — reference unavailable</span>
+                  ) : (
+                    <span className="ns-lineage__unresolved">Not linked</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </RuledSection>
+
+          {/* RECORD DETAIL — the shared metadata shell, in the rail where the concept puts it.
+              This was briefly hand-rolled here as three rows, which was a second derivation of
+              facts the metadata layer already owns: exactly the NS-P4 violation this whole
+              implementation exists to remove, introduced while implementing it. The conformance
+              suite caught it, which is what conformance suites are for.
+
+              The shell also carries the reference RESOLVERS, so customer, site, unit and technician
+              render as what they are and never as stored ids (DECISIONS #106). */}
+          <RuledSection title="Record">
+            <MetadataRecordPage
+              definition={workOrderRecordPageRailSubset}
+              record={workOrder}
+              embedded
+              entityResolver={() => workOrderEntity}
+              resolveReference={resolveWorkOrderReference}
+            />
+          </RuledSection>
+        </aside>
+      </div>
     </div>
   );
+}
+
+/** The recorded events, in the same vocabulary the rest of the product already uses. */
+function WorkOrderTimeline({ workOrder }) {
+  const events = useMemo(() => buildTimeline([workOrder]) ?? [], [workOrder]);
+  if (events.length === 0) {
+    return <HonestState state={HONEST_STATE.EMPTY} detail="No recorded events yet." />;
+  }
+  return (
+    <ul className="ns-lineage">
+      {events.map((e, i) => (
+        <li className="ns-lineage__row" key={e.id ?? `event-${i}`}>
+          <span className="ns-lineage__label">{formatClockTime(e.at) ?? "—"}</span>
+          <span>{describeEvent(e)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Enum-shaped vocabulary rendered as a word (R04). Unknown returns null rather than a guess. */
+function titleCase(v) {
+  if (typeof v !== "string" || !v.trim()) return null;
+  return v.trim().toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+function formatWindow(start, end) {
+  const s = formatClockTime(start);
+  if (!s) return "Not scheduled";
+  const e = formatClockTime(end);
+  return e ? `${s} – ${e}` : s;
 }

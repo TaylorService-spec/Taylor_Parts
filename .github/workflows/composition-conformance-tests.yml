@@ -13,6 +13,7 @@ on:
       - "field-ops-app-vite/src/modules/**"
       - "field-ops-app-vite/src/shared/**"
       - "field-ops-app-vite/src/domain/truckInventoryView.js"
+      - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
@@ -73,6 +74,7 @@ on:
       - "field-ops-app-vite/src/modules/**"
       - "field-ops-app-vite/src/shared/**"
       - "field-ops-app-vite/src/domain/truckInventoryView.js"
+      - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/test/truckInventory.test.jsx"
@@ -149,7 +151,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
-        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx
         # MISSING working-directory, pre-existing: this step ran from the repo root, so its
         # tests were never actually executing in this lane. Adding it makes them run.
         working-directory: field-ops-app-vite
