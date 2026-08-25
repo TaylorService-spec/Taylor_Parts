@@ -11,8 +11,9 @@
 // This changes WHEN code loads, never WHO may load it. Route visibility is still isDomainVisible()
 // and the authority is still Rules and the governed resolvers -- a lazily-loaded module a principal
 // may not use is a module that still denies.
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { recordNavigation, recordIdentity } from "./diagnostics/crashDiagnostics.js";
 import { routerBasenameFrom } from "./routerBasename";
 const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
 import Jobs from "./modules/jobs/Jobs";
@@ -214,6 +215,27 @@ function TruckInventoryConnected({ accessVersion, role }) {
 // (resolveEffectiveAccess) is re-checked on every call regardless, and a genuinely undeployed/unreachable
 // callable still surfaces honestly through the write hooks' own denied/unavailable/error mapping
 // (domain/opportunityCommandOutcome.js) rather than through a fabricated second static flag.
+/**
+ * The navigation trail and the non-sensitive identity behind a crash diagnostic.
+ *
+ * Renders nothing. Lives INSIDE the Router (so it can observe location) and inside AuthProvider (so
+ * it knows the role), while the boundary that reads its output sits above both — which is why this
+ * writes to a module rather than a context.
+ *
+ * ROLE, NEVER A UID. A role reproduces a crash; a uid identifies a person and reproduces nothing.
+ */
+function CrashTrailRecorder() {
+  const location = useLocation();
+  const { user, role } = useAuth();
+  useEffect(() => {
+    recordNavigation(`${location.pathname}${location.search || ""}`);
+  }, [location.pathname, location.search]);
+  useEffect(() => {
+    recordIdentity({ signedIn: Boolean(user), role: role ?? null });
+  }, [user, role]);
+  return null;
+}
+
 function OpportunityWorkspaceConnected() {
   const { user } = useAuth();
   const { hasCapability } = useOpportunityCapabilities(user);
@@ -886,6 +908,10 @@ export default function App() {
   return (
     <InventoryProvider>
       <BrowserRouter basename={ROUTER_BASENAME}>
+        {/* Records WHERE the user was when a crash happens. The root error boundary sits above the
+            Router and cannot ask react-router anything -- least of all when the crash IS a routing
+            problem -- so the trail is kept in a module the boundary can read without context. */}
+        <CrashTrailRecorder />
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
           {/* Gate 2 -- AppHeader is now mounted INSIDE AppShell, as the workspace

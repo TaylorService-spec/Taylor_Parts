@@ -1,6 +1,7 @@
 import React from "react";
 import FailureState from "../shared/ui/FailureState.jsx";
 import Button from "../shared/ui/primitives/Button.jsx";
+import { buildCrashDiagnostic, diagnosticsVisible, formatCrashSummary } from "../diagnostics/crashDiagnostics.js";
 
 // Root error boundary (mounted in main.jsx ABOVE AuthProvider and App, so it catches
 // every render crash in the application).
@@ -58,6 +59,11 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       const repeated = this.state.retryCount > 0;
+      const { diagnostic } = this.state;
+      // NON-PRODUCTION ONLY. A crash id and a copy control are a debugging affordance; production
+      // keeps the governed screen it has always had, because nothing in this repository permits
+      // putting internals in front of a production user. The console output is unchanged in both.
+      const showDiagnostic = diagnostic != null && diagnosticsVisible();
       return (
         <FailureState
           title="Something went wrong"
@@ -68,12 +74,27 @@ export default class ErrorBoundary extends React.Component {
           }
           action={
             <>
-              <Button variant="primary" onClick={this.handleRetry}>
-                Try again
-              </Button>
-              <Button variant="secondary" onClick={this.handleReload}>
-                Reload
-              </Button>
+              {/* THE CRASH ID IS THE POINT. One short code a person can read out of a screenshot,
+                  matching the console entry and the copied payload — so an occurrence somebody SAW
+                  can be tied to an occurrence somebody can act on. */}
+              {showDiagnostic && (
+                <p className="fo-crash-id" data-testid="crash-id">
+                  Crash ID: <strong>{diagnostic.crashId}</strong>
+                </p>
+              )}
+              <div className="fo-crash-actions">
+                <Button variant="primary" onClick={this.handleRetry}>
+                  Try again
+                </Button>
+                <Button variant="secondary" onClick={this.handleReload}>
+                  Reload
+                </Button>
+                {showDiagnostic && (
+                  <Button variant="secondary" onClick={this.handleCopy}>
+                    {this.state.copied ? "Diagnostic copied" : "Copy diagnostic"}
+                  </Button>
+                )}
+              </div>
             </>
           }
         />
