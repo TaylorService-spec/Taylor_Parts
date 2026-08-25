@@ -46,7 +46,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
-import { WORK_ORDERS_COLLECTION } from "../constants/collections";
+import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/collections";
 import type { SalesOrderLineRef } from "../types/workOrder";
 
 export const COORDINATED_VISIT_READ_CAPABILITY = "fulfillment.coordinatedVisit.read";
@@ -123,6 +123,23 @@ export function projectCoordinatedWorkOrder(id: string, data: Record<string, unk
 export interface CoordinatedOperationsReadResult {
   status: "ready";
   workOrders: CoordinatedWorkOrderProjection[];
+  /**
+   * The GOVERNED REFERENCE for each anchoring Sales Order, keyed by its document id.
+   *
+   * WHY THIS EXISTS. Coordinated Visits and Coordinated Mission render the anchoring Sales Order as
+   * `salesOrderLabelById[id] || id`, and that label map was honestly empty — so both printed a
+   * Firestore document id at the top of the screen. DECISIONS #106: a document id is a routing key,
+   * not a name.
+   *
+   * The Sales Order already owns SO-YYYY-######. Nothing needed inventing; this read simply never
+   * carried it. Resolved here rather than denormalised onto each Work Order, because one visit
+   * anchors MANY Work Orders and the reference belongs to the order, not to each unit of work.
+   *
+   * BOUNDED: one getAll over the DISTINCT anchors on this page, capped. An order whose reference
+   * cannot be resolved is ABSENT from the map, which is what makes the surface say so truthfully
+   * instead of falling back to the key.
+   */
+  salesOrderReferences: Record<string, string>;
   skipped: number; // fetched docs that were not honestly projectable OR carried no salesOrderId (not coordinated)
   truncated: boolean; // true when the active-status Work Order count exceeds `limit`
 }
@@ -148,7 +165,48 @@ export async function readActiveCoordinatedWorkOrders(
     if (projection) workOrders.push(projection);
     else skipped += 1;
   }
-  return { status: "ready", workOrders, skipped, truncated };
+  return {
+    status: "ready",
+    workOrders,
+    skipped,
+    truncated,
+    salesOrderReferences: await resolveSalesOrderReferences(db, workOrders.map((w) => w.salesOrderId)),
+  };
+}
+
+/** How many distinct anchoring Sales Orders one page will resolve a reference for. */
+export const MAX_RESOLVED_SALES_ORDER_REFERENCES = 30;
+
+/**
+ * SO-YYYY-###### for each distinct anchoring Sales Order on this page.
+ *
+ * DISTINCT, because a coordinated visit is many Work Orders against ONE order — resolving per Work
+ * Order would read the same document repeatedly for a label that is identical every time.
+ *
+ * FAILS SOFT. This is a display enrichment on an already-successful read; if it throws, the surfaces
+ * render their truthful fallback rather than the whole page becoming unavailable over a label.
+ */
+export async function resolveSalesOrderReferences(
+  db: FirebaseFirestore.Firestore,
+  salesOrderIds: string[],
+): Promise<Record<string, string>> {
+  const distinct = [...new Set((salesOrderIds ?? []).filter((v) => typeof v === "string" && v.trim().length > 0))]
+    .slice(0, MAX_RESOLVED_SALES_ORDER_REFERENCES);
+  if (distinct.length === 0) return {};
+  try {
+    const snaps = await db.getAll(...distinct.map((id) => db.collection(SALES_ORDERS_COLLECTION).doc(id)));
+    const out: Record<string, string> = {};
+    for (const snap of snaps) {
+      const reference = str((snap.data() as Record<string, unknown> | undefined)?.salesOrderNumber);
+      // ABSENT, not null. A missing entry is what makes the client render its truthful fallback; a
+      // null would invite a `?? id` somewhere downstream, which is the defect this closes.
+      if (snap.exists && reference) out[snap.id] = reference;
+    }
+    return out;
+  } catch (err) {
+    console.error("resolveSalesOrderReferences: reference read failed", err);
+    return {};
+  }
 }
 
 // The trusted read callable. Same fail-closed shape as getAvailableEquipment / getSalesOrderContext:

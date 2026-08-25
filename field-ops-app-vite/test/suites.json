@@ -960,6 +960,10 @@
     {
       "file": "test/crashDiagnostics.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/serviceAnchorReference.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

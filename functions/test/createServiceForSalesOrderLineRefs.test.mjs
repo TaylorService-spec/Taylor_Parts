@@ -9,6 +9,7 @@
 // Run: npm run build && node --test test/createServiceForSalesOrderLineRefs.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildLineRefsAndInventorySnapshot,
   LineRefBuildError,
@@ -119,4 +120,33 @@ test("EQUIPMENT_MODEL-only SO: line-refs populated, NO inventorySnapshot (never 
   assert.equal(lineRefs.length, 1);
   assert.deepEqual(lineRefs[0], { ref: "C713", kind: "EQUIPMENT_MODEL", orderedQty: 2, allocatedQty: 1 });
   assert.deepEqual(inventorySnapshot, []);
+});
+
+// ════════════════════ A STORED COMPLAINT IS READ BY A PERSON ════════════════════
+//
+// This command wrote the Work Order's complaint as:
+//
+//     `Sales Order fulfillment ${salesOrderId}: deliver/install ordered items`
+//
+// interpolating the DOCUMENT ID -- and that string is STORED. So every Work Order created this way
+// carries a Firestore key inside its visible job description, which is where the raw ids on
+// /service/job-assignments come from.
+//
+// DECISIONS #106 applies to written text as much as to a rendered field: the id was never the
+// order's name. The reference is on the Sales Order this command already reads.
+
+test("THE COMPLAINT NAMES THE SALES ORDER BY ITS REFERENCE, never by its key", () => {
+  const src = readFileSync(
+    new URL("../src/salesOrder/createServiceForSalesOrder.ts", import.meta.url), "utf8",
+  );
+  // The exact shape that shipped the defect.
+  assert.doesNotMatch(src, /complaint: `Sales Order fulfillment \$\{salesOrderId\}/,
+    "the document id must not be interpolated into stored text");
+  assert.match(src, /so\.salesOrderNumber/, "the governed reference is what a person reads");
+  assert.match(src, /Sales Order \$\{so\.salesOrderNumber\} fulfillment/);
+  // An order predating numbering falls back to a plain sentence -- NEVER to the id. A job
+  // description that names nothing beats one that names a routing key.
+  assert.match(src, /"Sales Order fulfillment: deliver\/install ordered items"/);
+  const fallbackBlock = src.slice(src.indexOf("complaint:"), src.indexOf("salesOrderLineRefs: lineRefs"));
+  assert.doesNotMatch(fallbackBlock, /\$\{salesOrderId\}/, "no branch may interpolate the id");
 });

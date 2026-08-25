@@ -23,6 +23,8 @@ export const SALES_ORDER_SERVICE_CAPABILITY = "salesOrder.service";
 interface SoLine { lineId?: string; kind: string; ref: string; orderedQty: number; allocatedQty?: number }
 interface SalesOrderDoc {
   state?: string;
+  /** SO-YYYY-######. The reference a PERSON reads; the document id is a routing key. */
+  salesOrderNumber?: string;
   accountId?: string;
   locationId?: string;
   lines?: SoLine[];
@@ -204,7 +206,18 @@ export const createServiceForSalesOrder = onCall({ region: "us-central1" }, asyn
           customerId: so.accountId,
           locationId: so.locationId,
           priority: 3,
-          complaint: `Sales Order fulfillment ${salesOrderId}: deliver/install ordered items`,
+          // THE COMPLAINT IS READ BY A TECHNICIAN, so it names the Sales Order the way a person
+          // does. This interpolated the DOCUMENT ID, and that string is stored — so every Work
+          // Order created this way carries a Firestore key in its visible job description, which is
+          // where the raw ids on /service/job-assignments come from. DECISIONS #106 applies to
+          // written text as much as to a rendered field: the id was never the order's name.
+          //
+          // The reference is on the Sales Order this command already read. Falls back to the plain
+          // sentence — never to the id — for an order predating numbering, because a job
+          // description that names nothing is better than one that names a routing key.
+          complaint: so.salesOrderNumber
+            ? `Sales Order ${so.salesOrderNumber} fulfillment: deliver/install ordered items`
+            : "Sales Order fulfillment: deliver/install ordered items",
           salesOrderId,
           salesOrderLineRefs: lineRefs,
           inventorySnapshot,

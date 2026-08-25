@@ -55,7 +55,16 @@ export function mapCoordinatedOperationsReadResult({ ok, payload, errorCode } = 
       operationalContextByWorkOrderId: {},
       accountNameById: {},
       locationNameById: {},
-      salesOrderLabelById: {},
+      // THE ANCHOR'S GOVERNED REFERENCE (SO-YYYY-######), when the read carried one.
+      //
+      // COMPATIBLE WITH THE PROJECTION CURRENTLY DEPLOYED, which returns no `salesOrderReferences`
+      // at all: this stays an empty map, and the surfaces render their truthful fallback rather
+      // than the document id they used to print. When the richer read ships, the SAME code shows
+      // real references with no further client change.
+      salesOrderLabelById:
+        payload.salesOrderReferences && typeof payload.salesOrderReferences === "object"
+          ? payload.salesOrderReferences
+          : {},
       error: null,
     };
   }
