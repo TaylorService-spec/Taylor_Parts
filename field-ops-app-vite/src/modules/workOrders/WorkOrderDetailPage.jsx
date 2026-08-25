@@ -37,6 +37,10 @@ import {
   workOrderLineage,
   EDGE,
 } from "../../domain/workOrderNorthStar.js";
+import {
+  deriveWorkOrderIntelligence,
+  mergeWorkOrderAttention,
+} from "../../domain/workOrderIntelligence.js";
 
 // THE WORK ORDER, COMPOSED IN THE NORTH STAR GRAMMAR.
 //
@@ -63,10 +67,9 @@ import {
 // ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
 //
 // No ETA, no arrival confidence, no first-visit-fix percentage, no "3 repairs in 12 months", no
-// suggestion band. Those belong to `North Star - Work Order.dc.html`, whose own header states that
-// none of the services behind them exist. A number that looks computed and is not is the single most
-// damaging thing an operations system can render, so the composition leaves the space and the
-// numbers stay unwritten until something can compute them.
+// separate suggestion panel. Governed intelligence is allowed to contribute to the existing
+// AttentionBand only when it has a substantiated signal. Until a trusted readiness assembler exists,
+// the intelligence contract returns speak:false and renders nothing.
 //
 // ════════════════════ ROUTE GATE (unchanged) ════════════════════
 //
@@ -97,9 +100,20 @@ export default function WorkOrderDetailPage() {
   const header = useMemo(() => workOrderHeader(workOrder), [workOrder]);
   const spine = useMemo(() => workOrderSpine(workOrder?.status), [workOrder?.status]);
   const plan = useMemo(() => workOrderPartsPlan(workOrder), [workOrder]);
-  const attention = useMemo(
+  const baseAttention = useMemo(
     () => workOrderAttention(workOrder, { nowMillis: Date.now(), partsPlan: plan }),
     [workOrder, plan],
+  );
+  // Intelligence joins the SAME attention channel; it never creates a second copilot/suggestion band.
+  // Until a trusted readiness assembler supplies the canonical projection, deriveWorkOrderIntelligence
+  // returns speak:false and this composition remains quiet to the user.
+  const intelligence = useMemo(
+    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan }),
+    [workOrder, plan],
+  );
+  const attention = useMemo(
+    () => mergeWorkOrderAttention(baseAttention, intelligence),
+    [baseAttention, intelligence],
   );
   // The Sales Order reference is not resolvable from this page today — there is no per-id governed
   // read reachable here for it. The edge therefore renders as UNRESOLVED, naming the entity and
@@ -123,7 +137,6 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  // A successful read that found nothing is EMPTY, and stays distinct from the failed read above.
   if (!workOrder) {
     return (
       <div className="ns-page">
@@ -136,8 +149,6 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  // REFERENCES BECOME NAMES. Where a read failed the page states that above; the field itself says
-  // the reference did not resolve rather than printing the key (DECISIONS #106).
   const resolveWorkOrderReference = (fieldId, id) => {
     if (fieldId === "customerId") {
       return account?.name ? { state: REFERENCE_STATE.FOUND, label: account.name } : { state: REFERENCE_STATE.NOT_FOUND };
@@ -241,10 +252,8 @@ export default function WorkOrderDetailPage() {
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
       ) : null}
 
-      {/* ATTENTION BEFORE WORK. Renders nothing when clean. */}
       <AttentionBand items={attention} />
 
-      {/* Read failures are stated ONCE, here, rather than each section inventing its own blank. */}
       {accountError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={accountError} /> : null}
       {locationError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={locationError} /> : null}
       {techniciansError ? (
@@ -302,9 +311,6 @@ export default function WorkOrderDetailPage() {
                             {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
                           </td>
                           <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
-                          {/* THE HONEST READINESS. The concept shows "✓ On truck"; EOS cannot see a
-                              truck, and a fabricated tick would send a technician to a job without
-                              the part. */}
                           <td><span className="ns-state--na">Not available</span></td>
                         </tr>
                       ))}
@@ -319,8 +325,6 @@ export default function WorkOrderDetailPage() {
             )}
           </RuledSection>
 
-          {/* The parts plan EDITOR keeps its panel: it is an editor, which is the one context the
-              ruled panel is admitted for (Grammar R13). */}
           <RuledSection title="Edit parts plan" panel>
             <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
           </RuledSection>
@@ -356,7 +360,6 @@ export default function WorkOrderDetailPage() {
                   {edge.state === EDGE.RESOLVED ? (
                     <span>{edge.reference}</span>
                   ) : edge.state === EDGE.UNRESOLVED ? (
-                    // Names the entity, states the absence. Never the document id.
                     <span className="ns-lineage__unresolved">Linked — reference unavailable</span>
                   ) : (
                     <span className="ns-lineage__unresolved">Not linked</span>
@@ -366,14 +369,6 @@ export default function WorkOrderDetailPage() {
             </ul>
           </RuledSection>
 
-          {/* RECORD DETAIL — the shared metadata shell, in the rail where the concept puts it.
-              This was briefly hand-rolled here as three rows, which was a second derivation of
-              facts the metadata layer already owns: exactly the NS-P4 violation this whole
-              implementation exists to remove, introduced while implementing it. The conformance
-              suite caught it, which is what conformance suites are for.
-
-              The shell also carries the reference RESOLVERS, so customer, site, unit and technician
-              render as what they are and never as stored ids (DECISIONS #106). */}
           <RuledSection title="Record">
             <MetadataRecordPage
               definition={workOrderRecordPageRailSubset}
