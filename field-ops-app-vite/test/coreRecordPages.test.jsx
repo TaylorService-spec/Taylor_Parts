@@ -288,16 +288,21 @@ describe("Sales Order", () => {
 
   it("Dollars comes from the authoritative projection", () => {
     expect(salesOrderEntity.fields.find((f) => f.id === "totalMinor").type).toBe("CURRENCY_MINOR");
-    expect(SO).toMatch(/formatMinor\(view\.totalMinor, view\.currency \?\? null\)/);
+    expect(SO).toMatch(/salesOrderDollars\(view\)/);
   });
 
-  it("a partly-priced order renders NO total, never a partial sum", () => {
-    // totalMinor is null unless every line is priced. A sum over the priced lines would be a real
-    // number that is not the sale's total, and somebody would act on it.
-    expect(SO).toMatch(/typeof view\.totalMinor === "number"/);
-    expect(SO).toMatch(/: "—"/);
-    // NULL IS NOT ZERO: no zero fallback anywhere near the money.
-    expect(SO).not.toMatch(/totalMinor \?\? 0/);
+  // THESE ASSERTIONS USED TO MATCH SOURCE TEXT, AND THAT IS EXACTLY HOW THE DEFECT SHIPPED.
+  //
+  // "does the screen reference view.totalMinor" passed while view.totalMinor was UNDEFINED on
+  // every order in existence, because salesOrderView() never carried it through. A reference is
+  // not an arrival. The behaviour now lives in test/salesOrderMoneyArrives.test.mjs, which feeds
+  // the view model a projection-shaped input and asserts on the VALUE that comes out.
+  it("the money behaviour is proved by value, not by source text", () => {
+    const proof = read("test/salesOrderMoneyArrives.test.mjs");
+    expect(proof).toMatch(/assert\.equal\(v\.totalMinor, 5000\)/);
+    expect(proof).toMatch(/a partly-priced order must show no figure at all/);
+    // And the view model really does carry it, which is the line that was missing.
+    expect(read("src/domain/salesOrderView.js")).toMatch(/totalMinor: typeof so\.totalMinor === "number"/);
   });
 
   it("the operational actions are all still reachable", () => {
