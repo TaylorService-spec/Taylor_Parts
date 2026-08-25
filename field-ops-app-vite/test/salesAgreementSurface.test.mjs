@@ -17,7 +17,8 @@ import {
   SALES_AGREEMENT_VIEW_STATE as STATE,
 } from "../src/domain/salesAgreementView.js";
 import { salesAgreementEntity } from "../src/metadata/definitions/salesAgreement.js";
-import { salesAgreementRecordPage } from "../src/metadata/definitions/salesAgreementPage.js";
+import { salesAgreementRecordPage, salesAgreementEntityResolver } from "../src/metadata/definitions/salesAgreementPage.js";
+import { readFileSync } from "node:fs";
 import { SALES_AGREEMENT_CAPABILITY_REQUEST } from "../src/access/salesAgreementCapabilityAccess.js";
 import { OPPORTUNITY_CAPABILITY_REQUEST } from "../src/access/opportunityCapabilityAccess.js";
 
@@ -229,4 +230,49 @@ test("all four capabilities resolve in ONE request, against one accessVersion", 
   // Separate ids, not one salesAgreement.write: drafting terms and BINDING THE BUSINESS to them are
   // different authorities, and a single capability would make them the same permission.
   assert.notEqual(SALES_AGREEMENT_CAPABILITY_REQUEST.length, 1);
+});
+
+// ═════════════════════════════════════════ the page can REACH its own fields
+
+test("THE RECORD PAGE RESOLVES ITS OWN ENTITY", () => {
+  // WHAT PASSED WHILE THE SCREEN WAS BLANK.
+  //
+  // "every field the page places is declared on the entity" (above) compares two definitions to
+  // each other. Both were correct. What nothing asserted was that the RENDERER could reach the
+  // entity at all: MetadataRecordPage looks fields up through a caller-supplied entityResolver,
+  // the panel defaulted it to null, and its mounting surface passed none -- so every FIELD_GROUP
+  // section rendered "this section's entity is not registered".
+  //
+  // A live user opened an ACCEPTED agreement worth $9,530.00 and saw five identical apologies
+  // where Overview, Commercial Terms, Pricing, Instructions and Provenance should have been. The
+  // metadata was perfect and unreachable, which is indistinguishable from absent.
+  assert.equal(salesAgreementEntityResolver(salesAgreementRecordPage.entityId), salesAgreementEntity);
+  // And it speaks only for what it owns.
+  assert.equal(salesAgreementEntityResolver("account"), null);
+  assert.equal(salesAgreementEntityResolver(undefined), null);
+});
+
+test("every FIELD_GROUP section resolves an entity that defines every field it places", () => {
+  // The renderer's actual path, walked end to end: section -> resolver -> entity -> field. This is
+  // the assertion whose failure would have been the blank page, rather than a separate fact that
+  // happened to be true beside it.
+  const groups = salesAgreementRecordPage.sections.filter((s) => s.kind === "FIELD_GROUP");
+  assert.ok(groups.length >= 5, "the page places field groups worth rendering");
+  for (const section of groups) {
+    const entity = salesAgreementEntityResolver(salesAgreementRecordPage.entityId);
+    assert.ok(entity, `${section.id} must resolve an entity or it renders an apology`);
+    for (const fieldId of section.fieldIds) {
+      assert.ok(entity.fields.some((f) => f.id === fieldId), `${section.id} places ${fieldId}, which must resolve`);
+    }
+  }
+});
+
+test("THE PANEL DEFAULTS TO A RESOLVER, so a mounting surface cannot forget", () => {
+  // The bug was not a wrong resolver -- it was no resolver, from a caller that had no way to know
+  // one was required. A default that renders the page correctly is the fix; an injected resolver
+  // still wins for a host that owns a wider graph.
+  const src = readFileSync(new URL("../src/modules/sales/SalesAgreementPanel.jsx", import.meta.url), "utf8");
+  assert.match(src, /entityResolver = salesAgreementEntityResolver/,
+    "the panel must default its resolver, not default it to null");
+  assert.doesNotMatch(src, /entityResolver = null/, "null default is what produced the blank page");
 });

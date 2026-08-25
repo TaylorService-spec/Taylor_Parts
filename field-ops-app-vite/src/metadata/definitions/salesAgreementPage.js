@@ -1,4 +1,5 @@
 import { makePageDefinition, makeSection } from "../pageDefinition.js";
+import { salesAgreementEntity } from "./salesAgreement.js";
 
 // THE SALES AGREEMENT RECORD PAGE.
 //
@@ -121,3 +122,26 @@ export const salesAgreementRecordPage = makePageDefinition({
     }),
   ],
 });
+
+// THE PAGE NEEDS ITS ENTITY, AND NOTHING WAS HANDING IT OVER.
+//
+// MetadataRecordPage resolves field DEFINITIONS through a caller-supplied `entityResolver`, because
+// a record page is rendered in contexts that own different slices of the metadata graph. Where no
+// resolver is passed it has nothing to look fields up in, and every FIELD_GROUP section renders
+// "Field details are unavailable — this section's entity is not registered."
+//
+// That is what a live sandbox user saw on SA-2026-000001: an accepted agreement worth $9,530.00
+// whose Overview, Commercial Terms, Pricing, Instructions and Provenance sections were five
+// identical apologies. The entity definition existed the whole time, fully specified, one import
+// away. Nothing was broken -- nothing was connected.
+//
+// So the page ships its own resolver rather than depending on each mounting surface to remember.
+// A record page that cannot render its own fields without an assist from its host is a page with a
+// hidden prerequisite, and the missing-prerequisite state looks exactly like a permissions problem
+// to the person reading it.
+//
+// Returns null for any other entityId -- this resolver speaks for the Sales Agreement and says so,
+// rather than silently answering for entities it does not own.
+export function salesAgreementEntityResolver(entityId) {
+  return entityId === salesAgreementEntity.id ? salesAgreementEntity : null;
+}

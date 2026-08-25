@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
-import { salesAgreementRecordPage } from "../../metadata/definitions/salesAgreementPage.js";
+import { salesAgreementRecordPage, salesAgreementEntityResolver } from "../../metadata/definitions/salesAgreementPage.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { formatMinorUnits } from "../../domain/money.js";
@@ -255,7 +255,7 @@ function TermsForm({ view, pending, onSave }) {
 
 // `hasCapability` defaults to fail-closed, so any caller that injects nothing -- every unit and
 // component test -- gets no live controls, exactly the convention SalesOrderDetail already follows.
-export default function SalesAgreementPanel({ agreement, hasCapability = () => false, entityResolver = null }) {
+export default function SalesAgreementPanel({ agreement, hasCapability = () => false, entityResolver = salesAgreementEntityResolver }) {
   const { view, create, updateDraft, accept, pending, commandError } = agreement;
   const [editingLines, setEditingLines] = useState(null);
   const can = (id) => hasCapability(id) === true;
