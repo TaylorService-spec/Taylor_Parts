@@ -1,0 +1,54 @@
+name: Ask EOS V1
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/ai/**"
+      - "functions/src/index.ts"
+      - "functions/test/askEOSRepository.test.mjs"
+      - "field-ops-app-vite/src/ai/**"
+      - "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+      - ".github/workflows/ask-eos-v1.yml"
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Build Functions
+        working-directory: functions
+        run: npm run build
+      - name: Ask EOS boundary tests
+        working-directory: functions
+        run: node --test test/askEOSRepository.test.mjs
+      - name: No gateway/model address in browser AI code
+        shell: bash
+        run: |
+          if grep -RniE '127\.0\.0\.1:8080|localhost:8080|11434|KEYSTONE_GATEWAY_(URL|API_KEY|TENANT_ID)' field-ops-app-vite/src/ai field-ops-app-vite/src/shared/ui/AppHeader.jsx; then
+            echo 'Browser AI code must not contain a Keystone/model runtime address or server credential name.' >&2
+            exit 1
+          fi
+
+  client-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install client dependencies
+        working-directory: field-ops-app-vite
+        run: npm ci
+      - name: Build client
+        working-directory: field-ops-app-vite
+        run: npm run build
