@@ -28,6 +28,7 @@ import { salesOrderDollars, PRICING_STATE_TEXT } from "../src/domain/salesOrderM
 import { formatMoneyDisplay } from "../src/domain/moneyDisplay.js";
 import { formatMinorUnits } from "../src/domain/money.js";
 import { salesOrderDisplayCurrency } from "../src/domain/salesOrderDisplayCurrency.js";
+import { cellValue } from "../src/metadata/listPresentation.js";
 
 /** Exactly the shape functions/src/salesOrder/salesOrderReadService.ts returns. */
 function projection(overrides = {}) {
@@ -217,4 +218,48 @@ test("the view model carries every lineage field the projection declares", () =>
   for (const f of ["sourceOpportunityId", "sourceOpportunityNumber", "sourceAgreementId"]) {
     assert.ok(v[f], `${f} must reach the view model`);
   }
+});
+
+// ═════════════════════════════════════════ the list says exactly what the record says
+
+// The one injection the Sales Order list makes, reproduced verbatim from SalesOrdersList.jsx.
+const MONEY_CELL = (row) => salesOrderDollars({ ...row, currency: salesOrderDisplayCurrency(row) }).text;
+const dollarsColumn = { fieldId: "totalMinor", type: "CURRENCY_MINOR" };
+const listCell = (row) => cellValue(dollarsColumn, row, { resolveMoneyCell: MONEY_CELL });
+
+test("THE LIST AND THE RECORD PAGE AGREE ON ALL FIVE READINGS", () => {
+  // They agree by CONSTRUCTION -- both call salesOrderDollars -- rather than by two rules that
+  // happen to match today. The list rendered a blank cell for four of these five, which is
+  // indistinguishable from a failed load: the exact ambiguity the record page's wording removed,
+  // removed on one surface and not the other.
+  const cases = [
+    ["priced USD", { totalMinor: 5000, currency: "USD", pricingState: "PRICED" }, "$50.00"],
+    ["priced, legacy no currency", { totalMinor: 5000, pricingState: "PRICED" }, "$50.00"],
+    ["explicit zero", { totalMinor: 0, currency: "USD", pricingState: "PRICED" }, "$0.00"],
+    ["unpriced", { totalMinor: null, pricingState: "UNPRICED" }, "Not priced"],
+    ["partly priced", { totalMinor: null, pricingState: "PARTIALLY_PRICED", unpricedLineCount: 2 }, "Partly priced"],
+    ["no lines", { totalMinor: null, pricingState: "NO_LINES" }, "No lines"],
+  ];
+  for (const [label, row, expected] of cases) {
+    assert.equal(listCell(row), expected, `list: ${label}`);
+    assert.equal(salesOrderDollars({ ...row, currency: salesOrderDisplayCurrency(row) }).text, expected, `record: ${label}`);
+  }
+});
+
+test("A NULL TOTAL IS NEVER A BLANK CELL on the Sales Order list", () => {
+  // The absent-value short-circuit runs BEFORE the money branch for every other column, and that
+  // is right -- but on a Sales Order a null total is a FACT, not the absence of one.
+  for (const state of ["UNPRICED", "PARTIALLY_PRICED", "NO_LINES"]) {
+    const cell = listCell({ totalMinor: null, pricingState: state });
+    assert.ok(cell && cell.trim().length > 0, `${state} must not render blank`);
+    assert.notEqual(cell, null);
+  }
+  // A genuinely unknown state still falls back to the honest em dash rather than claiming a reason.
+  assert.equal(listCell({ totalMinor: null, pricingState: null }), "—");
+});
+
+test("a list that injects NOTHING is unchanged", () => {
+  // The hook is not a generic escape hatch: every other CURRENCY_MINOR list keeps the old path.
+  assert.equal(cellValue(dollarsColumn, { totalMinor: 5000, currency: "USD" }), "$50.00");
+  assert.equal(cellValue(dollarsColumn, { totalMinor: null }), null, "absent stays absent without a resolver");
 });

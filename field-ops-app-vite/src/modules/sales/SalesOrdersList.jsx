@@ -4,6 +4,7 @@ import { salesOrderEntity, salesOrderIndexList } from "../../metadata/definition
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import { salesOrderDisplayCurrency } from "../../domain/salesOrderDisplayCurrency.js";
+import { salesOrderDollars } from "../../domain/salesOrderMoneyDisplay.js";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
@@ -81,13 +82,18 @@ export default function SalesOrdersList() {
     filters: criteria.filters,
     sort: criteria.sort,
     resolveReference,
-    // X-SALES-ORDER-USD-DISPLAY. Orders created before PR #976 carry no `currency` field, so the
-    // Dollars column rendered "USD 50.00" for one order and "50.00" for another worth the same
-    // fifty dollars. The projection is right to report the gap honestly; this surface knows every
-    // Sales Order this implementation can create is USD (buildCreateSalesOrder hardcodes it and
-    // takes no parameter that could produce anything else), so it says so HERE rather than letting
-    // a formatter decide that unlabelled money is dollars. See domain/salesOrderDisplayCurrency.js.
-    resolveCurrency: salesOrderDisplayCurrency,
+    // THE DOLLARS CELL, from the SAME function the record page uses.
+    //
+    // Two things were wrong here and they had the same shape -- the list knew less about its own
+    // money than the record page did. Orders created before PR #976 carry no `currency`, so one
+    // rendered "USD 50.00" and another worth the same fifty dollars rendered "50.00"; and an order
+    // with no total rendered a BLANK cell, indistinguishable from a failed load, where the record
+    // page has always said "Not priced" / "Partly priced" / "No lines".
+    //
+    // salesOrderDollars already decides all five readings, so the list borrows it rather than
+    // growing a second opinion. That is what makes the two surfaces agree by construction instead
+    // of by coincidence.
+    resolveMoneyCell: (row) => salesOrderDollars({ ...row, currency: salesOrderDisplayCurrency(row) }).text,
   });
 
   // What was asked for and is not in effect, from both places it can fail: parsing the URL against

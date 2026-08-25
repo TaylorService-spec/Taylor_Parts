@@ -126,18 +126,30 @@ export function resolveColumns(def, entity) {
 // is narrow. Re-exported so existing importers are unaffected.
 export { UNRESOLVED_REFERENCE_LABEL, REFERENCE_STATE } from "./referenceResolution.js";
 
-export function cellValue(column, row, { resolveReference, resolveCurrency } = {}) {
+export function cellValue(column, row, { resolveReference, resolveMoneyCell } = {}) {
   const raw = row?.[column.fieldId];
-  if (raw === null || raw === undefined || raw === "") return null;
-  // A CURRENCY_MINOR field travels with its own sibling `currency` by contract, and that is still
-  // the default. `resolveCurrency` exists because ONE entity has a legitimate reason to know
-  // better than its own row: a Sales Order written before PR #976 carries no currency field, and
-  // the surface that renders it knows every Sales Order this implementation can create is USD.
-  // Injected rather than assumed here, so the knowledge stays with the caller that has it and this
-  // generic renderer never decides what an unlabelled amount is denominated in.
-  if (column.type === "CURRENCY_MINOR") {
-    return formatMinor(raw, resolveCurrency ? resolveCurrency(row) : row?.currency ?? null);
+
+  // A MONEY CELL IS DECIDED BEFORE THE ABSENT CHECK, and that ordering is the point.
+  //
+  // `raw === null` on a CURRENCY_MINOR field is not "no value to show" -- it is a FACT the reader
+  // needs, and the owning entity is the only party that knows which fact. A Sales Order with no
+  // total has four different reasons for it (not priced / partly priced / no lines / genuinely
+  // unknown), and the record page has said so since the Dollars work while the LIST rendered a
+  // blank cell for all four. A blank is indistinguishable from a failed load, which is the exact
+  // ambiguity that work existed to remove -- removed on one surface and not the other.
+  //
+  // So an owning surface may supply the WHOLE cell. It is not a generic escape hatch: it applies
+  // only to CURRENCY_MINOR, and a resolver that returns null falls straight through to the default
+  // below, so every list that injects nothing is unchanged.
+  if (column.type === "CURRENCY_MINOR" && resolveMoneyCell) {
+    const supplied = resolveMoneyCell(row, column);
+    if (supplied !== null && supplied !== undefined) return supplied;
   }
+
+  if (raw === null || raw === undefined || raw === "") return null;
+  // A CURRENCY_MINOR field travels with its own sibling `currency` by contract, and that stays the
+  // default for every entity that has one.
+  if (column.type === "CURRENCY_MINOR") return formatMinor(raw, row?.currency ?? null);
   if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? raw;
   // A multi-valued enum resolves EVERY member. Rendering the array as-is would print
   // "CUSTOMERVENDOR" — machine values, concatenated, in front of a user.
@@ -177,7 +189,7 @@ export function cellValue(column, row, { resolveReference, resolveCurrency } = {
  * not here. Omitting it is a legitimate, honest choice (a caller with no live resolver wired
  * yet): every REFERENCE cell then renders `UNRESOLVED_REFERENCE_LABEL`, never the stored id.
  */
-export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null, resolveCurrency = null } = {}) {
+export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null, resolveMoneyCell = null } = {}) {
   const columns = resolveColumns(def, entity);
 
   const state = (() => {
@@ -196,7 +208,7 @@ export function buildListPresentation({ def, entity, page = null, loading = fals
         // The routing key. Deliberately separate from anything displayed, so a document
         // id can be used to navigate without ever becoming a label.
         key: row.id,
-        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row, { resolveReference, resolveCurrency }) }))),
+        cells: Object.freeze(columns.map((c) => Object.freeze({ fieldId: c.fieldId, value: cellValue(c, row, { resolveReference, resolveMoneyCell }) }))),
       }))
     : [];
 
