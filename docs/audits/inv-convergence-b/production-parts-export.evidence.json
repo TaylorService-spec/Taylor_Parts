@@ -1,0 +1,50 @@
+{
+  "artifact": "production-parts-export.csv",
+  "status": "REMOVED_FROM_REPOSITORY",
+  "classification": "OPERATIONAL_READBACK",
+  "provenance": "production Firestore `parts` read-back, captured 2026-07-24",
+
+  "removalReason": [
+    "The artifact's PROVENANCE is a production database read, and a production read-back does not belong in the repository as committed content regardless of what its rows happen to contain.",
+    "Its row values were seeded test data -- every one of the 190 partIds carried the `TST-` prefix, originating from the synthetic catalog that `field-ops-app-vite/src/data/partsCatalog.ts` documents itself as generated from. So this removal is provenance hygiene, not a customer-data incident.",
+    "The claims the audit actually cites from this file are structural -- field coverage, row count, the `NOT_EXPOSED_IN_SOURCE` marking -- and every one of them is preserved below. No cited conclusion depended on a row value."
+  ],
+
+  "recordCount": 190,
+
+  "schema": [
+    "partId",
+    "internalPartNumber",
+    "name",
+    "category",
+    "stockingUnit",
+    "status",
+    "source_provenance"
+  ],
+
+  "fieldCoverage": {
+    "populatedFromSource": ["partId", "name", "stockingUnit", "status", "source_provenance"],
+    "notExposedInSource": ["internalPartNumber", "category"],
+    "note": "`internalPartNumber` and `category` were marked NOT_EXPOSED_IN_SOURCE for all 190 rows. That is the fact `evidence-review.md` §2.1 and `part-identity-evidence.md` cite; it is a property of the read projection, not of any record."
+  },
+
+  "identifierShape": {
+    "pattern": "TST-<n>",
+    "rowsMatching": 190,
+    "note": "Recorded because it is the evidence for the classification above. No identifier values are reproduced here."
+  },
+
+  "capturedAt": "2026-07-24",
+  "sourceRead": "docs/audits/inv1-phase1/create-execution-20260724/postwrite-analyzer/row-results.json",
+
+  "originalSha256": "6fae7450f45c25d70815d356b4186c9dba1e48fa3f0ae4e7ab598ab379392b06",
+  "hashNote": "Already published in this directory's SHA256SUMS.txt before removal, so recording it here discloses nothing new and keeps the evidence chain verifiable against any copy an operator holds.",
+
+  "aiIngestion": {
+    "indexed": false,
+    "reason": "docs/audits/** is excluded by the Keystone repository-intelligence content policy (intelligence/eos_repository_policy.json). The exclusion was applied to the git tree LISTING, so the file's bytes were never read.",
+    "operationalDataAuthorized": false
+  },
+
+  "historyNote": "Removing the file from the tree does not remove it from git history; the blob remains reachable at earlier commits. A history rewrite is destructive and coordinated, and is an Owner decision rather than something this change performs."
+}

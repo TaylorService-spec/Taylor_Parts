@@ -39,13 +39,13 @@ The unit specified an **Owner-produced fresh read-only export of the 190 product
 
 Two residual caveats, neither of which changes the operational join (§5):
 - **Freshness:** the read-back is dated 2026-07-24. Production `parts` can change only through a trusted `createPart` run; none has been authorized since. A fresh Owner export would confirm zero drift since then.
-- **Field coverage:** the read-back's `currentSummary` exposes `partId`, `name`, `stockingUnit`, `status` — but **not** `category` or a separate `internalPartNumber`. Those two columns are marked `NOT_EXPOSED_IN_SOURCE` in `production-parts-export.csv`; a fresh export would populate them.
+- **Field coverage:** the read-back's `currentSummary` exposes `partId`, `name`, `stockingUnit`, `status` — but **not** `category` or a separate `internalPartNumber`. Those two columns were marked `NOT_EXPOSED_IN_SOURCE` for all 190 rows -- recorded in `production-parts-export.evidence.json`, which replaced the removed read-back; a fresh export would populate them.
 
 ## 3. Deliverables (this directory)
 
 | File | Rows | Description |
 |---|---|---|
-| `production-parts-export.csv` | 190 | Production `parts` read-back (partId, internalPartNumber*, name, category*, stockingUnit, status, source_provenance). *`internalPartNumber`/`category` = `NOT_EXPOSED_IN_SOURCE`. |
+| `production-parts-export.evidence.json` | — | **Metadata only.** The production `parts` read-back it describes (190 rows; partId, internalPartNumber*, name, category*, stockingUnit, status, source_provenance) was **removed from the repository**: its provenance is a production database read, and that does not belong in the tree as committed content. Schema, counts, field coverage and the original SHA-256 are preserved. *`internalPartNumber`/`category` = `NOT_EXPOSED_IN_SOURCE`. |
 | `static-catalog-population.csv` | 200 | Repository `PARTS_CATALOG` comparison population (sku, name, category, unit, cost, price, reorderThreshold, warehouseQty). |
 | `canonical-operational-join.csv` | 190 | Per canonical record: `partId`, static SKU match, match method/result, name parity, unit parity (raw + normalized), mismatch reason. |
 | `excluded-ten-part-manifest.csv` | 10 | The exact static SKUs absent from production, with static descriptive fields and evidence class. |
