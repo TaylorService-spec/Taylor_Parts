@@ -44,6 +44,10 @@ cd "$REPO_ROOT"
 
 echo "== [0/5] structural safety guard =="
 node scripts/_sandboxDeployGuard.mjs   # asserts role!=production, projectId==eos-platform-sandbox!=taylor-parts
+# WHAT the release was built from, not only where it is going. platform-sandbox was once deployed
+# from an unmerged branch head whose tree happened to be byte-identical to the main commit that
+# followed -- safe by luck, unprovable by process. See scripts/releaseProvenance.mjs.
+node scripts/_releaseProvenanceGuard.mjs "$@"
 
 echo "== [1/5] build functions lib =="
 ( cd functions && npm run build )
