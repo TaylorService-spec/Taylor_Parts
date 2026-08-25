@@ -1,0 +1,41 @@
+name: Work Order Intelligence Tests
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
+      - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - ".github/workflows/work-order-intelligence-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
+      - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - ".github/workflows/work-order-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  work-order-intelligence:
+    name: North Star Work Order intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Governed intelligence contract
+        run: node --test test/workOrderIntelligence.test.mjs
+        working-directory: field-ops-app-vite
