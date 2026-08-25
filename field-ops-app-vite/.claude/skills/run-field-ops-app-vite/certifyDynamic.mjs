@@ -72,6 +72,12 @@ try {
     await page.goto(`${BASE}${withEmu(entity.listRoute)}`, { waitUntil: "domcontentloaded" });
     await settle(page, 1600);
 
+    // WAIT FOR THE ROW, DO NOT SLEEP AND HOPE. These lists load through governed CALLABLES and
+    // take several seconds against a deployed origin; a fixed delay reported "no record to open" for
+    // three entities that had records, which is a harness bug wearing a fixture failure's clothes --
+    // exactly the confidently-wrong number this whole harness keeps producing when it measures time
+    // instead of content.
+    await page.locator(entity.rowSelector).first().waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
     const rows = await page.locator(entity.rowSelector).count();
     if (rows === 0) {
       preconditionFailures.push({ entity: entity.key, reason: `no rows at ${entity.listRoute} — no record to open` });
