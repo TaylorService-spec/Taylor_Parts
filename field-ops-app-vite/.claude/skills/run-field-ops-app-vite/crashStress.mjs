@@ -163,6 +163,32 @@ try {
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   });
+  // ── THE BOUNDARY MUST BE ABLE TO FAIL, AND SAY SO ──────────────────────────────────────────
+  //
+  // Every step above passing is only meaningful if this harness can detect a crash at all. The
+  // RAW_ID detector reported a confident zero for months while it was structurally incapable of
+  // firing; this is the same instrument class, so it gets the same proof -- against the DEPLOYED
+  // build, not a unit test.
+  //
+  // Deliberately NOT counted as a failure: it is the one step that is supposed to crash.
+  {
+    signals.length = 0;
+    await drain();
+    await page.goto(`${BASE}/customers?__crashtest=1`, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await page.waitForTimeout(2500);
+    const body = (await page.locator("body").innerText().catch(() => "")).replace(/s+/g, " ");
+    const boundary = /Something went wrong/i.test(body);
+    const id = (body.match(/Crash ID:s*([A-Z0-9-]+)/) || [])[1] ?? null;
+    const sawCrashLog = signals.some((x) => x.kind === "UI_CRASH" || x.kind === "pageerror" || x.kind === "console.error");
+    console.log(`
+BOUNDARY SELF-TEST  boundary=${boundary}  crashId=${id ?? "(none)"}  detected=${sawCrashLog}`);
+    if (!boundary || !id || !sawCrashLog) {
+      failures += 1;
+      console.log("*** THE CRASH DETECTOR CANNOT DETECT A CRASH. Every clean result above is unproven.");
+    }
+    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await page.waitForTimeout(1200);
+  }
 } finally { await browser.close(); }
 console.log(`\n[${persona}${THROTTLE ? "/slow" : ""}] crash stress complete — crashing steps: ${failures}`);
 // A crashing step is a release failure, not a line in a log somebody may read.
