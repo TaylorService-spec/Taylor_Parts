@@ -21,6 +21,7 @@ import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
+import { workOrderTypeLabel } from "../../domain/workOrderType.js";
 import { formatClockTime, formatMoment } from "../../domain/displayTimestamp";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { workOrderRecordPageRailSubset } from "../../metadata/definitions/workOrderPage.js";
@@ -169,7 +170,14 @@ export default function WorkOrderDetailPage() {
 
   // THE KICKER: object type · governed reference. Priority rides here because the concept puts
   // "Work Order · Repair · P2 High" above the title.
-  const kicker = ["Work Order", titleCase(workOrder.type), workOrderPriorityText(workOrder.priority)]
+  //
+  // TYPE COMES FROM THE ONE VOCABULARY (NS-P4). This built the word with a local titleCase() —
+  // a second enum-to-label derivation, and one that disagreed with the governed map on two of
+  // the five real values: SERVICE_CALL rendered "Service call" where domain/workOrderType.js says
+  // "Service Call", and PM rendered "Pm", which is not a word. An unrecognised type returns null
+  // from the shared derivation and drops out of the kicker rather than being title-cased into
+  // something that looks governed and is not.
+  const kicker = ["Work Order", workOrderTypeLabel(workOrder.type), workOrderPriorityText(workOrder.priority)]
     .filter(Boolean)
     .join(" · ");
 
@@ -400,12 +408,6 @@ function WorkOrderTimeline({ workOrder }) {
       ))}
     </ul>
   );
-}
-
-/** Enum-shaped vocabulary rendered as a word (R04). Unknown returns null rather than a guess. */
-function titleCase(v) {
-  if (typeof v !== "string" || !v.trim()) return null;
-  return v.trim().toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
 // "Tue Aug 26, 8:00 AM – 12:00 PM". WHICH DAY is the fact a dispatcher is checking, and a clock
