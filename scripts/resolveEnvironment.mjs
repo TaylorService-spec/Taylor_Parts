@@ -39,6 +39,9 @@ export const READINESS_KEYS = Object.freeze([
   // Scanner Program Phase H. The shared inventory-balance read's transport gate. Same fail-closed
   // rule: an environment that omits it is a build error, never a silent default-to-enabled.
   'INVENTORY_BALANCE_READ_READY',
+  // North Star Work Order intelligence. Separate from inventory-balance transport because the
+  // context callable has its own deploy lifecycle; enabling one must never imply the other exists.
+  'WORK_ORDER_READINESS_CONTEXT_READY',
   'TRUCK_MANAGEMENT_WRITE_READY',
   'TRUSTED_COMPLETION_ENABLED',
 ]);
