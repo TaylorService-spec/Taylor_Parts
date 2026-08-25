@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { salesOrderAnchorLabel } from "../../domain/coordinatedVisit.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -83,7 +84,11 @@ function VisitDetail({ visit, ctx }) {
   return (
     <div className="fo-covisit-detail">
       <ContextBand items={facts} />
-      <p className="fo-covisit-anchor fo-muted">{ctx.salesOrderLabelById[visit.salesOrderId] || visit.salesOrderId}</p>
+      {/* THE ANCHORING SALES ORDER, BY ITS REFERENCE (DECISIONS #106).
+          This was `label || visit.salesOrderId`, and the label map was honestly empty — so the top
+          of this screen printed a Firestore document id. A missing reference is not permission to
+          show the key; it is a reason to say what this is and that its number could not be read. */}
+      <p className="fo-covisit-anchor fo-muted">{salesOrderAnchorLabel(ctx.salesOrderLabelById, visit.salesOrderId)}</p>
       {!visit.contextConsistent && (
         <p className="fo-covisit-warn">
           <StatusPill tone="attention" label="Units disagree on customer/location" asText /> — data to reconcile.

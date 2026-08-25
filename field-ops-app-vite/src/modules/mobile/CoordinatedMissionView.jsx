@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { salesOrderAnchorLabel } from "../../domain/coordinatedVisit.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -64,7 +65,10 @@ function Mission({ mission, ctx }) {
   return (
     <div className="fo-mission">
       <ContextBand items={facts} />
-      <p className="fo-mission__anchor fo-muted">{ctx.salesOrderLabelById[mission.salesOrderId] || mission.salesOrderId}</p>
+      {/* THE ANCHORING SALES ORDER, BY ITS REFERENCE (DECISIONS #106). Same defect and same fix as
+          CoordinatedVisitsWorkspace — one shared helper, so the two surfaces cannot drift into
+          disagreeing about how to name the order a technician is working against. */}
+      <p className="fo-mission__anchor fo-muted">{salesOrderAnchorLabel(ctx.salesOrderLabelById, mission.salesOrderId)}</p>
       {!mission.contextConsistent && (
         <p className="fo-covisit-warn"><StatusPill tone="attention" label="Units disagree on customer/location" asText /></p>
       )}

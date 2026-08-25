@@ -93,3 +93,28 @@ export function workOrderStatusTone(status) {
   if (status && BLOCKED_STATUSES.has(status)) return "attention";
   return status ? "neutral" : "unknown";
 }
+
+/**
+ * HOW THE ANCHORING SALES ORDER IS NAMED ON SCREEN.
+ *
+ * Both coordinated surfaces rendered `salesOrderLabelById[id] || id`, and that label map was
+ * honestly empty — so Coordinated Visits and Coordinated Mission each printed a Firestore document
+ * id at the top of the screen. DECISIONS #106: a document id is a routing key, not a name, and a
+ * missing reference is not permission to display one.
+ *
+ * Shared rather than duplicated, so the two surfaces cannot drift into disagreeing about how to
+ * name the order a technician is working against.
+ *
+ * The fallback says WHAT the thing is and that its number could not be read — it does not invent a
+ * number, abbreviate the key, or imply an official reference exists.
+ */
+export const SALES_ORDER_ANCHOR_UNRESOLVED = "Sales Order — reference unavailable";
+
+export function salesOrderAnchorLabel(salesOrderLabelById, salesOrderId) {
+  const reference = salesOrderId ? salesOrderLabelById?.[salesOrderId] : null;
+  // A non-empty string is the only thing that counts as a reference. Anything else — absent, null,
+  // blank, or a non-string that crept through a projection — takes the truthful fallback.
+  return typeof reference === "string" && reference.trim().length > 0
+    ? reference.trim()
+    : SALES_ORDER_ANCHOR_UNRESOLVED;
+}
