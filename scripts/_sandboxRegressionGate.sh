@@ -111,6 +111,19 @@ echo "== [4/6] structural + responsive sweep (5 widths) =="
 echo "== [4b/6] dynamic detail routes (record pages) =="
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certifyDynamic.mjs" admin 1440,375 )
 
+# 4c. CRASH STRESS. Every step above LOADS A ROUTE AND MEASURES IT. None of them clicks anything,
+#     goes back, reloads a detail, or navigates away while a read is in flight -- which is where
+#     state and lifecycle defects live, and is why a user hit the root error boundary twice while
+#     every automated check was green.
+#
+#     Every crash signal is fatal here: boundary text, pageerror, unhandledrejection, a React
+#     "UI Crash:" console entry, and any unexpected console.error. The second pass runs THROTTLED,
+#     because a race that needs 700ms to appear is invisible on a fast connection and perfectly
+#     reproducible on a phone.
+echo "== [4c/6] crash stress (interactions + races) =="
+( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/crashStress.mjs" admin )
+( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/crashStress.mjs" admin slow )
+
 # 5. PERSONA REACHABILITY. The representative three, not all fifteen -- the fixture-only identities
 #    belong to targeted suites, and sweeping them here buys duplicate coverage at real cost.
 echo "== [5/6] persona reachability (representative set) =="

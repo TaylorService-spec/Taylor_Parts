@@ -956,6 +956,10 @@
     {
       "file": "test/salesAgreementBackendSkew.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/crashDiagnostics.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

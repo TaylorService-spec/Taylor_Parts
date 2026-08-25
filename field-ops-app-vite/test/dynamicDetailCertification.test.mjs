@@ -155,6 +155,39 @@ test("the page the fix produces is clean", () => {
 
 // ═════════════════════════════════════════ it is actually wired into the gate
 
+test("THE GATE HARD-FAILS ON EVERY CRASH SIGNAL, not only the boundary text", () => {
+  // The certification that missed a user-reproducible crash measured ROUTE LOADS. These are the
+  // signals that catch the rest, and each one must be fatal.
+  const stress = read(".claude", "skills", "run-field-ops-app-vite", "crashStress.mjs");
+  for (const signal of ["pageerror", "unhandledrejection", "UI Crash:", "console.error", "Something went wrong"]) {
+    assert.ok(stress.includes(signal), `${signal} must be a watched crash signal`);
+  }
+  // A crashing step must fail the process — a log line nobody reads is not a gate.
+  assert.match(stress, /if \(failures > 0\) process\.exit\(1\)/);
+  // And navigation succeeding must not count as a pass when the boundary rendered afterwards.
+  assert.match(stress, /boundary \|\| bad\.length/);
+});
+
+test("THE STRESS LANE EXERCISES INTERACTIONS AND RACES, not route loads", () => {
+  const stress = read(".claude", "skills", "run-field-ops-app-vite", "crashStress.mjs");
+  for (const behaviour of [
+    "navigate away instantly", "rapid switch", "view filters", "switch filter under it",
+    "back/forward", "hard reload", "consecutive records", "open edit then cancel",
+    "bounce between heavy lists", "mobile",
+  ]) {
+    assert.ok(stress.includes(behaviour), `the stress suite must cover: ${behaviour}`);
+  }
+  // The throttled pass is the point of the exercise — a race that needs latency to appear is
+  // invisible without it.
+  assert.match(stress, /emulateNetworkConditions/);
+});
+
+test("THE REGRESSION GATE RUNS THE CRASH STRESS, both passes", () => {
+  const gate = readFileSync(path.join(app, "..", "scripts", "_sandboxRegressionGate.sh"), "utf8");
+  assert.match(gate, /crashStress\.mjs" admin\s*\)/, "a normal pass");
+  assert.match(gate, /crashStress\.mjs" admin slow\s*\)/, "and a throttled one");
+});
+
 test("THE REGRESSION GATE RUNS THE DYNAMIC SWEEP", () => {
   // A harness nothing invokes is documentation. The gate must fail if this step fails, which
   // `set -e` gives it.

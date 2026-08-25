@@ -93,7 +93,11 @@ test("a Suspense boundary exists, so a deferred route is never a blank frame", (
   // A blank frame is indistinguishable from a broken app on a slow connection, which is precisely
   // the connection this change serves.
   assert.match(app, /<Suspense/, "lazy routes without a boundary render nothing while they load");
-  assert.match(app, /import \{ lazy, Suspense \} from "react"/);
+  // Both must come from react, and the assertion says THAT rather than pinning the exact import
+  // line — which broke the moment an unrelated hook joined it. A guard that fails on a change it
+  // does not care about teaches people to edit the guard instead of reading it.
+  assert.match(app, /import \{[^}]*\blazy\b[^}]*\} from "react"/);
+  assert.match(app, /import \{[^}]*\bSuspense\b[^}]*\} from "react"/);
 });
 
 test("LAZY CHANGES WHEN CODE LOADS, NEVER WHO MAY LOAD IT", () => {
