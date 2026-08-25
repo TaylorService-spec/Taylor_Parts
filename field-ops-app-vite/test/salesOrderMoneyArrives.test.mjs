@@ -39,6 +39,7 @@ function projection(overrides = {}) {
       currency: "USD",
       locationId: "loc-1",
       sourceOpportunityId: null,
+      sourceAgreementId: null,
       sourceOpportunityNumber: null,
       customerPO: null,
       notes: null,
@@ -126,4 +127,35 @@ test("zero is a real amount and still renders as one", () => {
   const d = salesOrderDollars(view({ totalMinor: 0, pricingState: "PRICED" }));
   assert.equal(d.isAmount, true);
   assert.match(d.text, /0\.00/);
+});
+
+// ═════════════════════════════════════════ the lineage crosses the same boundary
+
+test("sourceAgreementId ARRIVES in the view model, and null stays null", () => {
+  // The same failure the money had: the server projection can return a field faithfully forever
+  // while the view model drops it, and a test asserting the source text mentions the field would
+  // pass the whole time. Feed a value; assert the value.
+  assert.equal(view({ sourceAgreementId: "agr-77" }).sourceAgreementId, "agr-77");
+  // Null on every order created before Slice 4 D2 and on any created directly — honestly null,
+  // never an empty string and never backfilled with the order's own id.
+  assert.equal(view({}).sourceAgreementId, null);
+  assert.equal(view({ sourceAgreementId: undefined }).sourceAgreementId, null);
+});
+
+test("the agreement id NEVER stands in for the order's displayed identity", () => {
+  // DECISIONS #106. An order with no allocated number shows no number, even though a lineage id
+  // is sitting right there and would look like a plausible thing to render.
+  const v = view({ salesOrderNumber: null, sourceAgreementId: "agr-77" });
+  assert.equal(v.salesOrderNumber, null);
+  assert.equal(v.sourceAgreementId, "agr-77");
+  assert.notEqual(v.salesOrderNumber, v.sourceAgreementId);
+});
+
+test("the view model carries every lineage field the projection declares", () => {
+  // A field added to salesOrderReadService.ts and forgotten here is invisible forever. This fails
+  // the moment the projection grows a lineage field the view model does not carry.
+  const v = view({ sourceOpportunityId: "opp-1", sourceOpportunityNumber: "OPP-2026-000001", sourceAgreementId: "agr-1" });
+  for (const f of ["sourceOpportunityId", "sourceOpportunityNumber", "sourceAgreementId"]) {
+    assert.ok(v[f], `${f} must reach the view model`);
+  }
 });

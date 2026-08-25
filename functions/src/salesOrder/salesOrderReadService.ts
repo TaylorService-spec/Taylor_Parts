@@ -66,6 +66,16 @@ export interface SalesOrderProjection {
   currency: string | null;
   locationId: string | null;
   sourceOpportunityId: string | null;
+  // WHICH ACCEPTED COMMITMENT THIS ORDER FULFILS.
+  //
+  // Written by both WON paths since Slice 4 D2. Null on every order created before it, and on any
+  // order created directly rather than from an Opportunity — honestly null, never backfilled.
+  //
+  // Projected but NOT displayed as identity: a Sales Agreement has no human reference yet (D1
+  // added no numbering), and a missing business reference is not permission to show a document id
+  // (DECISIONS #106). This carries the lineage for navigation and for the page that can render it
+  // once agreements are numbered.
+  sourceAgreementId: string | null;
   // The originating Opportunity's immutable reference, denormalized at creation by
   // createSalesOrderFromOpportunity. Null for Sales Orders created before Opportunity
   // identity existed — honestly null rather than backfilled with a guess.
@@ -198,6 +208,7 @@ export function projectSalesOrder(id: string, data: Record<string, unknown> | un
     currency: str(data.currency),
     locationId: str(data.locationId),
     sourceOpportunityId: str(data.sourceOpportunityId),
+    sourceAgreementId: str(data.sourceAgreementId),
     sourceOpportunityNumber: str(data.sourceOpportunityNumber),
     customerPO: str(data.customerPO),
     notes: str(data.notes),

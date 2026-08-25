@@ -15,6 +15,7 @@ function baseDoc(overrides = {}) {
     currency: "USD",
     locationId: "LOC-1",
     sourceOpportunityId: "OPP-1",
+    sourceAgreementId: "AGR-1",
     customerPO: "PO-123",
     notes: "some notes",
     state: "IN_FULFILLMENT",
@@ -63,11 +64,14 @@ test("projectSalesOrder returns only the minimal Sales-Order-UX fields", () => {
   assert.deepEqual(Object.keys(p).sort(), [
     "accountId", "createdAtMillis", "customerPO", "id", "lines", "locationId", "notes",
     "ownerEmployeeId", "salesChannel", "salesOrderNumber", "serviceWorkOrderIds", "sourceOpportunityId",
-    "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
+    "sourceAgreementId", "sourceOpportunityNumber", "state", "updatedAtMillis", "currency",
     "totalMinor", "pricingState", "unpricedLineCount",
   ].sort());
   assert.equal(p.accountId, "ACCT-1");
   assert.equal(p.sourceOpportunityId, "OPP-1");
+  // Which accepted commitment this order fulfils. The key-set assertion above proves the field is
+  // projected; this proves the VALUE crosses, which is the only thing a screen can use.
+  assert.equal(p.sourceAgreementId, "AGR-1");
   assert.equal(p.salesOrderNumber, "SO-2026-000001");
   assert.equal("createdByUid" in p, false);
   assert.equal("customerName" in p, false);
