@@ -175,10 +175,15 @@ try {
     signals.length = 0;
     await drain();
     await page.goto(`${BASE}/customers?__crashtest=1`, { waitUntil: "domcontentloaded" }).catch(() => {});
-    await page.waitForTimeout(2500);
+    // WAIT FOR THE ELEMENT, NOT A DELAY. The id arrives on the setState that follows
+    // componentDidCatch, so a fixed 2500ms read the screen one paint too early and reported
+    // "no crash id" against a build that renders one -- the harness making the same
+    // measure-time-instead-of-content mistake it has made twice already this session.
+    await page.locator("[data-testid=crash-id]").waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
     const body = (await page.locator("body").innerText().catch(() => "")).replace(/s+/g, " ");
     const boundary = /Something went wrong/i.test(body);
-    const id = (body.match(/Crash ID:s*([A-Z0-9-]+)/) || [])[1] ?? null;
+    // Read the ELEMENT the boundary renders, not a regex over the whole page.
+    const id = (await page.locator("[data-testid=crash-id] strong").innerText().catch(() => "")).trim() || null;
     const sawCrashLog = signals.some((x) => x.kind === "UI_CRASH" || x.kind === "pageerror" || x.kind === "console.error");
     console.log(`
 BOUNDARY SELF-TEST  boundary=${boundary}  crashId=${id ?? "(none)"}  detected=${sawCrashLog}`);
