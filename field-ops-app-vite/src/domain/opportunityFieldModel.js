@@ -1,3 +1,4 @@
+import { UNRESOLVED_REFERENCE_LABEL } from "../metadata/referenceResolution.js";
 // Sales Opportunity — FIELD-CLASSIFICATION MODEL (PURE; no I/O, no JSX; unit-tested).
 //
 // The Opportunity workspace is becoming an OPERATING workspace: once its governed write authority is
@@ -31,6 +32,18 @@ export const OPPORTUNITY_DATA_CLASS = Object.freeze({
 });
 
 const identity = (v) => (v == null ? "—" : String(v));
+
+/**
+ * The owner as a READER sees them: a name, or an honest statement that it could not be resolved.
+ *
+ * Never the employee id. The resolver is INJECTED because the employee directory is a live read the
+ * domain layer has no business performing — and it is admin/dispatcher-only, so "cannot resolve" is
+ * a normal outcome for a legitimate caller rather than an error.
+ */
+const ownerDisplay = (employeeId, resolveOwnerName) => {
+  if (employeeId == null) return "—";
+  return resolveOwnerName?.(employeeId) ?? UNRESOLVED_REFERENCE_LABEL;
+};
 
 // Default display formatters (overridable via opts.format so the workspace can share its currency/date
 // formatting). Kept trivial + honest: a missing value shows an em dash, never a fabricated 0 or "today".
@@ -79,7 +92,12 @@ export function opportunityDetailModel(row, opts = {}) {
         // free text today, ADR-012 has no team/scope model) — so the control is a bounded reassignment, honest
         // that the directory is not yet connected.
         field({ key: "ownerEmployeeId", label: "Owner", value: row.ownerEmployeeId,
-          display: identity(row.ownerEmployeeId), dataClass: U, control: "owner", governed: true }),
+          // AN EMPLOYEE ID IS NOT A PERSON (DECISIONS #106). This rendered the raw id through
+          // identity(). The ContextBand above it carried the same defect and was fixed first, which
+          // is exactly how this second site survived: the page looked fixed while the dynamic-detail
+          // sweep kept reporting RAW_ID on it. `value` still carries the id because the owner PICKER
+          // edits by id — only the DISPLAY changes.
+          display: ownerDisplay(row.ownerEmployeeId, opts.resolveOwnerName), dataClass: U, control: "owner", governed: true }),
       ],
     },
     {

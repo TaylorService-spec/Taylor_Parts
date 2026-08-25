@@ -26,7 +26,7 @@ import { salesAgreementView, SALES_AGREEMENT_VIEW_STATE } from "../domain/salesA
 let keySeq = 0;
 const mintKey = (prefix) => `${prefix}-${Date.now()}-${++keySeq}-${Math.floor(Math.random() * 1e6)}`;
 
-export function useSalesAgreement(opportunityId) {
+export function useSalesAgreement(opportunityId, { enabled = true } = {}) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorStatus, setErrorStatus] = useState(null);
@@ -45,6 +45,19 @@ export function useSalesAgreement(opportunityId) {
   useEffect(() => () => { mounted.current = false; }, []);
 
   const refresh = useCallback(async () => {
+    // DO NOT ASK FOR WHAT THIS CALLER MAY NOT HAVE.
+    //
+    // The read is a governed callable behind salesAgreement.read. Where that capability is not
+    // granted -- which today is EVERY environment, because the callable itself is part of the gated
+    // Sales Agreement release -- firing the request anyway produces a doomed round trip per
+    // selection. An undeployed Firebase callable answers 404 WITHOUT CORS headers, so the browser
+    // reports it as a CORS failure and logs a red error on every single Opportunity a user clicks.
+    //
+    // That console noise is not harmless: it is the first thing anyone looks at when something else
+    // goes wrong, and it says "blocked by CORS policy" about a feature that is simply not deployed.
+    //
+    // Not-enabled is reported as its own state, distinct from denied and from unavailable.
+    if (!enabled) { setResult(null); setErrorStatus("not-enabled"); return; }
     if (!opportunityId) { setResult(null); setErrorStatus(null); return; }
     const mine = ++requestSeq.current;
     setLoading(true);
@@ -54,7 +67,7 @@ export function useSalesAgreement(opportunityId) {
     if (res.errorStatus) { setErrorStatus(res.errorStatus); setResult(null); return; }
     setErrorStatus(null);
     setResult(res.result ?? null);
-  }, [opportunityId]);
+  }, [opportunityId, enabled]);
 
   useEffect(() => { refresh(); }, [refresh]);
 

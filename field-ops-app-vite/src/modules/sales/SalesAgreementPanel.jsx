@@ -270,6 +270,12 @@ export default function SalesAgreementPanel({ agreement, hasCapability = () => f
   if (view.kind === STATE.LOADING) return <p className="fo-muted">Loading the agreement…</p>;
   // Denied and unavailable stay apart: one says "you may not see this", the other "we could not
   // ask". Collapsing them tells a permitted user they lack permission whenever the network is down.
+  // NOT DEPLOYED IS NOT DENIED. Saying "you do not have permission" about a feature that is simply
+  // not live in this environment sends somebody to ask an administrator for access that would not
+  // help them.
+  if (view.kind === STATE.NOT_ENABLED) {
+    return <p className="fo-muted">Sales Agreements are not enabled in this environment yet.</p>;
+  }
   if (view.kind === STATE.DENIED) return <p className="fo-muted">You do not have permission to view Sales Agreements.</p>;
   if (view.kind === STATE.UNAVAILABLE) return <p role="alert" className="fo-error">The Sales Agreement could not be loaded.</p>;
 

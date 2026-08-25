@@ -17,6 +17,10 @@ export const SALES_AGREEMENT_VIEW_STATE = Object.freeze({
   /** No agreement exists for this Opportunity yet. NOT an error — it is the answer that decides
    *  between offering CREATE and offering VIEW. */
   NONE: "NONE",
+  /** The Sales Agreement backend is not live in this environment, so nothing was asked.
+   *  Distinct from DENIED (a real authorization answer about a live feature) and from UNAVAILABLE
+   *  (we asked and could not reach it) — three different facts with three different next steps. */
+  NOT_ENABLED: "NOT_ENABLED",
   READY: "READY",
 });
 
@@ -41,6 +45,7 @@ export function salesAgreementView({ result, loading, errorStatus }) {
   // Denied and unavailable are DIFFERENT facts and must stay apart: one says "you may not see
   // this", the other says "we could not ask". Collapsing them would tell a permitted user they
   // lack permission whenever the network is down.
+  if (errorStatus === "not-enabled") return { kind: SALES_AGREEMENT_VIEW_STATE.NOT_ENABLED };
   if (errorStatus === "permission-denied") return { kind: SALES_AGREEMENT_VIEW_STATE.DENIED };
   if (errorStatus) return { kind: SALES_AGREEMENT_VIEW_STATE.UNAVAILABLE };
   if (!result || result.status === "not-found" || !result.salesAgreement) {
