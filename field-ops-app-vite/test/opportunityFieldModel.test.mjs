@@ -14,7 +14,11 @@ import {
 import { SALES_CHANNELS } from "../src/domain/opportunityLifecycle.js";
 
 const ROW = {
-  id: "SBX-OPP-1001",
+  // A REAL FIRESTORE AUTO-ID, not a reference-shaped one. The old fixture used "SBX-OPP-1001",
+  // which made a document key indistinguishable from a business reference — so every assertion
+  // about identity passed while the live page printed a key.
+  id: "95kFz8WWgiSn2nU2O3Ml",
+  opportunityNumber: "OPP-2026-000042",
   customerName: "Harbor Grill Downtown",
   channel: "RETAIL",
   stage: "QUOTING",
@@ -78,7 +82,20 @@ test("record is READ_ONLY; absent audit timestamps render honestly, never fabric
   const s = sectionById(model, "record");
   assert.equal(s.dataClass, OPPORTUNITY_DATA_CLASS.READ_ONLY);
   assert.equal(s.editable, false);
-  assert.equal(fieldByKey(s, "id").display, "SBX-OPP-1001");
+  // THE GOVERNED REFERENCE, NOT THE DOCUMENT ID (DECISIONS #106).
+  //
+  // This asserted fieldByKey(s, "id").display === "SBX-OPP-1001" and passed -- because the FIXTURE
+  // gives the document a business-reference-shaped id. Real records have a Firestore auto-id, so the
+  // page rendered 95kFz8WWgiSn2nU2O3Ml under the label "Opportunity ID" while this test stayed
+  // green. A fixture that makes a key look like a reference cannot tell the two apart, which is the
+  // whole defect.
+  assert.equal(fieldByKey(s, "opportunityNumber").display, "OPP-2026-000042");
+  assert.equal(fieldByKey(s, "id"), undefined, "the raw document id is no longer a rendered field");
+
+  // A record predating numbering says so, and still never shows the key.
+  const unnumbered = sectionById(opportunityDetailModel({ ...ROW, opportunityNumber: null }), "record");
+  assert.equal(fieldByKey(unnumbered, "opportunityNumber").display, "Not numbered");
+  assert.doesNotMatch(fieldByKey(unnumbered, "opportunityNumber").display, /\b[A-Za-z0-9]{20}\b/);
   assert.equal(fieldByKey(s, "createdAt").display, "not recorded");
   assert.equal(fieldByKey(s, "updatedAt").display, "not recorded");
 });

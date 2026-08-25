@@ -69,6 +69,13 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
   const worstTone = attention.some((a) => a.tone === "attention") ? "attention" : attention.length ? "info" : null;
   return {
     id: opp.id ?? opp.opportunityId ?? null,
+    // THE GOVERNED BUSINESS REFERENCE (OPP-YYYY-######), which this row was dropping.
+    //
+    // opportunityReadService projects it faithfully; nothing carried it here, so the detail had no
+    // reference to show and printed the Firestore document id instead -- under the label
+    // "Opportunity ID", which made a routing key look like the record’s identity. Honestly null on
+    // a record that predates numbering; never backfilled.
+    opportunityNumber: opp.opportunityNumber ?? null,
     customerName: accountNameById[opp.accountId] ?? opp.customerName ?? "—",
     accountId: opp.accountId ?? null,
     channel: opp.salesChannel ?? null,
