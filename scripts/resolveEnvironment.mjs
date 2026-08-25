@@ -83,6 +83,11 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'inventory.cycleCount.submit',
   'inventory.cycleCount.reconcile',
   'inventory.cycleCount.cancel',
+  // Sales Agreement (Slice 4) -- mirrors environmentCapabilityOverrides.ts, parity-asserted.
+  'salesAgreement.create',
+  'salesAgreement.updateDraft',
+  'salesAgreement.accept',
+  'salesAgreement.read',
   // SCANNER PROMOTION -- mirrors environmentCapabilityOverrides.ts. Parity is asserted, so these two
   // lists cannot drift: a capability eligible on the backend but not here would be denied by the UI
   // and allowed by the command, which is the worst of both answers.

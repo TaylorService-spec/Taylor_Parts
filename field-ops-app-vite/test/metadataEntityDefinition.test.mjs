@@ -32,6 +32,7 @@ import { partEntity } from "../src/metadata/definitions/part.js";
 import { paymentEntity } from "../src/metadata/definitions/payment.js";
 import { purchaseOrderEntity } from "../src/metadata/definitions/purchaseOrder.js";
 import { salesOrderEntity } from "../src/metadata/definitions/salesOrder.js";
+import { salesAgreementEntity } from "../src/metadata/definitions/salesAgreement.js";
 import { salesTerritoryEntity } from "../src/metadata/definitions/salesTerritory.js";
 import { stockLocationEntity } from "../src/metadata/definitions/stockLocation.js";
 import { supplierEntity } from "../src/metadata/definitions/supplier.js";
@@ -42,7 +43,7 @@ import { workOrderEntity } from "../src/metadata/definitions/workOrder.js";
 const ALL_REGISTERED_ENTITIES = [
   accountEntity, contactEntity, employeeEntity, equipmentEntity, equipmentModelEntity,
   invoiceEntity, locationEntity, manufacturerEntity, mobileLocationEntity, opportunityEntity,
-  partEntity, paymentEntity, purchaseOrderEntity, salesOrderEntity, salesTerritoryEntity,
+  partEntity, paymentEntity, purchaseOrderEntity, salesAgreementEntity, salesOrderEntity, salesTerritoryEntity,
   stockLocationEntity, supplierEntity, truckEntity, warehouseEntity, workOrderEntity,
 ];
 

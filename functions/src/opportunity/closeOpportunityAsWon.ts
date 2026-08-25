@@ -125,14 +125,21 @@ export async function persistCloseOpportunityAsWon(
   const parentAid = mkParentAuditId(actorUid, opportunityId, input.idempotencyKey);
   const priorAudit = await tx.get(auditEventDocRef(parentAid));
   if (priorAudit.exists) {
-    const prior = priorAudit.data() ?? {};
+    const priorId = (priorAudit.data()?.targetId as string) ?? "";
+    // DEFECT FIXED HERE: this read `prior.salesOrderNumber` off the audit event, which NEVER
+    // carries it. buildAuditEventDoc writes a fixed field set, so the number staged onto the input
+    // below is dropped, and every replay of the atomic WON returned salesOrderNumber: null -- a
+    // retrying caller lost the reference to the order it had just created.
+    //
+    // The number is authoritative on the Sales Order. Read it from there.
+    const priorDoc = priorId ? await tx.get(db.collection(SALES_ORDERS_COLLECTION).doc(priorId)) : null;
     return {
       success: true,
       replayed: true,
       recovered: false,
       opportunityId,
-      salesOrderId: (prior.targetId as string) ?? "",
-      salesOrderNumber: (prior.salesOrderNumber as string) ?? null,
+      salesOrderId: priorId,
+      salesOrderNumber: (priorDoc?.data()?.salesOrderNumber as string) ?? null,
     };
   }
 

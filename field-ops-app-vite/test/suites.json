@@ -928,6 +928,10 @@
     {
       "file": "test/salesOrderMoneyArrives.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/salesAgreementSurface.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

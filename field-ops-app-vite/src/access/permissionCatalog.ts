@@ -188,6 +188,45 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "createSalesOrder",
     active: false,
   }),
+  // ════════ SALES AGREEMENT — the commercial commitment (Slice 4) ════════
+  //
+  // Four ids, not one, because these are four different authorities and a single
+  // "salesAgreement.write" would make drafting terms and BINDING THE BUSINESS TO THEM the
+  // same permission. Accepting is the act with commercial consequence; it deserves its own
+  // grant, and separating it now keeps a future approval-limit model possible without a
+  // rename. Registered active:false (fail-closed) like the rest of the spine.
+  Object.freeze({
+    id: "salesAgreement.create",
+    description:
+      "Draft a Sales Agreement (the commercial commitment) for an Opportunity via the governed createSalesAgreement command. The customer account is server-derived from the Opportunity, never client-supplied. Creates a DRAFT only; commits the business to nothing.",
+    resource: "salesAgreement",
+    action: "create",
+    active: false,
+  }),
+  Object.freeze({
+    id: "salesAgreement.updateDraft",
+    description:
+      "Edit a DRAFT Sales Agreement through the bounded updateSalesAgreementDraft command (explicit field allowlist; identity, currency, acceptance and totals are not caller-supplied). DRAFT only — an ACCEPTED agreement is immutable.",
+    resource: "salesAgreement",
+    action: "updateDraft",
+    active: false,
+  }),
+  Object.freeze({
+    id: "salesAgreement.accept",
+    description:
+      "Accept a DRAFT Sales Agreement, binding the committed prices via the governed acceptSalesAgreement command. Requires a committed price on every line; acceptedBy/acceptedAt are server-stamped. This is the authority that lets a WON Opportunity become a priced Sales Order.",
+    resource: "salesAgreement",
+    action: "accept",
+    active: false,
+  }),
+  Object.freeze({
+    id: "salesAgreement.read",
+    description:
+      "Read the minimal governed Sales Agreement projection (identity, state, account, commercial terms, priced lines, totals, and lineage to the source Opportunity and resulting Sales Order) via the trusted getSalesAgreementContext read service. Backend-resolved scope; no client-direct sales_agreements read.",
+    resource: "salesAgreement",
+    action: "read",
+    active: false,
+  }),
   // Sales Order read -- Owner-ratified 2026-08-15: "A user cannot meaningfully perform... governed
   // Sales Order operations without a governed way to inspect the Sales Order state they operate on.
   // This is an authority gap, not merely a missing screen." Follows the opportunity.read pattern

@@ -32,6 +32,11 @@ export { closeOpportunityAsWon } from "./opportunity/closeOpportunityAsWon";
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
 export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";
+// Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no
+// generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are
+// registered active:false and deny for everyone until a separate grant + per-environment activation.
+export { createSalesAgreement, updateSalesAgreementDraft, acceptSalesAgreement } from "./salesAgreement/salesAgreementCallables";
+export { getSalesAgreementContext, getSalesAgreementForOpportunity } from "./salesAgreement/salesAgreementReadService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.

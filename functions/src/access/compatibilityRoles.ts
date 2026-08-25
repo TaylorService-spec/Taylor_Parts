@@ -111,6 +111,15 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "salesOrder.write",
   "salesOrder.fulfill",
   "salesOrder.service",
+  // Sales Agreement (Slice 4) -- same posture as the spine ids above: granted here so ADMIN and
+  // DISPATCHER hold them and OWNER inherits by composition, and so the catalog acceptance test
+  // ("every catalog id is granted by at least one compatibility Role") stays true. Technician does
+  // NOT hold these. GRANT != ACTIVATION: all four are registered active:false, so they deny
+  // everywhere the per-environment override is off -- production included, role-keyed off.
+  "salesAgreement.create",
+  "salesAgreement.updateDraft",
+  "salesAgreement.accept",
+  "salesAgreement.read",
   // Coordinated Operations fidelity fix, grant step (Owner ruling, grantable-governed-roles
   // workstream). `fulfillment.coordinatedVisit.read` was registered active:false and ALREADY
   // eligible for per-environment activation (environmentCapabilityOverrides.ts), but held by NO

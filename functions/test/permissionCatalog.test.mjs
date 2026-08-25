@@ -248,7 +248,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;

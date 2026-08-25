@@ -1867,3 +1867,22 @@ The corollary matters as much as the rule: **an existing capability is never bro
 avoid a rollout step.** Where least privilege requires a new narrow capability, one is registered
 inert and ungranted — as `inventory.catalog.alias.read` and `inventory.balance.read` already were —
 rather than pointing a scanner at a write capability that happens to be active.
+
+## #120 — Inventory Health: derive at read now, materialize later and only when scoped
+
+**Owner, 2026-08-25.** Of the three options in
+`docs/architecture/inventory-health-ab-decision-memo.md`: **A now, B later, scoped.**
+
+`composePartBalance` stays the single authority for every inventory figure a person acts on. Health
+continues to be derived at read, per bounded page, so it cannot be stale — there is nothing stored to
+go stale.
+
+A materialized health projection is **deferred, not refused**. It is reopened when a POPULATION-level
+surface is authorized — a Goals Home health tile, a health sort, a health filter, or a health export.
+Until one of those is named, B would add a class of failure (a stale number nobody doubts) to answer
+a question nobody has asked.
+
+If B is ever built it must be a SUMMARY projection serving that one named surface — never the general
+balance authority — and it must ship with a rebuild path, a source-versus-derived parity test, and a
+visible staleness stamp. Two authorities for one number is how a warehouse and a screen come to
+disagree, and the screen wins because it is the one somebody is looking at.

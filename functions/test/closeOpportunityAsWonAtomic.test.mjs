@@ -210,6 +210,13 @@ test("SAME-KEY REPLAY returns the same Sales Order and creates nothing new", asy
   assert.equal(second.replayed, true);
   assert.equal(second.salesOrderId, first.salesOrderId);
   assert.equal((await ordersFor(opp)).size, 1, "still exactly one order");
+  // REGRESSION: this returned null on every replay. The number was read off the audit event, and
+  // buildAuditEventDoc writes a FIXED field set -- so the salesOrderNumber staged onto its input
+  // was silently dropped and never stored. A retrying caller lost the reference to the order it had
+  // just created, and "replayed: true, salesOrderNumber: null" reads like an order without a
+  // number. Asserting the VALUE, not just that the ids match, is what catches it.
+  assert.match(first.salesOrderNumber ?? "", /^SO-\d{4}-\d{6}$/);
+  assert.equal(second.salesOrderNumber, first.salesOrderNumber, "a replay returns the SAME number");
 });
 
 test("DIFFERENT-KEY RETRY on an already-ordered Opportunity RETURNS the order rather than throwing", async () => {

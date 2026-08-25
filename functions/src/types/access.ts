@@ -334,6 +334,14 @@ export type AuditAction =
   // transaction. Its own union member, and its own deterministic Audit Event id space, so a
   // replay of the atomic action cannot collide with either standalone callable
   | "closeOpportunityAsWon"
+  // Slice 4 -- the Sales Agreement write family. THREE members, not one, because the audit trail
+  // must keep them apart: drafting terms, editing them while still provisional, and committing to
+  // them are different acts with different consequences, and only the last one binds the business.
+  // Each carries its own deterministic Audit Event id space so a replay of one can never collide
+  // with another
+  | "createSalesAgreement"
+  | "updateSalesAgreementDraft"
+  | "acceptSalesAgreement"
   // Ordinary edit of an Opportunity deal field. Distinct from transitionOpportunity because an
   // ordinary edit cannot move the lifecycle, and the audit trail must keep the two apart
   | "updateOpportunity"

@@ -1756,6 +1756,24 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Sales Agreements -- the commercial commitment. Admin-SDK-only, same fail-closed posture as
+    // sales_orders above. ALL direct client read and write denied; the only write paths are the
+    // trusted createSalesAgreement / updateSalesAgreementDraft / acceptSalesAgreement commands
+    // (functions/src/salesAgreement/salesAgreementCallables.ts) and the only read path is the
+    // trusted getSalesAgreementContext projection -- all Admin SDK, which bypasses these rules.
+    //
+    // EXPLICIT, THOUGH FIRESTORE WOULD DENY AN UNDECLARED COLLECTION ANYWAY. The default denial is
+    // the absence of a decision; this is the decision. A reader auditing which collections are
+    // client-reachable should find an answer here rather than infer one from silence, and a future
+    // catch-all rule would silently open what nothing here declared closed.
+    //
+    // READ IS DENIED TOO, DELIBERATELY. Opening client reads would make the Agreement UI simpler
+    // and would put committed pricing, margins-adjacent charges and trade-in values in front of
+    // every authenticated principal, scoped by nothing. Read goes through the governed projection.
+    match /sales_agreements/{salesAgreementId} {
+      allow read, write: if false;
+    }
+
     // Finance -- invoices (Billing/AR). Admin-SDK-only, same fail-closed posture. ALL direct client read/write
     // denied; the only write path is the trusted issueInvoice command (functions/src/finance/
     // invoiceCallables.ts), which uses the Admin SDK and bypasses these rules. Finance is sensitive/audited:

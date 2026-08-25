@@ -179,6 +179,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Runtime mirror of the closeOpportunityAsWon AuditAction union member (atomic WON plus
   // Sales Order creation in one transaction).
   "closeOpportunityAsWon",
+  // Slice 4 -- runtime mirror of the Sales Agreement write family (create, bounded draft edit,
+  // accept). Kept apart in the trail because only acceptance binds the business.
+  "createSalesAgreement",
+  "updateSalesAgreementDraft",
+  "acceptSalesAgreement",
   // Runtime mirror of the updateOpportunity AuditAction union member.
   "updateOpportunity",
   // P1.1 (Sales->Cash fulfillment spine): runtime mirror of the salesOrderFulfillmentWriteBack AuditAction

@@ -30,6 +30,15 @@ on:
       - "functions/src/salesAgreement/salesAgreementLifecycle.ts"
       - "functions/test/salesAgreementCommands.test.mjs"
       - "functions/src/salesAgreement/agreementToSalesOrder.ts"
+      - "functions/src/salesAgreement/salesAgreementCallables.ts"
+      - "functions/src/salesAgreement/salesAgreementReadService.ts"
+      - "functions/src/salesAgreement/salesAgreementNumbering.ts"
+      - "functions/test/salesAgreementDraftEditing.test.mjs"
+      - "functions/test/commercialChainEndToEnd.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "firestore.rules"
       - "functions/test/agreementToSalesOrder.test.mjs"
       - "functions/src/opportunity/closeOpportunityAsWon.ts"
       - "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
@@ -60,6 +69,15 @@ on:
       - "functions/src/salesAgreement/salesAgreementLifecycle.ts"
       - "functions/test/salesAgreementCommands.test.mjs"
       - "functions/src/salesAgreement/agreementToSalesOrder.ts"
+      - "functions/src/salesAgreement/salesAgreementCallables.ts"
+      - "functions/src/salesAgreement/salesAgreementReadService.ts"
+      - "functions/src/salesAgreement/salesAgreementNumbering.ts"
+      - "functions/test/salesAgreementDraftEditing.test.mjs"
+      - "functions/test/commercialChainEndToEnd.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "firestore.rules"
       - "functions/test/agreementToSalesOrder.test.mjs"
       - "functions/src/opportunity/closeOpportunityAsWon.ts"
       - "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
@@ -144,3 +162,47 @@ jobs:
           path: /tmp/sales-order-source-opportunity-emulator.log
           if-no-files-found: ignore
           retention-days: 7
+
+  commercial-chain-emulator:
+    name: Commercial chain end-to-end (Opportunity -> Agreement -> Accept -> WON -> Sales Order)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/commercial-chain-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/commercial-chain-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/commercial-chain-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Commercial chain end-to-end tests (build + run)
+        run: npm run test:commercialChainEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-chain-emulator-logs
+          path: /tmp/commercial-chain-emulator.log
+          if-no-files-found: ignore
