@@ -161,8 +161,19 @@ export function opportunityDetailModel(row, opts = {}) {
       // Identity + audit. Immutable in the UI. createdAt/updatedAt may be absent on synthetic fixtures — shown
       // honestly as "not recorded", never fabricated.
       fields: [
-        field({ key: "id", label: "Opportunity ID", value: row.id, display: identity(row.id),
-          dataClass: R, control: "readonly" }),
+        // THE REFERENCE, NOT THE KEY (DECISIONS #106). This rendered `row.id` — a Firestore document
+        // id — under the label "Opportunity ID", which is exactly the substitution that decision
+        // forbids, made worse by a label asserting the key WAS the record's identity.
+        //
+        // The third and last site of this defect on one page: the ContextBand fact, the Owner field,
+        // and this. Each fix made the page look correct while the dynamic-detail sweep kept
+        // reporting RAW_ID on it — which is the whole value of a detector that reads the RENDERED
+        // page instead of the source.
+        //
+        // "Not numbered" rather than an em dash: a record predating OPP numbering is a real, knowable
+        // state, and saying so is more useful than a dash the reader has to interpret.
+        field({ key: "opportunityNumber", label: "Opportunity", value: row.opportunityNumber ?? null,
+          display: row.opportunityNumber ?? "Not numbered", dataClass: R, control: "readonly" }),
         field({ key: "createdAt", label: "Created", value: row.createdAt ?? null,
           display: row.createdAt != null ? fmt.date(row.createdAt) : "not recorded", dataClass: R, control: "readonly" }),
         field({ key: "updatedAt", label: "Updated", value: row.updatedAt ?? null,
