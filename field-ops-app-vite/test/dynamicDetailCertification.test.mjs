@@ -155,6 +155,24 @@ test("the page the fix produces is clean", () => {
 
 // ═════════════════════════════════════════ it is actually wired into the gate
 
+test("A SIGNED-OUT SWEEP MUST FAIL, NOT REPORT CLEAN", () => {
+  // The worst result a harness can produce. Session establishment fails intermittently against the
+  // deployed origin, and every goto then lands on the sign-in screen -- which has no tables, no raw
+  // ids, no overflow and no crashes. A 54-route sweep reports "54/54 measured, 0 findings",
+  // indistinguishable from a genuinely clean run.
+  //
+  // It happened during this certification: a RAW_ID sweep returned zero across every route while
+  // /service/job-assignments was still rendering six document ids. The result was not slightly
+  // wrong -- it was measuring a different application.
+  const session = read(".claude", "skills", "run-field-ops-app-vite", "deployedSession.mjs");
+  assert.match(session, /export async function assertSignedIn/);
+  assert.match(session, /NOT SIGNED IN as/);
+  assert.ok(session.includes("Sign in to continue"), "it must recognise the login screen by its own copy");
+  assert.ok(session.includes("Work email"), "and by its field labels");
+  // And every lane must inherit it, which means establishSession itself calls it.
+  assert.ok(session.includes("await assertSignedIn(page, accountKey)"), "establishSession must call it");
+});
+
 test("THE GATE HARD-FAILS ON EVERY CRASH SIGNAL, not only the boundary text", () => {
   // The certification that missed a user-reproducible crash measured ROUTE LOADS. These are the
   // signals that catch the rest, and each one must be fatal.
