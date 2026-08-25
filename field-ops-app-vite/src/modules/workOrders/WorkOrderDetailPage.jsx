@@ -352,7 +352,13 @@ function WorkOrderTimeline({ workOrder }) {
     <ul className="ns-lineage">
       {events.map((e, i) => (
         <li className="ns-lineage__row" key={e.id ?? `event-${i}`}>
-          <span className="ns-lineage__label">{formatClockTime(e.at) ?? "—"}</span>
+          {/* THE FIELD IS `timestamp`, NOT `at`.
+              Reading `e.at` gave every row an undefined time, which displayTimestamp correctly
+              renders as "Unknown" -- so the timeline showed a column of Unknowns and looked like a
+              data problem in the Work Order rather than a typo in this component. The honest
+              fallback did its job and hid my bug behind a truthful word, which is exactly how a
+              good absence-state can mask a real defect. */}
+          <span className="ns-lineage__label">{formatClockTime(e.timestamp)}</span>
           <span>{describeEvent(e)}</span>
         </li>
       ))}
