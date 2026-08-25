@@ -12,7 +12,7 @@ import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import AttentionBand from "../../shared/ui/AttentionBand.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
-import LifecycleChevrons from "../../shared/ui/LifecycleChevrons.jsx";
+import LifecycleBand from "../../shared/ui/LifecycleBand.jsx";
 import WorkOrderActions from "../controlTower/WorkOrderActions";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
@@ -21,9 +21,7 @@ import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
-import { formatClockTime } from "../../domain/displayTimestamp";
-import { buildTimeline } from "../../domain/timelineBuilder";
-import { describeEvent } from "../../domain/eventModel";
+import { formatClockTime, formatMoment } from "../../domain/displayTimestamp";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { workOrderRecordPageRailSubset } from "../../metadata/definitions/workOrderPage.js";
 import { workOrderEntity } from "../../metadata/definitions/workOrder.js";
@@ -33,6 +31,8 @@ import {
   workOrderSpine,
   workOrderAttention,
   workOrderPartsPlan,
+  workOrderStageDetail,
+  workOrderTimeline,
   workOrderLineage,
   EDGE,
 } from "../../domain/workOrderNorthStar.js";
@@ -83,7 +83,11 @@ export default function WorkOrderDetailPage() {
 
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
-  const { data: equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
+  // useEquipmentDoc returns { equipment, loading, error } — NOT { data }. Destructuring `data`
+  // here left `equipment` permanently undefined, so the rail-s Equipment section rendered
+  // "reference unavailable" on every work order that has a unit, and the Record shell reported the
+  // unit as no longer existing. Wiring drift, fixed in the wiring.
+  const { equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
   const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
@@ -197,12 +201,34 @@ export default function WorkOrderDetailPage() {
         actions={
           // The governed action cluster, unchanged. Legality is decided by getAllowedActions and the
           // engine; this file neither widens nor narrows it.
-          <WorkOrderActions workOrder={workOrder} role={role} technicians={technicians} showStatus={false} />
+          <WorkOrderActions
+            workOrder={workOrder}
+            role={role}
+            technicians={technicians}
+            showStatus={false}
+            // The concept fills exactly one button: the transition the dispatcher almost always
+            // wants next. orderWorkflowActions already orders them; this only reweights the
+            // rendering of that same list.
+            emphasizeFirst
+          />
         }
       />
 
-      {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent. */}
-      <LifecycleChevrons steps={spine.steps} terminal={spine.terminal} ariaLabel="Work order lifecycle" />
+      {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent.
+          Rendered as the BAND rather than the row: on a record page the spine is the loudest
+          horizontal element, and a click on any stage opens the one line of recorded fact the
+          concept shows beneath it. Both renderings consume workOrderSpine, so they cannot
+          disagree about where the record is.
+
+          No lineage tail. The concept trails the band with "from SO-2026-000141"; that reference
+          is not resolvable from this page (see `lineage` above), and the rail already states its
+          absence once. Saying it twice is the NS-P4 defect this page exists to remove. */}
+      <LifecycleBand
+        steps={spine.steps}
+        terminal={spine.terminal}
+        ariaLabel="Work order lifecycle"
+        detailFor={(stepKey) => workOrderStageDetail(workOrder, stepKey, (v) => formatMoment(v, { unknown: "" }))}
+      />
       {spine.unrecognised ? (
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
       ) : null}
@@ -222,12 +248,25 @@ export default function WorkOrderDetailPage() {
 
       <div className="ns-record-body">
         <div>
+          {/* THE JOB LEADS, and it is the one region on the page read as sentences rather than
+              scanned as data — hence the measure and the prose line-height. Each lead-in is
+              rendered only when the field it introduces exists: an empty "Working diagnosis."
+              would read as a diagnosis of nothing. */}
           <RuledSection title="The job">
-            <p><strong>Complaint.</strong>{" "}
-              {workOrder.complaint
-                ? workOrder.complaint
-                : <span className="ns-state--na">No complaint was recorded.</span>}
-            </p>
+            <div className="ns-prose">
+              {workOrder.complaint ? (
+                <p><strong>Complaint.</strong> {workOrder.complaint}</p>
+              ) : null}
+              {workOrder.diagnosis ? (
+                <p><strong>Working diagnosis.</strong> {workOrder.diagnosis}</p>
+              ) : null}
+              {workOrder.resolution ? (
+                <p><strong>Resolution.</strong> {workOrder.resolution}</p>
+              ) : null}
+              {!workOrder.complaint && !workOrder.diagnosis && !workOrder.resolution ? (
+                <p className="ns-state--na">No complaint was recorded.</p>
+              ) : null}
+            </div>
           </RuledSection>
 
           <RuledSection
@@ -342,18 +381,21 @@ export default function WorkOrderDetailPage() {
   );
 }
 
-/** The recorded events, in the same vocabulary the rest of the product already uses. */
+/** The recorded lifecycle events, newest first, in the Work Order-s own vocabulary. */
 function WorkOrderTimeline({ workOrder }) {
-  const events = useMemo(() => buildTimeline([workOrder]) ?? [], [workOrder]);
+  const events = useMemo(() => workOrderTimeline(workOrder), [workOrder]);
   if (events.length === 0) {
     return <HonestState state={HONEST_STATE.EMPTY} detail="No recorded events yet." />;
   }
+  // When on the left in a fixed column, what happened on the right — the composition-s timeline
+  // shape. The moment carries its date: a clock time alone is unreadable on a record whose events
+  // span several days.
   return (
-    <ul className="ns-lineage">
-      {events.map((e, i) => (
-        <li className="ns-lineage__row" key={e.id ?? `event-${i}`}>
-          <span className="ns-lineage__label">{formatClockTime(e.at) ?? "—"}</span>
-          <span>{describeEvent(e)}</span>
+    <ul className="ns-timeline">
+      {events.map((e) => (
+        <li className="ns-timeline__row" key={e.key}>
+          <span className="ns-timeline__when">{formatMoment(e.at, { unknown: "—" })}</span>
+          <span>{e.label}</span>
         </li>
       ))}
     </ul>
@@ -366,9 +408,12 @@ function titleCase(v) {
   return v.trim().toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+// "Tue Aug 26, 8:00 AM – 12:00 PM". WHICH DAY is the fact a dispatcher is checking, and a clock
+// time alone does not carry it; the end needs only the time, since a window that crosses midnight
+// is not a thing this business schedules.
 function formatWindow(start, end) {
-  const s = formatClockTime(start);
+  const s = formatMoment(start, { unknown: "", weekday: true });
   if (!s) return "Not scheduled";
-  const e = formatClockTime(end);
+  const e = formatClockTime(end, { unknown: "" });
   return e ? `${s} – ${e}` : s;
 }

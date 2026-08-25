@@ -14,6 +14,8 @@ import {
   workOrderPartsPlan,
   workOrderLineage,
   workOrderHeader,
+  workOrderStageDetail,
+  workOrderTimeline,
   WO_SPINE_STEPS,
   READINESS,
   SEVERITY,
@@ -247,4 +249,61 @@ test("NO DERIVATION ANYWHERE EMITS A DOCUMENT-ID-SHAPED STRING AS CONTENT", () =
     lineage: workOrderLineage(record, { salesOrderReference: null }).map(({ targetId: _routingKey, ...rest }) => rest),
   };
   assert.doesNotMatch(JSON.stringify(rendered), RAW, "a document id reached a rendered value");
+});
+
+// ═════════════════════════════════════════ STAGE DETAIL (the lifecycle band)
+
+const ts = (ms) => ({ toMillis: () => ms, toDate: () => new Date(ms) });
+const AUG21 = Date.UTC(2026, 7, 21, 15, 12);
+const AUG22 = Date.UTC(2026, 7, 22, 9, 0);
+const when = (v) => (v ? "AT" : null);
+
+test("the CURRENT stage says where you are, and carries its own recorded time", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED", dispatchedAt: ts(AUG21) }), "dispatched", when);
+  assert.equal(d.tone, "current");
+  assert.equal(d.lead, "You are here.");
+  assert.match(d.fact, /Awaiting technician acceptance/);
+});
+
+test("a REACHED stage with no recorded time SAYS SO rather than rendering blank", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED" }), "created", () => null);
+  assert.equal(d.tone, "complete");
+  assert.equal(d.lead, "Reached.");
+  assert.match(d.fact, /No time was recorded/);
+});
+
+test("an UNREACHED stage explains the stage and never borrows another stage-s time", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED", dispatchedAt: ts(AUG21) }), "closed", when);
+  assert.equal(d.tone, "future");
+  assert.equal(d.lead, "Not reached.");
+  assert.ok(d.fact && !d.fact.includes("AT"), "a future stage must not show a recorded time");
+});
+
+test("every spine step resolves to a detail — no step renders undefined", () => {
+  for (const step of WO_SPINE_STEPS) {
+    const d = workOrderStageDetail(wo({ status: "ARRIVED" }), step.key, when);
+    assert.ok(d && typeof d.lead === "string" && d.lead.length > 0, step.key);
+  }
+});
+
+// ═════════════════════════════════════════ TIMELINE
+
+test("the timeline is RECORDED events only, newest first", () => {
+  const rows = workOrderTimeline(wo({
+    createdAt: ts(AUG21),
+    dispatchedAt: ts(AUG22),
+    // never recorded:
+    completedAt: null,
+  }));
+  assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
+});
+
+test("THE SCHEDULED WINDOW IS A PLAN, NOT AN EVENT — it never enters the timeline", () => {
+  const rows = workOrderTimeline(wo({ createdAt: ts(AUG21), scheduledStart: ts(AUG22) }));
+  assert.deepEqual(rows.map((r) => r.key), ["created"]);
+});
+
+test("a work order with nothing recorded yields an empty list, not a row of unknowns", () => {
+  assert.deepEqual(workOrderTimeline({}), []);
+  assert.deepEqual(workOrderTimeline(null), []);
 });

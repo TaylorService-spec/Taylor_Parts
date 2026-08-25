@@ -1,4 +1,5 @@
 import { planLinesFromSnapshot } from "./workOrderPartsPlan.js";
+import { toMillis } from "./timestampMillis.js";
 import { snapshotPartName, snapshotPartSku } from "./workOrderInventorySnapshot.js";
 
 // THE WORK ORDER, DERIVED ONCE.
@@ -117,6 +118,144 @@ export function workOrderSpine(status) {
     // drawing six hollow rings that look like a brand-new record.
     unrecognised: !cancelled && currentIndex < 0,
   };
+}
+
+/**
+ * ONE LINE OF RECORDED FACT for whichever spine step the reader opened.
+ *
+ * The concept lets a dispatcher click any chevron and read what happened at that stage without
+ * leaving the page. Everything it can say comes from timestamps the Work Order document already
+ * carries — createdAt, scheduledStart, dispatchedAt, acceptedAt, arrivedAt, workStartedAt,
+ * completedAt, closedAt. Nothing here computes a duration, an ETA, or a projection.
+ *
+ * The concept also writes richer copy than EOS can substantiate ("customer prefers Tue/Thu",
+ * "dock entrance, badge at kiosk", "1 part needs warehouse pickup"). Those are reads that do not
+ * exist. A stage with no recorded time therefore says so in words rather than borrowing a
+ * neighbouring stage-s time or rendering an empty strip.
+ *
+ * @param workOrder the governed document
+ * @param stepKey one of WO_SPINE_STEPS
+ * @param formatWhen injected formatter (the page owns display formatting; this file stays pure)
+ * @returns { tone, lead, fact } — tone is "complete" | "current" | "future"
+ */
+export function workOrderStageDetail(workOrder, stepKey, formatWhen) {
+  const when = (value) => {
+    const text = typeof formatWhen === "function" ? formatWhen(value) : null;
+    return text || null;
+  };
+  const spine = workOrderSpine(workOrder?.status);
+  const step = spine.steps.find((s) => s.key === stepKey);
+  const tone = step?.status === "complete" ? "complete" : step?.status === "current" ? "current" : "future";
+
+  // What each stage MEANS — used when it has not been reached, so a future chevron explains the
+  // stage rather than showing an empty line.
+  const PURPOSE = {
+    created: "The record exists and is not yet scheduled.",
+    scheduled: "A window is agreed with the customer.",
+    dispatched: "The work order is sent to a technician for acceptance.",
+    onSite: "Starts when the technician arrives.",
+    complete: "Closes execution — usage is recorded against the parts plan at completion.",
+    closed: "Dispatcher review and closeout.",
+  };
+
+  // What each stage RECORDED — first timestamp is the stage-s own; the second, where one exists,
+  // is the detail the concept shows beside it.
+  let recorded = null;
+  switch (stepKey) {
+    case "created": {
+      const t = when(workOrder?.createdAt);
+      recorded = t ? { at: `Created ${t}.`, detail: null } : null;
+      break;
+    }
+    case "scheduled": {
+      const t = when(workOrder?.scheduledStart);
+      recorded = t ? { at: `Window starts ${t}.`, detail: null } : null;
+      break;
+    }
+    case "dispatched": {
+      const t = when(workOrder?.dispatchedAt);
+      const accepted = when(workOrder?.acceptedAt);
+      recorded = t
+        ? { at: `Dispatched ${t}.`, detail: accepted ? `Accepted ${accepted}` : "Awaiting technician acceptance" }
+        : null;
+      break;
+    }
+    case "onSite": {
+      const arrived = when(workOrder?.arrivedAt);
+      const started = when(workOrder?.workStartedAt);
+      const enRoute = when(workOrder?.enRouteAt);
+      if (arrived) recorded = { at: `Arrived ${arrived}.`, detail: started ? `Work started ${started}` : null };
+      else if (enRoute) recorded = { at: `En route ${enRoute}.`, detail: "Not yet on site" };
+      break;
+    }
+    case "complete": {
+      const t = when(workOrder?.completedAt);
+      recorded = t ? { at: `Completed ${t}.`, detail: null } : null;
+      break;
+    }
+    case "closed": {
+      const t = when(workOrder?.closedAt);
+      recorded = t ? { at: `Closed ${t}.`, detail: null } : null;
+      break;
+    }
+    default:
+      break;
+  }
+
+  if (tone === "current") {
+    return {
+      tone,
+      lead: "You are here.",
+      // The current stage shows its own recorded time when it has one; otherwise what it is for.
+      fact: recorded ? [recorded.at, recorded.detail].filter(Boolean).join(" · ") : PURPOSE[stepKey] ?? null,
+    };
+  }
+  if (tone === "complete") {
+    return recorded
+      ? { tone, lead: recorded.at, fact: recorded.detail }
+      // Reached, but the time was never written. Said plainly — the alternative is an empty strip
+      // that reads as a rendering bug.
+      : { tone, lead: "Reached.", fact: "No time was recorded for this stage." };
+  }
+  return { tone, lead: "Not reached.", fact: PURPOSE[stepKey] ?? null };
+}
+
+/**
+ * THE RECORDED TIMELINE.
+ *
+ * The lifecycle timestamps this Work Order actually carries, newest first. The vocabulary is the
+ * Work Order-s own — "Dispatched", "Arrived" — not a job-s.
+ *
+ * This page previously fed the Work Order into buildTimeline(), the JOB timeline builder, which
+ * reads job fields and job vocabulary. The result on a real record was four rows reading "Job
+ * created" / "Job assigned" / "Work order became READY" with an em dash where every time should
+ * have been, because the fields it looks for are not the ones a Work Order writes. A timeline that
+ * cannot say WHEN is not a timeline.
+ *
+ * Recorded events only. A stage with no timestamp is absent from the list rather than present with
+ * an unknown time — the caller renders the empty case in words when nothing is recorded at all.
+ *
+ * scheduledStart is deliberately NOT here. It is a PLAN — when the visit is meant to happen — not a
+ * record of something that did, and a future time sorted into a list of past events reads as an
+ * event that already occurred. The window belongs to the header fact row and the Scheduled stage
+ * strip, where it is labelled as a window.
+ */
+export function workOrderTimeline(workOrder) {
+  return [
+    { key: "created", label: "Created", at: workOrder?.createdAt },
+    { key: "dispatched", label: "Dispatched", at: workOrder?.dispatchedAt },
+    { key: "accepted", label: "Accepted by technician", at: workOrder?.acceptedAt },
+    { key: "enRoute", label: "En route", at: workOrder?.enRouteAt },
+    { key: "arrived", label: "Arrived on site", at: workOrder?.arrivedAt },
+    { key: "workStarted", label: "Work started", at: workOrder?.workStartedAt },
+    { key: "completed", label: "Completed", at: workOrder?.completedAt },
+    { key: "closed", label: "Closed", at: workOrder?.closedAt },
+  ]
+    .filter((row) => row.at != null)
+    // Newest first, by the RECORDED time rather than by stage order: a work order re-dispatched
+    // after an aborted visit writes its stages out of spine order, and the list must show what
+    // happened when, not what the spine expects.
+    .sort((a, b) => (toMillis(b.at) ?? 0) - (toMillis(a.at) ?? 0));
 }
 
 // ═════════════════════════════════════════ PARTS READINESS

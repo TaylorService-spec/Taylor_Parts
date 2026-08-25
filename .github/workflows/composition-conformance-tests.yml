@@ -37,6 +37,9 @@ on:
       - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
       - "field-ops-app-vite/src/metadata/definitions/workOrder.js"
       - "field-ops-app-vite/test/workOrdersListMigration.test.jsx"
+      # The North Star lifecycle band (Work Order design handoff, family 1).
+      - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
+      - "field-ops-app-vite/test/lifecycleBand.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -98,6 +101,9 @@ on:
       - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
       - "field-ops-app-vite/src/metadata/definitions/workOrder.js"
       - "field-ops-app-vite/test/workOrdersListMigration.test.jsx"
+      # The North Star lifecycle band (Work Order design handoff, family 1).
+      - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
+      - "field-ops-app-vite/test/lifecycleBand.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -151,7 +157,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
-        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx
         # MISSING working-directory, pre-existing: this step ran from the repo root, so its
         # tests were never actually executing in this lane. Adding it makes them run.
         working-directory: field-ops-app-vite

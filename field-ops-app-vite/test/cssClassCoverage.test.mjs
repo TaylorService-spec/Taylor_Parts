@@ -184,7 +184,6 @@ const KNOWN_UNSTYLED = new Set([
   "fo-op-card__metadata-item",
   "fo-part-detail",
   "fo-parts-list",
-  "fo-record-page",
   "fo-record-section-title",
   "fo-sales-field",
   "fo-sales-row__next",
