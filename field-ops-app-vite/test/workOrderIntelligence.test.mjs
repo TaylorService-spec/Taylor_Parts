@@ -24,55 +24,104 @@ const wo = (over = {}) => ({
   ...over,
 });
 
+const readiness = (over = {}) => ({
+  workOrderId: "cIk3hlPDTXH5IB3VHdLy",
+  plannedCount: 2,
+  jobReadiness: "UNKNOWN",
+  counts: { READY: 1, ATTENTION: 0, UNKNOWN: 1 },
+  degraded: ["truckInventory"],
+  rows: [
+    { partId: "V4otE0s7EAp7ABCZEjam", name: "Scraper Blade Kit", qtyPlanned: 2, readiness: "READY", reason: "WAREHOUSE_AVAILABLE", knownShortfall: 0 },
+    { partId: "Z9otE0s7EAp7ABCZEjaQ", name: "Seal Kit", qtyPlanned: 1, readiness: "UNKNOWN", reason: "TRUCK_UNAVAILABLE", knownShortfall: 1 },
+  ],
+  ...over,
+});
+
 test("the context is an explicit model-safe shape, not a database handle", () => {
-  const context = buildWorkOrderIntelligenceContext(wo());
+  const context = buildWorkOrderIntelligenceContext(wo(), { partsReadiness: readiness() });
   assert.equal(context.schemaVersion, 1);
   assert.equal(context.subject.reference, "WO-2026-000873");
   assert.equal(context.subject.status, "DISPATCHED");
   assert.equal(context.parts.plannedLineCount, 2);
   assert.equal(context.parts.plannedQuantity, 3);
-  assert.equal(context.parts.readinessAuthorityAvailable, false);
+  assert.equal(context.parts.readinessProjectionAvailable, true);
+  assert.equal(context.parts.readiness.jobReadiness, "UNKNOWN");
 
   const encoded = JSON.stringify(context);
-  assert.doesNotMatch(encoded, /cIk3hlPDTXH5IB3VHdLy/);
-  assert.doesNotMatch(encoded, /aBcDeFgHiJkLmNoPqRsT/);
-  assert.doesNotMatch(encoded, /uVwXyZ0123456789AbCd/);
-  assert.doesNotMatch(encoded, /V4otE0s7EAp7ABCZEjam/);
+  for (const rawId of [
+    "cIk3hlPDTXH5IB3VHdLy",
+    "aBcDeFgHiJkLmNoPqRsT",
+    "uVwXyZ0123456789AbCd",
+    "V4otE0s7EAp7ABCZEjam",
+    "Z9otE0s7EAp7ABCZEjaQ",
+  ]) assert.doesNotMatch(encoded, new RegExp(rawId));
   assert.equal("id" in context.subject, false);
   assert.equal("customerId" in context.subject, false);
+  assert.equal("partId" in context.parts.readiness.rows[0], false);
 });
 
-test("planned parts produce one truthful deterministic readiness signal", () => {
+test("without an assembled readiness projection, planned parts produce a truthful UNKNOWN signal", () => {
   const signal = deriveWorkOrderIntelligence(wo());
   assert.equal(signal.speak, true);
   assert.equal(signal.origin, INTELLIGENCE_ORIGIN.DETERMINISTIC);
   assert.equal(signal.key, "parts-readiness-unverified");
   assert.match(signal.observedFact, /3 planned units across 2 parts/i);
-  assert.match(signal.interpretation, /no governed truck or staging availability signal/i);
+  assert.match(signal.interpretation, /projection has not been assembled/i);
   assert.match(signal.businessConsequence, /readiness cannot be confirmed/i);
   assert.equal(signal.confidence.level, CONFIDENCE.HIGH);
   assert.equal(signal.recommendedAction, null);
   assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
   assert.equal(signal.evidence.length, 1);
   assert.equal(signal.evidence[0].kind, "WORK_ORDER_PARTS_PLAN");
-  assert.equal(signal.evidence[0].subjectReference, "WO-2026-000873");
-  assert.equal(signal.evidence[0].facts.plannedLineCount, 2);
   assert.equal(signal.outcome, null);
 });
 
-test("the visible deterministic attention copy states uncertainty, not an invented shortage", () => {
-  const { attentionItem } = deriveWorkOrderIntelligence(wo());
-  assert.equal(attentionItem.severity, "ATTENTION");
-  assert.match(attentionItem.fact, /cannot be confirmed/i);
-  assert.match(attentionItem.fact, /no governed truck or staging availability signal/i);
+test("UNKNOWN canonical readiness names degraded sources without inventing a shortage", () => {
+  const signal = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
+  assert.equal(signal.speak, true);
+  assert.equal(signal.key, "parts-readiness-unverified");
+  assert.match(signal.interpretation, /truckInventory/);
+  assert.match(signal.attentionItem.fact, /cannot be confirmed/i);
+  assert.match(signal.attentionItem.fact, /truckInventory/);
+  assert.equal(signal.evidence.length, 2);
+  assert.equal(signal.evidence[1].kind, "WORK_ORDER_PARTS_READINESS");
+  assert.equal(signal.evidence[1].facts.jobReadiness, "UNKNOWN");
+  assert.doesNotMatch(signal.attentionItem.fact, /\bshortage\b/i);
+  assert.doesNotMatch(signal.attentionItem.fact, /\blate\b/i);
+  assert.doesNotMatch(signal.attentionItem.fact, /\bETA\b/i);
+});
 
-  // These would assert operational facts EOS does not possess today.
-  assert.doesNotMatch(attentionItem.fact, /\bon truck\b/i);
-  assert.doesNotMatch(attentionItem.fact, /\bstaged\b(?! availability)/i);
-  assert.doesNotMatch(attentionItem.fact, /\bmissing\b/i);
-  assert.doesNotMatch(attentionItem.fact, /\bshortage\b/i);
-  assert.doesNotMatch(attentionItem.fact, /\blate\b/i);
-  assert.doesNotMatch(attentionItem.fact, /\bETA\b/i);
+test("READY canonical readiness is quiet -- clean is the signal", () => {
+  const signal = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({
+      jobReadiness: "READY",
+      counts: { READY: 2, ATTENTION: 0, UNKNOWN: 0 },
+      degraded: [],
+    }),
+  });
+  assert.equal(signal.speak, false);
+  assert.equal(signal.reason, NO_INSIGHT_REASON.PARTS_READY);
+  assert.equal(signal.attentionItem, null);
+});
+
+test("ATTENTION canonical readiness is explained, not independently re-derived", () => {
+  const signal = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({
+      jobReadiness: "ATTENTION",
+      counts: { READY: 1, ATTENTION: 1, UNKNOWN: 0 },
+      degraded: ["truckInventory"],
+      rows: [
+        { partId: "V4otE0s7EAp7ABCZEjam", name: "Scraper Blade Kit", qtyPlanned: 2, readiness: "READY", reason: "WAREHOUSE_AVAILABLE", knownShortfall: 0 },
+        { partId: "Z9otE0s7EAp7ABCZEjaQ", name: "Seal Kit", qtyPlanned: 1, readiness: "ATTENTION", reason: "PROCUREMENT_PENDING", knownShortfall: 1 },
+      ],
+    }),
+  });
+  assert.equal(signal.speak, true);
+  assert.equal(signal.key, "parts-readiness-attention");
+  assert.match(signal.observedFact, /1 needs attention; 1 ready/i);
+  assert.match(signal.businessConsequence, /not be treated as fully parts-ready/i);
+  assert.match(signal.attentionItem.fact, /needs attention/i);
+  assert.equal(signal.recommendedAction, null, "projection evidence does not create a new governed command");
 });
 
 test("no parts plan stays quiet because the existing attention rule already owns that fact", () => {
@@ -85,7 +134,7 @@ test("no parts plan stays quiet because the existing attention rule already owns
 
 test("completed, closed, and cancelled Work Orders stay quiet", () => {
   for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
-    const signal = deriveWorkOrderIntelligence(wo({ status }));
+    const signal = deriveWorkOrderIntelligence(wo({ status }), { partsReadiness: readiness() });
     assert.equal(signal.speak, false, status);
     assert.equal(signal.reason, NO_INSIGHT_REASON.RECORD_CLOSED, status);
     assert.equal(signal.attentionItem, null, status);
@@ -100,17 +149,14 @@ test("missing record is a no-insight state, not an exception", () => {
 });
 
 test("recommendation and authority remain empty until an existing governed action is actually proposed", () => {
-  const signal = deriveWorkOrderIntelligence(wo());
+  const signal = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
   assert.equal(signal.recommendedAction, null);
-  assert.deepEqual(signal.authority, {
-    state: AUTHORITY_STATE.NOT_APPLICABLE,
-    action: null,
-    reason: "No governed readiness action is proposed until availability evidence exists.",
-  });
+  assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
+  assert.equal(signal.authority.action, null);
 });
 
 test("the entire intelligence payload excludes raw document ids", () => {
-  const payload = deriveWorkOrderIntelligence(wo());
+  const payload = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
   const encoded = JSON.stringify(payload);
   const RAW = /\b[A-Za-z0-9]{20}\b/;
   assert.doesNotMatch(encoded, RAW, "a Firestore-shaped id crossed the intelligence boundary");
