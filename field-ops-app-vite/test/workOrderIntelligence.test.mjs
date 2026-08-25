@@ -4,7 +4,6 @@ import {
   buildWorkOrderIntelligenceContext,
   deriveWorkOrderIntelligence,
   INTELLIGENCE_ORIGIN,
-  CONFIDENCE,
   AUTHORITY_STATE,
   NO_INSIGHT_REASON,
 } from "../src/domain/workOrderIntelligence.js";
@@ -60,35 +59,22 @@ test("the context is an explicit model-safe shape, not a database handle", () =>
   assert.equal("partId" in context.parts.readiness.rows[0], false);
 });
 
-test("without an assembled readiness projection, planned parts produce a truthful UNKNOWN signal", () => {
+test("no assembled readiness projection stays quiet instead of filling the attention band", () => {
   const signal = deriveWorkOrderIntelligence(wo());
-  assert.equal(signal.speak, true);
+  assert.equal(signal.speak, false);
   assert.equal(signal.origin, INTELLIGENCE_ORIGIN.DETERMINISTIC);
-  assert.equal(signal.key, "parts-readiness-unverified");
-  assert.match(signal.observedFact, /3 planned units across 2 parts/i);
-  assert.match(signal.interpretation, /projection has not been assembled/i);
-  assert.match(signal.businessConsequence, /readiness cannot be confirmed/i);
-  assert.equal(signal.confidence.level, CONFIDENCE.HIGH);
-  assert.equal(signal.recommendedAction, null);
-  assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
-  assert.equal(signal.evidence.length, 1);
-  assert.equal(signal.evidence[0].kind, "WORK_ORDER_PARTS_PLAN");
-  assert.equal(signal.outcome, null);
+  assert.equal(signal.reason, NO_INSIGHT_REASON.READINESS_NOT_ASSEMBLED);
+  assert.equal(signal.attentionItem, null);
+  assert.equal(signal.observedFact, null);
 });
 
-test("UNKNOWN canonical readiness names degraded sources without inventing a shortage", () => {
+test("UNKNOWN canonical readiness stays quiet because uncertainty is already rendered by the parts surface", () => {
   const signal = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
-  assert.equal(signal.speak, true);
-  assert.equal(signal.key, "parts-readiness-unverified");
-  assert.match(signal.interpretation, /truckInventory/);
-  assert.match(signal.attentionItem.fact, /cannot be confirmed/i);
-  assert.match(signal.attentionItem.fact, /truckInventory/);
-  assert.equal(signal.evidence.length, 2);
-  assert.equal(signal.evidence[1].kind, "WORK_ORDER_PARTS_READINESS");
-  assert.equal(signal.evidence[1].facts.jobReadiness, "UNKNOWN");
-  assert.doesNotMatch(signal.attentionItem.fact, /\bshortage\b/i);
-  assert.doesNotMatch(signal.attentionItem.fact, /\blate\b/i);
-  assert.doesNotMatch(signal.attentionItem.fact, /\bETA\b/i);
+  assert.equal(signal.speak, false);
+  assert.equal(signal.reason, NO_INSIGHT_REASON.READINESS_UNKNOWN);
+  assert.equal(signal.attentionItem, null);
+  assert.equal(signal.recommendedAction, null);
+  assert.equal(signal.evidence.length, 0);
 });
 
 test("READY canonical readiness is quiet -- clean is the signal", () => {
@@ -117,11 +103,15 @@ test("ATTENTION canonical readiness is explained, not independently re-derived",
     }),
   });
   assert.equal(signal.speak, true);
+  assert.equal(signal.origin, INTELLIGENCE_ORIGIN.DETERMINISTIC);
   assert.equal(signal.key, "parts-readiness-attention");
   assert.match(signal.observedFact, /1 needs attention; 1 ready/i);
   assert.match(signal.businessConsequence, /not be treated as fully parts-ready/i);
   assert.match(signal.attentionItem.fact, /needs attention/i);
   assert.equal(signal.recommendedAction, null, "projection evidence does not create a new governed command");
+  assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
+  assert.equal(signal.evidence.length, 2);
+  assert.equal(signal.evidence[1].kind, "WORK_ORDER_PARTS_READINESS");
 });
 
 test("no parts plan stays quiet because the existing attention rule already owns that fact", () => {
@@ -129,7 +119,6 @@ test("no parts plan stays quiet because the existing attention rule already owns
   assert.equal(signal.speak, false);
   assert.equal(signal.reason, NO_INSIGHT_REASON.NO_GOVERNED_PARTS_PLAN);
   assert.equal(signal.attentionItem, null);
-  assert.equal(signal.evidence.length, 0);
 });
 
 test("completed, closed, and cancelled Work Orders stay quiet", () => {
@@ -149,14 +138,18 @@ test("missing record is a no-insight state, not an exception", () => {
 });
 
 test("recommendation and authority remain empty until an existing governed action is actually proposed", () => {
-  const signal = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
+  const signal = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({ jobReadiness: "ATTENTION", counts: { READY: 1, ATTENTION: 1, UNKNOWN: 0 } }),
+  });
   assert.equal(signal.recommendedAction, null);
   assert.equal(signal.authority.state, AUTHORITY_STATE.NOT_APPLICABLE);
   assert.equal(signal.authority.action, null);
 });
 
 test("the entire intelligence payload excludes raw document ids", () => {
-  const payload = deriveWorkOrderIntelligence(wo(), { partsReadiness: readiness() });
+  const payload = deriveWorkOrderIntelligence(wo(), {
+    partsReadiness: readiness({ jobReadiness: "ATTENTION", counts: { READY: 1, ATTENTION: 1, UNKNOWN: 0 } }),
+  });
   const encoded = JSON.stringify(payload);
   const RAW = /\b[A-Za-z0-9]{20}\b/;
   assert.doesNotMatch(encoded, RAW, "a Firestore-shaped id crossed the intelligence boundary");
