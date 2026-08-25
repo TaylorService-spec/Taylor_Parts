@@ -64,6 +64,10 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     salesOrderNumber: so.salesOrderNumber ?? null,
     accountId: so.accountId,
     sourceOpportunityId: so.sourceOpportunityId,
+    // The accepted Sales Agreement this order fulfils. Carried through here rather than left on
+    // the server projection for the same reason the money was: a field the view model drops is a
+    // field the screen can never show, however faithfully the server returns it.
+    sourceAgreementId: so.sourceAgreementId ?? null,
     // Carried through so the detail page can label the lineage link with a reference
     // rather than a document id. Null on Sales Orders predating Opportunity identity.
     sourceOpportunityNumber: so.sourceOpportunityNumber ?? null,
