@@ -274,7 +274,7 @@ export {
 // standing role, so all three fail closed until a deferred protected grant. Closes the referential gap
 // Part write created (parts.manufacturerId -> a currently-unmanageable entity). Firebase deploys each
 // callable under its exported index property name -> frozen public names (no "Callable" suffix); the
-// suffixed impl consts are aliased here and NOT otherwise exposed.
+// suffixed impl consts are aliased here and are NOT otherwise exposed.
 export {
   createManufacturerCallable as createManufacturer,
   updateManufacturerCallable as updateManufacturer,
@@ -419,3 +419,8 @@ export {
 // default deny); these two trusted callables are the only read/write path.
 export { createCrmActivity } from "./crmActivity/crmActivityCallables";
 export { getCrmActivities } from "./crmActivity/crmActivityReadService";
+
+// --- Ask EOS V1: repository intelligence only ---
+// EXPORT != DEPLOY. The callable itself hard-disables production and permits only authenticated admins.
+// It reads no operational/customer records and reaches Keystone only through server-side configuration.
+export { askEOSRepository } from "./ai/repositoryAnswerCallable";
