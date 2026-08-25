@@ -91,6 +91,11 @@ export interface WorkOrder {
   customerId: string;
   locationId: string;
 
+  // WHICH MACHINE THIS IS ABOUT. Optional: every Work Order written before this existed has none,
+  // and a service call can legitimately be raised before anyone knows the unit. Never set on an
+  // INSTALL at creation -- that unit is created at completion. See workOrderEquipment.ts.
+  equipmentId?: string;
+
   // Cycle 7 demand-lineage link (see fulfillment/coordinatedVisit.ts's header comment). Optional: only Work
   // Orders created through the Sales Order -> Service seam (createServiceForSalesOrder) carry these.
   salesOrderId?: string;

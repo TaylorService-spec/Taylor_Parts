@@ -42,7 +42,7 @@
     "test:workOrderPartsPlan": "npm run build && node --test test/setWorkOrderPartsPlan.test.mjs",
     "test:inventoryService": "npm run build && node --test test/inventoryService.test.mjs",
     "test:opportunity": "npm run build && node --test test/opportunityCommands.test.mjs test/opportunityReadService.test.mjs",
-    "test:salesOrder": "npm run build && node --test test/salesOrderCommands.test.mjs test/salesOrderReadService.test.mjs test/salesOrderPricingCompleteness.test.mjs",
+    "test:salesOrder": "npm run build && node --test test/salesOrderCommands.test.mjs test/salesOrderReadService.test.mjs test/salesAgreementCommands.test.mjs test/agreementToSalesOrder.test.mjs test/salesOrderPricingCompleteness.test.mjs",
     "test:crmActivity": "npm run build && node --test test/crmActivityCommands.test.mjs test/crmActivityReadService.test.mjs",
     "test:crmActivityEmulator": "npm run build && node --test test/crmActivityCommandsEmulator.test.mjs test/crmActivityReadCallable.test.mjs",
     "test:salesOrderFulfillmentWriteBack": "npm run build && node --test test/salesOrderFulfillmentWriteBack.test.mjs",
@@ -96,7 +96,7 @@
     "verify:firestore-deployment": "node scripts/verifyFirestoreDeployment.js",
     "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
-    "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js",
+    "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js test/workOrderEquipment.test.mjs",
     "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js",
     "test:fRules1": "node test/legacyJobsTechniciansRules.test.js",
     "test:receivingGrantGate": "npm run build && node test/receivingGrantGate.test.mjs && node test/receivingCapabilityRegistration.test.mjs && node test/resolveEffectivePermission.test.mjs",
@@ -135,7 +135,8 @@
     "test:scannerEndToEndContract": "npm run build && node test/scannerEndToEndContract.test.mjs",
     "test:governance": "npm run build && node --test test/semanticMappingGuards.test.mjs test/generalManagerNoAdmin.test.mjs test/ownerDecisionPrecedence.test.mjs test/workbookReconciliation.test.mjs test/certificationWorldNotInRefresh.test.js test/workforceDoesNotDefeatGovernance.test.mjs test/capacityUsesOperableAuthority.test.mjs test/employeeEffectiveAuthority.test.mjs test/auditReadConfinement.test.mjs test/executionContractProofs.test.mjs test/certificationIdentityStability.test.mjs test/certificationIdentitySurvivesReset.test.mjs test/certificationWorldSeedTimestamps.test.mjs test/certificationWorldContracts.test.mjs test/certificationWorldIdentityLinkage.test.mjs test/grantReconciliation.test.mjs test/certificationInventoryPlan.test.mjs test/certificationWorldInvariants.test.mjs test/certificationApplierBoundary.test.mjs test/certificationPurchasingContract.test.mjs test/certificationPlannerGuards.test.mjs test/certificationPartMasterContract.test.mjs test/certificationOpeningBalanceSemantics.test.mjs test/certificationEnvironmentActivation.test.mjs test/certificationScannerCustodyBoundary.test.mjs test/certificationExecutionTarget.test.mjs test/certificationModelMigration.test.mjs test/certificationEquipmentModelContract.test.mjs test/certificationWholeUnitParts.test.mjs test/serializedEquipmentStations.test.mjs test/outstandingInboundQuantity.test.mjs test/partBalanceReadService.test.mjs && node scripts/governance/buildContract.mjs && node scripts/governance/buildWorkbookV2.mjs && node scripts/governance/precedenceSweep.mjs && node scripts/governance/effectiveAuthority.mjs && node scripts/governance/capacityReport.mjs && git diff --exit-code -- ../docs/governance",
     "test:assistant": "npm run build && node --test test/assistantSecurityBoundary.test.mjs test/assistantStartersAndEvaluation.test.mjs test/aiProviderPolicyAndSelfHosted.test.mjs",
-    "test:certificationIdentity": "node --test test/certificationIdentityStability.test.mjs test/certificationIdentitySurvivesReset.test.mjs"
+    "test:certificationIdentity": "node --test test/certificationIdentityStability.test.mjs test/certificationIdentitySurvivesReset.test.mjs",
+    "test:aiRepository": "npm run build && node --test test/aiRepositoryProvider.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

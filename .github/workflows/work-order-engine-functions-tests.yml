@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - "functions/src/createWorkOrder.ts"
+      - "functions/src/workOrderEquipment.ts"
+      - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
       - "functions/src/callerContext.ts"
@@ -36,6 +38,8 @@ on:
     branches: [main]
     paths:
       - "functions/src/createWorkOrder.ts"
+      - "functions/src/workOrderEquipment.ts"
+      - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
       - "functions/src/callerContext.ts"

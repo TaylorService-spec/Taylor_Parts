@@ -60,6 +60,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
       - "field-ops-app-vite/src/metadata/definitions/workOrderPage.js"
       - "field-ops-app-vite/test/coreRecordPages.test.jsx"
+      - "field-ops-app-vite/src/domain/workOrderEquipmentRule.js"
+      - "field-ops-app-vite/src/modules/workOrders/EquipmentPicker.jsx"
+      - "field-ops-app-vite/test/workOrderEquipmentClient.test.jsx"
+      - "functions/src/workOrderEquipment.ts"
       - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
@@ -116,6 +120,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
       - "field-ops-app-vite/src/metadata/definitions/workOrderPage.js"
       - "field-ops-app-vite/test/coreRecordPages.test.jsx"
+      - "field-ops-app-vite/src/domain/workOrderEquipmentRule.js"
+      - "field-ops-app-vite/src/modules/workOrders/EquipmentPicker.jsx"
+      - "field-ops-app-vite/test/workOrderEquipmentClient.test.jsx"
+      - "functions/src/workOrderEquipment.ts"
       - "firestore.rules"
       - "firestore.indexes.json"
       - ".github/workflows/composition-conformance-tests.yml"
@@ -200,4 +208,10 @@ jobs:
       # derived from each object's own write path rather than chosen.
       - name: Core record pages (density, collapse, per-object authority)
         run: npx vitest run test/coreRecordPages.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Which machine a Work Order is about: the client rule mirror that must not drift from the
+      # server, the picker that must never become an id box, and the label that must never be a key.
+      - name: Work Order equipment (client rule mirror + picker + label)
+        run: npx vitest run test/workOrderEquipmentClient.test.jsx
         working-directory: field-ops-app-vite
