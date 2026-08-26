@@ -66,21 +66,17 @@ test("one confirmed SHORT maps to the existing reorder action and nothing new", 
   assert.doesNotMatch(modelVisible, /requestedQty|recommendedQty|manualQty/);
 });
 
-test("the North Star intelligence contract carries the governed recommendation but keeps ids outside model-safe context", () => {
+test("the entire North Star intelligence payload stays raw-id-free even when it recommends reorder", () => {
   const intelligence = deriveWorkOrderIntelligence(wo(), { partsReadiness: shortProjection() });
   assert.equal(intelligence.speak, true);
   assert.equal(intelligence.recommendedAction.actionId, WORK_ORDER_REORDER_ACTION_ID);
   assert.equal(intelligence.authority.state, AUTHORITY_STATE.ALLOWED);
   assert.match(intelligence.attentionItem.fact, /Recommended next step: Request reorder/i);
-  assert.equal(intelligence.recommendationExecution.partId, PART_ID);
 
-  const modelSafe = JSON.stringify({
-    context: intelligence.context,
-    recommendedAction: intelligence.recommendedAction,
-    evidence: intelligence.evidence,
-  });
-  assert.doesNotMatch(modelSafe, new RegExp(PART_ID));
-  assert.doesNotMatch(modelSafe, new RegExp(WORK_ORDER_ID));
+  const encoded = JSON.stringify(intelligence);
+  assert.doesNotMatch(encoded, new RegExp(PART_ID));
+  assert.doesNotMatch(encoded, new RegExp(WORK_ORDER_ID));
+  assert.doesNotMatch(encoded, /requestedQty|recommendedQty|manualQty/);
 });
 
 test("existing procurement never creates a duplicate reorder recommendation", () => {
