@@ -59,6 +59,20 @@ test("model cannot recommend an action EOS did not pre-authorize", () => {
   assert.equal(result.reason, "MODEL_OUTPUT_ACTION_NOT_ALLOWED");
 });
 
+test("model cannot recommend a matching action when current actor authority is denied", () => {
+  const denied = {
+    actionId: "existing-governed-action",
+    label: "Existing governed action",
+    authority: "DENIED",
+  };
+  const result = verifyWorkOrderModelInterpretation(
+    input({ allowedRecommendation: denied }),
+    candidate({ recommendedActionId: denied.actionId }),
+  );
+  assert.equal(result.speak, false);
+  assert.equal(result.reason, "MODEL_OUTPUT_ACTION_NOT_ALLOWED");
+});
+
 test("an existing governed action may be repeated but never created by the model", () => {
   const allowed = {
     actionId: "existing-governed-action",
