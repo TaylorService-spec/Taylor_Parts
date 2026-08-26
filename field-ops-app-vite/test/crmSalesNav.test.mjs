@@ -172,3 +172,94 @@ ok("Issue #288: role visibility of the real CRM/Sales domain is unchanged after 
 });
 
 console.log(`\n${passed} passed, 0 failed`);
+
+// ═══════════════ OPPORTUNITY ROW NAVIGATION — the declaration must name a REAL route
+//
+// Added 2026-08-26 with the restoration of the two `rowNavigationTo` declarations in
+// metadata/definitions/opportunity.js (design decision O5).
+//
+// THE DEFECT THIS GUARDS is the one that got them removed in the first place. Both declared
+// "/sales/opportunities/:id" — a route App.jsx has never mounted. It was harmless only while
+// nothing read `rowNavigationTo`; the moment DefaultRelatedList started consuming it, every
+// Opportunity row would have navigated to a 404. Their removal notes both said "Restore this with
+// a real per-Opportunity route", and the restoration is only safe if "real" is CHECKED rather than
+// asserted in a comment.
+//
+// So this compares the declaration against the router itself. A future rename of the route that
+// misses these definitions fails here rather than in a user's hands.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { opportunityRelatedList, opportunityIndexList } from "../src/metadata/definitions/opportunity.js";
+import { buildRowHref } from "../src/metadata/listPresentation.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const APP_JSX = readFileSync(join(HERE, "..", "src", "App.jsx"), "utf8");
+
+const OPPORTUNITY_ROW_ROUTE = "/customers/opportunities/:opportunityId";
+
+for (const [name, listDef] of [
+  ["Account related list", opportunityRelatedList],
+  ["pipeline index", opportunityIndexList],
+]) {
+  ok(`${name} declares a per-Opportunity row destination`, () => {
+    assert.equal(listDef.rowNavigationTo, OPPORTUNITY_ROW_ROUTE);
+  });
+
+  ok(`${name}'s row destination is a route App.jsx actually mounts`, () => {
+    // The router declares it relative to the /customers parent: path="opportunities/:opportunityId".
+    assert.match(
+      APP_JSX,
+      /path="opportunities\/:opportunityId"/,
+      "App.jsx no longer mounts opportunities/:opportunityId — the declaration would 404",
+    );
+  });
+
+  ok(`${name} builds a record href, never the list or a sales order`, () => {
+    const href = buildRowHref(listDef.rowNavigationTo, "opp_doc_1");
+    assert.equal(href, "/customers/opportunities/opp_doc_1");
+    // The Sales Order route lives one segment deeper under the same prefix. A row that landed
+    // there would be opening the wrong record entirely.
+    assert.ok(!href.includes("/sales-order/"));
+  });
+}
+
+ok("no definition DECLARES the retired 404 destination", () => {
+  // Targets a DECLARATION, not a mention. The first version of this check searched the source for
+  // the string "/sales/opportunities/:id" and failed on the restoration comment that quotes it --
+  // a guard that cannot tell prose from code fails on its own documentation.
+  const src = readFileSync(join(HERE, "..", "src", "metadata", "definitions", "opportunity.js"), "utf8");
+  assert.ok(
+    !/rowNavigationTo:\s*"\/sales\//.test(src),
+    "a definition declares /sales/... again -- that route has never existed in App.jsx",
+  );
+});
+
+// ═══════════════ THE DYNAMIC CERTIFICATION REGISTRY must certify the record page
+//
+// The Quick Gate reported `RESOLVED opportunity /customers/opportunities?view=all` — the workspace
+// — while the record page this release shipped went unvisited, because the registry still declared
+// `navigates: false`. A green gate on an adjacent surface is not evidence for this one, and that is
+// precisely the failure `.certification/dynamicRoutes.json`'s own header was written about.
+const DYNAMIC_ROUTES = JSON.parse(
+  readFileSync(join(HERE, "..", ".certification", "dynamicRoutes.json"), "utf8"),
+);
+const oppEntity = DYNAMIC_ROUTES.entities.find((e) => e.key === "opportunity");
+
+ok("the certifier treats Opportunity as a navigable record entity", () => {
+  assert.ok(oppEntity, "the opportunity entity must stay in the registry");
+  assert.equal(oppEntity.navigates, true, "navigates:false certifies the workspace, not the record");
+  assert.ok(oppEntity.expectRoutePattern, "a navigable entity must assert where it landed");
+});
+
+ok("the certifier's expected route accepts a record and REFUSES the list or a sales order", () => {
+  const re = new RegExp(oppEntity.expectRoutePattern);
+  assert.ok(re.test("/customers/opportunities/opp_doc_1"), "must accept a record page");
+  assert.ok(!re.test("/customers/opportunities"), "must refuse the workspace — that was the defect");
+  assert.ok(
+    !re.test("/customers/opportunities/sales-order/so_doc_1"),
+    "must refuse the Sales Order route, which shares the prefix one segment deeper",
+  );
+});
+
+console.log(`\n${passed} assertions passed`);

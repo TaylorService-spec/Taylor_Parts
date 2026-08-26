@@ -152,13 +152,19 @@ export const opportunityRelatedList = makeListViewDefinition({
   defaultSort: [makeSort({ fieldId: "expectedCloseAt", direction: "ASC" })],
   pageSize: 25,
   capabilityRequirement: "opportunity.read",
-  // No rowNavigationTo. "/sales/opportunities/:id" was declared here and named a route
-  // that has never existed in App.jsx -- the only Opportunity route is the workspace at
-  // /customers/opportunities, which takes no :id. It was harmless only while nothing
-  // consumed rowNavigationTo; the moment DefaultRelatedList started reading it, every
-  // Opportunity row would have linked to a 404. Removed rather than defended against
-  // downstream: a consumer stripping a bad declaration leaves the bad declaration in
-  // place for the next consumer. Restore this with a real per-Opportunity route.
+  // RESTORED 2026-08-26, on the condition its own removal note set: "Restore this with a real
+  // per-Opportunity route." That route now exists -- `/customers/opportunities/:opportunityId`,
+  // over the governed per-id read `getOpportunityContext` (DECISIONS #129, deployed bc2d7ccd).
+  //
+  // The declaration that was removed named "/sales/opportunities/:id", which had never existed in
+  // App.jsx at all. This one is the route the router actually mounts, so a row lands on a record
+  // page rather than a 404. Design decision O5 asked for exactly this and made it conditional on
+  // the route being real first.
+  //
+  // The token name is documentation: buildRowHref replaces the FIRST `:segment` with the row's
+  // key, whatever it is called. It is spelled `:opportunityId` because that is the param
+  // App.jsx binds, and a reader comparing the two should not have to check whether they agree.
+  rowNavigationTo: "/customers/opportunities/:opportunityId",
 });
 
 /**
@@ -210,11 +216,17 @@ export const opportunityIndexList = makeListViewDefinition({
       sort: [makeSort({ fieldId: "expectedCloseAt", direction: "ASC" })],
     }),
   ],
-  // No rowNavigationTo. "/sales/opportunities/:id" was declared here and named a route
-  // that has never existed in App.jsx -- the only Opportunity route is the workspace at
-  // /customers/opportunities, which takes no :id. It was harmless only while nothing
-  // consumed rowNavigationTo; the moment DefaultRelatedList started reading it, every
-  // Opportunity row would have linked to a 404. Removed rather than defended against
-  // downstream: a consumer stripping a bad declaration leaves the bad declaration in
-  // place for the next consumer. Restore this with a real per-Opportunity route.
+  // RESTORED 2026-08-26, on the condition its own removal note set: "Restore this with a real
+  // per-Opportunity route." That route now exists -- `/customers/opportunities/:opportunityId`,
+  // over the governed per-id read `getOpportunityContext` (DECISIONS #129, deployed bc2d7ccd).
+  //
+  // The declaration that was removed named "/sales/opportunities/:id", which had never existed in
+  // App.jsx at all. This one is the route the router actually mounts, so a row lands on a record
+  // page rather than a 404. Design decision O5 asked for exactly this and made it conditional on
+  // the route being real first.
+  //
+  // The token name is documentation: buildRowHref replaces the FIRST `:segment` with the row's
+  // key, whatever it is called. It is spelled `:opportunityId` because that is the param
+  // App.jsx binds, and a reader comparing the two should not have to check whether they agree.
+  rowNavigationTo: "/customers/opportunities/:opportunityId",
 });

@@ -112,11 +112,24 @@ test("opportunity.index declares its own readCallable, unscoped, distinct from t
   assert.notEqual(opportunityIndexList.readCallable, opportunityEntity.readCallable);
 });
 
-test("opportunity declares no rowNavigationTo, because no per-Opportunity route exists", () => {
-  // A route template is a promise that the route exists. "/sales/opportunities/:id" was
-  // declared here and matches nothing in App.jsx; it was harmless only while nothing read
-  // rowNavigationTo. Asserted at the definition so the next consumer inherits the truth
-  // rather than a value it has to defend against.
-  assert.equal(opportunityIndexList.rowNavigationTo ?? null, null);
-  assert.equal(opportunityRelatedList.rowNavigationTo ?? null, null);
+test("opportunity declares a per-Opportunity rowNavigationTo, now that the route exists", () => {
+  // INVERTED 2026-08-26, and the inversion is the point.
+  //
+  // This test used to assert the ABSENCE, under the title "...because no per-Opportunity route
+  // exists". That premise was true when it was written and is false now: the route is
+  // /customers/opportunities/:opportunityId, over the governed getOpportunityContext. The
+  // declarations' own removal notes made restoration conditional on exactly that, and design
+  // decision O5 asked for it in the same words.
+  //
+  // A route template is a promise that the route exists, so the promise is CHECKED rather than
+  // trusted -- test/crmSalesNav.test.mjs compares both declarations against App.jsx's mounted
+  // path. Kept here as well because this file is where a reader looks to find what the CRM
+  // definitions declare, and an assertion that silently vanished would leave the next consumer
+  // with no statement either way.
+  assert.equal(opportunityIndexList.rowNavigationTo, "/customers/opportunities/:opportunityId");
+  assert.equal(opportunityRelatedList.rowNavigationTo, "/customers/opportunities/:opportunityId");
+  // The retired destination named a route App.jsx has never mounted. It must not come back.
+  for (const def of [opportunityIndexList, opportunityRelatedList]) {
+    assert.ok(!String(def.rowNavigationTo).startsWith("/sales/"));
+  }
 });

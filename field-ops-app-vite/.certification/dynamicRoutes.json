@@ -13,9 +13,10 @@
       "key": "opportunity",
       "label": "Opportunity detail",
       "listRoute": "/customers/opportunities?view=all",
-      "rowSelector": "tbody tr",
-      "navigates": false,
-      "_comment": "A master-detail pane: selecting a row fills the aside rather than changing the URL. ?view=all is required because the sandbox has 0 OPEN opportunities — the very condition that made this detail unreachable before the history views landed."
+      "rowSelector": ".fo-sales-detail__open-record a",
+      "navigates": true,
+      "expectRoutePattern": "^/customers/opportunities/[^/]+$",
+      "_comment": "WAS navigates:false with rowSelector 'tbody tr', and that was correct until 2026-08-26: an Opportunity had no record route, so selecting a row filled the aside and the URL never changed. The consequence was that the Quick Gate reported this entity RESOLVED while never opening a record page — the exact blind spot the header of this file was written about, reopened one entity over. The per-record route exists now (/customers/opportunities/:opportunityId over the governed getOpportunityContext, deployed bc2d7ccd), so this entity certifies the record page itself. The selector is the detail pane's own 'Open OPP-…' link rather than a table row, because the workspace AUTO-SELECTS the first row on load: the pane is already populated before any click, so resolution stays ONE hop and nothing about what clicking a pipeline row does had to change. ?view=all is still required because the sandbox has 0 OPEN opportunities — the very condition that made this detail unreachable before the history views landed. expectRoutePattern forbids a second path segment on purpose, so landing on /customers/opportunities/sales-order/<id> is a resolution FAILURE rather than a quiet pass."
     },
     {
       "key": "salesOrder",

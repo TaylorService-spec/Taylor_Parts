@@ -48,12 +48,33 @@ test("NO RECORD IS REACHED BY A HARDCODED DOCUMENT ID", () => {
   }
 });
 
-test("the Opportunity entity reaches CLOSED work, which is where it was unreachable", () => {
+test("the Opportunity entity reaches CLOSED work, and now certifies the RECORD PAGE", () => {
   // The sandbox has 0 OPEN opportunities. Resolving from the default view would have found no row
-  // and reported a fixture precondition failure forever — truthfully, but uselessly.
+  // and reported a fixture precondition failure forever — truthfully, but uselessly. That half is
+  // unchanged.
   const opp = manifest.entities.find((e) => e.key === "opportunity");
   assert.match(opp.listRoute, /view=all/, "must open a view that includes closed opportunities");
-  assert.equal(opp.navigates, false, "it is a master-detail pane, not its own route");
+
+  // INVERTED 2026-08-26. This asserted `navigates: false` with the reason "it is a master-detail
+  // pane, not its own route" — true until the Opportunity got one. The consequence of leaving it
+  // true was a Quick Gate that reported `RESOLVED opportunity /customers/opportunities?view=all`
+  // and never opened the record page the release shipped: green on the workspace, blind on the
+  // surface under test. That is the failure `.certification/dynamicRoutes.json`'s own header was
+  // written about, one entity over.
+  assert.equal(opp.navigates, true, "the record page has a route; certifying the pane is not coverage");
+  const re = new RegExp(opp.expectRoutePattern);
+  assert.ok(re.test("/customers/opportunities/opp_1"), "must accept a record page");
+  assert.ok(!re.test("/customers/opportunities"), "must REFUSE the workspace — that was the defect");
+  assert.ok(
+    !re.test("/customers/opportunities/sales-order/so_1"),
+    "must refuse the Sales Order route, which shares this prefix one segment deeper",
+  );
+
+  // The pane still exists and is still where an Opportunity is edited, so resolution deliberately
+  // does NOT depend on changing what clicking a pipeline row does: the workspace auto-selects the
+  // first row on load, so the pane's own "Open OPP-…" link is in the DOM before any click. One
+  // hop, no product change.
+  assert.match(opp.rowSelector, /fo-sales-detail__open-record/);
 });
 
 test("a NAVIGATING entity states the route it must land on", () => {
