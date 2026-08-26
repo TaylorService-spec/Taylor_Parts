@@ -9,10 +9,12 @@ on:
       - "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
       - "field-ops-app-vite/src/hooks/useWorkOrderReadinessContext.js"
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
+      - "field-ops-app-vite/src/domain/workOrderGovernedRecommendation.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "field-ops-app-vite/test/workOrderGovernedRecommendation.test.mjs"
       - "functions/src/index.ts"
       - "functions/src/ai/workOrderContext.ts"
       - "functions/src/ai/workOrderReadinessContext.ts"
@@ -35,10 +37,12 @@ on:
       - "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
       - "field-ops-app-vite/src/hooks/useWorkOrderReadinessContext.js"
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
+      - "field-ops-app-vite/src/domain/workOrderGovernedRecommendation.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "field-ops-app-vite/test/workOrderGovernedRecommendation.test.mjs"
       - "functions/src/index.ts"
       - "functions/src/ai/workOrderContext.ts"
       - "functions/src/ai/workOrderReadinessContext.ts"
@@ -71,8 +75,8 @@ jobs:
       - name: Install client dependencies
         run: npm ci
         working-directory: field-ops-app-vite
-      - name: Governed client intelligence and activation contract
-        run: node --test test/workOrderIntelligence.test.mjs
+      - name: Governed client intelligence, recommendation and activation contract
+        run: node --test test/workOrderIntelligence.test.mjs test/workOrderGovernedRecommendation.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Install Functions dependencies
