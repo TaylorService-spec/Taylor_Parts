@@ -52,6 +52,14 @@ on:
       - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
       - "field-ops-app-vite/test/workOrderActionEmphasisRule.test.jsx"
+      # The North Star Sales Order family (family 2).
+      - "field-ops-app-vite/src/domain/salesOrderNorthStar.js"
+      - "field-ops-app-vite/src/domain/salesOrderView.js"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderActions.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
+      - "field-ops-app-vite/test/salesOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -128,6 +136,14 @@ on:
       - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
       - "field-ops-app-vite/test/workOrderActionEmphasisRule.test.jsx"
+      # The North Star Sales Order family (family 2).
+      - "field-ops-app-vite/src/domain/salesOrderNorthStar.js"
+      - "field-ops-app-vite/src/domain/salesOrderView.js"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderActions.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
+      - "field-ops-app-vite/test/salesOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -184,6 +200,12 @@ jobs:
         run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasis.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasisRule.test.jsx
         # MISSING working-directory, pre-existing: this step ran from the repo root, so its
         # tests were never actually executing in this lane. Adding it makes them run.
+        working-directory: field-ops-app-vite
+
+      # THE SALES ORDER FAMILY (family 2). Named here rather than left to `npm test`: a vitest
+      # suite runs in CI only where a workflow names it (see test/ciSuiteCoverage.test.mjs).
+      - name: Sales Order North Star composition (grammar + unchanged authority)
+        run: npx vitest run test/salesOrderNorthStarPage.test.jsx test/salesOrderDetail.test.jsx
         working-directory: field-ops-app-vite
 
       # The five features converged into src/metadata/ (ADR-013), each with its mutation proof:

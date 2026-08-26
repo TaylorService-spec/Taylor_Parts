@@ -73,14 +73,14 @@ describe("SalesOrderDetail", () => {
   it("renders a loading state", () => {
     useSalesOrder.mockReturnValue({ loading: true, errorStatus: null, result: null });
     renderAt("SO-1");
-    expect(screen.getByText(/Loading Sales Order/)).toBeTruthy();
+    expect(screen.getByText(/Loading sales order/i)).toBeTruthy();
   });
 
   it("renders a denied state distinctly, never as empty or not-found, and offers NO actions", () => {
     useSalesOrder.mockReturnValue({ loading: false, errorStatus: "denied", result: null });
     renderAt("SO-1");
     expect(screen.getByText(/not authorized to view this Sales Order/)).toBeTruthy();
-    expect(screen.queryByText(/No Sales Order found/)).toBeNull();
+    expect(screen.queryByText(/No Sales Order exists/)).toBeNull();
     expect(screen.queryByRole("button", { name: /Move to In Fulfillment/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Cancel order/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Allocate/i })).toBeNull();
@@ -90,12 +90,15 @@ describe("SalesOrderDetail", () => {
     useSalesOrder.mockReturnValue({ loading: false, errorStatus: "unavailable", result: null });
     renderAt("SO-1");
     expect(screen.getByText(/currently unavailable/)).toBeTruthy();
+    // Recoverable, and provably so: the failure state carries a live retry rather than only
+    // looking recoverable.
+    expect(screen.getByRole("button", { name: /Try again/i })).toBeTruthy();
   });
 
   it("renders an honest not-found for a genuinely missing id, distinct from unavailable", () => {
     useSalesOrder.mockReturnValue({ loading: false, errorStatus: null, result: { status: "not-found", salesOrder: null } });
     renderAt("SO-does-not-exist");
-    expect(screen.getByText(/No Sales Order found/)).toBeTruthy();
+    expect(screen.getByText(/No Sales Order exists for this address/)).toBeTruthy();
   });
 
   it("renders identity, account, opportunity lineage, lines, and service Work Order lineage when ready", () => {
@@ -129,7 +132,8 @@ describe("SalesOrderDetail", () => {
       },
     });
     renderAt("SO-42");
-    expect(screen.getByText("Sales Order SO-2026-000042")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "SO-2026-000042" })).toBeTruthy();
+    expect(screen.getByText("Sales Order")).toBeTruthy();
     // CHANGED, and the old expectation was the defect -- the SAME defect #1099 fixed two lines
     // below for the Opportunity link, on the line the Account reference was missed. This
     // asserted that the raw accountId was rendered as the visible Customer label: a Firestore
@@ -143,12 +147,13 @@ describe("SalesOrderDetail", () => {
     // reference.
     expect(screen.getByText("OPP-2026-000007")).toBeTruthy();
     expect(screen.queryByText("OPP-7")).toBeNull();
-    expect(screen.getByText("CONFIRMED")).toBeTruthy();
+    expect(screen.getByText(/Confirmed — awaiting allocation/)).toBeTruthy();
+    expect(screen.queryByText("CONFIRMED")).toBeNull();
     expect(screen.getByText("PRT-9")).toBeTruthy();
     // THE GOVERNED REFERENCE, not the document id (DECISIONS #106).
     expect(screen.getByText("WO-2026-000001")).toBeTruthy();
     // An unresolved one says so rather than falling back to the key.
-    expect(screen.getByText("Work order reference unavailable")).toBeTruthy();
+    expect(screen.getAllByText("reference unavailable").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("wo-doc-1")).toBeNull();
     expect(screen.queryByText("wo-doc-2")).toBeNull();
     // The second Work Order is the UNRESOLVED one, already asserted above by its truthful fallback.
@@ -162,7 +167,7 @@ describe("SalesOrderDetail", () => {
     useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-abc123", salesOrderNumber: "SO-2026-000042" } }));
     const client = mockCommandClient();
     const { container } = renderAt("doc-abc123", { actionDeps: { client } });
-    expect(screen.getByText("Sales Order SO-2026-000042")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "SO-2026-000042" })).toBeTruthy();
     expect(container.textContent).not.toContain("doc-abc123");
   });
 
@@ -170,7 +175,7 @@ describe("SalesOrderDetail", () => {
     useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { id: "doc-legacy-xyz", salesOrderNumber: null } }));
     const client = mockCommandClient();
     const { container } = renderAt("doc-legacy-xyz", { actionDeps: { client } });
-    expect(screen.getByText("Sales Order — Reference unavailable")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: /reference unavailable/i })).toBeTruthy();
     expect(container.textContent).not.toContain("doc-legacy-xyz");
   });
 
@@ -195,7 +200,10 @@ describe("SalesOrderDetail", () => {
       },
     });
     renderAt("SO-42");
-    expect(screen.getByText("Originating opportunity")).toBeTruthy();
+    // The relationship is real and its reference is not resolvable, so the edge NAMES THE ENTITY and
+    // states the absence. The document id stands in for nothing (R03, DECISIONS #106).
+    expect(screen.getByText("Opportunity")).toBeTruthy();
+    expect(screen.getAllByText("reference unavailable").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("OPP-7")).toBeNull();
   });
 

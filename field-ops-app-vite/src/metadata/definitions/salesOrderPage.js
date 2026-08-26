@@ -75,3 +75,29 @@ export const salesOrderRecordPage = makePageDefinition({
     }),
   ],
 });
+
+/**
+ * The fields the North Star composition leaves to the RAIL.
+ *
+ * ════════════════════ WHY A SUBSET RATHER THAN THE WHOLE PAGE ════════════════════
+ *
+ * NS-P4 is one fact, one rendering. The composed record header already states the customer, the
+ * owner, the channel and the money as identity — so a field grid that ALSO prints salesChannel and
+ * ownerEmployeeId is the same fact rendered twice, in two treatments, free to disagree. That is the
+ * exact defect the pilot audit found on the Work Order ("status appears four times in four
+ * treatments"), and the Work Order answered it the same way: `workOrderRecordPageRailSubset`.
+ *
+ * Notes are excluded for a different reason. They are prose, not a field: the composition reads
+ * them as sentences in their own ruled section, which a two-column grid cannot do.
+ *
+ * What is LEFT is what the header does not say and prose does not carry — where the order was
+ * written, what the customer called it, and what currency it is denominated in.
+ */
+const RAIL_FIELDS = new Set(["locationId", "customerPO", "currency"]);
+
+export const salesOrderRecordPageRailSubset = {
+  ...salesOrderRecordPage,
+  sections: salesOrderRecordPage.sections
+    .map((s) => ({ ...s, fieldIds: (s.fieldIds ?? []).filter((f) => RAIL_FIELDS.has(f)) }))
+    .filter((s) => (s.fieldIds ?? []).length > 0),
+};

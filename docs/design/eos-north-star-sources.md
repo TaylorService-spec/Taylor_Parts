@@ -48,6 +48,15 @@ visually compared against the approved Design source by Design and by the Owner.
 Merged is not complete. Deployed is not complete. Green CI is not complete. Those are the gates
 Acceptance runs *through*, not a substitute for it.
 
+Per-family Acceptance state is recorded in
+[`north-star-migration-ledger.md`](./north-star-migration-ledger.md) — including the explicit
+`AWAITING_OWNER_VISUAL_ACCEPTANCE` state, which exists so that "shipped and green" and "accepted"
+can never collapse into the same sentence. Only the Owner moves that column.
+
+*Green CI is not complete — and during family 2 that turned out to be true more literally than
+intended: five node:test suites, one of them family 1's own contract suite, were registered nowhere
+and had never run in CI at all. See DECISIONS #124.*
+
 Open named decisions live in
 [`north-star-open-product-decisions.md`](./north-star-open-product-decisions.md). A page family
 carrying an unresolved decision can still ship — the decision is named and visible rather than
@@ -90,7 +99,7 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | Artifact | Surface | Notes |
 | --- | --- | --- |
 | `Proposed - Work Order.dc.html` | Work Order detail | ~~Pilot 1 primary source.~~ **SUPERSEDED 2026-08-25** — the approved source is now `North Star - Work Order.dc.html` (see below). Technician run sheet still reference for a later family. |
-| `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. |
+| `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. **NEVER HANDED TO THIS REPOSITORY.** The family was migrated 2026-08-26 from the ratified grammar and the shipped family-1 pattern instead, which makes Owner visual acceptance load-bearing rather than confirmatory (DECISIONS #125). If this artifact exists, it has not been seen here. |
 | `Proposed - Account.dc.html` | Customer 360 | Ceiling set by capability activation. |
 | `Proposed - Opportunity.dc.html` | Opportunity detail | Requires a per-record route. |
 | `Proposed - Parts.dc.html` | Parts workspace | Persona-scoped queues. |

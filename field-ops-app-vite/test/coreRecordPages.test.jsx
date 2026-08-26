@@ -26,7 +26,7 @@ import {
   SECTION_DENSITY, COLLAPSED_BY_DENSITY, sectionStartsCollapsed, fieldEditability, pageSubset,
 } from "../src/metadata/pageDefinition.js";
 import { equipmentRecordPage } from "../src/metadata/definitions/equipmentPage.js";
-import { salesOrderRecordPage } from "../src/metadata/definitions/salesOrderPage.js";
+import { salesOrderRecordPage, salesOrderRecordPageRailSubset } from "../src/metadata/definitions/salesOrderPage.js";
 import { workOrderRecordPage } from "../src/metadata/definitions/workOrderPage.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { equipmentEntity } from "../src/metadata/definitions/equipment.js";
@@ -310,12 +310,26 @@ describe("Sales Order", () => {
     expect(SO).toMatch(/SalesOrderFulfillmentSection/);
   });
 
-  it("the summary band keeps the LINKED references the grid cannot render", () => {
-    // Which is also why the shell renders a SUBSET here — otherwise the customer prints twice.
-    expect(SO).toMatch(/pageSubset\(salesOrderRecordPage/);
-    expect(pageSubset(salesOrderRecordPage, ["salesOrderCommercial"]).sections).toHaveLength(1);
+  it("the field grid renders a SUBSET, so no fact the header states is printed twice", () => {
+    // THE RULE IS UNCHANGED; THE MECHANISM MOVED. This asserted that the screen called
+    // `pageSubset(salesOrderRecordPage, ...)` inline. The North Star composition names the same
+    // narrowing once, as `salesOrderRecordPageRailSubset`, so the rule is now asserted against the
+    // subset ITSELF rather than against the call that built it — the stronger check anyway: source
+    // text proves a call was written, never that anything was actually excluded.
+    expect(SO).toMatch(/salesOrderRecordPageRailSubset/);
+
+    const railFields = salesOrderRecordPageRailSubset.sections.flatMap((sec) => sec.fieldIds ?? []);
+    // Every fact the composed header already states must be ABSENT from the grid (NS-P4).
+    for (const stated of ["accountId", "state", "totalMinor", "ownerEmployeeId", "salesChannel"]) {
+      expect(railFields, `${stated} is stated in the record header and must not repeat in the grid`)
+        .not.toContain(stated);
+    }
+    // And it must still carry what the header does NOT say, or the narrowing has become a deletion.
+    expect(railFields.length).toBeGreaterThan(0);
+
     // Narrowing what is DISPLAYED must never widen what is WRITABLE.
     expect(pageSubset(salesOrderRecordPage, []).editableFieldIds).toEqual([]);
+    expect(salesOrderRecordPageRailSubset.editableFieldIds ?? []).toEqual([]);
   });
 });
 

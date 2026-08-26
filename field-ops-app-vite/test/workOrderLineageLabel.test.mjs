@@ -113,17 +113,51 @@ test("THE DETAIL PAGE RENDERS THE REFERENCE, AND HAS NO PATH THAT PRINTS AN ID",
   const jsx = codeOnly(path.join(src, "modules", "sales", "SalesOrderDetail.jsx"));
   // The exact shape that shipped the defect.
   assert.doesNotMatch(jsx, /<li key=\{woId\}>\{woId\}<\/li>/, "the raw-id list item must be gone");
-  assert.match(jsx, /wo\.workOrderNumber \?\?/, "the reference is rendered, with a fallback");
-  assert.match(jsx, /Work order reference unavailable/, "and the fallback names the missing reference");
   // `workOrderId` may appear ONLY as a React key / routing value, never inside a text expression.
   const renderedIdExpressions = jsx.match(/>\s*\{[^}]*workOrderId[^}]*\}\s*</g) ?? [];
   assert.deepEqual(renderedIdExpressions, [], `an id is rendered as content: ${renderedIdExpressions}`);
 });
 
+/**
+ * THE RULE IS UNCHANGED; THE LOGIC MOVED.
+ *
+ * This file used to assert `wo.workOrderNumber ??` and the literal string "Work order reference
+ * unavailable" against the JSX, because the decision lived inline in the page. The North Star
+ * composition derives every lineage edge once, in domain/salesOrderNorthStar.js, and the page
+ * renders the three states it is handed.
+ *
+ * So the assertion follows the logic, and it is a BEHAVIOURAL one now rather than a source-text
+ * one — which is strictly stronger. Matching `wo.workOrderNumber ??` only ever proved that an
+ * expression had been typed; calling the derivation proves what actually comes out.
+ */
+test("an unresolved Work Order edge names the entity and states the absence — never the id", async () => {
+  const { salesOrderLineage, EDGE } = await import("../src/domain/salesOrderNorthStar.js");
+  const edges = salesOrderLineage({
+    serviceWorkOrders: [
+      { workOrderId: "wo_doc_1", workOrderNumber: "WO-2026-000001" },
+      { workOrderId: "wo_doc_2", workOrderNumber: null },
+    ],
+  });
+  const rows = edges.filter((e) => e.key.startsWith("workOrder:"));
+  assert.equal(rows.length, 2, "every linked Work Order gets a row");
+
+  const resolved = rows.find((r) => r.state === EDGE.RESOLVED);
+  assert.equal(resolved.reference, "WO-2026-000001", "a governed reference is carried through");
+
+  const unresolved = rows.find((r) => r.state === EDGE.UNRESOLVED);
+  assert.equal(unresolved.label, "Work order", "the entity is named");
+  assert.ok(!("reference" in unresolved), "an unresolved edge carries NO reference to print");
+  for (const row of rows) {
+    assert.doesNotMatch(row.label, /wo_doc_/, "the label is never the id");
+    assert.doesNotMatch(row.reference ?? "", /wo_doc_/, "the reference is never the id");
+  }
+});
+
 test("the fallback text is NOT ITSELF id-shaped", () => {
   // A 20-character alphanumeric fallback would satisfy every assertion above and still trip the
-  // certification detector — and would still be unreadable.
-  assert.doesNotMatch("Work order reference unavailable", RAW_ID);
+  // certification detector — and would still be unreadable. The composition's fallback wording
+  // moved to the shared lineage vocabulary; the rule about its SHAPE did not.
+  assert.doesNotMatch("reference unavailable", RAW_ID);
 });
 
 test("NO CLIENT-DIRECT FIRESTORE READ was added to resolve the reference", () => {
