@@ -1,0 +1,41 @@
+name: Dispatch Intelligence Tests
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/workOrderAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/dispatchIntelligence.js"
+      - "field-ops-app-vite/test/dispatchIntelligence.test.mjs"
+      - "functions/src/ai/dispatchModelInterpretation.ts"
+      - "functions/test/aiDispatchModelInterpretation.test.mjs"
+      - ".github/workflows/dispatch-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-intelligence:
+    name: North Star Dispatch intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Dispatch evidence and model-payload boundary
+        run: node --test test/dispatchIntelligence.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Dispatch model verifier fail-closed contract
+        run: node --test test/aiDispatchModelInterpretation.test.mjs
+        working-directory: functions
