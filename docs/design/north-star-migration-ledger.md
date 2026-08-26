@@ -189,3 +189,49 @@ surface composing the grammar and declared nowhere fails the build.
 Two gates in two days — this one and the CI-coverage hole in DECISIONS #124 — turned out not to be
 guarding what they claimed. Both were found by asking a gate to fail on purpose rather than by
 reading it.
+
+---
+
+## Family 4 — Opportunity: STOPPED, and why
+
+**Status: NOT STARTED. Needs an Owner decision, not more engineering.**
+
+Opportunity is the next surface in the sources table after the Account. It is the point where the
+migration stops being a migration.
+
+Verified against the repo on 2026-08-26 (the design grammar's standing-gaps table had already proved
+stale once tonight, so this was checked rather than quoted):
+
+- **No per-record route.** `App.jsx` has `opportunities/sales-order/:salesOrderId` and nothing for an
+  Opportunity itself. An Opportunity has no URL.
+- **No per-id governed read.** `functions/src/opportunity/opportunityReadService.ts` exposes
+  `listOpportunitiesForAccount` and `listOpportunityContext` — both LIST reads. There is no
+  `getOpportunityContext`.
+
+The first three families each took a page that already existed, already had its data, and already had
+its authority, and recomposed it. Family 4 has no page to recompose. Building it means a new trusted
+callable and a new route — a **product build** that adds backend surface and would need a deploy this
+session cannot perform. The design grammar classifies it the same way: *"Opportunity has a URL → No
+per-record route; no per-id governed read → **Requires product build** (small)."*
+
+That is a change of scope, not a change of difficulty, so it is surfaced rather than absorbed.
+
+### What the alternatives cost
+
+| Candidate | Archetype | Why it is not a drop-in continuation |
+|---|---|---|
+| Opportunity | Record detail | Needs a new callable + route (above). |
+| Parts workspace | Operational queue | Different archetype; the grammar's readiness column needs a live truck-stock read that does not exist. |
+| Dispatch board | Board/scheduler | Densest surface in the set; drag-scheduling with refusal reasons. |
+| Sales Agreement | Create/edit | "Hardest commercial surface" — and already the ONE surface distinguishing all four honest states, so it has the least to gain. |
+| Technician / Warehouse mobile | Handheld flow | Explicitly "language inherited, composition rebuilt" — not a desktop migration at all. |
+
+### Sandbox and gate state for families 2 and 3
+
+Both are **merged and green in CI, and neither has been through a sandbox gate.** Refreshing the
+sandbox from merged main is an Owner-run action (`.\sandbox-refresh.ps1`); this session does not
+deploy. Running the Quick Gate before that refresh would certify the build already deployed, which is
+a green result about the wrong commit.
+
+So the honest state of both rows is: behavioral work complete and proved offline, **awaiting a
+sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
