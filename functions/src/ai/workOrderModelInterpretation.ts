@@ -120,6 +120,7 @@ export function verifyWorkOrderModelInterpretation(
       return reject("MODEL_OUTPUT_INVALID");
     }
     if (!input.allowedRecommendation ||
+        input.allowedRecommendation.authority !== "ALLOWED" ||
         input.allowedRecommendation.actionId !== recommendedActionId.trim()) {
       return reject("MODEL_OUTPUT_ACTION_NOT_ALLOWED");
     }
