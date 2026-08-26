@@ -63,6 +63,12 @@
     "deny": [
       "Bash(firebase deploy*)",
       "Bash(npx firebase deploy*)",
+      "Bash(*_sandboxRefresh.run.sh*)",
+      "Bash(*_prodRelease.run.sh*)",
+      "Bash(*sandbox-refresh.ps1*)",
+      "Bash(*Invoke-SandboxRefresh.ps1*)",
+      "Bash(*firebase-tools*deploy*)",
+      "Bash(*firebase.js deploy*)",
       "Bash(firebase functions:delete*)",
       "Bash(firebase firestore:delete*)",
       "Bash(gh secret*)",
