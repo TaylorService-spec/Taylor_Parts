@@ -153,10 +153,18 @@ describe("OpportunityLifecycleControl -- what the Won produced", () => {
     expect(link.getAttribute("href")).toMatch(/so-1$/);
   });
 
-  it("falls back to the id when the number is absent — a reachable order beats a pretty label", async () => {
+  it("states the absence when the number is missing, and NEVER labels the link with the document id", async () => {
+    // THIS TEST USED TO ASSERT THE OPPOSITE. It read `getByRole("link", { name: "so-2" })` and was
+    // titled "falls back to the id — a reachable order beats a pretty label", which pinned a
+    // DECISIONS #106 / R03 violation in place: a raw Firestore id printed as the link text of the
+    // most consequential message in the sales process. The trade-off it described is a false one —
+    // the link is reachable either way, because the id is in the href where a routing key belongs.
+    // Only the LABEL changed.
     renderWon({ salesOrderId: "so-2", salesOrderNumber: null });
     const status = await screen.findByRole("status");
-    expect(within(status).getByRole("link", { name: "so-2" })).toBeTruthy();
+    const link = within(status).getByRole("link", { name: /reference unavailable/i });
+    expect(link.getAttribute("href")).toMatch(/so-2$/);
+    expect(status.textContent).not.toContain("so-2");
   });
 
   it("a RECOVERED order is described as found, never as created", async () => {

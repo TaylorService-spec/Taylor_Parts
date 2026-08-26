@@ -2854,6 +2854,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    flips (capability grant + callable deploy). */
 
 /* Section header carries the title + its contextual edit affordance on one scan line. */
+/* The link out of the pipeline pane into the Opportunity RECORD page (North Star family 4).
+   Sits above the ContextBand, so the way to the full record is the first thing in the pane
+   rather than something found by scrolling past the facts it summarises. */
+.fo-sales-detail__open-record { margin: 0 0 8px; font-size: 13px; }
 .fo-sales-detail__block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .fo-sales-detail__block-head h4 { margin: 0; }
 .fo-sales-detail__edit { font-size: 12px; padding: 2px 8px; }

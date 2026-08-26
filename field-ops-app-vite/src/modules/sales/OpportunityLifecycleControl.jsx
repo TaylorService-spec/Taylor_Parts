@@ -16,7 +16,22 @@ import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle
 // { pending, runTransition, ... }). `readiness` is the write-readiness seam's result. `onChanged` is called
 // after ANY applied/replayed transition so the caller re-reads authoritatively (App-level refetch) — this
 // component never patches row state itself.
-export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged }) {
+//
+// ════════════════════ `variant` -- WHERE THE PROGRESSION IS DRAWN, NEVER WHAT IS LEGAL ════════════════════
+//
+//   "chevrons" (default) the workspace detail pane. This component draws the progression itself, because
+//                        nothing else on that surface does.
+//   "actions"            the North Star record page, which draws the spine as a LifecycleBand from the SAME
+//                        stageProgress derivation. Rendering the chevrons there too would put two
+//                        progressions for one deal on one page -- the NS-P4 defect the migration exists to
+//                        remove -- so the chevrons are suppressed and the one legal advance becomes a
+//                        button in the header action cluster (North Star pattern 6: actions belong at the
+//                        right end of the header, never scattered through body sections).
+//
+// It changes RENDERING ONLY. `allowedActions` still decides what is legal, the same single `fire()` path
+// still invokes the same governed command, and the capability/readiness gate is untouched: there is exactly
+// one way to transition an Opportunity from the UI in either variant.
+export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, variant = "chevrons" }) {
   const [error, setError] = useState(null);
   // What the Won actually PRODUCED. Marking an Opportunity Won creates a Sales Order in the same
   // transaction, and until now the control discarded that fact entirely: the chevrons flipped to
@@ -106,14 +121,38 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
     );
   });
 
+  // The one legal advance, as a BUTTON rather than a chevron step. Built from the same `steps`
+  // entry so the label, the pending state and the disabled reason are the ones the chevron would
+  // have carried -- not a second reading of the same rules.
+  const advanceStep = steps.find((s) => s.actionable != null) ?? null;
+  const advanceButton = advanceStep ? (
+    <Button
+      type="button"
+      variant={advanceStep.actionable ? "primary" : "protected"}
+      disabled={!advanceStep.actionable}
+      title={advanceStep.disabledReason}
+      reason={advanceStep.disabledReason}
+      onClick={advanceStep.actionable ? advanceStep.onActivate : undefined}
+    >
+      {advanceStep.label}
+    </Button>
+  ) : null;
+
   return (
     <div className="fo-sales-detail__lifecycle">
-      <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
+      {variant === "actions" ? null : (
+        <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
+      )}
       {won && (
         <p className="fo-sales-lifecycle-won" role="status">
           {won.recovered ? "This Opportunity was already won. Its Sales Order is " : "Won. Sales Order "}
+          {/* THE REFERENCE, OR THE ABSENCE OF ONE -- never the document id (DECISIONS #106, R03).
+              This read `won.salesOrderNumber ?? won.salesOrderId`, so an order created from an
+              Opportunity whose numbering had not resolved printed a raw Firestore id as the link
+              text of the most consequential message in the sales process. The link still works;
+              only the label changes, because a routing key is not a name. */}
           <Link to={`/customers/opportunities/sales-order/${won.salesOrderId}`}>
-            {won.salesOrderNumber ?? won.salesOrderId}
+            {won.salesOrderNumber ?? "the new order (reference unavailable)"}
           </Link>
           {won.recovered ? "." : " was created."}
         </p>
@@ -121,7 +160,16 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
       {closed ? (
         <p className="fo-muted">Closed — no further lifecycle actions.</p>
       ) : (
-        outcomeButtons.length > 0 && <ActionRail secondary={<>{outcomeButtons}</>} />
+        (outcomeButtons.length > 0 || (variant === "actions" && advanceButton)) && (
+          <ActionRail
+            // ONE FILLED PRIMARY = the likeliest next state transition (North Star action
+            // architecture). Advancing a stage is that; WON and LOST are decisions and stay
+            // outlined. In the chevron variant the advance is the chevron, so the rail carries
+            // secondaries only, exactly as it did before.
+            primary={variant === "actions" ? advanceButton : undefined}
+            secondary={outcomeButtons.length > 0 ? <>{outcomeButtons}</> : undefined}
+          />
+        )
       )}
       {!closed && writeDisabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
       {error && (

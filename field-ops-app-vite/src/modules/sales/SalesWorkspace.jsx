@@ -493,6 +493,19 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
 
   return (
     <div className="fo-sales-detail">
+      {/* THE RECORD PAGE'S ONE ENTRY POINT FROM HERE (North Star family 4).
+          An Opportunity now has a URL. Without this link it would have no reachable one: the
+          pipeline is where people find deals, and a record page nothing navigates to is a page
+          that exists only for people who already know its address.
+          The label is the governed reference where there is one and a plain phrase where there is
+          not -- never the document id (DECISIONS #106), which is exactly what `row.id` is. */}
+      {row.id ? (
+        <p className="fo-sales-detail__open-record">
+          <Link to={`/customers/opportunities/${row.id}`}>
+            {row.opportunityNumber ? `Open ${row.opportunityNumber}` : "Open the full record"}
+          </Link>
+        </p>
+      ) : null}
       <ContextBand items={facts} />
       {editableOrder.map(renderSection)}
       <section className="fo-sales-detail__block" aria-label="Lifecycle" data-dataclass={OPPORTUNITY_DATA_CLASS.LIFECYCLE_ACTION}>

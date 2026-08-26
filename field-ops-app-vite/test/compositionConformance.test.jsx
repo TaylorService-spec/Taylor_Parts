@@ -66,6 +66,7 @@ const CONFORMANT_SURFACES = [
   "modules/workOrders/WorkOrderDetailPage.jsx",
   "modules/sales/SalesOrderDetail.jsx",
   "modules/accounts/AccountDetail.jsx",
+  "modules/sales/OpportunityDetail.jsx",
   "modules/inventory/TruckFleetCard.jsx",
   "modules/accounts/FinancialSummarySection.jsx", // Wave 2
   "modules/accounts/ServiceActivitySection.jsx", // Wave 2
@@ -102,6 +103,7 @@ const NORTH_STAR_RECORD_PAGES = [
   "modules/workOrders/WorkOrderDetailPage.jsx", // family 1
   "modules/sales/SalesOrderDetail.jsx",         // family 2
   "modules/accounts/AccountDetail.jsx",         // family 3 (formerly Wave 2 conformant)
+  "modules/sales/OpportunityDetail.jsx",        // family 4 (a NEW page, not a recomposition)
 ];
 
 function walk(dir) {

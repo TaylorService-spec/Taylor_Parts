@@ -2154,3 +2154,73 @@ the design grammar's standing-gaps table, which still classifies "Account shows 
 
 **Related:** DECISIONS #122, #125, #126. Register: ND-11. Ledger:
 `docs/design/north-star-migration-ledger.md`.
+
+
+## #128 — The Opportunity gets a governed per-id read and a URL; family 4 is a product build, and the workspace pane stays
+
+**Date:** 2026-08-26
+**Decision:** Build the Opportunity record page (North Star family 4) on a **new** trusted callable
+`getOpportunityContext` and a **new** route `/customers/opportunities/:opportunityId`, reusing the
+**existing** `opportunity.read` capability rather than minting a second. The Sales workspace's
+master-detail pane is **kept**, not retired, and links to the new page.
+
+**Reason.** The migration ledger stopped this family and asked for a decision rather than absorbing
+a scope change, and it was right to: families 1–3 each recomposed a page that already existed, while
+an Opportunity had **no page**, because it had no per-id read and therefore no URL. It was reachable
+only as the selected row of a pipeline someone had already loaded — so deep-linking to a deal,
+sending a colleague its address, and following the Sales Order's own lineage link back to its origin
+were all impossible. The decision came back *build it*.
+
+**Why the capability is reused, not minted.** The authorization question — "may this principal read
+Opportunities?" — is identical for a list read and a per-id read; only the server-side query shape
+differs. This is the same reasoning `listOpportunitiesForAccount` recorded when it reused
+`opportunity.read`. **No Rules change:** `opportunities` stays deny-all to clients and Admin-SDK-only,
+and the trusted callable remains the only way in.
+
+**Why the pane stays (ND-13).** The pane is not a duplicate page — it is where an Opportunity is
+**edited** (`opportunityDetailModel`'s editable-by-design sections, the Sales Agreement panel, the
+create flow), and none of that moved. The record page is a **read** surface carrying the governed
+lifecycle actions. Both consume ONE derivation: the same `stageProgress`, the same
+`deriveAttention`, the same `allowedActions`. Retiring the pane would mean rehoming the editing
+surface onto the record page — a create/edit archetype question and materially larger work than
+family 4 — so it is a named open decision rather than something settled by a side effect.
+
+**Authority unchanged on the write side.** Every transition still resolves through the same governed
+`transitionOpportunity`, reached through the same `OpportunityLifecycleControl` and the same
+`useOpportunityTransitions`. That control gained a `variant` prop that decides only WHERE the
+progression is drawn — `allowedActions` still decides what is legal, and there is exactly one
+invocation path in either variant. No capability grant, no role change, no new write path.
+
+**Two facts the system was storing and showing nobody.** `closedAt` (written by every outcome
+transition, projected to no one) is now projected as `closedAtMillis`; and the linked Sales Order's
+reference is now resolved server-side by one narrow fail-soft read, so the lineage row can name the
+order instead of printing its document id. This is the third generation of the same defect in this
+domain after `salesOrderId` and `salesAgreementId` — being persisted is not being visible.
+
+**A raw id corrected, and a test that was pinning it.** `OpportunityLifecycleControl` rendered
+`won.salesOrderNumber ?? won.salesOrderId` as the link text of the WON acknowledgement — a raw
+Firestore id at the most consequential moment in the sales process — and a test asserted that
+behaviour under the title *"falls back to the id — a reachable order beats a pretty label"*. The
+trade-off is false: the id is in the `href`, so the link is reachable either way. Only the label
+changed; the test now asserts the rule instead of the defect.
+
+**Alternatives rejected.**
+- *Mint an `opportunity.readOne` capability* — a second authorization for an identical question,
+  and a second thing to grant, activate and keep in step.
+- *Widen firestore.rules so the client reads `opportunities` directly* — hands the whole document to
+  a role that needs a projection, and undoes the reason the trusted read exists.
+- *Resolve the customer name and the Sales Order reference on the client* — `accounts` is
+  admin/dispatcher-only in Rules, so the SALESPERSON would be told they may not see the name of the
+  customer on their own deal.
+- *Retire the workspace pane in the same change* — silently converts a read migration into an
+  editing-surface rebuild.
+- *Ship an empty AI suggestion slot for symmetry with the Work Order* — §8's prohibition is
+  explicit: if the capability does not exist, do not fabricate a place for it.
+
+**Not claimed.** This is repo-complete and green offline; **nothing is deployed and no gate has been
+run.** Unlike families 1–3 this family needs a **Functions deploy** (`getOpportunityContext` is a new
+callable) before a sandbox refresh and the Quick Gate mean anything — until it exists in the
+environment the page renders its honest `unavailable` state. Both are Owner-run actions.
+
+**Related:** DECISIONS #122, #125, #126, #127. Register: ND-12, ND-13. Ledger:
+`docs/design/north-star-migration-ledger.md`.

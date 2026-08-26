@@ -38,6 +38,9 @@ const DispatcherBoard = lazy(() => import("./modules/dispatcherBoard/DispatcherB
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 const AccountsList = lazy(() => import("./modules/accounts/AccountsList"));
 const SalesWorkspace = lazy(() => import("./modules/sales/SalesWorkspace"));
+// The Opportunity RECORD page (North Star family 4). Until it existed an Opportunity had no URL at
+// all -- it was reachable only as the selected row of a pipeline someone had already loaded.
+const OpportunityDetail = lazy(() => import("./modules/sales/OpportunityDetail"));
 const SalesOrderDetail = lazy(() => import("./modules/sales/SalesOrderDetail.jsx"));
 const SalesOrdersList = lazy(() => import("./modules/sales/SalesOrdersList.jsx"));
 import { governedOpportunitySource } from "./access/opportunitySource.js";
@@ -279,6 +282,18 @@ function OpportunityWorkspaceConnected() {
 // resolveEffectiveAccessCallable decision (access/useSalesOrderCapabilities) -- mirrors
 // OpportunityWorkspaceConnected above exactly. Every unit/component test still gets the fail-closed
 // default (no `hasCapability` injected).
+// The Opportunity record page's production mount. It takes the SAME readiness value
+// OpportunityWorkspaceConnected feeds the workspace -- derived from the real trusted
+// resolveEffectiveAccessCallable decision for opportunity.write -- so the record page and the
+// pipeline pane can never disagree about whether a governed transition is offerable. Every
+// unit/component test still gets the fail-closed default (no `readiness` injected).
+function OpportunityDetailConnected() {
+  const { user } = useAuth();
+  const { hasCapability } = useOpportunityCapabilities(user);
+  const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
+  return <OpportunityDetail readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })} />;
+}
+
 function SalesOrderDetailConnected() {
   const { user } = useAuth();
   const { hasCapability } = useSalesOrderCapabilities(user);
@@ -727,6 +742,14 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
               <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
+              {/* THE OPPORTUNITY GETS A URL (North Star family 4). Listed AFTER the sales-order
+                  route above deliberately -- both are children of `opportunities/`, and React
+                  Router ranks the static "sales-order" segment above this dynamic one, so an
+                  address like /customers/opportunities/sales-order/xyz can never be read as an
+                  opportunity id. `opportunities` itself (the workspace) is an exact match emitted
+                  by the generic subnav loop and outranks both. Reads the trusted
+                  getOpportunityContext callable (opportunity.read). */}
+              <Route path="opportunities/:opportunityId" element={<OpportunityDetailConnected />} />
               <Route path=":accountId" element={<AccountDetail />} />
             </>
           )}

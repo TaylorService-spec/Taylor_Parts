@@ -192,49 +192,128 @@ reading it.
 
 ---
 
-## Family 4 — Opportunity: STOPPED, and why
+## Family 4 — Opportunity
 
-**Status: NOT STARTED. Needs an Owner decision, not more engineering.**
+**The stop was answered.** The row below replaces nothing: the previous entry (*"STOPPED, and why"*,
+2026-08-26) recorded that this family needed an Owner decision rather than more engineering, and it
+was right. The decision came back **build it**, and this is the build. The original entry is
+preserved verbatim at the end of this section, because a ledger that rewrites its own stops loses
+the record of having stopped.
 
-Opportunity is the next surface in the sources table after the Account. It is the point where the
-migration stops being a migration.
+| | |
+|---|---|
+| **Composition** | `src/modules/sales/OpportunityDetail.jsx` over `src/domain/opportunityNorthStar.js` and `src/domain/opportunityView.js` |
+| **Read** | **NEW:** `getOpportunityContext` in `functions/src/opportunity/opportunityReadService.ts` |
+| **Route** | **NEW:** `/customers/opportunities/:opportunityId` |
+| **Visual authority** | No Opportunity artifact has been handed to this repo. `Proposed - Opportunity.dc.html` is named in the sources doc and has not been seen here. Composed from the ratified grammar and the shipped family-1/2/3 pattern, per the standing overnight rule. **This makes Owner visual acceptance load-bearing rather than confirmatory.** |
+| **Proof** | `test/opportunityNorthStar.test.mjs` (26), `test/opportunityNorthStarPage.test.jsx` (21), plus the reconciled `test/opportunityLifecycleControl.test.jsx` (16) and `test/compositionConformance.test.jsx` (7) |
+| **Mutation proofs** | 9 — the spine re-derived instead of delegating to `stageProgress` · a stage time fabricated from `updatedAt` · attention raised on a closed deal · a document id used as a lineage label · the document id as the page title · a second lifecycle progression on the page · attention moved below the work (NS-P2) · the write seam defaulting open instead of fail-closed · family 4 quietly dropped from the shell gate. All 9 caught; every source restored byte-identical. |
+| **Named decisions** | ND-12 (no stage times except the close), ND-13 (the Opportunity now has two compositions) |
+| **Gate** | **NONE YET.** Not deployed, not swept. See below. |
+| **Acceptance** | `AWAITING_SANDBOX_REFRESH_THEN_OWNER_VISUAL_ACCEPTANCE` |
 
-Verified against the repo on 2026-08-26 (the design grammar's standing-gaps table had already proved
-stale once tonight, so this was checked rather than quoted):
+### This one is a product build, and the scope change is visible in the diff
 
-- **No per-record route.** `App.jsx` has `opportunities/sales-order/:salesOrderId` and nothing for an
-  Opportunity itself. An Opportunity has no URL.
-- **No per-id governed read.** `functions/src/opportunity/opportunityReadService.ts` exposes
-  `listOpportunitiesForAccount` and `listOpportunityContext` — both LIST reads. There is no
-  `getOpportunityContext`.
+Families 1–3 each recomposed a page that already existed. This family had no page, because an
+Opportunity had no per-id read and therefore **no URL**: it was reachable only as the selected row
+of a pipeline someone had already loaded. Deep-linking to a deal, sending a colleague its address,
+and arriving from the Sales Order's own lineage link were all impossible.
 
-The first three families each took a page that already existed, already had its data, and already had
-its authority, and recomposed it. Family 4 has no page to recompose. Building it means a new trusted
-callable and a new route — a **product build** that adds backend surface and would need a deploy this
-session cannot perform. The design grammar classifies it the same way: *"Opportunity has a URL → No
-per-record route; no per-id governed read → **Requires product build** (small)."*
+So the build adds two things the first three did not:
 
-That is a change of scope, not a change of difficulty, so it is surfaced rather than absorbed.
+- **`getOpportunityContext`** — a per-id governed read. It reuses the EXISTING `opportunity.read`
+  capability rather than minting a second, on the same reasoning `listOpportunitiesForAccount`
+  already recorded: the authorization question ("may this principal read Opportunities?") is
+  identical and only the query shape differs. **No Rules change** — `opportunities` stays
+  Admin-SDK-only and the trusted callable remains the only way in.
+- **`/customers/opportunities/:opportunityId`** — the route, placed after the static
+  `opportunities/sales-order/:salesOrderId` sibling so React Router's ranking keeps a Sales Order
+  address from ever being read as an opportunity id.
 
-### What the alternatives cost
+**The write side is untouched.** Every transition still resolves through the same governed
+`transitionOpportunity`, reached through the same `OpportunityLifecycleControl` and the same
+`useOpportunityTransitions`. The control gained a `variant` prop that decides WHERE the progression
+is drawn and nothing about what is legal — `allowedActions` still decides that, and there is exactly
+one invocation path in either variant.
 
-| Candidate | Archetype | Why it is not a drop-in continuation |
-|---|---|---|
-| Opportunity | Record detail | Needs a new callable + route (above). |
-| Parts workspace | Operational queue | Different archetype; the grammar's readiness column needs a live truck-stock read that does not exist. |
-| Dispatch board | Board/scheduler | Densest surface in the set; drag-scheduling with refusal reasons. |
-| Sales Agreement | Create/edit | "Hardest commercial surface" — and already the ONE surface distinguishing all four honest states, so it has the least to gain. |
-| Technician / Warehouse mobile | Handheld flow | Explicitly "language inherited, composition rebuilt" — not a desktop migration at all. |
+### Two things the projection was already storing and showing nobody
+
+- **`closedAt`.** `transitionOpportunity` writes it as a serverTimestamp on every outcome
+  transition, and the read projected it to no one. It is now projected as `closedAtMillis`
+  (converted at the boundary, because a Timestamp does not survive a JSON callable). This is the
+  third generation of the same defect in this domain — `salesOrderId`, then `salesAgreementId`, now
+  `closedAt`. Being persisted is not being visible; the write is the easy half.
+- **The linked Sales Order's reference.** The Opportunity document stores `salesOrderId` and
+  nothing else, so a lineage row built from the projection alone could only print a document id
+  (forbidden, DECISIONS #106) or claim "unavailable" about an order that plainly exists. One narrow
+  fail-soft read emits the one display field, exactly as `resolveAccountNames` already does for the
+  customer.
+
+### A raw id found on the way past
+
+`OpportunityLifecycleControl` rendered `won.salesOrderNumber ?? won.salesOrderId` as the link text
+of the WON acknowledgement — a raw Firestore id printed at the single most consequential moment in
+the sales process. **A test was pinning it in place**, titled *"falls back to the id — a reachable
+order beats a pretty label"*. The trade-off that test described is a false one: the id is in the
+`href`, where a routing key belongs, so the link is reachable either way. Only the label changed,
+and the test now asserts the rule instead of the defect.
+
+### Where the honest gaps are
+
+- **No live indicator.** `useOpportunity` is a one-shot read with an explicit refetch, exactly like
+  `useSalesOrder`. ND-10 applies unchanged.
+- **No suggestion slot at all**, rather than an empty one. There is no governed Opportunity
+  recommendation in this build, and §8's prohibition is explicit: if the AI capability does not
+  exist, do not fabricate it. The Work Order leaves the slot visible and silent because a slot was
+  designed for it; inventing one here would be composition for its own sake.
+- **No probability, no weighted value, no forecast.** `expectedValue` is a plain number with no
+  currency field beside it and no stage-probability anywhere in the engine. It is rendered grouped,
+  unsymboled, and titled with what it is and is not.
+
+### Gate state — deliberately not claimed
+
+This work is **repo-complete and green offline. It has not been deployed and no gate has been run
+against it.** Refreshing the sandbox from merged main is an Owner-run action; this session does not
+deploy. Running the Quick Gate before that refresh would certify the build already deployed, which
+is a green result about the wrong commit.
+
+**This family additionally needs a Functions deploy that families 1–3 did not.**
+`getOpportunityContext` is a new callable, and until it exists in the environment the page renders
+its honest `unavailable` state. That is the one genuinely new operator step this build introduces,
+and it is why this row's acceptance value names the refresh explicitly rather than jumping straight
+to `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+
+So the honest state is: behavioral work complete and proved offline, **awaiting a Functions deploy
+and a sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
+
+---
+
+### The original stop, preserved (2026-08-26, before the decision)
+
+> **Status: NOT STARTED. Needs an Owner decision, not more engineering.**
+>
+> Opportunity is the next surface in the sources table after the Account. It is the point where the
+> migration stops being a migration. Verified against the repo on 2026-08-26:
+>
+> - **No per-record route.** `App.jsx` has `opportunities/sales-order/:salesOrderId` and nothing for
+>   an Opportunity itself. An Opportunity has no URL.
+> - **No per-id governed read.** `opportunityReadService.ts` exposes `listOpportunitiesForAccount`
+>   and `listOpportunityContext` — both LIST reads. There is no `getOpportunityContext`.
+>
+> The first three families each took a page that already existed, already had its data, and already
+> had its authority, and recomposed it. Family 4 has no page to recompose. Building it means a new
+> trusted callable and a new route — a **product build** that adds backend surface and would need a
+> deploy this session cannot perform. The design grammar classifies it the same way. That is a
+> change of scope, not a change of difficulty, so it is surfaced rather than absorbed.
+
+**Both bullets are now false, and that is exactly what this row records.** The candidate table in
+that entry — Parts workspace, Dispatch board, Sales Agreement, handheld — is unchanged and still
+describes the surfaces after this one.
 
 ### Sandbox and gate state for families 2 and 3
 
-Both are **merged and green in CI, and neither has been through a sandbox gate.** Refreshing the
-sandbox from merged main is an Owner-run action (`.\sandbox-refresh.ps1`); this session does not
-deploy. Running the Quick Gate before that refresh would certify the build already deployed, which is
-a green result about the wrong commit.
-
-So the honest state of both rows is: behavioral work complete and proved offline, **awaiting a
-sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
+Both are **merged and green in CI**; both went through the Quick Gate against `1c8095d3` recorded
+below, and both remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
 
 ---
 
