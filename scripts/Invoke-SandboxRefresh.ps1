@@ -61,8 +61,23 @@ Write-Host ""
 
 Push-Location $repoRoot
 try {
-    # -lc so the login shell resolves node/npm/firebase from PATH the way an interactive Git Bash does.
-    & $bash -lc './scripts/_sandboxRefresh.run.sh'
+    # -lc STAYS: the login shell is what resolves node/npm/firebase from PATH the way an interactive
+    # Git Bash does, and dropping it trades one failure for another.
+    #
+    # WHAT CHANGES IS THE PATH. This was:
+    #
+    #     & $bash -lc './scripts/_sandboxRefresh.run.sh'
+    #
+    # a RELATIVE path handed to a shell whose profile is free to change directory before it resolves
+    # anything. `Push-Location $repoRoot` above sets PowerShell's cwd, not the login shell's, so the
+    # script that actually ran was whatever ./scripts resolved to after the profile had its say --
+    # not necessarily $repoRoot at all. The runbook is now named ABSOLUTELY and the release root is
+    # passed EXPLICITLY, so neither a profile nor the caller's working directory can redirect a
+    # release. Single quotes inside the -lc string keep a path containing spaces intact.
+    $runbookPosix = $runbook -replace '\\', '/'
+    $rootPosix    = $repoRoot -replace '\\', '/'
+    Write-Host "Release root: $repoRoot"
+    & $bash -lc "'$runbookPosix' --release-root '$rootPosix'"
     $code = $LASTEXITCODE
 }
 finally {

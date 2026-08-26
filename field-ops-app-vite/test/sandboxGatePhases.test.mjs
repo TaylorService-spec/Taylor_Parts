@@ -121,6 +121,10 @@ exit 0
   const scriptDir = join(dir, "scripts");
   mkdirSync(scriptDir, { recursive: true });
   writeFileSync(join(scriptDir, "_sandboxRegressionGate.sh"), mutate(readFileSync(GATE, "utf8")));
+  // The gate now REFUSES a root it cannot prove is a checkout, so the fixture has to be one. That
+  // check is itself asserted in releaseProvenanceControl.test.mjs; here it just has to be satisfied,
+  // and a fixture that could not satisfy it would be testing the abort path by accident.
+  writeFileSync(join(scriptDir, "_certificationRoutes.mjs"), "// stub route generator\n");
   // The gate cds to its own parent and runs things from there; give it the shape it expects.
   mkdirSync(join(dir, "field-ops-app-vite"), { recursive: true });
 

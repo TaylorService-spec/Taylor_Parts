@@ -970,6 +970,10 @@
       "runner": "node"
     },
     {
+      "file": "test/releaseProvenanceControl.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/salesOrderGovernedRecommendation.test.mjs",
       "runner": "node"
     }
