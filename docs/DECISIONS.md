@@ -1910,3 +1910,78 @@ authority model, not a reason to withhold the capability that makes the commerci
 **Grant is not activation.** All four are registered `active:false` and are eligible for
 per-environment activation only; production remains triple-blocked (role-keyed resolution, no
 override key on any production entry, asserted by test).
+
+## #122 — The North Star runs on three authorities, and Acceptance is one of them
+
+**Date:** 2026-08-25
+**Decision:** Owner ratified the three-authority model for all North Star work.
+**Design** (Claude Design) owns visual composition, hierarchy, interaction presentation, responsive
+behavior and the design grammar. **Behavioral** (this repository / Claude Code) owns domain
+vocabulary, data authority, permissions, capabilities, state transitions, reads, writes,
+accounting/inventory truth and transactional behavior. **Acceptance** (the running sandbox + the
+Owner) owns whether a page is North Star-complete — and it is not complete until the real sandbox
+implementation has passed engineering regression AND been visually compared against the approved
+Design source by Design and the Owner.
+
+Design may restructure presentation substantially but may not invent authority. Code may correct
+implementation defects but may not materially reinterpret an approved composition for implementation
+convenience. Where the two conflict, neither silently wins: the conflict becomes a named product
+decision, recorded in `docs/design/north-star-open-product-decisions.md`.
+
+**Reason:** the programme had two authorities and no seat for the only one that can say a page is
+done. A page could be declared complete on the strength of a passing diff, which is how a surface
+ships correct and unusable. It also had no home for a conflict — so a disagreement between the
+mockup and the engine was settled by whichever side happened to be implementing, and the reasoning
+survived only in a PR description.
+
+**Supersedes:** the "three authorities" table in `docs/design/eos-north-star-sources.md`, which named
+Translation as the third and resolved every conflict in favour of the domain. Translation
+(`eos-north-star-design-grammar.md`) remains in force as the *instrument* by which Design is
+expressed in Behavioral terms; it is not a party to a disagreement. The domain still constrains what
+may ship — an implementation may not invent backend semantics to satisfy a mockup — but that
+constrains the code, not the product: a composition asking for something the engine cannot do is as
+likely to be a gap in the engine as an error in the composition.
+
+**Alternatives rejected:** keeping "the domain authority wins" (it settles engineering questions by
+fiat and product questions by accident); leaving conflicts in PR descriptions (already proven to
+evaporate); a single combined design+build authority (removes the independent check that found seven
+open questions on the first page family).
+
+**Seeded with:** ND-1 … ND-7 from the Work Order family review (#1494).
+
+
+## #123 — The Work Order visual source is the North Star artifact, with slots that may outrun the engine
+
+**Date:** 2026-08-25
+**Decision:** Owner ruling (P1v2). The approved visual source for the Work Order family is
+`North Star - Work Order.dc.html`, with `Implementation Render - Work Order.html` as the explicit
+pixel target. `Proposed - Work Order.dc.html` is superseded as visual truth.
+
+The rule that makes an artifact assuming absent services implementable:
+
+> KEEP THE DESIGNED STRUCTURAL SLOT. RENDER A TRUTHFUL STATE IN IT. NEVER FABRICATE THE CONTENT.
+
+Visual structure may represent future capability. Live content must remain truthful to current EOS
+behavior. A slot may not be silently dropped either — omitting it hides the gap as effectively as
+faking it fills it. An empty slot may not wear the palette-s attention colour. Where no slot can be
+honest at all (the concept-s command palette and presence chip), it is omitted and recorded as a gap.
+
+An ACTION the engine does not grant may hold its place DISABLED and explicitly unavailable, with
+copy distinguishing "not yet, for anyone" from "not you" — never wired to a no-op or a direct write.
+
+**Reason:** the previous classification ("horizon, NOT the pilot") was protecting against the right
+thing — fabricated numbers — with the wrong instrument. Forbidding the composition also forbade its
+structure, which cost nothing to honour and which the product will need the day a capability ships.
+Separating the two lets the page be built once.
+
+**Alternatives rejected:** implementing the horizon composition with placeholder data (the
+fabrication the whole programme refuses); continuing against the superseded `Proposed` source
+(would have merged a page reviewed against an artifact Design had already replaced); dropping the
+unbackable slots entirely (hides the gap and guarantees a re-layout later).
+
+**Supersedes:** the "Horizon concept — NOT the pilot" section of
+`docs/design/eos-north-star-sources.md`, corrected in the same change.
+**Related:** DECISIONS #122 (the three-authority model this ruling was made under). B1 (governed
+Reschedule) and B2 (technician messaging) are approved as SEPARATE future packages; neither is in
+#1494. Register: `docs/design/north-star-open-product-decisions.md` — ND-3 and ND-7 answered, ND-1,
+ND-2, ND-4, ND-5, ND-6 still open.
