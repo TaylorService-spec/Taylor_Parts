@@ -8,7 +8,7 @@
 
 ## Steps
 
-1. On the customer's record, click **Edit** (top right of the Account Summary section).
+1. On the customer's record, click **Edit customer** (top right, beside the customer name).
 2. The record turns into the edit form, pre-filled with the current values.
 3. Change any field — name, status, relationship, billing address, notes, or tags.
 4. To edit external identifiers, click **Show external IDs (future integrations)**.

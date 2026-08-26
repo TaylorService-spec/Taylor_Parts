@@ -8,87 +8,133 @@ import {
   useAccountWorkOrderCount,
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
-import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import { workOrderStatusWords } from "../../domain/workOrderNorthStar.js";
+import { formatDateOnly } from "../../domain/displayTimestamp.js";
+import { objectListPath, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 
-// Customer/Account Business Model -- Customer PR 3, Service Activity.
-// Two distinct presentation elements over the same Account's Work Orders,
-// each backed by its OWN query and state (never merged): operational
-// summary counts (Completed and Open, themselves two INDEPENDENT counts),
-// and the chronological Account Activity timeline. These are operational
-// activity counts, NOT financial figures -- rendered under "Service
-// Activity", never inside/adjacent to Financial Summary
-// (docs/architecture/enterprise-business-metrics-framework.md, Section 3).
+// SERVICE ACTIVITY -- this account's work, in the North Star row grammar.
 //
-// Every element renders strictly from its pure view (domain/
-// serviceActivityView.js), so one element's failure can never change what
-// another renders -- see test/serviceActivityView.test.mjs.
-
-function formatWoDate(createdAt) {
-  // createdAt is a Firestore Timestamp (written server-side by
-  // createWorkOrder.ts). Guard for a missing/legacy value rather than
-  // fabricating a date.
-  if (createdAt && typeof createdAt.toDate === "function") {
-    return createdAt.toDate().toLocaleDateString();
-  }
-  return "—"; // em dash -- date genuinely unavailable
-}
+// Two distinct presentation elements over the same Account's Work Orders, each backed by its OWN
+// query and state and NEVER merged: operational summary counts (Completed and Open, themselves two
+// INDEPENDENT counts), and the chronological Account Activity timeline. These are operational
+// activity counts, NOT financial figures -- rendered under "Service activity", never inside or
+// adjacent to a financial surface (docs/architecture/enterprise-business-metrics-framework.md,
+// Section 3). Every element renders strictly from its pure view (domain/serviceActivityView.js), so
+// one element's failure can never change what another renders -- see test/serviceActivityView.test.mjs.
+//
+// ════════════════════ WHAT ACCOUNT NORTH STAR P1 CHANGED ════════════════════
+//
+// 1. STATUS IN WORDS. Each row handed the raw stored token to a pill -- "WORK_IN_PROGRESS" as
+//    though it were English. workOrderStatusWords is the governed Work Order vocabulary and is now
+//    the one this surface reads, so the account's view of a job and the job's own page cannot word
+//    the same state differently. A status the vocabulary cannot place is stated as unrecognised
+//    rather than echoed raw.
+//
+// 2. SCHEDULE AND TECHNICIAN. Both come off the SAME documents the timeline query already fetched
+//    (see accountWorkOrders.js) -- no second read of Work Orders. The technician NAME is resolved
+//    through resolveTechnicianIdentity against the same fieldops_technicians directory seven other
+//    dispatch surfaces already read; its four states stay distinct, and an id that does not resolve
+//    is reported as unresolved, never rendered as if it were a name.
+//
+// 3. THE EQUIPMENT SENTENCE. There is no account-scoped equipment read anywhere in this codebase
+//    (CustomerEquipment filters client-side over already-loaded documents, so any count would
+//    describe the current page rather than the account). A partial equipment list on a customer
+//    record would mislead more than an absent one, so the absence is STATED, with a route to the
+//    workspace that can answer properly. No count is invented and no equipment data is fabricated.
 
 // Renders one count from its OWN state via the pure countView().
 function CountCell({ label, state }) {
   const view = countView(state);
-  if (view.kind === "loading") {
-    return <span className="fo-muted">{label}: loading&hellip;</span>;
-  }
-  if (view.kind === "error") {
-    return <span className="fo-warning">{label}: unavailable</span>;
-  }
-  return <StatusPill tone="neutral" label={`${label}: ${view.value}`} />;
+  if (view.kind === "loading") return <span className="ns-rail__meta">{label} …</span>;
+  if (view.kind === "error") return <span className="ns-rail__meta">{label} couldn’t be read</span>;
+  return (
+    <span className="ns-svc__count">
+      {label} <strong>{view.value}</strong>
+    </span>
+  );
+}
+
+// One Work Order row: reference, status in words, schedule, technician. Each cell states its own
+// absence rather than rendering blank -- "not scheduled" and "unassigned" are real facts about a
+// job, and a blank cell reads as a rendering failure.
+function WorkOrderRow({ wo, technicians, techniciansLoading, techniciansError }) {
+  const statusWords = wo.status ? workOrderStatusWords(wo.status) : null;
+  const tech = resolveTechnicianIdentity(wo.assignedTechId, {
+    technicians,
+    loading: techniciansLoading,
+    error: techniciansError,
+  });
+  return (
+    <li className="ns-svc__row">
+      <Link to={`/service/work-orders/${wo.id}`} className="ns-svc__ref">
+        {/* woNumber is the governed reference. A Work Order without one states the absence; the
+            document id is never a display identity (DECISIONS #106). */}
+        {wo.woNumber ?? "Work order — no number recorded"}
+      </Link>
+      <span className="ns-svc__status">
+        {statusWords ?? (wo.status ? "State not recognised" : "State not recorded")}
+      </span>
+      <span className="ns-svc__when">
+        {wo.scheduledStart ? formatDateOnly(wo.scheduledStart) : "Not scheduled"}
+      </span>
+      <span className="ns-svc__who">
+        {tech.state === "unset" ? "Unassigned" : tech.state === "loading" ? "…" : tech.name}
+      </span>
+    </li>
+  );
 }
 
 export default function ServiceActivitySection({ accountId }) {
-  // Two SEPARATE count hooks -- each fetches and error-handles on its own,
-  // so Completed failing never hides Open (or vice versa), and neither
-  // touches the timeline below.
+  // Two SEPARATE count hooks -- each fetches and error-handles on its own, so Completed failing
+  // never hides Open (or vice versa), and neither touches the timeline below.
   const completed = useAccountWorkOrderCount(accountId, fetchAccountCompletedWorkOrderCount);
   const open = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
   const timeline = useAccountWorkOrderTimeline(accountId);
   const tView = timelineView(timeline);
+  const {
+    data: technicians,
+    loading: techniciansLoading,
+    error: techniciansError,
+  } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   return (
-    <section className="wo-history">
-      <h4>Service Activity</h4>
-
-      {/* Summary counts -- two independent counts, each its own query/state,
-          both independent of the timeline. A count is never derived from the
-          timeline's loaded pages. */}
-      <div className="fo-service-activity-counts">
-        <CountCell label="Completed Work Orders" state={completed} />
-        <CountCell label="Open Work Orders" state={open} />
+    <section className="ns-section" aria-label="Service activity">
+      <div className="ns-section__head">
+        <h2 className="ns-section__title">Service activity</h2>
+        <span className="ns-section__meta ns-svc__counts">
+          <CountCell label="Open work orders" state={open} />
+          <CountCell label="Completed" state={completed} />
+        </span>
       </div>
 
-      {/* Account Activity timeline -- its own query/state; loading/empty/error
-          are all distinct, never an empty list indistinguishable from an error. */}
+      {/* Account Activity timeline -- its own query/state; loading/empty/error are all distinct,
+          never an empty list indistinguishable from an error. */}
       {tView.kind === "loading" ? (
-        <p className="fo-muted">Loading activity&hellip;</p>
+        <p className="ns-state">Loading service activity…</p>
       ) : tView.kind === "error" ? (
-        <p className="fo-warning">Account activity is temporarily unavailable.</p>
+        <p className="ns-state">Service activity couldn’t be read. Try again later.</p>
       ) : tView.kind === "empty" ? (
-        <p className="fo-muted">No activity yet for this Account.</p>
+        <p className="ns-state">No service activity yet for this customer.</p>
       ) : (
         <>
-          <ul className="fo-activity-list">
+          <ul className="ns-svc__list">
             {timeline.items.map((wo) => (
-              <li key={wo.id} className="wo-history-row">
-                <span className="fo-muted">{formatWoDate(wo.createdAt)}</span>{" "}
-                {wo.status && <StatusPill tone="neutral" label={wo.status} />}{" "}
-                <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
-              </li>
+              <WorkOrderRow
+                key={wo.id}
+                wo={wo}
+                technicians={technicians}
+                techniciansLoading={techniciansLoading}
+                techniciansError={techniciansError}
+              />
             ))}
           </ul>
 
           {timeline.loadMoreError && (
-            <p className="fo-warning">Could not load more activity. Try again.</p>
+            <p className="ns-state">Could not load more activity. Try again.</p>
           )}
 
           {timeline.hasMore ? (
@@ -96,10 +142,15 @@ export default function ServiceActivitySection({ accountId }) {
               Load More
             </Button>
           ) : (
-            <p className="fo-muted">End of activity.</p>
+            <p className="ns-table__note">End of activity.</p>
           )}
         </>
       )}
+
+      <p className="ns-table__note">
+        Equipment isn’t listed here: no account-scoped equipment read exists yet, and a partial list
+        would mislead. <Link to={objectListPath(OBJECT_LIST_KEY.EQUIPMENT)}>Equipment workspace →</Link>
+      </p>
     </section>
   );
 }

@@ -423,6 +423,77 @@ function subsetOf(def, ids) {
  */
 export const accountRecordPageMainSubset = subsetOf(accountRecordPage, MAIN_SUBSET_IDS);
 
+// ── Account North Star P1: the main column, split into the three sections the approved
+//    composition actually names ─────────────────────────────────────────────────────────────
+//
+// accountRecordPageMainSubset above renders all five MAIN sections in ONE MetadataRecordPage call,
+// which was right when the page drew them as five consecutive related surfaces. The approved
+// Account composition does not: Commercial activity is ONE section that CONTAINS opportunities and
+// orders under a single heading, Accounts receivable is its own titled main-column section, and
+// Service activity is a third -- and on a phone, receivables move behind "More" while the other
+// two stay in the answer stack. A single call cannot place its sections in three different
+// containers, so the subset is split three ways and AccountDetail.jsx orders the calls.
+//
+// NOTHING ABOUT WHAT THEY DECLARE CHANGED. These are the same section objects out of the same
+// accountRecordPage, each still carrying its own capabilityRequirement -- opportunity.read and
+// salesOrder.read remain SEPARATE gates even though the page draws their output as one section,
+// which is precisely why Opportunities and Sales Orders were not merged into a single metadata
+// section to match the visual. A section that renders under a heading it shares with another is a
+// layout fact; a section that answers to another section's capability would be an authority change.
+//
+// accountRecordPageMainSubset stays exported and tested: it is the definition-order contract these
+// three are read out of, and a caller that wants all five in declaration order still has it.
+const COMMERCIAL_SUBSET_IDS = ["opportunities", "salesOrders"];
+const AR_SUBSET_IDS = ["financials"];
+// Service activity first, then Activity & Notes -- the approved composition names three
+// main-column sections and the CRM timeline is not one of them (crm.activity.read is registered
+// active:false catalog-wide, so it renders nowhere it has not been separately activated). Where it
+// IS activated it appends after Service activity rather than displacing an approved section.
+const SERVICE_SUBSET_IDS = ["serviceActivity", "activityAndNotes"];
+
+// subsetOf's filter preserves accountPage.js's own array order, which places activityAndNotes (40)
+// before serviceActivity (50) -- the approved order is the reverse, so this one is sequenced
+// explicitly rather than filtered.
+function orderedSubsetOf(def, ids) {
+  const bySection = new Map(def.sections.map((s) => [s.id, s]));
+  return { ...def, sections: ids.map((id) => bySection.get(id)).filter(Boolean) };
+}
+
+export const accountRecordPageCommercialSubset = subsetOf(accountRecordPage, COMMERCIAL_SUBSET_IDS);
+export const accountRecordPageArSubset = subsetOf(accountRecordPage, AR_SUBSET_IDS);
+export const accountRecordPageServiceSubset = orderedSubsetOf(accountRecordPage, SERVICE_SUBSET_IDS);
+
+// ── Section visibility, asked at the granularity the PAGE composes at ──────────────────────
+//
+// MetadataRecordPage hides a capability-gated section by rendering nothing for it, and reports
+// "not available to you" only at PAGE granularity -- which is right for a page, and wrong for a
+// hand-composed fragment: a caller that renders a subset embedded gets silence where a denied
+// section was, and silence is exactly what design decision A-D2 forbids for the financial area.
+// A salesperson who cannot read finance must see the financial geography with "Not available to
+// you" in it, not a page with no financial region at all, which reads as "this customer owes
+// nothing".
+//
+// So AccountDetail.jsx asks these two questions and renders the denial itself. They READ THE
+// REQUIREMENT OFF accountRecordPage rather than naming a capability id, so a change to what
+// gates a section cannot leave this answering for the old one. Same fail-closed rule
+// applyVisibility uses: granted ONLY on an exact `true`, never on "not yet known".
+function sectionGranted(sectionId, decisions) {
+  const section = accountRecordPage.sections.find((s) => s.id === sectionId);
+  if (!section) return false;
+  if (!section.capabilityRequirement) return true;
+  return decisions?.[section.capabilityRequirement] === true;
+}
+
+/** Is the Accounts receivable section visible to this viewer? */
+export function accountArGranted(decisions) {
+  return sectionGranted("financials", decisions);
+}
+
+/** Is EITHER half of Commercial activity visible to this viewer? */
+export function accountCommercialGranted(decisions) {
+  return sectionGranted("opportunities", decisions) || sectionGranted("salesOrders", decisions);
+}
+
 /**
  * SIDE-column subset: Account Attention.
  *

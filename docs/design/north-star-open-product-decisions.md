@@ -218,6 +218,82 @@ free.
 **Asserted by:** `test/accountNorthStar.test.mjs` — including a test that fails the moment `status`
 leaves `editableFieldIds`, so this decision cannot quietly outlive its own premise.
 
+
+### A-NS-1 — The approved Account design says `useAccount` is not a subscription; it is one
+
+**Raised:** 2026-08-26, Account North Star P1 reconciliation
+**Design holds:** the Account page must not claim liveness — no live badge — and should state honest
+freshness instead: "Read-checked *time* · Refresh". Its stated reason: *"useAccount is not a
+subscription."*
+**Behavioral holds:** `hooks/useAccount.js` uses `onSnapshot(doc(...))`. It is a live single-document
+subscription, and has been since Sprint 2.0.2.
+**The conflict:** only the premise. The design's *conclusion* is implemented exactly as written,
+because the wording is true under either premise — the data is at least as fresh as the stamp, so
+"read-checked at 9:12" understates rather than overstates. A live badge would be defensible here on
+the repository's facts; the design asks for the quieter claim, and the quieter claim is never wrong.
+**Shipped meanwhile:** the honest wording, `checkedAt` stamped on every snapshot delivery (a snapshot
+OR an error), and Refresh wired to `useAccount`'s own `retry`. A page with no answer yet says nothing
+rather than stamping a time it cannot evidence.
+**The decision:** none required. This is recorded because a design note asserting something false
+about the repository is worth someone noticing before it is quoted as a fact somewhere consequential
+— not because anything needs ruling. It changes no business behavior.
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("the freshness wording is honest and there is NO
+live badge").
+
+---
+---
+
+## Resolved by the Account North Star P1 design package (Owner ruling, 2026-08-26)
+
+Four decisions the Account design package raised, all closed for P1. They are recorded here in full
+because each one is a rule about what the page may SAY, and each is asserted by a test rather than
+left to a reviewer to remember.
+
+### A-D1 — Attention silence — **RESOLVED: silence**
+
+**Answer:** when both attention sources are READY and empty, the surface is **absent entirely**. No
+green all-clear, no "Nothing needs attention" receipt. That receipt used to render and has been
+removed.
+**Why it is the right answer:** a reader scanning for what needs them should find empty space where
+trouble would have been. A line confirming the absence of trouble is one more thing to read on every
+healthy customer, and it competes with the facts that are real.
+**The line it does NOT cross:** silence is earned by a CONFIRMED-healthy read only. A source that
+could not be confirmed — denied, unavailable, loading, truncated — still speaks, in its own note.
+**Asserted by:** `test/accountAttentionSection.test.jsx` ("a fully-healthy account renders NOTHING")
+and the two degraded-source tests beside it.
+
+### A-D2 — AR denied presentation — **RESOLVED: preserve the geography**
+
+**Answer:** a `finance.read` denial keeps the Accounts receivable section on the page, with its
+title, and renders **"Not available to you"** in it. Never zero, never empty, never absent.
+**Why it is the right answer:** `MetadataRecordPage` hides a gated section by rendering nothing,
+which on this page removes the financial region entirely for a salesperson. A customer record with
+no financial region reads as a customer who owes nothing — the one thing this page must never imply.
+**The line it does NOT cross:** the page renders the denial, it does not decide it. The decision is
+the same fail-closed capability answer, read once (`accountArGranted`, which reads the requirement
+off `accountRecordPage` rather than naming a capability id).
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("a denied AR read keeps the financial geography
+on the page"), plus the standing-strip tests that prove DENIED is worded differently from
+UNAVAILABLE and from a real zero.
+
+### A-D3 — Archived account editing — **RESOLVED: Edit stays offered**
+
+**Answer:** the composition is unchanged for an archived account and Edit remains available, because
+that is current governed EOS behavior — no rule forbids editing an archived account.
+**The line it does NOT cross:** making archived actually lock is a behavioral change (new
+enforcement), not a presentation one, and is not in this package.
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("an archived account keeps the same composition
+and keeps Edit offered").
+
+### A-D4 — Prospect composition — **RESOLVED: the same page**
+
+**Answer:** prospects use the Account composition, with honest empties where AR and service activity
+are absent. No prospect-specific page architecture.
+**The line it does NOT cross:** a pipeline-led prospect composition would need the account-scoped
+opportunity read active; that is a separate, later question.
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("a prospect uses the same composition and
+renders honest empties, not a separate page").
+
 ---
 
 ## Resolved
