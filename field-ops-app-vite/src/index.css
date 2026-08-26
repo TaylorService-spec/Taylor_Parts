@@ -5161,7 +5161,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    something a thumb has to hit, and "it is only a breadcrumb" is how a touch floor becomes advisory.
    Enforced here, in the primitive, rather than patched on the page (Grammar R16). */
 .ns-page__crumb a { display: inline-flex; align-items: center; min-height: 44px; }
-@media (min-width: 768px) { .ns-page__crumb a { min-height: 0; } }
+/* Same rule shape as the lifecycle band: the floor is the default and density is earned by a
+   wide, genuinely pointer-driven screen -- never by width alone, which made 768 non-compliant and
+   767 fine. */
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) { .ns-page__crumb a { min-height: 0; } }
 .ns-rulepair { border-top: 3px solid var(--color-text-primary);
   border-bottom: 1px solid var(--color-text-primary); height: 3px; }
 
@@ -5342,9 +5345,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: 11px; color: var(--color-text-secondary); margin-right: 4px; white-space: nowrap; }
 .ns-chip { font-family: var(--font-interface); font-weight: 600; font-size: 12.5px;
   padding: 8px 20px; border: none; cursor: pointer; white-space: nowrap;
-  /* THE HANDHELD TOUCH FLOOR. Measured in the browser the chips were 31-32px tall at every width,
-     including 375 and 320 -- under the 44px floor the crumb was already fixed to meet (#1489).
-     Relaxed above 768px, where the concept-s tighter band is a pointer target, not a thumb one. */
+  /* THE TOUCH FLOOR, DECIDED BY INPUT DEVICE RATHER THAN BY WIDTH.
+     Each chip is a real button that opens its stage detail, so it has to be hittable.
+     This was relaxed above 768px on the reasoning that a wide screen is a pointer screen. It is
+     not: 768 and 1024 are tablet widths, a tablet is a thumb, and the deployed sandbox measured
+     these at 31-32px there -- nine sub-44px controls on the record, six of them these chips.
+     The floor is now the DEFAULT and density is the exception, granted only to a screen that is
+     both wide and genuinely pointer-driven (see the query below). A coarse pointer keeps 44px at
+     any width, including a touch laptop at 1440. */
   min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   transition: background var(--duration-fast, 140ms);
   clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); }
@@ -5368,7 +5376,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--verenward-bronze); margin-left: 5px; animation: ns-pulse 2s ease-in-out infinite; }
 @keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .ns-chip__pulse { animation: none; } }
-@media (min-width: 768px) { .ns-chip { min-height: 0; } }
+/* DENSITY IS THE EXCEPTION, AND IT IS EARNED BY THE DEVICE.
+   Not `max-width: 767.98px`, which puts a compliance CLIFF one pixel below the commonest tablet
+   width -- 767 compliant, 768 not, for no reason a user could perceive. Both conditions must hold:
+   a wide viewport AND a fine, hovering pointer. Either side of 1200px the control is still usable;
+   only its density changes, and below it the floor is always met.
+
+   WHICH WIDTHS ARE TREATED AS TOUCH: everything under 1200px, plus ANY width on a device whose
+   primary pointer is coarse. */
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-chip { min-height: 0; }
+}
 .ns-lifecycle__tail { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
 
 /* One line of recorded fact for whichever stage is open. Reserved height, so opening and
@@ -5463,7 +5481,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   text-transform: uppercase; color: var(--color-text-secondary); }
 .ns-page__context a { color: var(--color-text-secondary); text-decoration: none;
   display: inline-flex; align-items: center; min-height: 44px; }
-@media (min-width: 768px) { .ns-page__context a { min-height: 0; } }
+/* Same rule shape as the lifecycle band: the floor is the default and density is earned by a
+   wide, genuinely pointer-driven screen -- never by width alone, which made 768 non-compliant and
+   767 fine. */
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) { .ns-page__context a { min-height: 0; } }
 .ns-page__context a:hover { color: var(--color-text-primary); text-decoration: underline; }
 
 /* THE LIVE INDICATOR IS A CLAIM, and it is one this page can actually make: useWorkOrder is an
@@ -5492,7 +5513,19 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: var(--verenward-guardian); opacity: 0.45; cursor: not-allowed; font-family: var(--font-interface); }
 .ns-btn-pending--primary { background: var(--verenward-evergreen);
   border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
-@media (max-width: 767.98px) { .ns-btn-pending { min-height: 44px; } }
+/* THE ACTION CLUSTER KEEPS ONE HEIGHT, and that height clears the floor.
+   Raising only the disabled placeholders would leave the row mixed -- 44px next to 40px -- so this
+   takes every button in the record header together. SCOPED DELIBERATELY: .fo-button is 40px across
+   the whole product and moving it is a separate, cross-cutting decision (ND-6). This changes the
+   Work Order record header and nothing else. */
+.ns-identity__actions .fo-button,
+.ns-identity__actions .ns-btn-pending,
+.ns-embed .fo-button { min-height: 44px; }
+/* NO RELAXATION FOR THE BUTTONS, deliberately. .fo-button already carries min-height: 44px
+   product-wide; the placeholders were the only things falling short, and only because they are
+   styled from padding. An earlier draft of this change relaxed the whole cluster above 1200px and
+   measured 33px at 1440 -- SMALLER than before the fix. Density belongs to the chevron band, which
+   the concept draws tight; a button row gains nothing from being 11px shorter. */
 
 /* ── The suggestion slot. Structure now, engine later. */
 .ns-suggest { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px;

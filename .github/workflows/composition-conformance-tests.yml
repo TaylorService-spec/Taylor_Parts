@@ -42,7 +42,8 @@ on:
       - "field-ops-app-vite/test/lifecycleBand.test.jsx"
       - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
-      - "field-ops-app-vite/test/workOrderActionEmphasis.test.jsx"
+      - "field-ops-app-vite/test/workOrderActionEmphasis.test.jsx test/workOrderTouchTargets.test.jsx"
+      - "field-ops-app-vite/test/workOrderTouchTargets.test.jsx"
       - "field-ops-app-vite/src/metadata/listPresentation.js"
       # The Work Order record surface, its action-emphasis rule, and the shared enum display.
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
@@ -118,6 +119,7 @@ on:
       - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
       - "field-ops-app-vite/test/workOrderActionEmphasis.test.jsx"
+      - "field-ops-app-vite/test/workOrderTouchTargets.test.jsx"
       - "field-ops-app-vite/src/metadata/listPresentation.js"
       # The Work Order record surface, its action-emphasis rule, and the shared enum display.
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
