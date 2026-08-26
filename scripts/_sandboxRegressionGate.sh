@@ -18,6 +18,70 @@
 # uses `set -e`, so a partial pass cannot be mistaken for an accepted refresh.
 set -euo pipefail
 
+# ============================ THE PHASE LEDGER ============================
+#
+# WHY A LEDGER AND NOT JUST `set -e`.
+#
+# `set -e` answers "did a phase FAIL". It cannot answer "did a phase RUN". Those are different
+# questions and only the first one was being asked, which leaves one way for this gate to print PASS
+# over an incomplete run: a phase that never executes at all. A commented-out invocation, a phase
+# moved inside a conditional that turns out false, an early `exit 0` added while debugging, or an
+# edit that shifts the script under a running shell -- none of those are failures, so none of them
+# trip `set -e`, and the banner at the bottom would print exactly as it does on a clean run.
+#
+# That last case is not hypothetical. A certification run of this gate died at exit 127 with
+# "sweep: command not found" pointing at a blank line, because the file was edited while bash was
+# executing it: bash reads a script incrementally by BYTE OFFSET, so inserting lines ahead of the
+# cursor makes it resume mid-line and run a fragment of a comment. `set -e` caught that one and no
+# banner printed -- but it was caught by luck (the fragment happened not to be a valid command),
+# not by design. A fragment that parsed would have skipped phases silently.
+#
+# So every required phase now RECORDS ITSELF, and the banner is a function that refuses to print
+# until every name on the required list has been recorded. The gate can still fail the old way; it
+# can no longer pass a way it did not earn.
+GATE_REQUIRED_PHASES="identity repo-guards create-reach sweep dynamic crash-stress reachability scanner"
+GATE_COMPLETED_PHASES=""
+
+# Record a phase as COMPLETED. Called after the phase's work, never before it -- a marker set up
+# front would record intent rather than completion, which is the bug this exists to prevent.
+gate_phase_complete() {
+  GATE_COMPLETED_PHASES="${GATE_COMPLETED_PHASES} $1"
+}
+
+# The ONLY way this script may report success. Verifies the ledger, then prints.
+gate_pass_banner() {
+  local missing=""
+  local phase
+  for phase in ${GATE_REQUIRED_PHASES}; do
+    case " ${GATE_COMPLETED_PHASES} " in
+      *" ${phase} "*) ;;
+      *) missing="${missing} ${phase}" ;;
+    esac
+  done
+  if [ -n "${missing}" ]; then
+    echo ""
+    echo "!! GATE INCOMPLETE -- these required phases never completed:${missing}"
+    echo "!! Refusing to report PASS over a run that did not happen."
+    exit 9
+  fi
+  echo ""
+  echo "SANDBOX REGRESSION GATE: PASS -- deployed ${DEPLOYED_SHA} accepted."
+  echo "   phases completed:${GATE_COMPLETED_PHASES}"
+}
+
+# A gate that exits before its banner must not look like one that was merely quiet. Any exit that
+# is not the banner's own says so, on the way out, with the code.
+gate_on_exit() {
+  local code=$?
+  if [ "${code}" -ne 0 ]; then
+    echo ""
+    echo "!! SANDBOX REGRESSION GATE: FAILED (exit ${code})"
+    echo "!! completed phases:${GATE_COMPLETED_PHASES:- none}"
+    echo "!! NOT an accepted refresh."
+  fi
+}
+trap gate_on_exit EXIT
+
 ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
 # CERT_BASE IS NOT KNOWN UNTIL THE ENVIRONMENT IS ASKED. This line used to hardcode
 # "${ORIGIN}/Taylor_Parts/field-ops" -- the path the LOCAL dev server uses. The deployed build is
@@ -69,12 +133,14 @@ if [ -n "$DRIFT" ]; then
   exit 1
 fi
 echo "   deployed ${DEPLOYED_SHA} is an ancestor of HEAD (${LOCAL_SHA}) with no artifact-affecting drift."
+gate_phase_complete identity
 
 # 2. REPO-SIDE GUARDS. Cheap, and they catch the classes that render fine and are still wrong --
 #    orphaned CSS classes, a created record that cannot be reached, an id rendered where a name
 #    belongs, and a detector that has stopped being able to fail.
 echo "== [2/6] repo guards (css coverage, create-reach invariant, identity, detector trust) =="
 ( cd field-ops-app-vite && npm test )
+gate_phase_complete repo-guards
 
 # ORDER MATTERS HERE, and this used to run LAST.
 #
@@ -91,6 +157,7 @@ echo "== [2/6] repo guards (css coverage, create-reach invariant, identity, dete
 #    index that was never deployed, which is exactly the risk a fresh environment carries.
 echo "== [3/6] create -> reach =="
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/createReach.mjs" admin )
+gate_phase_complete create-reach
 
 # THE ROUTE LIST IS DERIVED BEFORE IT IS SWEPT.
 #
@@ -107,6 +174,7 @@ echo "== [4/6] structural + responsive sweep (5 widths) =="
 # which means a FAILING sweep silently re-runs and can pass on the retry -- turning the one check
 # that reports incomplete coverage into a check that hides it. There is no retry here on purpose.
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certify.mjs" admin 1440,1024,768,375,320 )
+gate_phase_complete sweep
 
 # 4b. DYNAMIC DETAIL ROUTES. The step above sweeps routes.json -- 54 NAV destinations, none of
 #     them a record page, because a detail URL does not exist until a record does. It reported ZERO
@@ -118,6 +186,7 @@ echo "== [4/6] structural + responsive sweep (5 widths) =="
 #     non-zero -- "no record to open" is exactly the state that hid the Opportunity defect.
 echo "== [4b/6] dynamic detail routes (record pages) =="
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/certifyDynamic.mjs" admin 1440,375 )
+gate_phase_complete dynamic
 
 # 4c. CRASH STRESS. Every step above LOADS A ROUTE AND MEASURES IT. None of them clicks anything,
 #     goes back, reloads a detail, or navigates away while a read is in flight -- which is where
@@ -131,6 +200,7 @@ echo "== [4b/6] dynamic detail routes (record pages) =="
 echo "== [4c/6] crash stress (interactions + races) =="
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/crashStress.mjs" admin )
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/crashStress.mjs" admin slow )
+gate_phase_complete crash-stress
 
 # 5. PERSONA REACHABILITY. The representative three, not all fifteen -- the fixture-only identities
 #    belong to targeted suites, and sweeping them here buys duplicate coverage at real cost.
@@ -138,11 +208,12 @@ echo "== [5/6] persona reachability (representative set) =="
 for p in ineligibleDispatcher technicianMultiRole eligiblePartsManager; do
   ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/reachability.mjs" "$p" 1440 )
 done
+gate_phase_complete reachability
 
 # 6. SCANNER SCENARIOS. Six must succeed and six must REFUSE; a refusal that passes by succeeding is
 #    a release failure, which is why the runner compares against each case's declared expectation.
 echo "== [6/6] scanner scenarios =="
 node scripts/runSandboxScannerScenarios.mjs
+gate_phase_complete scanner
 
-echo
-echo "SANDBOX REGRESSION GATE: PASS -- deployed ${DEPLOYED_SHA} accepted."
+gate_pass_banner

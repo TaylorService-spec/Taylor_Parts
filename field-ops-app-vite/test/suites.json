@@ -964,6 +964,10 @@
     {
       "file": "test/serviceAnchorReference.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/sandboxGatePhases.test.mjs",
+      "runner": "node"
     }
   ]
 }
