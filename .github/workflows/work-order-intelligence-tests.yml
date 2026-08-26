@@ -17,12 +17,14 @@ on:
       - "functions/src/ai/workOrderContext.ts"
       - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
+      - "functions/src/ai/workOrderModelInterpretation.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
       - "functions/src/inventory/partBalanceBatchReadService.ts"
       - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
+      - "functions/test/aiWorkOrderModelInterpretation.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   push:
     branches: [main]
@@ -41,12 +43,14 @@ on:
       - "functions/src/ai/workOrderContext.ts"
       - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
+      - "functions/src/ai/workOrderModelInterpretation.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
       - "functions/src/inventory/partBalanceBatchReadService.ts"
       - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
+      - "functions/test/aiWorkOrderModelInterpretation.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   workflow_dispatch:
 
@@ -77,6 +81,6 @@ jobs:
       - name: Build Functions
         run: npm run build
         working-directory: functions
-      - name: Governed server context authority and readiness assembly
-        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs test/aiWorkOrderReadinessContext.test.mjs
+      - name: Governed server context, readiness assembly and model-output verification
+        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs test/aiWorkOrderReadinessContext.test.mjs test/aiWorkOrderModelInterpretation.test.mjs
         working-directory: functions
