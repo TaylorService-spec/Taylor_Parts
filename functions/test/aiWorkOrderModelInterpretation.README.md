@@ -1,0 +1,1 @@
+This test family proves that model output cannot replace EOS-observed facts, invent evidence, invent governed actions, or bypass fail-closed North Star behavior. The implementation remains provider-unwired in this slice.
