@@ -31,6 +31,9 @@ vi.mock("../src/hooks/useFirestoreCollection", () => ({
 vi.mock("../src/access/useWorkOrderPartsPlanCapability.js", () => ({
   useWorkOrderPartsPlanCapability: () => state.capability,
 }));
+vi.mock("../src/hooks/useWorkOrderReadinessContext.js", () => ({
+  useWorkOrderReadinessContext: () => ({ context: state.readinessContext ?? null }),
+}));
 vi.mock("../src/modules/workOrders/WorkOrderPartsPlanEditor", () => ({ default: () => <div data-testid="parts-editor" /> }));
 vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), updateWorkOrderExecutionData: vi.fn() }));
 
@@ -74,6 +77,9 @@ beforeEach(() => {
   state.technicians = [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }];
   state.techniciansError = null;
   state.capability = { allowed: false, reason: "NOT_ENABLED" };
+  // Readiness evidence is off by default: the environment where the projection is NOT active is
+  // the one every honest-state assertion below is written against.
+  state.readinessContext = null;
 });
 afterEach(cleanup);
 
@@ -249,16 +255,15 @@ describe("honest states survive rendering", () => {
     expect(within(rail).getByText(/role|available/i)).toBeTruthy();
   });
 
-  it("THE PLAN IS RENDERED ONCE, by the component that owns the governed write", () => {
-    // This page used to draw a read-only table AND mount the editor below it: the same plan twice,
-    // in two typographies, free to disagree. The editor already renders every planned line, owns
-    // the capability gate, and has its own empty state -- so it supplies the one table, and its
-    // own suite covers the rows. What is asserted here is that there is exactly one.
+  it("THE READINESS TABLE AND THE EDITOR ARE DIFFERENT QUESTIONS, asked once each", () => {
+    // The readiness table answers "what is ready"; the editor answers "what should be planned".
+    // Two questions, and each is asked exactly once -- one readiness table, one editor.
     const { container } = render(<WorkOrderDetailPage />);
+    expect(container.querySelectorAll(".ns-table")).toHaveLength(1);
     expect(container.querySelectorAll('[data-testid="parts-editor"]')).toHaveLength(1);
-    expect(container.querySelector(".ns-embed [data-testid='parts-editor']")).toBeTruthy();
-    // No second, page-local rendering of the same rows.
-    expect(container.querySelector(".ns-table")).toBeNull();
+    // The readiness column carries the projection's words, never a tick this system cannot back.
+    const table = container.querySelector(".ns-table");
+    expect(table.textContent).not.toMatch(/On truck|Staged|In stock/i);
   });
 
   it("the parts caveat is present whether or not anything is planned", () => {
@@ -321,11 +326,11 @@ describe("accessibility of the composition", () => {
     expect(pulse.textContent).toBe("");
   });
 
-  it("a wide embedded table scrolls inside its own container rather than widening the page", () => {
+  it("a wide table scrolls inside its own container rather than widening the page", () => {
     const { container } = render(<WorkOrderDetailPage />);
-    // The editor's table is the widest thing in the main column; .ns-embed is what stops it
+    // The readiness table is the widest thing in the main column; .ns-table-wrap is what stops it
     // pushing the page sideways on a narrow viewport.
-    expect(container.querySelector(".ns-embed")).toBeTruthy();
+    expect(container.querySelector(".ns-table-wrap")).toBeTruthy();
   });
 });
 
@@ -343,7 +348,7 @@ describe("hostile data does not break the composition", () => {
     const { container } = render(<WorkOrderDetailPage />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("WO-2026-000873");
     // Every region still renders, and the long strings have not displaced any of them.
-    for (const sel of [".ns-identity", ".ns-lifecycle", ".ns-suggest", ".ns-record-body", ".ns-rail", ".ns-embed"]) {
+    for (const sel of [".ns-identity", ".ns-lifecycle", ".ns-suggest", ".ns-record-body", ".ns-rail", ".ns-table"]) {
       expect(container.querySelector(sel), sel + " was displaced by hostile data").toBeTruthy();
     }
   });
@@ -548,5 +553,29 @@ describe("P1v2 structural slots: present, and truthful about what is missing", (
     const notes = [...container.querySelectorAll(".ns-section__note")].map((n) => n.textContent);
     expect(notes.some((n) => /readiness by source/i.test(n))).toBe(true);
     expect(notes.some((n) => /not a recorded audit trail/i.test(n))).toBe(true);
+  });
+});
+
+describe("the parts disclosure follows the readiness projection, not a fixed sentence", () => {
+  it("says readiness is UNRECORDED when no projection is active", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.textContent).toMatch(/readiness by source \(truck \/ warehouse\) isn/i);
+    // Every row falls back to the honest absence rather than a guess.
+    expect(container.querySelector(".ns-table").textContent).toMatch(/Not available/i);
+  });
+
+  it("NEVER CLAIMS IGNORANCE THE SYSTEM NO LONGER HAS", () => {
+    // A page that keeps saying "not recorded yet" after the projection ships tells a dispatcher the
+    // system knows nothing while the column beside it answers. Proven by flipping the read, not by
+    // reading the source: a source-text check passes on a file that says the right words in the
+    // wrong branch.
+    state.readinessContext = {
+      plannedParts: [{ partId: "X49463-3", qtyPlanned: 2 }],
+      capabilities: { reservations: true, warehouse: true, procurement: true },
+    };
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.textContent).not.toMatch(/readiness by source \(truck \/ warehouse\) isn/i);
+    // And what it says instead is still honest about the part it genuinely cannot see.
+    expect(container.textContent).toMatch(/truck stock is still unread/i);
   });
 });

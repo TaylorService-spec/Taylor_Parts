@@ -6,6 +6,7 @@ import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useEquipmentDoc } from "../../hooks/useEquipment";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useWorkOrderReadinessContext } from "../../hooks/useWorkOrderReadinessContext.js";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { Button } from "../../shared/ui/primitives";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
@@ -38,6 +39,8 @@ import {
   workOrderLineage,
   EDGE,
 } from "../../domain/workOrderNorthStar.js";
+import { buildWorkOrderPartsReadiness } from "../../domain/workOrderPartsReadiness.js";
+import { READINESS } from "../../domain/readinessLanguage.js";
 import {
   deriveWorkOrderIntelligence,
   mergeWorkOrderAttention,
@@ -68,9 +71,8 @@ import {
 // ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
 //
 // No ETA, no arrival confidence, no first-visit-fix percentage, no "3 repairs in 12 months", no
-// separate suggestion panel. Governed intelligence is allowed to contribute to the existing
-// AttentionBand only when it has a substantiated signal. Until a trusted readiness assembler exists,
-// the intelligence contract returns speak:false and renders nothing.
+// separate suggestion panel. Governed intelligence contributes to the existing AttentionBand only
+// when the canonical readiness projection has a substantiated ATTENTION state. UNKNOWN remains quiet.
 //
 // ════════════════════ ROUTE GATE (unchanged) ════════════════════
 //
@@ -88,10 +90,12 @@ export default function WorkOrderDetailPage() {
 
   const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
+  const { context: readinessContext } = useWorkOrderReadinessContext(workOrderId);
   // useEquipmentDoc returns { equipment, loading, error } — NOT { data }. Destructuring `data`
-  // here left `equipment` permanently undefined, so the rail-s Equipment section rendered
+  // here left `equipment` permanently undefined, so the rail's Equipment section rendered
   // "reference unavailable" on every work order that has a unit, and the Record shell reported the
-  // unit as no longer existing. Wiring drift, fixed in the wiring.
+  // unit as no longer existing. Wiring drift, fixed in the wiring. The readiness branch above was
+  // cut before that fix and still carried the old key; this is the corrected one.
   const { equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
@@ -105,12 +109,22 @@ export default function WorkOrderDetailPage() {
     () => workOrderAttention(workOrder, { nowMillis: Date.now(), partsPlan: plan }),
     [workOrder, plan],
   );
+  // The trusted callable returns SOURCE DIMENSIONS, not a second readiness answer. The existing pure
+  // projection remains the one authority that derives READY / ATTENTION / UNKNOWN.
+  const partsReadiness = useMemo(
+    () => readinessContext && workOrder
+      ? buildWorkOrderPartsReadiness({
+          workOrder,
+          plannedParts: readinessContext.plannedParts ?? [],
+          capabilities: readinessContext.capabilities ?? {},
+        })
+      : null,
+    [readinessContext, workOrder],
+  );
   // Intelligence joins the SAME attention channel; it never creates a second copilot/suggestion band.
-  // Until a trusted readiness assembler supplies the canonical projection, deriveWorkOrderIntelligence
-  // returns speak:false and this composition remains quiet to the user.
   const intelligence = useMemo(
-    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan }),
-    [workOrder, plan],
+    () => deriveWorkOrderIntelligence(workOrder, { partsPlan: plan, partsReadiness }),
+    [workOrder, plan, partsReadiness],
   );
   const attention = useMemo(
     () => mergeWorkOrderAttention(baseAttention, intelligence),
@@ -373,34 +387,82 @@ export default function WorkOrderDetailPage() {
             </div>
           </RuledSection>
 
-          {/* GAP 2 — ONE PARTS TABLE, and the caveat rides with the HEADING.
-              The concept carries its "verified against truck stock" note beside the title, and
-              P1v2 keeps the honest version there: under the table it can be scrolled away from the
-              numbers it qualifies; beside the title it cannot.
+          {/* PARTS — and the READINESS COLUMN IS REAL NOW, which changes what this section may say.
+              The caveat rides with the HEADING, where the concept carries its "verified against
+              truck stock" note: under the table it can be scrolled away from the numbers it
+              qualifies; beside the title it cannot.
 
-              This section used to render a READ-ONLY table and then mount the editor below it in a
-              second panel — the same plan, twice, in two typographies, free to disagree. That is
-              the NS-P4 defect the whole composition exists to remove, reintroduced while removing
-              it. The approved source shows one table, so the editor supplies it: it already renders
-              every planned line, already owns the governed write and its capability gate, and
-              already has an honest empty state. .ns-embed strips its card chrome so the table reads
-              in the North Star geometry rather than as a nested panel.
+              WHAT THE CAVEAT SAYS DEPENDS ON WHAT IS TRUE. P1v2 was written when no readiness
+              existed anywhere, so its annotation reads "readiness by source isn't recorded yet".
+              #1497/#1498 then shipped a governed readiness projection — reservation, warehouse and
+              procurement evidence through a trusted callable — and in an environment where that is
+              active the P1v2 sentence would be a FALSE disclosure: it would tell a dispatcher the
+              system knows nothing while the column beside it answers. So the annotation follows the
+              projection. Truck stock genuinely remains unread, which is why the active wording
+              still names it rather than implying full coverage.
 
-              The readiness COLUMN stays absent rather than fabricated (Gap 2): no truck-stock read
-              exists, and a green tick this system cannot substantiate would send a technician to a
-              job without the part. */}
+              The column itself carries the projection's own words and never a tick this system
+              cannot substantiate: an invented ✓ sends a technician to a job without the part. */}
           <RuledSection
             title="Parts"
             meta={
               <span className="ns-section__note">
-                · readiness by source (truck / warehouse) isn’t recorded yet — quantities are
-                planned demand{plan.length > 0 ? ` · ${plan.length} part${plan.length === 1 ? "" : "s"} planned` : ""}
+                {partsReadiness
+                  ? "· readiness covers reservation, warehouse and procurement evidence — truck stock is still unread"
+                  : "· readiness by source (truck / warehouse) isn’t recorded yet — quantities are planned demand"}
+                {plan.length > 0 ? ` · ${plan.length} part${plan.length === 1 ? "" : "s"} planned` : ""}
               </span>
             }
           >
-            <div className="ns-embed">
-              <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
-            </div>
+            {plan.length === 0 ? (
+              <HonestState state={HONEST_STATE.EMPTY} detail="No parts have been planned for this visit." />
+            ) : (
+              <>
+                <div className="ns-table-wrap">
+                  <table className="ns-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Part</th>
+                        <th scope="col" className="ns-num">Planned</th>
+                        <th scope="col">Readiness</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.map((line, i) => {
+                        const readiness = readinessForRow(partsReadiness, i);
+                        return (
+                          <tr key={line.partId ?? `line-${i}`}>
+                            <td>
+                              {line.name ?? <span className="ns-state--na">Part — reference unavailable</span>}
+                              {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
+                            </td>
+                            <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
+                            <td>
+                              {readiness
+                                ? <span>{readiness.label}</span>
+                                : <span className="ns-state--na">Not available</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="ns-table__note">
+                  {partsReadiness
+                    ? "Readiness is derived from governed reservation, warehouse and procurement evidence. Truck inventory is still unavailable, so a part that depends on truck stock remains Unknown."
+                    : "Planning demand only — never reserves stock or records usage. Readiness evidence is not active in this environment yet."}
+                </p>
+              </>
+            )}
+          </RuledSection>
+
+          {/* The parts-plan EDITOR keeps its own ruled panel: it is an editor, which is the one
+              context the panel variant is admitted for (Grammar R13), and it owns the governed
+              write and its capability gate. It is BELOW the readiness table on purpose — a
+              dispatcher reads what is ready before deciding what to change. */}
+          <RuledSection title="Edit parts plan" panel>
+            <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
           </RuledSection>
 
           {/* The concept annotates its timeline as reconstructed rather than audited, and that
@@ -526,6 +588,16 @@ function WorkOrderTimeline({ workOrder }) {
     </ul>
   );
 }
+
+/** One row's readiness, from the ONE projection that derives it. No second answer here. */
+function readinessForRow(partsReadiness, index) {
+  const key = partsReadiness?.rows?.[index]?.readiness;
+  return typeof key === "string" ? READINESS[key] ?? null : null;
+}
+
+// titleCase() is deliberately gone: it was a second enum-to-label derivation that disagreed with
+// domain/workOrderType.js on two of the five real values ("Service call", "Pm"). The kicker reads
+// the governed vocabulary.
 
 // "Tue Aug 26, 8:00 AM – 12:00 PM". WHICH DAY is the fact a dispatcher is checking, and a clock
 // time alone does not carry it; the end needs only the time, since a window that crosses midnight

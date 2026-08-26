@@ -3,29 +3,49 @@ name: Work Order Intelligence Tests
 on:
   pull_request:
     paths:
+      - "config/environments.json"
+      - "scripts/resolveEnvironment.mjs"
+      - "field-ops-app-vite/src/config/workOrderReadinessContextReadiness.js"
+      - "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
+      - "field-ops-app-vite/src/hooks/useWorkOrderReadinessContext.js"
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "functions/src/index.ts"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   push:
     branches: [main]
     paths:
+      - "config/environments.json"
+      - "scripts/resolveEnvironment.mjs"
+      - "field-ops-app-vite/src/config/workOrderReadinessContextReadiness.js"
+      - "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
+      - "field-ops-app-vite/src/hooks/useWorkOrderReadinessContext.js"
       - "field-ops-app-vite/src/domain/workOrderIntelligence.js"
       - "field-ops-app-vite/src/domain/workOrderNorthStar.js"
       - "field-ops-app-vite/src/domain/workOrderPartsReadiness.js"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/test/workOrderIntelligence.test.mjs"
+      - "functions/src/index.ts"
       - "functions/src/ai/workOrderContext.ts"
+      - "functions/src/ai/workOrderReadinessContext.ts"
       - "functions/src/ai/workOrderReadinessSources.ts"
       - "functions/src/inventory/partBalanceReadService.ts"
+      - "functions/src/inventory/partBalanceBatchReadService.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/test/aiWorkOrderContext.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
       - "functions/test/aiWorkOrderReadinessSources.test.mjs"
       - ".github/workflows/work-order-intelligence-tests.yml"
   workflow_dispatch:
@@ -47,7 +67,7 @@ jobs:
       - name: Install client dependencies
         run: npm ci
         working-directory: field-ops-app-vite
-      - name: Governed client intelligence contract
+      - name: Governed client intelligence and activation contract
         run: node --test test/workOrderIntelligence.test.mjs
         working-directory: field-ops-app-vite
 
@@ -57,6 +77,6 @@ jobs:
       - name: Build Functions
         run: npm run build
         working-directory: functions
-      - name: Governed server context authority
-        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs
+      - name: Governed server context authority and readiness assembly
+        run: node --test test/aiWorkOrderContext.test.mjs test/aiWorkOrderReadinessSources.test.mjs test/aiWorkOrderReadinessContext.test.mjs
         working-directory: functions
