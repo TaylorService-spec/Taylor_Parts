@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSalesOrderActions } from "../../hooks/useSalesOrderActions.js";
 import { canAdvance, canCancel, canAllocate, canCreateService, nextAdvanceState } from "../../domain/salesOrderActions.js";
+import { salesOrderStateWords } from "../../domain/salesOrderNorthStar.js";
 import {
   SALES_ORDER_WRITE_CAPABILITY,
   SALES_ORDER_FULFILL_CAPABILITY,
@@ -185,7 +186,19 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
       )}
 
       {!advanceAllowed && !cancelAllowed && !allocateAllowed && !serviceAllowed && (
-        <p className="fo-muted">No further actions are available for a {view.state} Sales Order.</p>
+        // THE STATE IN WORDS, NEVER THE MACHINE VALUE (NS R04). This printed `{view.state}`
+        // verbatim, so a closed order told the reader "no further actions are available for a
+        // CLOSED Sales Order" — a raw enum in user-facing copy, on the one sentence a reader sees
+        // when nothing can be done. Sourced from the ONE Sales Order state vocabulary, so it can
+        // never word a state differently from the header or the lifecycle band.
+        //
+        // An unrecognised state falls back to a sentence with no state in it at all, rather than
+        // reaching for the raw value to fill the gap.
+        <p className="fo-muted">
+          {salesOrderStateWords(view.state)
+            ? `No further actions are available for a ${salesOrderStateWords(view.state).toLowerCase()} Sales Order.`
+            : "No further actions are available for this Sales Order."}
+        </p>
       )}
     </>
   );

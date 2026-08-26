@@ -1985,3 +1985,81 @@ unbackable slots entirely (hides the gap and guarantees a re-layout later).
 Reschedule) and B2 (technician messaging) are approved as SEPARATE future packages; neither is in
 #1494. Register: `docs/design/north-star-open-product-decisions.md` — ND-3 and ND-7 answered, ND-1,
 ND-2, ND-4, ND-5, ND-6 still open.
+
+---
+
+## #124 — A suite that nothing runs is not coverage, on either runner
+
+**Date:** 2026-08-26
+**Decision:** every `test/*.test.mjs` must be registered in `field-ops-app-vite/test/suites.json`
+OR named by a `.github/workflows/*.yml`, and `test/ciSuiteCoverage.test.mjs` now enforces that with
+the same force it already applied to `.test.jsx`. There is deliberately **no allowlist** on the
+node:test side.
+
+**Reason:** `ciSuiteCoverage` existed to stop precisely one failure — a suite merged that CI never
+runs — and its own header asserted that node:test suites were safe because they "are registered in
+test/suites.json and run by `npm test`". That described the intent. Checked during the Sales Order
+family migration, it was false: five `.test.mjs` files were in neither the manifest nor any
+workflow, so nothing ran them. One of them was `test/workOrderNorthStar.test.mjs` — the falsifiable
+contract suite for a page family that had already been declared closed, partly on the strength of a
+green CI run that had never executed it.
+
+All five passed when run, which is the uncomfortable part: nothing was broken, and nothing would
+have caught it if something had been. They are now registered rather than allowlisted, because an
+allowlist seeded at zero is a place for the next one to go. `npm test` runs 250 suites, up from 244.
+
+A second assertion was added at the same time: the manifest may not name a file that does not exist.
+Both new assertions were mutation-proved — a stray unregistered suite and a phantom manifest entry
+each fail the guard.
+
+**Alternatives rejected:** a glob lane for `.test.mjs` (would run suites nobody had reviewed for
+runtime cost or isolation, and would hide the registration decision rather than forcing it); seeding
+a burn-down allowlist with the five (the debt was five passing files — recording it would have cost
+more than paying it).
+
+**Related:** the vitest half of this rule and its `KNOWN_UNNAMED` burn-down list, which is unchanged
+and still shrink-only. `docs/design/north-star-migration-ledger.md` records the family-1 consequence.
+
+---
+
+## #125 — The Sales Order is composed from the grammar, and its gaps are named rather than filled
+
+**Date:** 2026-08-26
+**Decision:** the Sales Order page family (family 2) is composed in the North Star grammar over a
+single derivation layer, `field-ops-app-vite/src/domain/salesOrderNorthStar.js`, with **no Design
+artifact in hand**. `Proposed - Sales Order.dc.html` is named in
+`docs/design/eos-north-star-sources.md` but has never been handed to this repository. The
+composition therefore follows the ratified grammar and the shipped family-1 pattern, and **Owner
+visual acceptance is load-bearing rather than confirmatory** — recorded in the ledger as
+`AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+
+Three conflicts between the grammar and behavioral reality were named rather than resolved in code:
+**ND-8** (a Sales Order records no lifecycle stage times — only `createdAt` and `updatedAt`, so
+three of four stages state the absence instead of borrowing `updatedAt`), **ND-9** (nothing resolves
+a Sales Agreement to a reference, so that lineage edge is permanently UNRESOLVED), and **ND-10**
+(`useSalesOrder` is a one-shot read, so the page may not carry the live indicator family 1 carries).
+
+**Reason:** the three-authority model's whole output is the named decision. Each of these three could
+have been quietly papered over — `updatedAt` relabelled as a stage time, the agreement id printed as
+its own label, the live badge copied across because the other page has one — and each would have
+been a false statement about a sale that a green build would have carried to production.
+
+**Authority is unchanged.** No command, capability, write path or Rules change; every write still
+resolves through `transitionSalesOrder`, `allocateSalesOrder` and `createServiceForSalesOrder`. The
+suggestion slot speaks here (the governed deterministic recommendation from #1504 has something real
+to say) but offers **no second invocation path** — it points at the Allocate button that already
+exists, and the command re-checks `salesOrder.fulfill` and its own state precondition independently.
+
+Two defects were found and fixed in passing: `salesOrderView.js` was dropping `createdAtMillis` and
+`updatedAtMillis` (the same value-never-arrives failure already fixed for the money on that module),
+and `SalesOrderActions.jsx` printed a raw enum in user-facing copy ("...for a CLOSED Sales Order").
+
+**Alternatives rejected:** waiting for the Design artifact (the standing overnight rule directs
+composition from the grammar, and the gap is recorded rather than hidden); borrowing `updatedAt` for
+stage times (a fabricated fact about a sale); omitting the stage disclosure entirely (loses the
+approved structure and guarantees a re-layout when stamps ship).
+
+**Related:** DECISIONS #122 (three authorities), #123 (slots may outrun the engine — the same
+principle applied here to the stage strip). Register:
+`docs/design/north-star-open-product-decisions.md` ND-8, ND-9, ND-10. Ledger:
+`docs/design/north-star-migration-ledger.md`.

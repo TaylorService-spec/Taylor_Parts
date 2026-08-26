@@ -92,6 +92,19 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     // no total, instead of being shown a blank they have to interpret.
     pricingState: so.pricingState ?? null,
     unpricedLineCount: typeof so.unpricedLineCount === "number" ? so.unpricedLineCount : null,
+    // ═══ THE TWO TIMES THE ORDER ACTUALLY RECORDS ═══
+    //
+    // The server has projected these since the read service was corrected, and its own comment
+    // predicted the defect would surface "the first time a timestamp was displayed". This is that
+    // first time: the North Star lifecycle band needs a creation time for the Confirmed stage, and
+    // it would have read `undefined` through this view model exactly as the money did.
+    //
+    // ONLY TWO EXIST. There is no confirmedAt, allocatedAt, fulfilledAt, closedAt or cancelledAt on
+    // a Sales Order document. `updatedAt` is the time of the LAST WRITE OF ANY KIND and must never
+    // be presented as a stage time (ND-8) -- domain/salesOrderNorthStar.js states that in words
+    // rather than borrowing it.
+    createdAtMillis: typeof so.createdAtMillis === "number" ? so.createdAtMillis : null,
+    updatedAtMillis: typeof so.updatedAtMillis === "number" ? so.updatedAtMillis : null,
     state: so.state,
     tone: salesOrderStateTone(so.state),
     customerPO: so.customerPO,

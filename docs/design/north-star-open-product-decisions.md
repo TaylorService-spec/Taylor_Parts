@@ -139,6 +139,61 @@ commitment.
 **The decision:** Design's call, once it has seen it running — a glyph can be added to plain text,
 which may satisfy both.
 
+### ND-8 — A Sales Order records no lifecycle stage times
+
+**Raised:** 2026-08-26, Sales Order family (family 2)
+**Design holds:** the lifecycle band is clickable, and each stage discloses one line of recorded
+fact about what happened *at that stage* — the treatment approved for the Work Order and carried
+into every subsequent family.
+**Behavioral holds:** a Sales Order document stores `createdAt` and `updatedAt`, and nothing else.
+`functions/src/salesOrder/salesOrderReadService.ts` projects exactly those two, because they are all
+the write path has ever written. There is no `confirmedAt`, no order-level `allocatedAt`, no
+`fulfilledAt`, `closedAt` or `cancelledAt`.
+**The conflict:** the composition asks each stage when it happened, and for three of the four stages
+the system genuinely does not know.
+**Shipped meanwhile:** the band, unchanged in structure. The Confirmed stage states its time from
+`createdAt`; every other stage states the absence in words and adds the quantity fact it *can*
+prove ("2 of 3 lines allocated, 1 fully fulfilled"). `updatedAt` is rendered ONLY in the milestone
+list, labelled "Last changed", because it is the time of the last write of any kind and presenting
+it as a stage time would be a fabricated fact about a sale.
+**What is blocked:** nothing on the page. What is blocked is the *answer* to "when did this order
+enter fulfillment", which no surface can give today.
+**The decision:** whether Sales Order lifecycle transitions should record stamps the way Work Order
+transitions do. That is a behavioral/product question — it changes what is recorded — and it is not
+a composition question. Answering it lights the existing band up with no further design work.
+**Asserted by:** `test/salesOrderNorthStar.test.mjs` ("only the Confirmed stage states a time"),
+which fails if any stage borrows `updatedAt`.
+
+### ND-9 — A Sales Agreement has no resolvable reference
+
+**Raised:** 2026-08-26, Sales Order family (family 2)
+**Design holds:** lineage names what a record came from.
+**Behavioral holds:** `sourceAgreementId` is projected and carried, and nothing anywhere resolves a
+Sales Agreement to a business reference.
+**The conflict:** the edge is real and cannot be named.
+**Shipped meanwhile:** the edge renders as UNRESOLVED — it names the entity ("Sales agreement") and
+states that the reference is unavailable. The document id is not printed, in either branch
+(DECISIONS #106, R03).
+**The decision:** whether Sales Agreements get a governed reference of their own. Until then this
+edge is permanently unresolvable, and the register should say so rather than the page implying a
+read is merely slow.
+
+### ND-10 — The Sales Order page cannot claim to be live
+
+**Raised:** 2026-08-26, Sales Order family (family 2)
+**Design holds:** the record surface carries a live indicator — the concept's one intelligence
+affordance that shipped whole on the Work Order.
+**Behavioral holds:** `useWorkOrder` is an `onSnapshot` subscription and the claim is true there.
+`useSalesOrder` is a ONE-SHOT callable read with an explicit `refetch`; the same badge here would be
+false about the record in front of the reader.
+**Shipped meanwhile:** no live indicator. The utility line states what is actually true — "Read once
+— refreshed when you act" — rather than going silent, so the reader knows what they are looking at.
+**The decision:** whether the Sales Order read becomes a live subscription. That is a cost and
+authority question (the trusted read exists partly to avoid unrestricted client reads), not a design
+one. If it does, the badge returns with no other change.
+**Asserted by:** `test/salesOrderNorthStarPage.test.jsx` ("the page does NOT claim to be live"),
+which fails the moment the claim is made without the subscription behind it.
+
 ---
 
 ## Resolved

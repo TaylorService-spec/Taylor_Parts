@@ -18,8 +18,20 @@
 // that already existed, and it may only ever shrink. Nothing new may be added to it — a NEW unnamed
 // suite fails this test, which is the whole point.
 //
-// node:test suites are covered differently and do not need listing here: they are registered in
-// test/suites.json and run by `npm test` in the client-suite-manifest workflow.
+// ============================ THE SAME HOLE, ON THE OTHER RUNNER ============================
+//
+// This guard originally said node:test suites "do not need listing here: they are registered in
+// test/suites.json and run by `npm test`". That sentence described the INTENT, not the state. It
+// was checked while migrating the Sales Order page family and it was false: five `.test.mjs` files
+// were in neither test/suites.json nor any workflow, so nothing ran them -- among them
+// test/workOrderNorthStar.test.mjs, the falsifiable-contract suite for a page family that had
+// already been declared closed on the strength of a green CI run.
+//
+// That is precisely the failure this file was written to stop, arriving through the door the file
+// had assumed was shut. So the same rule now applies to both runners: a node:test suite must be
+// registered in test/suites.json OR named by a workflow. There is deliberately NO allowlist on this
+// side -- the debt was five files, all of them passing, and all five were registered rather than
+// recorded. An allowlist seeded at zero is just a place for the next one to go.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -114,4 +126,47 @@ test("the debt is going DOWN, and the number is stated rather than implied", () 
     KNOWN_UNNAMED.size <= CEILING,
     `The unnamed-suite allowlist grew to ${KNOWN_UNNAMED.size}. It may only shrink.`,
   );
+});
+
+// ───────────────────────── the same rule, for node:test suites
+
+/** Suite files named by any workflow, either runner. */
+function namedByWorkflowsAnyRunner() {
+  const named = new Set();
+  for (const file of readdirSync(workflowsDir)) {
+    if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
+    const text = readFileSync(path.join(workflowsDir, file), "utf8");
+    for (const match of text.matchAll(/[\w./-]+\.test\.mjs/g)) {
+      named.add(path.basename(match[0]));
+    }
+  }
+  return named;
+}
+
+/** The manifest `npm test` actually runs. Read fresh so a stale copy cannot vouch for itself. */
+function registeredSuites() {
+  const manifest = JSON.parse(readFileSync(path.join(here, "suites.json"), "utf8"));
+  return new Set(manifest.suites.map((s) => path.basename(s.file)));
+}
+
+test("every node:test suite is run by SOMETHING — the manifest or a workflow", () => {
+  const registered = registeredSuites();
+  const named = namedByWorkflowsAnyRunner();
+  const orphans = readdirSync(here)
+    .filter((f) => f.endsWith(".test.mjs"))
+    .filter((f) => !registered.has(f) && !named.has(f));
+  assert.deepEqual(
+    orphans,
+    [],
+    `These node:test suites will NEVER run in CI. Register each in test/suites.json, or name it in\nthe workflow that owns its subsystem:\n  ${orphans.join("\n  ")}`,
+  );
+});
+
+test("the manifest names no suite that does not exist", () => {
+  // The mirror of the rule above, and the reason it matters: runSuites.mjs is what decides whether a
+  // missing file is a failure or a silent skip. A manifest entry for a deleted file is a claim of
+  // coverage with nothing behind it.
+  const present = new Set(readdirSync(here));
+  const missing = [...registeredSuites()].filter((f) => !present.has(f));
+  assert.deepEqual(missing, [], `test/suites.json names files that do not exist:\n  ${missing.join("\n  ")}`);
 });

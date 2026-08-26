@@ -976,6 +976,30 @@
     {
       "file": "test/salesOrderGovernedRecommendation.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/salesOrderNorthStar.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/accountArView.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/equipmentSerialProjection.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/resolveEffectivePermissionParity.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/salesOrderCapabilityAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workOrderNorthStar.test.mjs",
+      "runner": "node"
     }
   ]
 }
