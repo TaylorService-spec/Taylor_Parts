@@ -120,6 +120,7 @@ export function verifyWorkOrderModelInterpretation(
       return reject("MODEL_OUTPUT_INVALID");
     }
     if (!input.allowedRecommendation ||
+        input.allowedRecommendation.authority !== "ALLOWED" ||
         input.allowedRecommendation.actionId !== recommendedActionId.trim()) {
       return reject("MODEL_OUTPUT_ACTION_NOT_ALLOWED");
     }
@@ -143,9 +144,13 @@ export function verifyWorkOrderModelInterpretation(
 /**
  * Prompt payload deliberately excludes authority internals and all raw database identifiers. The
  * provider receives only the already-sanitized fact, evidence summaries, and at most one action EOS
- * has independently decided may be proposed.
+ * has independently decided may be proposed. A DENIED action is converted to null before it can
+ * reach the provider; the model never needs to know an action it cannot recommend.
  */
 export function buildWorkOrderInterpretationPromptPayload(input: WorkOrderInterpretationInput) {
+  const allowedRecommendation = input.allowedRecommendation?.authority === "ALLOWED"
+    ? input.allowedRecommendation
+    : null;
   return {
     schemaVersion: input.schemaVersion,
     subjectReference: input.subjectReference,
@@ -153,11 +158,11 @@ export function buildWorkOrderInterpretationPromptPayload(input: WorkOrderInterp
     deterministicInterpretation: input.deterministicInterpretation,
     deterministicBusinessConsequence: input.deterministicBusinessConsequence,
     evidence: input.evidence.map(({ key, kind, summary }) => ({ key, kind, summary })),
-    allowedRecommendation: input.allowedRecommendation
+    allowedRecommendation: allowedRecommendation
       ? {
-          actionId: input.allowedRecommendation.actionId,
-          label: input.allowedRecommendation.label,
-          authority: input.allowedRecommendation.authority,
+          actionId: allowedRecommendation.actionId,
+          label: allowedRecommendation.label,
+          authority: allowedRecommendation.authority,
         }
       : null,
   };
