@@ -65,7 +65,25 @@ See the *cross-family* section below.
 | **Mutation proofs** | 10 — 5 against the projection (ND-8 stage-time fabrication, R03 id-as-reference, R04 enum leak, attention on a terminal order, partial allocation counted as complete) and 5 against the composition (id as page title, raw enum in the header, false liveness claim, emptied lifecycle band, a second invocation path in the suggestion). All 10 caught; the source restored byte-identical after each. |
 | **Named decisions** | ND-8 (no lifecycle stage times), ND-9 (Sales Agreement has no resolvable reference), ND-10 (the read is not live) |
 | **Gate** | Quick Gate PASSED against `1c8095d3` on platform-sandbox, 2026-08-26 — 12/12 sweep visits, 7/7 dynamic entities resolved, **zero blocking findings, zero RAW_ID**. Not the acceptance gate. |
-| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+| **Acceptance** | **PASS — closed 2026-08-26** (Owner visual acceptance against deployed `1c8095d3`; Quick Gate PASS, no blocking findings; no Full Gate required under the presentation-migration rule, DECISIONS #128) |
+
+### Owner visual acceptance — 2026-08-26
+
+The Owner accepted the Sales Order family against the running sandbox at `1c8095d3`, and stated that
+**no Full Sandbox Regression Gate is required under the North Star presentation-migration rule** —
+the rule that a family changing only presentation, with no command, capability, write path or Rules
+change, clears on the Quick Gate. Recorded as DECISIONS #128. It is an Owner ruling about *which*
+gate the obligation is, not a waiver of one.
+
+This matters more here than it did for family 1. Family 2 shipped with **no Design artifact in
+hand** (DECISIONS #125): `Proposed - Sales Order.dc.html` is named in the sources doc and was never
+handed to this repository, so the composition was derived from the ratified grammar and the shipped
+family-1 pattern. The ledger recorded that this made acceptance *load-bearing rather than
+confirmatory*. That is the authority that has now spoken — a grammar-derived composition, confirmed
+correct by the one authority a build cannot grant itself.
+
+ND-8, ND-9 and ND-10 remain open. Accepting the composition is not resolving the facts the
+composition is honest about.
 
 ### What changed, beyond the restyle
 
@@ -276,4 +294,10 @@ blocking. The full regression gate is what would give the per-route breakdown.
 
 **This is not acceptance.** The Quick Gate deliberately skips the repo suites, three of five widths,
 crash stress, persona reachability and the 40/40 scanner scenarios, and says so in its own exit
-banner. Both families remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+banner. Both families remained `AWAITING_OWNER_VISUAL_ACCEPTANCE` at the time of that run.
+
+**Superseded for family 2 only, 2026-08-26:** the Owner has since accepted the Sales Order family
+against this same `1c8095d3` build — see the family-2 row. **Family 3 — Account is unchanged and
+remains `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** The presentation-migration rule in DECISIONS #128 says
+which gate family 3 must clear; it does not clear it. Acceptance was granted for one family, and
+this ledger does not widen it to the other.

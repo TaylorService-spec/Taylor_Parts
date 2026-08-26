@@ -2154,3 +2154,46 @@ the design grammar's standing-gaps table, which still classifies "Account shows 
 
 **Related:** DECISIONS #122, #125, #126. Register: ND-11. Ledger:
 `docs/design/north-star-migration-ledger.md`.
+
+---
+
+## #128 — A presentation-only migration clears on the Quick Gate; the Sales Order family is ACCEPTED
+
+**Date:** 2026-08-26
+**Decision (Owner):** the Sales Order page family (family 2) **PASSES Owner visual acceptance**
+against the deployed sandbox build `1c8095d3`, and **no Full Sandbox Regression Gate is required**
+for it. The Owner named the governing rule as the **North Star presentation-migration rule**: a page
+family that changes only presentation — no command, no capability, no write path, no `firestore.rules`
+change — clears on the Quick Gate rather than the full regression gate.
+
+**Reason:** the Full Sandbox Regression Gate that family 1 ran exists to catch behavioral regression
+across the platform. A family whose diff introduces no behavioral surface has nothing for that gate
+to catch that CI and the Quick Gate do not already cover, and running it would spend hours certifying
+the absence of a change class the diff does not contain. Family 2's authority-unchanged claim is not
+an assertion: `SalesOrderActions` is untouched, every write still resolves through
+`transitionSalesOrder`, `allocateSalesOrder` and `createServiceForSalesOrder`, and all 13
+pre-existing authority and capability-gating tests pass unmodified (DECISIONS #125).
+
+**This is a ruling about WHICH gate is owed, not a waiver of one.** The Quick Gate is still required,
+it still ran, and it still passed against the accepted build: 12/12 sweep visits, 7/7 dynamic
+entities resolved, zero RAW_ID findings, zero blocking findings. The rule does not apply to a family
+that touches a command, a capability, a write path or Rules — that family owes the full gate, and the
+presentation-migration rule is the test for telling the two apart.
+
+**What acceptance settles, and what it does not.** Family 2 shipped with **no Design artifact in
+hand**; the ledger recorded that this made Owner acceptance *load-bearing rather than confirmatory*.
+That authority has now spoken, so a grammar-derived composition is confirmed correct by the one
+authority a build cannot grant itself — which is the evidence the remaining families need. It settles
+nothing else: **ND-8** (a Sales Order records no lifecycle stage times), **ND-9** (nothing resolves a
+Sales Agreement to a reference) and **ND-10** (`useSalesOrder` is a one-shot read, so no live
+indicator) all remain open. Accepting a composition is not resolving the facts it is honest about.
+
+**Scope is literal.** Acceptance was granted for family 2. **Family 3 — Account remains
+`AWAITING_OWNER_VISUAL_ACCEPTANCE`**, on the same `1c8095d3` build and with the same Quick Gate
+result behind it. The presentation-migration rule tells family 3 which gate it owes; it does not
+accept it. Family 4 — Opportunity is unaffected: it is stopped on a product-build decision (a new
+trusted callable and a route), not on a gate.
+
+**Related:** DECISIONS #122 (the three authorities — Acceptance is the one a build cannot grant
+itself), #125 (the Sales Order composition and its named gaps), #123, #126, #127. Ledger:
+`docs/design/north-star-migration-ledger.md`, family-2 row and the `1c8095d3` refresh section.
