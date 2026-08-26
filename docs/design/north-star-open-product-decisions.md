@@ -194,6 +194,30 @@ one. If it does, the badge returns with no other change.
 **Asserted by:** `test/salesOrderNorthStarPage.test.jsx` ("the page does NOT claim to be live"),
 which fails the moment the claim is made without the subscription behind it.
 
+### ND-11 — An Account has no lifecycle to make visible
+
+**Raised:** 2026-08-26, Account family (family 3)
+**Design holds:** NS-P1 — the lifecycle spine is visible and navigable on every record page. It was
+named as a critical absence in all five pilot audits.
+**Behavioral holds:** an Account has four status values (ACTIVE / INACTIVE / PROSPECT / ARCHIVED)
+and **no transition command anywhere**. `status` is an ordinary editable field — it is in
+`accountRecordPage.editableFieldIds` and is written through `updateAccount` exactly like `name` or
+`notes`. There is no `transitionAccount`, no account lifecycle module, and nothing that constrains
+which value follows which.
+**The conflict:** the four values *look* like a progression. Drawn as four chevrons, the page would
+assert that an account moves Prospect → Active → Inactive → Archived and does not go back. Nothing
+enforces that: an archived account can be edited straight to Prospect and no guard would object.
+**Shipped meanwhile:** **no spine.** The status is rendered as a sentence, and the page states the
+reason in words — "An account has no lifecycle to show. Its status is a field someone sets, not a
+stage it moves through" — rather than leaving an unexplained difference from the other two record
+families.
+**The decision:** whether an Account *should* have a governed lifecycle — a transition command, an
+allowed-transition map, and a recorded history. That is a behavioral/product question about what the
+business wants to enforce, not a composition question. If the answer is yes, the spine follows for
+free.
+**Asserted by:** `test/accountNorthStar.test.mjs` — including a test that fails the moment `status`
+leaves `editableFieldIds`, so this decision cannot quietly outlive its own premise.
+
 ---
 
 ## Resolved

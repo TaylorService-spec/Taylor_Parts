@@ -6,11 +6,21 @@
 // added to the conformant set; the gates then hold it there. New surfaces cannot introduce the retired
 // patterns at all.
 //
-// The four gates:
+// The gates:
 //   1. NO NEW STATUS BADGE — the retired `fo-badge` family may appear ONLY in files still on the
 //      LEGACY_BADGE_ALLOWLIST. Any other file using it (a new surface, or a migrated surface that
 //      regressed) fails. Status must route through the shared StatusPill + a domain tone map.
 //   2. CONFORMANT WORKSPACES ADOPT THE SHELL — every surface declared conformant imports WorkspaceShell.
+//   2b. NORTH STAR RECORD PAGES REPLACE THE SHELL — a record page migrated to the North Star grammar
+//      composes `ns-page` + `RecordIdentity` and must NOT also host WorkspaceShell (running both
+//      doubles the chrome and gives the page two competing h1 claims). This is a REPLACEMENT
+//      obligation, not an exemption: 2b is stricter than 2, and 3 still applies through
+//      CONFORMANT_SURFACES.
+//   2b². MEMBERSHIP IS DERIVED — any surface that composes the North Star grammar must be declared,
+//      so the list in 2b cannot be quietly emptied. A mutation proof found that hole: deleting an
+//      entry made the gate check fewer files and nothing failed.
+//   2c. NO PAGE ON BOTH SHELL LISTS — otherwise 2 and 2b demand opposite things of the same file and
+//      whichever runs first decides.
 //   3. CONFORMANT SURFACES ARE STATUS-STANDARDIZED — no conformant surface contains `fo-badge`.
 //   4. BURN-DOWN IS MONOTONE — a file cannot be both allowlisted and conformant, and the allowlist may
 //      not contain stale entries (a file that no longer uses `fo-badge` MUST be removed). This is what
@@ -36,7 +46,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/mobile/CoordinatedMissionView.jsx",
   "modules/inventory/TruckInventory.jsx", // Wave 1
   "modules/accounts/AccountsList.jsx", // Wave 2
-  "modules/accounts/AccountDetail.jsx", // Wave 2
   "modules/equipment/EquipmentDetail.jsx", // Wave 3
   "modules/equipment/EquipmentRegister.jsx", // Wave 3
   "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
@@ -52,6 +61,11 @@ const CONFORMANT_WORKSPACES = [
 // Non-workspace conformant surfaces (peer-object cards etc.) — status-standardized, but not shell hosts.
 const CONFORMANT_SURFACES = [
   ...CONFORMANT_WORKSPACES,
+  // The North Star record pages are status-standardized like any other conformant surface; only
+  // their SHELL obligation differs (see NORTH_STAR_RECORD_PAGES).
+  "modules/workOrders/WorkOrderDetailPage.jsx",
+  "modules/sales/SalesOrderDetail.jsx",
+  "modules/accounts/AccountDetail.jsx",
   "modules/inventory/TruckFleetCard.jsx",
   "modules/accounts/FinancialSummarySection.jsx", // Wave 2
   "modules/accounts/ServiceActivitySection.jsx", // Wave 2
@@ -65,6 +79,29 @@ const CONFORMANT_SURFACES = [
   "modules/reporting/ReportBuilder.jsx", // Wave 5
   "modules/workOrders/CustomerPicker.jsx", // Wave 5
   "shared/ui/NotificationPanel.jsx", // Wave 5
+];
+
+// ════════════════════ NORTH STAR RECORD PAGES ════════════════════
+//
+// A record page migrated to the North Star grammar does NOT host WorkspaceShell. It composes
+// `ns-page` + `RecordIdentity` instead, and the two are mutually exclusive on purpose: run
+// together they double the page chrome and BOTH claim the `h1` (ND-4, already open).
+//
+// This list exists because families 1 and 2 shipped into a hole. WorkOrderDetailPage.jsx and
+// SalesOrderDetail.jsx are on no list here at all -- they were never added to CONFORMANT_WORKSPACES
+// (which would have demanded the shell they deliberately dropped), so from 2026-08-25 until now
+// they satisfied NO composition obligation whatsoever. AccountDetail.jsx was on the Wave 2
+// conformant list, and migrating it is what surfaced the conflict: the gate demanded a shell the
+// grammar replaces.
+//
+// The obligation is REPLACED, not waived. Membership here is a stricter contract than
+// CONFORMANT_WORKSPACES, not an exemption from it: these files must use the North Star page
+// primitives, must NOT import WorkspaceShell, and remain bound by the fo-badge rule through
+// CONFORMANT_SURFACES below.
+const NORTH_STAR_RECORD_PAGES = [
+  "modules/workOrders/WorkOrderDetailPage.jsx", // family 1
+  "modules/sales/SalesOrderDetail.jsx",         // family 2
+  "modules/accounts/AccountDetail.jsx",         // family 3 (formerly Wave 2 conformant)
 ];
 
 function walk(dir) {
@@ -98,6 +135,59 @@ describe("composition conformance — site-wide standardization gates", () => {
   it("GATE 2 — conformant workspaces adopt WorkspaceShell", () => {
     const missing = CONFORMANT_WORKSPACES.filter((r) => !/WorkspaceShell/.test(read(r)));
     expect(missing, `Conformant workspace missing WorkspaceShell:\n${missing.join("\n")}`).toEqual([]);
+  });
+
+  it("GATE 2b — North Star record pages adopt the page grammar INSTEAD of the shell", () => {
+    // The replacement obligation. A file here must carry both North Star page primitives...
+    const missing = NORTH_STAR_RECORD_PAGES.filter((r) => {
+      const src = read(r);
+      return !/ns-page/.test(src) || !/RecordIdentity/.test(src);
+    });
+    expect(
+      missing,
+      `North Star record page missing ns-page / RecordIdentity:\n${missing.join("\n")}`,
+    ).toEqual([]);
+
+    // ...and must NOT also host WorkspaceShell. Running both doubles the chrome and gives the page
+    // two competing h1 claims.
+    const doubled = NORTH_STAR_RECORD_PAGES.filter((r) => /WorkspaceShell/.test(read(r)));
+    expect(
+      doubled,
+      `North Star record page also hosts WorkspaceShell (pick one):\n${doubled.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("GATE 2b² — the North Star list is DERIVED, so it cannot be quietly emptied", () => {
+    // A mutation proof of GATE 2b found this hole: deleting a file from NORTH_STAR_RECORD_PAGES
+    // made the gate check fewer files and nothing failed. A membership list that only ever
+    // constrains its own members can be shrunk to nothing and still pass — which is how a gate
+    // stops guarding the thing it was written for.
+    //
+    // So membership is not optional. Any surface that composes the North Star page primitives must
+    // be DECLARED, and the check runs against the whole tree rather than against the list.
+    const undeclared = allFiles.map(rel)
+      .filter((r) => {
+        const src = read(r);
+        return /className="ns-page"/.test(src) && /RecordIdentity/.test(src);
+      })
+      .filter((r) => !NORTH_STAR_RECORD_PAGES.includes(r));
+    expect(
+      undeclared,
+      `These surfaces compose the North Star page grammar but are declared nowhere, so no gate covers them:\n${undeclared.join("\n")}`,
+    ).toEqual([]);
+
+    // And the reverse: a declared file that no longer exists, or no longer composes the grammar,
+    // must be removed rather than left as a claim of coverage with nothing behind it.
+    const surfaces = new Set(allFiles.map(rel));
+    const stale = NORTH_STAR_RECORD_PAGES.filter((r) => !surfaces.has(r));
+    expect(stale, `Declared North Star page is not a surface any more:\n${stale.join("\n")}`).toEqual([]);
+  });
+
+  it("GATE 2c — a page cannot be on both shell lists", () => {
+    // Otherwise GATE 2 and GATE 2b would demand opposite things of the same file, and whichever
+    // ran first would decide. A migration MOVES a page between the lists; it never adds it twice.
+    const both = NORTH_STAR_RECORD_PAGES.filter((r) => CONFORMANT_WORKSPACES.includes(r));
+    expect(both, `File is on both shell lists:\n${both.join("\n")}`).toEqual([]);
   });
 
   it("GATE 3 — conformant surfaces are status-standardized (no fo-badge)", () => {

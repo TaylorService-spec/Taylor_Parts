@@ -118,4 +118,74 @@ allowlist seeded at zero is a place for the next one to go. The guard now applie
 both runners, and carries a second assertion that the manifest names no file that does not exist.
 Both new assertions were mutation-proved (a stray unregistered suite, and a phantom manifest entry).
 
-`npm test` now runs 250 suites, up from 244.
+`npm test` now runs 250 suites, up from 244 (251 after family 3).
+
+---
+
+## Family 3 — Account (Customer 360)
+
+| | |
+|---|---|
+| **Composition** | `src/modules/accounts/AccountDetail.jsx` over `src/domain/accountNorthStar.js` |
+| **Visual authority** | No Account artifact has been handed to this repo either. `Proposed - Account.dc.html` is named in the sources doc and has not been seen here. Composed from the ratified grammar and the shipped family-1/2 pattern. |
+| **Proof** | `test/accountNorthStar.test.mjs` (18), `test/accountNorthStarPage.test.jsx` (12), plus `test/compositionConformance.test.jsx` (7, three of them new) |
+| **Mutation proofs** | 6 — attention removed from its NS-P2 position · id as the page title · raw enum in the header · a status clause implying a progression · `accountLifecycle` claiming a spine · the new shell gate quietly losing a migrated family. All 6 caught; sources restored byte-identical. |
+| **Named decisions** | ND-11 (an Account has no lifecycle to make visible) |
+| **Gate** | *pending* |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+
+### The defect was ordering, not absence
+
+`AccountAttentionSection` was already right: bounded, account-scoped, composed from existing
+authorities, honest per source, silent when there is nothing to say. It rendered at the **bottom of
+the secondary column**, below every related list — a reader reached it after everything it should
+have warned them about. It moved to its NS-P2 position and says exactly what it said before.
+
+It is deliberately **not** flattened into the shared `AttentionBand`.
+`accountAttentionProjection.js` states that AR and Work-Order past-due are never merged into one
+ranked list, and a flat band has nowhere to put its per-source honest notes. A first draft of the
+derivation layer did adapt them, and was removed — overriding a behavioral rule to satisfy a visual
+pattern is what the three-authority model forbids.
+
+### ND-11, and why the page says so out loud
+
+An Account has four status values that look like a progression and no transition command at all.
+Four chevrons would assert a rule nothing enforces. The page renders the status as a sentence and
+states the reason in words, rather than leaving an unexplained difference from the other two record
+families.
+
+The premise is guarded: a test fails the moment `status` leaves `accountRecordPage.editableFieldIds`,
+so ND-11 cannot quietly outlive its own reasoning.
+
+### What else came out
+
+- Two private label maps in the page duplicated the `enumLabels` in the canonical metadata
+  definition. The classification now reads the definition, and renders as **words** rather than
+  pills — `accountRelationshipTone` and `accountLineOfBusinessTone` return the constant "info" for
+  every value, so the pills were colouring nothing.
+- A comment claimed `finance.read` is "denied for every current viewer". It is activated for
+  `eos-platform-sandbox` in `access/environmentCapabilityOverrides.ts`, along with
+  `opportunity.read`, `salesOrder.read` and `crm.activity.read`.
+
+---
+
+## Cross-family — the shell obligation two families had escaped
+
+`compositionConformance.test.jsx` requires every conformant workspace to import `WorkspaceShell`.
+The North Star grammar replaces that shell with `ns-page`. Migrating the Account — which WAS on the
+Wave-2 conformant list — is what forced the conflict into the open.
+
+Investigating it found something worse. `WorkOrderDetailPage.jsx` and `SalesOrderDetail.jsx` are on
+**no list at all**: never added to `CONFORMANT_WORKSPACES` (which would have demanded the shell they
+deliberately dropped), so **from 2026-08-25 until 2026-08-26 the two migrated record families
+satisfied no composition obligation whatsoever.** They did not defeat the gate; they shipped past
+the edge of it.
+
+The obligation is now **replaced, not waived** (DECISIONS #126), by a category that is stricter than
+the one it replaces. And when that new gate was mutation-proved, it had the same disease: deleting
+an entry made it check fewer files and nothing failed. Membership is now derived from the tree, so a
+surface composing the grammar and declared nowhere fails the build.
+
+Two gates in two days — this one and the CI-coverage hole in DECISIONS #124 — turned out not to be
+guarding what they claimed. Both were found by asking a gate to fail on purpose rather than by
+reading it.

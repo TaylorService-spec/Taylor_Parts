@@ -2063,3 +2063,94 @@ approved structure and guarantees a re-layout when stamps ship).
 principle applied here to the stage strip). Register:
 `docs/design/north-star-open-product-decisions.md` ND-8, ND-9, ND-10. Ledger:
 `docs/design/north-star-migration-ledger.md`.
+
+---
+
+## #126 — The North Star grammar REPLACES the Wave-2 shell obligation, it does not escape it
+
+**Date:** 2026-08-26
+**Decision:** a record page migrated to the North Star grammar composes `ns-page` +
+`RecordIdentity` and **must not** also host `WorkspaceShell`. `compositionConformance.test.jsx`
+gains a `NORTH_STAR_RECORD_PAGES` category enforcing exactly that, plus two supporting gates: a page
+may not appear on both shell lists, and **membership is derived** — any surface composing the North
+Star page grammar must be declared, so the list cannot be quietly emptied.
+
+**Reason:** migrating the Account surfaced a conflict between two real standards. The Wave-2
+composition gate says "every conformant workspace imports WorkspaceShell", and `AccountDetail.jsx`
+was on that list. The North Star grammar replaces the shell with `ns-page`. Running both doubles the
+page chrome and gives the page two competing `h1` claims — which is ND-4, already open.
+
+Investigating it found something worse. `WorkOrderDetailPage.jsx` and `SalesOrderDetail.jsx` are on
+**no list at all**: they were never added to `CONFORMANT_WORKSPACES` (which would have demanded the
+shell they deliberately dropped), so from 2026-08-25 until now the two migrated record families
+satisfied **no composition obligation whatsoever**. Families 1 and 2 did not defeat the gate; they
+shipped past the edge of it.
+
+The obligation is therefore replaced rather than waived, and the new category is a *stricter*
+contract than the one it replaces: North Star pages must carry the page primitives, must not carry
+the shell, and remain bound by the `fo-badge` rule through `CONFORMANT_SURFACES`.
+
+A mutation proof then found a hole in the new gate itself: deleting an entry from the list made it
+check fewer files and nothing failed. A membership list that only constrains its own members can be
+shrunk to nothing and still pass. Membership is now DERIVED from the tree — a surface that composes
+the grammar and is declared nowhere fails the build.
+
+**Alternatives rejected:** keeping WorkspaceShell and nesting `ns-page` inside it (doubles the
+chrome and makes ND-4 worse); removing AccountDetail from the conformant list with no replacement
+obligation (weakens a shrink-only gate to make a migration pass — the exact move these gates exist
+to prevent).
+
+**Related:** DECISIONS #122 (three authorities), #124 (the sibling CI-coverage hole found the same
+week — both are "a gate that was not guarding what it claimed"). ND-4 remains open: which element
+owns the `h1` is still a Design decision, and this only ensures there is one.
+
+---
+
+## #127 — The Account states its status; it does not pretend to have a lifecycle
+
+**Date:** 2026-08-26
+**Decision:** the Account page family (family 3) is composed in the North Star grammar over
+`field-ops-app-vite/src/domain/accountNorthStar.js`, and **renders no lifecycle spine**, stating in
+words why there is none (ND-11).
+
+**Reason:** NS-P1 asks every record page for a visible lifecycle spine, and an Account does not have
+one. Its four status values look like a progression — Prospect, Active, Inactive, Archived — but
+`status` is an ordinary editable field in `accountRecordPage.editableFieldIds`, written through
+`updateAccount` like `name` or `notes`. There is no transition command, no allowed-transition map,
+and nothing preventing an archived account from being edited straight back to Prospect. Four
+chevrons would have asserted a rule the engine does not hold, which is the same class of error as
+printing a stage time the record does not record (ND-8).
+
+**The Account's actual defect was ordering, not absence.** `AccountAttentionSection` was already
+right — bounded, account-scoped, composed from existing authorities, honest per source, silent when
+there is nothing to say. It rendered at the BOTTOM of the secondary column, below every related
+list, so a reader reached it after everything it should have warned them about. It is moved to its
+NS-P2 position and says exactly what it said before.
+
+It is deliberately NOT flattened into the shared `AttentionBand`. `accountAttentionProjection.js`
+states that AR and Work-Order past-due are never merged into one ranked list, and a flat band has
+nowhere to put its per-source honest notes. A first draft of the derivation layer did adapt them and
+was removed: overriding a behavioral rule to satisfy a visual pattern is what the three-authority
+model forbids.
+
+**Two duplications removed.** `AccountDetail.jsx` carried private `RELATIONSHIP_LABEL` and
+`LINE_OF_BUSINESS_LABEL` maps identical to the `enumLabels` in
+`metadata/definitions/account.js` — two copies of "CUSTOMER means Customer", free to drift (there is
+a third in `wholeUnitAssetDisplay.js`, untouched here). The classification now reads the canonical
+definition, and renders as words rather than pills: `accountRelationshipTone` and
+`accountLineOfBusinessTone` both return the constant "info" for every value, so the pills were
+colouring nothing.
+
+**One stale claim corrected.** A comment asserted that `finance.read` is "registered catalog-wide
+active:false today, i.e. denied for every current viewer". The first half is still true; the second
+is not. `access/environmentCapabilityOverrides.ts` activates `finance.read`, `opportunity.read`,
+`salesOrder.read` and `crm.activity.read` for `eos-platform-sandbox`. The same correction applies to
+the design grammar's standing-gaps table, which still classifies "Account shows commercial life" as
+**Governance decision required** on the strength of the catalog-wide default.
+
+**Authority unchanged.** No command, capability, write path or Rules change; the edit form, the two
+`MetadataRecordPage` calls, every modal, and all the documented wiring decisions in
+`accountPageComponents.js` are untouched.
+
+**Related:** DECISIONS #122, #125, #126. Register: ND-11. Ledger:
+`docs/design/north-star-migration-ledger.md`.

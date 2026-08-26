@@ -60,6 +60,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
       - "field-ops-app-vite/test/salesOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
+      # The North Star Account family (family 3).
+      - "field-ops-app-vite/src/domain/accountNorthStar.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
+      - "field-ops-app-vite/test/accountNorthStarPage.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -144,6 +148,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/salesOrderPage.js"
       - "field-ops-app-vite/test/salesOrderNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
+      # The North Star Account family (family 3).
+      - "field-ops-app-vite/src/domain/accountNorthStar.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
+      - "field-ops-app-vite/test/accountNorthStarPage.test.jsx"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
@@ -206,6 +214,11 @@ jobs:
       # suite runs in CI only where a workflow names it (see test/ciSuiteCoverage.test.mjs).
       - name: Sales Order North Star composition (grammar + unchanged authority)
         run: npx vitest run test/salesOrderNorthStarPage.test.jsx test/salesOrderDetail.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE ACCOUNT FAMILY (family 3).
+      - name: Account North Star composition (NS-P2 ordering + no fabricated lifecycle)
+        run: npx vitest run test/accountNorthStarPage.test.jsx test/accountDetailFailClosed.test.jsx
         working-directory: field-ops-app-vite
 
       # The five features converged into src/metadata/ (ADR-013), each with its mutation proof:
