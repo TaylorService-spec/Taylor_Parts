@@ -8,8 +8,8 @@
 
 ## Steps
 
-1. On the customer's record, scroll to the **Locations** section.
-2. Click **+ Add Location**. A form appears.
+1. On the customer's record, look at the **Locations** section in the right-hand column, under Contacts.
+2. Click **+ Add location**. A form appears.
 3. Type the **Site name** (required), for example "Main Office".
 4. Fill in the street, city, state, and zip.
 5. Optionally add **Access notes** (gate codes, parking, where to check in).

@@ -16,6 +16,7 @@ import {
   accountStatusSentence,
   accountClassification,
   accountHeader,
+  accountTermsDigest,
 } from "../src/domain/accountNorthStar.js";
 import { ACCOUNT_STATUS, ACCOUNT_STATUS_LABEL } from "../src/domain/constants.js";
 import { accountEntity } from "../src/metadata/definitions/account.js";
@@ -177,4 +178,45 @@ test("hostile input does not throw", () => {
   assert.doesNotThrow(() => accountClassification(null));
   assert.doesNotThrow(() => accountClassification({ relationshipTypes: "CUSTOMER", lineOfBusiness: 7 }));
   assert.equal(accountHeader({ name: 42 }).unnamed, true);
+});
+
+// ═══════════════════════════ THE TERMS DIGEST (Account North Star P1)
+//
+// The header states the commercial terms in one fact. It is the SAME derivation the rail reads,
+// not a second one -- every word comes from the metadata definition's own enumLabels -- and it
+// carries three rules that protect real money decisions.
+
+test("the digest reads the vocabulary, never a local label copy", () => {
+  assert.equal(
+    accountTermsDigest({ paymentTerms: "NET_30", taxStatus: "TAXABLE", purchaseOrderRequired: true }),
+    "Net 30 · Taxable · PO required",
+  );
+  assert.equal(
+    accountTermsDigest({ paymentTerms: "COD", taxStatus: "EXEMPT", purchaseOrderRequired: false }),
+    "Cash on Delivery · Exempt · No PO required",
+  );
+});
+
+test("AN ABSENT TAX STATUS IS UNKNOWN, NEVER TAXABLE", () => {
+  // The mutation this guards: defaulting to TAXABLE puts a tax claim on a customer nobody made a
+  // tax decision about, in the same line an invoice would be built from.
+  for (const account of [{}, { taxStatus: null }, { taxStatus: "" }, { taxStatus: undefined }]) {
+    const digest = accountTermsDigest(account);
+    assert.equal(digest, "Unknown");
+    assert.ok(!/Taxable/.test(digest));
+  }
+});
+
+test("payment terms and PO required appear only when the record actually holds them", () => {
+  // A malformed PO value is left to the edit form to surface -- never shown here as a confident
+  // Yes or No, which would be the page asserting a term nobody set.
+  assert.equal(accountTermsDigest({ purchaseOrderRequired: "yes" }), "Unknown");
+  assert.equal(accountTermsDigest({ purchaseOrderRequired: 1 }), "Unknown");
+  assert.equal(accountTermsDigest({ paymentTerms: "NOT_A_TERM" }), "Unknown");
+});
+
+test("hostile input does not throw the digest", () => {
+  assert.doesNotThrow(() => accountTermsDigest(null));
+  assert.doesNotThrow(() => accountTermsDigest(undefined));
+  assert.doesNotThrow(() => accountTermsDigest({ taxStatus: 7 }));
 });

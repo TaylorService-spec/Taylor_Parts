@@ -99,7 +99,7 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | Artifact | Surface | Notes |
 | --- | --- | --- |
 | `Proposed - Work Order.dc.html` | Work Order detail | ~~Pilot 1 primary source.~~ **SUPERSEDED 2026-08-25** — the approved source is now `North Star - Work Order.dc.html` (see below). Technician run sheet still reference for a later family. |
-| `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. **NEVER HANDED TO THIS REPOSITORY.** The family was migrated 2026-08-26 from the ratified grammar and the shipped family-1 pattern instead, which makes Owner visual acceptance load-bearing rather than confirmatory (DECISIONS #125). **That acceptance was granted 2026-08-26 against `1c8095d3` (DECISIONS #128)** — a grammar-derived composition confirmed correct without the artifact. If this artifact exists, it has not been seen here. |
+| `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. **NEVER HANDED TO THIS REPOSITORY.** The family was migrated 2026-08-26 from the ratified grammar and the shipped family-1 pattern instead, which makes Owner visual acceptance load-bearing rather than confirmatory (DECISIONS #125). If this artifact exists, it has not been seen here. |
 | `Proposed - Account.dc.html` | Customer 360 | Ceiling set by capability activation. |
 | `Proposed - Opportunity.dc.html` | Opportunity detail | Requires a per-record route. |
 | `Proposed - Parts.dc.html` | Parts workspace | Persona-scoped queues. |
