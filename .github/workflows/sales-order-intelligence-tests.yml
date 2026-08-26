@@ -1,0 +1,60 @@
+name: Sales Order Intelligence Tests
+
+# The first Sales Order intelligence slice, on the same governed boundary as the Work Order one:
+# EOS owns truth, authority and actions; a model may only explain what EOS already established; the
+# server verifier decides what may be returned.
+#
+# This lane exists separately from work-order-intelligence-tests.yml on purpose. The two contracts
+# share an architecture, not an implementation, and a Sales Order carries commercial consequences a
+# Work Order does not -- an invented price, quantity or currency is a claim about money the business
+# is owed. The verifier here refuses model prose containing a figure at all, and that rule needs a
+# lane that fails on its own terms rather than inside a Work Order run.
+#
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/salesOrderGovernedRecommendation.js"
+      - "field-ops-app-vite/src/domain/salesOrderIntelligence.js"
+      - "field-ops-app-vite/src/domain/salesOrderActions.js"
+      - "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
+      - "field-ops-app-vite/test/salesOrderGovernedRecommendation.test.mjs"
+      - "functions/src/ai/salesOrderModelInterpretation.ts"
+      - "functions/src/fulfillment/allocateSalesOrder.ts"
+      - "functions/src/salesOrder/salesOrderReadService.ts"
+      - "functions/src/salesOrder/salesOrderLifecycle.ts"
+      - "functions/test/aiSalesOrderModelInterpretation.test.mjs"
+      - ".github/workflows/sales-order-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-order-intelligence:
+    name: North Star Sales Order intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Governed recommendation selection, silence and model-payload boundary
+        run: node --test test/salesOrderGovernedRecommendation.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Model-output verification, including commercial fabrication refusal
+        run: node --test test/aiSalesOrderModelInterpretation.test.mjs
+        working-directory: functions

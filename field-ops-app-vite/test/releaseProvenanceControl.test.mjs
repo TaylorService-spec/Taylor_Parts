@@ -19,7 +19,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -287,7 +287,10 @@ test("the identity gate refuses to run without an approved commit — it cannot 
 // ═════════════════════════════════════ the runbook actually calls all of this
 
 test("THE RUNBOOK WIRES THE CONTROL IN THE RIGHT ORDER", () => {
-  const runbook = execFileSync("git", ["show", "HEAD:scripts/_sandboxRefresh.run.sh"], { cwd: REPO_ROOT, encoding: "utf8" });
+  // Read the WORKING TREE, not HEAD. `git show HEAD:` describes the last commit, which during a
+  // merge is the pre-merge parent -- so this assertion failed while reconciling two branches that
+  // were each individually correct. What matters is the file that will actually ship.
+  const runbook = readFileSync(join(REPO_ROOT, "scripts", "_sandboxRefresh.run.sh"), "utf8");
   const at = (needle) => runbook.indexOf(needle);
   assert.ok(at("releaseRoot.mjs") > 0, "the release root must be resolved explicitly");
   assert.ok(at("_releaseProvenanceGuard.mjs") > 0, "the provenance guard must run");
@@ -306,7 +309,7 @@ test("THE RUNBOOK WIRES THE CONTROL IN THE RIGHT ORDER", () => {
 
 test("BOTH GATES REFUSE AN UNRESOLVED ROOT rather than certifying the caller's cwd", () => {
   for (const name of ["_sandboxQuickGate.sh", "_sandboxRegressionGate.sh"]) {
-    const text = execFileSync("git", ["show", `HEAD:scripts/${name}`], { cwd: REPO_ROOT, encoding: "utf8" });
+    const text = readFileSync(join(REPO_ROOT, "scripts", name), "utf8");
     assert.ok(text.includes("could not resolve the repository root"), `${name} must fail loudly on an unresolved root`);
     assert.ok(text.includes("EOS_GATE_ROOT_CHECKED"), `${name} must carry the root check`);
   }
