@@ -64,7 +64,7 @@ See the *cross-family* section below.
 | **Proof** | `test/salesOrderNorthStar.test.mjs` (37), `test/salesOrderNorthStarPage.test.jsx` (18), plus the reconciled `test/salesOrderDetail.test.jsx` (22) and `test/coreRecordPages.test.jsx` |
 | **Mutation proofs** | 10 — 5 against the projection (ND-8 stage-time fabrication, R03 id-as-reference, R04 enum leak, attention on a terminal order, partial allocation counted as complete) and 5 against the composition (id as page title, raw enum in the header, false liveness claim, emptied lifecycle band, a second invocation path in the suggestion). All 10 caught; the source restored byte-identical after each. |
 | **Named decisions** | ND-8 (no lifecycle stage times), ND-9 (Sales Agreement has no resolvable reference), ND-10 (the read is not live) |
-| **Gate** | *pending* |
+| **Gate** | Quick Gate PASSED against `1c8095d3` on platform-sandbox, 2026-08-26 — 12/12 sweep visits, 7/7 dynamic entities resolved, **zero blocking findings, zero RAW_ID**. Not the acceptance gate. |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
 ### What changed, beyond the restyle
@@ -131,7 +131,7 @@ Both new assertions were mutation-proved (a stray unregistered suite, and a phan
 | **Proof** | `test/accountNorthStar.test.mjs` (18), `test/accountNorthStarPage.test.jsx` (12), plus `test/compositionConformance.test.jsx` (7, three of them new) |
 | **Mutation proofs** | 6 — attention removed from its NS-P2 position · id as the page title · raw enum in the header · a status clause implying a progression · `accountLifecycle` claiming a spine · the new shell gate quietly losing a migrated family. All 6 caught; sources restored byte-identical. |
 | **Named decisions** | ND-11 (an Account has no lifecycle to make visible) |
-| **Gate** | *pending* |
+| **Gate** | Quick Gate PASSED against `1c8095d3` on platform-sandbox, 2026-08-26 — 12/12 sweep visits, 7/7 dynamic entities resolved, **zero blocking findings, zero RAW_ID**. Not the acceptance gate. |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
 ### The defect was ordering, not absence
@@ -235,3 +235,45 @@ a green result about the wrong commit.
 
 So the honest state of both rows is: behavioral work complete and proved offline, **awaiting a
 sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
+
+---
+
+## Sandbox refresh — 1c8095d3, 2026-08-26
+
+Deployed and verified **from the environment, not from the exit code**:
+
+```
+{ "commit": "1c8095d3", "environmentId": "platform-sandbox",
+  "environmentRole": "sandbox", "buildTime": "2026-08-26T15:47:39.375Z" }
+```
+
+The refresh required advancing the designated release checkout first: it was detached at
+`3deb250b` — the previously deployed build, three merges behind — and the runbook neither fetches
+nor checks out. It takes `HEAD` as the approved commit and refuses unless `HEAD == origin/main`,
+which is the identity invariant working as designed rather than an obstacle. The runbook then
+reported Rules and indexes **UNCHANGED vs 1c8095d3**, so no Rules or index deploy was performed.
+
+### Quick Gate — PASSED
+
+| | |
+|---|---|
+| Deployed identity | `1c8095d3`, confirmed an ancestor of HEAD before certifying |
+| Pilot sweep | 12/12 visits, 0 nav failures, 0 browser relaunches |
+| Dynamic detail | 7/7 entities resolved — account, opportunity, salesOrder, workOrder, contact, equipment, part |
+| **RAW_ID findings** | **zero** — R03 holds on both new record pages |
+| Blocking findings | **zero** |
+
+The two finding classes reported — `OFFSCREEN_IN_SCROLLER` and `TINY_TARGET_DESKTOP_SURFACE` — are
+the gate's own pre-declared tolerated set, on the stated reasoning that a control inside a
+horizontal scroller is still reachable and a desktop workspace never promised a 44px target at
+375px. Every sweep finding landed on `/service/job-assignments` and `/service/scheduling`, neither
+of which this work touched; they are the same `.fo-button` / scroller cluster the Owner scoped out
+of the Work Order closeout, and `.fo-button`'s 40px height is already ND-6.
+
+`certifyDynamic.mjs` reports its findings by KIND rather than per entity, so the 25 tolerated
+findings in the dynamic pass cannot be attributed to a specific record page from this run. None is
+blocking. The full regression gate is what would give the per-route breakdown.
+
+**This is not acceptance.** The Quick Gate deliberately skips the repo suites, three of five widths,
+crash stress, persona reachability and the 40/40 scanner scenarios, and says so in its own exit
+banner. Both families remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
