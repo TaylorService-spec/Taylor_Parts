@@ -2406,3 +2406,59 @@ structural.
 **Related:** DECISIONS #122, #125, #126, #127, #128, #129. Register: ND-12 (withdrawn), ND-13, plus
 Design's O1–O6. Sources: `docs/design/eos-north-star-sources.md`. Ledger:
 `docs/design/north-star-migration-ledger.md`.
+
+
+## #131 — AMENDMENT to #128: a PR can lose its CI without editing a workflow file
+
+**Date:** 2026-08-26
+**Amends:** #128, which stays exactly as written. Its remediation — the six deny-list patterns —
+is unaffected and still correct. Only its causal claim is narrowed.
+
+**The claim being corrected.** #128 concluded that PRs editing `.github/workflows/**` may silently
+receive no `pull_request` CI. That was the honest reading of the evidence available at the time.
+
+**The corrected finding.** A PR can silently receive **no or only partial** `pull_request` check
+suites **even when it does not edit workflow files at all**.
+
+**Observed instances.**
+1. The prior workflow-edit case recorded in #128.
+2. **PR #1527**, which edited no workflow file — two metadata definitions, one JSON registry and
+   five test files — and initially received **one** run (`Vite Build Check`) while every expected
+   path-filtered lane was absent. `test/metadataCrmDefinitions.test.mjs` and
+   `test/crmSalesNav.test.mjs` are named **verbatim** in the `paths:` filters of
+   `metadata-contracts-tests.yml` and `sales-opportunity-tests.yml` respectively. The configuration
+   was correct. The suites were never created.
+
+**What is known.**
+- A workflow-file edit is **not a necessary condition**.
+- The underlying cause is **not established**.
+- **The absence of a check suite is itself unsafe evidence.** It must not be read as "this PR
+  legitimately triggered nothing" — which is exactly how it presents, and is the reason this can
+  pass a review unnoticed. A red check is visible; a check that was never created is not.
+- Closing and reopening PR #1527 caused the expected suites to be created (1 run → 21).
+
+**What is NOT known.**
+- Why GitHub failed to create the suites.
+- Whether close/reopen is universally reliable, or was reliable once.
+- Whether the failure is GitHub-side, repository configuration, event delivery, or an interaction
+  between them.
+
+**Operational rule.** Before declaring a PR green, verify that the expected path-filtered lanes were
+actually **CREATED** — not merely that all visible checks are green.
+
+If expected lanes are absent:
+- treat CI state as **INCOMPLETE**;
+- do **not** merge on the basis of visible checks;
+- close/reopen may be used as an observed recovery mechanism;
+- verify the expected lanes appear afterwards.
+
+**No replacement theory is offered, deliberately.** #128's causal claim was reasonable and wrong,
+and the cost of replacing it with a second unproven one is that the next session stops looking. The
+rule above is written to be correct whatever the cause turns out to be.
+
+**Near miss, recorded because it is the point.** PR #1527 was one `gh pr checks` away from being
+reported green on the strength of a single build check. It was caught only because the tally looked
+wrong against a sibling PR — 1 check where #1514 had 47 — not because anything reported a problem.
+
+**Related:** DECISIONS #124 (a suite registered nowhere, run by nothing), #128 (the deny list).
+Standing rule: `docs/CLAUDE_CONTEXT.md` — "verify, don't assume".

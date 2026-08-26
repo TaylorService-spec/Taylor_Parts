@@ -320,6 +320,17 @@ Eight business decisions the Owner already resolved (US-only, no `addressLine2`,
 
 Established after an incident where a prior turn assumed a PR had merged because it had been *discussed* as the next step, when it hadn't actually happened yet (PR #12 is exactly that pattern, still unresolved) — and reinforced again when a prior session's context doc cited four architecture docs by path (`ADR-001`, `UI_ACTION_PIPELINES.md`, `EPIC-2.md`, and originally `ADR-003` before it was actually written) that didn't exist in the repo. Before recommending merge order, rebase necessity, deploy state, "what's next," or citing any doc by path: run `git fetch`, `gh pr view --json state,mergedAt,mergeable,mergeStateStatus`, `git log origin/main`, and `Glob`/`Grep` for the doc path first. Conversation history or a prior session's notes describing something as existing is not evidence it does. Same for Firestore rules/Cloud Functions deploy state — committed/merged is not deployed; query the live project directly, don't trust a doc's snapshot or a console screenshot.
 
+**A green PR is not a checked PR (2026-08-26).** Before declaring a PR green, verify the expected
+path-filtered lanes were actually **CREATED**, not merely that every visible check is passing. PR
+#1527 edited no workflow file and received exactly **one** run while every lane naming its changed
+files was absent — the configuration was correct and the check suites were simply never created. A
+red check is visible; a check that never existed looks identical to a PR that legitimately triggered
+nothing. Compare the lane count against a sibling PR touching similar paths. If expected lanes are
+missing: treat CI as INCOMPLETE, do not merge on the visible checks, and note that closing and
+reopening the PR is an *observed* recovery (1 run → 21) whose reliability is unproven. The cause is
+not established — see `docs/DECISIONS.md` #131, which deliberately declines to replace #128's
+disproven workflow-edit theory with another guess.
+
 Also verified this session: a chained shell command (`git add && git commit && git push origin main`) that gets denied by a permission check is denied as a whole — none of it runs, including the `add`/`commit` portion, even though only the final `push` was the actual concern. Don't assume a leading step in a blocked chained command executed; check `git log`/`git status` after any denial before building on top of it.
 
 **The single strongest concrete case for this rule, found 2026-07-09**: the live `taylor-parts` project's deployed `firestore.rules` had never included a `reorder_requests` match block at all, for the entire span of Sprints 2.1.3 through 2.1.7 — every PR in that span passed `npm run build`/lint/code review and was merged as if complete, but the actual write path had been failing on `permission-denied` in production the whole time, invisibly, because nothing in this project's process ever re-queried the live deployed ruleset after merging a rules change. Found only by investigating a user-reported "Request Reorder does nothing" bug, via a read-only Admin SDK check (`getSecurityRules().getFirestoreRuleset()`). Fixed by an explicit `firebase deploy --only firestore:rules`, with the user's authorization, and re-verified live afterward. **The general lesson: after any `firestore.rules` change merges, the rules still need their own explicit deploy step — a merged PR is not that step, and nothing automates it.**
