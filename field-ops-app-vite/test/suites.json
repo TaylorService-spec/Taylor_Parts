@@ -968,6 +968,10 @@
     {
       "file": "test/sandboxGatePhases.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/releaseProvenanceControl.test.mjs",
+      "runner": "node"
     }
   ]
 }

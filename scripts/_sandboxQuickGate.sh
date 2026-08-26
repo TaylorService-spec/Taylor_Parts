@@ -36,6 +36,20 @@ set -euo pipefail
 
 ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# THE ROOT MUST BE REAL, AND SAYING SO BEATS A MYSTERY PATH.
+#
+# The first live quick-gate run failed resolving a path whose ROOT WAS EMPTY -- the error named
+# a missing \scripts\_certificationRoutes.mjs rather than the reason, because an unresolved root
+# silently becomes the caller's cwd, or nothing at all. Both gates run from operator shells and
+# from 125 worktrees; neither may quietly certify whatever directory it happened to land in.
+if [ -z "${REPO_ROOT:-}" ] || [ ! -f "${REPO_ROOT}/scripts/_certificationRoutes.mjs" ]; then
+  echo "ABORT: could not resolve the repository root for this gate." >&2
+  echo "       resolved to: '${REPO_ROOT:-<empty>}'" >&2
+  echo "       Run the gate by its own absolute path from a checkout:" >&2
+  echo "         bash /path/to/repo/scripts/_sandboxQuickGate.sh" >&2
+  exit 2
+fi
+EOS_GATE_ROOT_CHECKED=1
 APP_DIR="${REPO_ROOT}/field-ops-app-vite"
 SKILL_DIR="${APP_DIR}/.claude/skills/run-field-ops-app-vite"
 

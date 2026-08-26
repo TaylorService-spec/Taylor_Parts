@@ -100,6 +100,20 @@ ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
 DEPLOYED_BASE="$(curl -fsS "${ORIGIN}/version.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{let b=JSON.parse(d).base||"/";if(b==="/")b="";else if(b.endsWith("/"))b=b.slice(0,-1);process.stdout.write(b)})')"
 export CERT_BASE="${ORIGIN}${DEPLOYED_BASE}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# THE ROOT MUST BE REAL, AND SAYING SO BEATS A MYSTERY PATH.
+#
+# The first live quick-gate run failed resolving a path whose ROOT WAS EMPTY -- the error named
+# a missing \scripts\_certificationRoutes.mjs rather than the reason, because an unresolved root
+# silently becomes the caller's cwd, or nothing at all. Both gates run from operator shells and
+# from 125 worktrees; neither may quietly certify whatever directory it happened to land in.
+if [ -z "${REPO_ROOT:-}" ] || [ ! -f "${REPO_ROOT}/scripts/_certificationRoutes.mjs" ]; then
+  echo "ABORT: could not resolve the repository root for this gate." >&2
+  echo "       resolved to: '${REPO_ROOT:-<empty>}'" >&2
+  echo "       Run the gate by its own absolute path from a checkout:" >&2
+  echo "         bash /path/to/repo/scripts/_sandboxRegressionGate.sh" >&2
+  exit 2
+fi
+EOS_GATE_ROOT_CHECKED=1
 cd "$REPO_ROOT"
 
 echo "== sandbox regression gate =="
