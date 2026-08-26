@@ -89,7 +89,7 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 
 | Artifact | Surface | Notes |
 | --- | --- | --- |
-| `Proposed - Work Order.dc.html` | Work Order detail | **Pilot 1 primary source.** Dispatcher composition + technician run sheet. |
+| `Proposed - Work Order.dc.html` | Work Order detail | ~~Pilot 1 primary source.~~ **SUPERSEDED 2026-08-25** — the approved source is now `North Star - Work Order.dc.html` (see below). Technician run sheet still reference for a later family. |
 | `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. |
 | `Proposed - Account.dc.html` | Customer 360 | Ceiling set by capability activation. |
 | `Proposed - Opportunity.dc.html` | Opportunity detail | Requires a per-record route. |
@@ -101,14 +101,45 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | `Subpages - Operations.dc.html` | Receiving, scheduling, exception, balances | Cross-object consequence. |
 | `Subpages - Lists and States.dc.html` | 142-row list + 12 honest states | The density floor and the state vocabulary. |
 
-### Horizon concept — NOT the pilot
+### `North Star - Work Order.dc.html` — the CURRENT approved Work Order visual source
+
+**Superseded, 2026-08-25 (P1v2, Owner ruling).** This section previously classified the artifact as
+"Horizon concept — NOT the pilot" and directed implementers to `Proposed - Work Order.dc.html`
+instead. That classification no longer holds and must not be acted on.
 
 | Artifact | What it is |
 | --- | --- |
-| `North Star - Work Order.dc.html` | The post-pilot horizon. Its own masthead states the assumption: *"live truck-stock reads · WO naming service · notification channel · suggestion engine. **None exist today — this is the destination, not the pilot.**"* Every projection on it (ETA confidence, first-visit-fix percentages, median completion) depends on services that do not exist. |
+| `North Star - Work Order.dc.html` | **The approved visual source for the Work Order family.** The implementation must materially reproduce its composition, hierarchy, density, geometry, typography, lifecycle treatment, action architecture, content/rail proportions and first-viewport experience — not a reinterpretation into the existing EOS composition. |
+| `Implementation Render - Work Order.html` | The explicit **pixel target**: a static render of what the approved JSX and CSS produce for a DISPATCHED record with today's capabilities, honest gap states included. What a running page is compared against. |
+| `Proposed - Work Order.dc.html` | The earlier pilot composition. Superseded as visual truth; kept for history. Its technician-mobile concept remains reference for a later family. |
 
-Treat this artifact as **compositional guidance for where AI belongs**, never as a specification of
-numbers to render.
+#### Structure may anticipate a capability. Content may not.
+
+The artifact's own masthead still says what it always said — *"live truck-stock reads · WO naming
+service · notification channel · suggestion engine. None exist today."* That remains true, and it is
+why the earlier reading was cautious. The distinction that makes the artifact implementable, and the
+rule for every family that follows:
+
+> **KEEP THE DESIGNED STRUCTURAL SLOT. RENDER A TRUTHFUL STATE IN IT. NEVER FABRICATE THE CONTENT.**
+
+- **Visual structure may represent future capability.** A suggestion strip, a dispatcher-context
+  section, a first-visit-fix slot — each keeps its position and its geometry, so the page does not
+  reflow when the capability ships and the design is not relitigated to add it back.
+- **Live content must remain truthful to current EOS behavior.** The slot states what is missing, in
+  words, in a muted treatment. Never a percentage, a confidence, an ETA, a repair count, a presence
+  indicator or a recommendation that no service computed.
+- **A slot may not be silently dropped either.** Omitting it hides the gap as effectively as faking
+  it fills it — the reader cannot tell an absent capability from an absent design.
+- **Emphasis colour is reserved.** An empty slot must not be dressed in the palette's
+  attention colour; an empty band that looks like advice is a fabrication by styling.
+- **Where no slot can be honest, omit and say so.** The concept's ⌘K hint and presence chip have no
+  command palette and no presence channel behind them; an affordance for a shortcut that does
+  nothing is worse than its absence. Omissions are recorded as gaps, not left unexplained.
+
+Where the concept implies an ACTION the engine does not grant, the affordance may hold its place
+**disabled and explicitly unavailable**, with copy that distinguishes *not yet, for anyone* from
+*not you* — never wired to a no-op, and never to a direct write. The behavior itself is separate,
+separately-approved work.
 
 ### Comparison and current-state
 

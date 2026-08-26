@@ -1948,3 +1948,40 @@ evaporate); a single combined design+build authority (removes the independent ch
 open questions on the first page family).
 
 **Seeded with:** ND-1 … ND-7 from the Work Order family review (#1494).
+
+
+## #123 — The Work Order visual source is the North Star artifact, with slots that may outrun the engine
+
+**Date:** 2026-08-25
+**Decision:** Owner ruling (P1v2). The approved visual source for the Work Order family is
+`North Star - Work Order.dc.html`, with `Implementation Render - Work Order.html` as the explicit
+pixel target. `Proposed - Work Order.dc.html` is superseded as visual truth.
+
+The rule that makes an artifact assuming absent services implementable:
+
+> KEEP THE DESIGNED STRUCTURAL SLOT. RENDER A TRUTHFUL STATE IN IT. NEVER FABRICATE THE CONTENT.
+
+Visual structure may represent future capability. Live content must remain truthful to current EOS
+behavior. A slot may not be silently dropped either — omitting it hides the gap as effectively as
+faking it fills it. An empty slot may not wear the palette-s attention colour. Where no slot can be
+honest at all (the concept-s command palette and presence chip), it is omitted and recorded as a gap.
+
+An ACTION the engine does not grant may hold its place DISABLED and explicitly unavailable, with
+copy distinguishing "not yet, for anyone" from "not you" — never wired to a no-op or a direct write.
+
+**Reason:** the previous classification ("horizon, NOT the pilot") was protecting against the right
+thing — fabricated numbers — with the wrong instrument. Forbidding the composition also forbade its
+structure, which cost nothing to honour and which the product will need the day a capability ships.
+Separating the two lets the page be built once.
+
+**Alternatives rejected:** implementing the horizon composition with placeholder data (the
+fabrication the whole programme refuses); continuing against the superseded `Proposed` source
+(would have merged a page reviewed against an artifact Design had already replaced); dropping the
+unbackable slots entirely (hides the gap and guarantees a re-layout later).
+
+**Supersedes:** the "Horizon concept — NOT the pilot" section of
+`docs/design/eos-north-star-sources.md`, corrected in the same change.
+**Related:** DECISIONS #122 (the three-authority model this ruling was made under). B1 (governed
+Reschedule) and B2 (technician messaging) are approved as SEPARATE future packages; neither is in
+#1494. Register: `docs/design/north-star-open-product-decisions.md` — ND-3 and ND-7 answered, ND-1,
+ND-2, ND-4, ND-5, ND-6 still open.

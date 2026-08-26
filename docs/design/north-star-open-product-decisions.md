@@ -144,3 +144,44 @@ which may satisfy both.
 ## Resolved
 
 *(none yet)*
+
+---
+
+## Resolved by P1v2 (Owner ruling, 2026-08-25)
+
+### ND-3 — A dispatched Work Order offers no transition — **ANSWERED, behavior deferred**
+
+**Answer:** the approved composition's actions hold their positions **disabled and explicitly
+unavailable**, so the action architecture matches the North Star now and lights up when the
+behavior ships. Rendering them is presentation; building them is not.
+
+**Standing risk, deliberately named:** the answer holds only if **B1** is actually built. A
+placeholder that never becomes a button is permanent furniture advertising an action that does not
+exist. B1 is approved as a separate future package — governed Reschedule command, DISPATCHED →
+SCHEDULED semantics, capability/role eligibility, audit event, scheduling constraints, tests, UI
+activation — and is out of scope for #1494 in full. **B2** (message technician) has no governed
+messaging capability at all and stays disabled until a channel and its command exist.
+
+**Not resolved by this:** whether "dispatched is committed until cancelled" is the intended
+operating rule. That is what B1 decides.
+
+### ND-7 — Status: pill with a glyph, or plain coloured text — **RESOLVED: sentence**
+
+**Answer:** plain weighted text, as the concept draws it — and safely, because P1v2 writes the state
+as a **clause** ("Dispatched — awaiting technician acceptance") rather than a label. A sentence
+carries its meaning in words, so colour is emphasis rather than the carrier; a bare coloured word
+could not have cleared the "never colour alone" rule. `workOrderStatusSentence` extends the existing
+`STATUS_WORDS` vocabulary rather than forking it, so the header and the spine cannot drift.
+
+---
+
+## Still open after P1v2
+
+ND-1 (which model owns Work Order history), ND-2 ("Repair" is not a governed type), ND-4 (the shell
+and the record both claim `h1`), ND-5 (two approved colours under the contrast floor), ND-6 (the
+40px shared button primitive).
+
+**ND-2 now has a visible consequence.** The approved render writes `Work Order · Repair · P2 High`;
+the running page writes `Work Order · Service Call · High (2)`, because those are the governed
+vocabularies. The composition is unchanged — the words differ, and they will keep differing until
+the question is answered.
