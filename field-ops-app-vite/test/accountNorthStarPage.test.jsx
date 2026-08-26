@@ -26,6 +26,7 @@ import { useAccount } from "../src/hooks/useAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 import { ACCOUNT_AR_STATE } from "../src/domain/accountArView.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -685,5 +686,91 @@ describe("Account North Star P1 — the touch floor covers link-style controls t
     const rule = ruleFor(".ns-primary__call {");
     expect(rule).toBeTruthy();
     expect(rule).toMatch(/min-height:\s*44px/);
+  });
+});
+
+// ═════════════════════════════════════════ ONE NAME PER SECTION
+
+describe("Account North Star P1 — every section is named once", () => {
+  // WHAT THIS CAUGHT. On the deployed build at 19b34835 the page emitted the section name TWICE for
+  // five sections, in two different typographic systems:
+  //
+  //   H3.fo-section-header__title  Contacts            H3.ns-rail__title  Contacts (0)
+  //   H3.fo-section-header__title  Financials          H2.ns-section__title  Accounts receivable
+  //   H3.fo-section-header__title  Activity And Notes  H4  Activity & Notes
+  //
+  // MetadataRecordPage wraps every section in RecordSection, which renders the section's label as a
+  // heading -- correct when the metadata layer is the only thing naming the section, wrong when the
+  // component inside it already carries its title. One of the duplicates was a humanized id.
+  //
+  // This asserts the RULE (a heading names a section once), not the fix, so a future change that
+  // reintroduces the duplicate through some other route still fails here.
+  const headingText = (container) =>
+    Array.from(container.querySelectorAll("h1,h2,h3,h4,summary"))
+      .map((h) => (h.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+
+  it("no section name is rendered as a heading twice", () => {
+    const { container } = mount({ contacts: [PRIMARY] });
+    // Compare on the NAME, not the exact string: "Contacts" and "Contacts (0)" are the same
+    // section named twice, and that is precisely the defect.
+    const names = headingText(container).map((t) => t.replace(/\s*\(\d+\)\s*$/, "").toLowerCase());
+    const seen = new Map();
+    for (const n of names) seen.set(n, (seen.get(n) ?? 0) + 1);
+    const doubled = [...seen.entries()].filter(([, n]) => n > 1).map(([name]) => name);
+    expect(doubled, `these sections are named more than once: ${doubled.join(", ")}`).toEqual([]);
+  });
+
+  it("a humanized section id never reaches the page as a heading", () => {
+    // "Activity And Notes" is humanizeSectionId("activityAndNotes") -- a fallback label, showing
+    // because no real one was supplied. It is not what the section is called.
+    const { container } = mount({ contacts: [PRIMARY] });
+    for (const t of headingText(container)) {
+      expect(t, "a humanized id is a placeholder, not a section name").not.toMatch(/^Activity And Notes$/);
+    }
+  });
+
+  it("the metadata layer never INVENTS a heading a definition withheld", () => {
+    // The rule, at its source. accountPage.js declares a label for exactly the sections the
+    // metadata layer should name, and withholds one from exactly the sections whose component or
+    // injected renderer carries its own title. A humanizing fallback erases that distinction.
+    const owned = ["financials", "activityAndNotes", "serviceActivity", "contacts", "locations"];
+    for (const id of owned) {
+      const section = accountRecordPage.sections.find((s) => s.id === id);
+      expect(section, id + " must exist").toBeTruthy();
+      expect(section.label ?? null, id + " must declare NO label -- its component names it").toBeNull();
+    }
+    // And the two that must keep theirs, because nothing else names those rows.
+    for (const id of ["opportunities", "salesOrders"]) {
+      expect(accountRecordPage.sections.find((s) => s.id === id).label).toBeTruthy();
+    }
+  });
+});
+
+// ═════════════════════════════════════════ THE RAIL IS THE WIDTH THE DESIGN DRAWS
+
+describe("Account North Star P1 — the rail width band is measured, not guessed", () => {
+  it("the narrow-rail band ends BELOW the container a 1440 screen produces", () => {
+    // THE DEFECT THIS CAUGHT. The band was 900-1119.98px of CONTAINER. The application rail and the
+    // page gutters mean a 1440 SCREEN gives this container 1076px -- inside that band -- so the
+    // design's own reference width rendered the 220px rail instead of the 340px one it draws.
+    //
+    // Measured on the deployed build: 1600 -> 1216, 1440 -> 1076, 1280 -> 916, 1024 -> 716.
+    const at = CSS.indexOf("@container ns-record (min-width: 900px) and (max-width:");
+    expect(at, "the narrow-rail band must exist").toBeGreaterThan(-1);
+    const rule = CSS.slice(at, CSS.indexOf("}", CSS.indexOf("{", at)));
+    const upper = Number(rule.match(/max-width:\s*([\d.]+)px/)?.[1]);
+    expect(upper, "the band must be present and numeric").toBeGreaterThan(0);
+    expect(
+      upper,
+      "a 1440 screen gives this container 1076px; a band reaching that width steals the 340px rail",
+    ).toBeLessThan(1076);
+  });
+
+  it("the default split is still the approved 1fr / 340px", () => {
+    const at = CSS.indexOf("@container ns-record (min-width: 900px) {");
+    expect(at).toBeGreaterThan(-1);
+    const rule = CSS.slice(CSS.indexOf("{", at) + 1, CSS.indexOf("}", CSS.indexOf("{", at) + 1));
+    expect(rule).toMatch(/minmax\(0,\s*1fr\)\s+340px/);
   });
 });

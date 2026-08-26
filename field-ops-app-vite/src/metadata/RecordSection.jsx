@@ -32,6 +32,9 @@ import { SectionHeader } from "../shared/ui/primitives/index.js";
 export default function RecordSection({
   section,
   label,
+  // Used ONLY to name a collapsible toggle whose section declared no label -- a control must
+  // have an accessible name. It is deliberately NOT a heading fallback: see MetadataRecordPage.
+  fallbackLabel = null,
   collapsible = false,
   defaultCollapsed = false,
   className = "",
@@ -40,11 +43,11 @@ export default function RecordSection({
   const [open, setOpen] = useState(!defaultCollapsed);
   const contentId = useId();
 
-  const accessibleName = label ?? section?.id ?? "Section";
+  const accessibleName = label ?? fallbackLabel ?? section?.id ?? "Section";
 
   if (!collapsible) {
     return (
-      <section className={className} aria-label={accessibleName}>
+      <section className={className} data-section-id={section?.id ?? undefined} aria-label={accessibleName}>
         {label && <SectionHeader title={label} level={3} className="fo-record-section-title" />}
         {children}
       </section>
@@ -52,7 +55,7 @@ export default function RecordSection({
   }
 
   return (
-    <section className={className} aria-label={accessibleName}>
+    <section className={className} data-section-id={section?.id ?? undefined} aria-label={accessibleName}>
       <h3 className="fo-record-section-title fo-record-section-title--toggle">
         {/* The heading CONTAINS the button rather than sitting beside it, so the accessible name of
             the control is the section name — "Notes & Identifiers, collapsed" — instead of a page

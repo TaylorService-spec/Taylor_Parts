@@ -748,7 +748,29 @@ export default function MetadataRecordPage({
                 <RecordSection
                   key={section.id}
                   section={section}
-                  label={section.label ?? humanizeSectionId(section.id)}
+                  // A SECTION IS NAMED ONLY WHEN ITS DEFINITION NAMES IT.
+                  //
+                  // This was `section.label ?? humanizeSectionId(section.id)`, which invented a
+                  // heading for every section that deliberately declared none -- and a section
+                  // declares none precisely when the component or injected renderer inside it
+                  // already carries its own title. The account record page showed the result:
+                  // five sections named twice, in two different typographic systems, one of the
+                  // pair being a humanized id ("Activity And Notes" over the component's own
+                  // "Activity & Notes"; "Contacts" over "Contacts (0)").
+                  //
+                  // CSS could hide the duplicate. It would still be in the DOM and still be read
+                  // aloud, which is the same defect with the evidence removed -- a test written
+                  // against the rendered headings caught exactly that.
+                  //
+                  // Every OTHER record page (work order, sales order, equipment) labels all of
+                  // its sections, so nothing else was relying on the invented name; verified
+                  // against their definitions, not assumed.
+                  //
+                  // The humanized name survives where it is genuinely needed: a collapsible
+                  // section's toggle is a CONTROL and must have an accessible name, and the
+                  // <section> landmark keeps one either way.
+                  label={section.label ?? null}
+                  fallbackLabel={humanizeSectionId(section.id)}
                   className={sectionClassName}
                   collapsible={collapsedByDefault || section.density === "SECONDARY" || section.density === "SYSTEM"}
                   defaultCollapsed={collapsedByDefault}
