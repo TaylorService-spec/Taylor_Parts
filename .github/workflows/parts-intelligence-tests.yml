@@ -1,0 +1,50 @@
+name: Parts Intelligence Tests
+
+# First governed Parts recommendation: an already-assigned reorder request may expose only the
+# existing startPurchasing action to that same assignee. No vendor/quantity/price/PO inference.
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/partsAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/partsGovernedRecommendation.js"
+      - "field-ops-app-vite/src/domain/partsIntelligence.js"
+      - "field-ops-app-vite/src/domain/inventoryReorderRequests.js"
+      - "field-ops-app-vite/test/partsGovernedRecommendation.test.mjs"
+      - "functions/src/ai/partsModelInterpretation.ts"
+      - "functions/test/aiPartsModelInterpretation.test.mjs"
+      - "firestore.rules"
+      - ".github/workflows/parts-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parts-intelligence:
+    name: North Star Parts intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Existing-action selection, authority and model-payload boundary
+        run: node --test test/partsGovernedRecommendation.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Model-output procurement fabrication refusal
+        run: node --test test/aiPartsModelInterpretation.test.mjs
+        working-directory: functions
