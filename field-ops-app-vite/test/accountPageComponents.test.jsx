@@ -453,7 +453,7 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     expect((await screen.findByTestId("location")).textContent).toBe("/customers/opportunities/sales-order/so-1");
   });
 
-  it("opportunities rows stay non-focusable: opportunity.js declares no rowNavigationTo, because no per-Opportunity route exists anywhere in App.jsx", async () => {
+  it("opportunities rows navigate to the Opportunity record page, through unmodified wiring", async () => {
     fetchCallablePageMock.mockResolvedValue({
       rows: [{ id: "opp-1", opportunityNumber: "OPP-2026-000999" }],
       hasMore: false,
@@ -477,16 +477,19 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     );
     const cell = await screen.findByText("OPP-2026-000999");
     const row = cell.closest("tr");
-    // The exact "rowNavigationTo absent" degrade DefaultRelatedList already tests for on its
-    // own (test/metadataRecordPage.test.jsx's DEFECT 2 suite) — non-focusable, no click.
-    expect(row.getAttribute("tabindex")).toBeNull();
+    // INVERTED 2026-08-26. This asserted the honest degrade — non-focusable, click goes nowhere —
+    // which was right while opportunity.js declared no destination, because the only one it had
+    // ever declared ("/sales/opportunities/:id") named a route App.jsx never mounted. The test
+    // even asked to be revisited if that were ever fixed. It has been, in the other direction:
+    // a REAL per-Opportunity route now exists and the definition names it.
+    //
+    // Nothing in accountPageComponents.js changed to enable this, which is the point of the
+    // original refusal to special-case a bad value in the consumer: the fix landed at the source
+    // and the wiring below is the same wiring Sales Orders always used.
+    expect(row.getAttribute("tabindex")).toBe("0");
     fireEvent.click(row);
-    expect((await screen.findByTestId("location")).textContent).toBe("/customers/acct-42");
-    // The lane that wrote this test asserted the broken value was still present, and asked
-    // for the assertion to be revisited if opportunity.js were ever fixed. It has been:
-    // the stale route is gone at the source, so the row is non-focusable because nothing
-    // declares a route, not because a consumer stripped one.
-    expect(opportunityRelatedList.rowNavigationTo ?? null).toBeNull();
+    expect((await screen.findByTestId("location")).textContent).toBe("/customers/opportunities/opp-1");
+    expect(opportunityRelatedList.rowNavigationTo).toBe("/customers/opportunities/:opportunityId");
   });
 
   it("now part of the wired MAIN subset AccountDetail.jsx actually renders — in accountPage.js's own order, ahead of financials", () => {

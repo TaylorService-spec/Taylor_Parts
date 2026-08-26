@@ -456,12 +456,19 @@ describe("Account North Star P1 — what the page may never do", () => {
     expect(container.querySelector(".ns-rail")).toBeTruthy();
   });
 
-  it("an Opportunity row stays non-navigable because no opportunity record route exists", () => {
-    // Asserted at the definition, which is where the rule lives: DefaultRelatedList builds row
-    // navigation from rowNavigationTo, so an absent one is what makes the rows honestly
-    // non-focusable. The mutation this proves: restoring a rowNavigationTo here would make every
-    // opportunity row look clickable and land on a 404.
-    expect(opportunityRelatedList.rowNavigationTo ?? null).toBeNull();
+  it("an Opportunity row navigates to the record page, now that the route exists", () => {
+    // INVERTED 2026-08-26. This asserted the ABSENCE, and its reasoning was sound at the time:
+    // "restoring a rowNavigationTo here would make every opportunity row look clickable and land
+    // on a 404", because the only value ever declared was "/sales/opportunities/:id" and App.jsx
+    // mounted no such route.
+    //
+    // The route exists now — /customers/opportunities/:opportunityId over the governed
+    // getOpportunityContext — so the condition that made the absence correct is gone. What the
+    // test still guards is the thing that actually mattered: the destination must be REAL.
+    // test/crmSalesNav.test.mjs compares this template against App.jsx's mounted path, so a rename
+    // that misses the definition fails a suite rather than a user's click.
+    expect(opportunityRelatedList.rowNavigationTo).toBe("/customers/opportunities/:opportunityId");
+    expect(opportunityRelatedList.rowNavigationTo.startsWith("/sales/")).toBe(false);
   });
 });
 

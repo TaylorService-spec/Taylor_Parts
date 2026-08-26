@@ -58,17 +58,23 @@
 // against the real opportunity.js/salesOrder.js/account.js — not re-assumed fixed a second
 // time — and both sections are now WIRED (see accountRecordPageMainSubset below).
 //
-// One thing verification surfaced that was NOT part of either closed blocker: opportunity.js's
-// own rowNavigationTo ("/sales/opportunities/:id") names a route that has never existed
-// anywhere in App.jsx — confirmed by a repo-wide route search; the only Opportunity-adjacent
-// route is the shared workspace at /customers/opportunities, which takes no :id. That file is
-// was reported by that lane as REGISTRATION_PENDING and has since been REMOVED from
-// opportunity.js at the integration step, rather than stripped here: a consumer defending
-// against a bad declaration leaves the bad declaration in place for the next consumer.
-// Opportunities rows are therefore honestly non-focusable via DefaultRelatedList's own
-// already-tested "absent rowNavigationTo" branch. Sales Orders' rowNavigationTo
-// ("/customers/opportunities/sales-order/:salesOrderId") IS a real, working route
-// (App.jsx -> SalesOrderDetail.jsx) and is wired through unmodified.
+// One thing verification surfaced that was NOT part of either closed blocker: opportunity.js
+// declared a rowNavigationTo ("/sales/opportunities/:id") naming a route that had never existed
+// anywhere in App.jsx. It was REMOVED from opportunity.js at the integration step rather than
+// stripped here — a consumer defending against a bad declaration leaves the bad declaration in
+// place for the next consumer — and Opportunity rows rendered through DefaultRelatedList's
+// already-tested "absent rowNavigationTo" branch: honestly non-focusable, no dead click.
+//
+// RESOLVED 2026-08-26. A real per-Opportunity route now exists —
+// "/customers/opportunities/:opportunityId" over the governed getOpportunityContext — and
+// opportunity.js declares it, on the exact condition its own removal note set (design decision
+// O5: "Restore this with a real per-Opportunity route"). Opportunity rows are focusable and
+// navigable here for the first time, through the same unmodified DefaultRelatedList wiring
+// Sales Orders already used. test/crmSalesNav.test.mjs compares the declaration against App.jsx,
+// so a rename that misses these definitions fails a suite rather than a user's click.
+//
+// Sales Orders' rowNavigationTo ("/customers/opportunities/sales-order/:salesOrderId") was always
+// a real, working route (App.jsx -> SalesOrderDetail.jsx) and is wired through unmodified.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // X-ACCOUNT-PAGE-WIRING-COMPLETE — re-evaluated after the renderer's three gaps closed
@@ -361,15 +367,15 @@ registerAccountPageComponents();
 // exactly the same listId/entityId strings accountPage.js/account.js/opportunity.js/
 // salesOrder.js already name — no id invented here.
 //
-// opportunityRelatedList's own `rowNavigationTo` ("/sales/opportunities/:id") is wired to a
-// route that does not exist anywhere in App.jsx (a repo-wide route search finds only the
-// shared workspace at /customers/opportunities, which takes no :id param) — a pre-existing
-// defect in definitions/opportunity.js, outside this module's writeScope, reported as
-// REGISTRATION_PENDING (see the WIRING SCOPE note above for the exact fix needed there).
-// Wiring that value verbatim would send a click to a page that 404s, which this task's own
-// instruction refuses ("do not wire a broken route"). opportunity.js no longer declares one
-// at all, so DefaultRelatedList's own already-tested "rowNavigationTo absent" branch renders
-// exactly the honest degrade this needs: non-focusable rows, no onClick/onKeyDown.
+// opportunityRelatedList once declared a `rowNavigationTo` ("/sales/opportunities/:id") pointing
+// at a route that existed nowhere in App.jsx. Wiring it verbatim would have sent a click to a
+// page that 404s, so it was removed at the source and these rows degraded honestly through
+// DefaultRelatedList's "rowNavigationTo absent" branch: non-focusable, no onClick/onKeyDown.
+//
+// RESOLVED 2026-08-26: opportunity.js now declares
+// "/customers/opportunities/:opportunityId", which App.jsx really mounts, so these rows navigate
+// to the Opportunity record page through the unmodified wiring below. Nothing in this module
+// changed to enable it — which is the point of having refused to special-case it here.
 // salesOrderRelatedList's rowNavigationTo
 // ("/customers/opportunities/sales-order/:salesOrderId") IS real (App.jsx ->
 // SalesOrderDetail.jsx) and is used unmodified.
