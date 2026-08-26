@@ -130,12 +130,18 @@ and family 4 was built that way once too, before this package arrived. Rebuildin
 changed the composition materially — see the migration ledger's family 4 row for the table of what
 the design decided differently.
 
-**The artifacts still live outside this repository.** A `find` for `*.dc.html` across the tree
-returns nothing: this file remains a register of what exists, not the thing itself. That is the
-condition this document's own opening paragraph warns about — "a design direction that lives only in
-a conversation is one cleared cache away from being lost" — and it applies to the artifacts as
-squarely as to the direction. **Open question for Design and the Owner: should the approved `.dc.html`
-sources be committed here?**
+**The Opportunity artifacts are now IN this repository** — `docs/north-star/opportunity/`, committed
+2026-08-26. That closes, for one family, the condition this document's own opening paragraph warns
+about: "a design direction that lives only in a conversation is one cleared cache away from being
+lost" applies to the artifacts as squarely as to the direction, and until now they existed only as a
+`.zip` in a Downloads folder.
+
+They are **visual acceptance authority only** — not runtime, data, workflow or permission authority.
+See [`../north-star/opportunity/README.md`](../north-star/opportunity/README.md).
+
+**Still outside the repository:** every other family's artifacts, including the Work Order and
+Account sources this programme has already built against. The naming convention for bringing them in
+is `docs/north-star/<family>/<Family>-North-Star-<version>.dc.html`.
 
 ### `North Star - Work Order.dc.html` — the CURRENT approved Work Order visual source
 
