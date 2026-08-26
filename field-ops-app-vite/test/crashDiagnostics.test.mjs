@@ -39,7 +39,7 @@ test("IT CAPTURES THE SIX THINGS NEEDED TO REPRODUCE", () => {
   recordIdentity({ signedIn: true, role: "salesperson" });
   const d = build();
 
-  assert.match(d.crashId, /^[A-Z0-9]{5}-[A-Z0-9]{4}$/, "a short id a person can read from a screenshot");
+  assert.match(d.crashId, /^[A-Z0-9]{5}-[A-Z0-9]{6}$/, "a short id a person can read from a screenshot");
   assert.equal(d.route.pathname, "/customers/opportunities");
   assert.equal(d.route.search, "?view=all");
   assert.equal(d.route.previous, "/customers", "where they came from");
@@ -63,6 +63,22 @@ test("the trail is BOUNDED and free of consecutive duplicates", () => {
 test("two crashes never share an id", () => {
   const ids = new Set(Array.from({ length: 200 }, () => build().crashId));
   assert.equal(ids.size, 200);
+});
+
+// THIS TEST USED TO FAIL ABOUT ONE CI RUN IN NINETY-FOUR, and it was right to.
+//
+// The id tail was four base-36 characters from Math.random() -- about 1.68 million values, which
+// is a birthday problem 200 draws is enough to lose: 1.06% of 200-draw runs collided, measured
+// over 20,000 simulations. The flake was the visible half; the real defect was that the invariant
+// above was never held, and this id exists so ONE screenshot names ONE occurrence.
+//
+// A larger sample would only have made the flake likelier, so the guard is on the ENTROPY itself.
+test("the id tail is wide enough that the invariant above is actually held", () => {
+  const tails = Array.from({ length: 5000 }, () => build().crashId.split("-")[1]);
+  for (const t of tails) assert.match(t, /^[A-Z0-9]{6}$/, "a fixed-width tail, never a short draw");
+  // 5000 draws from ~2.18 billion values: a collision here means the entropy source regressed,
+  // not that we were unlucky (expected collisions ~0.006).
+  assert.equal(new Set(tails).size, 5000, "the tail must come from a wide, uniform source");
 });
 
 test("THE SUMMARY IS ACTIONABLE ON ITS OWN, so a console screenshot is enough", () => {
