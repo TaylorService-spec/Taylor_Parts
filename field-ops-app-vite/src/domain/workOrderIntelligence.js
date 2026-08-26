@@ -109,8 +109,10 @@ export function deriveWorkOrderIntelligence(
   if (projection.jobReadiness === "READY") return noInsight(NO_INSIGHT_REASON.PARTS_READY, context);
   if (projection.jobReadiness === "UNKNOWN") return noInsight(NO_INSIGHT_REASON.READINESS_UNKNOWN, context);
   if (projection.jobReadiness === "ATTENTION") {
-    // Recommendation selection reads the UNSANITIZED canonical projection only to retain the EOS-only
-    // execution ids. The model-visible recommendation descriptor itself contains no ids or quantity.
+    // The selector reads the UNSANITIZED canonical projection only long enough to decide whether the
+    // model-safe action descriptor may exist. Its EOS-only execution ids are deliberately NOT retained
+    // on the intelligence object. A human-acceptance controller must derive the governed action again
+    // from the current projection immediately before calling the existing reorder seam.
     const governedRecommendation = deriveGovernedWorkOrderPartsRecommendation(partsReadiness);
     return readinessAttentionSignal(context, projection, governedRecommendation);
   }
@@ -182,10 +184,6 @@ function readinessAttentionSignal(context, projection, governedRecommendation) {
     },
     recommendedAction,
     authority,
-    // Execution identity is EOS-only. It is kept OUTSIDE context and OUTSIDE the model-visible
-    // recommendation descriptor, so callers building a Keystone payload can pass recommendedAction
-    // without leaking Firestore ids or an AI-authored quantity.
-    recommendationExecution: governedRecommendation?.speak ? governedRecommendation.execution : null,
     evidence: evidenceFor(context, projection, governedRecommendation),
     outcome: null,
     attentionItem: {
@@ -275,7 +273,6 @@ function noInsight(reason, context) {
     confidence: null,
     recommendedAction: null,
     authority: { state: AUTHORITY_STATE.NOT_APPLICABLE, action: null, reason: null },
-    recommendationExecution: null,
     evidence: [],
     outcome: null,
     attentionItem: null,
